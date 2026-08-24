@@ -2,7 +2,6 @@ package skillbill.application.review
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingNode
 import skillbill.review.context.model.ReviewAccountingSummary
@@ -27,9 +26,6 @@ fun ReviewAccountingSummary.toBoundedPayload(): Map<String, Any?> = linkedMapOf(
   "parent_analysis_consumption" to parentAnalysis?.toPayload(),
   "integration" to integration?.toPayload(),
   "aggregate_counters" to aggregateCounters.toPayload(),
-  "aggregate_direct_usage" to aggregateDirectUsage.toPayload(),
-  "aggregate_inclusive_usage" to aggregateInclusiveUsage.toPayload(),
-  "budget_regression" to budgetRegression,
 )
 
 private fun ReviewAccountingNode.toPayload(): Map<String, Any?> = linkedMapOf(
@@ -42,9 +38,6 @@ private fun ReviewAccountingNode.toPayload(): Map<String, Any?> = linkedMapOf(
   "tool_calls" to counters.toolCalls.toLong(),
   "model_turns" to counters.modelTurns.toLong(),
   "inclusive_counters" to inclusiveCounters.toPayload(),
-  "provider_usage" to providerUsage.toOwnedPayload(),
-  "direct_usage" to directUsage.toPayload(),
-  "inclusive_usage" to inclusiveUsage.toPayload(),
   "terminal_outcome" to terminalOutcome,
 ).apply {
   // Bundle keys are present-or-absent, never null: a lane with no bundle stays byte-identical.
@@ -81,7 +74,6 @@ private fun ReviewIntegrationAccounting.toPayload(): Map<String, Any?> = linkedM
   "summarized_lane_count" to summarizedLaneCount,
   "finding_count" to findingCount,
   "counters" to counters.toPayload(),
-  "usage" to usage.toPayload(),
 ).apply {
   skipReason?.let { put("skip_reason", it) }
 }
@@ -101,15 +93,3 @@ private fun ReviewAccountingCounters.toPayload(): Map<String, Long> = linkedMapO
   "tool_calls" to toolCalls.toLong(),
   "model_turns" to modelTurns.toLong(),
 )
-
-private fun ProviderTokenUsage.toOwnedPayload(): Map<String, Any?> =
-  toPayload() + ("ownership" to ownership.name.lowercase())
-
-private fun ProviderTokenUsage.toPayload(): Map<String, Long> = linkedMapOf<String, Long>().apply {
-  inputTokens?.let { put("input_tokens", it) }
-  cachedInputTokens?.let { put("cached_input_tokens", it) }
-  outputTokens?.let { put("output_tokens", it) }
-  reasoningTokens?.let { put("reasoning_tokens", it) }
-  totalTokens?.let { put("total_tokens", it) }
-  freshTokenApproximation?.let { put("fresh_token_approximation", it.coerceAtLeast(0)) }
-}

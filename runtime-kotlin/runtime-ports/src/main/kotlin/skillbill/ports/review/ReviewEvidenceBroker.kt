@@ -7,7 +7,6 @@ import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
 
@@ -33,8 +32,6 @@ interface ReviewEvidenceBroker {
 
   /** Distinguishes an observed empty provider result from a provider with no decoded result. */
   fun hasObservedLaneResult(): Boolean = accounting().resultBytes > 0
-
-  fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome?
 
   fun accounting(): ReviewLaneAccounting
 

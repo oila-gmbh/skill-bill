@@ -1,6 +1,5 @@
 package skillbill.ports.review.model
 
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 import skillbill.review.model.ParallelReviewRawFinding
 
@@ -17,7 +16,6 @@ data class ReviewIntegrationPassOutcome(
   val launchBytes: Long = 0,
   val resultBytes: Long = 0,
   val modelTurns: Int = 0,
-  val providerUsage: ProviderTokenUsage? = null,
   val failureReason: String? = null,
 ) {
   init {

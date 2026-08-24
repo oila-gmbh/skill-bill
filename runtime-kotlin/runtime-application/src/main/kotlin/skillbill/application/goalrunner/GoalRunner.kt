@@ -776,7 +776,7 @@ class GoalRunner(
     causingLoopEntry: String? = null,
   ) {
     refreshed.manifest.workflowIdFor(subtaskId)?.let { workflowId ->
-      recordLaunchObservabilityLedgerAndAccounting(
+      recordLaunchObservabilityAndLedger(
         LaunchRecordingContext(
           workflowId,
           refreshed,
@@ -2511,7 +2511,7 @@ private data class LaunchRecordingContext(
   val causingLoopEntry: String? = null,
 )
 
-private fun recordLaunchObservabilityLedgerAndAccounting(
+private fun recordLaunchObservabilityAndLedger(
   context: LaunchRecordingContext,
   progress: GoalRunnerWorkflowProgress?,
   observability: GoalRunnerObservabilityEmitter,
@@ -2546,12 +2546,6 @@ private fun recordLaunchObservabilityLedgerAndAccounting(
       reAttemptCause = context.reAttemptCause,
       causingLoopEntry = context.causingLoopEntry,
     ),
-  )
-  ledger.recordAccounting(
-    workflowId = workflowId,
-    subtaskId = subtaskId,
-    phase = progress?.currentStepId.orEmpty(),
-    launchOutcome = launchOutcome,
   )
 }
 

@@ -24,7 +24,6 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewToolCall
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.test.Test
@@ -58,15 +57,12 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `structured output decoders preserve provider token dimensions`() {
+  fun `structured output decoders ignore provider usage dimensions`() {
     val claude = AgentRunOutputDecoder.CLAUDE_JSON.decode(
       """{"result":"done","usage":{"input_tokens":100,"cache_read_input_tokens":40,""" +
         """"output_tokens":20,"total_tokens":120}}""",
     )
     assertEquals("done", claude.text)
-    assertEquals(100, claude.inputTokens)
-    assertEquals(40, claude.cachedInputTokens)
-    assertEquals(20, claude.outputTokens)
     val codex = AgentRunOutputDecoder.CODEX_JSONL.decode(
       """
       {"item":{"text":"finding"}}
@@ -74,8 +70,6 @@ class AgentRunCommandBuildersTest {
       """.trimIndent(),
     )
     assertEquals("finding", codex.text)
-    assertEquals(5, codex.reasoningTokens)
-    assertEquals(100, codex.totalTokens)
     assertEquals("", AgentRunOutputDecoder.CLAUDE_JSON.decode("""{"usage":{"total_tokens":7}}""").text)
     assertEquals("", AgentRunOutputDecoder.CODEX_JSONL.decode("""{"usage":{"total_tokens":7}}""").text)
   }
@@ -96,10 +90,6 @@ class AgentRunCommandBuildersTest {
 
     assertEquals(fromBuffered.text, fromStream.text)
     assertEquals("PLAN-OK", fromStream.text)
-    assertEquals(fromBuffered.inputTokens, fromStream.inputTokens)
-    assertEquals(fromBuffered.cachedInputTokens, fromStream.cachedInputTokens)
-    assertEquals(fromBuffered.outputTokens, fromStream.outputTokens)
-    assertEquals(fromBuffered.totalTokens, fromStream.totalTokens)
   }
 
   @Test
@@ -647,10 +637,6 @@ class AgentRunCommandBuildersTest {
     override fun recordModelTurn() = error("unused")
     override fun validateLaneResult(result: String) = error("unused")
     override fun observeLaneResultChunk(chunk: String) = error("unused")
-    override fun evaluateProviderUsage(
-      usage: skillbill.review.context.model.ProviderTokenUsage,
-      enforceable: Boolean,
-    ) = error("unused")
     override fun accounting() = error("unused")
     override fun terminalOutcome() = error("unused")
   }
@@ -771,7 +757,7 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `cursor decoder extracts result and usage from JSONL`() {
+  fun `cursor decoder extracts result and ignores usage from JSONL`() {
     val jsonl =
       """
       {"type":"partial","delta":"increment"}
@@ -781,10 +767,6 @@ class AgentRunCommandBuildersTest {
     val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
 
     assertEquals("PLAN-OK", decoded.text)
-    assertEquals(100, decoded.inputTokens)
-    assertEquals(20, decoded.cachedInputTokens)
-    assertEquals(50, decoded.outputTokens)
-    assertEquals(150, decoded.totalTokens)
   }
 
   @Test
@@ -796,21 +778,16 @@ class AgentRunCommandBuildersTest {
     val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
 
     assertEquals("final", decoded.text)
-    assertEquals("final", decoded.text)
-    assertEquals(15, decoded.totalTokens)
   }
 
   @Test
-  fun `cursor decoder reads camelCase usage keys the CLI actually emits`() {
+  fun `cursor decoder ignores camelCase usage keys`() {
     val usage = """{"inputTokens":28164,"cachedInputTokens":11,"outputTokens":0,"totalTokens":28175}"""
     val jsonl = """{"type":"result","result":"PLAN-OK","usage":$usage}"""
 
     val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
 
-    assertEquals(28164, decoded.inputTokens)
-    assertEquals(11, decoded.cachedInputTokens)
-    assertEquals(0, decoded.outputTokens)
-    assertEquals(28175, decoded.totalTokens)
+    assertEquals("PLAN-OK", decoded.text)
   }
 
   @Test
@@ -823,8 +800,6 @@ class AgentRunCommandBuildersTest {
 
     assertEquals("", decoded.text)
     assertEquals(0, decoded.assistantEventCount)
-    assertEquals(33110, decoded.inputTokens)
-    assertEquals(0, decoded.outputTokens)
     assertNotNull(decoded.rawOutputPreview, "an empty harvest must retain bounded transport evidence")
   }
 

@@ -1,5 +1,15 @@
 # Boundary History — runtime-domain
 
+## [2026-08-24] SKILL-206 remove-provider-token-accounting
+Areas: runtime-domain/review/context, runtime-application/review, runtime-ports/review, runtime-infra-fs, runtime-infra-sqlite, orchestration/contracts
+- Review accounting now retains byte, count, routing, parent-analysis, integration, segment, and local byte-derived estimate surfaces without provider-reported token values.
+- Removed provider-token review models, ownership and regression paths, threshold launch fragments, broker/protocol evaluation, and tree folding.
+- Review-context contract 2.2 rejects retired provider fields while durable 2.1 accounting rows remain readable without rewriting.
+- Pattern: keep runtime-owned accounting authoritative while transport-only provider fields remain isolated until their producer removal. reusable
+- Transport token fields remain present and unused until the producer-removal subtask.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-24] SKILL-200 subtask 2 — Continuation map and documentation cleanup
 Areas: runtime-domain/workflow, runtime-kotlin docs, docs, install
 - Removed dead continuation content-path entries for `bill-feature-task` and `feature-task-runtime`; continuation prompts now add normal-instructions guidance only for retained mappings.

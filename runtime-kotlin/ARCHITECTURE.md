@@ -400,7 +400,6 @@ runtime-ports
     - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
     - `skillbill.application.review.toBoundedPayload`
     - `skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload`
-    - `skillbill.review.model.ReviewFinishedTelemetry.reviewContextAccounting`
     - `skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap`
     - `skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap`
     - `skillbill.workflow.model.GoalObservabilityHistory.toArtifactList`
@@ -413,8 +412,6 @@ runtime-ports
     - `skillbill.workflow.model.GoalProgressHistory.toArtifactList`
     - `skillbill.workflow.GoalProgressEventValidator.validate`
     - `skillbill.workflow.model.appendBoundedHistoryBySequence`
-    - `skillbill.goalrunner.model.GoalSessionAccounting.toArtifactMap`
-    - `skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList`
     - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
     - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
     - `skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
@@ -1188,7 +1185,6 @@ Categories:
 - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
 - `skillbill.application.review.toBoundedPayload`
 - `skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload`
-- `skillbill.review.model.ReviewFinishedTelemetry.reviewContextAccounting`
 - `skillbill.workflow.WorkflowEngine.snapshotMap`
 - `skillbill.workflow.WorkflowEngine.summaryMap`
 - `skillbill.workflow.WorkflowEngine.resumeMap`
@@ -1220,8 +1216,6 @@ Categories:
 - `skillbill.workflow.model.GoalProgressHistory.toArtifactList`
 - `skillbill.workflow.GoalProgressEventValidator.validate`
 - `skillbill.workflow.model.appendBoundedHistoryBySequence`
-- `skillbill.goalrunner.model.GoalSessionAccounting.toArtifactMap`
-- `skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList`
 - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
 - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
 - `skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`

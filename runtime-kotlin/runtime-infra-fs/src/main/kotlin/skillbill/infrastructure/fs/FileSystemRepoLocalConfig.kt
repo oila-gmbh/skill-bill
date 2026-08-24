@@ -17,14 +17,17 @@ import skillbill.error.UnreadableRepoLocalConfigError
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
-import skillbill.review.context.model.ProviderTokenThresholds
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
 @Inject
-class FileSystemRepoLocalConfig : RepoLocalConfigPort {
+class FileSystemRepoLocalConfig(
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+) : RepoLocalConfigPort {
   private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
 
   override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest): ReadRepoLocalConfigResult {
@@ -68,10 +71,17 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
 
   private fun parseReviewContextBudget(path: Path, value: Any?): ReviewContextBudgetPolicy {
     val raw = budgetMapping(path, "review_context_budget", value)
-    validateBudgetKeys(path, raw, "review_context_budget", REVIEW_CONTEXT_BUDGET_KEYS)
+    if (raw.containsKey("provider_token_thresholds")) {
+      diagnostics.warning(
+        "Repo-local config degradation: seam=provider_token_thresholds used=ignored " +
+          "expected=absent cause=retired configuration block",
+      )
+    }
+    val active = raw - "provider_token_thresholds"
+    validateBudgetKeys(path, active, "review_context_budget", REVIEW_CONTEXT_BUDGET_KEYS)
     val defaults = ReviewContextBudgetPolicy.DEFAULT
     return try {
-      buildReviewContextBudget(path, raw, defaults, providerTokenThresholds(path, raw))
+      buildReviewContextBudget(path, active, defaults)
     } catch (error: IllegalArgumentException) {
       throw MalformedRepoLocalConfigError(
         path.toString(),
@@ -87,9 +97,7 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
     path: Path,
     raw: Map<*, *>,
     defaults: ReviewContextBudgetPolicy,
-    tokenRaw: Map<*, *>,
   ): ReviewContextBudgetPolicy {
-    val tokenDefaults = defaults.providerTokenThresholds
     return ReviewContextBudgetPolicy(
       maxParentPacketBytes = budgetLong(path, raw, "max_parent_packet_bytes", defaults.maxParentPacketBytes),
       maxLaneLaunchBytes = budgetLong(path, raw, "max_lane_launch_bytes", defaults.maxLaneLaunchBytes),
@@ -101,13 +109,6 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
       maxSpecialistModelTurns = budgetInt(path, raw, "max_specialist_model_turns", defaults.maxSpecialistModelTurns),
       maxRoutingAnalysisPairs = budgetInt(path, raw, "max_routing_analysis_pairs", defaults.maxRoutingAnalysisPairs),
       maxRoutingAnalysisBytes = budgetLong(path, raw, "max_routing_analysis_bytes", defaults.maxRoutingAnalysisBytes),
-      providerTokenThresholds = ProviderTokenThresholds(
-        inputTokens = tokenLong(path, tokenRaw, "input_tokens", tokenDefaults.inputTokens),
-        cachedInputTokens = tokenLong(path, tokenRaw, "cached_input_tokens", tokenDefaults.cachedInputTokens),
-        outputTokens = tokenLong(path, tokenRaw, "output_tokens", tokenDefaults.outputTokens),
-        reasoningTokens = tokenLong(path, tokenRaw, "reasoning_tokens", tokenDefaults.reasoningTokens),
-        totalTokens = tokenLong(path, tokenRaw, "total_tokens", tokenDefaults.totalTokens),
-      ),
     )
   }
 
@@ -163,19 +164,6 @@ private fun validateBudgetKeys(path: Path, raw: Map<*, *>, prefix: String, allow
   malformedBudget(path, "$prefix.${unknown.key}", unknown.value, "is not a recognized key.")
 }
 
-private fun providerTokenThresholds(path: Path, raw: Map<*, *>): Map<*, *> {
-  if (!raw.containsKey("provider_token_thresholds")) return emptyMap<Any?, Any?>()
-  val prefix = "review_context_budget.provider_token_thresholds"
-  val nested = budgetMapping(path, prefix, raw["provider_token_thresholds"])
-  validateBudgetKeys(
-    path,
-    nested,
-    prefix,
-    setOf("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "total_tokens"),
-  )
-  return nested
-}
-
 private fun assignmentExpansions(path: Path, raw: Map<*, *>, fallback: Int): Int =
   budgetInt(path, raw, "max_assignment_expansions", fallback)
 
@@ -186,14 +174,6 @@ private fun budgetInt(path: Path, raw: Map<*, *>, key: String, fallback: Int): I
   }
   return parsed.toInt()
 }
-
-private fun tokenLong(path: Path, source: Map<*, *>, key: String, fallback: Long): Long = budgetLong(
-  path,
-  source,
-  key,
-  fallback,
-  "review_context_budget.provider_token_thresholds",
-)
 
 private fun budgetLong(
   path: Path,
@@ -234,7 +214,6 @@ private val REVIEW_CONTEXT_BUDGET_KEYS = setOf(
   "max_specialist_model_turns",
   "max_routing_analysis_pairs",
   "max_routing_analysis_bytes",
-  "provider_token_thresholds",
 )
 
 private fun java.math.BigInteger.longValueExactOrNull(): Long? = try {

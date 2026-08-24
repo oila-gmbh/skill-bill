@@ -9,7 +9,6 @@ import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.review.context.model.ForbiddenReviewOperation
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
 import java.net.UnixDomainSocketAddress
@@ -51,7 +50,6 @@ class GovernedReviewEvidenceEndpointTest {
     override fun tool(call: ReviewToolCall): ReviewToolCallResult = error("unused")
     override fun modelTurn(): ReviewBudgetOutcome? = null
     override fun laneResultChunk(chunk: String): ReviewBudgetOutcome? = null
-    override fun providerUsage(usage: ProviderTokenUsage): ReviewBudgetOutcome? = null
   }
 
   @Test

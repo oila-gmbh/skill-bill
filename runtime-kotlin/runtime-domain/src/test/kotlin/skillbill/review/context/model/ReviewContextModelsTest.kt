@@ -127,15 +127,6 @@ class ReviewContextModelsTest {
 
   @Test fun `default budget is governed`() {
     assertEquals(524_288, ReviewContextBudgetPolicy.DEFAULT.maxParentPacketBytes)
-    assertEquals(56_000, ReviewContextBudgetPolicy.DEFAULT.providerTokenThresholds.totalTokens)
-  }
-
-  @Test fun `cached input cannot exist without input`() {
-    assertFailsWith<IllegalArgumentException> { ProviderTokenUsage(cachedInputTokens = 1) }
-  }
-
-  @Test fun `additive provider cache reads exceeding input are accepted`() {
-    assertEquals(17_931, ProviderTokenUsage(inputTokens = 2, cachedInputTokens = 17_931).cachedInputTokens)
   }
 
   @Test fun `inconsistent budgets loud fail`() {
@@ -437,21 +428,6 @@ class ReviewContextModelsTest {
     val launch = GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", policy)
     // Fixed overhead alone exceeds the tiny budget, so preparation still gets typed evidence.
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, launch.budgetOutcomeOrNull()?.type)
-  }
-
-  @Test fun `inclusive parent is not double counted`() {
-    val parent = ProviderTokenUsage(inputTokens = 100, outputTokens = 10, ownership = TokenOwnership.INCLUSIVE)
-    assertEquals(
-      parent,
-      ReviewTreeUsage(parent, listOf(ReviewTreeUsage(ProviderTokenUsage(inputTokens = 50)))).aggregate(),
-    )
-  }
-
-  @Test fun `fresh tokens separate cached input`() {
-    assertEquals(
-      70,
-      ProviderTokenUsage(inputTokens = 100, cachedInputTokens = 50, outputTokens = 20).freshTokenApproximation,
-    )
   }
 
   @Test fun `explicit mode is authoritative`() {

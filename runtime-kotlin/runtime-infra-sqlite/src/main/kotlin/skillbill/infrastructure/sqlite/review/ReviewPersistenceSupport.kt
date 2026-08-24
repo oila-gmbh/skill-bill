@@ -41,7 +41,10 @@ fun loadReviewAccounting(connection: Connection, reviewId: String): ReviewAccoun
         "Malformed bounded review accounting for '$reviewId'."
       }
       val declaredVersion = payload["contract_version"]?.toString()
-      if (declaredVersion != REVIEW_CONTEXT_CONTRACT_VERSION) {
+      if (
+        declaredVersion != REVIEW_CONTEXT_CONTRACT_VERSION &&
+        declaredVersion != LEGACY_REVIEW_CONTEXT_CONTRACT_VERSION
+      ) {
         quarantineReviewAccounting(connection, reviewId, declaredVersion)
         return@use null
       }
@@ -58,6 +61,8 @@ fun loadReviewAccounting(connection: Connection, reviewId: String): ReviewAccoun
   }
 
 private const val ACCOUNTING_LOAD_SEAM: String = "ReviewPersistenceSupport.loadReviewAccounting"
+
+private const val LEGACY_REVIEW_CONTEXT_CONTRACT_VERSION: String = "2.1"
 
 private fun quarantineReviewAccounting(connection: Connection, reviewId: String, declaredVersion: String?) {
   LifecycleTelemetryStore(connection).reviewStageDegradation(

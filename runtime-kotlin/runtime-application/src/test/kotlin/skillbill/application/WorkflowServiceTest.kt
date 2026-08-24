@@ -47,7 +47,6 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
-import skillbill.goalrunner.model.GoalSessionAccounting
 import skillbill.ports.goalrunner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
@@ -55,7 +54,6 @@ import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
-import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.GoalPlanningPreparationRepository
 import skillbill.ports.persistence.GoalRunnerControlRepository
@@ -2600,27 +2598,6 @@ class WorkflowGoalRunnerProgressStoreTest {
   }
 
   @Test
-  fun `record session accounting accumulates without mirroring a latest-event key`() {
-    val workflows = InMemoryWorkflowStates()
-    workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-    )
-
-    assertTrue(store.recordSessionAccounting(sessionAccountingRequest("wfl-child", sequenceNumber = 0)))
-    assertTrue(store.recordSessionAccounting(sessionAccountingRequest("wfl-child", sequenceNumber = 1)))
-    assertFalse(store.recordSessionAccounting(sessionAccountingRequest("wfl-missing", sequenceNumber = 2)))
-
-    val artifacts = decodeWorkflowArtifactsForTest(
-      requireNotNull(workflows.getFeatureTaskWorkflow("wfl-child")).toSnapshot().artifactsJson,
-    )
-    val history = artifacts["goal_session_accounting"] as List<*>
-    assertEquals(2, history.size)
-    assertFalse(artifacts.containsKey("goal_session_accounting_latest_event"))
-  }
-
-  @Test
   fun `record attempt ledger entry prunes oldest in sequence order at retention limit`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
@@ -2663,7 +2640,6 @@ class WorkflowGoalRunnerProgressStoreTest {
     )
     store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-child", sequenceNumber = 0))
     store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-child", sequenceNumber = 1))
-    store.recordSessionAccounting(sessionAccountingRequest("wfl-child", sequenceNumber = 0))
     // SKILL-64 Subtask 3 (F-NT03): goal_progress is the exact stream the
     // production supervisor emitter seeds from (GoalRunner.kt watermarkSeed =
     // maxProgressSequence). Record events out of order to prove the watermark is
@@ -2674,7 +2650,6 @@ class WorkflowGoalRunnerProgressStoreTest {
     val watermarks = store.ledgerSequenceWatermarks("SKILL-64")
 
     assertEquals(1, watermarks.maxLedgerSequence)
-    assertEquals(0, watermarks.maxAccountingSequence)
     assertEquals(3, watermarks.maxProgressSequence)
     assertNull(store.ledgerSequenceWatermarks("SKILL-other").maxLedgerSequence)
     // No goal_progress recorded for the unrelated issue, so its progress
@@ -2806,21 +2781,6 @@ private fun progressEventRequest(workflowId: String, sequenceNumber: Int): GoalR
       timestamp = "2026-06-02T10:00:0${sequenceNumber % 10}Z",
     ),
   )
-
-private fun sessionAccountingRequest(
-  workflowId: String,
-  sequenceNumber: Int,
-): GoalRunnerSessionAccountingRecordRequest = GoalRunnerSessionAccountingRecordRequest(
-  workflowId = workflowId,
-  accounting = GoalSessionAccounting(
-    subtaskId = 1,
-    phase = "goal_runner_supervision",
-    available = false,
-    sequenceNumber = sequenceNumber,
-    timestamp = "2026-06-02T10:00:0${sequenceNumber % 10}Z",
-    unavailableReason = "no provider accounting",
-  ),
-)
 
 private fun attemptLedgerRequest(workflowId: String, sequenceNumber: Int): GoalRunnerAttemptLedgerRecordRequest =
   GoalRunnerAttemptLedgerRecordRequest(

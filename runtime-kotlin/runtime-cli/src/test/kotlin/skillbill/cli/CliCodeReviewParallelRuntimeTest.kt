@@ -60,6 +60,19 @@ class CliCodeReviewParallelRuntimeTest {
     assertContains(result.stdout, "Dual-agent")
   }
 
+  @Test
+  fun `code-review refuses to guess an agent when only a codex config path is exported`() {
+    val tempDir = createGitRepo()
+    val result = CliRuntime.run(
+      listOf("code-review", "--repo-root", tempDir.toString()),
+      parallelReviewContext(environment = mapOf("CODEX_HOME" to "/home/dev/.codex")),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Cannot determine the invoking agent")
+    assertContains(result.stdout, "--agent1")
+  }
+
   private fun createGitRepo(): Path {
     val dir = Files.createTempDirectory("cli-parallel-review-git")
     runGit("init", dir.toString())

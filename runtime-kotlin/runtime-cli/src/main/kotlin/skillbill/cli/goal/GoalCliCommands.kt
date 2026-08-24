@@ -48,8 +48,11 @@ import skillbill.application.system.RuntimeProvenanceService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.core.detectInvokingAgentId
 import skillbill.cli.core.formatOption
+import skillbill.cli.core.invokingAgentResolutionHelp
 import skillbill.cli.core.refuseUnavailableAgentLaunchers
+import skillbill.cli.core.requireInvokingAgentId
 import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.cli.telemetry.drainTelemetryOnCompletion
 import skillbill.contracts.system.RuntimeProvenanceContract
@@ -60,7 +63,6 @@ import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.install.model.InstallAgent
-import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
@@ -118,8 +120,7 @@ class GoalRunCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
   private val agent by option(
     "--agent",
-    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
-      "detected invoking-agent execution context, then a documented last-resort default ($DEFAULT_GOAL_AGENT).",
+    help = invokingAgentResolutionHelp("--agent"),
   )
   private val agentOverride by option(
     "--agent-override",
@@ -303,7 +304,7 @@ class GoalPreflightCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for the goal.")
   private val agent by option(
     "--agent",
-    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then detection.",
+    help = invokingAgentResolutionHelp("--agent"),
   )
   private val agentOverride by option(
     "--agent-override",
@@ -650,8 +651,9 @@ class GoalStatusCommand(
   ).flag(default = false)
   private val agent by option(
     "--agent",
-    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
-      "detected invoking-agent execution context, then a documented last-resort default.",
+    help = "Agent invoking this read-only status view. Resolution order: --agent, then SKILL_BILL_AGENT, " +
+      "then the detected invoking-agent execution context. Optional and never required: active_agent " +
+      "comes from persisted run state, not from this option.",
   )
   private val agentOverride by option(
     "--agent-override",
@@ -788,8 +790,9 @@ class GoalWatchCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val agent by option(
     "--agent",
-    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
-      "detected invoking-agent execution context, then a documented last-resort default.",
+    help = "Agent invoking this read-only status view. Resolution order: --agent, then SKILL_BILL_AGENT, " +
+      "then the detected invoking-agent execution context. Optional and never required: active_agent " +
+      "comes from persisted run state, not from this option.",
   )
   private val agentOverride by option(
     "--agent-override",
@@ -1270,7 +1273,7 @@ private data class GoalStatusCliDiffOptions(
 private fun CliRunState.goalStatusRequest(options: GoalStatusCliRequestOptions): GoalRunnerStatusRequest =
   GoalRunnerStatusRequest(
     issueKey = options.issueKey,
-    invokedAgentId = resolveInvokedAgentId(options.agent, environment),
+    invokedAgentId = detectInvokingAgentId(options.agent, environment),
     configuredAgentOverrideId = options.agentOverride,
     dbPathOverride = dbOverride,
     repoRoot = options.repoRoot?.let(Path::of)
@@ -1846,21 +1849,11 @@ private fun goalReplanText(payload: Map<String, Any?>): String = buildString {
   }
 }
 
-// SKILL-64 Subtask 3 (AC18): resolve the child invoking-agent id without a
-// silent hardcoded codex fallback. Explicit --agent wins, then the
-// SKILL_BILL_AGENT env var, then best-effort detection of the invoking agent's
-// execution context, and only then the documented last-resort default below.
 // --agent-override is independent and continues to win at the
 // AgentRunService.effectiveAgent seam; this only sources invokedAgentId.
 private fun resolveInvokedAgentId(explicitAgent: String?, environment: Map<String, String>): String =
-  explicitAgent?.takeIf(String::isNotBlank)
-    ?: environment["SKILL_BILL_AGENT"]?.takeIf(String::isNotBlank)
-    ?: InvokingAgentContextResolver.detect(environment)?.id
-    ?: DEFAULT_GOAL_AGENT
+  requireInvokingAgentId(explicitAgent, environment, "--agent")
 
-// Documented last-resort default used only when no explicit flag, env, or
-// detected invoking-agent context is available.
-private const val DEFAULT_GOAL_AGENT = "codex"
 private const val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES = 10
 private const val DEFAULT_GOAL_WATCH_INTERVAL_SECONDS = 5
 private const val DEFAULT_GOAL_WATCH_REFRESHES = 0

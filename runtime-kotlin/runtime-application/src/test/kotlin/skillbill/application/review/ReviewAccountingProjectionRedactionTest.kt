@@ -4,7 +4,6 @@ import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.review.context.ReviewTreeAccounting
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.ReviewAccountingSummary
@@ -28,18 +27,12 @@ class ReviewAccountingProjectionRedactionTest {
       "The projection proof needs a run whose prompts actually carried rubric bodies and owned paths.",
     )
     forbidden.forEach { assertFalse(serialized.contains(it), "Accounting projection leaked '$it'.") }
-    assertEquals(
-      recorder.parentPrompts.size * 1_000L,
-      recorded.aggregateDirectUsage.inputTokens,
-      "The measured provider dimensions survive the projection the bodies do not.",
-    )
-    assertTrue(serialized.contains("fresh_token_approximation="))
+    assertTrue(recorded.aggregateCounters.launchBytes > 0)
   }
 
   @Test fun `projection contains bounded metadata and no content bodies`() {
     val serialized = summary().toBoundedPayload().toString()
 
-    assertTrue(serialized.contains("fresh_token_approximation=80"))
     assertTrue(serialized.contains("tool_calls=2"))
   }
 
@@ -58,9 +51,6 @@ class ReviewAccountingProjectionRedactionTest {
         "parent_analysis_consumption",
         "integration",
         "aggregate_counters",
-        "aggregate_direct_usage",
-        "aggregate_inclusive_usage",
-        "budget_regression",
       ),
       payload.keys,
     )
@@ -78,9 +68,6 @@ class ReviewAccountingProjectionRedactionTest {
         "tool_calls",
         "model_turns",
         "inclusive_counters",
-        "provider_usage",
-        "direct_usage",
-        "inclusive_usage",
         "terminal_outcome",
       ),
       parent.keys,
@@ -180,7 +167,6 @@ class ReviewAccountingProjectionRedactionTest {
         response = {
           RecordedWorkerResponse(
             stdout = "TOOL_OUTPUT_SECRET ".repeat(8),
-            usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
           )
         },
         rubricBody = { "RUBRIC_SECRET ".repeat(8) },
@@ -208,13 +194,11 @@ class ReviewAccountingProjectionRedactionTest {
       lane = "parent",
       assignmentDigest = "assignment-digest",
       counters = ReviewAccountingCounters(10, 20, 30, 1, 2, 3),
-      usage = ProviderTokenUsage(100, 40, 20, 5, 120),
       children = listOf(
         ReviewAccountingInput(
           lane = "architecture",
           assignmentDigest = "architecture-digest",
           counters = ReviewAccountingCounters(11, 22, 33, 1, 1, 1),
-          usage = ProviderTokenUsage(10, 4, 2, 1, 12),
         ),
       ),
     ),

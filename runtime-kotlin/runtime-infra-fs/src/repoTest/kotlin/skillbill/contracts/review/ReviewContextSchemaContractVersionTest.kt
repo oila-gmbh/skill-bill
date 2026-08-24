@@ -24,7 +24,7 @@ class ReviewContextSchemaContractVersionTest {
       assertTrue(const.isNotBlank(), "Branch '$name' does not pin contract_version")
       assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, const, "Branch '$name' pins a stale contract_version")
     }
-    assertEquals("2.1", REVIEW_CONTEXT_CONTRACT_VERSION)
+    assertEquals("2.2", REVIEW_CONTEXT_CONTRACT_VERSION)
     assertTrue(
       envelopeNames.containsAll(listOf("verification_launch", "adjudication_launch", "finding_verdict")),
       "verification_launch, adjudication_launch, and finding_verdict must be oneOf envelope branches: $envelopeNames",

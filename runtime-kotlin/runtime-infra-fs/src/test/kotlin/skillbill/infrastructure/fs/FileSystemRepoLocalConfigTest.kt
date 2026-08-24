@@ -4,6 +4,7 @@ import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.SpecType
 import skillbill.error.MalformedRepoLocalConfigError
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import java.nio.file.Files
 import java.nio.file.Path
@@ -11,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class FileSystemRepoLocalConfigTest {
   private val adapter = FileSystemRepoLocalConfig()
@@ -162,12 +164,9 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(RepoLocalConfig.NO_PARALLEL_AGENT, config.codeReviewParallelAgent)
   }
 
-  /**
-   * The accepted key set is the contract: every key here is parsed and consumed by an active review
-   * path, and anything outside it is rejected by the sibling unknown-key case rather than ignored.
-   */
   @Test
-  fun `review context budget accepts exactly the consumed key set`() {
+  fun `review context budget accepts retained and retired keys`() {
+    val diagnostics = RecordingDiagnostics()
     val repoRoot = writeConfig(
       """
       review_context_budget:
@@ -190,7 +189,8 @@ class FileSystemRepoLocalConfigTest {
       """.trimIndent(),
     )
 
-    val budget = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config.reviewContextBudget
+    val budget = FileSystemRepoLocalConfig(diagnostics)
+      .readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config.reviewContextBudget
 
     assertEquals(700_000, budget.maxParentPacketBytes)
     assertEquals(70_000, budget.maxLaneLaunchBytes)
@@ -202,11 +202,23 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(30, budget.maxSpecialistModelTurns)
     assertEquals(1_024, budget.maxRoutingAnalysisPairs)
     assertEquals(2_048_000, budget.maxRoutingAnalysisBytes)
-    assertEquals(41_000, budget.providerTokenThresholds.inputTokens)
-    assertEquals(31_000, budget.providerTokenThresholds.cachedInputTokens)
-    assertEquals(9_000, budget.providerTokenThresholds.outputTokens)
-    assertEquals(11_000, budget.providerTokenThresholds.reasoningTokens)
-    assertEquals(57_000, budget.providerTokenThresholds.totalTokens)
+    assertEquals(1, diagnostics.warnings.size)
+    assertContains(diagnostics.warnings.single(), "provider_token_thresholds")
+  }
+
+  @Test
+  fun `review context budget without retired block emits no degradation`() {
+    val diagnostics = RecordingDiagnostics()
+    val repoRoot = writeConfig(
+      """
+      review_context_budget:
+        max_parent_packet_bytes: 700000
+      """.trimIndent(),
+    )
+
+    FileSystemRepoLocalConfig(diagnostics).readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+
+    assertTrue(diagnostics.warnings.isEmpty())
   }
 
   @Test
@@ -261,8 +273,6 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(1, budget.maxAssignmentExpansions)
     assertEquals(ReviewContextBudgetPolicy.DEFAULT.maxRoutingAnalysisPairs, budget.maxRoutingAnalysisPairs)
     assertEquals(ReviewContextBudgetPolicy.DEFAULT.maxRoutingAnalysisBytes, budget.maxRoutingAnalysisBytes)
-    assertEquals(40_000, budget.providerTokenThresholds.inputTokens)
-    assertEquals(100_000, budget.providerTokenThresholds.totalTokens)
   }
 
   @Test
@@ -299,7 +309,6 @@ class FileSystemRepoLocalConfigTest {
       "review_context_budget: null",
       "review_context_budget:\n  max_lane_launch_bytes: 1.5",
       "review_context_budget:\n  max_assignment_expansions: 2147483648",
-      "review_context_budget:\n  provider_token_thresholds: null",
       "review_context_budget:\n  max_lane_launch_bytes: null",
     ).forEach { content ->
       val repoRoot = writeConfig(content)
@@ -331,5 +340,15 @@ class FileSystemRepoLocalConfigTest {
     Files.createDirectories(configPath.parent)
     Files.writeString(configPath, content)
     return repoRoot
+  }
+
+  private class RecordingDiagnostics : RuntimeDiagnostics {
+    val warnings = mutableListOf<String>()
+
+    override fun warning(message: String, error: Throwable?) {
+      warnings += message
+    }
+
+    override fun error(message: String, error: Throwable?) = Unit
   }
 }

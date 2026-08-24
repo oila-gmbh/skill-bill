@@ -38,15 +38,13 @@ class CursorAgentRunTransportTest {
   }
 
   @Test
-  fun `the decoder harvests the buffered single-object form the CLI emits`() {
+  fun `the decoder harvests the buffered single-object form and ignores usage`() {
     val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(
       """{"type":"result","subtype":"success","is_error":false,"result":"PONG",""" +
         """"usage":{"inputTokens":14154,"outputTokens":14,"cacheReadTokens":896}}""",
     )
 
     assertEquals("PONG", decoded.text)
-    assertEquals(14154L, decoded.inputTokens)
-    assertEquals(14L, decoded.outputTokens)
   }
 
   @Test

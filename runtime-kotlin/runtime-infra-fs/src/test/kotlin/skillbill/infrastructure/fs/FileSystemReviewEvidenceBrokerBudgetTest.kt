@@ -1,16 +1,12 @@
 package skillbill.infrastructure.fs
 
 import skillbill.error.ReviewHunkEvidenceIntegrityError
-import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.ReviewStoredHunkBodyExtractor
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
-import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
-import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -24,31 +20,10 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerBudgetTest {
-  @Test fun `non-enforceable provider excess reports a regression without terminating`() {
-    val root = repo("A.kt" to "assigned")
-    val broker = projectedBroker(root, assignment(listOf("A.kt")))
-    val outcome = broker.evaluateProviderUsage(ProviderTokenUsage(totalTokens = 500_000), enforceable = false)
-    assertEquals(REVIEW_BUDGET_REGRESSION, outcome?.type)
-    assertEquals(false, outcome?.enforceable)
-    assertNull(broker.accounting().terminalOutcome)
-    assertEquals("assigned", broker.readBatch(batch("A.kt")).results.single().content)
-  }
-
-  @Test fun `enforceable provider excess terminates the lane`() {
-    val root = repo("A.kt" to "assigned")
-    val broker = broker(root, assignment(listOf("A.kt")))
-    val outcome = BrokerBackedNativeReviewOperationProtocol(broker)
-      .providerUsage(ProviderTokenUsage(totalTokens = 500_000))
-    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, outcome?.type)
-    assertNotNull(broker.accounting().terminalOutcome)
-    assertEquals("total_tokens", outcome?.budgetKind)
-  }
-
   @Test fun `paths escaping the repository are rejected`() {
     val root = repo("A.kt" to "assigned")
     val broker = broker(root, assignment(listOf("A.kt")))

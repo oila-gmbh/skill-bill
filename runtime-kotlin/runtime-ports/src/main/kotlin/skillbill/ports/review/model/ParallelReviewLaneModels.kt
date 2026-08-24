@@ -1,6 +1,5 @@
 package skillbill.ports.review.model
 
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
@@ -23,7 +22,6 @@ data class ParallelReviewLaneOutcome(
   val rawOutput: String,
   val failureReason: String? = null,
   val droppedCandidateDiagnostic: String? = null,
-  val tokenUsage: ProviderTokenUsage? = null,
   val budgetOutcome: ReviewBudgetOutcome? = null,
   val accounting: ReviewLaneAccounting? = null,
   val specialistAccounting: List<ReviewLaneAccounting> = accounting?.let(::listOf) ?: emptyList(),

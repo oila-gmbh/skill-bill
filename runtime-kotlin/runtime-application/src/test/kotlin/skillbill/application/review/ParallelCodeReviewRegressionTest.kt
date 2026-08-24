@@ -2,7 +2,6 @@ package skillbill.application.review
 
 import skillbill.application.model.ParallelReviewScope
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import kotlin.test.Test
@@ -37,13 +36,12 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(summary.aggregateCounters.launchBytes > 0, "The isolated launch projection remains measured.")
   }
 
-  @Test fun `overlapping lane ownership assigns each hunk once and never doubles usage`() {
+  @Test fun `overlapping lane ownership assigns each hunk once`() {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(
       config {
         RecordedWorkerResponse(
           stdout = finding("src/Repo.kt", specialist = "bill-kotlin-code-review-architecture"),
-          usage = ProviderTokenUsage(500, 100, 50, 10, 550),
         )
       },
       recorder,
@@ -57,12 +55,6 @@ class ParallelCodeReviewRegressionTest {
       lanes.size,
       lanes.map { it.assignmentDigest }.distinct().size,
       "Every owned lane carries its own assignment digest.",
-    )
-    assertEquals(lanes.size * 500L, summary.aggregateDirectUsage.inputTokens)
-    assertEquals(
-      summary.aggregateDirectUsage.inputTokens,
-      summary.aggregateInclusiveUsage.inputTokens,
-      "Overlapping ownership must not fold a session's usage in twice.",
     )
     assertTrue(result.mergeResult.formattedOutput.isNotBlank())
   }
@@ -89,7 +81,7 @@ class ParallelCodeReviewRegressionTest {
 
   @Test fun `each lane accounts its own launch bytes and terminal outcome`() {
     val recorder = ReviewRecorder()
-    val runner = reviewHarness(config { RecordedWorkerResponse(usage = ProviderTokenUsage(120, 20, 8)) }, recorder)
+    val runner = reviewHarness(config { RecordedWorkerResponse() }, recorder)
 
     val summary = assertNotNull(runner.run(harnessRequest()).accountingSummary)
 

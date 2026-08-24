@@ -12,7 +12,6 @@ import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
-import skillbill.ports.agentrun.model.AgentRunTokenOwnership
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
@@ -40,7 +39,6 @@ import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
@@ -106,13 +104,10 @@ class ReviewRecorder {
     get() = parentLaunches.mapNotNull { it.skillRunRequest.promptOverride }
 }
 
-/** What a recorded specialist run reports back, keyed by logical worker name. */
 data class RecordedWorkerResponse(
   val stdout: String = "NO_FINDINGS",
   val exitStatus: Int? = 0,
   val timedOut: Boolean = false,
-  val usage: ProviderTokenUsage? = null,
-  val usageEnforceable: Boolean = false,
   val processStarted: Boolean = true,
   val mcpStartupObserved: Boolean = false,
   val spawnFailed: Boolean = false,
@@ -169,13 +164,6 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
         liveness = response.liveness,
         processStarted = response.processStarted && !response.spawnFailed,
         mcpStartupObserved = response.mcpStartupObserved,
-        inputTokens = response.usage?.inputTokens,
-        cachedInputTokens = response.usage?.cachedInputTokens,
-        outputTokens = response.usage?.outputTokens,
-        reasoningTokens = response.usage?.reasoningTokens,
-        totalTokens = response.usage?.totalTokens,
-        tokenOwnership = AgentRunTokenOwnership.DIRECT,
-        providerUsageEnforceable = response.usageEnforceable,
       ) as AgentRunLaunchOutcome
     },
     installedPackCatalog = InstalledPlatformPackCatalogPort { config.manifests },

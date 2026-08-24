@@ -11,6 +11,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 /**
  * SKILL-48 Subtask 2d: classpath-shadow guard for the canonical
@@ -75,5 +76,17 @@ class TelemetryEventSchemaCleanupTest {
     val node = YAMLMapper().readTree(yamlText)
     // Must not throw.
     TelemetryEventSchemaValidator.assertIdentity(node)
+  }
+
+  @Test
+  fun `telemetry schema omits retired review accounting projections`() {
+    val schemaPath = repoRootFromTest().resolve(TelemetryEventSchemaPaths.REPO_RELATIVE_PATH)
+    val schema = YAMLMapper().readTree(Files.readString(schemaPath))
+    val defs = schema.path("\$defs")
+    val reviewFinished = defs.path("skillbillReviewFinishedEvent").path("properties")
+
+    assertFalse(defs.has("reviewAccountingUsage"))
+    assertFalse(defs.has("boundedReviewAccounting"))
+    assertFalse(reviewFinished.has("review_context_accounting"))
   }
 }

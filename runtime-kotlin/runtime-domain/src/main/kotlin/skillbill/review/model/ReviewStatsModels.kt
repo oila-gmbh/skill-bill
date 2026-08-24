@@ -1,7 +1,5 @@
 package skillbill.review.model
 
-import skillbill.boundary.OpenBoundaryMap
-
 data class ReviewFindingDetail(
   val findingId: String,
   val severity: String,
@@ -131,8 +129,6 @@ data class ReviewFinishedTelemetry(
   val executionMode: String?,
   val reviewFinishedAt: String?,
   val learnings: ReviewLearningsSummary,
-  @OpenBoundaryMap("Schema-bounded review-accounting telemetry payload")
-  val reviewContextAccounting: Map<String, Any?>? = null,
   val stageMetrics: ReviewStageMetrics,
 )
 

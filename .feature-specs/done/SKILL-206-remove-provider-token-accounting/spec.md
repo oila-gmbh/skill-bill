@@ -101,7 +101,7 @@ load-bearing for the least-context projection budget.
 
 Removal is invisible at every boundary. A pre-existing `review_accounting` row carrying retired usage
 keys reads without quarantine or regeneration. A pre-existing `goal_session_accounting` artifact
-reads and the goal's observability projection omits it. A `.skill-bill/config.yaml` carrying
+reads and the goal's observability projection omits it. A `../../../.skill-bill/config.yaml` carrying
 `provider_token_thresholds` parses and the key is ignored, with a degradation record. Loud-fail stays
 intact for genuine contract drift.
 
@@ -130,9 +130,9 @@ intact for genuine contract drift.
 8. `telemetry-event-schema.yaml` no longer defines `reviewAccountingUsage` or
    `boundedReviewAccounting`, `review_context_accounting` is gone from the review-finished event, the
    contract version is bumped, and a parity test pins it.
-9. A `.skill-bill/config.yaml` containing `provider_token_thresholds` parses successfully, the key is
+9. A `../../../.skill-bill/config.yaml` containing `provider_token_thresholds` parses successfully, the key is
    ignored rather than rejected, and one degradation record is emitted per
-   `docs/observability-policy.md`. A config without the block emits none.
+   `../../../docs/observability-policy.md`. A config without the block emits none.
 10. A pre-existing `review_accounting` row carrying `aggregate_direct_usage` reads back without error,
     is not quarantined, and is not regenerated. A pre-existing `goal_session_accounting` artifact
     reads back and the goal observability projection omits it without failing.
@@ -173,7 +173,7 @@ intact for genuine contract drift.
   no subtask leaves the tree failing.
 - Both subtasks must compile and pass `check` on their own. The review domain reads the transport
   fields, so consumers are removed before producers.
-- Every tolerated degradation emits a record per `docs/observability-policy.md`.
+- Every tolerated degradation emits a record per `../../../docs/observability-policy.md`.
 - No comments are added to any changed file.
 
 ## Non-Goals
@@ -248,17 +248,17 @@ Goal, sweep, config:
 
 Contracts:
 
-- `orchestration/contracts/review-context-schema.yaml` — `provider_token_thresholds` required on the
+- `../../../orchestration/contracts/review-context-schema.yaml` — `provider_token_thresholds` required on the
   budget object and its `$defs`; the `usage` def including `fresh_token_approximation`;
   `aggregate_direct_usage`, `aggregate_inclusive_usage`, and `budget_regression` required on the
   accounting summary.
-- `orchestration/contracts/telemetry-event-schema.yaml` — `reviewAccountingUsage`,
+- `../../../orchestration/contracts/telemetry-event-schema.yaml` — `reviewAccountingUsage`,
   `boundedReviewAccounting` with its stale `const: "0.6"`, and the `review_context_accounting`
   property on the review-finished event.
 
 Boundary records:
 
-- `runtime-kotlin/agent/decisions.md`
+- `../../../runtime-kotlin/agent/decisions.md`
 - `runtime-kotlin/.../review/agent/history.md` where it records provider usage accounting
 
 ## Subtasks
@@ -282,12 +282,12 @@ The load-bearing behaviour is what survives, not what goes:
   identity and stdout digest fields are unchanged.
 - A pre-existing `review_accounting` row and a stored `goal_session_accounting` artifact both read
   back without quarantine or regeneration.
-- A `.skill-bill/config.yaml` carrying `provider_token_thresholds` parses with the key ignored and one
+- A `../../../.skill-bill/config.yaml` carrying `provider_token_thresholds` parses with the key ignored and one
   degradation record; every other config field resolves as before.
 - `estimated_tokens` and the lifecycle `estimated_*_tokens` values still record.
 
 Close with `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, and
-`scripts/validate_agent_configs`. The pre-existing `:runtime-infra-fs:sourcesJar` failure on
+`../../../scripts/validate_agent_configs`. The pre-existing `:runtime-infra-fs:sourcesJar` failure on
 `./gradlew build` is not introduced by this program; verify with `-x sourcesJar` if that path is used.
 
 ## Next Path

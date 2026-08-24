@@ -415,13 +415,13 @@ class ReviewContextSchemaValidatorTest {
     }
   }
 
-  @Test fun `projected envelopes carry contract version 2_1`() {
+  @Test fun `projected envelopes carry contract version 2_2`() {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, packet.toParentPacketEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, assignment.toAssignmentEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, launch.toLaunchEnvelope().asWireMap()["contract_version"])
-    assertEquals("2.1", REVIEW_CONTEXT_CONTRACT_VERSION)
+    assertEquals("2.2", REVIEW_CONTEXT_CONTRACT_VERSION)
   }
 
   @Test fun `a 1_0 envelope fails with a typed version mismatch naming both versions`() {
@@ -431,7 +431,7 @@ class ReviewContextSchemaValidatorTest {
       ReviewContextSchemaValidator.validateParentPacket(envelope, "packet")
     }
     assertTrue("1.0" in failure.reason)
-    assertTrue("2.1" in failure.reason)
+    assertTrue("2.2" in failure.reason)
   }
 
   @Test fun `incomplete launch bundle without budget dimension is rejected`() {
@@ -681,13 +681,6 @@ class ReviewContextSchemaValidatorTest {
     "max_specialist_model_turns" to 1,
     "max_routing_analysis_pairs" to 1,
     "max_routing_analysis_bytes" to 1,
-    "provider_token_thresholds" to mapOf(
-      "input_tokens" to 1,
-      "cached_input_tokens" to 1,
-      "output_tokens" to 1,
-      "reasoning_tokens" to 1,
-      "total_tokens" to 1,
-    ),
   )
 
   private companion object {

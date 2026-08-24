@@ -10,7 +10,6 @@ internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
   var longestAssistantText: String? = null
   var lastAssistantText: String? = null
   var assistantEventCount = 0
-  var usage: com.fasterxml.jackson.databind.JsonNode? = null
   var decodedEnvelope = false
   var errorEvent = false
   var errorType: String? = null
@@ -52,7 +51,6 @@ internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
       }
       "result" -> {
         terminalText = event.path("result").takeIf { it.isTextual }?.asText()
-        event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
       }
     }
   }
@@ -78,19 +76,10 @@ internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
   val harvested = pickCursorHarvest(terminalText, lastAssistantText, longestAssistantText)
   return DecodedAgentRunOutput(
     text = harvested,
-    inputTokens = usage.cursorTokens("inputTokens", "input_tokens"),
-    cachedInputTokens = usage.cursorTokens("cachedInputTokens", "cached_input_tokens"),
-    outputTokens = usage.cursorTokens("outputTokens", "output_tokens"),
-    reasoningTokens = usage.cursorTokens("reasoningTokens", "reasoning_tokens"),
-    totalTokens = usage.cursorTokens("totalTokens", "total_tokens"),
     assistantEventCount = assistantEventCount.takeIf { decodedEnvelope },
     rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS).takeIf { harvested.isBlank() },
   )
 }
-
-/** Cursor emits camelCase usage keys; older captures and fixtures use snake_case. Accept both. */
-private fun com.fasterxml.jackson.databind.JsonNode?.cursorTokens(vararg fields: String): Long? =
-  this?.let { node -> fields.firstNotNullOfOrNull { field -> node.longOrNull(field) } }
 
 private fun pickCursorHarvest(
   terminalText: String?,

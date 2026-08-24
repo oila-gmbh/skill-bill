@@ -151,7 +151,6 @@ is present on the map.
 | Finding detail `location`, `description`, `note` | — | emptied | ✓ | `reviewFindingDetails` |
 | `learnings.applied_count`, `applied_references`, `applied_summary`, `scope_counts`, entry `reference` and `scope` | — | ✓ | ✓ | `buildLearningsSection` |
 | Learning entry `title`, `rule_text` | — | — | ✓ | `learningsEntries` |
-| `review_context_accounting` (bounded counters) | — | ✓ | ✓ | `reviewFinishedPayload` |
 | Per-stage verdict distribution (`verification`, `adjudication` claim_verdict and scope_disposition counts, `finding_count`) | — | ✓ | ✓ | durable `review_run_finding_verdicts` via `aggregateReviewStageMetrics` |
 | `refutation_rate_by_stage`, `rejected_verdict_counts`, `severity_adjustment_counts`, `resolved_tier` | — | ✓ | ✓ | durable verdict rows and `review_runs.execution_mode`; never a worker self-report |
 

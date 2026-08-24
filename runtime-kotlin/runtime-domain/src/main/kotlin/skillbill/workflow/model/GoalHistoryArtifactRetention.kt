@@ -4,13 +4,13 @@ import skillbill.boundary.OpenBoundaryMap
 
 /**
  * SKILL-64 Subtask 3: single source of truth for bounded, sequence-ordered
- * retention of durable goal history/ledger artifact maps (declared progress,
- * session accounting, attempt ledger). The durable write seam appends one entry
- * to the existing run-history list and prunes to [retentionLimit].
+ * retention of durable goal history/ledger artifact maps (declared progress and
+ * attempt ledger). The durable write seam appends one entry to the existing
+ * run-history list and prunes to [retentionLimit].
  *
  * Semantics mirror the typed domain `append()` helpers
- * ([GoalProgressHistory.append], `GoalSessionAccountingHistory.append`,
- * `GoalAttemptLedger.append`): entries are ordered by their `sequence_number`
+ * ([GoalProgressHistory.append], `GoalAttemptLedger.append`): entries are ordered
+ * by their `sequence_number`
  * (stably, preserving prior order on ties / missing sequences) and the OLDEST
  * entries are pruned first so retention keeps the highest sequence numbers.
  */

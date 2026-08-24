@@ -1976,7 +1976,6 @@ class RuntimeArchitectureTest {
       "skillbill.application.review.model.ReviewContextEnvelope.asWireMap",
       "skillbill.application.review.toBoundedPayload",
       "skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload",
-      "skillbill.review.model.ReviewFinishedTelemetry.reviewContextAccounting",
       "skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap",
       "skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap",
       "skillbill.workflow.model.GoalObservabilityHistory.toArtifactList",
@@ -1985,14 +1984,12 @@ class RuntimeArchitectureTest {
       "skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent",
       "skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras.latestObservabilityEvent",
       "skillbill.goalrunner.model.GoalRunnerStatusProjector.project",
-      // SKILL-64 subtask 3: declared goal-progress, best-effort session
-      // accounting, and append-only attempt-ledger maps are durable
+      // SKILL-64 subtask 3: declared goal-progress and append-only
+      // attempt-ledger maps are durable
       // workflow-artifact/schema seams written through the goal-runner outcome
       // store adapter and surfaced read-only by MCP goal-observability mapping.
       "skillbill.workflow.model.GoalProgressEvent.toArtifactMap",
       "skillbill.workflow.model.GoalProgressHistory.toArtifactList",
-      "skillbill.goalrunner.model.GoalSessionAccounting.toArtifactMap",
-      "skillbill.goalrunner.model.GoalSessionAccountingHistory.toArtifactList",
       "skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap",
       "skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList",
       // SKILL-64 subtask 3 (F-A01/F-A02): domain-owned declared-progress event

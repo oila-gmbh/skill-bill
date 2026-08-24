@@ -25,7 +25,6 @@ import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
-import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -325,12 +324,6 @@ interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalR
   @OpenBoundaryMap("Durable goal progress-event artifact maps read back at the goal-runner workflow seam")
   fun progressEvents(workflowId: String, dbPathOverride: String? = null): List<Map<String, Any?>> = emptyList()
 
-  // SKILL-64 Subtask 3 (AC6, AC7): best-effort child-session accounting write.
-  fun recordSessionAccounting(
-    request: GoalRunnerSessionAccountingRecordRequest,
-    dbPathOverride: String? = null,
-  ): Boolean
-
   // SKILL-64 Subtask 3 (AC10, AC11): append-only attempt/event ledger write.
   fun recordAttemptLedgerEntry(request: GoalRunnerAttemptLedgerRecordRequest, dbPathOverride: String? = null): Boolean
 
@@ -341,10 +334,10 @@ interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalR
   ): Boolean
 
   // SKILL-64 Subtask 3 (F-D01): highest persisted sequence numbers for the
-  // append-only attempt ledger and best-effort session accounting across all
-  // continuation children of an issue. The goal-runner ledger recorder seeds
-  // its monotonic counters from these so a resume run does not restart at 0 and
-  // emit duplicate, non-monotonic sequences into the append-only ledger.
+  // append-only attempt ledger across all continuation children of an issue.
+  // The goal-runner ledger recorder seeds its monotonic counter from these so
+  // a resume run does not restart at 0 and emit duplicate, non-monotonic
+  // sequences into the append-only ledger.
   fun ledgerSequenceWatermarks(issueKey: String, dbPathOverride: String? = null): GoalRunnerLedgerSequenceWatermarks
 
   // SKILL-142 (AC-008): loop iteration counts aggregated from the child workflow's durable phase

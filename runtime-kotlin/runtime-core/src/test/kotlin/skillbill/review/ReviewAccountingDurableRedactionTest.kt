@@ -14,13 +14,9 @@ import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.contracts.review.ReviewContextSchemaValidator
 import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
-import skillbill.infrastructure.sqlite.review.reviewFinishedPayload
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
 import skillbill.ports.persistence.model.ReviewAccountingRecord
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingSummary
-import skillbill.review.model.ReviewSummary
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -156,46 +152,29 @@ class ReviewAccountingDurableRedactionTest {
       upsertReviewAccounting(connection, ReviewAccountingRecord(REVIEW_RUN_ID, summary.packetDigest, current))
       val regenerated = assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
       assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, regenerated.boundedPayload["contract_version"])
-      assertEquals("2.1", regenerated.boundedPayload["contract_version"])
+      assertEquals("2.2", regenerated.boundedPayload["contract_version"])
     }
   }
 
-  @Test fun `review-finished telemetry carries bounded accounting and no measured content`() {
+  @Test fun `a legacy accounting row with retired usage fields remains readable`() {
     withConnection { connection ->
       val summary = recordedReview().second
-      upsertReviewAccounting(
-        connection,
-        ReviewAccountingRecord(REVIEW_RUN_ID, summary.packetDigest, summary.toBoundedPayload()),
-      )
+      val legacy = legacyAccountingPayload(summary.toBoundedPayload())
+      connection.prepareStatement(
+        """
+        INSERT INTO review_accounting (review_id, packet_digest, bounded_payload_json, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(1, REVIEW_RUN_ID)
+        statement.setString(2, summary.packetDigest)
+        statement.setString(3, JsonSupport.mapToJsonString(legacy))
+        statement.executeUpdate()
+      }
 
-      val telemetry = reviewFinishedPayload(connection, reviewSummary(), findingRows = emptyList(), level = "full")
-      val payload = telemetry.toReviewFinishedTelemetryPayload().toPayload()
-
-      @Suppress("UNCHECKED_CAST")
-      val accounting = assertNotNull(payload["review_context_accounting"] as? Map<String, Any?>)
-      assertEquals(
-        JsonSupport.mapToJsonString(summary.toBoundedPayload()),
-        JsonSupport.mapToJsonString(accounting),
-      )
-      assertNoSentinels(payload.toString())
-      assertTrue(accounting.keys.none { it.contains("prompt") })
-    }
-  }
-
-  @Test fun `accounting keyed by anything other than the review run id is unreachable from telemetry`() {
-    withConnection { connection ->
-      val summary = recordedReview().second
-      upsertReviewAccounting(
-        connection,
-        ReviewAccountingRecord("code-review-parallel-abc123", summary.packetDigest, summary.toBoundedPayload()),
-      )
-
-      val telemetry = reviewFinishedPayload(connection, reviewSummary(), findingRows = emptyList(), level = "full")
-
-      assertNull(
-        telemetry.toReviewFinishedTelemetryPayload().toPayload()["review_context_accounting"],
-        "Review accounting must be written under the same review run id review_finished resolves.",
-      )
+      val loaded = assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
+      assertEquals("2.1", loaded.boundedPayload["contract_version"])
+      assertEquals(JsonSupport.mapToJsonString(legacy), storedAccountingJson(connection))
     }
   }
 
@@ -217,7 +196,6 @@ class ReviewAccountingDurableRedactionTest {
         response = {
           RecordedWorkerResponse(
             stdout = toolOutputBody,
-            usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
           )
         },
         rubricBody = { rubricBody },
@@ -269,6 +247,35 @@ class ReviewAccountingDurableRedactionTest {
   }
 
   @Suppress("UNCHECKED_CAST")
+  private fun legacyAccountingPayload(current: Map<String, Any?>): Map<String, Any?> {
+    val usage = mapOf("input_tokens" to 1L, "ownership" to "direct")
+    val legacyNodes = (current["lanes"] as List<Map<String, Any?>>).map { lane ->
+      LinkedHashMap(lane).apply {
+        put("provider_usage", usage)
+        put("direct_usage", usage)
+        put("inclusive_usage", usage)
+      }
+    }
+    val parent = LinkedHashMap(current["parent"] as Map<String, Any?>).apply {
+      put("provider_usage", usage)
+      put("direct_usage", usage)
+      put("inclusive_usage", usage)
+    }
+    val integration = (current["integration"] as Map<String, Any?>?)?.let {
+      LinkedHashMap(it).apply { put("usage", emptyMap<String, Any?>()) }
+    }
+    return LinkedHashMap(current).apply {
+      put("contract_version", "2.1")
+      put("parent", parent)
+      put("lanes", legacyNodes)
+      put("aggregate_direct_usage", emptyMap<String, Any?>())
+      put("aggregate_inclusive_usage", emptyMap<String, Any?>())
+      put("budget_regression", false)
+      put("integration", integration)
+    }
+  }
+
+  @Suppress("UNCHECKED_CAST")
   private fun aggregate(payload: Map<String, Any?>) = payload["aggregate_counters"] as Map<String, Any?>
 
   private fun assertNoSentinels(serialized: String) = sentinels.forEach { sentinel ->
@@ -281,19 +288,6 @@ class ReviewAccountingDurableRedactionTest {
         buildString { while (rows.next()) append(rows.getString(1)) }
       }
     }
-
-  private fun reviewSummary() = ReviewSummary(
-    reviewRunId = REVIEW_RUN_ID,
-    reviewSessionId = "rvs-1",
-    routedSkill = "bill-kotlin-code-review",
-    detectedScope = "branch diff",
-    detectedStack = "kotlin",
-    executionMode = "delegated",
-    specialistReviewsRaw = "architecture",
-    reviewFinishedAt = "2026-07-22T00:00:00Z",
-    reviewFinishedEventEmittedAt = null,
-    orchestratedRun = true,
-  )
 
   private fun withConnection(block: (Connection) -> Unit) {
     val dbPath = Files.createTempDirectory("review-accounting-redaction").resolve("metrics.db")

@@ -36,8 +36,6 @@ import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_STOP_AFTER_SUBTASK
-import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY
-import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_LIMIT
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -65,7 +63,6 @@ import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
-import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
@@ -2225,20 +2222,6 @@ class WorkflowGoalRunnerOutcomeStore(
     )
   }
 
-  override fun recordSessionAccounting(
-    request: GoalRunnerSessionAccountingRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean = appendHistoryArtifact(
-    HistoryArtifactAppend(
-      workflowId = request.workflowId,
-      latestKey = null,
-      historyKey = GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY,
-      retentionLimit = GOAL_SESSION_ACCOUNTING_LIMIT,
-      entryMap = request.accounting.toArtifactMap(),
-    ),
-    dbPathOverride,
-  )
-
   override fun recordAttemptLedgerEntry(
     request: GoalRunnerAttemptLedgerRecordRequest,
     dbPathOverride: String?,
@@ -2253,10 +2236,10 @@ class WorkflowGoalRunnerOutcomeStore(
     dbPathOverride,
   )
 
-  // SKILL-64 Subtask 3: shared bounded append-and-cap write seam for the new
-  // declared-progress, session-accounting, and attempt-ledger artifacts. Each
-  // appends one entry, prunes to retentionLimit, and optionally mirrors the
-  // newest entry into a latest-event key.
+  // SKILL-64 Subtask 3: shared bounded append-and-cap write seam for the
+  // declared-progress and attempt-ledger artifacts. Each appends one entry,
+  // prunes to retentionLimit, and optionally mirrors the newest entry into a
+  // latest-event key.
   override fun progressEvents(workflowId: String, dbPathOverride: String?): List<Map<String, Any?>> =
     database.transaction(dbPathOverride) { unitOfWork ->
       val family = workflowFamilyFor(unitOfWork.workflowStates, workflowId)
@@ -2282,8 +2265,8 @@ class WorkflowGoalRunnerOutcomeStore(
         .mapNotNull { item -> JsonSupport.anyToStringAnyMap(item) }
       // SKILL-64 Subtask 3 (F-A03): reuse the domain bounded-retention rule so
       // the durable write seam keeps the same sequence-ordered, oldest-pruned
-      // semantics as GoalProgressHistory/GoalSessionAccountingHistory/
-      // GoalAttemptLedger.append(); the inline append no longer diverges.
+      // semantics as GoalProgressHistory/GoalAttemptLedger.append(); the inline
+      // append no longer diverges.
       val updatedHistory = appendBoundedHistoryBySequence(existing, append.entryMap, append.retentionLimit)
       val patch = buildMap<String, Any?> {
         put(append.historyKey, updatedHistory)
@@ -2345,7 +2328,6 @@ class WorkflowGoalRunnerOutcomeStore(
   ): GoalRunnerLedgerSequenceWatermarks = database.read(dbPathOverride) { unitOfWork ->
     val normalizedIssueKey = issueKey.trim()
     var maxLedger: Int? = null
-    var maxAccounting: Int? = null
     var maxProgress: Int? = null
     val backwardEdgeCounts = mutableMapOf<String, Int>()
     listOf(WorkflowFamily.TASK_RUNTIME).forEach { family ->
@@ -2355,7 +2337,6 @@ class WorkflowGoalRunnerOutcomeStore(
           return@forEach
         }
         maxLedger = maxHistorySequence(artifacts, GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY, maxLedger)
-        maxAccounting = maxHistorySequence(artifacts, GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY, maxAccounting)
         maxProgress = maxHistorySequence(artifacts, GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY, maxProgress)
         backwardEdgeCountsFromLedger(artifacts).forEach { (key, count) ->
           backwardEdgeCounts.merge(key, count, ::maxOf)
@@ -2364,7 +2345,6 @@ class WorkflowGoalRunnerOutcomeStore(
     }
     GoalRunnerLedgerSequenceWatermarks(
       maxLedgerSequence = maxLedger,
-      maxAccountingSequence = maxAccounting,
       maxProgressSequence = maxProgress,
       backwardEdgeCounts = backwardEdgeCounts,
     )

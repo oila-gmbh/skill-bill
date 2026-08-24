@@ -2,7 +2,6 @@ package skillbill.ports.goalrunner.model
 
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
 import skillbill.goalrunner.model.GoalRunnerControlState
-import skillbill.goalrunner.model.GoalSessionAccounting
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.workflow.model.DecompositionManifest
@@ -140,16 +139,6 @@ data class GoalRunnerProgressEventRecordRequest(
   }
 }
 
-/** SKILL-64 Subtask 3 (AC6, AC7): best-effort child-session accounting write request. */
-data class GoalRunnerSessionAccountingRecordRequest(
-  val workflowId: String,
-  val accounting: GoalSessionAccounting,
-) {
-  init {
-    require(workflowId.isNotBlank()) { "workflowId is required." }
-  }
-}
-
 /** SKILL-64 Subtask 3 (AC10, AC11): append-only attempt/event ledger write request. */
 data class GoalRunnerAttemptLedgerRecordRequest(
   val workflowId: String,
@@ -162,8 +151,8 @@ data class GoalRunnerAttemptLedgerRecordRequest(
 
 /**
  * SKILL-64 Subtask 3 (F-D01): highest persisted sequence numbers across an
- * issue's continuation children for the append-only attempt ledger, the
- * best-effort session accounting stream, and the durable goal_progress stream.
+ * issue's continuation children for the append-only attempt ledger and the
+ * durable goal_progress stream.
  * `null` means no durable entries exist yet (a fresh run); the recorder then
  * starts from its default base offset. The supervisor-side declared-progress
  * emitter seeds its monotonic goal_progress sequence from [maxProgressSequence]
@@ -171,7 +160,6 @@ data class GoalRunnerAttemptLedgerRecordRequest(
  */
 data class GoalRunnerLedgerSequenceWatermarks(
   val maxLedgerSequence: Int? = null,
-  val maxAccountingSequence: Int? = null,
   val maxProgressSequence: Int? = null,
   val backwardEdgeCounts: Map<String, Int> = emptyMap(),
 )

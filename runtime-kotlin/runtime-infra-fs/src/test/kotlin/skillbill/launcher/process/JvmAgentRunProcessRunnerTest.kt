@@ -13,7 +13,6 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewToolCall
-import skillbill.review.context.model.ProviderTokenUsage
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -244,7 +243,6 @@ class JvmAgentRunProcessRunnerTest {
     override fun recordModelTurn() = null
     override fun validateLaneResult(result: String) = null
     override fun observeLaneResultChunk(chunk: String) = null
-    override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean) = null
     override fun accounting() = ReviewLaneAccounting(
       lane = "architecture",
       evidenceBytes = 0,
