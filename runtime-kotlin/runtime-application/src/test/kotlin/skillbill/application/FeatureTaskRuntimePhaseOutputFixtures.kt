@@ -59,7 +59,18 @@ internal val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
     "phase_id": "implement",
     "status": "completed",
     "summary": "Phase produced a validated output.",
-    "produced_outputs": {"changed_files": ["src/Foo.kt"]}
+    "produced_outputs": {
+      "projection_kind": "implementation_receipt",
+      "contract_version": "0.1",
+      "completed_task_ids": ["task-1"],
+      "changed_paths": ["src/Foo.kt"],
+      "tests_added": [],
+      "tests_updated": [],
+      "tests_executed": [],
+      "deviations": [],
+      "unresolved_items": [],
+      "reconciled_state": null
+    }
   }
 """.trimIndent()
 

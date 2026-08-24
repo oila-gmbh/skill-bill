@@ -55,7 +55,7 @@ internal fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared:
     "Validation findings are repair work, not a reason to block the phase. Fix findings at their root " +
     "cause; never silence them with annotations, baselines, disabled rules, weakened configuration, or " +
     "skipped tests. After you stop, the runtime re-runs the pack gate and mints the receipt — do not emit " +
-    "validation_result, gate_run_count, or any phase-output JSON."
+    "validation_result, or any phase-output JSON."
 }
 
 internal fun absentValidationGateDegradationDirective(phaseId: String, agentRunValidateFallback: Boolean): String {
@@ -66,8 +66,7 @@ internal fun absentValidationGateDegradationDirective(phaseId: String, agentRunV
     ## Validation gate degradation
     The dominant platform pack declares no validation_gate. Validate falls back to agent-run
     bill-code-check routing only. This degradation is intentional and surfaced; do not treat
-    absence of a runtime finding set as a clean pass. Agent-reported gate_run_count is never
-    validation evidence.
+    absence of a runtime finding set as a clean pass. Gate measurements are established by the runtime.
   """.trimIndent()
 }
 

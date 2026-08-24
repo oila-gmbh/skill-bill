@@ -313,11 +313,6 @@ $defs:
       unresolved_items: { $ref: "#/$defs/openWorkItems" }
       reconciliation_evidence: { $ref: "#/$defs/reconciliation_evidence" }
       repository_checkpoint: { $ref: "#/$defs/repositoryCheckpoint" }
-      # Governed co-residents of a mutating phase's produced_outputs, owned by the phase-output and
-      # audit-repair-plan contracts. They are named here only so additionalProperties:false does not
-      # reject an output that those contracts require; their shape stays with their owning schema and
-      # they are not part of the projection this variant delivers.
-      reconciled_state: { type: object }
       repair_item_results: { type: array }
       deferred_repair_item_ids:
         type: array

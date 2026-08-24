@@ -5,8 +5,6 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import kotlin.coroutines.cancellation.CancellationException
 
-internal class RuntimeOwnedFactUnavailable(message: String) : IllegalStateException(message)
-
 internal class RuntimeOwnedPersistenceBoundary(
   private val database: DatabaseSessionFactory,
   private val diagnostics: RuntimeDiagnostics,
@@ -51,6 +49,19 @@ internal class RuntimeOwnedPersistenceBoundary(
     fallback
   }) {
     transaction(dbOverride, block)
+  }
+
+  fun <T> resolvingRead(
+    seam: String,
+    expected: String,
+    dbOverride: String? = null,
+    onPersistenceFailure: (cause: String) -> T,
+    block: (UnitOfWork) -> T,
+  ): T = invokeOrHandle({
+    recordFailure(seam, expected, "read_error", it)
+    onPersistenceFailure(causeOf(it))
+  }) {
+    read(dbOverride, block)
   }
 
   private inline fun <T> invokeOrHandle(onFailure: (Exception) -> T, block: () -> T): T {

@@ -117,23 +117,17 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(prompt, "projection_kind \"implementation_receipt\"")
     assertContains(prompt, "completed_task_ids")
-    assertContains(prompt, "changed_paths")
+    assertFalse(prompt.contains("changed_paths"))
     assertContains(prompt, "tests_executed")
-    assertContains(prompt, "reconciliation_evidence")
     assertContains(prompt, "runtime-owned")
-    assertContains(prompt, "omit it entirely")
+    assertContains(prompt, "Omit them entirely")
     assertContains(
       prompt,
       "\"projection_kind\": \"implementation_receipt\"",
       false,
       "implement shows the flat receipt shape",
     )
-    assertContains(
-      prompt,
-      "\"reconciliation_evidence\": { \"reconciled\": true",
-      false,
-      "implement shows the receipt evidence",
-    )
+    assertContains(prompt, "reconciliation evidence")
     assertContains(
       prompt,
       "\"deviations\": [ { \"ref\": \"task-1\", \"note\"",
@@ -227,8 +221,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     assertContains(prompt, "\"validation_result\": {")
-    assertContains(prompt, "\"repository_checkpoint\": { \"fingerprint\":")
-    assertContains(prompt, "never a prefixed string")
+    assertFalse(prompt.contains("\"repository_checkpoint\""))
+    assertFalse(prompt.contains("\"gate_run_count\""))
+    assertFalse(prompt.contains("\"gate_runs\""))
   }
 
   @Test
@@ -551,10 +546,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       !implementPrompt.contains("Do not modify repository files during this phase."),
       "implement must not carry the plan directive",
     )
-    // The mutating-phase idempotency directive + reconciliation-report output requirement are emitted
-    // only for mutating phases; non-mutating phases must not carry them.
     assertContains(implementPrompt, "Mutating-phase idempotency contract")
-    assertContains(implementPrompt, "reconciliation report")
+    assertContains(implementPrompt, "runtime decides whether the repository reached")
     assertTrue(
       !planPrompt.contains("Mutating-phase idempotency contract"),
       "non-mutating plan phase must not carry the idempotency directive",
@@ -812,15 +805,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `review prompt is the producer seam for commit-focused accounting`() {
+  fun `review prompt delegates imported review facts to the runtime`() {
     val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("review"))
 
-    assertContains(reviewPrompt, "\"commit_focused_accounting\"", false, "review names the accounting key")
-    assertContains(reviewPrompt, "commit_sequence_digest", false, "the sequence identity is required")
-    assertContains(reviewPrompt, "integration_terminal_outcome", false, "the integration terminal state is required")
-    assertContains(reviewPrompt, "skipped_not_applicable", false, "the skipped outcome is in the named vocabulary")
-    assertContains(reviewPrompt, "incomplete_lanes", false, "incomplete lanes are reported as non-clean coverage")
-    assertContains(reviewPrompt, "OMITS the key entirely", false, "an inline pass omits rather than fabricates")
+    assertContains(reviewPrompt, "runtime imports review findings")
+    assertFalse(reviewPrompt.contains("review_run_id"))
+    assertFalse(reviewPrompt.contains("commit_focused_accounting"))
+    assertFalse(reviewPrompt.contains("echo imported review facts"))
     assertFalse(
       FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
         .contains("commit_focused_accounting"),
@@ -1191,24 +1182,21 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `verifying-phase prompts name the exact keys the runtime gate reads`() {
-    // F-004: the gate reads these keys from a phase's output and the prompt instructs the agent to emit
-    // them; both sides bind to FeatureTaskRuntimeVerificationSignalKeys. This fails if the prompt ever
-    // stops naming a key the gate still consumes — the exact prompt/gate drift this feature prevents.
+  fun `verifying-phase prompts name agent-owned keys and omit runtime-owned review facts`() {
     val keys = FeatureTaskRuntimeVerificationSignalKeys
     val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("review"))
     val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
 
-    assertContains(reviewPrompt, keys.REVIEW_FINDINGS, false, "review names the findings key")
     assertContains(reviewPrompt, keys.VERDICT, false, "review names the verdict key")
-    assertContains(reviewPrompt, keys.REVIEW_RUN_ID, false, "review names the run-id key that keys loop findings")
+    assertFalse(Regex("\"${keys.REVIEW_FINDINGS}\"\\s*:").containsMatchIn(reviewPrompt))
+    assertFalse(Regex("\"${keys.REVIEW_RUN_ID}\"\\s*:").containsMatchIn(reviewPrompt))
     assertContains(auditPrompt, keys.AUDIT_GAPS, false, "audit names the compact gaps key")
     assertContains(auditPrompt, keys.AUDIT_NON_BLOCKING_FINDINGS, false, "audit names the non-blocking key")
     assertContains(auditPrompt, keys.VERDICT, false, "audit names the verdict key")
   }
 
   @Test
-  fun `preplan plan and implement embed a produced_outputs example that satisfies the projection gate`() {
+  fun `preplan plan and implement embed a produced_outputs example that the runtime stamps before validation`() {
     // Anti-drift: the shape example each phase carries must itself parse as the bounded planning
     // projection its downstream launch seam demands. If the example ever drifts from the schema, the
     // guidance would teach the agent to emit output the gate rejects — the exact failure this fixes.
@@ -1231,8 +1219,19 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       // constraint that actually fires. Everything else in this file may keep the Noop — planning-projection
       // enforcement really is incidental there — which is what the allow-list entry in
       // PlanningProjectionNoopValidatorGuardTest describes.
+      val postStampProduced = if (phaseId == "implement") {
+        produced + mapOf(
+          "changed_paths" to listOf("src/Changed.kt"),
+          "reconciliation_evidence" to mapOf(
+            "reconciled" to true,
+            "evidence" to "Runtime-stamped target tree.",
+          ),
+        )
+      } else {
+        produced
+      }
       featureTaskRuntimePlanningProjectionFromEnvelope(
-        envelope = mapOf("produced_outputs" to produced),
+        envelope = mapOf("produced_outputs" to postStampProduced),
         producingPhaseId = phaseId,
         expectedKind = kind,
         schemaValidator = realPlanningProjectionValidator,

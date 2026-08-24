@@ -70,24 +70,22 @@ internal fun phasesFor(request: FeatureTaskRuntimeRunRequest): List<String> {
   }
 }
 
-internal fun mutatingReconciliationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+internal fun mutatingReconciliationGateReason(
+  phaseId: String,
+  outputMap: Map<String, Any?>,
+  runtimeResolvedCheckpoint: String?,
+  repositoryCheckpoint: String?,
+): String? {
   if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
-  // Only a completion claim owes a reconciliation report. A retryable blocked or failed envelope is a
-  // schema-valid terminal outcome that never claimed the tree reached target, so charging it with a
-  // missing reconciliation report converted it into a schema-gate rejection and denied it the terminal
-  // path it belongs on.
   if (outputMap["status"] != PHASE_OUTPUT_STATUS_COMPLETED) return null
-  val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
-  val nestedReconciled = (producedOutputs?.get("reconciled_state") as? Map<*, *>)?.get("reconciled")
-  val reconciled = nestedReconciled == true || producedOutputs?.get("reconciled") == true
-  return if (reconciled) {
-    null
-  } else {
-    "Mutating phase '$phaseId' reported 'completed' without a reconciliation report proving it " +
-      "reconciled the working tree to target: produced_outputs must carry 'reconciled_state' (or a " +
-      "'reconciled' entry) with 'reconciled' set to true. The idempotency contract is verified, not " +
-      "assumed; a silent skip fails the schema gate."
+  if (runtimeResolvedCheckpoint.isNullOrBlank()) {
+    return "Mutating phase '$phaseId' could not establish the runtime-resolved repository checkpoint."
   }
+  if (repositoryCheckpoint != runtimeResolvedCheckpoint) {
+    return "Mutating phase '$phaseId' completed with a repository checkpoint mismatch: the runtime-resolved " +
+      "checkpoint does not match the repository after the phase."
+  }
+  return null
 }
 
 /**

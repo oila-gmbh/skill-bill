@@ -2,10 +2,14 @@ package skillbill.application.featuretask
 
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
+import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
+import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -264,6 +268,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
           findingId = "F-001",
         ),
       ),
+      reviewRunId = "rvw-test-1",
     )
     return passOne.copy(
       disposition = GoalSubtaskReviewDisposition.PAUSED,
@@ -374,6 +379,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
           unresolvedFindingCount = 1,
           findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
           executedMode = CodeReviewExecutionMode.INLINE,
+          reviewRunId = "rvw-test-1",
         ),
       ),
     )
@@ -611,6 +617,96 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   }
 
   @Test
+  fun `database session failure records the missing runtime-owned fact before reporting failure`() {
+    val diagnostics = RecordingDiagnostics()
+    val recorder = FeatureTaskRuntimePhaseRecorder(
+      database = ThrowingReadDatabase,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      handoffEnvelopeValidator = AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+      handoffFoundationValidator = AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+      diagnostics = diagnostics,
+    )
+
+    assertFailsWith<RuntimeOwnedFactUnavailable> {
+      recorder.recordedFindingVerdicts("review-run-1")
+    }
+
+    assertTrue(diagnostics.warnings.single().contains("value_used=read_error"))
+    assertContains(
+      diagnostics.warnings.single(),
+      "seam=FeatureTaskRuntimePhaseRecorder.recordedFindingVerdicts",
+    )
+  }
+
+  @Test
+  fun `goal review completion transaction failure records a blocking runtime-owned fact`() {
+    val diagnostics = RecordingDiagnostics()
+    val recorder = FeatureTaskRuntimeGoalContinuationRecorder(
+      database = ThrowingReadDatabase,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      diagnostics = diagnostics,
+    )
+
+    assertFailsWith<RuntimeOwnedFactUnavailable> {
+      recorder.completeGoalReviewPass(
+        GoalReviewPassCompletionRequest(
+          workflowId = workflowId,
+          reviewRunId = "review-run-1",
+          verdict = FeatureTaskRuntimeVerdict.APPROVED,
+          unresolvedFindingCount = 0,
+          findings = emptyList(),
+          rawReviewResult = "{}",
+          normalizedOutput = emptyMap(),
+        ),
+      )
+    }
+
+    assertContains(
+      diagnostics.warnings.single(),
+      "seam=FeatureTaskRuntimeGoalContinuationRecorder.completeGoalReviewPass",
+    )
+    assertContains(diagnostics.warnings.single(), "value_used=blocked")
+  }
+
+  @Test
+  fun `phase review completion transaction failure records a blocking runtime-owned fact`() {
+    val diagnostics = RecordingDiagnostics()
+    val recorder = FeatureTaskRuntimePhaseRecorder(
+      database = ThrowingReadDatabase,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      handoffEnvelopeValidator = AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+      handoffFoundationValidator = AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+      diagnostics = diagnostics,
+    )
+
+    assertFailsWith<RuntimeOwnedFactUnavailable> {
+      recorder.completeGoalReviewPhase(
+        GoalReviewPhaseCompletionRequest(
+          phaseState = FeatureTaskRuntimePhaseStateRequest(
+            workflowId = workflowId,
+            phaseId = "review",
+            status = "completed",
+            attemptCount = 1,
+            resolvedAgentId = "bill-code-review",
+            finished = true,
+          ),
+          reviewRunId = "review-run-1",
+          verdict = FeatureTaskRuntimeVerdict.APPROVED,
+          unresolvedFindingCount = 0,
+          findings = emptyList(),
+          rawReviewResult = "{}",
+        ),
+      )
+    }
+
+    assertContains(
+      diagnostics.warnings.single(),
+      "seam=FeatureTaskRuntimePhaseRecorder.completeGoalReviewPhase",
+    )
+    assertContains(diagnostics.warnings.single(), "value_used=blocked")
+  }
+
+  @Test
   fun `recovery that cannot find a reachable base blocks naming the sha and branch`() {
     val fixture = unreachableOnlyGitFixture()
     val state = deepRemediationState(completedPasses = 1)
@@ -637,8 +733,34 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
         verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
         unresolvedFindingCount = 1,
         findings = emptyList(),
+      reviewRunId = "rvw-test-1",
       )
     }
     return state
   }
+}
+
+private object ThrowingReadDatabase : DatabaseSessionFactory {
+  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/tmp/feature-task-runtime-test.db")
+
+  override fun databaseExists(dbOverride: String?): Boolean = true
+
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T =
+    error("database session unavailable")
+
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T =
+    error("database session unavailable")
+
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
+    error("database session unavailable")
+}
+
+private class RecordingDiagnostics : RuntimeDiagnostics {
+  val warnings = mutableListOf<String>()
+
+  override fun warning(message: String, error: Throwable?) {
+    warnings += message
+  }
+
+  override fun error(message: String, error: Throwable?) = Unit
 }

@@ -2341,6 +2341,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = emptyList(),
+      reviewRunId = "rvw-test-1",
     ).copy(remediationBaseSha = unreachableRemediation)
     checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { state })
     harness.seedRawReviewResults(state)
@@ -2458,6 +2459,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
           findingId = "F-001",
         ),
       ),
+      reviewRunId = "rvw-test-1",
     ).copy(
       disposition = GoalSubtaskReviewDisposition.PAUSED,
       reviewedDeltaDigest = immutableDigest,
@@ -2549,6 +2551,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
           findingId = "F-001",
         ),
       ),
+      reviewRunId = "rvw-test-1",
     ).copy(
       disposition = GoalSubtaskReviewDisposition.PAUSED,
       reviewedDeltaDigest = judgedDigest,
@@ -3624,10 +3627,8 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     }
   }
 
-  // (f) AC5/AC10: an idempotent re-entry — implement_fix's reconciliation gate is enforced, so a fix
-  // output that omits the reconciliation report blocks loudly rather than silently double-applying.
   @Test
-  fun `m1 implement_fix without a reconciliation report blocks on the idempotency gate`() {
+  fun `m1 implement_fix without a reconciliation report uses runtime checkpoint evidence`() {
     var implementFixLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -3650,13 +3651,11 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       runtimeConfig = reviewFixRuntimeConfig(2),
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertEquals(1, implementFixLaunches, "a one-attempt budget leaves no relaunch")
-    assertGateBlockNamesRule(blocked.blockedReason, "mutating-reconciliation")
+    assertEquals(1, implementFixLaunches)
     assertTrue(
-      harness.io.database.rejectedDiagnostics()
-        .first { it.metadata.phaseId == "implement_fix" }.metadata.reason.contains("reconcil"),
+      completed.completedPhaseIds.contains("implement_fix"),
     )
   }
 
@@ -5106,11 +5105,8 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     assertTrue(git.createCommitMessages.isEmpty(), "a non-mutating cycle must never reach the checkpoint boundary")
   }
 
-  // (d) The reconciliation gate rejects an implement output that did not report reconciliation: the
-  // silent skip is routed through the loud schema-gate failure path, so implement retries until a
-  // reconciled receipt lands. A reconciled output advances (proved in test (a)).
   @Test
-  fun `reconciliation gate rejects an implement output without a reconciliation report`() {
+  fun `runtime mints reconciliation evidence for an implement output without a reconciliation report`() {
     var implementLaunches = 0
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
@@ -5125,14 +5121,10 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
       },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertEquals(1, implementLaunches, "a one-attempt budget leaves no relaunch")
-    assertGateBlockNamesRule(blocked.blockedReason, "mutating-reconciliation")
-    assertDiagnosticNamesConstraint(
-      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "implement" }.metadata.reason,
-      "reconciliation report",
-    )
+    assertEquals(1, implementLaunches)
+    assertTrue(completed.completedPhaseIds.contains("implement"))
   }
 
   // (b) A simulated mid-implement crash then a clean resume reconciles to target without double-apply,
@@ -7173,6 +7165,7 @@ private fun recordHarnessFindingVerdicts(
 
 private fun harnessReviewRepository(): ReviewRepository {
   val verdicts = mutableListOf<skillbill.review.model.ReviewFindingVerdict>()
+  var passClaims: skillbill.review.model.ReviewPassClaimSnapshot? = null
   @Suppress("UNCHECKED_CAST")
   return Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
@@ -7181,6 +7174,11 @@ private fun harnessReviewRepository(): ReviewRepository {
     when (method.name) {
       "fetchFindingVerdicts" -> verdicts.toList()
       "recordFindingVerdicts" -> recordHarnessFindingVerdicts(verdicts, args)
+      "recordReviewPassClaims" -> {
+        val findings = args?.getOrNull(1) as? List<skillbill.review.model.ParallelReviewMergedFinding>
+        passClaims = skillbill.review.model.ReviewPassClaimSnapshot(findings.orEmpty())
+      }
+      "fetchReviewPassClaims" -> passClaims
       else -> defaultPortReturn(method)
     }
   } as ReviewRepository

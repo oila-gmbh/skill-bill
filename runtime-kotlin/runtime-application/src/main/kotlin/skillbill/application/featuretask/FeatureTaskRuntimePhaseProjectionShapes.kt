@@ -68,26 +68,23 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
 
   private val IMPLEMENT: String =
     "\n    - Required produced_outputs shape: emit the implementation_receipt fields DIRECTLY on\n" +
-      "      produced_outputs (the bounded claim audit consumes them), and put the reconciled_state\n" +
-      "      report inside produced_outputs as well. EVERY key below is a member of produced_outputs:\n" +
+    "      produced_outputs (the bounded claim audit consumes them). EVERY key below is a member of\n" +
+    "      produced_outputs:\n" +
       "      the output envelope is closed, so a key placed beside produced_outputs instead of in it\n" +
       "      is rejected as an unknown property and the whole receipt is discarded.\n" +
-      "      completed_task_ids reuse the plan's task_ids; changed_paths are repository-relative; every\n" +
-      "      deviations entry is an OBJECT { \"ref\", \"note\" }, never a free-text string:\n" +
+      "      completed_task_ids reuse the plan's task_ids; every deviations entry is an OBJECT\n" +
+      "      { \"ref\", \"note\" }, never a free-text string:\n" +
       "      ```json\n" +
       "      { \"projection_kind\": \"implementation_receipt\",\n" +
       "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
-      "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
+      "        \"completed_task_ids\": [\"task-1\"],\n" +
       "        \"tests_added\": [], \"tests_updated\": [],\n" +
       "        \"tests_executed\": [],\n" +
       "        \"deviations\": [ { \"ref\": \"task-1\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
-      "        \"unresolved_items\": [],\n" +
-      "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
-      "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" } }\n" +
+    "        \"unresolved_items\": [] }\n" +
       "      ```\n" +
-      "      repository_checkpoint is runtime-owned: omit it entirely. Never compute, concatenate, or\n" +
-      "      guess a fingerprint; invented values are discarded and the runtime stamps the authoritative\n" +
-      "      digest before the receipt is accepted.\n" +
+    "      repository checkpoints, reconciliation evidence, and changed paths are runtime-owned. Omit\n" +
+    "      them entirely; the runtime stamps authoritative values before the receipt is accepted.\n" +
       "      Compilation and test execution belong exclusively to the validate phase. Do NOT build,\n" +
       "      compile, or run tests here: write the tests the plan obligates and leave them unexecuted.\n" +
       "      tests_executed stays [] in this phase; validate runs them and owns their outcomes.\n" +
@@ -132,28 +129,22 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      compile, run tests, or invoke `./gradlew check` / the pack collect-all gate here."
 
   private const val VALIDATION: String =
-    "\n    - Required produced_outputs shape: emit a validation_result OBJECT. Its repository_checkpoint\n" +
-      "      is also an OBJECT containing fingerprint — never a prefixed string such as\n" +
-      "      \"repository_checkpoint=<hash>\":\n" +
+    "\n    - Required produced_outputs shape: emit a validation_result OBJECT with agent-owned status and\n" +
+      "      checks:\n" +
       "      ```json\n" +
       "      { \"validation_result\": {\n" +
       "          \"validation_status\": \"passed\",\n" +
-      "          \"checks\": [ { \"name\": \"<check name>\", \"status\": \"passed\" } ],\n" +
-      "          \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
-      "          \"gate_run_count\": 1,\n" +
-      "          \"gate_runs\": [ { \"duration_ms\": 1, \"outcome\": \"passed\",\n" +
-      "            \"cache_mode\": \"forced_full\", \"executed_work_units\": 1 } ]\n" +
+      "          \"checks\": [ { \"name\": \"<check name>\", \"status\": \"passed\" } ]\n" +
       "        } }\n" +
       "      ```\n" +
-      "      gate_run_count and gate_runs are runtime-measured evidence; never invent or overwrite them\n" +
-      "      from agent claims. Never introduce suppressions (@Suppress, @file:Suppress, baselines,\n" +
+      "      The runtime supplies repository checkpoint and gate measurements. Never introduce suppressions\n" +
+      "      (@Suppress, @file:Suppress, baselines,\n" +
       "      disabled rules, or skipped tests) to silence findings; fix root causes instead."
 
   private const val VALIDATION_FULL_RUNTIME_OWNED_REPAIR: String =
     "\n      You run only the pack-declared collect-all command and the same command once to confirm.\n" +
       "      Do not run skill-bill validate, agnix, or validate_agent_configs.\n" +
-      "      The runtime may record one cache-bypassing verify afterward; gate_run_count and\n" +
-      "      gate_runs stay runtime-measured — never invent them. Never add @Suppress, @file:Suppress,\n" +
+      "      The runtime may record one cache-bypassing verify afterward. Never add @Suppress, @file:Suppress,\n" +
       "      baselines, disabled rules, or skipped tests to silence findings; fix root causes instead."
 
   private const val BUILD: String =
@@ -163,13 +154,9 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      { \"build_receipt\": {\n" +
       "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION\",\n" +
       "          \"validation_status\": \"passed\",\n" +
-      "          \"checks\": [],\n" +
-      "          \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
-      "          \"gate_run_count\": 1,\n" +
-      "          \"gate_runs\": [ { \"duration_ms\": 1, \"outcome\": \"passed\",\n" +
-      "            \"cache_mode\": \"forced_full\", \"executed_work_units\": 1 } ]\n" +
+      "          \"checks\": []\n" +
       "        } }\n" +
       "      ```\n" +
       "      Run only the pack build_command. Do not run collect_all_full_gate_command, check " + "--" + "continue,\n" +
-      "      skill-bill validate, or bill-code-check. gate_run_count and gate_runs are runtime-measured."
+      "      skill-bill validate, or bill-code-check. The runtime supplies checkpoint and gate measurements."
 }

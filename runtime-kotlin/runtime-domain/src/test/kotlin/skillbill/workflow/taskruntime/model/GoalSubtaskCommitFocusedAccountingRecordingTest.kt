@@ -40,6 +40,7 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
+      reviewRunId = "rvw-test-1",
       commitFocusedAccounting = accounting,
     )
 
@@ -58,6 +59,7 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
+      reviewRunId = "rvw-test-1",
       commitFocusedAccounting = accounting,
     ).passResults.single()
 
