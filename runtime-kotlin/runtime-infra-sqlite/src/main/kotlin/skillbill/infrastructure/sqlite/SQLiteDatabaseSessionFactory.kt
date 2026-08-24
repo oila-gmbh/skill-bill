@@ -40,6 +40,21 @@ class SQLiteDatabaseSessionFactory(
     }
   }
 
+  override fun <T> readIfPresent(dbOverride: String?, block: (UnitOfWork) -> T): T? =
+    DatabaseRuntime.openReadDbIfPresent(
+      cliValue = dbOverride ?: resolvedContext.dbPathOverride,
+      environment = resolvedContext.environment,
+      userHome = resolvedContext.userHome,
+    )?.use { openDb ->
+      try {
+        openDb.connection.inReadTransaction(openDb.dbPath) {
+          block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
+        }
+      } catch (error: SQLException) {
+        throw databaseAccessError(openDb.dbPath, DatabaseAccessOperation.READ, error)
+      }
+    }
+
   override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = DatabaseRuntime.openDb(
     cliValue = dbOverride ?: resolvedContext.dbPathOverride,
     environment = resolvedContext.environment,

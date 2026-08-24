@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.security.MessageDigest
@@ -8,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class FileSystemDecompositionManifestFileStoreTest {
   @Test
@@ -74,6 +76,22 @@ class FileSystemDecompositionManifestFileStoreTest {
     assertEquals("new spec", Files.readString(firstTarget))
     assertFalse(Files.exists(marker))
     assertFalse(Files.exists(stagingDirectory))
+  }
+
+  @Test
+  fun `read-only discovery rejects pending bundle journals without recovery`() {
+    val repoRoot = Files.createTempDirectory("decomposition-manifest-no-recovery")
+    val parent = repoRoot.resolve(".feature-specs/SKILL-901-goal")
+    Files.createDirectories(parent)
+    val marker = parent.resolve(".decomposition-manifest-bundle-pending.commit")
+    Files.writeString(marker, "pending")
+    val store = FileSystemDecompositionManifestFileStore()
+
+    assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      store.findDecompositionManifestFilesWithoutRecovery(repoRoot)
+    }
+
+    assertTrue(Files.exists(marker))
   }
 
   @Test

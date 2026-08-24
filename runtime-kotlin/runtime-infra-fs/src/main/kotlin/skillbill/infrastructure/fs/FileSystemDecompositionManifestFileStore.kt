@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import me.tatarka.inject.annotations.Inject
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
@@ -27,11 +28,21 @@ class FileSystemDecompositionManifestFileStore : DecompositionManifestFileStore 
     }
   }
 
+  override fun readTextWithoutRecovery(path: Path): String {
+    bundleJournal.failIfPending(path.parent)
+    return Files.readString(path)
+  }
+
   override fun isRegularFile(path: Path): Boolean {
     return withBundleLock(path.parent) {
       bundleJournal.recoverPendingUnlocked(path.parent)
       Files.isRegularFile(path)
     }
+  }
+
+  override fun isRegularFileWithoutRecovery(path: Path): Boolean {
+    bundleJournal.failIfPending(path.parent)
+    return Files.isRegularFile(path)
   }
 
   override fun listDirectChildDirectories(directory: Path): List<Path> {
@@ -47,6 +58,17 @@ class FileSystemDecompositionManifestFileStore : DecompositionManifestFileStore 
     Files.walk(featureSpecsRoot).use { paths ->
       paths.filter { path -> Files.isDirectory(path) }.forEach(bundleJournal::recoverPending)
     }
+    return Files.walk(featureSpecsRoot).use { paths ->
+      paths
+        .filter { path -> Files.isRegularFile(path) && path.fileName.toString() == "decomposition-manifest.yaml" }
+        .toList()
+    }
+  }
+
+  override fun findDecompositionManifestFilesWithoutRecovery(repoRoot: Path): List<Path> {
+    val featureSpecsRoot = repoRoot.resolve(".feature-specs")
+    if (!Files.isDirectory(featureSpecsRoot)) return emptyList()
+    bundleJournal.failIfPendingUnder(featureSpecsRoot)
     return Files.walk(featureSpecsRoot).use { paths ->
       paths
         .filter { path -> Files.isRegularFile(path) && path.fileName.toString() == "decomposition-manifest.yaml" }
@@ -171,6 +193,27 @@ private class DecompositionManifestBundleJournal {
         apply(transaction)
         cleanup(transaction)
       }
+    }
+  }
+
+  fun failIfPending(parent: Path?) {
+    if (parent == null || !Files.isDirectory(parent)) return
+    Files.newDirectoryStream(parent, "$BUNDLE_PREFIX*$MARKER_SUFFIX").use { markers ->
+      if (markers.iterator().hasNext()) {
+        throw InvalidDecompositionManifestSchemaError(
+          sourceLabel = parent.toString(),
+          reason = "decomposition manifest bundle has an incomplete journal; launch recovery is required.",
+          failureCode = "incomplete_bundle",
+        )
+      }
+    }
+  }
+
+  fun failIfPendingUnder(root: Path) {
+    Files.walk(root).use { paths ->
+      paths
+        .filter(Files::isDirectory)
+        .forEach(::failIfPending)
     }
   }
 

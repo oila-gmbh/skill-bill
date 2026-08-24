@@ -22,8 +22,9 @@ fun loadDecompositionManifest(
   path: Path,
   fileStore: DecompositionManifestFileStore,
   validator: DecompositionManifestValidator,
+  recoverPending: Boolean = true,
 ): DecompositionManifest {
-  return loadValidatedDecompositionManifest(path, fileStore, validator).manifest
+  return loadValidatedDecompositionManifest(path, fileStore, validator, recoverPending).manifest
 }
 
 internal data class LoadedDecompositionManifest(
@@ -36,8 +37,9 @@ internal fun loadValidatedDecompositionManifest(
   path: Path,
   fileStore: DecompositionManifestFileStore,
   validator: DecompositionManifestValidator,
+  recoverPending: Boolean = true,
 ): LoadedDecompositionManifest {
-  val validated = validateDecompositionManifestYaml(path, fileStore, validator)
+  val validated = validateDecompositionManifestYaml(path, fileStore, validator, recoverPending)
   return LoadedDecompositionManifest(
     manifest = validated.manifest,
     yamlText = validated.yamlText,
@@ -89,8 +91,9 @@ internal fun validateDecompositionManifestYaml(
   path: Path,
   fileStore: DecompositionManifestFileStore,
   validator: DecompositionManifestValidator,
+  recoverPending: Boolean = true,
 ): ValidatedDecompositionManifestYaml {
-  val yamlText = fileStore.readText(path)
+  val yamlText = if (recoverPending) fileStore.readText(path) else fileStore.readTextWithoutRecovery(path)
   return when (val result = validator.validateYamlTextResult(yamlText, path.toString())) {
     is DecompositionManifestValidationResult.AcceptedUnchanged -> ValidatedDecompositionManifestYaml(
       manifest = result.manifest,

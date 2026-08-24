@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.db.core.DatabaseRuntime
+import skillbill.error.DatabaseAccessError
 import skillbill.model.EnvironmentContext
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
@@ -66,6 +67,27 @@ class SQLiteDatabaseSessionFactoryTest {
     assertEquals(false, database.databaseExists(dbPath.toString()))
     database.read(dbPath.toString()) { Unit }
     assertEquals(true, database.databaseExists(dbPath.toString()))
+  }
+
+  @Test
+  fun `read if present does not create an absent database`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-read-if-present")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+
+    assertNull(database.readIfPresent(dbPath.toString()) { Unit })
+    assertFalse(Files.exists(dbPath))
+  }
+
+  @Test
+  fun `read if present rejects an existing schemaless database`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-read-if-present-schemaless")
+    val dbPath = Files.createFile(tempDir.resolve("metrics.db"))
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+
+    assertFailsWith<DatabaseAccessError> {
+      database.readIfPresent(dbPath.toString()) { Unit }
+    }
   }
 
   @Test

@@ -72,6 +72,47 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "repair")
     assertContains(result.stdout, "--debug-child-output")
     assertContains(result.stdout, "raw child streams hidden")
+
+    val preflightHelp = CliRuntime.run(listOf("goal", "preflight", "--help"), CliRuntimeContext())
+    assertEquals(0, preflightHelp.exitCode, preflightHelp.stdout)
+    assertContains(preflightHelp.stdout, "read-only goal verdict")
+    assertContains(preflightHelp.stdout, "--format")
+    assertContains(preflightHelp.stdout, "--agent-addon")
+  }
+
+  @Test
+  fun `goal preflight emits one json verdict without launching a child`() {
+    val fixture = goalFixture(subtaskCount = 2)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val result = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "preflight",
+        "SKILL-901",
+        "--agent",
+        "codex",
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--format",
+        "json",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = requireNotNull(
+      JsonSupport.anyToStringAnyMap(
+        JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(result.stdout))),
+      ),
+    ) { "Expected preflight JSON object but got: ${result.stdout}" }
+    assertEquals("new_work", payload["verdict"])
+    assertEquals("SKILL-901", payload["issue_key"])
+    assertTrue(payload["gate_block"] is Map<*, *>)
+    assertTrue(payload.containsKey("rehydrate_targets"))
+    assertTrue(launcher.requests.isEmpty())
+    assertTrue(launcher.childLaunches.isEmpty())
   }
 
   @Test

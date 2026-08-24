@@ -57,62 +57,84 @@ class FeatureTaskContinuationLookupService(
     FeatureTaskRouteScope.GOAL_CHILD,
   )
 
+  fun lookupIfPresent(
+    issueKey: String,
+    repositoryIdentity: String,
+    workflowId: String? = null,
+    dbOverride: String? = null,
+  ): FeatureTaskContinuationLookupResult = lookup(
+    issueKey,
+    repositoryIdentity,
+    workflowId,
+    dbOverride,
+    FeatureTaskRouteScope.STANDALONE,
+    readIfPresent = true,
+  )
+
   private fun lookup(
     issueKey: String,
     repositoryIdentity: String,
     workflowId: String?,
     dbOverride: String?,
     routeScope: FeatureTaskRouteScope,
-  ): FeatureTaskContinuationLookupResult = database.read(dbOverride) { unitOfWork ->
-    val normalizedIssueKey = FeatureTaskExecutionIdentityPolicy.validateLookupRequest(issueKey, repositoryIdentity)
-    val candidates = when (routeScope) {
-      FeatureTaskRouteScope.STANDALONE -> unitOfWork.workflowStates.findStandaloneFeatureTaskCandidates(
+    readIfPresent: Boolean = false,
+  ): FeatureTaskContinuationLookupResult {
+    val lookup = fun(unitOfWork: skillbill.ports.persistence.UnitOfWork): FeatureTaskContinuationLookupResult {
+      val normalizedIssueKey = FeatureTaskExecutionIdentityPolicy.validateLookupRequest(issueKey, repositoryIdentity)
+      val candidates = when (routeScope) {
+        FeatureTaskRouteScope.STANDALONE -> unitOfWork.workflowStates.findStandaloneFeatureTaskCandidates(
+          normalizedIssueKey,
+          repositoryIdentity,
+        )
+        FeatureTaskRouteScope.GOAL_CHILD -> unitOfWork.workflowStates.findGoalChildFeatureTaskCandidates(
+          normalizedIssueKey,
+          repositoryIdentity,
+        )
+      }
+      val selected = workflowId?.let { selector ->
+        listOf(
+          candidates.singleOrNull { it.workflow.workflowId == selector }
+            ?: throw InvalidFeatureTaskExecutionIdentitySchemaError(
+              "lookup request",
+              "workflow selector '$selector' does not match this issue and repository",
+            ),
+        )
+      } ?: candidates
+      val identityLess = selected.firstOrNull { it.identity == null }
+      if (identityLess != null) {
+        return FeatureTaskContinuationLookupResult.NeedsIdentityRepair(
+          workflowId = identityLess.workflow.workflowId,
+          summary = "Workflow '${identityLess.workflow.workflowId}' has no immutable execution identity; " +
+            "run `skill-bill feature-task repair-identity` for that workflow id before continuing.",
+        )
+      }
+      val validated = selected.map {
+        project(
+          it,
+          unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(it.workflow.workflowId),
+          routeScope,
+        )
+      }
+      val classified = classify(validated)
+      // A goal parent can only be surfaced when the caller did not pin a specific feature-task
+      // workflow, and only once no feature-task row answers the lookup.
+      if (classified != FeatureTaskContinuationLookupResult.NoMatch ||
+        workflowId != null ||
+        routeScope != FeatureTaskRouteScope.STANDALONE
+      ) {
+        return classified
+      }
+      unitOfWork.workflowStates.goalContinuationFor(
         normalizedIssueKey,
         repositoryIdentity,
-      )
-      FeatureTaskRouteScope.GOAL_CHILD -> unitOfWork.workflowStates.findGoalChildFeatureTaskCandidates(
-        normalizedIssueKey,
-        repositoryIdentity,
-      )
+        decompositionManifestValidator,
+      )?.let(FeatureTaskContinuationLookupResult::GoalContinuation) ?: classified
     }
-    val selected = workflowId?.let { selector ->
-      listOf(
-        candidates.singleOrNull { it.workflow.workflowId == selector }
-          ?: throw InvalidFeatureTaskExecutionIdentitySchemaError(
-            "lookup request",
-            "workflow selector '$selector' does not match this issue and repository",
-          ),
-      )
-    } ?: candidates
-    val identityLess = selected.firstOrNull { it.identity == null }
-    if (identityLess != null) {
-      return@read FeatureTaskContinuationLookupResult.NeedsIdentityRepair(
-        workflowId = identityLess.workflow.workflowId,
-        summary = "Workflow '${identityLess.workflow.workflowId}' has no immutable execution identity; " +
-          "run `skill-bill feature-task repair-identity` for that workflow id before continuing.",
-      )
+    return if (readIfPresent) {
+      database.readIfPresent(dbOverride, lookup) ?: FeatureTaskContinuationLookupResult.NoMatch
+    } else {
+      database.read(dbOverride, lookup)
     }
-    val validated = selected.map {
-      project(
-        it,
-        unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(it.workflow.workflowId),
-        routeScope,
-      )
-    }
-    val classified = classify(validated)
-    // A goal parent can only be surfaced when the caller did not pin a specific feature-task
-    // workflow, and only once no feature-task row answers the lookup.
-    if (classified != FeatureTaskContinuationLookupResult.NoMatch ||
-      workflowId != null ||
-      routeScope != FeatureTaskRouteScope.STANDALONE
-    ) {
-      return@read classified
-    }
-    unitOfWork.workflowStates.goalContinuationFor(
-      normalizedIssueKey,
-      repositoryIdentity,
-      decompositionManifestValidator,
-    )?.let(FeatureTaskContinuationLookupResult::GoalContinuation) ?: classified
   }
 
   private fun project(
@@ -190,7 +212,7 @@ class FeatureTaskContinuationLookupService(
   private fun classify(candidates: List<FeatureTaskContinuationCandidate>): FeatureTaskContinuationLookupResult {
     if (candidates.isEmpty()) return FeatureTaskContinuationLookupResult.NoMatch
     val eligible = candidates.filterNot { it.status in TERMINAL_STATUSES }
-    if (eligible.size > 1) return FeatureTaskContinuationLookupResult.Ambiguous(eligible)
+    if (eligible.size > 1) return FeatureTaskContinuationLookupResult.Ambiguous(candidates)
     if (eligible.size == 1) {
       val candidate = eligible.single()
       return if (candidate.status == "running") {

@@ -4631,7 +4631,10 @@ internal class FeatureTaskRuntimeRunLoop(
     // Absent-gate validate: agents are told not to invent gate_run_count/gate_runs, but the
     // validation_receipt consumer projection requires them. Attest measured-absent counts here so
     // the first completed attempt satisfies write_history without burning a fix-loop retry.
-    val attested = attestAbsentGateValidationReceipt(run, normalizedOutput)
+    val attested = stampRuntimeOwnedImplementationCheckpoint(
+      run,
+      attestAbsentGateValidationReceipt(run, normalizedOutput),
+    )
     val outputMap = attested.envelope
     val capture = ValidatedOutputCapture(
       run = run,
@@ -4984,6 +4987,41 @@ internal class FeatureTaskRuntimeRunLoop(
    * agent-authored gate measurements: overwrite (or supply) `gate_run_count`/`gate_runs` with the
    * degradation attestation before consumer projection and persist.
    */
+  private fun stampRuntimeOwnedImplementationCheckpoint(
+    run: PhaseRun,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  ): NormalizedFeatureTaskRuntimePhaseOutput {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) return normalizedOutput
+    if (normalizedOutput.envelope["status"] != STATUS_COMPLETED) return normalizedOutput
+    val produced = JsonSupport.anyToStringAnyMap(normalizedOutput.envelope["produced_outputs"])?.toMutableMap()
+      ?: return normalizedOutput
+    if (produced["projection_kind"] != FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue) {
+      return normalizedOutput
+    }
+    val authoritative = authoritativeImplementationRepositoryCheckpoint(run)
+    if (authoritative == null) {
+      produced.remove("repository_checkpoint")
+    } else {
+      produced["repository_checkpoint"] = authoritative.toEnvelopeMap()
+    }
+    val envelope = normalizedOutput.envelope.toMutableMap()
+    envelope["produced_outputs"] = produced
+    return outputValidator.validatePhaseOutput(
+      JsonSupport.mapToJsonString(envelope),
+      sourceLabel = run.phaseId,
+    ).requireAcceptedOutput(run.phaseId).normalizedOutput
+  }
+
+  private fun authoritativeImplementationRepositoryCheckpoint(
+    run: PhaseRun,
+  ): FeatureTaskRuntimeRepositoryCheckpoint? =
+    buildRepositoryCheckpoint(run)
+      ?: gitOperations.repositoryFingerprint(run.request.repoRoot)
+        .takeIf { it.ok }
+        ?.value
+        ?.takeIf(String::isNotBlank)
+        ?.let { fingerprint -> FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = fingerprint) }
+
   private fun attestAbsentGateValidationReceipt(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,

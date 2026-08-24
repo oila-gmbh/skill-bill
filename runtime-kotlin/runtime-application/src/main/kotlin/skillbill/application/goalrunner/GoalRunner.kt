@@ -92,6 +92,37 @@ private fun GoalRunnerManifestStore.effectiveAgentAddonSelection(
   ?: reviewPolicy(parentWorkflowId, request.dbPathOverride)?.agentAddonSelection
   ?: AgentAddonSelection()
 
+internal data class GoalRunnerEffectiveReviewPolicy(
+  val codeReviewMode: CodeReviewExecutionMode,
+  val parallelReviewAgent: String?,
+)
+
+internal fun effectiveGoalRunnerReviewPolicy(
+  requestedReviewMode: CodeReviewExecutionMode?,
+  requestedParallelReviewAgent: String?,
+  persisted: GoalRunnerReviewPolicy?,
+): GoalRunnerEffectiveReviewPolicy = GoalRunnerEffectiveReviewPolicy(
+  codeReviewMode = requestedReviewMode
+    ?: persisted?.codeReviewMode
+    ?: CodeReviewExecutionMode.DEFAULT,
+  parallelReviewAgent = requestedParallelReviewAgent ?: persisted?.parallelReviewAgent,
+)
+
+internal fun goalRunnerReviewPolicyMismatch(
+  parentWorkflowId: String,
+  requestedReviewMode: CodeReviewExecutionMode?,
+  requestedParallelReviewAgent: String?,
+  persisted: GoalRunnerReviewPolicy,
+): String? = when {
+  requestedReviewMode != null && persisted.codeReviewMode != requestedReviewMode ->
+    "Cannot change code-review mode on goal resume: parent workflow '$parentWorkflowId' " +
+      "is pinned to '${persisted.codeReviewMode.wireValue}', not '${requestedReviewMode.wireValue}'."
+  requestedParallelReviewAgent != null && persisted.parallelReviewAgent != requestedParallelReviewAgent ->
+    "Cannot change parallel-review agent on goal resume: parent workflow '$parentWorkflowId' " +
+      "is pinned to '${persisted.parallelReviewAgent ?: "none"}', not '$requestedParallelReviewAgent'."
+  else -> null
+}
+
 @Inject
 class GoalRunner(
   private val manifestStore: GoalRunnerManifestStore,
@@ -221,11 +252,14 @@ class GoalRunner(
       .takeUnless { it.entries.isEmpty() }
       ?: persistedReviewPolicy?.agentAddonSelection
       ?: AgentAddonSelection()
+    val effectiveReviewPolicy = effectiveGoalRunnerReviewPolicy(
+      request.codeReviewMode,
+      request.parallelReviewAgent,
+      persistedReviewPolicy,
+    )
     val requestedReviewPolicy = GoalRunnerReviewPolicy(
-      codeReviewMode = request.codeReviewMode
-        ?: persistedReviewPolicy?.codeReviewMode
-        ?: CodeReviewExecutionMode.DEFAULT,
-      parallelReviewAgent = request.parallelReviewAgent ?: persistedReviewPolicy?.parallelReviewAgent,
+      codeReviewMode = effectiveReviewPolicy.codeReviewMode,
+      parallelReviewAgent = effectiveReviewPolicy.parallelReviewAgent,
       agentAddonSelection = effectiveAgentAddonSelection,
     )
     return manifestStore.persistReviewPolicy(
@@ -275,18 +309,19 @@ class GoalRunner(
     policy: GoalRunnerReviewPolicy,
   ): GoalRunPreparation.PreparationBlocked? {
     val requestedAgentAddonSelection = request.agentAddonSelection.persisted
-    val reason = when {
-      request.codeReviewMode != null && policy.codeReviewMode != request.codeReviewMode ->
-        "Cannot change code-review mode on goal resume: parent workflow '${state.parentWorkflowId}' " +
-          "is pinned to '${policy.codeReviewMode.wireValue}', not '${request.codeReviewMode.wireValue}'."
-      request.parallelReviewAgent != null && policy.parallelReviewAgent != request.parallelReviewAgent ->
-        "Cannot change parallel-review agent on goal resume: parent workflow '${state.parentWorkflowId}' " +
-          "is pinned to '${policy.parallelReviewAgent ?: "none"}', not '${request.parallelReviewAgent}'."
+    val reason = goalRunnerReviewPolicyMismatch(
+      state.parentWorkflowId,
+      request.codeReviewMode,
+      request.parallelReviewAgent,
+      policy,
+    ) ?: if (
       requestedAgentAddonSelection.entries.isNotEmpty() &&
-        policy.agentAddonSelection != requestedAgentAddonSelection ->
-        "Cannot change agent add-on selection on goal resume: parent workflow '${state.parentWorkflowId}' " +
-          "has a different durable selection."
-      else -> return null
+      policy.agentAddonSelection != requestedAgentAddonSelection
+    ) {
+      "Cannot change agent add-on selection on goal resume: parent workflow '${state.parentWorkflowId}' " +
+        "has a different durable selection."
+    } else {
+      return null
     }
     return GoalRunPreparation.PreparationBlocked(
       stopped(

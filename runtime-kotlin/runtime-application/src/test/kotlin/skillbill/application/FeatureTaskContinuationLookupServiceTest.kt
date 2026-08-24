@@ -54,6 +54,8 @@ class FeatureTaskContinuationLookupServiceTest {
   @Test
   fun `lookup reports every ambiguous eligible workflow without selecting newest`() {
     val fixture = fixture()
+    val terminal = fixture.open(REPOSITORY_A)
+    fixture.service.abandonFeatureTaskRuntime(terminal.workflowId, "Terminal lookup fixture.")
     val first = fixture.open(REPOSITORY_A)
     val second = fixture.open(REPOSITORY_A)
 
@@ -61,7 +63,10 @@ class FeatureTaskContinuationLookupServiceTest {
       fixture.lookup.lookup("SKILL-120", REPOSITORY_A),
     )
 
-    assertEquals(setOf(first.workflowId, second.workflowId), ambiguous.candidates.map { it.workflowId }.toSet())
+    assertEquals(
+      listOf(terminal.workflowId, first.workflowId, second.workflowId),
+      ambiguous.candidates.map { it.workflowId },
+    )
   }
 
   @Test

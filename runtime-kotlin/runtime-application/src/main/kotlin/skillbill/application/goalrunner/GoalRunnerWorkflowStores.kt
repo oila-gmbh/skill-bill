@@ -7,7 +7,7 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
-import skillbill.application.decomposition.loadManifestOrNull
+import skillbill.application.decomposition.resolveDecompositionManifest
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
@@ -21,7 +21,6 @@ import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.findDecomposedParentOrCorruptFallback
 import skillbill.application.workflow.findDecomposedParentWorkflow
 import skillbill.application.workflow.generateWorkflowId
-import skillbill.application.workflow.isActiveGoalRuntime
 import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.requireRuntimeModeForEngineWrite
 import skillbill.application.workflow.toRecord
@@ -135,7 +134,6 @@ import java.time.format.DateTimeFormatter
 // SKILL-87: under requireStalenessEvidence, a running candidate counts as alive (not stale) when any
 // declared-liveness or snapshot-update signal lands within this window. Generous enough that a long
 // but legitimately quiet first phase is never mistaken for a dead subtask.
-private val DECLARED_ISSUE_KEY = Regex("""issue_key:\s*(\S+)""")
 private const val STALENESS_EVIDENCE_WINDOW_MINUTES: Long = 30
 private val STALENESS_EVIDENCE_WINDOW: Duration = Duration.ofMinutes(STALENESS_EVIDENCE_WINDOW_MINUTES)
 private const val GOAL_REVIEW_POLICY_ARTIFACT_KEY = "goal_review_policy"
@@ -228,6 +226,25 @@ class WorkflowGoalRunnerManifestStore(
   override fun readByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? {
     val projected = repoRoot?.let { root -> findProjectedManifest(root, issueKey) }
     val stored = loadFromWorkflowStore(issueKey, dbPathOverride, projected)
+    return readProjection(stored, projected, repoRoot, dbPathOverride)
+  }
+
+  override fun readByIssueKeyIfPresent(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path?,
+  ): GoalRunnerManifestState? {
+    val projected = repoRoot?.let { root -> findProjectedManifest(root, issueKey, recoverPending = false) }
+    val stored = loadFromWorkflowStoreIfPresent(issueKey, dbPathOverride, projected)
+    return readProjection(stored, projected, repoRoot, dbPathOverride)
+  }
+
+  private fun readProjection(
+    stored: GoalRunnerManifestState?,
+    projected: DecompositionManifest?,
+    repoRoot: Path?,
+    dbPathOverride: String?,
+  ): GoalRunnerManifestState? {
     return when {
       shouldRefreshFromCompleteProjection(stored, projected) -> requireNotNull(stored).copy(
         manifest = requireNotNull(projected),
@@ -876,13 +893,29 @@ class WorkflowGoalRunnerManifestStore(
     dbPathOverride: String?,
     currentProjectedManifest: DecompositionManifest? = null,
   ): GoalRunnerManifestState? = database.read(dbPathOverride) { unitOfWork ->
+    loadFromWorkflowUnitOfWork(unitOfWork, issueKey, currentProjectedManifest)
+  }
+
+  private fun loadFromWorkflowStoreIfPresent(
+    issueKey: String,
+    dbPathOverride: String?,
+    currentProjectedManifest: DecompositionManifest? = null,
+  ): GoalRunnerManifestState? = database.readIfPresent(dbPathOverride) { unitOfWork ->
+    loadFromWorkflowUnitOfWork(unitOfWork, issueKey, currentProjectedManifest)
+  }
+
+  private fun loadFromWorkflowUnitOfWork(
+    unitOfWork: UnitOfWork,
+    issueKey: String,
+    currentProjectedManifest: DecompositionManifest?,
+  ): GoalRunnerManifestState? {
     val record = unitOfWork.workflowStates.findDecomposedParentWorkflow(
       issueKey,
       decompositionManifestValidator,
       currentProjectedManifest,
-    ) ?: return@read null
+    ) ?: return null
     val snapshot = record.toSnapshot()
-    val manifest = snapshot.decompositionRuntime(decompositionManifestValidator) ?: return@read null
+    val manifest = snapshot.decompositionRuntime(decompositionManifestValidator) ?: return null
     GoalRunnerManifestState(
       parentWorkflowId = snapshot.workflowId,
       dbPath = unitOfWork.dbPath.toString(),
@@ -948,44 +981,17 @@ class WorkflowGoalRunnerManifestStore(
     }
   }
 
-  // The scan walks every manifest in the repo, including archived ones written against superseded
-  // contract versions. A file that fails validation is only this goal's problem when it claims this
-  // goal's issue key; otherwise it is somebody else's record and must not fail the read.
-  private fun loadScannedManifestOrNull(path: Path, issueKey: String): DecompositionManifest? = try {
-    loadManifestOrNull(path, decompositionManifestValidator, decompositionManifestFileStore)
-  } catch (error: InvalidDecompositionManifestSchemaError) {
-    if (declaredIssueKey(path) == issueKey) throw error
-    null
-  }
-
-  private fun declaredIssueKey(path: Path): String? = runCatching { decompositionManifestFileStore.readText(path) }
-    .getOrNull()
-    ?.lineSequence()
-    ?.firstNotNullOfOrNull { line -> DECLARED_ISSUE_KEY.matchEntire(line.trim())?.groupValues?.get(1) }
-    ?.trim('"', '\'')
-
-  private fun findProjectedManifest(repoRoot: Path, issueKey: String) =
-    decompositionManifestFileStore.findDecompositionManifestFiles(repoRoot)
-      .asSequence()
-      .sortedBy { path -> path.toString() }
-      .filter { path -> path.mayContainIssueKey(repoRoot, issueKey) }
-      .mapNotNull { path ->
-        loadScannedManifestOrNull(path, issueKey)
-          ?.let { manifest -> ProjectedManifestCandidate(path, manifest) }
-      }
-      .filter { candidate -> candidate.manifest.issueKey == issueKey }
-      .toList()
-      .let { candidates ->
-        val activeCandidates = candidates.filter { candidate -> candidate.manifest.isActiveGoalRuntime() }
-        if (activeCandidates.size > 1) {
-          error(
-            "Ambiguous checked-in decomposition manifests for '$issueKey': " +
-              activeCandidates.joinToString { candidate -> repoRoot.relativize(candidate.path).toString() } +
-              ". Pass an explicit workflow or manifest selector before continuing.",
-          )
-        }
-        activeCandidates.firstOrNull()?.manifest ?: candidates.firstOrNull()?.manifest
-      }
+  private fun findProjectedManifest(
+    repoRoot: Path,
+    issueKey: String,
+    recoverPending: Boolean = true,
+  ) = resolveDecompositionManifest(
+    repoRoot = repoRoot,
+    issueKey = issueKey,
+    fileStore = decompositionManifestFileStore,
+    validator = decompositionManifestValidator,
+    recoverPending = recoverPending,
+  )
 }
 
 private class GoalRunnerControlCoordinator(
@@ -1426,11 +1432,6 @@ private fun DecompositionManifest.afterReplanChildDeletion(subtaskIds: List<Int>
   ).withParentStatus()
 }
 
-private data class ProjectedManifestCandidate(
-  val path: Path,
-  val manifest: DecompositionManifest,
-)
-
 private fun reviewPolicyFromLegacyArtifacts(artifacts: Map<String, Any?>): GoalRunnerReviewPolicy? {
   val raw = artifacts[GOAL_REVIEW_POLICY_ARTIFACT_KEY] ?: return null
   val policy = JsonSupport.anyToStringAnyMap(raw)
@@ -1534,15 +1535,6 @@ private fun DecompositionManifest.isCompleteGoalProjection(): Boolean =
     subtask.status in setOf("complete", "skipped") &&
       (subtask.status == "skipped" || !subtask.commitSha.isNullOrBlank())
   }
-
-// Bare containment makes 'SKILL-8' match every 'SKILL-8x' path, so an unrelated goal's manifest gets
-// loaded and its failures attributed here. The key must end at a non-alphanumeric boundary.
-private fun Path.mayContainIssueKey(repoRoot: Path, issueKey: String): Boolean =
-  runCatching { repoRoot.relativize(this).toString() }
-    .getOrElse { toString() }
-    .let { candidate ->
-      Regex("(?<![A-Za-z0-9])${Regex.escape(issueKey)}(?![A-Za-z0-9])").containsMatchIn(candidate)
-    }
 
 @Inject
 @Suppress("LongParameterList", "LargeClass") // one cohesive goal-runner outcome store; bundling would only hide it

@@ -5,8 +5,12 @@ import java.nio.file.Path
 
 interface DecompositionManifestFileStore {
   fun readText(path: Path): String
+  fun readTextWithoutRecovery(path: Path): String = readText(path)
   fun isRegularFile(path: Path): Boolean
+  fun isRegularFileWithoutRecovery(path: Path): Boolean = isRegularFile(path)
   fun findDecompositionManifestFiles(repoRoot: Path): List<Path>
+  fun findDecompositionManifestFilesWithoutRecovery(repoRoot: Path): List<Path> =
+    findDecompositionManifestFiles(repoRoot)
   fun listDirectChildDirectories(directory: Path): List<Path> = emptyList()
   fun writeTextAtomically(target: Path, content: String)
   fun deleteIfExists(target: Path)
@@ -51,9 +55,15 @@ interface DecompositionManifestFileStore {
 object UnavailableDecompositionManifestFileStore : DecompositionManifestFileStore {
   override fun readText(path: Path): String = unavailable()
 
+  override fun readTextWithoutRecovery(path: Path): String = unavailable()
+
   override fun isRegularFile(path: Path): Boolean = unavailable()
 
+  override fun isRegularFileWithoutRecovery(path: Path): Boolean = unavailable()
+
   override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> = unavailable()
+
+  override fun findDecompositionManifestFilesWithoutRecovery(repoRoot: Path): List<Path> = unavailable()
 
   override fun listDirectChildDirectories(directory: Path): List<Path> = unavailable()
 
