@@ -24,7 +24,6 @@ import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunTokenOwnership
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -67,7 +66,6 @@ import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.ReviewTreeAccounting
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingInput
@@ -91,7 +89,6 @@ import skillbill.review.context.model.ReviewParentAnalysisConsumption
 import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
-import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.asFailedLaneRun
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
@@ -1375,7 +1372,6 @@ class ParallelCodeReviewRunner(
       failureReason = launchReason,
       droppedCandidateDiagnostic = softAdmission.droppedCandidateDiagnostic,
       budgetOutcome = budgetOutcome,
-      tokenUsage = providerTokenUsage(outcome),
       accounting = inlineParentAccounting(
         launch,
         inlineTerminalStatus(outcome, completion.disposition),
@@ -1856,7 +1852,6 @@ private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReview
   success,
   failureReason,
   droppedCandidateDiagnostic,
-  tokenUsage,
   budgetOutcome,
   accounting,
   specialistAccounting,
@@ -1880,7 +1875,6 @@ private fun parallelAccountingSummary(
       toolCalls,
       modelTurns,
     ),
-    usage = providerUsage ?: ProviderTokenUsage(),
     terminalOutcome = terminalStatus,
     bundleCompositionDigest = bundleCompositionDigest,
     segmentAccounting = segmentAccounting,
@@ -1946,7 +1940,6 @@ private fun ReviewAccountingSummary.withCommitFocusedAccounting(
         resultBytes = integration.resultBytes,
         modelTurns = integration.modelTurns,
       ),
-      usage = integration.providerUsage ?: ProviderTokenUsage(),
       skipReason = integration.skipReason?.takeIf { it.isNotBlank() }
         ?: coverage?.integrationNotApplicableReason?.takeIf { it.isNotBlank() }
         ?: "the review compiled commit routing without recording why integration was not applicable"
@@ -1997,7 +1990,6 @@ private fun inlineParentAccounting(
   toolCalls = brokerAccounting?.toolCalls ?: 0,
   modelTurns = 1,
   resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
-  providerUsage = outcome?.let(::providerTokenUsage),
   terminalStatus = terminalStatus,
   terminalOutcome = brokerAccounting?.terminalOutcome,
   reviewDisposition = completionState.disposition,
@@ -2072,25 +2064,3 @@ private fun inlineTerminalStatus(facts: AgentRunLaunchFacts, disposition: Review
   else -> "completed"
 }
 
-private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage? {
-  val values = listOf(
-    outcome.inputTokens,
-    outcome.cachedInputTokens,
-    outcome.outputTokens,
-    outcome.reasoningTokens,
-    outcome.totalTokens,
-  )
-  if (values.none { it != null }) return null
-  return ProviderTokenUsage(
-    inputTokens = outcome.inputTokens,
-    cachedInputTokens = outcome.cachedInputTokens,
-    outputTokens = outcome.outputTokens,
-    reasoningTokens = outcome.reasoningTokens,
-    totalTokens = outcome.totalTokens,
-    ownership = if (outcome.tokenOwnership == AgentRunTokenOwnership.INCLUSIVE) {
-      TokenOwnership.INCLUSIVE
-    } else {
-      TokenOwnership.DIRECT
-    },
-  )
-}

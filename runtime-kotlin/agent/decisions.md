@@ -14,6 +14,12 @@ Reason: The envelope root is closed and `produced_outputs` is open, so an undecl
 
 Alternatives considered: Give envelope failures their own retry budget (rejected: this is the salvage relaunch the 2026-08-20 decision removed after observing zero recoveries, and a second process cannot see the first session's context). Fix only the prompt wording (kept as well, but it cannot recover a receipt already emitted). Demote by an explicit key allowlist (rejected: the closed root already identifies a stray key, and an allowlist would miss the next misplacement).
 
+## [2026-08-24] Remove provider-reported review accounting
+Context: Provider token fields use incompatible conventions and no review decision consumes the resulting aggregates.
+Decision: Remove provider-token review models, thresholds, folding, projection, and enforcement while retaining runtime-owned byte and count accounting.
+Reason: Repairing convention-specific accounting would add an unvalidated measurement without a caller; local byte-derived estimates remain meaningful and load-bearing.
+Alternatives considered: Normalize provider values during decoding (rejected: it would preserve an unusable cross-provider metric and expand the transport contract).
+
 ## [2026-08-21] Soft-admit findings for verification; prose still settles
 
 Context: Prose-only review emptied merge findings, so claim verification always no-oped even when the parent named concrete defects.

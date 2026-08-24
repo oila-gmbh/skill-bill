@@ -24,7 +24,6 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewToolCall
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.test.Test
@@ -647,10 +646,6 @@ class AgentRunCommandBuildersTest {
     override fun recordModelTurn() = error("unused")
     override fun validateLaneResult(result: String) = error("unused")
     override fun observeLaneResultChunk(chunk: String) = error("unused")
-    override fun evaluateProviderUsage(
-      usage: skillbill.review.context.model.ProviderTokenUsage,
-      enforceable: Boolean,
-    ) = error("unused")
     override fun accounting() = error("unused")
     override fun terminalOutcome() = error("unused")
   }

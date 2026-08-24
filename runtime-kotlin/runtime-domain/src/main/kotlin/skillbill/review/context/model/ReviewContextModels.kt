@@ -8,8 +8,6 @@ import java.security.MessageDigest
 
 const val REVIEW_CONTEXT_BUDGET_EXCEEDED: String = "review_context_budget_exceeded"
 
-const val REVIEW_BUDGET_REGRESSION: String = "budget_regression"
-
 const val REVIEW_RULE_EXCERPT_MAX_CHARS: Int = 2_000
 
 /** Budget kinds for the parent-side routing analysis, reported on a loud routing-budget breach. */
@@ -319,22 +317,6 @@ data class ReviewExpansionRecord(
     ).let { canonicalFields(*it.toTypedArray()) }
 }
 
-data class ProviderTokenThresholds(
-  val inputTokens: Long = 40_000,
-  val cachedInputTokens: Long = 30_000,
-  val outputTokens: Long = 8_000,
-  val reasoningTokens: Long = 10_000,
-  val totalTokens: Long = 56_000,
-) {
-  init {
-    val dimensions = listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens)
-    require(dimensions.all { it > 0 }) { "Provider token thresholds must be positive." }
-    require(totalTokens >= dimensions.dropLast(1).max()) {
-      "Total-token threshold must be at least every individual threshold."
-    }
-  }
-}
-
 data class ReviewContextBudgetPolicy(
   val maxParentPacketBytes: Long = 524_288,
   val maxLaneLaunchBytes: Long = 65_536,
@@ -347,7 +329,6 @@ data class ReviewContextBudgetPolicy(
   val maxRoutingAnalysisPairs: Int = 4_096,
   val maxRoutingAnalysisBytes: Long = 33_554_432,
   val maxSpecIntentProjectionBytes: Long = 32_768,
-  val providerTokenThresholds: ProviderTokenThresholds = ProviderTokenThresholds(),
 ) {
   init {
     val byteLimits = listOf(
@@ -392,49 +373,6 @@ data class ReviewContextBudgetPolicy(
     }
   }
 }
-
-enum class TokenOwnership { DIRECT, INCLUSIVE }
-
-data class ProviderTokenUsage(
-  val inputTokens: Long? = null,
-  val cachedInputTokens: Long? = null,
-  val outputTokens: Long? = null,
-  val reasoningTokens: Long? = null,
-  val totalTokens: Long? = null,
-  val ownership: TokenOwnership = TokenOwnership.DIRECT,
-) {
-  init {
-    require(
-      listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens).all {
-        it == null || it >= 0
-      },
-    )
-    require(cachedInputTokens == null || inputTokens != null) { "Cached-input tokens require input tokens." }
-  }
-  val freshTokenApproximation: Long?
-    get() = if (inputTokens == null && outputTokens == null) {
-      null
-    } else {
-      (inputTokens ?: 0) - (cachedInputTokens ?: 0) + (outputTokens ?: 0)
-    }
-}
-
-data class ReviewTreeUsage(val node: ProviderTokenUsage, val children: List<ReviewTreeUsage> = emptyList()) {
-  fun aggregate(): ProviderTokenUsage = if (node.ownership == TokenOwnership.INCLUSIVE) {
-    node
-  } else {
-    children.fold(node) { total, child -> total.plus(child.aggregate()) }
-  }
-}
-
-private fun ProviderTokenUsage.plus(other: ProviderTokenUsage): ProviderTokenUsage = ProviderTokenUsage(
-  inputTokens = inputTokens.add(other.inputTokens),
-  cachedInputTokens = cachedInputTokens.add(other.cachedInputTokens),
-  outputTokens = outputTokens.add(other.outputTokens),
-  reasoningTokens = reasoningTokens.add(other.reasoningTokens),
-  totalTokens = totalTokens.add(other.totalTokens),
-)
-private fun Long?.add(other: Long?): Long? = if (this == null && other == null) null else (this ?: 0) + (other ?: 0)
 
 data class ReviewAssignment(
   val reviewId: String,
@@ -1390,26 +1328,6 @@ data class ReviewContextBudgetExceeded(
   }
 }
 
-/**
- * A provider dimension that only becomes observable after the worker has finished, so no seam
- * could have stopped it. It is reported, never used to truncate or retry a lane.
- */
-data class ReviewBudgetRegression(
-  override val lane: String,
-  override val budgetKind: String,
-  override val configuredLimit: Long,
-  override val observedValue: Long,
-  override val packetDigest: String,
-  override val assignmentDigest: String,
-) : ReviewBudgetOutcome {
-  override val enforceable: Boolean = false
-  override val type: String = REVIEW_BUDGET_REGRESSION
-  init {
-    require(lane.isNotBlank() && budgetKind.isNotBlank())
-    require(configuredLimit >= 0 && observedValue > configuredLimit)
-  }
-}
-
 data class ReviewLaneIdentity(val lane: String, val packetDigest: String, val assignmentDigest: String) {
   init {
     require(lane.isNotBlank()) { "Review lane identity lane must not be blank." }
@@ -1445,32 +1363,6 @@ object ReviewBudgetEvaluator {
     budget.maxLaneResultBytes,
     observedBytes,
   )
-
-  /**
-   * Enforceable seams (a provider that reports usage mid-run) terminate the lane; a provider that
-   * only reports totals once the worker exited yields a regression the caller records but cannot prevent.
-   */
-  fun providerUsageOutcome(
-    identity: ReviewLaneIdentity,
-    thresholds: ProviderTokenThresholds,
-    usage: ProviderTokenUsage,
-    enforceable: Boolean,
-  ): ReviewBudgetOutcome? {
-    val breach = listOf(
-      "input_tokens" to (usage.inputTokens to thresholds.inputTokens),
-      "cached_input_tokens" to (usage.cachedInputTokens to thresholds.cachedInputTokens),
-      "output_tokens" to (usage.outputTokens to thresholds.outputTokens),
-      "reasoning_tokens" to (usage.reasoningTokens to thresholds.reasoningTokens),
-      "total_tokens" to (usage.totalTokens to thresholds.totalTokens),
-    ).firstOrNull { (_, pair) -> pair.first != null && pair.first!! > pair.second } ?: return null
-    val (kind, pair) = breach
-    val (observed, limit) = pair
-    return if (enforceable) {
-      exceededOrNull(identity, kind, limit, observed!!)
-    } else {
-      ReviewBudgetRegression(identity.lane, kind, limit, observed!!, identity.packetDigest, identity.assignmentDigest)
-    }
-  }
 
   fun exceededOrNull(
     identity: ReviewLaneIdentity,

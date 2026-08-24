@@ -2,7 +2,6 @@ package skillbill.application.review
 
 import skillbill.application.model.ParallelCodeReviewResult
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.review.context.model.ProviderTokenUsage
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -104,7 +103,7 @@ class ParallelCodeReviewEndToEndTest {
         kmpConfig {
           RecordedWorkerResponse(
             stdout = finding("src/main/kotlin/App.kt", KOTLIN_ARCHITECTURE),
-            usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
+            usage = RecordedTransportUsage(1_000, 400, 200, 50, 1_200),
           )
         },
         recorder,
@@ -121,13 +120,13 @@ class ParallelCodeReviewEndToEndTest {
     assertEquals(firstSummary.lanes.map { it.lane }, secondSummary.lanes.map { it.lane })
   }
 
-  @Test fun `accounting reports every measured dimension and aggregates without double counting`() {
+  @Test fun `accounting reports every retained measured dimension`() {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(
       kotlinConfig {
         RecordedWorkerResponse(
           stdout = finding("src/Repo.kt", KOTLIN_ARCHITECTURE),
-          usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
+          usage = RecordedTransportUsage(1_000, 400, 200, 50, 1_200),
         )
       },
       recorder,
@@ -141,14 +140,8 @@ class ParallelCodeReviewEndToEndTest {
       assertTrue(lane.counters.launchBytes > 0, "Lane '${lane.lane}' reported no launch bytes.")
       assertEquals(0, lane.counters.evidenceBytes, "Assigned hunk envelopes require no filesystem evidence reads.")
       assertTrue(lane.counters.resultBytes > 0)
-      assertEquals(1_000, lane.directUsage.inputTokens)
-      assertEquals(400, lane.directUsage.cachedInputTokens)
-      assertEquals(800, lane.directUsage.freshTokenApproximation)
       assertEquals("completed", lane.terminalOutcome)
     }
-    assertEquals(lanes.size * 1_000L, summary.aggregateDirectUsage.inputTokens)
-    assertEquals(lanes.size * 800L, summary.aggregateDirectUsage.freshTokenApproximation)
-    assertEquals(summary.aggregateDirectUsage.inputTokens, summary.aggregateInclusiveUsage.inputTokens)
     assertEquals(lanes.sumOf { it.counters.launchBytes }, summary.aggregateCounters.launchBytes)
     assertEquals(summary.aggregateCounters, summary.parent.inclusiveCounters)
   }
@@ -156,7 +149,7 @@ class ParallelCodeReviewEndToEndTest {
   @Test fun `durable accounting is persisted exactly once per review`() {
     val recorder = ReviewRecorder()
 
-    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = ProviderTokenUsage(10, 2, 3)) }, recorder)
+    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = RecordedTransportUsage(10, 2, 3)) }, recorder)
       .run(harnessRequest())
 
     val record = recorder.savedAccounting.single()
@@ -168,7 +161,7 @@ class ParallelCodeReviewEndToEndTest {
     val recorder = ReviewRecorder()
     val reviewRunId = "rvw-20260722-101500-ab12"
 
-    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = ProviderTokenUsage(10, 2, 3)) }, recorder)
+    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = RecordedTransportUsage(10, 2, 3)) }, recorder)
       .run(harnessRequest(reviewRunId = reviewRunId))
 
     val record = recorder.savedAccounting.single()
@@ -179,7 +172,7 @@ class ParallelCodeReviewEndToEndTest {
   @Test fun `accounting falls back to the packet review id when no run id is supplied`() {
     val recorder = ReviewRecorder()
 
-    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = ProviderTokenUsage(10, 2, 3)) }, recorder)
+    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = RecordedTransportUsage(10, 2, 3)) }, recorder)
       .run(harnessRequest())
 
     assertTrue(recorder.savedAccounting.single().reviewId.startsWith("code-review-parallel-"))

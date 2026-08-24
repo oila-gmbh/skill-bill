@@ -595,7 +595,7 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
-  fun `provider usage is preserved in lane status`() {
+  fun `transport token fields do not become review accounting`() {
     val launcher = GoalRunnerSubtaskLauncher { request ->
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
@@ -614,8 +614,6 @@ class ParallelCodeReviewRunnerTest {
     val result = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
       .run(baseRequest(scope = ParallelReviewScope.STAGED))
 
-    assertEquals(70, result.lane1.tokenUsage?.freshTokenApproximation)
-    assertEquals(110, result.lane1.tokenUsage?.totalTokens)
     assertEquals("claude", result.lane1.accounting?.lane)
     assertEquals(1, result.lane1.accounting?.modelTurns)
     assertEquals("verdict: approved".toByteArray().size.toLong(), result.lane1.accounting?.resultBytes)

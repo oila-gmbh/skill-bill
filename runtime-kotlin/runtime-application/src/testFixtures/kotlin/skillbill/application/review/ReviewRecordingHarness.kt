@@ -40,7 +40,6 @@ import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
@@ -107,11 +106,19 @@ class ReviewRecorder {
 }
 
 /** What a recorded specialist run reports back, keyed by logical worker name. */
+data class RecordedTransportUsage(
+  val inputTokens: Long? = null,
+  val cachedInputTokens: Long? = null,
+  val outputTokens: Long? = null,
+  val reasoningTokens: Long? = null,
+  val totalTokens: Long? = null,
+)
+
 data class RecordedWorkerResponse(
   val stdout: String = "NO_FINDINGS",
   val exitStatus: Int? = 0,
   val timedOut: Boolean = false,
-  val usage: ProviderTokenUsage? = null,
+  val usage: RecordedTransportUsage? = null,
   val usageEnforceable: Boolean = false,
   val processStarted: Boolean = true,
   val mcpStartupObserved: Boolean = false,

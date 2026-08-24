@@ -16,24 +16,36 @@ data class ReviewAccountingRecord(
 }
 
 private fun requireBoundedAccountingPayload(payload: Map<String, Any?>) {
-  val topKeys = setOf(
-    "contract_version", "kind", "review_id", "packet_digest", "parent", "lanes", "aggregate_counters",
-    "aggregate_direct_usage", "aggregate_inclusive_usage", "budget_regression",
-  )
+  val legacy = payload["contract_version"] == LEGACY_REVIEW_CONTEXT_CONTRACT_VERSION
+  val topKeys = if (legacy) {
+    setOf(
+      "contract_version", "kind", "review_id", "packet_digest", "parent", "lanes", "aggregate_counters",
+      "aggregate_direct_usage", "aggregate_inclusive_usage", "budget_regression",
+    )
+  } else {
+    setOf("contract_version", "kind", "review_id", "packet_digest", "parent", "lanes", "aggregate_counters")
+  }
   require(payload.keys - COMMIT_FOCUSED_KEYS == topKeys) {
     "Review accounting must match the bounded projection contract."
   }
   COMMIT_FOCUSED_KEYS.forEach { key ->
     payload[key]?.let { require(it is Map<*, *>) { "Review accounting '$key' must be an object when present." } }
   }
-  require(payload["contract_version"] == REVIEW_CONTEXT_CONTRACT_VERSION && payload["kind"] == "accounting_summary")
+  require(
+    payload["contract_version"] in setOf(REVIEW_CONTEXT_CONTRACT_VERSION, LEGACY_REVIEW_CONTEXT_CONTRACT_VERSION) &&
+      payload["kind"] == "accounting_summary",
+  )
   require(payload["review_id"] is String && payload["packet_digest"] is String)
-  requireAccountingNode(payload["parent"])
-  require((payload["lanes"] as? List<*>)?.all { runCatching { requireAccountingNode(it) }.isSuccess } == true)
+  requireAccountingNode(payload["parent"], legacy)
+  require(
+    (payload["lanes"] as? List<*>)?.all { runCatching { requireAccountingNode(it, legacy) }.isSuccess } == true,
+  )
   requireCounters(payload["aggregate_counters"])
-  requireUsage(payload["aggregate_direct_usage"], ownershipRequired = false)
-  requireUsage(payload["aggregate_inclusive_usage"], ownershipRequired = false)
-  require(payload["budget_regression"] is Boolean)
+  if (legacy) {
+    requireUsage(payload["aggregate_direct_usage"], ownershipRequired = false)
+    requireUsage(payload["aggregate_inclusive_usage"], ownershipRequired = false)
+    require(payload["budget_regression"] is Boolean)
+  }
 }
 
 // Commit-focused sequencing adds these three sections; absent (or null) on a review that carried no
@@ -41,21 +53,22 @@ private fun requireBoundedAccountingPayload(payload: Map<String, Any?>) {
 private val COMMIT_FOCUSED_KEYS =
   setOf("commit_routing_accounting", "parent_analysis_consumption", "integration")
 
-private fun requireAccountingNode(value: Any?) {
+private fun requireAccountingNode(value: Any?, legacy: Boolean) {
   val node = value as? Map<*, *> ?: error("Review accounting node must be an object.")
   val keys = setOf(
     "lane", "assignment_digest", "launch_bytes", "evidence_bytes", "result_bytes", "expansions",
-    "tool_calls", "model_turns", "inclusive_counters", "provider_usage", "direct_usage", "inclusive_usage",
-    "terminal_outcome",
-  )
+    "tool_calls", "model_turns", "inclusive_counters", "terminal_outcome",
+  ) + if (legacy) setOf("provider_usage", "direct_usage", "inclusive_usage") else emptySet()
   require(node.keys.containsAll(keys))
   require(BUNDLE_KEYS.containsAll(node.keys - keys))
   require(node["lane"] is String && node["assignment_digest"] is String && node["terminal_outcome"] is String)
   COUNTER_KEYS.forEach { key -> require((node[key] as? Number)?.toLong()?.let { it >= 0 } == true) }
   requireCounters(node["inclusive_counters"])
-  requireUsage(node["provider_usage"], ownershipRequired = true)
-  requireUsage(node["direct_usage"], ownershipRequired = false)
-  requireUsage(node["inclusive_usage"], ownershipRequired = false)
+  if (legacy) {
+    requireUsage(node["provider_usage"], ownershipRequired = true)
+    requireUsage(node["direct_usage"], ownershipRequired = false)
+    requireUsage(node["inclusive_usage"], ownershipRequired = false)
+  }
   requireBundleAccounting(node)
 }
 
@@ -115,3 +128,5 @@ private fun requireUsage(value: Any?, ownershipRequired: Boolean) {
   require(tokenCounts.all { (it as? Number)?.toLong()?.let { count -> count >= 0 } == true })
   if (ownershipRequired) require(usage["ownership"] in setOf("direct", "inclusive"))
 }
+
+private const val LEGACY_REVIEW_CONTEXT_CONTRACT_VERSION: String = "2.1"

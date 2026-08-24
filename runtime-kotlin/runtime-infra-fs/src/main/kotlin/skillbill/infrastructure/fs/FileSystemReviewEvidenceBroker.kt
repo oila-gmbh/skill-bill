@@ -20,7 +20,6 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPo
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocatorReadRequest
 import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewChangedHunk
@@ -349,20 +348,6 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
   @Synchronized
   override fun hasObservedLaneResult(): Boolean = laneResultObserved
-
-  @Synchronized
-  override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? {
-    val outcome = ReviewBudgetEvaluator.providerUsageOutcome(
-      identity,
-      budget.providerTokenThresholds,
-      usage,
-      enforceable,
-    ) ?: return null
-    // A non-enforceable excess is observed only after the worker exited, so it is reported without
-    // becoming the lane's terminal state.
-    if (outcome.enforceable) terminalOutcome = outcome
-    return outcome
-  }
 
   @Synchronized
   override fun accounting(): ReviewLaneAccounting {

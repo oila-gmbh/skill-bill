@@ -27,7 +27,6 @@ data class ReviewAccountingInput(
   val lane: String,
   val assignmentDigest: String,
   val counters: ReviewAccountingCounters = ReviewAccountingCounters(),
-  val usage: ProviderTokenUsage = ProviderTokenUsage(),
   val terminalOutcome: String = "completed",
   val bundleCompositionDigest: String? = null,
   val segmentAccounting: List<ReviewLaneSegmentAccounting> = emptyList(),
@@ -46,10 +45,6 @@ data class ReviewAccountingNode(
   val counters: ReviewAccountingCounters,
   /** This session's counters plus every descendant's, each counted once. */
   val inclusiveCounters: ReviewAccountingCounters,
-  /** The provider report exactly as observed, including its ownership declaration. */
-  val providerUsage: ProviderTokenUsage,
-  val directUsage: ProviderTokenUsage,
-  val inclusiveUsage: ProviderTokenUsage,
   val terminalOutcome: String,
   /** Bundle composition this lane actually reviewed, so result records preserve it. */
   val bundleCompositionDigest: String?,
@@ -107,7 +102,6 @@ data class ReviewIntegrationAccounting(
   val summarizedLaneCount: Int,
   val findingCount: Int,
   val counters: ReviewAccountingCounters = ReviewAccountingCounters(),
-  val usage: ProviderTokenUsage = ProviderTokenUsage(),
   val skipReason: String? = null,
 ) {
   init {
@@ -129,9 +123,6 @@ data class ReviewAccountingSummary(
   val parent: ReviewAccountingNode,
   val lanes: List<ReviewAccountingNode>,
   val aggregateCounters: ReviewAccountingCounters,
-  val aggregateDirectUsage: ProviderTokenUsage,
-  val aggregateInclusiveUsage: ProviderTokenUsage,
-  val budgetRegression: Boolean,
   val commitRouting: ReviewCommitRoutingAccounting? = null,
   val parentAnalysis: ReviewParentAnalysisConsumption? = null,
   /** Null only when no integration state was settled at all, never as a stand-in for "clean". */

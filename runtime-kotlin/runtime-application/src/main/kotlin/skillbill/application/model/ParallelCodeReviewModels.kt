@@ -3,7 +3,6 @@ package skillbill.application.model
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBudgetOutcome
@@ -117,7 +116,6 @@ data class ParallelReviewLaneStatus(
   val success: Boolean,
   val failureReason: String? = null,
   val droppedCandidateDiagnostic: String? = null,
-  val tokenUsage: ProviderTokenUsage? = null,
   val budgetOutcome: ReviewBudgetOutcome? = null,
   val accounting: ReviewLaneAccounting? = null,
   val specialistAccounting: List<ReviewLaneAccounting> = accounting?.let(::listOf) ?: emptyList(),

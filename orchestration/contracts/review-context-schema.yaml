@@ -308,7 +308,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, commit_units, commit_sequence_digest, coverage_fact, routing_matrix, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger, baseline_untracked_policy]
     properties:
-      contract_version: { const: "2.1" }
+      contract_version: { const: "2.2" }
       kind: { const: parent_packet }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -347,7 +347,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, assigned_bundle, lane_routing, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions, baseline_untracked_policy]
     properties:
-      contract_version: { const: "2.1" }
+      contract_version: { const: "2.2" }
       kind: { const: assignment }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -372,7 +372,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_commit_units, lane_routing, coverage_fact, bundle, criteria_references, matched_rules, evidence_targets, dependency_allowlist, baseline_untracked_policy, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "2.1" }
+      contract_version: { const: "2.2" }
       kind: { const: launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -434,7 +434,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, review_revision, commit_sequence_digest, base_revision, head_revision, integration_contract, consumer_contract, commit_units, specialist_summaries, coverage_fact, final_state_evidence_targets, dependency_allowlist, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "2.1" }
+      contract_version: { const: "2.2" }
       kind: { const: integration_launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -523,7 +523,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, review_revision, finding, cited_region, delta_reference, evidence_surface_rules, dependency_allowlist, forbidden_rediscovery, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "2.1" }
+      contract_version: { const: "2.2" }
       kind: { const: verification_launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -542,7 +542,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, review_revision, finding, stage_1_verdict, spec_intent_projection, cited_region, evidence_surface_rules, dependency_allowlist, forbidden_rediscovery, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "2.1" }
+      contract_version: { const: "2.2" }
       kind: { const: adjudication_launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -562,7 +562,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, stage, finding_ref, claim_verdict, recorded_at]
     properties:
-      contract_version: { const: "2.1" }
+      contract_version: { const: "2.2" }
       kind: { const: finding_verdict }
       stage: { enum: [verification, adjudication] }
       finding_ref: { $ref: "#/$defs/identifier" }
@@ -613,7 +613,7 @@ $defs:
   budget:
     type: object
     additionalProperties: false
-    required: [max_parent_packet_bytes, max_lane_launch_bytes, max_lane_evidence_bytes, max_evidence_result_bytes, max_lane_result_bytes, max_assignment_expansions, max_specialist_tool_calls, max_specialist_model_turns, max_routing_analysis_pairs, max_routing_analysis_bytes, provider_token_thresholds]
+    required: [max_parent_packet_bytes, max_lane_launch_bytes, max_lane_evidence_bytes, max_evidence_result_bytes, max_lane_result_bytes, max_assignment_expansions, max_specialist_tool_calls, max_specialist_model_turns, max_routing_analysis_pairs, max_routing_analysis_bytes]
     properties:
       max_parent_packet_bytes: { type: integer, minimum: 1 }
       max_lane_launch_bytes: { type: integer, minimum: 1 }
@@ -625,51 +625,28 @@ $defs:
       max_specialist_model_turns: { type: integer, minimum: 1 }
       max_routing_analysis_pairs: { type: integer, minimum: 1 }
       max_routing_analysis_bytes: { type: integer, minimum: 1 }
-      provider_token_thresholds: { $ref: "#/$defs/provider_token_thresholds" }
-  provider_token_thresholds:
-    type: object
-    additionalProperties: false
-    required: [input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens]
-    properties:
-      input_tokens: { type: integer, minimum: 1 }
-      cached_input_tokens: { type: integer, minimum: 1 }
-      output_tokens: { type: integer, minimum: 1 }
-      reasoning_tokens: { type: integer, minimum: 1 }
-      total_tokens: { type: integer, minimum: 1 }
   budget_outcome:
     type: object
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, terminal_outcome, budget_kind, configured_limit, observed_value, enforceable]
     properties:
-      contract_version: { const: "2.1" }
+      contract_version: { const: "2.2" }
       kind: { const: budget_outcome }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
       assignment_digest: { $ref: "#/$defs/digest" }
       lane: { $ref: "#/$defs/identifier" }
-      terminal_outcome: { enum: [review_context_budget_exceeded, budget_regression] }
+      terminal_outcome: { const: review_context_budget_exceeded }
       budget_kind: { $ref: "#/$defs/identifier" }
       configured_limit: { type: integer, minimum: 0 }
       observed_value: { type: integer, minimum: 0 }
       enforceable: { type: boolean }
-  usage:
-    type: object
-    additionalProperties: false
-    minProperties: 0
-    properties:
-      input_tokens: { type: integer, minimum: 0 }
-      cached_input_tokens: { type: integer, minimum: 0 }
-      output_tokens: { type: integer, minimum: 0 }
-      reasoning_tokens: { type: integer, minimum: 0 }
-      total_tokens: { type: integer, minimum: 0 }
-      fresh_token_approximation: { type: integer, minimum: 0 }
-      ownership: { enum: [direct, inclusive] }
   accounting_summary:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, parent, lanes, commit_routing_accounting, parent_analysis_consumption, integration, aggregate_counters, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
+    required: [contract_version, kind, review_id, packet_digest, parent, lanes, commit_routing_accounting, parent_analysis_consumption, integration, aggregate_counters]
     properties:
-      contract_version: { const: "2.1" }
+      contract_version: { const: "2.2" }
       kind: { const: accounting_summary }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -687,9 +664,6 @@ $defs:
           - { type: "null" }
           - { $ref: "#/$defs/integration_accounting" }
       aggregate_counters: { $ref: "#/$defs/accounting_counters" }
-      aggregate_direct_usage: { $ref: "#/$defs/usage" }
-      aggregate_inclusive_usage: { $ref: "#/$defs/usage" }
-      budget_regression: { type: boolean }
   # Commit-sequence identity plus the routing shape the parent decided before any worker launched.
   commit_routing_accounting:
     type: object
@@ -724,7 +698,7 @@ $defs:
   integration_accounting:
     type: object
     additionalProperties: false
-    required: [commit_sequence_digest, terminal_outcome, summarized_lane_count, finding_count, counters, usage]
+    required: [commit_sequence_digest, terminal_outcome, summarized_lane_count, finding_count, counters]
     properties:
       commit_sequence_digest: { $ref: "#/$defs/commit_sequence_digest" }
       terminal_outcome:
@@ -733,7 +707,6 @@ $defs:
       summarized_lane_count: { type: integer, minimum: 0 }
       finding_count: { type: integer, minimum: 0 }
       counters: { $ref: "#/$defs/accounting_counters" }
-      usage: { $ref: "#/$defs/usage" }
     allOf:
       - if:
           properties:
@@ -757,7 +730,7 @@ $defs:
   accounting_node:
     type: object
     additionalProperties: false
-    required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns, inclusive_counters, provider_usage, direct_usage, inclusive_usage, terminal_outcome]
+    required: [lane, assignment_digest, launch_bytes, evidence_bytes, result_bytes, expansions, tool_calls, model_turns, inclusive_counters, terminal_outcome]
     properties:
       lane: { $ref: "#/$defs/identifier" }
       assignment_digest: { $ref: "#/$defs/digest" }
@@ -768,16 +741,8 @@ $defs:
       tool_calls: { type: integer, minimum: 0 }
       model_turns: { type: integer, minimum: 0 }
       inclusive_counters: { $ref: "#/$defs/accounting_counters" }
-      provider_usage:
-        allOf:
-          - { $ref: "#/$defs/usage" }
-          - type: object
-            properties:
-              ownership: { enum: [direct, inclusive] }
-      direct_usage: { $ref: "#/$defs/usage" }
-      inclusive_usage: { $ref: "#/$defs/usage" }
       terminal_outcome:
-        enum: [completed, incomplete, review_context_budget_exceeded, budget_regression, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, forbidden_operation, partial_failure, no_op_resume, register_absent]
+        enum: [completed, incomplete, review_context_budget_exceeded, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, forbidden_operation, partial_failure, no_op_resume, register_absent]
       bundle_composition_digest: { $ref: "#/$defs/digest" }
       segment_accounting:
         type: array
@@ -809,11 +774,8 @@ x-coherence-checks:
   - Expansion records reference an assignment_digest that exists in the current review.
   - Expansion records are excluded from the digest inputs of the assignment and packet they reference, so recording an expansion leaves assignment_digest and packet_digest unchanged.
   - An assignment records no more expansions than max_assignment_expansions allows.
-  - A budget_regression terminal_outcome is reported only for a non-enforceable provider dimension observed after the worker exited, and is never enforceable.
   - Specialist tool calls and model turns are measured at the broker seam and terminate the lane with review_context_budget_exceeded once their budget is passed.
   - A register_absent terminal_outcome is reported only for a lane that returned output carrying neither a findings register nor the explicit no-findings token, so an unexecuted review is never accounted as a clean completion.
-  - Every inclusive usage value equals the node's direct usage plus each child node's direct usage exactly once.
-  - Aggregate direct usage sums direct ownership only; aggregate inclusive usage is the parent root and nested sessions are never added twice.
   - Hunk ids are content-addressed over path, spans, and normalized content, not positional.
   - Parent-packet, assignment, and launch envelopes never accept inlined hunk bodies; changed_hunks and launch bundle entries are index-only.
   - Commit units partition the parent packet's changed_hunks exactly once, with contiguous order indices from zero.

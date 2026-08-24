@@ -415,13 +415,13 @@ class ReviewContextSchemaValidatorTest {
     }
   }
 
-  @Test fun `projected envelopes carry contract version 2_1`() {
+  @Test fun `projected envelopes carry contract version 2_2`() {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, packet.toParentPacketEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, assignment.toAssignmentEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, launch.toLaunchEnvelope().asWireMap()["contract_version"])
-    assertEquals("2.1", REVIEW_CONTEXT_CONTRACT_VERSION)
+    assertEquals("2.2", REVIEW_CONTEXT_CONTRACT_VERSION)
   }
 
   @Test fun `a 1_0 envelope fails with a typed version mismatch naming both versions`() {
@@ -431,7 +431,7 @@ class ReviewContextSchemaValidatorTest {
       ReviewContextSchemaValidator.validateParentPacket(envelope, "packet")
     }
     assertTrue("1.0" in failure.reason)
-    assertTrue("2.1" in failure.reason)
+    assertTrue("2.2" in failure.reason)
   }
 
   @Test fun `incomplete launch bundle without budget dimension is rejected`() {
@@ -445,6 +445,19 @@ class ReviewContextSchemaValidatorTest {
     bundle["unreviewed_segment_ids"] = listOf("unreviewable")
     bundle.remove("budget_dimension")
     envelope["bundle"] = bundle
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateLaunch(envelope, "launch")
+    }
+  }
+
+  @Test fun `retired provider budget fields are rejected`() {
+    val launch =
+      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
+    val budget = requireNotNull(JsonSupport.anyToStringAnyMap(envelope["budget"])).toMutableMap()
+    budget["provider_token_thresholds"] = mapOf("total_tokens" to 1)
+    envelope["budget"] = budget
+
     assertFailsWith<InvalidReviewContextSchemaError> {
       ReviewContextSchemaValidator.validateLaunch(envelope, "launch")
     }
@@ -681,13 +694,6 @@ class ReviewContextSchemaValidatorTest {
     "max_specialist_model_turns" to 1,
     "max_routing_analysis_pairs" to 1,
     "max_routing_analysis_bytes" to 1,
-    "provider_token_thresholds" to mapOf(
-      "input_tokens" to 1,
-      "cached_input_tokens" to 1,
-      "output_tokens" to 1,
-      "reasoning_tokens" to 1,
-      "total_tokens" to 1,
-    ),
   )
 
   private companion object {

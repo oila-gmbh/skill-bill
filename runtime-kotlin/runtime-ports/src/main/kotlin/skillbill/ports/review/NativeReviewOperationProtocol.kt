@@ -5,7 +5,6 @@ import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
 
@@ -25,8 +24,6 @@ interface NativeReviewOperationProtocol {
   /** Called synchronously for decoded lane-result content. A non-null result forbids further work. */
   fun laneResultChunk(chunk: String): ReviewBudgetOutcome?
 
-  /** Called synchronously for an in-flight usage update. A non-null result forbids further work. */
-  fun providerUsage(usage: ProviderTokenUsage): ReviewBudgetOutcome?
 }
 
 class BrokerBackedNativeReviewOperationProtocol(
@@ -38,6 +35,4 @@ class BrokerBackedNativeReviewOperationProtocol(
   override fun tool(call: ReviewToolCall): ReviewToolCallResult = broker.recordToolCall(call)
   override fun modelTurn(): ReviewBudgetOutcome? = broker.recordModelTurn()
   override fun laneResultChunk(chunk: String): ReviewBudgetOutcome? = broker.observeLaneResultChunk(chunk)
-  override fun providerUsage(usage: ProviderTokenUsage): ReviewBudgetOutcome? =
-    broker.evaluateProviderUsage(usage, enforceable = true)
 }

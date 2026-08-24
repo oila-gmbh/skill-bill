@@ -162,12 +162,8 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(RepoLocalConfig.NO_PARALLEL_AGENT, config.codeReviewParallelAgent)
   }
 
-  /**
-   * The accepted key set is the contract: every key here is parsed and consumed by an active review
-   * path, and anything outside it is rejected by the sibling unknown-key case rather than ignored.
-   */
   @Test
-  fun `review context budget accepts exactly the consumed key set`() {
+  fun `review context budget accepts retained and retired keys`() {
     val repoRoot = writeConfig(
       """
       review_context_budget:
@@ -202,11 +198,6 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(30, budget.maxSpecialistModelTurns)
     assertEquals(1_024, budget.maxRoutingAnalysisPairs)
     assertEquals(2_048_000, budget.maxRoutingAnalysisBytes)
-    assertEquals(41_000, budget.providerTokenThresholds.inputTokens)
-    assertEquals(31_000, budget.providerTokenThresholds.cachedInputTokens)
-    assertEquals(9_000, budget.providerTokenThresholds.outputTokens)
-    assertEquals(11_000, budget.providerTokenThresholds.reasoningTokens)
-    assertEquals(57_000, budget.providerTokenThresholds.totalTokens)
   }
 
   @Test
@@ -261,8 +252,6 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(1, budget.maxAssignmentExpansions)
     assertEquals(ReviewContextBudgetPolicy.DEFAULT.maxRoutingAnalysisPairs, budget.maxRoutingAnalysisPairs)
     assertEquals(ReviewContextBudgetPolicy.DEFAULT.maxRoutingAnalysisBytes, budget.maxRoutingAnalysisBytes)
-    assertEquals(40_000, budget.providerTokenThresholds.inputTokens)
-    assertEquals(100_000, budget.providerTokenThresholds.totalTokens)
   }
 
   @Test
@@ -299,7 +288,6 @@ class FileSystemRepoLocalConfigTest {
       "review_context_budget: null",
       "review_context_budget:\n  max_lane_launch_bytes: 1.5",
       "review_context_budget:\n  max_assignment_expansions: 2147483648",
-      "review_context_budget:\n  provider_token_thresholds: null",
       "review_context_budget:\n  max_lane_launch_bytes: null",
     ).forEach { content ->
       val repoRoot = writeConfig(content)

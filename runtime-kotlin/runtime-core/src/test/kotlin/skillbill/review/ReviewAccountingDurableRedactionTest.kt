@@ -18,7 +18,6 @@ import skillbill.infrastructure.sqlite.review.reviewFinishedPayload
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
-import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.model.ReviewSummary
 import java.nio.file.Files
@@ -156,7 +155,29 @@ class ReviewAccountingDurableRedactionTest {
       upsertReviewAccounting(connection, ReviewAccountingRecord(REVIEW_RUN_ID, summary.packetDigest, current))
       val regenerated = assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
       assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, regenerated.boundedPayload["contract_version"])
-      assertEquals("2.1", regenerated.boundedPayload["contract_version"])
+      assertEquals("2.2", regenerated.boundedPayload["contract_version"])
+    }
+  }
+
+  @Test fun `a legacy accounting row with retired usage fields remains readable`() {
+    withConnection { connection ->
+      val summary = recordedReview().second
+      val legacy = legacyAccountingPayload(summary.toBoundedPayload())
+      connection.prepareStatement(
+        """
+        INSERT INTO review_accounting (review_id, packet_digest, bounded_payload_json, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(1, REVIEW_RUN_ID)
+        statement.setString(2, summary.packetDigest)
+        statement.setString(3, JsonSupport.mapToJsonString(legacy))
+        statement.executeUpdate()
+      }
+
+      val loaded = assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
+      assertEquals("2.1", loaded.boundedPayload["contract_version"])
+      assertEquals(JsonSupport.mapToJsonString(legacy), storedAccountingJson(connection))
     }
   }
 
@@ -217,7 +238,6 @@ class ReviewAccountingDurableRedactionTest {
         response = {
           RecordedWorkerResponse(
             stdout = toolOutputBody,
-            usage = ProviderTokenUsage(1_000, 400, 200, 50, 1_200),
           )
         },
         rubricBody = { rubricBody },
@@ -266,6 +286,35 @@ class ReviewAccountingDurableRedactionTest {
       }
     }
     return LinkedHashMap(current).apply { put("lanes", lanes) }
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun legacyAccountingPayload(current: Map<String, Any?>): Map<String, Any?> {
+    val usage = mapOf("input_tokens" to 1L, "ownership" to "direct")
+    val legacyNodes = (current["lanes"] as List<Map<String, Any?>>).map { lane ->
+      LinkedHashMap(lane).apply {
+        put("provider_usage", usage)
+        put("direct_usage", usage)
+        put("inclusive_usage", usage)
+      }
+    }
+    val parent = LinkedHashMap(current["parent"] as Map<String, Any?>).apply {
+      put("provider_usage", usage)
+      put("direct_usage", usage)
+      put("inclusive_usage", usage)
+    }
+    val integration = (current["integration"] as Map<String, Any?>?)?.let {
+      LinkedHashMap(it).apply { put("usage", emptyMap<String, Any?>()) }
+    }
+    return LinkedHashMap(current).apply {
+      put("contract_version", "2.1")
+      put("parent", parent)
+      put("lanes", legacyNodes)
+      put("aggregate_direct_usage", emptyMap<String, Any?>())
+      put("aggregate_inclusive_usage", emptyMap<String, Any?>())
+      put("budget_regression", false)
+      put("integration", integration)
+    }
   }
 
   @Suppress("UNCHECKED_CAST")
