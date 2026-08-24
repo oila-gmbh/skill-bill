@@ -61,10 +61,10 @@ loud failures.
 
 Present the returned `gate_block` as a concise human-readable summary. Include
 the issue key, feature name, child agent, review settings, add-ons, expected
-first runnable subtask, and each subtask with its status and dependencies. Do
-not print the raw JSON or expose internal field names. Ask exactly one question:
-whether to proceed. Do not launch while unconfirmed. If the user declines,
-stop.
+first runnable subtask, and each subtask with its status and dependencies.
+Do not print the raw JSON or expose internal field names. Ask exactly one
+question: whether to proceed. Do not launch while unconfirmed. If the user
+declines, stop.
 
 ## Rehydrate
 
