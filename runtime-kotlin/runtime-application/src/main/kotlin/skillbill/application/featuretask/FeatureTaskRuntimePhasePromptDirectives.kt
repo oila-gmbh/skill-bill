@@ -34,8 +34,8 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
     that is already applied as a no-op and NEVER blindly re-apply it (no duplicated edits, appended
     blocks, or re-created files). This phase may be re-entered or resumed after a crash, so it must
     be safe to run again: reconciling to target, not re-applying from scratch. Before finishing,
-    verify every changed file is at its intended state and report that reconciled end-state in
-    produced_outputs (see the reconciliation report in the required output below).
+    verify every changed file is at its intended state; the runtime compares the repository against
+    its resolved checkpoint after this phase.
   """.trimIndent()
 }
 
@@ -169,13 +169,9 @@ internal fun implementationContinuationDirective(
 ): String {
   if (continuation == null || continuation.phaseId != phaseId) return ""
   val closed = continuation.completedTaskIds.takeIf { it.isNotEmpty() }?.joinToString() ?: "none"
-  val paths = continuation.changedPaths.takeIf { it.isNotEmpty() }?.joinToString() ?: "none recorded"
   val deviations = continuation.deviations.takeIf { it.isNotEmpty() }
     ?.joinToString("; ") { "${it.ref}: ${it.note}" } ?: "none"
   val unresolved = continuation.unresolvedItems.takeIf { it.isNotEmpty() }?.joinToString("; ") ?: "none"
-  val reconciliation = continuation.reconciliationEvidence
-    ?.let { "reconciled=${it.reconciled}; ${it.evidence}" } ?: "not reported"
-  val checkpoint = continuation.repositoryCheckpoint?.fingerprint ?: "not reported"
   val disposition = continuation.failureDisposition ?: "none"
   return """
     ## Continue this implementation — segment ${continuation.segmentNumber}
@@ -190,11 +186,8 @@ internal fun implementationContinuationDirective(
 
     Prior receipt:
     - completed ${continuation.obligationNoun} ids: $closed
-    - changed paths: $paths
     - deviations: $deviations
     - unresolved items: $unresolved
-    - reconciliation evidence: $reconciliation
-    - repository checkpoint: $checkpoint
     - failure disposition: $disposition
 
     Your receipt for this segment must list every ${continuation.obligationNoun} that is closed once
@@ -368,9 +361,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "idempotency contract below. Emit produced_outputs carrying the bounded implementation receipt " +
     "(projection_kind \"implementation_receipt\", contract_version " +
     "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\": completed_task_ids, " +
-    "normalized changed_paths, " +
-    "tests_added, tests_updated, deviations, unresolved_items, " +
-    "and reconciliation_evidence). repository_checkpoint is runtime-owned: omit it and never invent a\n" +
+    "tests_added, tests_updated, deviations, and unresolved_items). Runtime-owned paths, checkpoints, " +
+    "and reconciliation evidence are added after settlement; never invent them.\n" +
     "      fingerprint. Every receipt field is a bounded summary, not a transcript: a segment that " +
     "applied no edits reports that it applied none, names what already satisfied the work, and " +
     "stops — the audit re-reads the tree " +

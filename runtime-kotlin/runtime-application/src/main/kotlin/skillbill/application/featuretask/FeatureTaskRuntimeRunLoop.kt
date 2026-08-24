@@ -20,6 +20,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleRes
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
+import skillbill.application.goalrunner.GoalSubtaskReviewImport
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
@@ -123,6 +124,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
+import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
@@ -413,7 +415,7 @@ internal class FeatureTaskRuntimeRunLoop(
   @Suppress("CyclomaticComplexMethod")
   private fun advance(phaseId: String): PhaseSettlement {
     phaseEntryBlockReason(phaseId)?.let { reason ->
-      blockAt(phaseId, reason)
+      blockDurablyAt(phaseId, reason)
       return PhaseSettlement.stop()
     }
     if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(request)) {
@@ -450,7 +452,7 @@ internal class FeatureTaskRuntimeRunLoop(
         // A phase that paused already owns the report. Recording a block over it would hand a
         // terminal blocked reason to every consumer that reads the blocked report directly, which is
         // exactly the collapse a resumable pause exists to avoid.
-        if (paused == null) blockAt(phaseId, reason)
+        if (paused == null) blockDurablyAt(phaseId, reason)
         PhaseSettlement.stop()
       }
       else -> PhaseSettlement.completed(phaseId, state.verdictFor(phaseId))
@@ -497,37 +499,93 @@ internal class FeatureTaskRuntimeRunLoop(
   }.fold(
     onSuccess = { reviewState ->
       when {
-        reviewState == null -> "Goal-subtask review state is missing while reconciling a completed review pass."
+        reviewState == null -> runtimeOwnedRecoveryFailure(
+          expected = "durable goal-subtask review state",
+          actual = "absent",
+          cause = "review state is missing while reconciling a completed review pass",
+        )
         reviewState.reservedPassNumber != null -> reconcileReservedGoalReviewOutput(phaseId)
         else -> null
       }
     },
     onFailure = { error ->
-      "Goal-subtask review state is malformed while reconciling a completed review pass: ${error.message.orEmpty()}"
+      runtimeOwnedRecoveryFailure(
+        expected = "readable durable goal-subtask review state",
+        actual = "read_error",
+        cause = "review state is malformed while reconciling a completed review pass: " +
+          error.message.orEmpty(),
+      )
     },
   )
 
-  private fun reconcileReservedGoalReviewOutput(phaseId: String): String? = state.outputFor(phaseId)?.payload
-    ?.let { output ->
-      runCatching {
-        outputValidator.validatePhaseOutput(output, sourceLabel = phaseId).requireAcceptedOutput(phaseId)
-      }.fold(
-        onSuccess = { accepted -> completeReservedGoalReviewPass(output, accepted.normalizedOutput.envelope) },
-        onFailure = { error ->
-          "Completed goal-subtask review output cannot reconcile its reserved pass: ${error.message.orEmpty()}"
-        },
-      )
-    }
-    ?: "Completed goal-subtask review has no durable output to reconcile its reserved pass."
+  private fun reconcileReservedGoalReviewOutput(phaseId: String): String? {
+    val output = state.outputFor(phaseId)?.payload ?: return runtimeOwnedRecoveryFailure(
+      expected = "durable completed goal-subtask review output",
+      actual = "absent",
+      cause = "completed goal-subtask review has no durable output to reconcile its reserved pass",
+    )
+    return runCatching {
+      outputValidator.validatePhaseOutput(output, sourceLabel = phaseId).requireAcceptedOutput(phaseId)
+    }.fold(
+      onSuccess = { accepted ->
+        runCatching {
+          completeReservedGoalReviewPass(output, accepted.normalizedOutput.envelope)
+        }.getOrElse { error ->
+          runtimeOwnedRecoveryFailure(
+            expected = "readable and durably reconcilable goal-subtask review state",
+            actual = "read_error",
+            cause = error.message.orEmpty(),
+          )
+        }
+      },
+      onFailure = { error ->
+        runtimeOwnedRecoveryFailure(
+          expected = "valid durable completed goal-subtask review output",
+          actual = "read_error",
+          cause = "completed goal-subtask review output cannot reconcile its reserved pass: " +
+            error.message.orEmpty(),
+        )
+      },
+    )
+  }
+
+  private fun runtimeOwnedRecoveryFailure(expected: String, actual: String, cause: String): String {
+    recordRuntimeOwnedFactUnavailable(
+      seam = "FeatureTaskRuntimeRunLoop.reconcileCompletedGoalReviewPass",
+      expected = expected,
+      actual = actual,
+      cause = cause,
+    )
+    return cause
+  }
 
   private fun completeReservedGoalReviewPass(output: String, outputMap: Map<String, Any?>): String? {
-    val recordedVerdicts = recorder.recordedFindingVerdicts(outputMap, request.dbPathOverride)
-    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap, recordedVerdicts)
+    val reviewImport = resolveRuntimeOwnedReviewImport(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      "claims are missing while reconciling the reserved pass",
+    ) ?: return "Completed goal-subtask review cannot reconcile without its runtime-owned review import."
+    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, request.dbPathOverride)
+    val findings = GoalSubtaskReviewSummaryReducer.fromImport(reviewImport, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
+    val reviewState = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
+      ?: return runtimeOwnedRecoveryFailure(
+        expected = "durable goal-subtask review state",
+        actual = "absent",
+        cause = "completed goal-subtask review cannot reconcile without its runtime-owned review state",
+      )
+    val resolvedTier = FeatureTaskRuntimeReviewPassSequence.modeForPass(
+      reviewState.codeReviewMode,
+      reviewState.reservedPassNumber ?: 1,
+    )
+    val commitFocusedAccounting = FeatureTaskRuntimeReviewEnvelope.commitFocusedAccounting(outputMap, resolvedTier)
+    if (commitFocusedAccounting == null) {
+      recordCommitFocusedAccountingAbsence()
+    }
     return if (
       goalContinuationRecorder.completeGoalReviewPass(
         request = GoalReviewPassCompletionRequest(
           workflowId = request.workflowId,
+          reviewRunId = reviewImport.reviewRunId,
           verdict = outcome.verdict,
           unresolvedFindingCount = outcome.unresolvedFindingCount,
           findings = findings,
@@ -537,12 +595,16 @@ internal class FeatureTaskRuntimeRunLoop(
             outputMap,
             priorBlockerFindingIds(),
           ),
-          commitFocusedAccounting = GoalSubtaskReviewSummaryReducer.commitFocusedAccounting(outputMap),
+          commitFocusedAccounting = commitFocusedAccounting,
         ),
         dbOverride = request.dbPathOverride,
       ) == null
     ) {
-      "Completed goal-subtask review could not persist its reserved pass."
+      runtimeOwnedRecoveryFailure(
+        expected = "durably completed goal-subtask review pass",
+        actual = "absent",
+        cause = "completed goal-subtask review could not persist its reserved pass",
+      )
     } else {
       null
     }
@@ -647,7 +709,7 @@ internal class FeatureTaskRuntimeRunLoop(
     } else {
       "Goal-subtask review pass budget is exhausted but its durable raw review result is malformed: $detail"
     }
-    blockAt(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, reason)
+    blockDurablyAt(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, reason)
     return PhaseSettlement.stop()
   }
 
@@ -665,7 +727,7 @@ internal class FeatureTaskRuntimeRunLoop(
       pause.copy(grantConsumed = true, operatorDecision = null),
       request.dbPathOverride,
     )
-    blockAt(
+    blockDurablyAt(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
       "The operator chose abandon_subtask while the subtask was paused on the audit gap: ${pause.reason}",
     )
@@ -760,7 +822,7 @@ internal class FeatureTaskRuntimeRunLoop(
     } else {
       "The paused audit could not be settled from its carried-forward output: $detail"
     }
-    blockAt(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT, reason)
+    blockDurablyAt(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT, reason)
     return PhaseSettlement.stop()
   }
 
@@ -789,7 +851,7 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }.getOrElse { error ->
       if (error !is FeatureTaskRuntimePhaseOrderViolationError) throw error
-      blockAt(error.phaseId, error.message.orEmpty())
+      blockDurablyAt(error.phaseId, error.message.orEmpty())
       return null
     }
     val routed = FeatureTaskRuntimeQualityGateRouting.applyAfterBuild(
@@ -835,7 +897,7 @@ internal class FeatureTaskRuntimeRunLoop(
         !establishRemediationCheckpoint(phaseId, loopId) -> null
       loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
         !authoritativeAuditRepairPlanMatches(phaseId) -> {
-        blockAt(
+        blockDurablyAt(
           phaseId,
           "The accepted audit repair plan was not durably readable and identical before the audit_gap edge.",
         )
@@ -895,7 +957,11 @@ internal class FeatureTaskRuntimeRunLoop(
       return recordRemediationBaseIfNeeded(precedingPhaseId, loopId, commitSha = null, parentSha = null)
     }
     val head = phaseGates.gitOperations.currentBranch(request.repoRoot)
-    if (!head.ok || head.value.trim() != branch.trim()) {
+    if (!head.ok) {
+      blockCheckpoint(precedingPhaseId, branch, head.error, ::remediationCheckpointBlockedReason)
+      return false
+    }
+    if (head.value.trim() != branch.trim()) {
       return recordRemediationBaseIfNeeded(precedingPhaseId, loopId, commitSha = null, parentSha = null)
     }
     val scope = resolveCheckpointScope(precedingPhaseId, branch, ::remediationCheckpointBlockedReason) ?: return false
@@ -903,7 +969,7 @@ internal class FeatureTaskRuntimeRunLoop(
       is FeatureTaskRuntimeCheckpointDecision.Skip ->
         recordRemediationBaseIfNeeded(precedingPhaseId, loopId, commitSha = null, parentSha = null)
       is FeatureTaskRuntimeCheckpointDecision.Block -> {
-        blockAt(precedingPhaseId, scope.reason)
+        blockCheckpoint(precedingPhaseId, branch, scope.reason, ::remediationCheckpointBlockedReason)
         false
       }
       is FeatureTaskRuntimeCheckpointDecision.Stage -> {
@@ -1144,14 +1210,17 @@ internal class FeatureTaskRuntimeRunLoop(
       return true
     }
     val head = phaseGates.gitOperations.currentBranch(request.repoRoot)
-    if (!head.ok || head.value.trim() != branch.trim()) {
+    if (!head.ok) {
+      return blockCheckpoint(precedingPhaseId, branch, head.error, blockedReason)
+    }
+    if (head.value.trim() != branch.trim()) {
       return true
     }
     val scope = resolveCheckpointScope(precedingPhaseId, branch, blockedReason) ?: return false
     return when (scope) {
       is FeatureTaskRuntimeCheckpointDecision.Skip -> true
       is FeatureTaskRuntimeCheckpointDecision.Block -> {
-        blockAt(precedingPhaseId, scope.reason)
+        blockCheckpoint(precedingPhaseId, branch, scope.reason, blockedReason)
         false
       }
       is FeatureTaskRuntimeCheckpointDecision.Stage -> {
@@ -1182,9 +1251,32 @@ internal class FeatureTaskRuntimeRunLoop(
     branch: String,
     blockedReason: (String, String) -> String,
   ): FeatureTaskRuntimeCheckpointDecision? {
-    val resolved = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
-    val worktreeDelta = checkpointWorktreeDelta(resolved?.baselineOwnedPathsForCheckpoint().orEmpty())
+    val resolved = runCatching {
+      recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
+    }.getOrElse { error ->
+      return blockCheckpointScope(
+        precedingPhaseId,
+        branch,
+        error.message?.takeIf(String::isNotBlank) ?: "the resolved branch could not be read",
+        blockedReason,
+      )
+    }
       ?: return blockCheckpointScope(
+          precedingPhaseId,
+          branch,
+          "the resolved branch and owned-path baseline are absent",
+          blockedReason,
+        )
+    val worktreeDelta = runCatching {
+      checkpointWorktreeDelta(resolved.baselineOwnedPathsForCheckpoint())
+    }.getOrElse { error ->
+      return blockCheckpointScope(
+        precedingPhaseId,
+        branch,
+        error.message?.takeIf(String::isNotBlank) ?: "the owned-path inventory could not be read",
+        blockedReason,
+      )
+    } ?: return blockCheckpointScope(
         precedingPhaseId,
         branch,
         "the owned-path inventory could not be read",
@@ -1197,7 +1289,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val stagedPaths = staged.value.orEmpty().split(OWNED_PATH_DELIMITER)
       .map(String::trim)
       .filter(String::isNotBlank)
-    val persistedOwned = resolved?.workflowOwnedPaths.orEmpty()
+    val persistedOwned = resolved.workflowOwnedPaths
     // Governed feature specs a previous checkpoint already recorded as owned: the guard must not
     // re-report them as newly introduced, or the run hard-blocks forever on its own leftover state.
     val evictedFeatureSpecs = persistedOwned
@@ -1207,12 +1299,17 @@ internal class FeatureTaskRuntimeRunLoop(
       .filterNot { it in evictedFeatureSpecs }
     val writingIntroduced = writingPhaseIntroducedPaths(worktreeDelta)
     val seedOwned = (
-      resolved?.workflowOwnedPaths.orEmpty() +
+      resolved.workflowOwnedPaths +
         phaseWritten.takeIf { mayExtendOwnedInventory(precedingPhaseId) }.orEmpty() +
         writingIntroduced
       ).distinct()
     val deletedPaths = absorbableDeletedPaths(
-      deleted = checkpointDeletedPaths(),
+      deleted = checkpointDeletedPaths() ?: return blockCheckpointScope(
+        precedingPhaseId,
+        branch,
+        "the working-tree deletion inventory could not be read",
+        blockedReason,
+      ),
       ownedOrIntroduced = seedOwned + phaseWritten,
     )
     val ownedInventory = reconcileCheckpointPathInventory(
@@ -1230,12 +1327,29 @@ internal class FeatureTaskRuntimeRunLoop(
         .filterNot { path -> isFeatureSpecPathForIssue(path, request.issueKey) }
         .filterNot { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) },
     )
-    persistOwnedInventory(ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
+    if (!persistOwnedInventory(ownedInventory, resolved.workflowOwnedPaths)) {
+      return blockCheckpointScope(
+        precedingPhaseId,
+        branch,
+        "the workflow-owned path inventory could not be persisted",
+        blockedReason,
+      )
+    }
     checkpointOwnershipDecided = true
     // Nothing has been staged by this checkpoint yet, so every entry in the index arrived from
     // outside it. The scope decision keeps only the ones this run also owns: those are the genuinely
     // ambiguous overlaps. A purely foreign staged path is left alone, which is what lets a
     // concurrently prepared issue coexist without producing a false block.
+    val concurrentChanges = try {
+      concurrentlyModifiedOwnedPaths(precedingPhaseId, ownedInventory)
+    } catch (error: RuntimeOwnedFactUnavailable) {
+      return blockCheckpointScope(
+        precedingPhaseId,
+        branch,
+        error.message.orEmpty(),
+        blockedReason,
+      )
+    }
     return FeatureTaskRuntimeCheckpointScope.decide(
       FeatureTaskRuntimeCheckpointScopeInput(
         issueKey = request.issueKey,
@@ -1243,15 +1357,33 @@ internal class FeatureTaskRuntimeRunLoop(
         phaseIntroducedPaths = phaseWritten,
         worktreeDeltaPaths = worktreeDelta,
         foreignStagedPaths = stagedPaths,
-        concurrentlyModifiedOwnedPaths = concurrentlyModifiedOwnedPaths(precedingPhaseId, ownedInventory),
+        concurrentlyModifiedOwnedPaths = concurrentChanges,
         deletedPaths = deletedPaths,
       ),
     )
   }
 
-  private fun checkpointDeletedPaths(): List<String> {
-    val status = phaseGates.gitOperations.worktreeStatus(request.repoRoot)
-    if (!status.ok) return emptyList()
+  private fun checkpointDeletedPaths(): List<String>? {
+    val status = runCatching {
+      phaseGates.gitOperations.worktreeStatus(request.repoRoot)
+    }.getOrElse { error ->
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.checkpointDeletedPaths",
+        expected = "working-tree deletion inventory",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return null
+    }
+    if (!status.ok || status.value.isBlank() && status.error.isNotBlank()) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.checkpointDeletedPaths",
+        expected = "working-tree deletion inventory",
+        actual = "unavailable",
+        cause = status.error.ifBlank { "working-tree status returned no value" },
+      )
+      return null
+    }
     return FeatureTaskRuntimePhaseSafetyPolicy.deletedPaths(status.value.orEmpty())
   }
 
@@ -1341,9 +1473,28 @@ internal class FeatureTaskRuntimeRunLoop(
     return FeatureTaskRuntimeCheckpointScope.phaseWrittenPaths(worktreeDelta, manifest)
   }
 
-  private fun persistOwnedInventory(inventory: List<String>, persisted: List<String>) {
-    if (inventory.sorted() == persisted.sorted()) return
-    recorder.recordWorkflowOwnedPaths(request.workflowId, inventory, request.dbPathOverride)
+  private fun persistOwnedInventory(inventory: List<String>, persisted: List<String>): Boolean {
+    if (inventory.sorted() == persisted.sorted()) return true
+    val recorded = runCatching {
+      recorder.recordWorkflowOwnedPaths(request.workflowId, inventory, request.dbPathOverride)
+    }.getOrElse { error ->
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.persistOwnedInventory",
+        expected = "persisted workflow-owned path inventory",
+        actual = "unavailable",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      false
+    }
+    if (!recorded) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.persistOwnedInventory",
+        expected = "persisted workflow-owned path inventory",
+        actual = "absent",
+        cause = "workflow row could not be updated",
+      )
+    }
+    return recorded
   }
 
   /**
@@ -1356,8 +1507,28 @@ internal class FeatureTaskRuntimeRunLoop(
    */
   private fun concurrentlyModifiedOwnedPaths(phaseId: String, ownedPaths: List<String>): List<String> {
     val captured = phaseContentIdentities[phaseId] ?: return emptyList()
-    val current = phaseGates.gitOperations.pathContentIdentities(request.repoRoot, ownedPaths)
-    if (!current.ok) return emptyList()
+    val current = try {
+      phaseGates.gitOperations.pathContentIdentities(request.repoRoot, ownedPaths)
+    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.concurrentlyModifiedOwnedPaths",
+        expected = "current runtime-owned content identities",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      throw RuntimeOwnedFactUnavailable("Current runtime-owned content identities could not be read.")
+    }
+    if (!current.ok) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.concurrentlyModifiedOwnedPaths",
+        expected = "current runtime-owned content identities",
+        actual = "unavailable",
+        cause = current.error,
+      )
+      throw RuntimeOwnedFactUnavailable(
+        "Current runtime-owned content identities could not be read: ${current.error}",
+      )
+    }
     val now = parseContentIdentities(current.value.orEmpty())
     return captured.filter { (path, identity) -> path in now && now[path] != identity }.keys.sorted()
   }
@@ -1373,8 +1544,26 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun checkpointWorktreeDelta(baselineOwnedPaths: List<String>): List<String>? {
-    val owned = phaseGates.gitOperations.repositoryOwnedPaths(request.repoRoot)
-    if (!owned.ok) return null
+    val owned = try {
+      phaseGates.gitOperations.repositoryOwnedPaths(request.repoRoot)
+    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.checkpointWorktreeDelta",
+        expected = "runtime-owned path inventory",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return null
+    }
+    if (!owned.ok) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.checkpointWorktreeDelta",
+        expected = "runtime-owned path inventory",
+        actual = "unavailable",
+        cause = owned.error,
+      )
+      return null
+    }
     val baseline = baselineOwnedPaths.toSet()
     return owned.value.orEmpty()
       .split(OWNED_PATH_DELIMITER)
@@ -1605,7 +1794,7 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun blockRemediationBaseSha(precedingPhaseId: String, error: String): Boolean {
-    blockAt(
+    blockDurablyAt(
       precedingPhaseId,
       "Feature-task-runtime could not record the pre-fix remediation base sha before re-entering " +
         "implement_fix" + (if (error.isBlank()) "." else " ($error).") +
@@ -1854,7 +2043,7 @@ internal class FeatureTaskRuntimeRunLoop(
     error: String,
     blockedReason: (String, String) -> String,
   ): Boolean {
-    blockAt(precedingPhaseId, blockedReason(branch, error))
+    blockDurablyAt(precedingPhaseId, blockedReason(branch, error))
     return false
   }
 
@@ -2010,7 +2199,14 @@ internal class FeatureTaskRuntimeRunLoop(
         .firstOrNull { it.loopId == active.loopId }
         ?.let { edge -> phaseId in spanBetween(edge.destinationPhaseId, edge.fromPhaseId) } == true
     }?.copy(phaseId = phaseId, reentryGapCriteria = emptyList())
-    val outcome = runPhase(phaseId, request, state, observability, specSource, reentry, phaseTokenAccumulator)
+    val outcome = try {
+      runPhase(phaseId, request, state, observability, specSource, reentry, phaseTokenAccumulator)
+    } catch (error: RuntimeOwnedFactUnavailable) {
+      val reason = "Phase '$phaseId' could not establish a runtime-owned persistence fact: " +
+        error.message.orEmpty()
+      blockDurablyAt(phaseId, reason)
+      return reason
+    }
     outcome.regenerationTargetPhaseId?.let {
       // The launch seam quarantined an upstream record and requested regeneration. Do not record this
       // consumer as completed; signal advance() to settle it with the RECORD_REJECTED verdict so the
@@ -2173,6 +2369,83 @@ internal class FeatureTaskRuntimeRunLoop(
       completedPhaseIds = state.completedPhaseIds(),
       resolvedBranch = resolvedBranch,
     )
+  }
+
+  private fun blockDurablyAt(
+    phaseId: String,
+    reason: String,
+    failureDisposition: FeatureTaskRuntimeFailureDisposition =
+      FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+  ) {
+    val alreadyPersisted = runCatching {
+      (
+        recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+          ?.get(phaseId)
+          ?.let { it.status == STATUS_BLOCKED && it.blockedReason == reason }
+      ) == true
+    }.getOrElse { error ->
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.blockDurablyAt",
+        expected = "existing durable phase state",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      false
+    }
+    if (alreadyPersisted) {
+      blockAt(phaseId, reason)
+      return
+    }
+    val previous = state.recordFor(phaseId)
+    val attempt = state.nextIteration(phaseId).coerceAtLeast(1)
+    val resolvedAgentId = previous?.resolvedAgentId
+      ?: FeatureTaskRuntimeAgentResolver.resolve(
+        phaseId = phaseId,
+        assignment = request.agentAssignment,
+        invokedAgentId = request.invokedAgentId,
+      ).resolvedAgentId
+    val persisted = runCatching {
+      recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = request.workflowId,
+          phaseId = phaseId,
+          status = STATUS_BLOCKED,
+          attemptCount = attempt,
+          resolvedAgentId = resolvedAgentId,
+          finished = false,
+          outputArtifact = previous?.outputArtifact,
+          rejectedOutput = previous?.rejectedOutput,
+          blockedReason = reason,
+          failureDisposition = failureDisposition,
+          fileManifestBefore = previous?.fileManifestBefore.orEmpty(),
+          fileManifestAfter = previous?.fileManifestAfter.orEmpty(),
+          fileManifestIntroduced = previous?.fileManifestIntroduced.orEmpty(),
+          loopId = previous?.loopId,
+          edgeIteration = previous?.edgeIteration,
+          reviewPassNumber = previous?.reviewPassNumber,
+          reviewRunId = previous?.reviewRunId,
+        ),
+        request.dbPathOverride,
+      )
+    }.getOrElse { error ->
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.blockDurablyAt",
+        expected = "durable blocked phase state",
+        actual = "unavailable",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      false
+    }
+    if (!persisted) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.blockDurablyAt",
+        expected = "durable blocked phase state",
+        actual = "absent",
+        cause = "workflow row could not be updated",
+      )
+    }
+    observability.blocked(phaseId, resolvedAgentId, attempt, reason)
+    blockAt(phaseId, reason)
   }
 
   private fun blockOnCapExhaustion(phaseId: String, transition: FeatureTaskRuntimeNextPhase.TerminalBlock) {
@@ -2497,7 +2770,14 @@ internal class FeatureTaskRuntimeRunLoop(
         state = state,
         observability = observability,
       )
-      is GoalReviewRunPreparation.Blocked -> PhaseOutcome.blocked(prepared.reason)
+      is GoalReviewRunPreparation.Blocked -> blockAndPersistInPhase(
+        run = run,
+        attemptCount = state.nextIteration(run.phaseId),
+        reason = prepared.reason,
+        observability = observability,
+        failureDisposition = prepared.failureDisposition,
+        childNeverLaunched = true,
+      )
     }
   }
 
@@ -2749,7 +3029,9 @@ internal class FeatureTaskRuntimeRunLoop(
     } else {
       null
     }
-    val missing = persisted ?: invalidPlanningContext
+    val missingReviewImport = runtimeOwnedReviewImportBlockReason(run)
+      ?.let { reason -> PreLaunchBlock(state.nextIteration(run.phaseId), reason) }
+    val missing = persisted ?: invalidPlanningContext ?: missingReviewImport
       ?: missingRequiredUpstream(run, state)?.let { missingIds ->
         PreLaunchBlock(
           1,
@@ -2773,6 +3055,42 @@ internal class FeatureTaskRuntimeRunLoop(
         },
         outputArtifact = durable?.outputArtifact,
         rejectedOutput = durable?.rejectedOutput,
+      )
+    }
+  }
+
+  private fun runtimeOwnedReviewImportBlockReason(run: PhaseRun): String? {
+    if (
+      !isGoalContinuationRun(run.request) ||
+      run.phaseId !in setOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+      )
+    ) {
+      return null
+    }
+    return when (val resolution = recorder.resolveRuntimeOwnedReviewImport(
+      run.request.workflowId,
+      run.request.dbPathOverride,
+    )) {
+      is RuntimeOwnedReviewImportResolution.Present -> null
+      is RuntimeOwnedReviewImportResolution.Absent -> {
+        recordMissingRuntimeOwnedReviewImport(run.phaseId, "absent", resolution.cause)
+        "Phase '${run.phaseId}' requires the runtime-owned review import before launch: ${resolution.cause}."
+      }
+      is RuntimeOwnedReviewImportResolution.ReadError -> {
+        recordMissingRuntimeOwnedReviewImport(run.phaseId, "read_error", resolution.cause)
+        "Phase '${run.phaseId}' could not read the runtime-owned review import before launch: ${resolution.cause}."
+      }
+    }
+  }
+
+  private fun recordMissingRuntimeOwnedReviewImport(phaseId: String, used: String, cause: String) {
+    runCatching {
+      diagnostics.warning(
+        "seam=FeatureTaskRuntimeRunLoop.runtimeOwnedReviewImport " +
+          "value_expected=present runtime-owned review import value_used=$used cause=$cause " +
+          "phase=$phaseId workflow=${request.workflowId}",
       )
     }
   }
@@ -2902,7 +3220,14 @@ internal class FeatureTaskRuntimeRunLoop(
     state: FeatureTaskRuntimeRunState,
     observability: FeatureTaskRuntimeRunObservability,
   ): PhaseOutcome = when (val prepared = prepareRuntimeOwnedReview(run, state)) {
-    is RuntimeOwnedReviewBlocked -> prepared.outcome
+    is RuntimeOwnedReviewBlocked -> blockAndPersistInPhase(
+      run = run,
+      attemptCount = state.nextIteration(run.phaseId),
+      reason = prepared.reason,
+      observability = observability,
+      failureDisposition = prepared.failureDisposition,
+      childNeverLaunched = true,
+    )
     is RuntimeOwnedReviewReady -> {
       prepareLaunchForCapture(prepared.run, state, null)
       executePreparedReviewDriver(prepared, observability)
@@ -2915,7 +3240,10 @@ internal class FeatureTaskRuntimeRunLoop(
     val launch: RuntimeOwnedReviewLaunch,
     val driverRequest: ParallelCodeReviewRequest,
   ) : RuntimeOwnedReviewPrep()
-  private data class RuntimeOwnedReviewBlocked(val outcome: PhaseOutcome) : RuntimeOwnedReviewPrep()
+  private data class RuntimeOwnedReviewBlocked(
+    val reason: String,
+    val failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+  ) : RuntimeOwnedReviewPrep()
 
   private data class RuntimeOwnedReviewLaunch(
     val iteration: Int,
@@ -2928,7 +3256,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun prepareRuntimeOwnedReview(run: PhaseRun, state: FeatureTaskRuntimeRunState): RuntimeOwnedReviewPrep {
     val input = run.goalReviewInput
       ?: return RuntimeOwnedReviewBlocked(
-        PhaseOutcome.blocked("Runtime-owned review is missing the child-owned review input."),
+        "Runtime-owned review is missing the child-owned review input.",
       )
     val iteration = state.nextIteration(run.phaseId)
     val passNumber = reviewPassNumber(run, state) ?: 1
@@ -2940,21 +3268,32 @@ internal class FeatureTaskRuntimeRunLoop(
       ?.reviewRunId
       ?.takeIf(String::isNotBlank)
       ?: FeatureTaskRuntimeReviewEnvelope.mintReviewRunId()
-    persistPhase(
+    if (!persistPhase(
       run,
       iteration,
       STATUS_RUNNING,
       finished = false,
       outputArtifact = null,
       reviewRunId = reviewRunId,
-    )
-    val checkpoint = gitOperations.repositoryFingerprint(run.request.repoRoot).value
-      .takeIf(String::isNotBlank)
-      ?: return RuntimeOwnedReviewBlocked(
-        PhaseOutcome.blocked(
-          "Runtime-owned review could not resolve a repository checkpoint fingerprint.",
-        ),
+    )) {
+      return RuntimeOwnedReviewBlocked(
+        "Runtime-owned review run id could not be persisted before review launch.",
+        FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
       )
+    }
+    val checkpointResult = gitOperations.repositoryFingerprint(run.request.repoRoot)
+    val checkpoint = checkpointResult.value.takeIf(String::isNotBlank)
+      ?: run {
+        recordRuntimeOwnedFactUnavailable(
+          seam = "FeatureTaskRuntimeRunLoop.prepareRuntimeOwnedReview",
+          expected = "runtime-resolved repository checkpoint",
+          actual = "absent",
+          cause = checkpointResult.error.takeIf(String::isNotBlank) ?: "repository fingerprint returned no value",
+        )
+        return RuntimeOwnedReviewBlocked(
+          "Runtime-owned review could not resolve a repository checkpoint fingerprint.",
+        )
+      }
     return RuntimeOwnedReviewReady(
       run = run,
       launch = RuntimeOwnedReviewLaunch(
@@ -3025,7 +3364,19 @@ internal class FeatureTaskRuntimeRunLoop(
             observability,
           )
         }
-        capturePhaseContentIdentities(run.phaseId)
+        if (!capturePhaseContentIdentities(run.phaseId)) {
+          return blockAndPersistInPhase(
+            run,
+            prepared.launch.iteration,
+            "Feature-task-runtime phase 'review' could not capture runtime-owned content identities.",
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+            fileManifest = FeatureTaskRuntimePhaseFileManifest(
+              before = FeatureTaskRuntimePhaseSafetyPolicy.changedPaths(before.value.orEmpty()),
+              after = FeatureTaskRuntimePhaseSafetyPolicy.changedPaths(after.value.orEmpty()),
+            ),
+          )
+        }
         settleReviewDriverResult(
           prepared,
           attempt.result,
@@ -3103,6 +3454,60 @@ internal class FeatureTaskRuntimeRunLoop(
         failureDisposition = FeatureTaskRuntimeFailureDisposition.RETRYABLE,
       )
     }
+    runCatching {
+      recorder.persistRuntimeOwnedReviewPassClaims(
+        prepared.launch.reviewRunId,
+        result.mergeResult.findings,
+        run.request.dbPathOverride,
+      )
+    }.getOrElse { error ->
+      return blockAndPersistInPhase(
+        run,
+        prepared.launch.iteration,
+        "Runtime-owned review settlement could not persist its pass claims: ${error.message.orEmpty()}",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        fileManifest = fileManifest,
+      )
+    }
+    val reviewImport = when (val resolution = recorder.resolveRuntimeOwnedReviewImportByRunId(
+      prepared.launch.reviewRunId,
+      run.request.dbPathOverride,
+    )) {
+      is RuntimeOwnedReviewImportResolution.Present -> resolution.review
+      is RuntimeOwnedReviewImportResolution.Absent -> {
+        recordMissingRuntimeOwnedReviewImport(
+          run.phaseId,
+          "absent",
+          resolution.cause,
+        )
+        return blockAndPersistInPhase(
+          run,
+          prepared.launch.iteration,
+          "Runtime-owned review settlement cannot continue without its persisted review import: " +
+            resolution.cause,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          fileManifest = fileManifest,
+        )
+      }
+      is RuntimeOwnedReviewImportResolution.ReadError -> {
+        recordMissingRuntimeOwnedReviewImport(
+          run.phaseId,
+          "read_error",
+          resolution.cause,
+        )
+        return blockAndPersistInPhase(
+          run,
+          prepared.launch.iteration,
+          "Runtime-owned review settlement cannot read its persisted review import: " +
+            resolution.cause,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          fileManifest = fileManifest,
+        )
+      }
+    }
     val cycle = FeatureTaskRuntimeReviewDriverCycle.assemble(
       result = result,
       request = prepared.driverRequest,
@@ -3110,16 +3515,33 @@ internal class FeatureTaskRuntimeRunLoop(
         passNumber = prepared.launch.passNumber,
         resolvedTier = prepared.launch.resolvedTier,
         repositoryFingerprint = prepared.launch.checkpoint,
-        blockerDispositions = reviewBlockerDispositions(
-          run,
-          prepared.launch.passNumber,
-          result,
-          prepared.launch.reviewRunId,
-          prepared.launch.resolvedTier,
-        ),
+        blockerDispositions = runCatching {
+          reviewBlockerDispositions(
+            run,
+            prepared.launch.passNumber,
+            prepared.launch.reviewRunId,
+          )
+        }.getOrElse { error ->
+          return blockAndPersistInPhase(
+            run,
+            prepared.launch.iteration,
+            "Runtime-owned review facts could not be read before settlement: ${error.message.orEmpty()}",
+            observability,
+            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+            fileManifest = fileManifest,
+          )
+        },
       ),
+      runtimeReviewImport = reviewImport,
     )
-    return settleRuntimeOwnedReview(run, prepared.launch.iteration, cycle.outputText, observability, fileManifest)
+    return settleRuntimeOwnedReview(
+      run,
+      prepared.launch.iteration,
+      cycle.outputText,
+      observability,
+      fileManifest,
+      cycle.commitFocusedAccounting,
+    )
   }
 
   private fun reviewBaselineUntrackedPaths(run: PhaseRun): List<String> =
@@ -3142,28 +3564,41 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun reviewBlockerDispositions(
     run: PhaseRun,
     passNumber: Int,
-    result: ParallelCodeReviewResult,
     reviewRunId: String,
-    resolvedTier: skillbill.workflow.model.CodeReviewExecutionMode,
   ): List<skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition> {
     if (passNumber < 2) return emptyList()
     val prior = recorder.fetchUnaddressedLedger(run.request.workflowId, run.request.dbPathOverride)
     if (prior.isEmpty()) return emptyList()
     val continuation = run.request.goalContinuation
-    val envelope = FeatureTaskRuntimeReviewEnvelope.envelopeMap(
-      FeatureTaskRuntimeReviewEnvelope.assemble(
-        result = result,
-        reviewRunId = reviewRunId,
-        cycle = FeatureTaskRuntimeReviewCycleContext(
-          passNumber = passNumber,
-          resolvedTier = resolvedTier,
-          repositoryFingerprint = "disposition-preview",
-        ),
-      ),
-    )
-    val verdicts = recorder.recordedFindingVerdicts(envelope, run.request.dbPathOverride)
+    val reviewImport = when (val resolution = recorder.resolveRuntimeOwnedReviewImportByRunId(
+      reviewRunId,
+      run.request.dbPathOverride,
+    )) {
+      is RuntimeOwnedReviewImportResolution.Present -> resolution.review
+      is RuntimeOwnedReviewImportResolution.Absent -> {
+        recordMissingRuntimeOwnedReviewImport(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          "absent",
+          resolution.cause,
+        )
+        throw RuntimeOwnedFactUnavailable(
+          "review pass claims are absent for '$reviewRunId'.",
+        )
+      }
+      is RuntimeOwnedReviewImportResolution.ReadError -> {
+        recordMissingRuntimeOwnedReviewImport(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          "read_error",
+          resolution.cause,
+        )
+        throw RuntimeOwnedFactUnavailable(
+          "review pass claims could not be read for '$reviewRunId': ${resolution.cause}",
+        )
+      }
+    }
+    val verdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, run.request.dbPathOverride)
     val current = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
-      output = envelope,
+      review = reviewImport,
       scope = UnaddressedFindingLedgerScope(
         issueKey = continuation?.parentIssueKey ?: run.request.issueKey,
         subtaskId = continuation?.subtaskId ?: 0,
@@ -3181,6 +3616,7 @@ internal class FeatureTaskRuntimeRunLoop(
     outputText: String,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting?,
   ): PhaseOutcome {
     val acceptedOutput = runCatching {
       outputValidator.validatePhaseOutput(outputText, sourceLabel = run.phaseId).requireAcceptedOutput(run.phaseId)
@@ -3210,6 +3646,19 @@ internal class FeatureTaskRuntimeRunLoop(
       run.request.dbPathOverride,
     )
     if (isGoalReviewRun(run)) {
+      if (commitFocusedAccounting == null) {
+        recordCommitFocusedAccountingAbsence()
+      }
+      val reviewImport = resolveRuntimeOwnedReviewImport(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        "claims are missing before review settlement",
+      ) ?: return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Runtime-owned review settlement could not establish its imported review findings.",
+        observability,
+        fileManifest = fileManifest,
+      )
       persistGoalReviewCompletion(
         run,
         iteration,
@@ -3217,6 +3666,8 @@ internal class FeatureTaskRuntimeRunLoop(
         acceptedOutput.repairEvidence,
         observability,
         fileManifest,
+        reviewImport,
+        commitFocusedAccounting,
       )?.let { return it }
     } else {
       val persisted = try {
@@ -3265,6 +3716,27 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
+  private fun recordCommitFocusedAccountingAbsence() {
+    runCatching {
+      diagnostics.warning(
+        "seam=FeatureTaskRuntimeRunLoop.commitFocusedAccounting " +
+          "value_expected=runtime-owned accounting for a real delegated commit sequence " +
+          "value_used=null cause=the review execution state established no applicable sequence",
+      )
+    }
+  }
+
+  private fun recordRuntimeOwnedFactUnavailable(
+    seam: String,
+    expected: String,
+    actual: String,
+    cause: String,
+  ) {
+    runCatching {
+      diagnostics.warning("seam=$seam value_expected=$expected value_used=$actual cause=$cause")
+    }
+  }
+
   private fun runDeclaredValidationGateCycle(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
@@ -3272,12 +3744,34 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
   ): PhaseOutcome {
     val validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT
-    val changedPaths = validationChangedPaths(state)
-    val checkpoint = gitOperations.repositoryFingerprint(run.request.repoRoot).value
-      .takeIf(String::isNotBlank)
-      ?: return PhaseOutcome.blocked(
-        "Validation gate cycle could not resolve a repository checkpoint fingerprint.",
+    val changedPaths = runCatching { validationChangedPaths(state) }.getOrElse { error ->
+      return blockAndPersistInPhase(
+        run = run,
+        attemptCount = state.nextIteration(run.phaseId),
+        reason = "Validation gate cycle could not resolve runtime-owned changed paths: ${error.message.orEmpty()}",
+        observability = observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        childNeverLaunched = true,
       )
+    }
+    val checkpointResult = gitOperations.repositoryFingerprint(run.request.repoRoot)
+    val checkpoint = checkpointResult.value.takeIf(String::isNotBlank)
+      ?: run {
+        observability.runtimeOwnedFactUnavailable(
+          seam = "FeatureTaskRuntimeRunLoop.runDeclaredValidationGateCycle",
+          expected = "runtime-resolved repository checkpoint",
+          actual = "absent",
+          cause = checkpointResult.error.takeIf(String::isNotBlank) ?: "repository fingerprint returned no value",
+        )
+        return blockAndPersistInPhase(
+          run = run,
+          attemptCount = state.nextIteration(run.phaseId),
+          reason = "Validation gate cycle could not resolve a repository checkpoint fingerprint.",
+          observability = observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          childNeverLaunched = true,
+        )
+      }
     val iteration = state.nextIteration(run.phaseId)
     val cycle = validationGateCoordinator.execute(
       cycle = ValidationGateCycleRequest(
@@ -3333,12 +3827,34 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
   ): PhaseOutcome {
-    val changedPaths = validationChangedPaths(state)
-    val checkpoint = gitOperations.repositoryFingerprint(run.request.repoRoot).value
-      .takeIf(String::isNotBlank)
-      ?: return PhaseOutcome.blocked(
-        "Build gate cycle could not resolve a repository checkpoint fingerprint.",
+    val changedPaths = runCatching { validationChangedPaths(state) }.getOrElse { error ->
+      return blockAndPersistInPhase(
+        run = run,
+        attemptCount = state.nextIteration(run.phaseId),
+        reason = "Build gate cycle could not resolve runtime-owned changed paths: ${error.message.orEmpty()}",
+        observability = observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        childNeverLaunched = true,
       )
+    }
+    val checkpointResult = gitOperations.repositoryFingerprint(run.request.repoRoot)
+    val checkpoint = checkpointResult.value.takeIf(String::isNotBlank)
+      ?: run {
+        observability.runtimeOwnedFactUnavailable(
+          seam = "FeatureTaskRuntimeRunLoop.runDeclaredBuildGateCycle",
+          expected = "runtime-resolved repository checkpoint",
+          actual = "absent",
+          cause = checkpointResult.error.takeIf(String::isNotBlank) ?: "repository fingerprint returned no value",
+        )
+        return blockAndPersistInPhase(
+          run = run,
+          attemptCount = state.nextIteration(run.phaseId),
+          reason = "Build gate cycle could not resolve a repository checkpoint fingerprint.",
+          observability = observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          childNeverLaunched = true,
+        )
+      }
     val iteration = state.nextIteration(run.phaseId)
     val runningPhaseState = phaseStateRequest(
       run,
@@ -3565,16 +4081,26 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun validationChangedPaths(state: FeatureTaskRuntimeRunState): List<String> {
-    val implement = state.outputs().lastOrNull {
-      it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
-    } ?: return emptyList()
-    val envelope = JsonSupport.parseObjectOrNull(implement.payload)?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: return emptyList()
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
-    val receipt = JsonSupport.anyToStringAnyMap(produced["implementation_receipt"])
-      ?: produced
-    return (receipt["changed_paths"] as? List<*>)?.filterIsInstance<String>().orEmpty()
+    state.recordFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
+      ?.let { return (it.fileManifestAfter + it.fileManifestIntroduced).distinct().sorted() }
+    val owned = gitOperations.repositoryOwnedPaths(request.repoRoot)
+    if (!owned.ok) {
+      runCatching {
+        diagnostics.warning(
+          "seam=FeatureTaskRuntimeRunLoop.validationChangedPaths " +
+            "value_expected=runtime-owned path inventory value_used=none cause=${owned.error}",
+        )
+      }
+      throw RuntimeOwnedFactUnavailable(
+        "runtime-owned path inventory could not be established: ${owned.error}",
+      )
+    }
+    return owned.value.orEmpty()
+      .split(OWNED_PATH_DELIMITER)
+      .map(String::trim)
+      .filter(String::isNotBlank)
+      .distinct()
+      .sorted()
   }
 
   private fun packCollectAllCommand(run: PhaseRun, state: FeatureTaskRuntimeRunState): String? {
@@ -4031,10 +4557,28 @@ internal class FeatureTaskRuntimeRunLoop(
       launchOutcomeKnown = childNeverLaunched,
     )
     state.reserveReviewPass(phaseState.reviewPassNumber)
-    recorder.recordPhaseState(
-      phaseState,
-      run.request.dbPathOverride,
-    )
+    val persisted = runCatching {
+      recorder.recordPhaseState(
+        phaseState,
+        run.request.dbPathOverride,
+      )
+    }.getOrElse { error ->
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.blockAndPersist",
+        expected = "durable blocked phase state",
+        actual = "unavailable",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      false
+    }
+    if (!persisted) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.blockAndPersist",
+        expected = "durable blocked phase state",
+        actual = "absent",
+        cause = "workflow row could not be updated",
+      )
+    }
     observability.blocked(run.phaseId, run.resolvedAgent.resolvedAgentId, attemptCount.coerceAtLeast(1), reason)
     return PhaseOutcome.blocked(reason)
   }
@@ -4693,7 +5237,9 @@ internal class FeatureTaskRuntimeRunLoop(
     // the first completed attempt satisfies write_history without burning a fix-loop retry.
     val attested = stampRuntimeOwnedImplementationCheckpoint(
       run,
-      attestAbsentGateValidationReceipt(run, normalizedOutput),
+      attestAbsentGateValidationReceipt(run, normalizedOutput, observability),
+      fileManifest,
+      observability,
     )
     val outputMap = attested.envelope
     val capture = ValidatedOutputCapture(
@@ -4731,9 +5277,6 @@ internal class FeatureTaskRuntimeRunLoop(
         return AttemptResult.boundaryBodyDelivery(bodyDelivery.reason, fileManifest)
       BoundaryBodyDeliveryDecision.NotApplicable -> Unit
     }
-    firstValidatedOutputRejection(run.phaseId, outputMap)?.let { (rule, reason) ->
-      return reject(rule, reason)
-    }
     val repositoryFingerprint = completedPhaseRepositoryFingerprint(run)?.let { result ->
       if (!result.ok) {
         return AttemptResult.settled(
@@ -4748,6 +5291,29 @@ internal class FeatureTaskRuntimeRunLoop(
         )
       }
       result.value
+    }
+    val firstRejection = try {
+      firstValidatedOutputRejection(run, outputMap)
+    } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
+      val reason = "Runtime-owned checkpoint path inventory could not be established: ${error.message.orEmpty()}"
+      runCatching {
+        diagnostics.warning(
+          "seam=FeatureTaskRuntimeRunLoop.firstValidatedOutputRejection " +
+            "value_expected=bounded runtime-owned checkpoint paths value_used=none cause=$reason",
+        )
+      }
+      return AttemptResult.settled(
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          reason,
+          observability,
+          fileManifest = fileManifest,
+        ),
+      )
+    }
+    firstRejection?.let { (rule, reason) ->
+      return reject(rule, reason)
     }
     auditGapProgressPause(run, outputMap, repositoryFingerprint, attested.canonicalJson)?.let { pause ->
       mintAuditGapPause(pause, run.phaseId, attested.canonicalJson)
@@ -5067,23 +5633,54 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun stampRuntimeOwnedImplementationCheckpoint(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    observability: FeatureTaskRuntimeRunObservability,
   ): NormalizedFeatureTaskRuntimePhaseOutput {
     if (
-      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT ||
+      !FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId) ||
       normalizedOutput.envelope["status"] != STATUS_COMPLETED
     ) {
       return normalizedOutput
     }
     val produced = JsonSupport.anyToStringAnyMap(normalizedOutput.envelope["produced_outputs"])?.toMutableMap()
       ?: return normalizedOutput
-    if (produced["projection_kind"] != FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue) {
-      return normalizedOutput
+    val removedRuntimeOwnedFields = listOf(
+      "reconciled_state",
+      "repository_checkpoint",
+      "changed_paths",
+      "gate_run_count",
+      "gate_runs",
+    ).any { field ->
+      val present = field in produced
+      produced.remove(field)
+      present
     }
+    if (produced["projection_kind"] != FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue) {
+      if (!removedRuntimeOwnedFields) return normalizedOutput
+      val envelope = normalizedOutput.envelope.toMutableMap()
+      envelope["produced_outputs"] = produced
+      return outputValidator.validatePhaseOutput(
+        JsonSupport.mapToJsonString(envelope),
+        sourceLabel = run.phaseId,
+      ).requireAcceptedOutput(run.phaseId).normalizedOutput
+    }
+    produced["changed_paths"] = fileManifest.after.distinct().sorted()
+    produced.remove("reconciliation_evidence")
     val authoritative = authoritativeImplementationRepositoryCheckpoint(run)
     if (authoritative == null) {
       produced.remove("repository_checkpoint")
+      observability.runtimeOwnedFactUnavailable(
+        seam = "stampRuntimeOwnedImplementationCheckpoint",
+        expected = "runtime-resolved repository checkpoint",
+        actual = "absent",
+        cause = "the checkpoint resolver returned no usable identity",
+      )
     } else {
       produced["repository_checkpoint"] = authoritative.toEnvelopeMap()
+      produced["reconciliation_evidence"] = mapOf(
+        "reconciled" to true,
+        "evidence" to "Runtime-resolved repository checkpoint established for the phase tree.",
+      )
     }
     val envelope = normalizedOutput.envelope.toMutableMap()
     envelope["produced_outputs"] = produced
@@ -5095,15 +5692,11 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun authoritativeImplementationRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? =
     buildRepositoryCheckpoint(run)
-      ?: gitOperations.repositoryFingerprint(run.request.repoRoot)
-        .takeIf { it.ok }
-        ?.value
-        ?.takeIf(String::isNotBlank)
-        ?.let { fingerprint -> FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = fingerprint) }
 
   private fun attestAbsentGateValidationReceipt(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    observability: FeatureTaskRuntimeRunObservability,
   ): NormalizedFeatureTaskRuntimePhaseOutput {
     val eligible = run.agentRunValidateFallback &&
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE &&
@@ -5113,8 +5706,31 @@ internal class FeatureTaskRuntimeRunLoop(
       ?.toMutableMap()
       ?: return normalizedOutput
     val validationResult = JsonSupport.anyToStringAnyMap(produced["validation_result"])
-      ?.toMutableMap()
-      ?: return normalizedOutput
+      ?.toMutableMap() ?: linkedMapOf()
+    validationResult.remove("repository_checkpoint")
+    validationResult.remove("gate_run_count")
+    validationResult.remove("gate_runs")
+    val checkpoint = authoritativeImplementationRepositoryCheckpoint(run)
+    if (checkpoint == null) {
+      observability.runtimeOwnedFactUnavailable(
+        seam = "attestAbsentGateValidationReceipt",
+        expected = "runtime-resolved repository checkpoint",
+        actual = "absent",
+        cause = "the checkpoint resolver returned no usable identity",
+      )
+      validationResult.putIfAbsent("validation_status", "passed")
+      validationResult.putIfAbsent("checks", emptyList<Any?>())
+      produced["validation_result"] = validationResult
+      val envelope = normalizedOutput.envelope.toMutableMap()
+      envelope["produced_outputs"] = produced
+      return outputValidator.validatePhaseOutput(
+        JsonSupport.mapToJsonString(envelope),
+        sourceLabel = run.phaseId,
+      ).requireAcceptedOutput(run.phaseId).normalizedOutput
+    }
+    validationResult.putIfAbsent("validation_status", "passed")
+    validationResult.putIfAbsent("checks", emptyList<Any?>())
+    validationResult["repository_checkpoint"] = checkpoint.toEnvelopeMap()
     validationResult["gate_run_count"] = 0
     validationResult["gate_runs"] = emptyList<Any?>()
     validationResult.remove("suppression_justifications")
@@ -5196,8 +5812,26 @@ internal class FeatureTaskRuntimeRunLoop(
     )?.let { "consumer-projection" to it }
     ?: outputVerificationGateReason(run, outputMap)?.let { "output-verification" to it }
 
-  private fun firstValidatedOutputRejection(phaseId: String, outputMap: Map<String, Any?>): Pair<String, String>? =
-    mutatingReconciliationGateReason(phaseId, outputMap)?.let { "mutating-reconciliation" to it }
+  private fun firstValidatedOutputRejection(run: PhaseRun, outputMap: Map<String, Any?>): Pair<String, String>? {
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId)) return null
+    val checkpoint = buildRepositoryCheckpoint(run)
+    val runtimeResolvedCheckpoint = checkpoint?.fingerprint
+    if (runtimeResolvedCheckpoint == null) {
+      runCatching {
+        diagnostics.warning(
+          "seam=FeatureTaskRuntimeRunLoop.mutatingReconciliation " +
+            "value_expected=runtime-resolved repository checkpoint " +
+            "value_used=none cause=checkpoint resolution failed",
+        )
+      }
+    }
+    return mutatingReconciliationGateReason(
+      phaseId = run.phaseId,
+      outputMap = outputMap,
+      runtimeResolvedCheckpoint = runtimeResolvedCheckpoint,
+      repositoryCheckpoint = runtimeResolvedCheckpoint,
+    )?.let { "mutating-reconciliation" to it }
+  }
 
   /**
    * A completed producer must satisfy the exact projection its immediate forward consumer will parse.
@@ -5262,18 +5896,15 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun recordedFindingVerdictsForFixHandoff(
     run: PhaseRun,
-    state: FeatureTaskRuntimeRunState,
   ): List<ReviewFindingVerdict> {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) {
       return emptyList()
     }
-    val review = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) ?: return emptyList()
-    val envelope = review.normalizedOutput?.envelope
-      ?: JsonSupport.parseObjectOrNull(review.payload)
-        ?.let { JsonSupport.jsonElementToValue(it) }
-        ?.let(JsonSupport::anyToStringAnyMap)
-      ?: return emptyList()
-    return recorder.recordedFindingVerdicts(envelope, request.dbPathOverride)
+    val reviewImport = resolveRuntimeOwnedReviewImport(
+      run.phaseId,
+      "claims are missing while preparing the fix handoff",
+    ) ?: return emptyList()
+    return recorder.recordedFindingVerdicts(reviewImport.reviewRunId, request.dbPathOverride)
   }
 
   /**
@@ -5310,8 +5941,28 @@ internal class FeatureTaskRuntimeRunLoop(
     }
 
   private fun buildRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? {
-    val resolvedBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
-    val goalReviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    val resolvedBranch = try {
+      recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.buildRepositoryCheckpoint",
+        expected = "resolved branch identity",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return null
+    }
+    val goalReviewState = try {
+      goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.buildRepositoryCheckpoint",
+        expected = "durable goal review state",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return null
+    }
     val revisions = resolveCheckpointRevisions(
       run = run,
       headRevision = resolvedBranch?.branch?.takeIf(String::isNotBlank) ?: "HEAD",
@@ -5325,12 +5976,32 @@ internal class FeatureTaskRuntimeRunLoop(
         ?: resolvedBranch?.baselineUntrackedPaths.orEmpty(),
       revisions = revisions,
     ) ?: return null
-    val fingerprint = gitOperations.repositoryCheckpointFingerprint(
-      run.request.repoRoot,
-      revisions.base,
-      revisions.head,
-      ownedPaths,
-    ).takeIf { it.ok }?.value?.takeIf(String::isNotBlank) ?: return null
+    val fingerprintResult = try {
+      gitOperations.repositoryCheckpointFingerprint(
+        run.request.repoRoot,
+        revisions.base,
+        revisions.head,
+        ownedPaths,
+      )
+    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.buildRepositoryCheckpoint",
+        expected = "runtime-resolved repository checkpoint",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return null
+    }
+    val fingerprint = fingerprintResult.value.takeIf { fingerprintResult.ok && it.isNotBlank() }
+      ?: run {
+        recordRuntimeOwnedFactUnavailable(
+          seam = "FeatureTaskRuntimeRunLoop.buildRepositoryCheckpoint",
+          expected = "runtime-resolved repository checkpoint",
+          actual = "unavailable",
+          cause = fingerprintResult.error.ifBlank { "repository checkpoint returned no value" },
+        )
+        return null
+      }
     return FeatureTaskRuntimeRepositoryCheckpoint(
       fingerprint = fingerprint,
       baseRef = revisions.base,
@@ -5347,11 +6018,27 @@ internal class FeatureTaskRuntimeRunLoop(
   ): List<String>? {
     val workingTreePaths = checkpointOwnedPaths(run, baselineOwnedPaths) ?: return null
     val committedPaths = revisions.base?.let { base ->
-      gitOperations.runtimePhaseChangedPathsBetweenCommits(run.request.repoRoot, base, revisions.head)
-        .takeIf { it.ok }
-        ?.value
-        ?.let(FeatureTaskRuntimePhaseSafetyPolicy::lineSeparatedPaths)
-        ?: return null
+      val result = try {
+        gitOperations.runtimePhaseChangedPathsBetweenCommits(run.request.repoRoot, base, revisions.head)
+      } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+        recordRuntimeOwnedFactUnavailable(
+          seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointOwnedPaths",
+          expected = "committed runtime-owned path inventory",
+          actual = "read_error",
+          cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+        )
+        return null
+      }
+      if (!result.ok) {
+        recordRuntimeOwnedFactUnavailable(
+          seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointOwnedPaths",
+          expected = "committed runtime-owned path inventory",
+          actual = "unavailable",
+          cause = result.error,
+        )
+        return null
+      }
+      FeatureTaskRuntimePhaseSafetyPolicy.lineSeparatedPaths(result.value.orEmpty())
     }.orEmpty()
     // Before a checkpoint has decided ownership the working tree is the only listing there is, so it
     // bootstraps the scope. Once a checkpoint has decided, that decision bounds the scope — it already
@@ -5369,13 +6056,31 @@ internal class FeatureTaskRuntimeRunLoop(
       specReference = run.request.runInvariants.specReference,
       paths = (discovered + committedPaths).distinct(),
     ).sorted()
-    return inventory.takeIf {
+    val persisted = try {
       recorder.recordWorkflowOwnedPaths(
         run.request.workflowId,
         inventory,
         run.request.dbPathOverride,
       )
+    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointOwnedPaths",
+        expected = "persisted runtime-owned path inventory",
+        actual = "write_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return null
     }
+    if (!persisted) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointOwnedPaths",
+        expected = "persisted runtime-owned path inventory",
+        actual = "absent",
+        cause = "workflow row could not be updated",
+      )
+      return null
+    }
+    return inventory
   }
 
   private fun resolveCheckpointRevisions(
@@ -5383,16 +6088,77 @@ internal class FeatureTaskRuntimeRunLoop(
     headRevision: String,
     baseRevision: String?,
   ): CheckpointRevisions? {
-    val immutableHead = gitOperations.resolveCommit(run.request.repoRoot, headRevision)
-      .takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
-      ?: gitOperations.headCommitSha(run.request.repoRoot).takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
-      ?: return null
-    val immutableBase = baseRevision?.let { revision ->
-      gitOperations.resolveCommit(run.request.repoRoot, revision)
-        .takeIf { it.ok }?.value?.takeIf(String::isNotBlank)
-        ?: revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) }
+    val resolvedHead = try {
+      gitOperations.resolveCommit(run.request.repoRoot, headRevision)
+    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointRevisions",
+        expected = "immutable repository head revision",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return null
     }
-    if (baseRevision != null && immutableBase == null) return null
+    val immutableHead = resolvedHead.value.takeIf { resolvedHead.ok && it.isNotBlank() }
+      ?: run {
+        val fallback = runCatching { gitOperations.headCommitSha(run.request.repoRoot) }
+          .getOrElse { error ->
+            recordRuntimeOwnedFactUnavailable(
+              seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointRevisions",
+              expected = "immutable repository head revision",
+              actual = "read_error",
+              cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+            )
+            return null
+          }
+        fallback.value.takeIf { fallback.ok && it.isNotBlank() }?.also {
+          recordRuntimeOwnedFactUnavailable(
+            seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointRevisions",
+            expected = headRevision,
+            actual = "fallback_head_commit",
+            cause = resolvedHead.error.ifBlank { "requested head revision could not be resolved" },
+          )
+        } ?: run {
+          recordRuntimeOwnedFactUnavailable(
+            seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointRevisions",
+            expected = "immutable repository head revision",
+            actual = "unavailable",
+            cause = resolvedHead.error.ifBlank { fallback.error.ifBlank { "head revision could not be resolved" } },
+          )
+          return null
+        }
+      }
+    val immutableBase = baseRevision?.let { revision ->
+      val resolved = try {
+        gitOperations.resolveCommit(run.request.repoRoot, revision)
+      } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+        recordRuntimeOwnedFactUnavailable(
+          seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointRevisions",
+          expected = "immutable repository base revision",
+          actual = "read_error",
+          cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+        )
+        return null
+      }
+      resolved.value.takeIf { resolved.ok && it.isNotBlank() }
+        ?: revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) }?.also {
+          recordRuntimeOwnedFactUnavailable(
+            seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointRevisions",
+            expected = revision,
+            actual = "literal_immutable_sha",
+            cause = resolved.error.ifBlank { "revision resolver returned no value" },
+          )
+        }
+    }
+    if (baseRevision != null && immutableBase == null) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.resolveCheckpointRevisions",
+        expected = "immutable repository base revision",
+        actual = "unavailable",
+        cause = "base revision '$baseRevision' could not be resolved",
+      )
+      return null
+    }
     return CheckpointRevisions(base = immutableBase, head = immutableHead)
   }
 
@@ -5422,8 +6188,26 @@ internal class FeatureTaskRuntimeRunLoop(
    * option — audit would read a silently narrowed scope as the complete one.
    */
   private fun checkpointOwnedPaths(run: PhaseRun, baselineOwnedPaths: List<String>): List<String>? {
-    val owned = gitOperations.repositoryOwnedPaths(run.request.repoRoot)
-    if (!owned.ok) return null
+    val owned = runCatching {
+      gitOperations.repositoryOwnedPaths(run.request.repoRoot)
+    }.getOrElse { error ->
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.checkpointOwnedPaths",
+        expected = "runtime-owned path inventory",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return null
+    }
+    if (!owned.ok) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.checkpointOwnedPaths",
+        expected = "runtime-owned path inventory",
+        actual = "unavailable",
+        cause = owned.error,
+      )
+      return null
+    }
     val baseline = baselineOwnedPaths.toSet()
     val paths = owned.value.orEmpty()
       .split(OWNED_PATH_DELIMITER)
@@ -5551,7 +6335,8 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun outputVerificationGateReason(run: PhaseRun, outputMap: Map<String, Any?>): String? =
-    findingVerificationBoundaryDispositionGate(run, outputMap)
+    runtimeOwnedReviewImportGateReason(run)
+      ?: findingVerificationBoundaryDispositionGate(run, outputMap)
       ?: FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal(run.phaseId, outputMap)
       ?: FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition(
         run.phaseId,
@@ -5559,6 +6344,45 @@ internal class FeatureTaskRuntimeRunLoop(
         reviewFindingIdsForVerification(),
       )
       ?: FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(run.phaseId, outputMap)
+
+  private fun runtimeOwnedReviewImportGateReason(run: PhaseRun): String? {
+    if (
+      !isGoalContinuationRun(run.request) ||
+      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS
+    ) {
+      return null
+    }
+    return when (val resolution = recorder.resolveRuntimeOwnedReviewImport(
+      run.request.workflowId,
+      run.request.dbPathOverride,
+    )) {
+      is RuntimeOwnedReviewImportResolution.Present -> null
+      is RuntimeOwnedReviewImportResolution.Absent -> {
+        recordMissingRuntimeOwnedReviewImport(run.phaseId, "absent", resolution.cause)
+        "Verification cannot settle without the runtime-owned review import: ${resolution.cause}."
+      }
+      is RuntimeOwnedReviewImportResolution.ReadError -> {
+        recordMissingRuntimeOwnedReviewImport(run.phaseId, "read_error", resolution.cause)
+        "Verification cannot settle because the runtime-owned review import could not be read: ${resolution.cause}."
+      }
+    }
+  }
+
+  private fun resolveRuntimeOwnedReviewImport(phaseId: String, cause: String): GoalSubtaskReviewImport? =
+    when (val resolution = recorder.resolveRuntimeOwnedReviewImport(
+      request.workflowId,
+      request.dbPathOverride,
+    )) {
+      is RuntimeOwnedReviewImportResolution.Present -> resolution.review
+      is RuntimeOwnedReviewImportResolution.Absent -> {
+        recordMissingRuntimeOwnedReviewImport(phaseId, "absent", "$cause: ${resolution.cause}")
+        null
+      }
+      is RuntimeOwnedReviewImportResolution.ReadError -> {
+        recordMissingRuntimeOwnedReviewImport(phaseId, "read_error", "$cause: ${resolution.cause}")
+        null
+      }
+    }
 
   private sealed interface BoundaryBodyDeliveryDecision {
     data object NotApplicable : BoundaryBodyDeliveryDecision
@@ -5576,17 +6400,14 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun findingVerificationBoundarySections(run: PhaseRun): List<FeatureTaskRuntimeFindingBoundaryMemorySection> {
-    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
-      ?.normalizedOutput?.envelope
-    val recordedVerdicts = reviewOutput?.let {
-      recorder.recordedFindingVerdicts(
-        it,
-        run.request.dbPathOverride,
-      )
-    }.orEmpty()
-    val findings = reviewOutput?.let {
-      skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer.structuredFindings(it, recordedVerdicts)
-    }.orEmpty()
+    if (!isGoalContinuationRun(run.request)) return emptyList()
+    val reviewImport = resolveRuntimeOwnedReviewImport(
+      run.phaseId,
+      "claims are missing while preparing verification boundary context",
+    ) ?: return emptyList()
+    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, run.request.dbPathOverride)
+    val findings = skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
+      .structuredFindings(reviewImport, recordedVerdicts)
     return phaseGates.findingVerificationBoundaryMemory.sectionsForFindings(
       run.request.repoRoot,
       findings.mapNotNull { finding ->
@@ -5690,11 +6511,13 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun reviewFindingIdsForVerification(): Set<String> {
-    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
-      ?.normalizedOutput?.envelope
-      ?: return emptySet()
-    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewOutput, request.dbPathOverride)
-    return GoalSubtaskReviewSummaryReducer.structuredFindings(reviewOutput, recordedVerdicts)
+    if (!isGoalContinuationRun(request)) return emptySet()
+    val reviewImport = resolveRuntimeOwnedReviewImport(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+      "claims are missing while checking verification finding coverage",
+    ) ?: return emptySet()
+    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, request.dbPathOverride)
+    return GoalSubtaskReviewSummaryReducer.structuredFindings(reviewImport, recordedVerdicts)
       .mapNotNull { it.findingId }
       .toSet()
   }
@@ -5771,47 +6594,34 @@ internal class FeatureTaskRuntimeRunLoop(
         ),
       )
     }
-    if (isGoalReviewRun(run)) {
-      persistGoalReviewCompletion(
+    if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) {
+      persistRejectedVerificationFindings(run, normalizedOutput.envelope)
+    }
+    val persisted = recorder.recordCompletedPhase(
+      phaseStateRequest(
         run,
         iteration,
-        normalizedOutput,
-        repairEvidence,
-        observability,
-        fileManifest,
-      )?.let { outcome ->
-        return AttemptResult.settled(outcome)
-      }
-    } else {
-      if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) {
-        persistRejectedVerificationFindings(run, normalizedOutput.envelope)
-      }
-      val persisted = recorder.recordCompletedPhase(
-        phaseStateRequest(
+        STATUS_COMPLETED,
+        finished = true,
+        outputArtifact = outputText,
+        fileManifest = fileManifest,
+        normalizedOutput = normalizedOutput,
+        repairEvidence = repairEvidence,
+        repositoryFingerprint = repositoryFingerprint,
+      ),
+      run.request.dbPathOverride,
+    )
+    if (!persisted) {
+      return AttemptResult.settled(
+        blockAndPersistInPhase(
           run,
           iteration,
-          STATUS_COMPLETED,
-          finished = true,
-          outputArtifact = outputText,
+          "Validated phase output could not be persisted to the authoritative workflow record.",
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
           fileManifest = fileManifest,
-          normalizedOutput = normalizedOutput,
-          repairEvidence = repairEvidence,
-          repositoryFingerprint = repositoryFingerprint,
         ),
-        run.request.dbPathOverride,
       )
-      if (!persisted) {
-        return AttemptResult.settled(
-          blockAndPersistInPhase(
-            run,
-            iteration,
-            "Validated phase output could not be persisted to the authoritative workflow record.",
-            observability,
-            failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-            fileManifest = fileManifest,
-          ),
-        )
-      }
     }
     observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
@@ -5830,15 +6640,16 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun persistRejectedVerificationFindings(run: PhaseRun, verifyOutput: Map<String, Any?>) {
     if (!isGoalContinuationRun(run.request)) return
     val continuation = run.request.goalContinuation ?: return
-    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
-      ?.normalizedOutput?.envelope
-      ?: return
+    val reviewImport = resolveRuntimeOwnedReviewImport(
+      run.phaseId,
+      "claims are missing while recording rejected verification findings",
+    ) ?: return
     val reviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
     val passNumber = reviewState?.completedPassCount?.takeIf { it > 0 } ?: 1
-    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewOutput, run.request.dbPathOverride)
+    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, run.request.dbPathOverride)
     val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
       verifyOutput = verifyOutput,
-      reviewOutput = reviewOutput,
+      review = reviewImport,
       scope = UnaddressedFindingLedgerScope(
         issueKey = continuation.parentIssueKey,
         subtaskId = continuation.subtaskId,
@@ -5863,11 +6674,13 @@ internal class FeatureTaskRuntimeRunLoop(
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    reviewImport: skillbill.application.goalrunner.GoalSubtaskReviewImport,
+    commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting?,
   ): PhaseOutcome? {
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
-    val recordedVerdicts = recorder.recordedFindingVerdicts(outputMap, request.dbPathOverride)
-    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap, recordedVerdicts)
+    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, request.dbPathOverride)
+    val findings = GoalSubtaskReviewSummaryReducer.fromImport(reviewImport, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
     val completed = runCatching {
       recorder.completeGoalReviewPhase(
@@ -5881,7 +6694,9 @@ internal class FeatureTaskRuntimeRunLoop(
             fileManifest = fileManifest,
             normalizedOutput = normalizedOutput,
             repairEvidence = repairEvidence,
+            reviewRunId = reviewImport.reviewRunId,
           ),
+          reviewRunId = reviewImport.reviewRunId,
           verdict = outcome.verdict,
           unresolvedFindingCount = outcome.unresolvedFindingCount,
           findings = findings,
@@ -5890,7 +6705,7 @@ internal class FeatureTaskRuntimeRunLoop(
             outputMap,
             priorBlockerFindingIds(),
           ),
-          commitFocusedAccounting = GoalSubtaskReviewSummaryReducer.commitFocusedAccounting(outputMap),
+          commitFocusedAccounting = commitFocusedAccounting,
         ),
         dbOverride = run.request.dbPathOverride,
       )
@@ -5947,7 +6762,7 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     launched: LaunchedModelDirective? = null,
     reviewRunId: String? = null,
-  ) {
+  ): Boolean {
     val phaseState =
       phaseStateRequest(
         run,
@@ -5960,7 +6775,7 @@ internal class FeatureTaskRuntimeRunLoop(
         reviewRunId = reviewRunId,
       )
     state.reserveReviewPass(phaseState.reviewPassNumber)
-    recorder.recordPhaseState(
+    return recorder.recordPhaseState(
       phaseState,
       run.request.dbPathOverride,
     )
@@ -6072,7 +6887,7 @@ internal class FeatureTaskRuntimeRunLoop(
       baseBranch = resolvedBranchRecord?.baseBranch ?: "main",
       validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
       qualityGateSelection = qualityGateSelection(),
-    ).copy(recordedFindingVerdicts = recordedFindingVerdictsForFixHandoff(run, state))
+    ).copy(recordedFindingVerdicts = recordedFindingVerdictsForFixHandoff(run))
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
     val sharedEvidence = resolveSharedReviewEvidence(run, repositoryCheckpoint)
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
@@ -6269,7 +7084,12 @@ internal class FeatureTaskRuntimeRunLoop(
           FeatureTaskRuntimePhaseSafetyPolicy.lineSeparatedPaths(committedPaths.value.orEmpty())
         ).distinct().sorted(),
     )
-    capturePhaseContentIdentities(run.phaseId)
+    if (!capturePhaseContentIdentities(run.phaseId)) {
+      return LaunchResult.infraFailure(
+        "Feature-task-runtime phase '${run.phaseId}' could not capture runtime-owned content identities.",
+        childNeverLaunched = false,
+      )
+    }
     return reconcileLaunch(run.phaseId, outcome, fileManifest)
   }
 
@@ -6278,13 +7098,50 @@ internal class FeatureTaskRuntimeRunLoop(
    * this at checkpoint time was written by someone other than the phase, which is the only way to
    * detect a concurrent unstaged edit to a file this workflow owns.
    */
-  private fun capturePhaseContentIdentities(phaseId: String) {
-    val owned = gitOperations.repositoryOwnedPaths(request.repoRoot)
-    if (!owned.ok) return
+  private fun capturePhaseContentIdentities(phaseId: String): Boolean {
+    val owned = try {
+      gitOperations.repositoryOwnedPaths(request.repoRoot)
+    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.capturePhaseContentIdentities",
+        expected = "runtime-owned path inventory",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return false
+    }
+    if (!owned.ok) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.capturePhaseContentIdentities",
+        expected = "runtime-owned path inventory",
+        actual = "unavailable",
+        cause = owned.error,
+      )
+      return false
+    }
     val paths = owned.value.orEmpty().split(OWNED_PATH_DELIMITER).map(String::trim).filter(String::isNotBlank)
-    val identities = gitOperations.pathContentIdentities(request.repoRoot, paths)
-    if (!identities.ok) return
+    val identities = try {
+      gitOperations.pathContentIdentities(request.repoRoot, paths)
+    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.capturePhaseContentIdentities",
+        expected = "runtime-owned content identities",
+        actual = "read_error",
+        cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+      )
+      return false
+    }
+    if (!identities.ok) {
+      recordRuntimeOwnedFactUnavailable(
+        seam = "FeatureTaskRuntimeRunLoop.capturePhaseContentIdentities",
+        expected = "runtime-owned content identities",
+        actual = "unavailable",
+        cause = identities.error,
+      )
+      return false
+    }
     phaseContentIdentities[phaseId] = parseContentIdentities(identities.value.orEmpty())
+    return true
   }
 
   private fun parseContentIdentities(raw: String): Map<String, String> = raw
@@ -6461,6 +7318,14 @@ internal class FeatureTaskRuntimeRunLoop(
       LaunchResult.projectionRejected(
         "Feature-task-runtime phase '${run.phaseId}' rejected a durable handoff envelope at the launch seam: " +
           error.message,
+      ),
+    )
+  } catch (error: RuntimeOwnedFactUnavailable) {
+    LaunchPreparationRejected(
+      LaunchResult.infraFailure(
+        "Feature-task-runtime phase '${run.phaseId}' could not establish a runtime-owned fact: " +
+          error.message.orEmpty(),
+        childNeverLaunched = true,
       ),
     )
   }

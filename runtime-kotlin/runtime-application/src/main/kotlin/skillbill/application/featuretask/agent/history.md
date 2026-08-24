@@ -17,6 +17,17 @@ Areas: runtime-application/featuretask
 Feature flag: N/A
 Acceptance criteria: n/a (main hotfix)
 
+## [2026-08-25] SKILL-208 subtask 2 — Runtime-held facts and runtime-minted evidence
+Areas: runtime-application/{featuretask,goalrunner,review}, runtime-domain/taskruntime, orchestration/contracts, docs
+- Review run id and finding set now come from the runtime's own review import; phase prompts no longer ask agents to echo either, and measurement consumers read the same import.
+- Commit-focused accounting is recorded from runtime-owned review execution state, or recorded absent with a record when no real commit sequence exists.
+- Repository checkpoints, changed_paths, and gate run counts are taken from runtime state; agent-supplied echoes are ignored rather than validated.
+- Mutating-phase idempotency compares the repository against the runtime-resolved checkpoint; reconciled_state leaves the schema and prompt.
+- Pattern: mint facts the runtime can observe (R1) instead of reading producer claims; unestablishable facts emit a record and block or degrade. reusable
+- Limitation: verdict/settlement derivation and plan-obligation closure remain subtask 3; envelope/prose output remains subtask 4.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-25] SKILL-208 subtask 1 — Demote payload shape policing to diagnostics
 Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-infra-fs/contracts/workflow
 - Nested repair-receipt and phase-output entry constraints now emit demoted violations instead of blocking settlement or charging correction budgets.

@@ -140,6 +140,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
+      reviewRunId = "rvw-test-1",
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       goalReviewWorkflowRecord(

@@ -8,7 +8,6 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
@@ -19,7 +18,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
-import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 
 /**
  * Pure composer of the full prompt a feature-task-runtime phase agent receives. The persisted
@@ -154,7 +152,7 @@ object FeatureTaskRuntimePhasePromptComposer {
   private fun gateRepairNoOutputSchemaDirective(phaseId: String): String = """
     ## Gate repair — prose only, no phase-output schema
     This launch is a repair turn for the runtime-owned `$phaseId` gate. Do not emit a Required final
-    output JSON object, build_receipt, validation_receipt, gate_run_count, or any other phase envelope.
+    output JSON object, build_receipt, validation_receipt, or any other phase envelope.
     Do not spawn delegated subagents. Work in this single agent session in ordinary prose.
 
     The runtime already ran the pack command and parsed the failures listed in this briefing. It will
@@ -281,8 +279,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     return base + structuralRepairNote + repairProjection +
       unparseableRootCorrection(priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.lengthViolation(priorSchemaFailure) +
-      FeatureTaskRuntimeSchemaFailureCorrections.closedEnumeration(priorSchemaFailure) +
-      FeatureTaskRuntimeSchemaFailureCorrections.unreconciledReceipt(priorSchemaFailure)
+      FeatureTaskRuntimeSchemaFailureCorrections.closedEnumeration(priorSchemaFailure)
   }
 
   private fun unparseableRootCorrection(priorSchemaFailure: String): String {
@@ -328,9 +325,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsSkeleton(briefing)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
-        "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": [], " +
-          "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID}\": \"<the Review run ID this pass " +
-          "reported>\""
+        "\"result\": \"<review conclusion; imported findings are runtime-owned>\""
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
         "\"${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS}\": [ " +
           "{ \"finding_id\": \"F-001\", \"disposition\": \"verified\", " +
@@ -463,9 +458,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  // Phase-specific addendum to the produced_outputs bullet. Mutating phases (implement, implement_fix)
-  // must prove they reconciled the tree to target rather than silently skipping work, so the runtime can
-  // verify the idempotency contract rather than assume it. Verifying phases (review, audit) gate on a
+  // Phase-specific addendum to the produced_outputs bullet. Verifying phases (review, audit) gate on a
   // machine-readable signal, not prose: naming the exact field the gate keys on is what prevents a
   // thorough agent from delivering its verdict as a prose Markdown table the gate cannot read (and then
   // blocking after a blind retry loop). The two phase sets are disjoint, so at most one branch is ever
@@ -478,7 +471,6 @@ object FeatureTaskRuntimePhasePromptComposer {
     if (FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
       return mutatingProducedOutputsAddendum(briefing, agentRunValidateFallback)
     }
-    val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
     val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
@@ -490,21 +482,9 @@ object FeatureTaskRuntimePhasePromptComposer {
         agentRunValidateFallback,
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
-        "\n    - This is a VERIFYING phase: produced_outputs MUST carry a \"$findings\" array (each entry a\n" +
-          "      severity/message object; an explicit empty [] affirms no Blocker or Major findings) AND/OR a\n" +
-          "      top-level \"$verdict\" of \"approved\" or \"changes_requested\". A Blocker or Major finding sets\n" +
-          "      \"changes_requested\" so it is fixed in this same review pass; Minor and Nit do not. Output\n" +
-          "      carrying NEITHER signal fails the schema gate loudly — a prose summary alone cannot advance.\n" +
-          "      Each finding's \"severity\" MUST be exactly one of blocker, major, minor, nit, and its\n" +
-          "      \"issue_category\" MUST be exactly one of " +
-          ReviewIssueCategory.entries.joinToString { it.wireValue } + "; any other category value is\n" +
-          "      recorded as other.\n" +
-          "    - produced_outputs MUST also carry \"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID}\": the " +
-          "Review run ID your\n" +
-          "      `bill-code-review` invocation reported for this pass, verbatim. It is the key that joins each\n" +
-          "      finding here to the imported review run, so a finding's \"id\" plus this run id must be the same\n" +
-          "      pair that review recorded. Omit it ONLY if the review genuinely reported no run id; never\n" +
-          "      invent, reuse an older, or guess one." + commitFocusedAccountingAddendum()
+        "\n    - This is a VERIFYING phase: set top-level \"$verdict\" to \"approved\" or \"changes_requested\".\n" +
+          "      The runtime imports review findings and joins them to the persisted review run; do not echo\n" +
+          "      imported review facts in produced_outputs."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
         "\n    - This is a VERIFYING phase: set top-level \"$verdict\" to \"findings_verified\" or " +
           "\"no_findings_verified\" and emit exactly one " +
@@ -551,40 +531,14 @@ object FeatureTaskRuntimePhasePromptComposer {
         "evidence to record: the next audit re-reads the tree and decides every criterion again. If " +
         "a criterion is genuinely unimplementable, leave through a blocked envelope naming it and why."
     }
-    return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
-      "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
-      "      changed files are at their intended target state. A status of \"completed\" with the\n" +
-      "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." +
+    return "\n    - The runtime decides whether the repository reached the intended state from its resolved\n" +
+      "      checkpoint. Do not emit reconciliation or repository checkpoint claims; report only the\n" +
+      "      bounded implementation receipt fields below." +
       FeatureTaskRuntimePhaseProjectionShapes.exampleFor(
         phaseId,
         agentRunValidateFallback,
       ) + remediation
   }
-
-  /**
-   * The only seam that instructs a review pass to emit `produced_outputs.commit_focused_accounting`.
-   * The lifecycle reducer reads that key and durable review state requires the record for a delegated
-   * pass over a real commit sequence; without this instruction the key is never written and every
-   * delegated pass persists a null accounting record. Inline and non-commit passes omit the key rather
-   * than fabricating a sequence identity, which is why the instruction is conditional on what the pass
-   * actually ran instead of unconditional.
-   */
-  private fun commitFocusedAccountingAddendum(): String =
-    "\n    - If this pass ran a DELEGATED review over a real commit sequence, produced_outputs MUST also\n" +
-      "      carry \"commit_focused_accounting\" exactly as the review reported it: commit_sequence_digest\n" +
-      "      (64-char lowercase hex), commit_count, lane_count, focused_commit_count,\n" +
-      "      skipped_commit_count (focused + skipped == commit_count), and integration_terminal_outcome,\n" +
-      "      one of " + GoalSubtaskCommitFocusedAccounting.INTEGRATION_TERMINAL_OUTCOMES.sorted()
-        .joinToString() + ".\n" +
-      "      Optional when the review reported them: routing_digest, focused_pair_count,\n" +
-      "      skipped_pair_count, lane_bundle_sizes, lane_segment_counts, incomplete_lanes,\n" +
-      "      parent_analysis_pairs, parent_analysis_bytes, integration_finding_count, and\n" +
-      "      integration_skip_reason (REQUIRED when integration_terminal_outcome is\n" +
-      "      ${GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE}). Lanes that ended incomplete\n" +
-      "      are named in incomplete_lanes; that is non-clean coverage and the integration pass never\n" +
-      "      compensates for it. Identities, counts, and lane names ONLY — never a commit subject, a\n" +
-      "      path, or diff text. An INLINE or non-commit-sequence pass OMITS the key entirely rather\n" +
-      "      than fabricating a sequence identity; never invent or guess a digest or a count."
 
   private fun auditProducedOutputsAddendum(verdict: String, briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
     "\n    - This is a VERIFYING phase. Ignore the optional-verdict bullet above: for audit, top-level " +

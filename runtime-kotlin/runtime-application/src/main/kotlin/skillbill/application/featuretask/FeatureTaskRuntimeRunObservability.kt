@@ -265,6 +265,15 @@ internal class FeatureTaskRuntimeRunObservability(
     )
   }
 
+  fun runtimeOwnedFactUnavailable(seam: String, expected: String, actual: String, cause: String) {
+    emitFeatureTaskRuntimeEventSafely(diagnostics, "runtime-owned fact unavailable") {
+      diagnostics.warning(
+        "seam=$seam expected=$expected actual=$actual cause=$cause",
+        null,
+      )
+    }
+  }
+
   fun paused(phaseId: String, resolvedAgentId: String, attemptCount: Int, pauseReason: String) {
     emitSafely(
       FeatureTaskRuntimeRunEvent.PhasePaused(

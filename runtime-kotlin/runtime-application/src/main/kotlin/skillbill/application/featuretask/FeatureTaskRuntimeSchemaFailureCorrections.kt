@@ -11,10 +11,6 @@ import skillbill.workflow.taskruntime.model.MAX_BOUNDED_POINTER_LENGTH
  * item list — stay with the composer that owns that context.
  */
 internal object FeatureTaskRuntimeSchemaFailureCorrections {
-  // The receipt's `reconciled` is `const: true`, so a producer that reports 'completed' while asserting
-  // `reconciled: false` is not describing a repairable field error — it is describing work it did not
-  // finish, and no edit to that field makes the claim true. This names the envelope that carries
-  // unfinished work instead; what happens after that envelope is not this directive's business.
   fun closedEnumeration(priorSchemaFailure: String): String {
     val namesObservation = priorSchemaFailure.contains("observation")
     val namesEnumeration = priorSchemaFailure.contains("enumeration") ||
@@ -28,21 +24,6 @@ internal object FeatureTaskRuntimeSchemaFailureCorrections {
       REJECTED: any sentence or synonym in observation.
       ACCEPTED: {"observation":"resolution_verified","artifact_ref":"Type.kt:Type.member","check_ref":"AC-006"}
       Put the paragraph in summary only.
-    """.trimIndent()
-  }
-
-  fun unreconciledReceipt(priorSchemaFailure: String): String {
-    val namesReconciled = priorSchemaFailure.contains("reconciliation_evidence.reconciled") ||
-      priorSchemaFailure.contains("reconciliation_evidence/reconciled")
-    if (!namesReconciled || !priorSchemaFailure.contains("must be the constant value")) {
-      return ""
-    }
-    return """
-
-      A 'completed' implementation_receipt asserts a reconciled working tree: reconciliation_evidence.reconciled
-      must be true, and 'completed' is the only status that may carry this receipt. Do not report 'completed'
-      with reconciled false, and do not flip the flag to true unless the tree really is at target. If the work
-      is genuinely incomplete, leave this phase through a 'blocked' or 'failed' envelope instead.
     """.trimIndent()
   }
 

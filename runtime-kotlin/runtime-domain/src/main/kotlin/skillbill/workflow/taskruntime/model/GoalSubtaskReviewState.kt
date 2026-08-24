@@ -188,6 +188,7 @@ data class GoalSubtaskReviewPassResult(
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,
   val executedMode: CodeReviewExecutionMode? = null,
+  val reviewRunId: String,
   /** Present only for a delegated pass over a real commit sequence; never fabricated otherwise. */
   val commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
 ) {
@@ -200,6 +201,7 @@ data class GoalSubtaskReviewPassResult(
       "Goal review result artifact must identify its exact review pass."
     }
     require(unresolvedFindingCount >= 0) { "Goal unresolved finding count must be non-negative." }
+    require(reviewRunId.isNotBlank()) { "Goal review pass review run id must be non-blank." }
     require(commitFocusedAccounting == null || executedMode != CodeReviewExecutionMode.INLINE) {
       "An inline review pass has no delegated commit sequence and must omit commit-focused accounting."
     }
@@ -221,6 +223,7 @@ data class GoalSubtaskReviewPassResult(
     "findings" to findings.map(GoalSubtaskReviewCompactFinding::toArtifactMap),
   ).apply {
     executedMode?.let { put("executed_mode", it.wireValue) }
+    put("review_run_id", reviewRunId)
     commitFocusedAccounting?.let { put("commit_focused_accounting", it.toArtifactMap()) }
   }
 
@@ -235,6 +238,7 @@ data class GoalSubtaskReviewPassResult(
           "unresolved_finding_count",
           "findings",
           "executed_mode",
+          "review_run_id",
           "commit_focused_accounting",
         ),
         path,
@@ -252,6 +256,7 @@ data class GoalSubtaskReviewPassResult(
         unresolvedFindingCount = raw.requireReviewStateInt("unresolved_finding_count", path),
         findings = findings,
         executedMode = raw.optionalReviewStateString("executed_mode", path)?.let(CodeReviewExecutionMode::fromWire),
+        reviewRunId = raw.requireReviewStateString("review_run_id", path),
         commitFocusedAccounting = raw["commit_focused_accounting"]?.let {
           GoalSubtaskCommitFocusedAccounting.fromArtifactMap(
             it.asReviewStateMap("$path.commit_focused_accounting"),
@@ -469,6 +474,9 @@ data class GoalSubtaskReviewState(
     require(passResults.map(GoalSubtaskReviewPassResult::passNumber) == (1..completedPassCount).toList()) {
       "Pass results must be ordered and contiguous."
     }
+    require(passResults.map(GoalSubtaskReviewPassResult::reviewRunId).distinct().size == passResults.size) {
+      "Each completed review pass must have a distinct runtime-owned review run id."
+    }
     passResults.forEach { result ->
       result.executedMode?.let { executedMode ->
         require(executedMode == FeatureTaskRuntimeReviewPassSequence.modeForPass(codeReviewMode, result.passNumber)) {
@@ -539,6 +547,7 @@ data class GoalSubtaskReviewState(
     unresolvedFindingCount: Int,
     findings: List<GoalSubtaskReviewCompactFinding>,
     blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
+    reviewRunId: String,
     /** Supplied only by a delegated pass over a real commit sequence; inline passes omit it. */
     commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
   ): GoalSubtaskReviewState {
@@ -558,6 +567,8 @@ data class GoalSubtaskReviewState(
       unresolvedFindingCount = unresolvedFindingCount,
       findings = findings,
       executedMode = executedMode,
+      reviewRunId = reviewRunId.trim().takeIf(String::isNotBlank)
+        ?: reviewStateError("review_run_id", "must be a non-blank runtime-owned review run id."),
       // An inline pass carries no delegated commit sequence, so accounting a caller offers anyway is
       // dropped rather than fabricated into durable state.
       commitFocusedAccounting = commitFocusedAccounting

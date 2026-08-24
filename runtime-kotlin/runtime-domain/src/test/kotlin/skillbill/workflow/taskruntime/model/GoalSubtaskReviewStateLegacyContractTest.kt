@@ -43,7 +43,7 @@ class GoalSubtaskReviewStateLegacyContractTest {
   }
 
   @Test
-  fun `the durable contract version is 0_6`() {
-    assertEquals("0.6", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
+  fun `the durable contract version is 0_8`() {
+    assertEquals("0.8", GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION)
   }
 }
