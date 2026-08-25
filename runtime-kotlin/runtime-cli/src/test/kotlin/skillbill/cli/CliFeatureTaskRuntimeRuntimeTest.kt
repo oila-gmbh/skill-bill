@@ -884,14 +884,14 @@ class CliFeatureTaskRuntimeRuntimeTest {
   @Test
   fun `feature-task-runtime status reports a blocked phase derived from the ledger`() {
     val fixture = runtimeFixture()
-    // Preplan and plan complete; implement emits unparseable output and blocks on the format budget.
+    // Preplan and plan complete; implement emits unparseable output and blocks on derivation re-ask cap.
     val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
     val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
     assertEquals(1, run.exitCode, run.stdout)
     assertContains(run.stdout, "status: blocked")
     assertContains(run.stdout, "last_incomplete_phase: implement")
     assertContains(run.stdout, "blocked_reason:")
-    assertContains(run.stdout, "output-gate correction budget")
+    assertContains(run.stdout, "could not derive a decisive")
     val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
     val status = CliRuntime.run(
@@ -963,7 +963,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
       fixture.context(RecordingPhaseLauncher()),
     )
     assertEquals(0, completedStatus.exitCode, completedStatus.stdout)
-    assertContains(completedStatus.stdout, "phase: id=implement status=completed attempt=2")
+    assertContains(completedStatus.stdout, "phase: id=implement status=completed attempt=3")
     val resumedPrompts = resumedLauncher.requests.map { it.skillRunRequest.promptOverride.orEmpty() }
     assertContains(resumedPrompts.first(), operatorReason)
     assertTrue(resumedPrompts.drop(1).none { it.contains(operatorReason) })
@@ -1981,7 +1981,7 @@ private class RecordingPhaseLauncher(
       return AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
         exitStatus = 0,
-        stdout = "NO_FINDINGS",
+        stdout = "approved",
         stderr = "",
         timedOut = false,
         spawnFailed = false,
@@ -2016,75 +2016,118 @@ private class RecordingPhaseLauncher(
     // output validator rejects it and the runner never marks the phase complete.
     const val INVALID_PHASE_OUTPUT = "not a json object"
 
+    private data class PhaseOutputFixture(
+      val producedOutputs: String,
+      val summary: String,
+      val verdictSuffix: String = "",
+    )
+
+    private val PHASE_OUTPUT_FIXTURES = mapOf(
+      "review" to PhaseOutputFixture("""{"findings":[]}""", "approved"),
+      "audit" to PhaseOutputFixture("""{"gaps":[]}""", "satisfied", ""","verdict":"satisfied""""),
+      "verify_findings" to PhaseOutputFixture(
+        """{"finding_dispositions":[]}""",
+        "no_findings_verified",
+        ""","verdict":"no_findings_verified"""",
+      ),
+      "preplan" to PhaseOutputFixture(PREPLAN_DIGEST_OUTPUTS, "Phase produced a validated output."),
+      "plan" to PhaseOutputFixture(EXECUTABLE_PLAN_OUTPUTS, "Phase produced a validated output."),
+      "implement" to PhaseOutputFixture(IMPLEMENTATION_RECEIPT_OUTPUTS, "Phase produced a validated output."),
+      "validate" to PhaseOutputFixture(VALIDATION_RESULT_OUTPUTS, "Phase produced a validated output."),
+      "write_history" to PhaseOutputFixture(HISTORY_RESULT_OUTPUTS, "Phase produced a validated output."),
+      "commit_push" to PhaseOutputFixture(COMMIT_PUSH_RESULT_OUTPUTS, "completed"),
+    )
+
+    private val COMMIT_SUBJECT_BLOCK = """
+
+        <<<COMMIT_SUBJECT>>>
+        SKILL-650: runtime cli fixture subtask
+        <<<END_COMMIT_SUBJECT>>>
+    """.trimIndent()
+
     fun validPhaseOutput(phaseId: String): String {
-      // A clean review/audit must emit a verification signal (an empty findings/gaps array
-      // affirms no blocking findings / every criterion met) or the runtime gate blocks it (SKILL-85
-      // Subtask 4 F-003 for review, Subtask 5 AC1 for audit).
-      val producedOutputs = when (phaseId) {
-        "review" -> "findings: []"
-        "audit" -> "gaps: []"
-        "verify_findings" -> "finding_dispositions: []"
-        "preplan" -> PREPLAN_DIGEST_OUTPUTS
-        "plan" -> EXECUTABLE_PLAN_OUTPUTS
-        "implement" -> IMPLEMENTATION_RECEIPT_OUTPUTS
-        "validate" -> VALIDATION_RESULT_OUTPUTS
-        "write_history" -> HISTORY_RESULT_OUTPUTS
-        "commit_push" -> COMMIT_PUSH_RESULT_OUTPUTS
-        else -> """tasks: ["task-1"]"""
-      }
-      val phaseVerdict = when (phaseId) {
-        "audit" -> "verdict: \"satisfied\""
-        "verify_findings" -> "verdict: \"no_findings_verified\""
-        else -> ""
-      }
-      val base =
-        """
-        contract_version: "0.4"
-        phase_id: "$phaseId"
-        status: "completed"
-        summary: "Phase produced a validated output."
-        $phaseVerdict
-        produced_outputs:
-          $producedOutputs
-        """.trimIndent()
-      return base
+      val fixture = PHASE_OUTPUT_FIXTURES[phaseId] ?: PhaseOutputFixture(
+        producedOutputs = """{"tasks":["task-1"]}""",
+        summary = "Phase produced a validated output.",
+      )
+      val commitSubjectBlock = if (phaseId == "commit_push") COMMIT_SUBJECT_BLOCK else ""
+      return """
+        {
+          "contract_version": "0.4",
+          "phase_id": "$phaseId",
+          "status": "completed",
+          "summary": "${fixture.summary}"${fixture.verdictSuffix},
+          "produced_outputs": ${fixture.producedOutputs}
+        }
+        $commitSubjectBlock
+      """.trimIndent()
     }
 
-    // Flow-style so each stays a single YAML line the phase-output template can substitute directly.
     private const val PREPLAN_DIGEST_OUTPUTS: String =
-      """{projection_kind: "preplanning_digest", contract_version: "0.1", affected_boundaries: ["runtime-cli"], """ +
-        """risks: ["Fixture risk."], """ +
-        """rollout: {flag_required: false, flag_pattern: "none", notes: "No flag needed."}, """ +
-        """validation_strategy: ["Focused runtime tests."]}"""
+      """{
+        "projection_kind": "preplanning_digest",
+        "contract_version": "0.1",
+        "affected_boundaries": ["runtime-cli"],
+        "risks": ["Fixture risk."],
+        "rollout": {"flag_required": false, "flag_pattern": "none", "notes": "No flag needed."},
+        "validation_strategy": ["Focused runtime tests."]
+      }"""
 
     private const val EXECUTABLE_PLAN_OUTPUTS: String =
-      """{projection_kind: "executable_plan", contract_version: "0.1", mode: "direct", tasks: [{task_id: "task-1", """ +
-        """description: "Fixture task.", criterion_refs: ["AC-001"], """ +
-        """target_paths_or_symbols: ["src/Foo.kt"], test_obligations: ["Focused test."]}], """ +
-        """validation_strategy: ["Focused runtime tests."]}"""
+      """{
+        "projection_kind": "executable_plan",
+        "contract_version": "0.1",
+        "mode": "direct",
+        "tasks": [{
+          "task_id": "task-1",
+          "description": "Fixture task.",
+          "criterion_refs": ["AC-001"],
+          "target_paths_or_symbols": ["src/Foo.kt"],
+          "test_obligations": ["Focused test."]
+        }],
+        "validation_strategy": ["Focused runtime tests."]
+      }"""
 
     private const val IMPLEMENTATION_RECEIPT_OUTPUTS: String =
-      """{projection_kind: "implementation_receipt", contract_version: "0.1", completed_task_ids: ["task-1"], """ +
-        """changed_paths: ["src/Foo.kt"], tests_executed: [{name: "FooTest", outcome: "passed"}], """ +
-        """reconciliation_evidence: {reconciled: true, evidence: "Fixture tree at target state."}, """ +
-        """repository_checkpoint: {fingerprint: "fixture-checkpoint-1"}, """ +
-        // The mutating-phase reconciliation gate reads this alongside the receipt's own evidence.
-        """reconciled_state: {reconciled: true, """ +
-        """evidence: "All planned changes are present at their intended state."}}"""
+      """{
+        "projection_kind": "implementation_receipt",
+        "contract_version": "0.1",
+        "completed_task_ids": ["task-1"],
+        "changed_paths": ["src/Foo.kt"],
+        "tests_executed": [{"name": "FooTest", "outcome": "passed"}],
+        "reconciliation_evidence": {"reconciled": true, "evidence": "Fixture tree at target state."},
+        "repository_checkpoint": {"fingerprint": "fixture-checkpoint-1"}
+      }"""
 
     private const val VALIDATION_RESULT_OUTPUTS: String =
-      """{validation_result: {validation_status: "passed", checks: ["FooTest"], """ +
-        """repository_checkpoint: {fingerprint: "fixture-checkpoint-1"}, """ +
-        """gate_run_count: 1, gate_runs: [{duration_ms: 1, outcome: "passed", """ +
-        """cache_mode: "forced_full", executed_work_units: 1}]}}"""
+      """{
+        "validation_result": {
+          "validation_status": "passed",
+          "checks": ["FooTest"],
+          "repository_checkpoint": {"fingerprint": "fixture-checkpoint-1"},
+          "gate_run_count": 1,
+          "gate_runs": [{
+            "duration_ms": 1,
+            "outcome": "passed",
+            "cache_mode": "forced_full",
+            "executed_work_units": 1
+          }]
+        }
+      }"""
 
     private const val HISTORY_RESULT_OUTPUTS: String =
-      """{history_result: {changed_paths: ["agent/history.md"], decisions_recorded: []}}"""
+      """{"history_result": {"changed_paths": ["agent/history.md"], "decisions_recorded": []}}"""
 
     private const val COMMIT_PUSH_RESULT_OUTPUTS: String =
-      """{commit_push_result: {message: "SKILL-650: runtime cli fixture subtask", """ +
-        """changed_paths: ["src/Foo.kt"], """ +
-        """branch: "feat/pre-created-runtime-branch", base_branch: "main", pushed: true}}"""
+      """{
+        "commit_push_result": {
+          "message": "SKILL-650: runtime cli fixture subtask",
+          "changed_paths": ["src/Foo.kt"],
+          "branch": "feat/pre-created-runtime-branch",
+          "base_branch": "main",
+          "pushed": true
+        }
+      }"""
 
     fun validPhaseOutputForTest(phaseId: String): String = validPhaseOutput(phaseId)
 
@@ -2143,7 +2186,7 @@ private class InterruptAtImplementLauncher : AgentRunLauncher {
       return AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
         exitStatus = 0,
-        stdout = "NO_FINDINGS",
+        stdout = "approved",
         stderr = "",
         timedOut = false,
         spawnFailed = false,

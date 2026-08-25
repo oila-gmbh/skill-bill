@@ -86,7 +86,7 @@ class GoalPlanningPreparationSchemaValidatorTest {
     "decomposition_manifest_hash" to HASH,
     "planning_contract_id" to GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
     "planning_contract_version" to GOAL_PLANNING_PREPARATION_CONTRACT_VERSION,
-    "phase_output_contract_id" to FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID,
+    "phase_output_contract_id" to FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID,
     "phase_output_contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
   )
 

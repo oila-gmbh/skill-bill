@@ -413,7 +413,6 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
     val produced = mapOf(
       "projection_kind" to "implementation_receipt",
       "contract_version" to "0.1",
-      "reconciled_state" to mapOf("reconciled" to true),
       "repair_item_results" to listOf(mapOf("repair_item_id" to "ac-001-gap-1-item-1")),
       "deferred_repair_item_ids" to listOf("ac-001-gap-1-item-2"),
       "unresolvable_repair" to mapOf("reason" to "blocked"),

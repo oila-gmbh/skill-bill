@@ -18,9 +18,8 @@ import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
-import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -63,7 +62,6 @@ import skillbill.ports.time.NoopRuntimeTimingPort
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
@@ -72,13 +70,7 @@ import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -1128,7 +1120,6 @@ class GoalPlanningSweepTest {
     }
     val runOne = DefaultGoalPlanningSweep(
       fixtures.checkpoint,
-      fixtures.outputValidator,
       runOneLauncher,
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
@@ -1147,7 +1138,6 @@ class GoalPlanningSweepTest {
     val runTwoLauncher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
     val runTwo = DefaultGoalPlanningSweep(
       fixtures.checkpoint,
-      fixtures.outputValidator,
       runTwoLauncher,
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
@@ -1578,7 +1568,6 @@ class GoalPlanningSweepTest {
     val fixtures = sharedSweepFixtures()
     val settledPreplan = DefaultGoalPlanningSweep(
       fixtures.checkpoint,
-      fixtures.outputValidator,
       SweepPlanningLauncher { phase, _, _ ->
         if (phase == "plan") {
           launchFacts(stdout = phasePayload(phase).replace("\"completed\"", "\"blocked\""))
@@ -1601,7 +1590,6 @@ class GoalPlanningSweepTest {
     val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
     val sweep = DefaultGoalPlanningSweep(
       fixtures.checkpoint,
-      fixtures.outputValidator,
       launcher,
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
@@ -1652,7 +1640,6 @@ class GoalPlanningSweepTest {
     }
     val sweep = DefaultGoalPlanningSweep(
       fixtures.checkpoint,
-      fixtures.outputValidator,
       sharedLauncher,
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
@@ -1686,7 +1673,7 @@ class GoalPlanningSweepTest {
 
   @Test
   fun `planning payloads are persisted as strict canonical json even when the agent fences output with prose`() {
-    val harness = sweepHarness(outputValidator = FenceAwarePhaseOutputValidator()) { phase, _, _ ->
+    val harness = sweepHarness { phase, _, _ ->
       launchFacts(stdout = fencedPhasePayload(phase))
     }
 
@@ -1711,18 +1698,15 @@ class GoalPlanningSweepTest {
 
   @Test
   fun `missing or unreadable shared governed spec stops before mutation with a clear pre sweep state`() {
-    val outputValidator = FakePhaseOutputValidator()
     val database = InMemoryPreparationDatabase()
     val checkpoint = GoalPlanningPreparationCheckpoint(
       database = database,
       envelopeValidator = NoopGoalPlanningPreparationEnvelopeValidator,
-      phaseOutputValidator = outputValidator,
       planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
     val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
     val sweep = DefaultGoalPlanningSweep(
       checkpoint,
-      outputValidator,
       launcher,
       FakeInvariantsSource(),
       ThrowingManifestFileStore(),
@@ -1894,7 +1878,7 @@ class GoalPlanningSweepTest {
     val retryPrompt = harness.launcher.requests.last().skillRunRequest.promptOverride.orEmpty()
     assertTrue(
       retryPrompt.contains("test_obligations"),
-      "the relaunch prompt must carry the projection validation detail as priorSchemaFailure",
+      "the relaunch prompt must carry the projection validation detail as priorSettlementFailure",
     )
     val record = assertNotNull(harness.recordFor(1))
     assertFalse(
@@ -1950,27 +1934,6 @@ class GoalPlanningSweepTest {
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     assertEquals(2, harness.launcher.phases.count { it == "preplan" })
     assertTrue(validator.calls >= 1, "the gate must observe the enriched payload before checkpointing")
-  }
-
-  @Test
-  fun `preplan repair evidence survives enrichment and checkpoint persistence`() {
-    val evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
-      format = FeatureTaskRuntimePhaseOutputFormat.JSON,
-      originalDigest = sha256HexUtf8(RAW_REPAIRED_PREPLAN),
-      repairedDigest = sha256HexUtf8(REPAIRED_PREPLAN_PAYLOAD),
-      operation = FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
-      sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation("preplan", 0, 1, 1),
-    )
-    val harness = sweepHarness(outputValidator = RepairingPreplanOutputValidator(evidence)) { phase, _, _ ->
-      if (phase == "preplan") launchFacts(stdout = RAW_REPAIRED_PREPLAN) else validPhaseOutcome(phase)
-    }
-
-    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
-
-    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
-    val shared = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
-    assertEquals(evidence, shared.repairEvidence)
-    assertNotNull(harness.recordFor(1), "the repaired shared preplan must reach the plan checkpoint")
   }
 
   @Test
@@ -2068,38 +2031,6 @@ private fun emptyTestObligationsPlanPayload(): String =
     """"task_id":"task-1","description":"Fixture task.","criterion_refs":["AC-001"],""" +
     """"test_obligations":[]}],"validation_strategy":["Focused runtime tests."]}}"""
 
-private const val RAW_REPAIRED_PREPLAN = "raw preplan repaired before enrichment"
-
-private const val REPAIRED_PREPLAN_PAYLOAD =
-  """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"preplan",""" +
-    """"status":"completed","summary":"s","produced_outputs":{"projection_kind":"preplanning_digest",""" +
-    """"contract_version":"0.1","affected_boundaries":["runtime-application/workflow"],""" +
-    """"risks":["fixture risk"],"rollout":{"flag_required":false,"notes":"fixture"},""" +
-    """"validation_strategy":["Focused runtime tests"]}}"""
-
-private class RepairingPreplanOutputValidator(
-  private val evidence: FeatureTaskRuntimePhaseOutputRepairEvidence,
-) : FeatureTaskRuntimePhaseOutputValidator {
-  override fun validatePhaseOutput(
-    phaseOutputText: String,
-    sourceLabel: String,
-  ): FeatureTaskRuntimePhaseOutputValidationResult {
-    if (sourceLabel == "preplan" && phaseOutputText == RAW_REPAIRED_PREPLAN) {
-      return FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(
-        normalizedOutput = normalizedPlanningOutput(REPAIRED_PREPLAN_PAYLOAD),
-        evidence = evidence,
-      )
-    }
-    return FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(
-      normalizedPlanningOutput(phaseOutputText),
-    )
-  }
-
-  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-    validatePhaseOutput(phaseOutputText, sourceLabel)
-  }
-}
-
 private fun legacyV01Packet(
   subtasks: List<DecompositionSubtask>,
   platformPacks: Map<String, String>,
@@ -2155,17 +2086,6 @@ private fun legacyV03Packet(
     "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(subtasks),
   )
   return body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
-}
-
-private fun normalizedPlanningOutput(payload: String): NormalizedFeatureTaskRuntimePhaseOutput {
-  val envelope = JsonSupport.parseObjectOrNull(payload)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?: error("fixture phase output is not an object")
-  return NormalizedFeatureTaskRuntimePhaseOutput(
-    canonicalJson = JsonSupport.mapToJsonString(envelope),
-    envelope = envelope,
-  )
 }
 
 private fun GoalPlanningPreparationRecord.withSharedPacket(
@@ -2334,87 +2254,6 @@ private class FakeInvariantsSource : FeatureTaskRuntimeRunInvariantsSource {
     acceptanceCriteria = listOf("The sweep produces a schema-valid plan for this sub-spec."),
     mandatesAndOverrides = emptyList(),
   )
-}
-
-private class FakePhaseOutputValidator : FeatureTaskRuntimePhaseOutputValidator {
-  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-    val output = JsonSupport.parseObjectOrNull(phaseOutputText)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: throw malformed(sourceLabel, "Phase output root must be a single JSON object.")
-    val contractVersion = output["contract_version"]?.toString()
-    val phaseId = output["phase_id"]?.toString()
-    val status = output["status"]?.toString()
-    val produced = output["produced_outputs"]
-    if (contractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION) {
-      throw malformed(sourceLabel, "contract_version must be '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'.")
-    }
-    if (phaseId != sourceLabel) {
-      throw malformed(sourceLabel, "phase_id must be '$sourceLabel'.")
-    }
-    if (status !in setOf("completed", "blocked", "failed")) {
-      throw malformed(sourceLabel, "status must be completed, blocked, or failed.")
-    }
-    if (produced !is Map<*, *> || produced.isEmpty()) {
-      throw malformed(sourceLabel, "produced_outputs must be a non-empty object.")
-    }
-  }
-
-  private fun malformed(sourceLabel: String, reason: String): InvalidFeatureTaskRuntimePhaseOutputSchemaError =
-    InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel = sourceLabel, reason = reason)
-}
-
-private class FenceAwarePhaseOutputValidator : FeatureTaskRuntimePhaseOutputValidator {
-  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-    validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
-  }
-
-  override fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> {
-    val candidate = firstJsonObject(phaseOutputText)
-      ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-        sourceLabel = sourceLabel,
-        reason = "Phase output root must contain a single JSON object.",
-      )
-    val output = JsonSupport.parseObjectOrNull(candidate)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-        sourceLabel = sourceLabel,
-        reason = "Phase output root must be a single JSON object.",
-      )
-    when {
-      output["contract_version"]?.toString() != FEATURE_TASK_RUNTIME_CONTRACT_VERSION ->
-        throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-          sourceLabel = sourceLabel,
-          reason = "contract_version must be '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'.",
-        )
-      output["phase_id"]?.toString() != sourceLabel ->
-        throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-          sourceLabel = sourceLabel,
-          reason = "phase_id must be '$sourceLabel'.",
-        )
-      output["status"]?.toString() !in setOf("completed", "blocked", "failed") ->
-        throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-          sourceLabel = sourceLabel,
-          reason = "status must be completed, blocked, or failed.",
-        )
-      output["produced_outputs"] !is Map<*, *> || (output["produced_outputs"] as Map<*, *>).isEmpty() ->
-        throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-          sourceLabel = sourceLabel,
-          reason = "produced_outputs must be a non-empty object.",
-        )
-    }
-    return output
-  }
-
-  private fun firstJsonObject(text: String): String? {
-    val fenced = Regex("```[A-Za-z]*\\s*\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
-      .find(text)?.groupValues?.get(1)
-    val candidate = (fenced ?: text).trim()
-    val open = candidate.indexOf('{')
-    val close = candidate.lastIndexOf('}')
-    return if (open in 0 until close) candidate.substring(open, close + 1) else null
-  }
 }
 
 private class InMemoryPreparationRepository(
@@ -2696,7 +2535,6 @@ private class InMemoryPreparationDatabase(
 private data class SweepFixtures(
   val database: InMemoryPreparationDatabase,
   val checkpoint: GoalPlanningPreparationCheckpoint,
-  val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   val manifestFileStore: CountingManifestFileStore,
   val invariantsSource: FakeInvariantsSource,
   val repoRoot: Path,
@@ -2721,7 +2559,6 @@ private data class SweepFixtures(
 private fun sharedSweepFixtures(
   markPreparedThrows: Boolean = false,
   planCheckpointThrows: Boolean = false,
-  outputValidator: FeatureTaskRuntimePhaseOutputValidator = FakePhaseOutputValidator(),
 ): SweepFixtures {
   val database = InMemoryPreparationDatabase(
     markPreparedThrows = markPreparedThrows,
@@ -2730,13 +2567,11 @@ private fun sharedSweepFixtures(
   val checkpoint = GoalPlanningPreparationCheckpoint(
     database = database,
     envelopeValidator = NoopGoalPlanningPreparationEnvelopeValidator,
-    phaseOutputValidator = outputValidator,
     planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
   )
   return SweepFixtures(
     database = database,
     checkpoint = checkpoint,
-    outputValidator = outputValidator,
     manifestFileStore = CountingManifestFileStore(),
     invariantsSource = FakeInvariantsSource(),
     repoRoot = Files.createTempDirectory("goal-planning-sweep"),
@@ -2766,7 +2601,6 @@ private class SweepHarness(
 private fun sweepHarness(
   markPreparedThrows: Boolean = false,
   planCheckpointThrows: Boolean = false,
-  outputValidator: FeatureTaskRuntimePhaseOutputValidator = FakePhaseOutputValidator(),
   contextDiscovery: GoalPlanningContextDiscovery = fakeContextDiscovery,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
@@ -2782,12 +2616,10 @@ private fun sweepHarness(
   val fixtures = sharedSweepFixtures(
     markPreparedThrows = markPreparedThrows,
     planCheckpointThrows = planCheckpointThrows,
-    outputValidator = outputValidator,
   )
   val launcher = SweepPlanningLauncher(behavior)
   val sweep = DefaultGoalPlanningSweep(
     fixtures.checkpoint,
-    fixtures.outputValidator,
     launcher,
     fixtures.invariantsSource,
     fixtures.manifestFileStore,
@@ -3042,7 +2874,7 @@ private fun recoverabilityCheckpoint(
     parentSpecHash = sha256HexUtf8(parentSpec),
     decompositionManifestHash = "manifest-hash",
     planningContractId = GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
-    phaseOutputContractId = FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID,
+    phaseOutputContractId = FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID,
   )
   return SharedGoalPreplanCheckpoint(
     identity = GoalPlanningIdentity("wfl-parent", "SKILL-56", "repo-root-realpath-v1:/tmp/fixture"),

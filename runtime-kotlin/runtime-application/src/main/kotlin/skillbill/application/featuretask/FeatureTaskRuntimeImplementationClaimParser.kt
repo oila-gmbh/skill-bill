@@ -82,9 +82,6 @@ private val ATTEMPT_SUMMARY_NEUTRALIZED_CHARS = Regex("[\"@]")
 private val ATTEMPT_WHITESPACE_RUN = Regex("\\s+")
 private const val ATTEMPT_SUMMARY_PREFIX = "note: "
 
-private fun isAttemptNonBlank(value: String): Boolean =
-  value.isNotBlank() && value.length <= ATTEMPT_NON_BLANK_MAX_LENGTH
-
 private fun isAttemptTaskId(value: String): Boolean =
   value.length <= ATTEMPT_TASK_ID_MAX_LENGTH && ATTEMPT_TASK_ID_PATTERN.matches(value)
 

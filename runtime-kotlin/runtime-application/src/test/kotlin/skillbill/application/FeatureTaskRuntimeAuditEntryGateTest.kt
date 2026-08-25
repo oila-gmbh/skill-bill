@@ -383,7 +383,6 @@ class FeatureTaskRuntimeAuditEntryGateTest {
           edgeIteration = 1,
         ),
       ),
-      outputValidator = AlwaysValidValidator,
     )
     // Precondition: the legacy generation's watermark is loaded, and its span cannot be completed
     // because review sits behind an audit that never settled.

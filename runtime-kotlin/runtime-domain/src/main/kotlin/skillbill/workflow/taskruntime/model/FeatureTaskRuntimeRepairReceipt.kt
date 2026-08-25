@@ -326,22 +326,6 @@ data class FeatureTaskRuntimeRepairReceipt(
         )
       }
     }
-
-    /**
-     * Entry-shape validation without the runtime-owned anchor. A run with no durable review state
-     * has no remediation base or round to stamp, so the full receipt cannot be built — but the
-     * sanitizer that keeps diff hunks and serialized payloads out of durable state lives on the
-     * entries and still has to run.
-     */
-    @OpenBoundaryMap("Repair receipt entry-shape check from the durable workflow-artifact map")
-    fun validateEntries(raw: Map<String, Any?>, path: String) {
-      raw.requireReviewStateList("entries", path).forEachIndexed { index, value ->
-        FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(
-          value.asReviewStateMap("$path.entries[$index]"),
-          "$path.entries[$index]",
-        )
-      }
-    }
   }
 }
 
@@ -373,15 +357,6 @@ fun GoalSubtaskReviewState.upsertRepairReceipt(receipt: FeatureTaskRuntimeRepair
   }
   return copy(repairReceipts = updated)
 }
-
-/**
- * Coverage for a round's carried findings. Match only on the briefing's finding ref
- * (`finding_id`). Label and text are decoration and never decide coverage. Carried findings must
- * carry a ref before coverage runs; [withStableFindingRefs] assigns one when review omitted it.
- */
-fun FeatureTaskRuntimeRepairReceipt.coversCarriedFindings(
-  carriedFindings: List<GoalSubtaskReviewCompactFinding>,
-): Boolean = omittedCarriedFindings(carriedFindings).isEmpty()
 
 /**
  * The carried findings this receipt never accounted for, in carried order. The runtime sends the

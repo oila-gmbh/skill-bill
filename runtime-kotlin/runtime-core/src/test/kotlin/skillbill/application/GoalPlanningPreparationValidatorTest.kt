@@ -3,11 +3,9 @@ package skillbill.application
 import skillbill.application.featuretask.GoalPlanningPreparationValidator
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
-import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
@@ -21,7 +19,6 @@ class GoalPlanningPreparationValidatorTest {
   // The real projection validator, not a stand-in: the write path must reject exactly what the
   // consumer launch seam rejects, and a weaker validator here would prove nothing about that.
   private val validator = GoalPlanningPreparationValidator(
-    FeatureTaskRuntimePhaseOutputValidatorAdapter(),
     FeatureTaskRuntimePlanningProjectionValidatorAdapter(),
   )
 
@@ -67,16 +64,7 @@ class GoalPlanningPreparationValidatorTest {
       preplanPayload = payloadJson(phaseId = "plan"),
     )
 
-    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> { validator.validate(record) }
-  }
-
-  @Test
-  fun `a payload with an incompatible phase output contract version is rejected`() {
-    val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
-      preplanPayload = payloadJson(phaseId = "preplan", contractVersion = "9.9"),
-    )
-
-    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> { validator.validate(record) }
+    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { validator.validate(record) }
   }
 
   @Test
@@ -85,7 +73,7 @@ class GoalPlanningPreparationValidatorTest {
       planPayload = payloadJson(phaseId = "plan", status = "queued"),
     )
 
-    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> { validator.validate(record) }
+    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { validator.validate(record) }
   }
 
   @Test
@@ -94,7 +82,7 @@ class GoalPlanningPreparationValidatorTest {
       planPayload = payloadJson(phaseId = "plan", producedOutputsJson = "{}"),
     )
 
-    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> { validator.validate(record) }
+    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { validator.validate(record) }
   }
 
   @Test
@@ -132,7 +120,7 @@ class GoalPlanningPreparationValidatorTest {
       decompositionManifestHash = "m",
     )
 
-    assertEquals(FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID, provenance.phaseOutputContractId)
+    assertEquals(FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID, provenance.phaseOutputContractId)
     assertEquals(FEATURE_TASK_RUNTIME_CONTRACT_VERSION, provenance.phaseOutputContractVersion)
     assertEquals(GOAL_PLANNING_PREPARATION_CONTRACT_VERSION, GOAL_PLANNING_PREPARATION_CONTRACT_VERSION)
   }

@@ -1,6 +1,5 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -64,48 +63,5 @@ class UnboundedRemediationLoopRegressionTest {
       1,
       transitions.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }.perEdgeCap,
     )
-  }
-
-  @Test
-  fun `every record-regeneration edge keeps its finite cap and blocking exhaustion`() {
-    val regenerationEdges = transitions.backwardEdges.filter { def.isRegenerationLoopId(it.loopId) }
-    assertEquals(3, regenerationEdges.size)
-    assertEquals(2, def.MAX_RECORD_REGENERATION_ATTEMPTS)
-    regenerationEdges.forEach { edge ->
-      assertEquals(
-        def.MAX_RECORD_REGENERATION_ATTEMPTS,
-        edge.perEdgeCap,
-        "'${edge.loopId}' must keep its bounded regeneration cap.",
-      )
-      assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.BLOCK, edge.capExhaustionBehavior)
-    }
-  }
-
-  @Test
-  fun `every regeneration edge keeps its cap and gains no threshold warning`() {
-    transitions.backwardEdges
-      .filter { def.isRegenerationLoopId(it.loopId) }
-      .forEach { edge ->
-        assertEquals(
-          def.MAX_RECORD_REGENERATION_ATTEMPTS,
-          edge.perEdgeCap,
-          "'${edge.loopId}' must keep its finite cap.",
-        )
-        assertNull(
-          edge.warnAfterIterations,
-          "'${edge.loopId}' is capped, so a threshold warning would be misleading.",
-        )
-      }
-  }
-
-  @Test
-  fun `an exhausted regeneration edge still blocks durably`() {
-    val transition = transition(
-      def.PHASE_PLAN,
-      FeatureTaskRuntimeVerdict.RECORD_REJECTED,
-      def.MAX_RECORD_REGENERATION_ATTEMPTS,
-    )
-    val blocked = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(transition)
-    assertEquals(def.PREPLAN_REGENERATION_LOOP_ID, blocked.loopId)
   }
 }

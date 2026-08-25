@@ -69,7 +69,6 @@ import skillbill.infrastructure.fs.FeatureTaskRuntimeBuildReceiptValidatorAdapte
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeImplementationAttemptValidatorAdapter
-import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeQuarantineValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
@@ -224,7 +223,6 @@ import skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.GoalObservabilityEventValidator
@@ -684,12 +682,6 @@ abstract class RuntimeComponent(
   @JvmSynthetic
   internal fun workflowSnapshotValidator(adapter: WorkflowSnapshotValidatorInfraAdapter): WorkflowSnapshotValidator =
     adapter
-
-  @Provides
-  @JvmSynthetic
-  internal fun featureTaskRuntimePhaseOutputValidator(
-    adapter: FeatureTaskRuntimePhaseOutputValidatorAdapter,
-  ): FeatureTaskRuntimePhaseOutputValidator = adapter
 
   // SKILL-137: the canonical planning-projections schema gate. The domain parse seam calls this port
   // before building a typed projection, so the schema is enforced at runtime, not just authored.

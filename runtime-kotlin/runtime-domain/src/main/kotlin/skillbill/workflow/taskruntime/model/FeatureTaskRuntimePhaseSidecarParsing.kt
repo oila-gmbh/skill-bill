@@ -27,8 +27,11 @@ fun readDelimitedBlock(prose: String, begin: String, end: String): String? {
 fun readCommitSubjectFromProse(prose: String): String? =
   readDelimitedBlock(prose, FEATURE_TASK_RUNTIME_COMMIT_SUBJECT_BEGIN, FEATURE_TASK_RUNTIME_COMMIT_SUBJECT_END)
 
-fun readDecompositionPackageJsonFromProse(prose: String): String? =
-  readDelimitedBlock(prose, FEATURE_TASK_RUNTIME_DECOMPOSITION_PACKAGE_BEGIN, FEATURE_TASK_RUNTIME_DECOMPOSITION_PACKAGE_END)
+fun readDecompositionPackageJsonFromProse(prose: String): String? = readDelimitedBlock(
+  prose,
+  FEATURE_TASK_RUNTIME_DECOMPOSITION_PACKAGE_BEGIN,
+  FEATURE_TASK_RUNTIME_DECOMPOSITION_PACKAGE_END,
+)
 
 @OpenBoundaryMap("Feature-task-runtime decomposition package parsed from delimited plan prose")
 fun decompositionPackageMapFromProse(prose: String): Map<String, Any?>? {
@@ -63,11 +66,16 @@ fun retainDerivationCriticalProsePrefix(text: String, maxUtf8Bytes: Int): String
   }
 }
 
+private const val UTF8_CONTINUATION_BYTE_MASK = 0xC0
+private const val UTF8_CONTINUATION_BYTE_PATTERN = 0x80
+
 private fun truncateUtf8(text: String, maxBytes: Int): String {
   if (maxBytes <= 0) return ""
   val bytes = text.encodeToByteArray()
   if (bytes.size <= maxBytes) return text
   var end = maxBytes
-  while (end > 0 && (bytes[end - 1].toInt() and 0xC0) == 0x80) end--
+  while (end > 0 && (bytes[end - 1].toInt() and UTF8_CONTINUATION_BYTE_MASK) == UTF8_CONTINUATION_BYTE_PATTERN) {
+    end--
+  }
   return bytes.copyOfRange(0, end).decodeToString()
 }

@@ -511,7 +511,7 @@ enum class FeatureTaskRuntimeProjectionCanonicalizationTransform(val wireValue: 
  * `projection_kind`, which is also its `$defs` name. Parity with the schema is asserted by
  * [skillbill.workflow.taskruntime.model] canonicalization parity coverage, so a schema property addition
  * that is not mirrored here fails a test instead of silently becoming an unknown key. The foreign-owned
- * co-residents (`_goal_planning_shared_context`, `reconciled_state`, `repair_item_results`,
+ * co-residents (`_goal_planning_shared_context`, `repair_item_results`,
  * `deferred_repair_item_ids`, `unresolvable_repair`) are declared properties of their variants, so they
  * appear here and the prune retains them.
  */
@@ -551,7 +551,6 @@ internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set
     "unresolved_items",
     "reconciliation_evidence",
     "repository_checkpoint",
-    "reconciled_state",
     "repair_item_results",
     "deferred_repair_item_ids",
     "unresolvable_repair",

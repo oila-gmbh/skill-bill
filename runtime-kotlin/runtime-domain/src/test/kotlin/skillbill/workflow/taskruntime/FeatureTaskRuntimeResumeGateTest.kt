@@ -248,7 +248,7 @@ class FeatureTaskRuntimeResumeGateTest {
       val outputArtifact = phaseRecordOutputs[phaseId]
         ?.let { ""","output_artifact":${jsonStringLiteral(it)}""" }
         .orEmpty()
-      """"$phaseId":{"contract_version":"0.2","record_kind":"private_phase_record",""" +
+      """"$phaseId":{"contract_version":"0.3","record_kind":"private_phase_record",""" +
         """"phase_id":"$phaseId","status":"$status","attempt_count":1,""" +
         """"started_at":"2026-06-18T10:00:00Z","first_started_at":"2026-06-18T10:00:00Z",""" +
         """"resolved_agent_id":"agent-$phaseId","execution_origin":"agent-executed"$finishedAt$outputArtifact}"""

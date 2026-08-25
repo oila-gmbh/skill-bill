@@ -1357,6 +1357,18 @@ the plan, not an independent re-scan of `platform-packs/`), so the three staging
 builder, apply, link-skill fallback) each thread the selected pack skills. The link-skill flow
 refuses internal skills upstream and never reaches the pack-sidecar path.
 
+## 2026-08-25 — Retire feature-task phase-output shape policing (SKILL-208 subtask 5)
+
+**Decision.** The feature-task phase path no longer validates agent output against
+`feature-task-runtime-phase-output-schema.yaml`. Settlement, routing, obligation
+closure, and sidecar facts are authoritative; governed handoff projections and
+the goal-planning producer projection gate remain validator-backed on their own
+surfaces.
+
+**Boundary.** R1 prose result; R2 derived membership routing; R3 runtime-minted
+sidecar; R4 declared consumer projections only. Legacy phase-output records and
+`RECORD_REJECTED` regeneration edges are retired without in-place migration.
+
 ## 2026-08-10 — Runtime-owned validate gate (SKILL-180)
 
 **Decision.** Validate-phase build/test/gate execution moves to the runtime via pack-declared

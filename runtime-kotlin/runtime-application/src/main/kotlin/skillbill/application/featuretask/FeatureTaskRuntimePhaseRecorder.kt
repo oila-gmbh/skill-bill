@@ -3,12 +3,19 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
+import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
+import skillbill.application.featuretask.model.RuntimeOwnedFindingVerdictsReadResolution
+import skillbill.application.featuretask.model.RuntimeOwnedReviewImportResolution
+import skillbill.application.featuretask.model.RuntimeOwnedReviewPassClaimsReadResolution
+import skillbill.application.featuretask.model.resolveRuntimeOwnedFindingVerdicts
+import skillbill.application.featuretask.model.resolveRuntimeOwnedReviewPassClaims
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.normalizeIssueKey
+import skillbill.application.review.unionReviewPassClaims
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
@@ -30,10 +37,8 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.model.evidenceKey
-import skillbill.application.review.unionReviewPassClaims
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
@@ -125,49 +130,6 @@ import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
-
-internal sealed interface RuntimeOwnedReviewImportResolution {
-  data class Present(val review: skillbill.application.goalrunner.GoalSubtaskReviewImport) :
-    RuntimeOwnedReviewImportResolution
-
-  data class Absent(val cause: String) : RuntimeOwnedReviewImportResolution
-
-  data class ReadError(val cause: String) : RuntimeOwnedReviewImportResolution
-}
-
-internal sealed interface RuntimeOwnedReviewPassClaimsReadResolution {
-  data class Present(val snapshot: ReviewPassClaimSnapshot) : RuntimeOwnedReviewPassClaimsReadResolution
-  data class Absent(val cause: String) : RuntimeOwnedReviewPassClaimsReadResolution
-  data class ReadError(val cause: String) : RuntimeOwnedReviewPassClaimsReadResolution
-}
-
-internal sealed interface RuntimeOwnedFindingVerdictsReadResolution {
-  data class Present(val verdicts: List<ReviewFindingVerdict>) : RuntimeOwnedFindingVerdictsReadResolution
-  data class ReadError(val cause: String) : RuntimeOwnedFindingVerdictsReadResolution
-}
-
-internal class RuntimeOwnedFactUnavailable(message: String) : IllegalStateException(message)
-
-internal fun UnitOfWork.resolveRuntimeOwnedReviewPassClaims(
-  runId: String,
-): RuntimeOwnedReviewPassClaimsReadResolution = try {
-  reviews.fetchReviewPassClaims(runId)?.let(RuntimeOwnedReviewPassClaimsReadResolution::Present)
-    ?: RuntimeOwnedReviewPassClaimsReadResolution.Absent("review pass claims are absent")
-} catch (error: Exception) {
-  RuntimeOwnedReviewPassClaimsReadResolution.ReadError(
-    error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
-  )
-}
-
-internal fun UnitOfWork.resolveRuntimeOwnedFindingVerdicts(
-  runId: String,
-): RuntimeOwnedFindingVerdictsReadResolution = try {
-  RuntimeOwnedFindingVerdictsReadResolution.Present(reviews.fetchFindingVerdicts(runId))
-} catch (error: Exception) {
-  RuntimeOwnedFindingVerdictsReadResolution.ReadError(
-    error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
-  )
-}
 
 /**
  * The degradable classes are the environmental ones: the store rejected, could not be reached, or
@@ -662,7 +624,7 @@ class FeatureTaskRuntimePhaseRecorder(
         completedTaskIds = claim.completedTaskIds.distinct(),
         changedPaths = (
           request.fileManifestAfter + request.fileManifestIntroduced
-        ).distinct().sorted(),
+          ).distinct().sorted(),
         loopId = request.loopId,
         edgeIteration = request.edgeIteration,
         failureDisposition = request.failureDisposition,
@@ -896,15 +858,16 @@ class FeatureTaskRuntimePhaseRecorder(
       }?.takeIf(String::isNotBlank)
         ?: return@read RuntimeOwnedReviewImportResolution.Absent("review phase has no runtime-owned run id")
       val claims = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-        is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution.snapshot
+        is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
         is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> return@read RuntimeOwnedReviewImportResolution.Absent(
           "review pass claims are missing for runtime-owned run id '$reviewRunId': ${resolution.cause}",
         )
-        is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> return@read RuntimeOwnedReviewImportResolution.ReadError(
-          "review pass claims could not be read for runtime-owned run id '$reviewRunId': ${resolution.cause}",
-        )
+        is RuntimeOwnedReviewPassClaimsReadResolution.ReadError ->
+          return@read RuntimeOwnedReviewImportResolution.ReadError(
+            "review pass claims could not be read for runtime-owned run id '$reviewRunId': ${resolution.cause}",
+          )
       }
-      RuntimeOwnedReviewImportResolution.Present(
+      RuntimeOwnedReviewImportResolution.ResolvedReviewImport(
         skillbill.application.goalrunner.GoalSubtaskReviewImport(reviewRunId, claims.findings),
       )
     }
@@ -926,7 +889,7 @@ class FeatureTaskRuntimePhaseRecorder(
       dbOverride = dbOverride,
     ) { unitOfWork ->
       val recorded = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-        is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution.snapshot
+        is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
         is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> null
         is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> {
           recordRuntimeOwnedReadFailure(
@@ -953,15 +916,16 @@ class FeatureTaskRuntimePhaseRecorder(
   ): RuntimeOwnedReviewImportResolution = try {
     database.read(dbOverride) { unitOfWork ->
       val claims = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-        is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution.snapshot
+        is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
         is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> return@read RuntimeOwnedReviewImportResolution.Absent(
           "review pass claims are missing for runtime-owned run id '$reviewRunId': ${resolution.cause}",
         )
-        is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> return@read RuntimeOwnedReviewImportResolution.ReadError(
-          "review pass claims could not be read for runtime-owned run id '$reviewRunId': ${resolution.cause}",
-        )
+        is RuntimeOwnedReviewPassClaimsReadResolution.ReadError ->
+          return@read RuntimeOwnedReviewImportResolution.ReadError(
+            "review pass claims could not be read for runtime-owned run id '$reviewRunId': ${resolution.cause}",
+          )
       }
-      RuntimeOwnedReviewImportResolution.Present(
+      RuntimeOwnedReviewImportResolution.ResolvedReviewImport(
         skillbill.application.goalrunner.GoalSubtaskReviewImport(reviewRunId, claims.findings),
       )
     }
@@ -984,25 +948,23 @@ class FeatureTaskRuntimePhaseRecorder(
     )
   }
 
-  internal fun recordedFindingVerdicts(
-    reviewRunId: String,
-    dbOverride: String? = null,
-  ): List<ReviewFindingVerdict> = when (
-    val resolution = resolveRecordedFindingVerdicts(reviewRunId, dbOverride)
-  ) {
-    is RuntimeOwnedFindingVerdictsReadResolution.Present -> resolution.verdicts
-    is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
-      recordRuntimeOwnedReadFailure(
-        seam = "FeatureTaskRuntimePhaseRecorder.recordedFindingVerdicts",
-        expected = "runtime-owned finding verdicts",
-        used = "read_error",
-        cause = resolution.cause,
-      )
-      throw RuntimeOwnedFactUnavailable(
-        "Runtime-owned finding verdicts could not be read for review run '$reviewRunId': ${resolution.cause}",
-      )
+  internal fun recordedFindingVerdicts(reviewRunId: String, dbOverride: String? = null): List<ReviewFindingVerdict> =
+    when (
+      val resolution = resolveRecordedFindingVerdicts(reviewRunId, dbOverride)
+    ) {
+      is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
+      is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
+        recordRuntimeOwnedReadFailure(
+          seam = "FeatureTaskRuntimePhaseRecorder.recordedFindingVerdicts",
+          expected = "runtime-owned finding verdicts",
+          used = "read_error",
+          cause = resolution.cause,
+        )
+        throw RuntimeOwnedFactUnavailable(
+          "Runtime-owned finding verdicts could not be read for review run '$reviewRunId': ${resolution.cause}",
+        )
+      }
     }
-  }
 
   internal fun fetchUnaddressedLedger(
     workflowId: String,
@@ -1305,9 +1267,9 @@ class FeatureTaskRuntimePhaseRecorder(
     passNumber: Int,
     blockerDispositions: List<GoalSubtaskBlockerDisposition>,
   ) {
-    val output = requireNotNull(request.normalizedOutput) {
+    requireNotNull(request.normalizedOutput) {
       "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
-    }.envelope
+    }
     val reviewImport = runtimeOwnedReviewImport(
       unitOfWork,
       decodeArtifacts(
@@ -1354,7 +1316,7 @@ class FeatureTaskRuntimePhaseRecorder(
       "Goal review completion review run id must match the reserved runtime-owned review run id."
     }
     val claims = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-      is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution.snapshot
+      is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
       is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> {
         recordRuntimeOwnedReadFailure(
           seam = "FeatureTaskRuntimePhaseRecorder.runtimeOwnedReviewImport",
@@ -1379,7 +1341,7 @@ class FeatureTaskRuntimePhaseRecorder(
 
   private fun runtimeOwnedFindingVerdicts(unitOfWork: UnitOfWork, reviewRunId: String): List<ReviewFindingVerdict> =
     when (val resolution = unitOfWork.resolveRuntimeOwnedFindingVerdicts(reviewRunId)) {
-      is RuntimeOwnedFindingVerdictsReadResolution.Present -> resolution.verdicts
+      is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
       is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
         recordRuntimeOwnedReadFailure(
           seam = "FeatureTaskRuntimePhaseRecorder.runtimeOwnedFindingVerdicts",
@@ -1390,12 +1352,7 @@ class FeatureTaskRuntimePhaseRecorder(
       }
     }
 
-  private fun recordRuntimeOwnedReadFailure(
-    seam: String,
-    expected: String,
-    cause: String,
-    used: String = "none",
-  ) {
+  private fun recordRuntimeOwnedReadFailure(seam: String, expected: String, cause: String, used: String = "none") {
     runCatching {
       diagnostics.warning(
         "seam=$seam value_expected=$expected value_used=$used cause=$cause",
@@ -1810,7 +1767,9 @@ class FeatureTaskRuntimePhaseRecorder(
       true
     }
 
-  private fun derivationReaskStatesFrom(artifacts: Map<String, Any?>): Map<String, FeatureTaskRuntimeDerivationReaskState> {
+  private fun derivationReaskStatesFrom(
+    artifacts: Map<String, Any?>,
+  ): Map<String, FeatureTaskRuntimeDerivationReaskState> {
     val raw = artifacts[FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY] ?: return emptyMap()
     val wire = JsonSupport.anyToStringAnyMap(raw) ?: return emptyMap()
     return wire.mapNotNull { (phaseId, entry) ->

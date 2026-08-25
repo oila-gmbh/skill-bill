@@ -113,7 +113,7 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
     val regenerated = FeatureTaskRuntimeImplementationObligations(
       plannedTaskIds = listOf("task-1", "task-2"),
       carriedRepairItemIds = emptyList(),
-      loopId = FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID,
+      loopId = "implement_regeneration",
     )
 
     assertNull(

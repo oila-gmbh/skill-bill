@@ -6,8 +6,8 @@ import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
-import skillbill.workflow.taskruntime.model.coversCarriedFindings
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRemediationRoundNumber
+import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 
 internal fun featureTaskRuntimeParseRepairReceiptOrNull(
   producedOutputs: Map<String, Any?>,
@@ -84,18 +84,6 @@ internal fun featureTaskRuntimeRemediationRoundNumberOrNull(reviewState: GoalSub
       if (error is InvalidFeatureTaskRuntimeRepairReceiptError) null else throw error
     }
 
-internal fun featureTaskRuntimeRepairReceiptShapeRejection(producedOutputs: Map<String, Any?>): String? {
-  val raw = producedOutputs["repair_receipt"] ?: return null
-  return try {
-    FeatureTaskRuntimeRepairReceipt.validateEntries(requireRepairReceiptMap(raw), "repair_receipt")
-    null
-  } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
-    featureTaskRuntimeRepairReceiptRejectionDetail(error.fieldPath, error.payloadFreeReason)
-  } catch (error: InvalidGoalSubtaskReviewStateSchemaError) {
-    featureTaskRuntimeRepairReceiptRejectionDetail(error.fieldPath, error.reason)
-  }
-}
-
 internal fun featureTaskRuntimeRepairReceiptSettleRejection(
   receipt: FeatureTaskRuntimeRepairReceipt,
   reviewState: GoalSubtaskReviewState,
@@ -108,7 +96,7 @@ internal fun featureTaskRuntimeRepairReceiptSettleRejection(
 internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
   receipt: FeatureTaskRuntimeRepairReceipt,
   carriedFindings: List<GoalSubtaskReviewCompactFinding>,
-): String? = if (receipt.coversCarriedFindings(carriedFindings)) {
+): String? = if (receipt.omittedCarriedFindings(carriedFindings).isEmpty()) {
   null
 } else {
   featureTaskRuntimeRepairReceiptRejectionDetail(

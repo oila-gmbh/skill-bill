@@ -1,7 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar
-import skillbill.workflow.taskruntime.model.readCommitSubjectFromProse
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.amendHeadCommit
@@ -14,6 +12,8 @@ import skillbill.ports.workflow.restoreIndexState
 import skillbill.ports.workflow.stagePaths
 import skillbill.ports.workflow.updateCheckpointRef
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar
+import skillbill.workflow.taskruntime.model.readCommitSubjectFromProse
 import java.nio.file.Path
 
 private const val COMMIT_PUSH_RESULT_KEY = "commit_push_result"
@@ -265,13 +265,11 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
       )
     }
 
-    fun withCommitShaSidecar(
-      commitSubject: String,
-      commitSha: String,
-    ): FeatureTaskRuntimePhaseRecordSidecar = FeatureTaskRuntimePhaseRecordSidecar(
-      commitSubject = commitSubject,
-      commitSha = commitSha,
-    )
+    fun withCommitShaSidecar(commitSubject: String, commitSha: String): FeatureTaskRuntimePhaseRecordSidecar =
+      FeatureTaskRuntimePhaseRecordSidecar(
+        commitSubject = commitSubject,
+        commitSha = commitSha,
+      )
 
     fun readHandoff(envelope: Map<String, Any?>): FeatureTaskRuntimeCommitPushHandoffResult {
       val result = commitPushResult(envelope)

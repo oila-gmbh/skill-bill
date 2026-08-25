@@ -2,23 +2,18 @@ package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
-import skillbill.application.goalrunner.GoalSubtaskReviewImport
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
 import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
 import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ParallelReviewMergeResult
-import skillbill.review.model.ParallelReviewMergedFinding
-import skillbill.review.model.ReviewFindingCitation
 import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationResult
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
@@ -101,42 +96,9 @@ internal object FeatureTaskRuntimeReviewDriverMapper {
 }
 
 internal object FeatureTaskRuntimeReviewEnvelope {
-  private val CRITERION_GAP_KEYS = setOf("unmet_criteria", "gaps", "failing_criteria")
   private const val REVIEW_RUN_ID_SUFFIX_LENGTH = 4
-  private const val SUMMARY_MAX_CHARS = 2_000
 
-  fun assemble(
-    result: ParallelCodeReviewResult,
-    reviewRunId: String,
-    cycle: FeatureTaskRuntimeReviewCycleContext,
-    runtimeReviewImport: GoalSubtaskReviewImport? = null,
-  ): String {
-    val prose = result.output.trim().ifBlank { "Review completed." }
-    val effectiveReviewRunId = runtimeReviewImport?.reviewRunId ?: reviewRunId
-    val findings = (runtimeReviewImport?.findings ?: result.mergeResult.findings).map(::findingPayload)
-    val produced = linkedMapOf<String, Any?>(
-      FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to findings,
-      FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to effectiveReviewRunId,
-      "repository_checkpoint" to mapOf("fingerprint" to cycle.repositoryFingerprint),
-    )
-    commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
-      produced["commit_focused_accounting"] = accounting.toArtifactMap()
-    }
-    CRITERION_GAP_KEYS.forEach { key -> produced.remove(key) }
-    val envelope = linkedMapOf<String, Any?>(
-      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-      "phase_id" to "review",
-      "status" to STATUS_COMPLETED,
-      "summary" to prose.take(SUMMARY_MAX_CHARS),
-      "produced_outputs" to produced,
-    )
-    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
-    extractReviewVerdict(prose)?.let { verdict ->
-      envelope[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] = verdict.wireValue
-    }
-    envelope[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] = outcome.verdict.wireValue
-    return JsonSupport.mapToJsonString(envelope)
-  }
+  fun assemble(result: ParallelCodeReviewResult): String = result.output.trim().ifBlank { "Review completed." }
 
   fun extractReviewVerdict(prose: String): FeatureTaskRuntimeVerdict? {
     val context = FeatureTaskRuntimeDerivationContext(
@@ -161,22 +123,6 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     val suffix = CharArray(REVIEW_RUN_ID_SUFFIX_LENGTH) { alphabet.random() }.concatToString()
     return "rvw-$stamp-$suffix"
   }
-
-  private fun findingPayload(finding: ParallelReviewMergedFinding): Map<String, Any?> = buildMap {
-    put("finding_id", finding.fNumber)
-    put("severity", finding.severity.name.lowercase())
-    put("message", finding.description)
-    put("location", finding.location)
-    finding.repositoryPath?.let { put("repository_path", it) }
-    finding.claimVerdict?.let { put("claim_verdict", it.wireValue) }
-    finding.scopeDisposition?.let { put("scope_disposition", it.wireValue) }
-    if (finding.citations.isNotEmpty()) {
-      put("citations", finding.citations.map(::citationPayload))
-    }
-  }
-
-  private fun citationPayload(citation: ReviewFindingCitation): Map<String, Any?> =
-    mapOf("path" to citation.path, "line" to citation.line)
 
   internal fun commitFocusedAccounting(
     result: ParallelCodeReviewResult,
@@ -245,19 +191,13 @@ internal object FeatureTaskRuntimeReviewDriverCycle {
     result: ParallelCodeReviewResult,
     request: ParallelCodeReviewRequest,
     cycle: FeatureTaskRuntimeReviewCycleContext,
-    runtimeReviewImport: GoalSubtaskReviewImport? = null,
   ): FeatureTaskRuntimeReviewDriverCycleOutcome {
     val reviewRunId = requireNotNull(request.reviewRunId)
     val accounting = FeatureTaskRuntimeReviewEnvelope.commitFocusedAccounting(result, cycle.resolvedTier)
-    val outputText = FeatureTaskRuntimeReviewEnvelope.assemble(
-      result,
-      reviewRunId,
-      cycle,
-      runtimeReviewImport,
-    )
-    val envelope = FeatureTaskRuntimeReviewEnvelope.envelopeMap(outputText)
-    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
-    return FeatureTaskRuntimeReviewDriverCycleOutcome(outputText, outcome.verdict, accounting)
+    val outputText = FeatureTaskRuntimeReviewEnvelope.assemble(result)
+    val verdict = FeatureTaskRuntimeReviewEnvelope.extractReviewVerdict(outputText)
+      ?: FeatureTaskRuntimeVerdict.APPROVED
+    return FeatureTaskRuntimeReviewDriverCycleOutcome(outputText, verdict, accounting)
   }
 
   fun run(

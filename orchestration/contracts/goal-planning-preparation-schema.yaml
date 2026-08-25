@@ -33,8 +33,8 @@ $defs:
       decomposition_manifest_hash: { type: string, pattern: "^[a-f0-9]{64}$" }
       planning_contract_id: { type: string, const: "https://skill-bill.dev/contracts/goal-planning-preparation-schema.yaml" }
       planning_contract_version: { type: string, const: "0.2" }
-      phase_output_contract_id: { type: string, const: "https://skill-bill.dev/contracts/feature-task-runtime-phase-output-schema.yaml" }
-      phase_output_contract_version: { type: string, const: "0.4" }
+      phase_output_contract_id: { type: string, const: "https://skill-bill.dev/contracts/feature-task-runtime-prose-phase-boundary" }
+      phase_output_contract_version: { type: string, const: "0.5" }
   phaseOutputRepairEvidence:
     type: object
     additionalProperties: false
@@ -98,4 +98,4 @@ x-coherence-checks:
   - preparation_status is prepared once a valid checkpoint is stored and cannot regress.
   - provenance hashes are SHA-256 of raw UTF-8 bytes and are stable across re-reads.
   - payload_sha256 is the SHA-256 of the exact UTF-8 payload bytes.
-  - payload phase_id, contract version, completed status, and non-empty produced_outputs are enforced by the reused phase-output validator.
+  - payload phase_id, completed status, and bounded planning projections are enforced by the planning-projection validator at checkpoint time.

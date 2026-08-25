@@ -152,6 +152,7 @@ class FeatureTaskRuntimeRefutedFindingCoverageTest {
         reviewResultArtifact = "goal_subtask_review_results.1",
         unresolvedFindingCount = findings.size,
         findings = findings.toList(),
+        reviewRunId = "review-run-1",
       ),
     ),
   )

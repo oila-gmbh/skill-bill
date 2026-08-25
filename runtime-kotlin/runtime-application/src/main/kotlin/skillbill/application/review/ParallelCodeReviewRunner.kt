@@ -5,12 +5,12 @@ import skillbill.application.evidence.SharedReviewEvidenceCommits
 import skillbill.application.evidence.SharedReviewEvidenceProjection
 import skillbill.application.evidence.SharedReviewEvidenceQuery
 import skillbill.application.evidence.SharedReviewEvidenceResolution
-import skillbill.application.featuretask.RuntimeOwnedFindingVerdictsReadResolution
-import skillbill.application.featuretask.RuntimeOwnedFactUnavailable
 import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
-import skillbill.application.featuretask.RuntimeOwnedReviewPassClaimsReadResolution
-import skillbill.application.featuretask.resolveRuntimeOwnedFindingVerdicts
-import skillbill.application.featuretask.resolveRuntimeOwnedReviewPassClaims
+import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
+import skillbill.application.featuretask.model.RuntimeOwnedFindingVerdictsReadResolution
+import skillbill.application.featuretask.model.RuntimeOwnedReviewPassClaimsReadResolution
+import skillbill.application.featuretask.model.resolveRuntimeOwnedFindingVerdicts
+import skillbill.application.featuretask.model.resolveRuntimeOwnedReviewPassClaims
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.agentFailureExcerpt
 import skillbill.application.model.DiffResolutionException
@@ -590,7 +590,7 @@ class ParallelCodeReviewRunner(
   ): List<ReviewFindingVerdict> {
     if (reviewRunId == null) return inMemory
     return when (val resolution = runtimeOwnedFindingVerdicts(reviewRunId)) {
-      is RuntimeOwnedFindingVerdictsReadResolution.Present -> resolution.verdicts
+      is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
       is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
         recordRuntimeOwnedReadFailure(
           "ParallelCodeReviewRunner.recordedFindingVerdicts",
@@ -603,9 +603,7 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun runtimeOwnedFindingVerdicts(
-    reviewRunId: String,
-  ): RuntimeOwnedFindingVerdictsReadResolution =
+  private fun runtimeOwnedFindingVerdicts(reviewRunId: String): RuntimeOwnedFindingVerdictsReadResolution =
     runtimeOwnedPersistence.resolvingRead(
       seam = "ParallelCodeReviewRunner.runtimeOwnedFindingVerdicts",
       expected = "runtime-owned finding verdicts",
@@ -614,13 +612,10 @@ class ParallelCodeReviewRunner(
       unitOfWork.resolveRuntimeOwnedFindingVerdicts(reviewRunId)
     }
 
-  private fun reviewPassClaims(
-    reviewRunId: String,
-    seam: String,
-  ): RuntimeOwnedReviewPassClaimsReadResolution = when (
+  private fun reviewPassClaims(reviewRunId: String, seam: String): RuntimeOwnedReviewPassClaimsReadResolution = when (
     val resolution = runtimeOwnedReviewPassClaims(reviewRunId)
   ) {
-    is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution
+    is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution
     is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> {
       recordRuntimeOwnedReadFailure(seam, "runtime-owned review pass claims", resolution.cause, used = "absent")
       resolution
@@ -631,9 +626,7 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun runtimeOwnedReviewPassClaims(
-    reviewRunId: String,
-  ): RuntimeOwnedReviewPassClaimsReadResolution =
+  private fun runtimeOwnedReviewPassClaims(reviewRunId: String): RuntimeOwnedReviewPassClaimsReadResolution =
     runtimeOwnedPersistence.resolvingRead(
       seam = "ParallelCodeReviewRunner.runtimeOwnedReviewPassClaims",
       expected = "runtime-owned review pass claims",
@@ -642,42 +635,33 @@ class ParallelCodeReviewRunner(
       unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)
     }
 
-  private fun requiredReviewPassClaims(
-    reviewRunId: String,
-    seam: String,
-  ): ReviewPassClaimSnapshot = when (val resolution = runtimeOwnedReviewPassClaims(reviewRunId)) {
-    is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution.snapshot
-    is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> {
-      recordRuntimeOwnedReadFailure(seam, "runtime-owned review pass claims", resolution.cause, used = "absent")
-      throw RuntimeOwnedFactUnavailable(
-        "Runtime-owned review pass claims are unavailable for '$reviewRunId' at $seam.",
-      )
+  private fun requiredReviewPassClaims(reviewRunId: String, seam: String): ReviewPassClaimSnapshot =
+    when (val resolution = runtimeOwnedReviewPassClaims(reviewRunId)) {
+      is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
+      is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> {
+        recordRuntimeOwnedReadFailure(seam, "runtime-owned review pass claims", resolution.cause, used = "absent")
+        throw RuntimeOwnedFactUnavailable(
+          "Runtime-owned review pass claims are unavailable for '$reviewRunId' at $seam.",
+        )
+      }
+      is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> {
+        recordRuntimeOwnedReadFailure(seam, "runtime-owned review pass claims", resolution.cause, used = "read_error")
+        throw RuntimeOwnedFactUnavailable(
+          "Runtime-owned review pass claims could not be read for '$reviewRunId' at $seam: ${resolution.cause}",
+        )
+      }
     }
-    is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> {
-      recordRuntimeOwnedReadFailure(seam, "runtime-owned review pass claims", resolution.cause, used = "read_error")
-      throw RuntimeOwnedFactUnavailable(
-        "Runtime-owned review pass claims could not be read for '$reviewRunId' at $seam: ${resolution.cause}",
-      )
-    }
-  }
 
-  private fun reviewFindingVerdicts(
-    reviewRunId: String,
-    seam: String,
-  ): List<ReviewFindingVerdict> = when (val resolution = runtimeOwnedFindingVerdicts(reviewRunId)) {
-    is RuntimeOwnedFindingVerdictsReadResolution.Present -> resolution.verdicts
-    is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
-      recordRuntimeOwnedReadFailure(seam, "runtime-owned finding verdicts", resolution.cause, used = "empty")
-      emptyList()
+  private fun reviewFindingVerdicts(reviewRunId: String, seam: String): List<ReviewFindingVerdict> =
+    when (val resolution = runtimeOwnedFindingVerdicts(reviewRunId)) {
+      is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
+      is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
+        recordRuntimeOwnedReadFailure(seam, "runtime-owned finding verdicts", resolution.cause, used = "empty")
+        emptyList()
+      }
     }
-  }
 
-  private fun recordRuntimeOwnedReadFailure(
-    seam: String,
-    expected: String,
-    cause: String,
-    used: String = "none",
-  ) {
+  private fun recordRuntimeOwnedReadFailure(seam: String, expected: String, cause: String, used: String = "none") {
     runCatching {
       diagnostics.warning("seam=$seam value_expected=$expected value_used=$used cause=$cause")
     }
@@ -908,7 +892,7 @@ class ParallelCodeReviewRunner(
     val claims = when (
       val resolution = reviewPassClaims(reviewRunId, "ParallelCodeReviewRunner.emitReviewStageDegradations")
     ) {
-      is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution.snapshot
+      is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
       is RuntimeOwnedReviewPassClaimsReadResolution.Absent,
       is RuntimeOwnedReviewPassClaimsReadResolution.ReadError,
       -> null
@@ -953,10 +937,7 @@ class ParallelCodeReviewRunner(
     )
   }
 
-  private fun persistReviewPassClaims(
-    reviewRunId: String?,
-    findings: List<ParallelReviewMergedFinding>,
-  ) {
+  private fun persistReviewPassClaims(reviewRunId: String?, findings: List<ParallelReviewMergedFinding>) {
     if (reviewRunId == null) return
     runtimeOwnedPersistence.requiredWrite(
       seam = "ParallelCodeReviewRunner.persistReviewPassClaims",
@@ -965,7 +946,7 @@ class ParallelCodeReviewRunner(
       val recorded = when (
         val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)
       ) {
-        is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution.snapshot
+        is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
         is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> null
         is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> {
           recordRuntimeOwnedReadFailure(
@@ -1023,22 +1004,22 @@ class ParallelCodeReviewRunner(
       expected = "optional runtime-owned review resume report",
       fallback = null,
     ) { unitOfWork ->
-        val verdicts = when (val resolution = unitOfWork.resolveRuntimeOwnedFindingVerdicts(reviewRunId)) {
-          is RuntimeOwnedFindingVerdictsReadResolution.Present -> resolution.verdicts
-          is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
-            recordRuntimeOwnedReadFailure(
-              "ParallelCodeReviewRunner.stageResumeReport",
-              "runtime-owned finding verdicts",
-              resolution.cause,
-              used = "read_error",
-            )
-            return@optionalRead null
-          }
+      val verdicts = when (val resolution = unitOfWork.resolveRuntimeOwnedFindingVerdicts(reviewRunId)) {
+        is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
+        is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
+          recordRuntimeOwnedReadFailure(
+            "ParallelCodeReviewRunner.stageResumeReport",
+            "runtime-owned finding verdicts",
+            resolution.cause,
+            used = "read_error",
+          )
+          return@optionalRead null
         }
-        ReviewStageResumeSelection.select(
-          unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
-          verdicts,
-        )
+      }
+      ReviewStageResumeSelection.select(
+        unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
+        verdicts,
+      )
     }
   }
 
@@ -1144,7 +1125,7 @@ class ParallelCodeReviewRunner(
     val claims = when (
       val resolution = reviewPassClaims(reviewRunId, "ParallelCodeReviewRunner.recordMergedFindingLanes")
     ) {
-      is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution.snapshot.findings
+      is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot.findings
       is RuntimeOwnedReviewPassClaimsReadResolution.Absent,
       is RuntimeOwnedReviewPassClaimsReadResolution.ReadError,
       -> return
@@ -1204,7 +1185,7 @@ class ParallelCodeReviewRunner(
       }
     }
     return ParallelCodeReviewResult(
-      mergeResult = ParallelReviewMergeResult(findings = emptyList(), formattedOutput = "NO_FINDINGS"),
+      mergeResult = ParallelReviewMergeResult(findings = emptyList(), formattedOutput = "approved"),
       lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
     )
   }

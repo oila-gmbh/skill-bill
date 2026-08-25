@@ -14,7 +14,6 @@ import skillbill.application.review.ReviewSpecAdjudicationRunner
 import skillbill.application.review.diffForPaths
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.sparseReviewPack
-import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
@@ -29,7 +28,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -134,7 +132,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
   }
 
   @Test
-  fun `settlement envelope takes findings and review_run_id from the driver register`() {
+  fun `settlement prose carries driver output and derives review verdict`() {
     val result = FeatureTaskRuntimeReviewDriver.EMPTY.run(
       mappedRequest(
         agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
@@ -157,27 +155,13 @@ class FeatureTaskRuntimeReviewDelegationTest {
         formattedOutput = "Naming drift in Foo.\nverdict: changes_requested",
       ),
     )
-    val output = FeatureTaskRuntimeReviewEnvelope.assemble(
-      result = result,
-      reviewRunId = "rvw-191-empty-register",
-      cycle = FeatureTaskRuntimeReviewCycleContext(
-        passNumber = 1,
-        resolvedTier = CodeReviewExecutionMode.INLINE,
-        repositoryFingerprint = "fp-1",
-      ),
-    )
-    val envelope = FeatureTaskRuntimeReviewEnvelope.envelopeMap(output)
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    val output = FeatureTaskRuntimeReviewEnvelope.assemble(result)
 
-    assertEquals("rvw-191-empty-register", produced["review_run_id"])
-    val findings = produced["findings"] as List<*>
-    assertEquals(1, findings.size)
-    val finding = JsonSupport.anyToStringAnyMap(findings.single()).orEmpty()
-    assertEquals("F-001", finding["finding_id"])
-    assertEquals("minor", finding["severity"])
-    assertEquals("changes_requested", envelope["verdict"])
-    assertTrue((envelope["summary"] as String).contains("Naming drift"))
-    assertFalse(produced.containsKey("unmet_criteria"))
+    assertEquals("Naming drift in Foo.\nverdict: changes_requested", output)
+    assertEquals(
+      FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      FeatureTaskRuntimeReviewEnvelope.extractReviewVerdict(output),
+    )
   }
 
   @Test

@@ -39,6 +39,18 @@ class GoalPlanningPreparationSchemaContractVersionTest {
   }
 
   @Test
+  fun `provenance phase_output pins match the prose phase boundary contract`() {
+    val provenance = classpathSchema().path("\$defs").path("provenance").path("properties")
+    val contractId = provenance.path("phase_output_contract_id").path("const")
+    val contractVersion = provenance.path("phase_output_contract_version").path("const")
+
+    assertTrue(contractId.isTextual, "provenance.phase_output_contract_id must pin a string const")
+    assertTrue(contractVersion.isTextual, "provenance.phase_output_contract_version must pin a string const")
+    assertEquals(FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID, contractId.asText())
+    assertEquals(FEATURE_TASK_RUNTIME_CONTRACT_VERSION, contractVersion.asText())
+  }
+
+  @Test
   fun `validator asserts identity of the classpath schema`() {
     val yamlNode = classpathSchema()
     GoalPlanningPreparationSchemaValidator.assertIdentity(yamlNode)

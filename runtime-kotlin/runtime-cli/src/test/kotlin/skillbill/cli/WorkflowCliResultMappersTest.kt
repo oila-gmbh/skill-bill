@@ -73,12 +73,12 @@ class WorkflowCliResultMappersTest {
         """{"step_id":"plan","status":"completed","attempt_count":1},""" +
         """{"step_id":"implement","status":"pending","attempt_count":0}]""",
       artifactsJson = """{"feature_task_runtime_phase_records":{""" +
-        """"preplan":{"contract_version":"0.2","record_kind":"private_phase_record",""" +
+        """"preplan":{"contract_version":"0.3","record_kind":"private_phase_record",""" +
         """"phase_id":"preplan","status":"completed","attempt_count":1,""" +
         """"started_at":"2026-06-18T10:00:00Z","first_started_at":"2026-06-18T10:00:00Z",""" +
         """"finished_at":"2026-06-18T10:01:00Z","resolved_agent_id":"agent-preplan",""" +
         """"execution_origin":"agent-executed"},""" +
-        """"plan":{"contract_version":"0.2","record_kind":"private_phase_record",""" +
+        """"plan":{"contract_version":"0.3","record_kind":"private_phase_record",""" +
         """"phase_id":"plan","status":"completed","attempt_count":1,""" +
         """"started_at":"2026-06-18T10:02:00Z","first_started_at":"2026-06-18T10:02:00Z",""" +
         """"finished_at":"2026-06-18T10:03:00Z","resolved_agent_id":"agent-plan",""" +

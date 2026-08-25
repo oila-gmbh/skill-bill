@@ -86,8 +86,6 @@ internal object FeatureTaskRuntimeOutputVerification {
   fun canonicalAuditCriterionRefs(outputText: String, outputObject: Map<String, Any?>? = null): List<String> =
     FeatureTaskRuntimePhaseOutputDerivation.canonicalAuditCriterionRefs(derivationContext("", outputText, outputObject))
 
-  private val AUDIT_CRITERION_REF: Regex = Regex("""(AC-\d+)""", RegexOption.IGNORE_CASE)
-
   fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
     val wireVerdict = outputObject["verdict"] as? String
     val producedOutputs = JsonSupport.anyToStringAnyMap(outputObject["produced_outputs"])

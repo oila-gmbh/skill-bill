@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork

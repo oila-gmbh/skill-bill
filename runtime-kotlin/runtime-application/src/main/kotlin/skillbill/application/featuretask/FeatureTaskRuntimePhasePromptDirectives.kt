@@ -6,12 +6,9 @@ import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
-import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES
-import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES
 
 // Phase-scoped prompt directives and the per-phase task directive table, split out of
 // FeatureTaskRuntimePhasePromptComposer so the composer object stays within its size budget.
@@ -197,49 +194,32 @@ internal fun implementationContinuationDirective(
 /**
  * Why the previous attempt at a phase must be corrected, kept typed rather than as a bare string.
  *
- * A schema-gate rejection and a retryable `blocked`/`failed` envelope both re-enter the same bounded
+ * A settlement failure and a retryable `blocked`/`failed` envelope both re-enter the same bounded
  * semantic budget, but they are different events and must not be prompted, reported or dispositioned
- * alike: only the first is a rejection. Threading one nullable string made them indistinguishable at
- * the composer seam, which is how a schema-valid terminal envelope came to be told it was rejected.
- *
- * [correctiveRepairContext] is schema-gate only: the authorized bounded repair projection of the
- * rejected response. Retryable-terminal and incomplete-work paths must not carry it, so they never
- * receive a raw-output repair section.
+ * alike.
  */
 internal class PriorAttemptCorrection private constructor(
   private val reason: String,
   private val kind: Kind,
-  val correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
 ) {
-  internal enum class Kind { SCHEMA_GATE, RETRYABLE_TERMINAL, FINDING_COVERAGE, DERIVATION_REASK }
+  internal enum class Kind { SETTLEMENT_FAILURE, RETRYABLE_TERMINAL, FINDING_COVERAGE, DERIVATION_REASK }
 
-  val schemaGateReason: String? get() = reason.takeIf { kind == Kind.SCHEMA_GATE }
+  val settlementFailureReason: String? get() = reason.takeIf { kind == Kind.SETTLEMENT_FAILURE }
   val retryableTerminalReason: String? get() = reason.takeIf { kind == Kind.RETRYABLE_TERMINAL }
   val findingCoverageReason: String? get() = reason.takeIf { kind == Kind.FINDING_COVERAGE }
   val derivationReaskReason: String? get() = reason.takeIf { kind == Kind.DERIVATION_REASK }
 
-  init {
-    require(correctiveRepairContext == null || kind == Kind.SCHEMA_GATE) {
-      "PriorAttemptCorrection: corrective repair context belongs only to schema-gate retries, " +
-        "not retryable-terminal envelopes or finding-coverage continuations."
-    }
-  }
-
   companion object {
-    fun schemaGate(
-      reason: String,
-      correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
-    ): PriorAttemptCorrection =
-      PriorAttemptCorrection(reason, Kind.SCHEMA_GATE, correctiveRepairContext = correctiveRepairContext)
+    fun settlementFailure(reason: String): PriorAttemptCorrection =
+      PriorAttemptCorrection(reason, Kind.SETTLEMENT_FAILURE)
 
     fun retryableTerminal(reason: String): PriorAttemptCorrection =
-      PriorAttemptCorrection(reason, Kind.RETRYABLE_TERMINAL, correctiveRepairContext = null)
+      PriorAttemptCorrection(reason, Kind.RETRYABLE_TERMINAL)
 
     fun unaccountedFindings(reason: String): PriorAttemptCorrection =
-      PriorAttemptCorrection(reason, Kind.FINDING_COVERAGE, correctiveRepairContext = null)
+      PriorAttemptCorrection(reason, Kind.FINDING_COVERAGE)
 
-    fun derivationReask(reason: String): PriorAttemptCorrection =
-      PriorAttemptCorrection(reason, Kind.DERIVATION_REASK, correctiveRepairContext = null)
+    fun derivationReask(reason: String): PriorAttemptCorrection = PriorAttemptCorrection(reason, Kind.DERIVATION_REASK)
   }
 }
 

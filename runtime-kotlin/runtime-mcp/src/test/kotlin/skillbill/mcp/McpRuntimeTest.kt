@@ -729,7 +729,7 @@ class McpTokenEstimationTest {
 private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
   "feature_task_runtime_phase_records" to linkedMapOf(
     "preplan" to linkedMapOf(
-      "contract_version" to "0.2",
+      "contract_version" to "0.3",
       "record_kind" to "private_phase_record",
       "phase_id" to "preplan",
       "status" to "completed",
@@ -745,7 +745,7 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
         "\"summary\":\"preplanned\",\"produced_outputs\":{\"digest\":\"ok\"}}",
     ),
     "plan" to linkedMapOf(
-      "contract_version" to "0.2",
+      "contract_version" to "0.3",
       "record_kind" to "private_phase_record",
       "phase_id" to "plan",
       "status" to "completed",
@@ -761,7 +761,7 @@ private fun taskRuntimePhaseArtifactsPatch(): Map<String, Any?> = mapOf(
         "\"summary\":\"planned\",\"produced_outputs\":{\"tasks\":[\"task-1\"]}}",
     ),
     "implement" to linkedMapOf(
-      "contract_version" to "0.2",
+      "contract_version" to "0.3",
       "record_kind" to "private_phase_record",
       "phase_id" to "implement",
       "status" to "running",
