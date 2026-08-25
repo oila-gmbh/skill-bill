@@ -24,6 +24,11 @@ these seams:
 - checkpoint-ref prune: `FeatureTaskRuntimeCheckpointRefPrune.pruneSubtaskCheckpointRefs`
   when listing or deleting a ref under `refs/skill-bill/checkpoints/` fails, or when
   pruning is skipped because `commit_sha` is still blank
+- a runtime-owned derivation re-ask or durable derivation block when settlement or
+  routing cannot be decided from validated phase output; records name the phase,
+  attempt, re-ask count, and payload-free reason via
+  `FeatureTaskRuntimeRunObservability.derivationReask` /
+  `FeatureTaskRuntimeRunObservability.derivationBlocked`
 - platform-pack `contract_version` leniency: `CanonicalPlatformPackSchemaValidator.validate`
   when a caller enumerates with `enforceContractVersion=false` (reconcile's LOCAL side and
   installed-workspace baseline status) and a stale `const` violation is tolerated instead of

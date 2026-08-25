@@ -755,14 +755,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(reviewPrompt, "VERIFYING phase", false, "review names itself a verifying phase")
     assertContains(reviewPrompt, "\"findings\" array", false, "review names the findings signal")
-    assertContains(reviewPrompt, "\"approved\" or \"changes_requested\"", false, "review names the verdict values")
+    assertContains(reviewPrompt, "approved\" or \"changes_requested\"", false, "review names the verdict values")
     assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
-    assertAuditPromptNamesSignal(auditPrompt, "produced_outputs.gaps array", "the criterion list")
-    assertAuditPromptNamesSignal(auditPrompt, "satisfied | gaps_found", "the verdict values")
-    assertAuditPromptNamesSignal(
-      auditPrompt,
-      "for audit, top-level \"verdict\" is REQUIRED",
-      "the contradiction of the optional-verdict bullet",
+    assertAuditPromptNamesSignal(auditPrompt, "satisfied or gaps_found", "the verdict values")
+    assertTrue(
+      !auditPrompt.contains("for audit, top-level \"verdict\" is REQUIRED"),
+      "audit must not threaten a required structured verdict",
     )
     assertContains(auditPrompt, "\"verdict\": optional top-level string", false, "top-level verdict is documented")
   }

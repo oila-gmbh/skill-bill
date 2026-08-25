@@ -252,42 +252,6 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         payloadFreeReason = "produced_outputs must be a non-empty object.",
       )
     }
-    when (sourceLabel) {
-      "audit" -> {
-        val verdict = parsed["verdict"] as? String
-        if (verdict.isNullOrBlank() || verdict !in setOf("satisfied", "gaps_found")) {
-          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-            sourceLabel = sourceLabel,
-            reason = "audit requires a top-level verdict of satisfied or gaps_found.",
-            payloadFreeReason = "audit requires a top-level verdict.",
-          )
-        }
-        if (produced["gaps"] !is List<*>) {
-          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-            sourceLabel = sourceLabel,
-            reason = "audit requires produced_outputs.gaps.",
-            payloadFreeReason = "audit requires produced_outputs.gaps.",
-          )
-        }
-      }
-      "verify_findings" -> {
-        val verdict = parsed["verdict"] as? String
-        if (verdict.isNullOrBlank() || verdict !in setOf("findings_verified", "no_findings_verified")) {
-          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-            sourceLabel = sourceLabel,
-            reason = "verify_findings requires a top-level verdict.",
-            payloadFreeReason = "verify_findings requires a top-level verdict.",
-          )
-        }
-        if (produced["finding_dispositions"] !is List<*>) {
-          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-            sourceLabel = sourceLabel,
-            reason = "verify_findings requires produced_outputs.finding_dispositions.",
-            payloadFreeReason = "verify_findings requires produced_outputs.finding_dispositions.",
-          )
-        }
-      }
-    }
   }
 
   private fun isDemotedViolation(error: ValidationMessage, instance: JsonNode): Boolean {

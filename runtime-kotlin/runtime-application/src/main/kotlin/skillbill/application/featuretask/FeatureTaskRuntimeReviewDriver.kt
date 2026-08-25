@@ -17,6 +17,8 @@ import skillbill.review.model.ReviewFindingCitation
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
@@ -127,31 +129,24 @@ internal object FeatureTaskRuntimeReviewEnvelope {
       "status" to STATUS_COMPLETED,
       "summary" to prose.take(SUMMARY_MAX_CHARS),
       "produced_outputs" to produced,
-      FeatureTaskRuntimeVerificationSignalKeys.VERDICT to extractReviewVerdict(prose).wireValue,
     )
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
+    extractReviewVerdict(prose)?.let { verdict ->
+      envelope[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] = verdict.wireValue
+    }
     envelope[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] = outcome.verdict.wireValue
     return JsonSupport.mapToJsonString(envelope)
   }
 
-  fun extractReviewVerdict(prose: String): FeatureTaskRuntimeVerdict {
-    val line = prose.lineSequence()
-      .map { it.trim() }
-      .lastOrNull { it.startsWith("verdict:", ignoreCase = true) }
-      ?: prose.lineSequence().map { it.trim() }.lastOrNull {
-        it.equals("approved", ignoreCase = true) ||
-          it.equals("changes_requested", ignoreCase = true) ||
-          it.equals("needs_fix", ignoreCase = true)
-      }
-    val token = when {
-      line == null -> return FeatureTaskRuntimeVerdict.APPROVED
-      line.startsWith("verdict:", ignoreCase = true) ->
-        line.substringAfter(':').trim().lowercase()
-      else -> line.lowercase()
-    }
-    return when (token) {
-      "changes_requested", "needs_fix" -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-      else -> FeatureTaskRuntimeVerdict.APPROVED
+  fun extractReviewVerdict(prose: String): FeatureTaskRuntimeVerdict? {
+    val context = FeatureTaskRuntimeDerivationContext(
+      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      outputText = prose,
+      outputMap = emptyMap(),
+    )
+    return when (val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(context)) {
+      is FeatureTaskRuntimeDerivationResult.Decided -> derived.value
+      FeatureTaskRuntimeDerivationResult.Indecisive -> null
     }
   }
 

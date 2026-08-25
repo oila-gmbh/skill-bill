@@ -213,11 +213,12 @@ internal class PriorAttemptCorrection private constructor(
   private val kind: Kind,
   val correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
 ) {
-  internal enum class Kind { SCHEMA_GATE, RETRYABLE_TERMINAL, FINDING_COVERAGE }
+  internal enum class Kind { SCHEMA_GATE, RETRYABLE_TERMINAL, FINDING_COVERAGE, DERIVATION_REASK }
 
   val schemaGateReason: String? get() = reason.takeIf { kind == Kind.SCHEMA_GATE }
   val retryableTerminalReason: String? get() = reason.takeIf { kind == Kind.RETRYABLE_TERMINAL }
   val findingCoverageReason: String? get() = reason.takeIf { kind == Kind.FINDING_COVERAGE }
+  val derivationReaskReason: String? get() = reason.takeIf { kind == Kind.DERIVATION_REASK }
 
   init {
     require(correctiveRepairContext == null || kind == Kind.SCHEMA_GATE) {
@@ -238,6 +239,9 @@ internal class PriorAttemptCorrection private constructor(
 
     fun unaccountedFindings(reason: String): PriorAttemptCorrection =
       PriorAttemptCorrection(reason, Kind.FINDING_COVERAGE, correctiveRepairContext = null)
+
+    fun derivationReask(reason: String): PriorAttemptCorrection =
+      PriorAttemptCorrection(reason, Kind.DERIVATION_REASK, correctiveRepairContext = null)
   }
 }
 
@@ -258,6 +262,18 @@ internal fun findingCoverageDirective(priorFindingCoverage: String?): String {
     Keep the entries you already wrote and add the missing ones. Do the repair work first, then write
     the entry that describes it. Repeating the same receipt without accounting for the named findings
     blocks the run.
+  """.trimIndent()
+}
+
+internal fun derivationReaskDirective(priorDerivationReask: String?): String {
+  if (priorDerivationReask.isNullOrBlank()) return ""
+  return """
+    ## Derivation re-ask — state the verdict plainly
+    Your previous attempt at this phase emitted valid output, but the runtime could not derive a
+    decisive settlement or routing verdict from it. It was NOT rejected by the schema gate.
+    $priorDerivationReask
+    State the phase status, and for verifying phases the verdict token and every relevant obligation
+    or finding id, in plain terms inside your returned text. Use the closed vocabulary only.
   """.trimIndent()
 }
 

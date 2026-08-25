@@ -637,8 +637,11 @@ skillbill.workflow.verify
   store.
 - The Kotlin runtime definition is
   `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
-  (id prefix `wftr`, contract version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`);
+  (id prefix `wftr`, contract version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`, currently `0.5`);
   persisted rows use `workflow_name=bill-feature-task` and `mode=runtime`.
+- `FEATURE_TASK_RUNTIME_CONTRACT_VERSION` `0.5` demotes required `audit` verdict/gaps and
+  `verify_findings` verdict/finding_dispositions schema constraints; the runtime derives those
+  signals from prose. Workflows created under `0.4` or earlier require a hard reset.
 - `skill-bill feature-task` and `feature-task-stats` are the CLI surfaces for
   this workflow family.
 

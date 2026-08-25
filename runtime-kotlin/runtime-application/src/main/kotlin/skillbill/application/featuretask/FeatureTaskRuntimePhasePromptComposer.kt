@@ -48,6 +48,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     priorSchemaFailure: String? = null,
     priorTerminalFailure: String? = null,
     priorFindingCoverage: String? = null,
+    priorDerivationReask: String? = null,
     correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
@@ -111,6 +112,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       retryCorrectionDirective(briefing, priorSchemaFailure, correctiveRepairContext),
       terminalRetryDirective(priorTerminalFailure),
       findingCoverageDirective(priorFindingCoverage),
+      derivationReaskDirective(priorDerivationReask),
       if (validationGateFindings != null) {
         gateRepairNoOutputSchemaDirective(briefing.phaseId)
       } else {
@@ -482,29 +484,15 @@ object FeatureTaskRuntimePhasePromptComposer {
         agentRunValidateFallback,
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
-        "\n    - This is a VERIFYING phase: set top-level \"$verdict\" to \"approved\" or \"changes_requested\".\n" +
-          "      The runtime imports review findings and joins them to the persisted review run; do not echo\n" +
-          "      imported review facts in produced_outputs."
+        "\n    - This is a VERIFYING phase: state \"approved\" or \"changes_requested\" plainly in your " +
+          "returned text. The runtime imports review findings and joins them to the persisted review run; " +
+          "do not echo imported review facts in produced_outputs."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
-        "\n    - This is a VERIFYING phase: set top-level \"$verdict\" to \"findings_verified\" or " +
-          "\"no_findings_verified\" and emit exactly one " +
-          "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
-          "array with one entry per review finding. Recommended fields per entry: finding_id, disposition " +
-          "(verified or rejected), reason, severity, location, message, optional " +
-          "selected_boundary_headings (heading_id and source_path), and boundary_context_unavailable " +
-          "when no eligible boundary owns the finding paths. Boundary memory is optional supporting " +
-          "evidence only: the disposition still settles from spec intent when headings are omitted or " +
-          "invalid. When you cite boundary memory, copy heading_id and source_path verbatim from that " +
-          "finding's boundary_catalog only — never invent hashes or reuse another finding's catalog. " +
-          "The runtime reads dispositions leniently and does not block on reason length, extra keys, " +
-          "invalid boundary selections, or other schema polish; decidable verification signals still " +
-          "gate advancement. Do not edit the worktree.\n" +
-          "      Example: {\"finding_id\":\"F-001\",\"disposition\":\"verified\"," +
-          "\"reason\":\"Matches spec intent AC-002.\",\"severity\":\"major\"," +
-          "\"location\":\"FeatureTaskRuntimePhaseWorkflowDefinition.kt\"," +
-          "\"message\":\"Missing verify_findings wiring\"," +
-          "\"selected_boundary_headings\":[{\"heading_id\":\"runtime-kotlin/agent/history.md#abc\"," +
-          "\"source_path\":\"runtime-kotlin/agent/history.md\"}]}."
+        "\n    - This is a VERIFYING phase: state \"findings_verified\" or \"no_findings_verified\" plainly " +
+          "in your returned text and name every carried finding id you verified or rejected. You may " +
+          "also emit produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
+          "when helpful. The runtime derives routing from your prose when structured fields are absent. " +
+          "Do not edit the worktree."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
         verdict = verdict,
         briefing = briefing,
@@ -541,17 +529,9 @@ object FeatureTaskRuntimePhasePromptComposer {
   }
 
   private fun auditProducedOutputsAddendum(verdict: String, briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
-    "\n    - This is a VERIFYING phase. Ignore the optional-verdict bullet above: for audit, top-level " +
-      "\"$verdict\" is REQUIRED. Copy exactly one token: satisfied | gaps_found.\n" +
-      "      REJECTED: omitting verdict; any other string; nesting verdict only inside produced_outputs.\n" +
-      "      ACCEPTED root: {\"contract_version\":\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\"," +
-      "\"phase_id\":\"audit\",\"status\":\"completed\",\"verdict\":\"satisfied\"," +
-      "\"summary\":\"<one sentence>\",\"produced_outputs\":{\"gaps\":[]}}.\n" +
-      "      Emit exactly one shallow produced_outputs.gaps array. Use [] for satisfied. For\n" +
-      "      gaps_found, one entry per unmet criterion: {\"criterion\":\"AC-003\",\"note\":\"...\"}.\n" +
-      "      Recommended wire shape uses those two fields — free-form note prose; no required keywords\n" +
-      "      or sections. The runtime does not block on note length, extra gap keys, or other schema\n" +
-      "      polish; it reads gaps leniently and gates only on decidable verification signals.\n" +
+    "\n    - This is a VERIFYING phase. State satisfied or gaps_found plainly in your returned text.\n" +
+      "      When you report gaps_found, name each unmet criterion ref (AC-###) and carry a one-line note.\n" +
+      "      You may also emit produced_outputs.gaps when helpful; prose alone is enough for the runtime.\n" +
       "      criterion is AC-###. note is one dense line of at most " +
       "$FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS characters. Prefer notes that both name what is\n" +
       "      missing and give implement enough of a fix plan to close the gap carefully: the intended\n" +
