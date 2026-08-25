@@ -19,7 +19,6 @@ Make `./gradlew check --continue` green. Fix root causes. Do not weaken checks.
 5. Fix those failures at their root cause. Targeted compile, test, and module checks are allowed only while repairing a known finding.
 6. Run `./gradlew check --continue` again to confirm.
 7. If everything is green, stop. If anything failed, go back to step 3 with that output as the finding set.
-8. Attribute each failure to scoped work, pre-existing state, environment, or maintainer-owned configuration.
 
 ## Fix Strategy
 
@@ -31,7 +30,7 @@ Never suppress a failure with annotations, baselines, disabled rules, or skipped
 
 ### Repair Window
 
-Run `./gradlew check --continue`, read the output, fix every finding, then re-run the same command to confirm. Do not invoke the full collect-all gate after each individual finding. If the confirm fails, that output is the new finding set — loop until green. When a cache-bypassing confirm is required, use the pack `validation_gate.cache_bypassing_collect_all_full_gate_command`.
+Run `./gradlew check --continue`, read the output, fix every finding, then confirm with the same command. Do not invoke the full collect-all gate after each individual finding. If the confirm fails, that output is the new finding set — loop until green. When a cache-bypassing confirm is required, use the pack `validation_gate.cache_bypassing_collect_all_full_gate_command`.
 
 Run the full suite when targeted checks cannot establish safety.
 
