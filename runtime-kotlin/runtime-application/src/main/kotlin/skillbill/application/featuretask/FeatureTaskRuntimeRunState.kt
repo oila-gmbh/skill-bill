@@ -12,6 +12,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
 /**
@@ -75,14 +76,20 @@ internal class FeatureTaskRuntimeRunState(
   // tolerates that: an unparseable artifact carries no usable output and the phase re-runs, whereas failing
   // here leaves the workflow permanently unresumable. A completed record still loud-fails, because there an
   // invalid artifact is genuine corruption rather than evidence.
-  private fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
-    record.outputArtifact?.let { artifact ->
-      val accepted = try {
-        outputValidator.validatePhaseOutput(artifact, record.phaseId).requireAcceptedOutput(record.phaseId)
-      } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-        if (record.status == STATUS_COMPLETED) throw error
-        return@let null
-      }
+  private fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? {
+    val text = record.outputText ?: record.outputArtifact ?: return null
+    if (record.status == STATUS_COMPLETED) {
+      val parsedMap = parseOutputMap(text, record.phaseId)
+      return FeatureTaskRuntimePhaseOutput(
+        phaseId = record.phaseId,
+        iteration = record.attemptCount,
+        payload = text,
+        normalizedOutput = parsedMap?.let { NormalizedFeatureTaskRuntimePhaseOutput(text, it) },
+        repairEvidence = record.repairEvidence,
+      )
+    }
+    return try {
+      val accepted = outputValidator.validatePhaseOutput(text, record.phaseId).requireAcceptedOutput(record.phaseId)
       FeatureTaskRuntimePhaseOutput(
         phaseId = record.phaseId,
         iteration = record.attemptCount,
@@ -90,7 +97,21 @@ internal class FeatureTaskRuntimeRunState(
         normalizedOutput = accepted.normalizedOutput,
         repairEvidence = record.repairEvidence ?: accepted.repairEvidence,
       )
+    } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+      null
     }
+  }
+
+  private fun parseOutputMap(text: String, phaseId: String): Map<String, Any?>? =
+    JsonSupport.parseObjectOrNull(text)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: runCatching {
+        outputValidator.validatePhaseOutput(text, sourceLabel = phaseId)
+          .requireAcceptedOutput(phaseId)
+          .normalizedOutput
+          .envelope
+      }.getOrNull()
   private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
   private val phasesLaunchedThisProcess: MutableSet<String> = mutableSetOf()
   private val initialReviewRecord = initialRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
@@ -487,11 +508,15 @@ internal class FeatureTaskRuntimeRunState(
 
   // The verdict a durable record settled with, read straight from the loaded record rather than from
   // `outputs`, which is not initialised while `completed` is still being reduced.
-  private fun durableVerdictFor(phaseId: String): FeatureTaskRuntimeVerdict? =
-    FeatureTaskRuntimeOutputVerification.verdictFor(
+  private fun durableVerdictFor(phaseId: String): FeatureTaskRuntimeVerdict? {
+    val record = initialRecords[phaseId] ?: return null
+    val text = record.outputText ?: record.outputArtifact ?: return null
+    return FeatureTaskRuntimeOutputVerification.verdictFor(
       phaseId,
-      parsedOutput(initialRecords[phaseId]?.let(::validatedRecordToOutput)),
+      text,
+      parsedOutput(validatedRecordToOutput(record)),
     )
+  }
 
   // The phase-output contract admits YAML and fenced or prose-trailed JSON, so a bare JSON parse of
   // the payload reads NOTHING for those shapes and would report every audit as unverified. The JSON
@@ -501,21 +526,18 @@ internal class FeatureTaskRuntimeRunState(
   private fun parsedOutput(output: FeatureTaskRuntimePhaseOutput?): Map<String, Any?>? {
     val payload = output?.payload ?: return null
     return parsedOutputsByPayload.getOrPut(payload) {
-      JsonSupport.parseObjectOrNull(payload)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
-        ?: runCatching {
-          outputValidator.validatePhaseOutput(payload, sourceLabel = output.phaseId)
-            .requireAcceptedOutput(output.phaseId)
-            .normalizedOutput
-            .envelope
-        }.getOrNull()
-        ?: emptyMap()
+      parseOutputMap(payload, output.phaseId).orEmpty()
     }
   }
 
-  fun verdictFor(phaseId: String): FeatureTaskRuntimeVerdict? =
-    FeatureTaskRuntimeOutputVerification.verdictFor(phaseId, parsedOutput(outputFor(phaseId)))
+  fun verdictFor(phaseId: String): FeatureTaskRuntimeVerdict? {
+    val output = outputFor(phaseId) ?: return null
+    return FeatureTaskRuntimeOutputVerification.verdictFor(
+      phaseId,
+      output.payload,
+      parsedOutput(output),
+    )
+  }
 
   // The settled verdict per completed phase, the input the declared phase-entry gates evaluate. A
   // phase that is not complete is absent rather than defaulted, so a gate can never read a stale or
@@ -530,11 +552,15 @@ internal class FeatureTaskRuntimeRunState(
     return span.any { phaseId -> transitions.entryGateViolation(phaseId, settledVerdicts) != null }
   }
 
-  fun unresolvedReviewFindings(phaseId: String): List<FeatureTaskRuntimeReviewFinding> =
-    FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings(parsedOutput(outputFor(phaseId)))
+  fun unresolvedReviewFindings(phaseId: String): List<FeatureTaskRuntimeReviewFinding> {
+    val output = outputFor(phaseId) ?: return emptyList()
+    return FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings(output.payload, parsedOutput(output))
+  }
 
-  fun unmetAuditCriteria(phaseId: String): List<String> =
-    FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(parsedOutput(outputFor(phaseId)))
+  fun unmetAuditCriteria(phaseId: String): List<String> {
+    val output = outputFor(phaseId) ?: return emptyList()
+    return FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(output.payload, parsedOutput(output))
+  }
 
   // The latest validated output for the phase (highest iteration), or null when none is present.
   fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =

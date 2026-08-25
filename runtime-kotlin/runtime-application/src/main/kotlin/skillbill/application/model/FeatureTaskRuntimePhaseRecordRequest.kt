@@ -17,6 +17,8 @@ data class FeatureTaskRuntimePhaseStateRequest(
   val resolvedAgentId: String,
   val finished: Boolean,
   val outputArtifact: String? = null,
+  val outputText: String? = null,
+  val runtimeOwnedSidecar: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar? = null,
   val rejectedOutput: String? = null,
   val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
   val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,

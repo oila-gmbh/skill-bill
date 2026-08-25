@@ -89,6 +89,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       NoopFeatureTaskRuntimePlanningProjectionValidator,
     agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
     sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
+    recordHandoffTruncation: (String) -> Unit = {},
   ): FeatureTaskRuntimePhaseLaunchBriefing {
     val boundedAddonSelection = FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor(
       handoff.phaseId,
@@ -117,6 +118,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         planningProjectionValidator = planningProjectionValidator,
         sharedReviewEvidence = sharedReviewEvidence,
         addonContentBySlug = boundedAddonSelection.entries.associate { it.persisted.slug to it.content },
+        recordHandoffTruncation = recordHandoffTruncation,
       ),
     )
     val projectedHandoff = handoff.copy(projectionDeclarations = promptDeclarations)
@@ -145,6 +147,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
     sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference?,
     addonContentBySlug: Map<String, String>,
+    recordHandoffTruncation: (String) -> Unit = {},
   ): FeatureTaskRuntimeHandoffProjectionInputs = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = handoff.phaseId,
     declarations = declarations,
@@ -164,6 +167,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     addonContentBySlug = addonContentBySlug,
     validationDepth = handoff.validationDepth,
     qualityGateSelection = handoff.qualityGateSelection,
+    recordHandoffTruncation = recordHandoffTruncation,
   )
 
   private fun invariantDeclarations(phaseId: String): List<PhaseHandoffProjectionDeclaration> =

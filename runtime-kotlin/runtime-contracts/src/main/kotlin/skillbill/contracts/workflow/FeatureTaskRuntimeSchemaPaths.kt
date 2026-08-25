@@ -94,7 +94,7 @@ object FeatureTaskRuntimePhaseHandoffSchemaPaths {
  * Pins the durable private-phase-record/delivered-projection wire split. Legacy phase records
  * without the explicit record kind and version are not compatible.
  */
-const val FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION: String = "0.2"
+const val FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION: String = "0.3"
 
 /**
  * Pins the durable run-invariants artifact. Version 0.1 is the first version whose

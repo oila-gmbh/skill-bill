@@ -110,6 +110,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
@@ -137,6 +138,8 @@ import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
+import skillbill.workflow.taskruntime.model.decompositionPackageMapFromProse
+import skillbill.workflow.taskruntime.model.readCommitSubjectFromProse
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.taskruntime.model.upsertRepairReceipt
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage
@@ -1705,24 +1708,23 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun settledRepairReceipt(
     receipt: FeatureTaskRuntimeRepairReceipt,
     reviewState: GoalSubtaskReviewState,
-  ): RepairReceiptSettlement = featureTaskRuntimeRepairReceiptSettleRejection(
-    receipt,
-    reviewState,
-    refutedCarriedFindingIds(reviewState),
-  )
-    ?.let { detail -> RepairReceiptSettlement.rejected(detail) }
-    ?: persistImplementFixRepairReceipt(receipt)?.let { reason -> RepairReceiptSettlement.writeFailed(reason) }
-    ?: RepairReceiptSettlement.None
+  ): RepairReceiptSettlement {
+    val omitted = featureTaskRuntimeRepairReceiptOmittedFindings(
+      receipt,
+      reviewState,
+      refutedCarriedFindingIds(reviewState),
+    )
+    if (omitted.isNotEmpty()) {
+      recordRepairReceiptCoverageDegradation(omitted)
+    }
+    val writeFailure = persistImplementFixRepairReceipt(receipt)
+    return if (writeFailure != null) {
+      RepairReceiptSettlement.writeFailed(writeFailure)
+    } else {
+      RepairReceiptSettlement.None
+    }
+  }
 
-  /**
-   * The refs verification refuted in the pass this round is repairing. Read from the durable ledger
-   * rather than the review output so the runtime's own recorded verdict decides, and scoped to that
-   * one pass because every pass renumbers from `F-001`: an unscoped read would let a refutation from
-   * an earlier pass waive whichever finding inherited its ordinal.
-   *
-   * A ledger that cannot be read waives nothing. Coverage then behaves exactly as it did before this
-   * set existed, which is the safe direction: the round is sent back rather than advanced on a guess.
-   */
   private fun refutedCarriedFindingIds(reviewState: GoalSubtaskReviewState): Set<String> {
     val passNumber = reviewState.passResults.lastOrNull()?.passNumber ?: return emptySet()
     return runCatching {
@@ -1741,6 +1743,17 @@ internal class FeatureTaskRuntimeRunLoop(
       )
       emptySet()
     }
+  }
+
+  private fun recordRepairReceiptCoverageDegradation(
+    omitted: List<skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding>,
+  ) {
+    diagnostics.warning(
+      "seam=FeatureTaskRuntimeRunLoop.settledRepairReceipt value_used='${omitted.size} omitted findings' " +
+        "value_expected='every carried finding named in prose' cause=coverage the runtime cannot " +
+        "establish from repair-receipt shape; the next verification pass re-decides from the tree " +
+        "(${omitted.joinToString(", ") { featureTaskRuntimeCompactFindingRef(it) }})",
+    )
   }
 
   private fun repairReceiptShapeSettlement(produced: Map<String, Any?>): RepairReceiptSettlement =
@@ -5115,9 +5128,6 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult {
-    // Build/validate gate repair: the agent mutates the tree from runtime-parsed findings. Stdout is
-    // not a phase receipt — the coordinator re-runs the pack command and mints build_receipt /
-    // validation_receipt. Requiring schema here blocked honest fixes under the output-gate cap.
     if (run.validationGateRepairTurn > 0) {
       return AttemptResult.settled(
         PhaseOutcome.completed(
@@ -5131,50 +5141,45 @@ internal class FeatureTaskRuntimeRunLoop(
         ),
       )
     }
-    return try {
-      val acceptedOutput = outputValidator
-        .validatePhaseOutput(outputText, sourceLabel = run.phaseId)
-        .requireAcceptedOutput(run.phaseId)
-      settleValidatedOutput(
-        run,
-        iteration,
-        acceptedOutput.normalizedOutput,
-        acceptedOutput.repairEvidence,
-        acceptedOutput.demotedViolations,
-        observability,
-        fileManifest,
-        outputText, outputBytes, outputTruncated, outputByteSize, outputSha256,
-      )
-    } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-      persistVerifyFindingsCheckpointIfPresent(run, outputText)
-      val path = rejectionPath(error.reason)
-      val reason = payloadFreeRejectionReason("phase-output-schema", path)
-      val diagnosticWrite = recordRejectedOutput(
-        run, iteration, "phase-output-schema", error.reason, outputBytes, path = path,
+    if (outputText.isBlank()) {
+      val path = rejectionPath("blank phase output")
+      val reason = payloadFreeRejectionReason("phase-output-absent", path)
+      recordRejectedOutput(
+        run, iteration, "phase-output-absent", "Phase '${run.phaseId}' returned blank output.",
+        outputBytes, path = path,
         outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
       )
-      val repairEvidence = structuralRepairEvidenceFromSchemaError(error)
-      schemaInvalidAttempt(
+      return schemaInvalidAttempt(
         reason,
         fileManifest,
-        malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
-        retryReason = retryRejectionReason(reason, error.payloadFreeReason),
-        correctiveRepairContext = correctiveRepairContextForRejection(
-          run = run,
-          iteration = iteration,
-          outputText = outputText,
-          outputTruncated = outputTruncated,
-          outputByteSize = outputByteSize,
-          outputSha256 = outputSha256,
-          diagnosticWrite = diagnosticWrite,
-          rejectionRule = "phase-output-schema",
-          rejectionPath = path,
-          payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
-          acceptedAfterStructuralRepair = error.acceptedAfterStructuralRepair,
-          structuralRepairEvidence = repairEvidence,
-        ),
+        malformedOutput = true,
+        retryReason = reason,
       )
     }
+    val diagnosticAccepted = runCatching {
+      outputValidator.validatePhaseOutput(outputText, sourceLabel = run.phaseId).requireAcceptedOutput(run.phaseId)
+    }.getOrNull()
+    val parsedMap = JsonSupport.parseObjectOrNull(outputText)?.let { parsed ->
+      JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
+    }.orEmpty()
+    val normalizedOutput = NormalizedFeatureTaskRuntimePhaseOutput(
+      canonicalJson = outputText,
+      envelope = parsedMap,
+    )
+    return settleValidatedOutput(
+      run,
+      iteration,
+      normalizedOutput,
+      diagnosticAccepted?.repairEvidence,
+      diagnosticAccepted?.demotedViolations.orEmpty(),
+      observability,
+      fileManifest,
+      outputText,
+      outputBytes,
+      outputTruncated,
+      outputByteSize,
+      outputSha256,
+    )
   }
 
   /**
@@ -5449,9 +5454,9 @@ internal class FeatureTaskRuntimeRunLoop(
       observability,
       fileManifest,
     )?.let { return it }
-    val finalised = when (val finalisation = finaliseSubtaskCommit(run, attested)) {
-      is CommitPushNotApplicable -> attested
-      is CommitPushSettled -> finalisation.output
+    val (acceptedOutput, commitSidecar) = when (val finalisation = finaliseSubtaskCommit(run, attested, capture.outputText)) {
+      is CommitPushNotApplicable -> attested to null
+      is CommitPushSettled -> finalisation.output to finalisation.sidecar
       is CommitPushBlocked -> return AttemptResult.settled(
         blockAndPersistInPhase(
           run,
@@ -5467,11 +5472,13 @@ internal class FeatureTaskRuntimeRunLoop(
     return persistAcceptedOutput(
       run,
       iteration,
-      finalised,
+      acceptedOutput,
       repairEvidence,
       observability,
       fileManifest,
       repositoryFingerprint,
+      runtimeOwnedSidecar = commitSidecar ?: buildPlanSidecar(run, capture.outputText),
+      outputText = capture.outputText,
     )
   }
 
@@ -5598,6 +5605,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private data class CommitPushSettled(
     val output: NormalizedFeatureTaskRuntimePhaseOutput,
+    val sidecar: FeatureTaskRuntimePhaseRecordSidecar? = null,
   ) : CommitPushFinalisation
 
   private data class CommitPushBlocked(val reason: String) : CommitPushFinalisation
@@ -5613,13 +5621,21 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun finaliseSubtaskCommit(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    outputText: String,
   ): CommitPushFinalisation {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH) {
       return CommitPushNotApplicable
     }
-    if (normalizedOutput.envelope["status"] != STATUS_COMPLETED) return CommitPushNotApplicable
-    val branch = finalisationBranch() ?: return unownedWorktreeCommitSha(run, normalizedOutput)
-    val handoff = when (val read = FeatureTaskRuntimeSubtaskFinalisation.readHandoff(normalizedOutput.envelope)) {
+    val settlement = FeatureTaskRuntimePhaseOutputDerivation.deriveSettlement(
+      derivationContext(run, outputText, normalizedOutput.envelope),
+    )
+    if (settlement !is FeatureTaskRuntimeDerivationResult.Decided ||
+      settlement.value.status != STATUS_COMPLETED
+    ) {
+      return CommitPushNotApplicable
+    }
+    val branch = finalisationBranch() ?: return unownedWorktreeCommitSha(run, normalizedOutput, outputText)
+    val handoff = when (val read = FeatureTaskRuntimeSubtaskFinalisation.readHandoffFromProse(outputText)) {
       is FeatureTaskRuntimeCommitPushHandoffInvalid -> return CommitPushBlocked(read.reason)
       is FeatureTaskRuntimeCommitPushHandoffValid -> read.handoff
     }
@@ -5651,11 +5667,21 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val finalised = outcome as FeatureTaskRuntimeSubtaskFinalised
     return CommitPushSettled(
-      revalidated(
-        run.phaseId,
-        FeatureTaskRuntimeSubtaskFinalisation.withCommitSha(normalizedOutput.envelope, finalised.commitSha),
+      output = normalizedOutput,
+      sidecar = FeatureTaskRuntimeSubtaskFinalisation.withCommitShaSidecar(
+        handoff.outcomeMessage,
+        finalised.commitSha,
       ),
     )
+  }
+
+  private fun buildPlanSidecar(
+    run: PhaseRun,
+    outputText: String,
+  ): FeatureTaskRuntimePhaseRecordSidecar? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN) return null
+    val packageMap = decompositionPackageMapFromProse(outputText) ?: return null
+    return FeatureTaskRuntimePhaseRecordSidecar(decompositionPackage = packageMap)
   }
 
   /**
@@ -5667,6 +5693,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun unownedWorktreeCommitSha(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    outputText: String,
   ): CommitPushFinalisation {
     val head = phaseGates.gitOperations.headCommitSha(request.repoRoot)
     val sha = head.value.orEmpty().trim().takeIf { head.ok && it.isNotBlank() }
@@ -5679,8 +5706,10 @@ internal class FeatureTaskRuntimeRunLoop(
           "stage, amend, or push and the commit sha degrades to whatever HEAD already names",
       )
     }
+    val subject = readCommitSubjectFromProse(outputText) ?: return CommitPushNotApplicable
     return CommitPushSettled(
-      revalidated(run.phaseId, FeatureTaskRuntimeSubtaskFinalisation.withCommitSha(normalizedOutput.envelope, sha)),
+      output = normalizedOutput,
+      sidecar = FeatureTaskRuntimeSubtaskFinalisation.withCommitShaSidecar(subject, sha),
     )
   }
 
@@ -5942,19 +5971,13 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     repositoryFingerprint: String?,
-  ): Pair<String, String>? = producerProjectionGateReason(
-    run.phaseId,
-    outputMap,
-    planningProjectionValidator,
-    allowDecompositionPackage = true,
-  )?.let { "producer-projection" to it }
-    ?: immediateConsumerProjectionGateReason(
-      run,
-      iteration,
-      normalizedOutput,
-      repairEvidence,
-      repositoryFingerprint,
-    )?.let { "consumer-projection" to it }
+  ): Pair<String, String>? = immediateConsumerProjectionGateReason(
+    run,
+    iteration,
+    normalizedOutput,
+    repairEvidence,
+    repositoryFingerprint,
+  )?.let { "consumer-projection" to it }
     ?: outputVerificationGateReason(run, outputMap)?.let { "output-verification" to it }
 
   private fun firstValidatedOutputRejection(run: PhaseRun, outputMap: Map<String, Any?>): Pair<String, String>? {
@@ -6028,6 +6051,7 @@ internal class FeatureTaskRuntimeRunLoop(
         run.request.workflowId,
         planningProjectionValidator,
         run.request.agentAddonSelection,
+        recordHandoffTruncation = { message -> runCatching { diagnostics.warning(message) } },
       )
       null
     } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
@@ -6486,8 +6510,14 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  private fun outputVerificationGateReason(run: PhaseRun, outputMap: Map<String, Any?>): String? =
-    runtimeOwnedReviewImportGateReason(run)
+  private fun outputVerificationGateReason(run: PhaseRun, outputMap: Map<String, Any?>): String? {
+    if (
+      run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY ||
+      run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR
+    ) {
+      return null
+    }
+    return runtimeOwnedReviewImportGateReason(run)
       ?: findingVerificationBoundaryDispositionGate(run, outputMap)
       ?: FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal(run.phaseId, outputMap)
       ?: FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition(
@@ -6496,6 +6526,7 @@ internal class FeatureTaskRuntimeRunLoop(
         reviewFindingIdsForVerification(),
       )
       ?: FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(run.phaseId, outputMap)
+  }
 
   private fun runtimeOwnedReviewImportGateReason(run: PhaseRun): String? {
     if (
@@ -6729,8 +6760,9 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     repositoryFingerprint: String?,
+    outputText: String = normalizedOutput.canonicalJson,
+    runtimeOwnedSidecar: FeatureTaskRuntimePhaseRecordSidecar? = null,
   ): AttemptResult {
-    val outputText = normalizedOutput.canonicalJson
     // Gate-repair segments stay RUNNING until the coordinator settles with runtime-measured
     // gate_runs; persisting the agent's validate receipt here would publish agent-authored counts.
     if (run.validationGateFindings != null) {
@@ -6760,6 +6792,8 @@ internal class FeatureTaskRuntimeRunLoop(
         normalizedOutput = normalizedOutput,
         repairEvidence = repairEvidence,
         repositoryFingerprint = repositoryFingerprint,
+        outputText = outputText,
+        runtimeOwnedSidecar = runtimeOwnedSidecar,
       ),
       run.request.dbPathOverride,
     )
@@ -6991,6 +7025,8 @@ internal class FeatureTaskRuntimeRunLoop(
     repositoryFingerprint: String? = null,
     launched: LaunchedModelDirective? = null,
     reviewRunId: String? = null,
+    outputText: String? = outputArtifact,
+    runtimeOwnedSidecar: FeatureTaskRuntimePhaseRecordSidecar? = null,
   ): FeatureTaskRuntimePhaseStateRequest {
     val (plannedTaskIds, carriedRepairItemIds) = implementationObligationFields(run)
     return FeatureTaskRuntimePhaseStateRequest(
@@ -7001,6 +7037,8 @@ internal class FeatureTaskRuntimeRunLoop(
       resolvedAgentId = run.resolvedAgent.resolvedAgentId,
       finished = finished,
       outputArtifact = outputArtifact,
+      outputText = outputText,
+      runtimeOwnedSidecar = runtimeOwnedSidecar,
       normalizedOutput = normalizedOutput,
       repairEvidence = repairEvidence,
       repositoryFingerprint = repositoryFingerprint,
@@ -7097,6 +7135,7 @@ internal class FeatureTaskRuntimeRunLoop(
       planningProjectionValidator,
       run.request.agentAddonSelection,
       sharedEvidence?.reference,
+      recordHandoffTruncation = { message -> runCatching { diagnostics.warning(message) } },
     )
     recorder.recordPhaseBriefing(
       run.request.workflowId,
@@ -7109,32 +7148,46 @@ internal class FeatureTaskRuntimeRunLoop(
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(run.request.runInvariants.codeReviewMode, pass)
     }
     depthResolution?.let { resolution -> persistResolvedReviewTier(run, resolution) }
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      issueKey = run.request.issueKey,
-      briefing = briefing,
-      suppressDecomposition = isGoalContinuationRun(run.request),
-      codeReviewMode = depthResolution?.resolvedTier ?: run.request.runInvariants.codeReviewMode,
-      reviewPassNumber = passNumber,
-      goalSubtaskReviewInput = run.goalReviewInput,
-      baselineUntrackedPaths = resolvedBranchRecord?.baselineUntrackedPaths.orEmpty(),
-      resolvedReviewTier = depthResolution?.resolvedTier,
-      reviewDecidingRule = depthResolution?.decidingRule,
-      repairLedger = handoff.repairLedger,
-      priorReviewContext = null,
-      priorSchemaFailure = priorCorrection?.schemaGateReason,
-      priorTerminalFailure = priorCorrection?.retryableTerminalReason,
-      priorFindingCoverage = priorCorrection?.findingCoverageReason,
-      priorDerivationReask = priorCorrection?.derivationReaskReason,
-      correctiveRepairContext = priorCorrection?.correctiveRepairContext,
-      operatorBlockRetry = operatorBlockRetry
-        ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
-      implementationContinuation = implementationContinuationFor(run),
-      validationGateFindings = run.validationGateFindings,
-      agentRunValidateFallback = run.agentRunValidateFallback,
-      packCollectAllCommand = packCollectAllCommand(run, state),
-      packBuildCommand = packBuildCommand(run, state),
+    val prompt = FeatureTaskRuntimePhasePromptComposer.frameAgentPhaseLaunchPrompt(
+      phaseInput = FeatureTaskRuntimePhasePromptComposer.composeAgentPhaseInput(
+        briefing = briefing,
+        carriedFindingIds = fixPhaseCarriedFindingIds(run),
+        agentRunValidateFallback = run.agentRunValidateFallback,
+        packCollectAllCommand = packCollectAllCommand(run, state),
+        packBuildCommand = packBuildCommand(run, state),
+      ),
+      directiveSections = FeatureTaskRuntimePhasePromptComposer.compose(
+        issueKey = run.request.issueKey,
+        briefing = briefing,
+        suppressDecomposition = isGoalContinuationRun(run.request),
+        codeReviewMode = depthResolution?.resolvedTier ?: run.request.runInvariants.codeReviewMode,
+        reviewPassNumber = passNumber,
+        goalSubtaskReviewInput = run.goalReviewInput,
+        baselineUntrackedPaths = resolvedBranchRecord?.baselineUntrackedPaths.orEmpty(),
+        resolvedReviewTier = depthResolution?.resolvedTier,
+        reviewDecidingRule = depthResolution?.decidingRule,
+        repairLedger = handoff.repairLedger,
+        priorReviewContext = null,
+        priorSchemaFailure = priorCorrection?.schemaGateReason,
+        priorTerminalFailure = priorCorrection?.retryableTerminalReason,
+        priorFindingCoverage = priorCorrection?.findingCoverageReason,
+        priorDerivationReask = priorCorrection?.derivationReaskReason,
+        correctiveRepairContext = priorCorrection?.correctiveRepairContext,
+        operatorBlockRetry = operatorBlockRetry
+          ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
+        implementationContinuation = implementationContinuationFor(run),
+        validationGateFindings = run.validationGateFindings,
+        agentRunValidateFallback = run.agentRunValidateFallback,
+        packCollectAllCommand = packCollectAllCommand(run, state),
+        packBuildCommand = packBuildCommand(run, state),
+      ),
     ) + verifyFindingsSpecIntentSection(run)
     return PreparedLaunch(briefing, prompt)
+  }
+
+  private fun fixPhaseCarriedFindingIds(run: PhaseRun): Set<String> {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) return emptySet()
+    return reviewFindingIdsForVerification()
   }
 
   private fun findingPathsForBoundaryMemory(
@@ -7491,18 +7544,10 @@ internal class FeatureTaskRuntimeRunLoop(
       ),
     )
   } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
-    recordLaunchSeamRejection(
-      run,
-      state,
-      FeatureTaskRuntimeProjectionFailureClassification.INVALID_CONTRACT,
-      error.projectionName ?: "planning_projection",
-      context.producerIteration,
-      context.repositoryCheckpoint,
-    )
     LaunchPreparationRejected(
-      LaunchResult.recordRejected(
-        QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION,
-        error.message.orEmpty(),
+      LaunchResult.projectionRejected(
+        "Feature-task-runtime phase '${run.phaseId}' could not build its declared handoff projection: " +
+          error.message,
       ),
     )
   } catch (error: InvalidWorkflowStateSchemaError) {

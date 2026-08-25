@@ -27,6 +27,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.MAX_BOUNDED_POINTER_LENGTH
+import skillbill.workflow.taskruntime.model.retainDerivationCriticalProsePrefix
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 
 /**
@@ -286,19 +287,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   ): List<FeatureTaskRuntimeHandoffProjectionField>? = when (val sourceRef = declaration.sourceRef) {
     is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput ->
       inputs.resolvedUpstream.outputsByPhaseId[sourceRef.producingPhaseId]?.let { output ->
-        planningProjectionFields(inputs, declaration, sourceRef.producingPhaseId, output)
-          ?: phaseProjectionFields(inputs, declaration, output)
-          ?: listOf(
-            FeatureTaskRuntimeHandoffProjectionField(
-              name = PHASE_OUTPUT_RECEIPT_FIELD,
-              value = declaration.inlineAlternative?.let { kind ->
-                FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
-                  kind = kind,
-                  value = privateEvidenceReference(sourceRef.producingPhaseId, output.iteration),
-                )
-              } ?: FeatureTaskRuntimeHandoffProjectionValue.Text(output.payload),
-            ),
-          )
+        listOf(proseHandoffField(inputs, declaration, output))
       } ?: durableAuditRepairProjectionFields(inputs, declaration)
     is FeatureTaskRuntimeHandoffSourceRef.RunInvariantField ->
       runInvariantFields(inputs.runInvariants, sourceRef.invariantField)
@@ -392,6 +381,18 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     declaration: PhaseHandoffProjectionDeclaration,
     fields: List<FeatureTaskRuntimeHandoffProjectionField>,
   ) {
+    if (usesProseHandoff(declaration)) {
+      val proseField = fields.singleOrNull { it.name == PHASE_OUTPUT_RECEIPT_FIELD || it.name == PHASE_OUTPUT_PROSE_FIELD }
+      if (proseField == null) {
+        reject(
+          inputs,
+          declaration,
+          FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+          "prose handoff requires a single '$PHASE_OUTPUT_RECEIPT_FIELD' projection field.",
+        )
+      }
+      return
+    }
     val seen = mutableSetOf<String>()
     fields.forEach { field ->
       if (field.name !in declaration.declaredFieldNames ||
@@ -455,6 +456,9 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     projection: FeatureTaskRuntimeHandoffProjection,
   ) {
     val byteSize = projection.utf8ByteSize
+    if (byteSize > declaration.budget.maxUtf8Bytes && usesProseHandoff(declaration)) {
+      return
+    }
     if (byteSize > declaration.budget.maxUtf8Bytes) {
       reject(
         inputs,
@@ -511,6 +515,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
 
   const val PRIVATE_EVIDENCE_LOCATOR_PREFIX: String = "$FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY/"
   const val PHASE_OUTPUT_RECEIPT_FIELD: String = "phase_output_receipt"
+  const val PHASE_OUTPUT_PROSE_FIELD: String = "phase_output_prose"
   const val CEREMONY_SCALING_FIELD: String = "ceremony_scaling"
   const val ADDON_CONTENT_FIELD: String = "addon_content"
 
@@ -937,5 +942,33 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         sourceLabel = "$producingPhaseId#produced_outputs",
         reason = "producing phase output payload must decode to a JSON object.",
       )
+  }
+
+  private fun usesProseHandoff(declaration: PhaseHandoffProjectionDeclaration): Boolean =
+    declaration.sourceRef is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput
+
+  private fun proseHandoffField(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+    output: FeatureTaskRuntimePhaseOutput,
+  ): FeatureTaskRuntimeHandoffProjectionField {
+    val raw = output.payload
+    val byteSize = raw.encodeToByteArray().size
+    val delivered = if (byteSize <= declaration.budget.maxUtf8Bytes) {
+      raw
+    } else {
+      inputs.recordHandoffTruncation(
+        "seam=FeatureTaskRuntimeHandoffProjectionValidator.proseHandoffField " +
+          "value_used='$byteSize bytes' value_expected='<=${declaration.budget.maxUtf8Bytes} bytes' " +
+          "cause=prose handoff for consumer '${inputs.consumerPhaseId}' projection " +
+          "'${declaration.projectionName}' truncated with visible marker while retaining " +
+          "derivation-critical tokens",
+      )
+      retainDerivationCriticalProsePrefix(raw, declaration.budget.maxUtf8Bytes)
+    }
+    return FeatureTaskRuntimeHandoffProjectionField(
+      name = PHASE_OUTPUT_RECEIPT_FIELD,
+      value = FeatureTaskRuntimeHandoffProjectionValue.Text(delivered),
+    )
   }
 }

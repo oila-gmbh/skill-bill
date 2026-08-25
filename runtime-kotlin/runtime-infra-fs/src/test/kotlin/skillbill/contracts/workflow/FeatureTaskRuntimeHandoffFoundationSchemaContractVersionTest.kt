@@ -5,6 +5,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeHandoffFoundationSchemaContractVersionTest {
   @Test
@@ -33,6 +34,15 @@ class FeatureTaskRuntimeHandoffFoundationSchemaContractVersionTest {
       ),
       versions,
     )
+  }
+
+  @Test
+  fun `persistence schema pins phase_record_sidecar and output_text fields`() {
+    val schema = classpathSchema(FeatureTaskRuntimePersistenceSchemaPaths.CLASSPATH_RESOURCE)
+    val sidecar = schema.path("\$defs").path("phase_record_sidecar").path("properties")
+    assertTrue(sidecar.has("commit_sha"))
+    assertTrue(sidecar.has("decomposition_package"))
+    assertTrue(schema.path("\$defs").path("private_phase_record").path("properties").has("output_text"))
   }
 
   @Test

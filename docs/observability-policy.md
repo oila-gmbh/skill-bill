@@ -33,6 +33,10 @@ these seams:
   when a caller enumerates with `enforceContractVersion=false` (reconcile's LOCAL side and
   installed-workspace baseline status) and a stale `const` violation is tolerated instead of
   raising `ContractVersionMismatchError`
+- upstream prose handoff truncation: `FeatureTaskRuntimeHandoffProjectionValidator.proseHandoffField`
+  when producer `output` exceeds the declared projection budget; the record names byte counts,
+  consumer phase, projection name, and that derivation-critical tokens were retained ahead of the
+  visible `<<<HANDOFF_TRUNCATED>>>` marker in the delivered prompt
 
 Each record names the seam, the value actually used, the value that was expected,
 and why the substitution happened. A fallback that cannot be attributed to a

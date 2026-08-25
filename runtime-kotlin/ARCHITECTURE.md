@@ -745,15 +745,21 @@ SKILL-146 makes this boundary explicitly four-part: complete producer output is
 private evidence; a named consumer projection is the only prompt-visible
 derivative; repository state has an immutable checkpoint identity; and
 phase-local instructions use workflow-owned invariant allowlists. Declaration
-and persistence wires have independent incompatible `0.2` contracts. Delivered
-records identify the workflow, consumer, producer iteration, and checkpoint;
+and persistence wires have independent incompatible contracts. Private phase-record
+persistence is `0.3` (SKILL-208): each durable record carries authoritative
+`output_text` plus an optional `runtime_owned_sidecar` for runtime-captured
+checkpoint, gate receipts, commit sha, and agent-authored delimited commit subject
+or decomposition package. Legacy `0.2` private phase records loud-fail at every
+decode seam; the operator action matches other incompatible persistence — restart
+the active run or use the documented out-of-band migration procedure, with no
+in-place upgrade for in-flight workflows. Delivered records identify the workflow,
+consumer, producer iteration, and checkpoint;
 the versioned, exact-decoded `FeatureTaskRuntimePhaseRecord` wire is the
 authoritative durable private-evidence record written and read by the phase
 recorder. It remains under the private phase-record artifact key, separate from
 the delivered-projection key and prompt-facing read API. Unknown fields,
 missing record identity, and unsupported versions are incompatible rather than
-defaulted.
-legacy records missing that identity loud-fail with restart or explicit
+defaulted. Legacy records missing that identity loud-fail with restart or explicit
 out-of-band migration guidance. The operator action is deliberately identical at
 workflow, briefing, handoff, private-evidence, and delivered-projection read
 seams: restart the active run or use the documented out-of-band migration
@@ -761,8 +767,10 @@ procedure. Unsupported versions are never defaulted or interpreted as the
 current least-context shape.
 
 Budgets are enforced before launch against serialized UTF-8 bytes and
-collection items. The runtime never truncates, drops fields, or falls back to a
-complete artifact. Measurements contain identifiers, byte/item counts, token
+collection items. Structured projections still reject on overflow; upstream prose
+handoff truncates with a visible marker, emits an observability record, and
+retains derivation-critical tokens ahead of narrative. Measurements contain identifiers,
+byte/item counts, token
 estimates, and failure classifications only, never prompt or evidence bodies.
 They are written only through lifecycle telemetry and progress stores; no
 measurement or diagnostic field is added to a phase receipt or other

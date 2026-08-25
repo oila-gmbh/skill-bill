@@ -261,6 +261,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     const val COMMIT_RECEIPT: String = "feature_task_runtime.commit_receipt"
     const val PR_REQUEST: String = "feature_task_runtime.pr_request"
     const val PRIOR_GAP_MEMORY: String = "feature_task_runtime.prior_gap_memory"
+    const val PHASE_OUTPUT_PROSE: String = "feature_task_runtime.phase_output_prose"
   }
 
   @Suppress("LongParameterList")
