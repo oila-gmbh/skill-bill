@@ -106,8 +106,9 @@ internal fun featureTaskRuntimeImplementationCompletionReason(
   phaseId: String,
   obligations: FeatureTaskRuntimeImplementationObligations,
   claim: FeatureTaskRuntimeImplementationClaim,
+  returnedText: String = "",
 ): String? {
-  val missing = featureTaskRuntimeOpenObligations(obligations, claim)
+  val missing = featureTaskRuntimeOpenObligations(obligations, claim, returnedText)
   if (missing.isNotEmpty()) {
     return "Phase '$phaseId' reported 'completed' but its implementation receipt does not close every " +
       "${obligations.obligationNoun} the authoritative plan declared. Still open: ${missing.joinToString()}. " +
@@ -133,8 +134,13 @@ internal fun featureTaskRuntimeImplementationCompletionReason(
 internal fun featureTaskRuntimeOpenObligations(
   obligations: FeatureTaskRuntimeImplementationObligations,
   claim: FeatureTaskRuntimeImplementationClaim,
+  returnedText: String = "",
 ): List<String> {
-  val closed = claim.completedTaskIds.toSet()
+  val closedFromReceipt = claim.completedTaskIds.toSet()
+  val closedFromProse = FeatureTaskRuntimePhaseOutputDerivation
+    .closedObligationIds(returnedText, obligations.requiredIds)
+    .toSet()
+  val closed = closedFromReceipt + closedFromProse
   return obligations.requiredIds.filterNot { it in closed }
 }
 
@@ -252,6 +258,7 @@ internal fun featureTaskRuntimeIncompleteWorkGateReason(
   phaseId: String,
   outputMap: Map<String, Any?>,
   obligations: FeatureTaskRuntimeImplementationObligations,
+  returnedText: String = "",
 ): String? {
   val gateApplies = FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId) &&
     outputMap["status"] == PHASE_OUTPUT_STATUS_COMPLETED &&
@@ -261,6 +268,7 @@ internal fun featureTaskRuntimeIncompleteWorkGateReason(
   return featureTaskRuntimeImplementationCompletionReason(
     phaseId = phaseId,
     obligations = obligations,
-    claim = featureTaskRuntimeImplementationClaimFrom(outputMap, obligations),
+    claim = featureTaskRuntimeImplementationClaimFrom(outputMap, obligations, returnedText),
+    returnedText = returnedText,
   )
 }

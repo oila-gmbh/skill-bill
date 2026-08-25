@@ -35,7 +35,7 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
       ),
     )
     assertEquals(
-      FeatureTaskRuntimeVerdict.ADVANCE,
+      null,
       FeatureTaskRuntimeOutputVerification.verdictFor(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
         envelope,

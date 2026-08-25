@@ -33,14 +33,19 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeRenderOpenWorkItem
 internal fun featureTaskRuntimeImplementationClaimFrom(
   outputMap: Map<String, Any?>,
   obligations: FeatureTaskRuntimeImplementationObligations,
+  returnedText: String = "",
 ): FeatureTaskRuntimeImplementationClaim {
   val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+  val receiptClosed = if (obligations.underAuditRepairLoop) {
+    featureTaskRuntimeClosedRepairItemIds(outputMap)
+  } else {
+    produced.stringList("completed_task_ids")
+  }.filter(::isAttemptTaskId).distinct().take(ATTEMPT_MAX_ITEMS)
+  val proseClosed = FeatureTaskRuntimePhaseOutputDerivation
+    .closedObligationIds(returnedText, obligations.requiredIds)
+    .filter(::isAttemptTaskId)
   return FeatureTaskRuntimeImplementationClaim(
-    completedTaskIds = if (obligations.underAuditRepairLoop) {
-      featureTaskRuntimeClosedRepairItemIds(outputMap)
-    } else {
-      produced.stringList("completed_task_ids")
-    }.filter(::isAttemptTaskId).distinct().take(ATTEMPT_MAX_ITEMS),
+    completedTaskIds = (receiptClosed + proseClosed).distinct().take(ATTEMPT_MAX_ITEMS),
     changedPaths = emptyList(),
     unresolvedItems = produced.openWorkList("unresolved_items")
       .mapNotNull(::sanitizeAttemptNonBlank).take(ATTEMPT_MAX_ITEMS),

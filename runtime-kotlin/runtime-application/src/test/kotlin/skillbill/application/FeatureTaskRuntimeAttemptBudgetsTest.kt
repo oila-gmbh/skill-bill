@@ -9,6 +9,15 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeAttemptBudgetsTest {
   @Test
+  fun `derivation reask budget blocks after one re-ask`() {
+    assertEquals(1, FeatureTaskRuntimeAttemptBudgets.MAX_DERIVATION_REASK_ATTEMPTS)
+    assertEquals(null, FeatureTaskRuntimeAttemptBudgets.derivationReaskBlockReason("audit", 1))
+    assertTrue(
+      FeatureTaskRuntimeAttemptBudgets.derivationReaskBlockReason("audit", 2)?.contains("audit") == true,
+    )
+  }
+
+  @Test
   fun `output-gate retries cap at one and process-failure stays at three`() {
     assertEquals(1, FeatureTaskRuntimeAttemptBudgets.MAX_OUTPUT_GATE_RETRY_ATTEMPTS)
     assertEquals(1, FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS)

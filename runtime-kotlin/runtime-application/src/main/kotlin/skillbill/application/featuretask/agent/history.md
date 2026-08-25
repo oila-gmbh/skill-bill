@@ -17,6 +17,16 @@ Areas: runtime-application/featuretask
 Feature flag: N/A
 Acceptance criteria: n/a (main hotfix)
 
+## [2026-08-25] SKILL-208 subtask 3 — Derive settlement and verdicts
+Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-infra-fs/contracts/workflow, runtime-infra-sqlite, orchestration/contracts, docs
+- One runtime-owned reader derives settlement (status + disposition) and audit/review/verify_findings routing verdicts via membership over closed candidate sets; run loop, recorder, and gates consume those derived signals.
+- Plan-obligation and repair-item closure is id membership over runtime-delivered sets in phase text; schema demotes required `verdict`/`gaps`/`finding_dispositions` so prose-only verifying output validates (contract bump, legacy records loud-fail).
+- Indecisive settlement or routing re-asks once under a dedicated budget, then durable-blocks keeping both outputs; crash mid-re-ask resumes as a fresh re-ask.
+- Pattern: derive routing/settlement from R2 membership rather than producer fields; structured field wins over prose when both present (transitional until subtask 5). reusable
+- Limitation: phase envelope remains typed JSON until subtask 4; retired schemas and repair passes stay until subtask 5.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-25] SKILL-208 subtask 2 — Runtime-held facts and runtime-minted evidence
 Areas: runtime-application/{featuretask,goalrunner,review}, runtime-domain/taskruntime, orchestration/contracts, docs
 - Review run id and finding set now come from the runtime's own review import; phase prompts no longer ask agents to echo either, and measurement consumers read the same import.

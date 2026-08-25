@@ -96,6 +96,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
@@ -455,7 +457,12 @@ internal class FeatureTaskRuntimeRunLoop(
         if (paused == null) blockDurablyAt(phaseId, reason)
         PhaseSettlement.stop()
       }
-      else -> PhaseSettlement.completed(phaseId, state.verdictFor(phaseId))
+      else -> {
+        val verdict = requireNotNull(state.verdictFor(phaseId)) {
+          "Phase '$phaseId' completed without a derivable routing verdict."
+        }
+        PhaseSettlement.completed(phaseId, verdict)
+      }
     }
   }
 
@@ -1775,7 +1782,7 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult? {
-    incompleteImplementationReason(run, outputMap)?.let { reason ->
+    incompleteImplementationReason(run, outputMap, capture.outputText)?.let { reason ->
       return AttemptResult.incompleteWork(
         operatorReason = reason,
         continuationReason = reason,
@@ -4191,6 +4198,8 @@ internal class FeatureTaskRuntimeRunLoop(
       outputGateFailures = 0,
       semanticIteration = semanticIteration,
       continuationSegmentCount = continuationSegmentCount,
+      derivationReaskCount = durableDerivationReaskCount(run),
+      priorCorrection = durableDerivationReaskCorrection(run),
     )
     while (outcome == null) {
       val attempt = attemptOnce(run, state, loop.iteration, observability, loop.priorCorrection, phaseTokenAccumulator)
@@ -4207,6 +4216,7 @@ internal class FeatureTaskRuntimeRunLoop(
         // is schema-valid, so charging it to the output-gate budget would block the round for work it
         // can still finish.
         attempt.findingsOwedKind != null -> settleFindingsOwed(context)
+        attempt.derivationReaskReason != null -> settleDerivationReask(context)
         else -> settleSemanticFailure(context)
       }
     }
@@ -4224,6 +4234,7 @@ internal class FeatureTaskRuntimeRunLoop(
     var priorUnaccountedFindings: Set<String>? = null,
     var priorUnresolvedFindings: Set<String> = emptySet(),
     var itemCoverageSegmentCount: Int = 0,
+    var derivationReaskCount: Int = 0,
   )
 
   /** Everything a fix-loop branch handler reads; they only ever travel as a set. */
@@ -4275,6 +4286,59 @@ internal class FeatureTaskRuntimeRunLoop(
    * cap=1. Resolved bodies ride the durable selection into the next briefing; no schema-correction
    * directive is appropriate.
    */
+  private fun settleDerivationReask(context: FixLoopBranchContext): PhaseOutcome? {
+    val (run, attempt, loop, observability, agentId) = context
+    val pendingOutput = requireNotNull(attempt.derivationReaskOutput) {
+      "Derivation re-ask requires the validated output that was indecisive."
+    }
+    val nextReaskCount = loop.derivationReaskCount + 1
+    FeatureTaskRuntimeAttemptBudgets.derivationReaskBlockReason(run.phaseId, nextReaskCount)?.let { capReason ->
+      val durablePending = recorder.loadDerivationReaskState(
+        run.request.workflowId,
+        run.phaseId,
+        run.request.dbPathOverride,
+      )
+      val firstOutput = durablePending?.firstOutputArtifact ?: pendingOutput.canonicalJson
+      observability.derivationBlocked(run.phaseId, agentId, loop.iteration, capReason)
+      recorder.persistDerivationReaskState(
+        run.request.workflowId,
+        FeatureTaskRuntimeDerivationReaskState(
+          phaseId = run.phaseId,
+          reaskCount = nextReaskCount,
+          firstOutputArtifact = firstOutput,
+          secondOutputArtifact = pendingOutput.canonicalJson,
+          authoritativeAttempt = 2,
+        ),
+        run.request.dbPathOverride,
+      )
+      return blockAndPersistInPhase(
+        run,
+        loop.iteration,
+        capReason,
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+        fileManifest = attempt.fileManifest,
+        normalizedOutput = pendingOutput,
+        rejectedOutput = firstOutput,
+      )
+    }
+    recorder.persistDerivationReaskState(
+      run.request.workflowId,
+      FeatureTaskRuntimeDerivationReaskState(
+        phaseId = run.phaseId,
+        reaskCount = nextReaskCount,
+        firstOutputArtifact = pendingOutput.canonicalJson,
+        authoritativeAttempt = 1,
+      ),
+      run.request.dbPathOverride,
+    )
+    loop.derivationReaskCount = nextReaskCount
+    loop.iteration += 1
+    loop.priorCorrection = PriorAttemptCorrection.derivationReask(requireNotNull(attempt.derivationReaskReason))
+    observability.derivationReask(run.phaseId, agentId, loop.iteration, loop.derivationReaskCount)
+    return null
+  }
+
   private fun settleBoundaryBodyDelivery(context: FixLoopBranchContext): PhaseOutcome? {
     val (run, _, loop, observability, agentId) = context
     loop.continuationSegmentCount += 1
@@ -4488,6 +4552,21 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  private fun durableDerivationReaskCount(run: PhaseRun): Int =
+    recorder.loadDerivationReaskState(run.request.workflowId, run.phaseId, run.request.dbPathOverride)
+      ?.reaskCount
+      ?: 0
+
+  private fun durableDerivationReaskCorrection(run: PhaseRun): PriorAttemptCorrection? {
+    val pending = recorder.loadDerivationReaskState(run.request.workflowId, run.phaseId, run.request.dbPathOverride)
+      ?: return null
+    if (pending.secondOutputArtifact != null) return null
+    return PriorAttemptCorrection.derivationReask(
+      "Phase '${run.phaseId}' output validated but derivation was indecisive. " +
+        "State the closed vocabulary tokens plainly in your returned text.",
+    )
+  }
+
   /**
    * Appends the incomplete attempt to the durable history, reporting whether it actually landed.
    *
@@ -4501,6 +4580,7 @@ internal class FeatureTaskRuntimeRunLoop(
    */
   private fun recordIncompleteAttempt(run: PhaseRun, iteration: Int, attempt: AttemptResult): Boolean {
     val normalized = attempt.incompleteWorkOutput ?: return false
+    val (plannedTaskIds, carriedRepairItemIds) = implementationObligationFields(run)
     return recorder.recordIncompleteImplementationAttempt(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = run.request.workflowId,
@@ -4512,6 +4592,8 @@ internal class FeatureTaskRuntimeRunLoop(
         normalizedOutput = normalized,
         loopId = run.reentry?.loopId,
         edgeIteration = run.reentry?.edgeIteration,
+        implementationPlannedTaskIds = plannedTaskIds,
+        implementationCarriedRepairItemIds = carriedRepairItemIds,
       ),
       run.request.dbPathOverride,
     )
@@ -4533,6 +4615,7 @@ internal class FeatureTaskRuntimeRunLoop(
     rejectedOutput: String? = null,
     childNeverLaunched: Boolean = false,
   ): PhaseOutcome {
+    val (plannedTaskIds, carriedRepairItemIds) = implementationObligationFields(run)
     val phaseState = FeatureTaskRuntimePhaseStateRequest(
       workflowId = run.request.workflowId,
       phaseId = run.phaseId,
@@ -4552,9 +4635,9 @@ internal class FeatureTaskRuntimeRunLoop(
       loopId = loopId,
       edgeIteration = edgeIteration,
       reviewPassNumber = reviewPassNumber(run, state),
-      // A launch that never produced a child clears the running write's stamp; every other block
-      // reason happened around a child that did run, so its recorded model carries forward.
       launchOutcomeKnown = childNeverLaunched,
+      implementationPlannedTaskIds = plannedTaskIds,
+      implementationCarriedRepairItemIds = carriedRepairItemIds,
     )
     state.reserveReviewPass(phaseState.reviewPassNumber)
     val persisted = runCatching {
@@ -5319,6 +5402,7 @@ internal class FeatureTaskRuntimeRunLoop(
       mintAuditGapPause(pause, run.phaseId, attested.canonicalJson)
       return AttemptResult.settled(PhaseOutcome.paused(pause.reason))
     }
+    derivationIndecisiveAttempt(run, capture, outputMap, attested)?.let { return it }
     terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
       return terminalOutputAttempt(
         run,
@@ -5341,15 +5425,6 @@ internal class FeatureTaskRuntimeRunLoop(
       repairEvidence,
       repositoryFingerprint,
     )?.let { (rule, reason) -> return reject(rule, reason) }
-    // Deliberately LAST of the gates: a receipt that both under-closes its plan tasks and carries a
-    // real projection, reconciliation-report or output-verification defect is a structural failure
-    // first. Evaluating incompleteness ahead of those gates routed such a document into the
-    // continuation loop, where priorSchemaFailure stays null, so the repairable contract defect was
-    // never named to the agent and the run burned every continuation segment before blocking. Running
-    // last means the continuation path only ever sees a receipt that already satisfies its contract.
-    // Returned directly rather than through reject(): semantic incompleteness is not a rejected
-    // output and must never be recorded or budgeted as one. Blocked/failed envelopes and
-    // decomposition packages still bypass it, via the terminal path and the producer gate above.
     settleCompletedImplementationOutput(
       run,
       outputMap,
@@ -5395,6 +5470,46 @@ internal class FeatureTaskRuntimeRunLoop(
     val outputSha256: String,
     val repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  )
+
+  private fun derivationIndecisiveAttempt(
+    run: PhaseRun,
+    capture: ValidatedOutputCapture,
+    outputMap: Map<String, Any?>,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  ): AttemptResult? {
+    val context = derivationContext(run, capture.outputText, outputMap)
+    val settlementIndecisive = FeatureTaskRuntimePhaseOutputDerivation.deriveSettlement(context) is
+      FeatureTaskRuntimeDerivationResult.Indecisive
+    val routingIndecisive = when (run.phaseId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+      -> FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(context) is
+        FeatureTaskRuntimeDerivationResult.Indecisive
+      else -> false
+    }
+    if (!settlementIndecisive && !routingIndecisive) return null
+    val detail = buildString {
+      append("Phase '${run.phaseId}' output validated but derivation was indecisive.")
+      if (settlementIndecisive) append(" Settlement status or failure_disposition was ambiguous.")
+      if (routingIndecisive) append(" Routing verdict was ambiguous.")
+      append(" State the closed vocabulary tokens plainly in your returned text.")
+    }
+    return AttemptResult.derivationReask(detail, capture.fileManifest, normalizedOutput)
+  }
+
+  private fun derivationContext(
+    run: PhaseRun,
+    outputText: String,
+    outputMap: Map<String, Any?>,
+  ): FeatureTaskRuntimeDerivationContext = FeatureTaskRuntimeDerivationContext(
+    phaseId = run.phaseId,
+    outputText = outputText,
+    outputMap = outputMap,
+    acceptanceCriterionRefs = declaredCriterionRefs(),
+    carriedFindingIds = reviewFindingIdsForVerification(),
+    reviewFindingIds = reviewFindingIdsForVerification(),
   )
 
   private fun rejectValidatedOutput(
@@ -5757,15 +5872,30 @@ internal class FeatureTaskRuntimeRunLoop(
       .orEmpty().values
     return FeatureTaskRuntimeImplementationObligations(
       plannedTaskIds = featureTaskRuntimePlannedTaskIdsFrom(delivered, run.phaseId),
-      carriedRepairItemIds = featureTaskRuntimeCarriedRepairItemIds(emptyList()),
+      carriedRepairItemIds = featureTaskRuntimeCarriedRepairItemIds(auditGapCriteriaFor(run, state)),
       loopId = loopId,
       edgeIteration = run.reentry?.edgeIteration,
     )
   }
 
-  private fun incompleteImplementationReason(run: PhaseRun, outputMap: Map<String, Any?>): String? {
+  private fun implementationObligationFields(
+    run: PhaseRun,
+  ): Pair<List<String>, List<String>> {
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId)) {
+      return emptyList<String>() to emptyList()
+    }
+    val obligations = implementationObligations(run)
+    return obligations.plannedTaskIds to obligations.carriedRepairItemIds
+  }
+
+  private fun incompleteImplementationReason(run: PhaseRun, outputMap: Map<String, Any?>, returnedText: String): String? {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId)) return null
-    return featureTaskRuntimeIncompleteWorkGateReason(run.phaseId, outputMap, implementationObligations(run))
+    return featureTaskRuntimeIncompleteWorkGateReason(
+      run.phaseId,
+      outputMap,
+      implementationObligations(run),
+      returnedText,
+    )
   }
 
   /**
@@ -6309,7 +6439,14 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult {
-    val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, outputMap)
+    val context = derivationContext(run, normalizedOutput.canonicalJson, outputMap)
+    val disposition = when (val settlement = FeatureTaskRuntimePhaseOutputDerivation.deriveSettlement(context)) {
+      is FeatureTaskRuntimeDerivationResult.Decided ->
+        settlement.value.failureDisposition
+          ?: FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, outputMap)
+      FeatureTaskRuntimeDerivationResult.Indecisive ->
+        FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, outputMap)
+    }
     return if (
       disposition.retryOnResume &&
       FeatureTaskRuntimePhaseWorkflowDefinition.retriesOnInvalidOutput(run.phaseId)
@@ -6623,6 +6760,7 @@ internal class FeatureTaskRuntimeRunLoop(
         ),
       )
     }
+    recorder.clearDerivationReaskState(run.request.workflowId, run.phaseId, run.request.dbPathOverride)
     observability.completedEvent(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return AttemptResult.settled(
       PhaseOutcome.completed(
@@ -6794,6 +6932,7 @@ internal class FeatureTaskRuntimeRunLoop(
     launched: LaunchedModelDirective? = null,
     reviewRunId: String? = null,
   ): FeatureTaskRuntimePhaseStateRequest {
+    val (plannedTaskIds, carriedRepairItemIds) = implementationObligationFields(run)
     return FeatureTaskRuntimePhaseStateRequest(
       workflowId = run.request.workflowId,
       phaseId = run.phaseId,
@@ -6820,6 +6959,8 @@ internal class FeatureTaskRuntimeRunLoop(
       launchedEffort = launched?.persistedEffort,
       launchOutcomeKnown = launched != null,
       reviewRunId = reviewRunId,
+      implementationPlannedTaskIds = plannedTaskIds,
+      implementationCarriedRepairItemIds = carriedRepairItemIds,
     )
   }
 
@@ -6925,6 +7066,7 @@ internal class FeatureTaskRuntimeRunLoop(
       priorSchemaFailure = priorCorrection?.schemaGateReason,
       priorTerminalFailure = priorCorrection?.retryableTerminalReason,
       priorFindingCoverage = priorCorrection?.findingCoverageReason,
+      priorDerivationReask = priorCorrection?.derivationReaskReason,
       correctiveRepairContext = priorCorrection?.correctiveRepairContext,
       operatorBlockRetry = operatorBlockRetry
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
@@ -7755,6 +7897,12 @@ internal class FeatureTaskRuntimeRunLoop(
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
     ) : AttemptResult
 
+    private data class DerivationReask(
+      val retryReason: String,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+      val pendingOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    ) : AttemptResult
+
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
     val schemaInvalidOperatorReason: String? get() = (this as? SchemaInvalid)?.operatorReason
     val schemaInvalidRetryReason: String? get() = (this as? SchemaInvalid)?.retryReason
@@ -7764,6 +7912,7 @@ internal class FeatureTaskRuntimeRunLoop(
         is IncompleteWork -> fileManifest
         is RetryableTerminal -> fileManifest
         is FindingsOwed -> fileManifest
+        is DerivationReask -> fileManifest
         is BoundaryBodyDelivery -> fileManifest
         else -> null
       }
@@ -7820,6 +7969,10 @@ internal class FeatureTaskRuntimeRunLoop(
     val boundaryBodyDeliveryContinuationReason: String?
       get() = (this as? BoundaryBodyDelivery)?.continuationReason
 
+    val derivationReaskReason: String? get() = (this as? DerivationReask)?.retryReason
+    val derivationReaskOutput: NormalizedFeatureTaskRuntimePhaseOutput?
+      get() = (this as? DerivationReask)?.pendingOutput
+
     companion object {
       fun settled(outcome: PhaseOutcome): AttemptResult = Settled(outcome)
 
@@ -7827,6 +7980,12 @@ internal class FeatureTaskRuntimeRunLoop(
         continuationReason: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
       ): AttemptResult = BoundaryBodyDelivery(continuationReason, fileManifest)
+
+      fun derivationReask(
+        retryReason: String,
+        fileManifest: FeatureTaskRuntimePhaseFileManifest,
+        pendingOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+      ): AttemptResult = DerivationReask(retryReason, fileManifest, pendingOutput)
 
       fun incompleteWork(
         operatorReason: String,

@@ -52,6 +52,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_BUILD_GATE_PROG
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
@@ -73,6 +74,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
@@ -641,9 +643,12 @@ class FeatureTaskRuntimePhaseRecorder(
       ?.get("projection_kind") == FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue
     if (!carriesReceipt) return emptyMap()
     val existing = implementationAttemptsFrom(artifacts)
+    val returnedText = request.normalizedOutput.canonicalJson
+    val obligations = implementationObligationsFrom(request, artifacts, request.workflowId)
     val claim = featureTaskRuntimeImplementationClaimFrom(
       envelope,
-      FeatureTaskRuntimeImplementationObligations(emptyList(), emptyList(), request.loopId),
+      obligations,
+      returnedText,
     )
     val appended = featureTaskRuntimeAppendImplementationAttempt(
       existing = existing,
@@ -673,6 +678,34 @@ class FeatureTaskRuntimePhaseRecorder(
       FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY,
     )
     return mapOf(FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY to wire)
+  }
+
+  private fun implementationObligationsFrom(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    artifacts: Map<String, Any?>,
+    workflowId: String,
+  ): FeatureTaskRuntimeImplementationObligations {
+    if (request.implementationPlannedTaskIds.isNotEmpty() || request.implementationCarriedRepairItemIds.isNotEmpty()) {
+      return FeatureTaskRuntimeImplementationObligations(
+        plannedTaskIds = request.implementationPlannedTaskIds,
+        carriedRepairItemIds = request.implementationCarriedRepairItemIds,
+        loopId = request.loopId,
+        edgeIteration = request.edgeIteration,
+      )
+    }
+    val delivered = deliveredProjectionsFrom(
+      artifacts,
+      validateEnvelope = { envelope -> handoffEnvelopeValidator.validateEnvelope(envelope, workflowId) },
+      validatePersistenceRecord = { persistence ->
+        handoffFoundationValidator.validatePersistenceRecord(persistence, "delivered-projection:$workflowId")
+      },
+    ).values
+    return FeatureTaskRuntimeImplementationObligations(
+      plannedTaskIds = featureTaskRuntimePlannedTaskIdsFrom(delivered, request.phaseId),
+      carriedRepairItemIds = emptyList(),
+      loopId = request.loopId,
+      edgeIteration = request.edgeIteration,
+    )
   }
 
   /**
@@ -1731,6 +1764,64 @@ class FeatureTaskRuntimePhaseRecorder(
       )
     }
   }
+
+  fun loadDerivationReaskState(
+    workflowId: String,
+    phaseId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeDerivationReaskState? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+    derivationReaskStatesFrom(decodeArtifacts(record.artifactsJson))[phaseId]
+  }
+
+  fun persistDerivationReaskState(
+    workflowId: String,
+    state: FeatureTaskRuntimeDerivationReaskState,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@transaction false
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val updated = LinkedHashMap(derivationReaskStatesFrom(artifacts)).apply {
+      put(state.phaseId, state)
+    }
+    persistPatch(
+      unitOfWork.workflowStates,
+      record,
+      mapOf(FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY to derivationReaskStatesToWire(updated)),
+    )
+    true
+  }
+
+  fun clearDerivationReaskState(workflowId: String, phaseId: String, dbOverride: String? = null): Boolean =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val existing = derivationReaskStatesFrom(artifacts)
+      if (!existing.containsKey(phaseId)) return@transaction true
+      val updated = LinkedHashMap(existing).apply { remove(phaseId) }
+      val patch = if (updated.isEmpty()) {
+        mapOf(FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY to null)
+      } else {
+        mapOf(FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY to derivationReaskStatesToWire(updated))
+      }
+      persistPatch(unitOfWork.workflowStates, record, patch)
+      true
+    }
+
+  private fun derivationReaskStatesFrom(artifacts: Map<String, Any?>): Map<String, FeatureTaskRuntimeDerivationReaskState> {
+    val raw = artifacts[FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY] ?: return emptyMap()
+    val wire = JsonSupport.anyToStringAnyMap(raw) ?: return emptyMap()
+    return wire.mapNotNull { (phaseId, entry) ->
+      val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapNotNull null
+      phaseId to FeatureTaskRuntimeDerivationReaskState.fromArtifactMap(map)
+    }.toMap()
+  }
+
+  private fun derivationReaskStatesToWire(
+    states: Map<String, FeatureTaskRuntimeDerivationReaskState>,
+  ): Map<String, Any?> = states.mapValues { (_, state) -> state.toArtifactMap() }
 
   fun loadBuildGateProgress(
     workflowId: String,

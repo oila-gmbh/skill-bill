@@ -464,7 +464,9 @@ internal class FeatureTaskRuntimeRunState(
   // would otherwise resume, run the gating phase, and then skip the gated one because it is still
   // marked complete — committing a tree the gated phase never saw in its settled form.
   private fun invalidateUnsatisfiedGateSuccessors(completedPhases: MutableSet<String>) {
-    val durableVerdicts = completedPhases.associateWith(::durableVerdictFor)
+    val durableVerdicts = completedPhases.mapNotNull { phaseId ->
+      durableVerdictFor(phaseId)?.let { phaseId to it }
+    }.toMap()
     transitions.entryGates.forEach { gate ->
       if (transitions.entryGateViolation(gate.phaseId, durableVerdicts) == null) {
         return@forEach
@@ -485,7 +487,7 @@ internal class FeatureTaskRuntimeRunState(
 
   // The verdict a durable record settled with, read straight from the loaded record rather than from
   // `outputs`, which is not initialised while `completed` is still being reduced.
-  private fun durableVerdictFor(phaseId: String): FeatureTaskRuntimeVerdict =
+  private fun durableVerdictFor(phaseId: String): FeatureTaskRuntimeVerdict? =
     FeatureTaskRuntimeOutputVerification.verdictFor(
       phaseId,
       parsedOutput(initialRecords[phaseId]?.let(::validatedRecordToOutput)),
@@ -512,13 +514,14 @@ internal class FeatureTaskRuntimeRunState(
     }
   }
 
-  fun verdictFor(phaseId: String): FeatureTaskRuntimeVerdict =
+  fun verdictFor(phaseId: String): FeatureTaskRuntimeVerdict? =
     FeatureTaskRuntimeOutputVerification.verdictFor(phaseId, parsedOutput(outputFor(phaseId)))
 
   // The settled verdict per completed phase, the input the declared phase-entry gates evaluate. A
   // phase that is not complete is absent rather than defaulted, so a gate can never read a stale or
   // invented verdict for a phase the run has not settled.
-  fun settledVerdictsByPhaseId(): Map<String, FeatureTaskRuntimeVerdict> = completed.associateWith(::verdictFor)
+  fun settledVerdictsByPhaseId(): Map<String, FeatureTaskRuntimeVerdict> =
+    completed.mapNotNull { phaseId -> verdictFor(phaseId)?.let { phaseId to it } }.toMap()
 
   // True when any phase in a durable re-entry span is unreachable under the live entry gates, so the
   // span itself cannot be completed and the re-entry must not be honoured on resume.
