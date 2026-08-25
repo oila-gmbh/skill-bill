@@ -3,12 +3,10 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -47,28 +45,25 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   }
 
   @Test
-  fun `audit_gap crossing the threshold pauses for an operator decision and warns once`() {
+  fun `audit_gap crossing the threshold warns once and continues`() {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
       launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1),
       diagnostics = diagnostics,
     )
 
-    val report = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     assertEquals(
-      (1..threshold).toList(),
+      (1..crossingIteration).toList(),
       loopEdgeIterations(harness, FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID),
-      "the pausing iteration is not recorded as an edge",
+      "the crossing iteration must be recorded as an edge",
     )
-    assertContains(report.pauseReason, "warn-threshold")
-    assertContains(report.pauseReason, "iteration $crossingIteration")
-    assertContains(report.pauseReason, "retry_fix")
+    assertEquals("pr", report.completedPhaseIds.last())
     val warning = diagnostics.warnings.single()
     assertContains(warning, "audit_gap")
     assertContains(warning, "warning threshold of $threshold")
     assertContains(warning, "iteration $crossingIteration")
-    assertTrue(!warning.contains("Remediation will continue"), "the crossing no longer claims continuation")
   }
 
   @Test
@@ -108,7 +103,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     )
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(
-      runPastWarnThresholdPauses(harness, harness.request()),
+      harness.runner.run(harness.request()),
     )
 
     assertEquals(
@@ -130,8 +125,6 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    // The audit_gap crossing now pauses before review can cross, so a sub-threshold audit is the only
-    // way both loops run in one subtask; only the crossing review_fix loop warns.
     assertEquals(
       listOf(1),
       loopEdgeIterations(harness, FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID),
@@ -166,7 +159,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
 
     crashOnCrossingAudit = false
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(
-      runPastWarnThresholdPauses(harness, harness.request()),
+      harness.runner.run(harness.request()),
     )
     assertEquals(completed.completedPhaseIds.last(), "pr")
 
@@ -186,17 +179,13 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
       diagnostics = diagnostics,
     )
 
-    val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
-    assertContains(paused.pauseReason, "warn-threshold")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "process")
     assertEquals(1, diagnostics.warnings.size, "the crossing edge is durable, so it warned before the crash")
 
-    grantAuditGapRetryFix(harness)
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
     crashOnImplement = false
-    grantAuditGapRetryFix(harness)
     assertIs<FeatureTaskRuntimeRunReport.Completed>(
-      runPastWarnThresholdPauses(harness, harness.request()),
+      harness.runner.run(harness.request()),
     )
 
     assertSingleCrossingWarning(diagnostics, crossingIteration)
@@ -210,9 +199,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
       diagnostics = diagnostics,
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(
-      runPastWarnThresholdPauses(harness, harness.request()),
-    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     assertSingleCrossingWarning(diagnostics, crossingIteration)
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -247,10 +234,10 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   }
 
   @Test
-  fun `status reports the honest iteration count on a paused warn-threshold run`() {
+  fun `status reports the honest iteration count after a warn-threshold crossing`() {
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1))
 
-    assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     val status = FeatureTaskRuntimeStatusService(
       harness.recorder,
@@ -279,8 +266,6 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(reviewHarness.runner.run(reviewHarness.request))
     assertEquals(1, reviewHarness.lifecycle.finishedRecords.single().reviewFixIterationCount)
 
-    // The audit_gap crossing now pauses, so the finished-telemetry case stays below the threshold: a
-    // single gap iteration that converges is the largest audit-gap run that reaches telemetry.
     val auditHarness = telemetryRunnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
     assertIs<FeatureTaskRuntimeRunReport.Completed>(auditHarness.runner.run(auditHarness.request))
     assertEquals(1, auditHarness.lifecycle.finishedRecords.single().auditGapIterationCount)
@@ -335,27 +320,6 @@ private fun assertSingleCrossingWarning(diagnostics: RecordingDiagnostics, cross
     "iterations past the crossing must not warn again",
   )
   assertEquals(1, diagnostics.warnings.distinct().size, "the crossing warning text is stable")
-}
-
-private fun grantAuditGapRetryFix(harness: RunnerHarness) {
-  val pause = harness.recorder.loadAuditGapPause(WORKFLOW_ID)
-  requireNotNull(pause)
-  harness.recorder.persistAuditGapPause(
-    WORKFLOW_ID,
-    pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_RETRY_FIX),
-  )
-}
-
-private fun runPastWarnThresholdPauses(
-  harness: RunnerHarness,
-  request: FeatureTaskRuntimeRunRequest,
-): FeatureTaskRuntimeRunReport {
-  var report = harness.runner.run(request)
-  while (report is FeatureTaskRuntimeRunReport.Paused && report.pauseReason.contains("warn-threshold")) {
-    grantAuditGapRetryFix(harness)
-    report = harness.runner.run(request)
-  }
-  return report
 }
 
 // Drives both semantic loops in one run: the audit reports gaps until [convergeOnAudit], then the

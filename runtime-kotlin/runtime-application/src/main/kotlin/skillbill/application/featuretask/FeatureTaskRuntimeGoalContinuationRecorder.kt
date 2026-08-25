@@ -8,6 +8,8 @@ import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowGitOperations
@@ -55,8 +57,10 @@ import java.time.Instant
 class FeatureTaskRuntimeGoalContinuationRecorder(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+  private val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
 
   internal fun recordGoalContinuationState(
     request: GoalContinuationStateRecordRequest,
@@ -195,8 +199,12 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   internal fun completeGoalReviewPass(
     request: GoalReviewPassCompletionRequest,
     dbOverride: String? = null,
-  ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
-    val loaded = loadGoalReviewPassWrite(unitOfWork, request) ?: return@transaction null
+  ): GoalSubtaskReviewState? = runtimeOwnedPersistence.requiredWrite(
+    seam = "FeatureTaskRuntimeGoalContinuationRecorder.completeGoalReviewPass",
+    expected = "runtime-owned review completion persistence",
+    dbOverride = dbOverride,
+  ) { unitOfWork ->
+    val loaded = loadGoalReviewPassWrite(unitOfWork, request) ?: return@requiredWrite null
     val completed = loaded.state.completeReservedPass(
       request.verdict,
       request.unresolvedFindingCount,

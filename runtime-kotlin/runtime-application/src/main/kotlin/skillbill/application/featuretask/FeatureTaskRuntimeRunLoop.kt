@@ -103,6 +103,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
@@ -337,7 +339,21 @@ internal class FeatureTaskRuntimeRunLoop(
         activeReentry = null
       }
     }
-    val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
+    val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)?.let { pause ->
+      if (pause.pauseKind != AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD) {
+        pause
+      } else {
+        val migrated = pause.copy(operatorDecision = null, grantConsumed = true)
+        recorder.persistAuditGapPause(request.workflowId, migrated, request.dbPathOverride)
+        runCatching {
+          diagnostics.warning(
+            "Cleared a legacy audit-gap warning-threshold pause for workflow '${request.workflowId}'; " +
+              "warning thresholds are advisory.",
+          )
+        }
+        migrated
+      }
+    }
     if (auditGapPause != null) {
       when (auditGapPause.operatorDecision) {
         AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK -> {
@@ -824,24 +840,6 @@ internal class FeatureTaskRuntimeRunLoop(
         null
       }
       else -> {
-        if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
-          val gapIteration = requireNotNull(transition.edgeIteration)
-          val gapEdge = requireNotNull(edge)
-          if (warnThresholdPauseApplies(gapEdge, gapIteration)) {
-            warnOnThresholdCrossing(gapEdge, gapIteration)
-            mintAuditGapPause(
-              FeatureTaskRuntimeAuditGapPause(
-                pauseKind = AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD,
-                reason = warnThresholdPauseReason(gapEdge, gapIteration),
-                edgeIteration = gapIteration,
-              ),
-              phaseId,
-              state.outputFor(phaseId)?.payload,
-            )
-            return null
-          }
-          consumeAuditGapOperatorRetryGrant()
-        }
         recordBackwardEdge(
           edge = edge,
           destinationPhaseId = transition.phaseId,
@@ -2180,23 +2178,6 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun effectiveEdgeIterationCount(edge: FeatureTaskRuntimeBackwardEdge): Int =
     state.edgeIterationCount(edge.loopId)
 
-  private fun auditGapPauseGrantActive(): Boolean =
-    recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
-      ?.let { !it.grantConsumed && it.operatorDecision == AUDIT_GAP_PAUSE_DECISION_RETRY_FIX }
-      ?: false
-
-  private fun consumeAuditGapOperatorRetryGrant() {
-    recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)?.let { pause ->
-      if (pause.operatorDecision != null && !pause.grantConsumed) {
-        recorder.persistAuditGapPause(
-          request.workflowId,
-          pause.copy(grantConsumed = true, operatorDecision = null),
-          request.dbPathOverride,
-        )
-      }
-    }
-  }
-
   private fun persistResolvedReviewTier(run: PhaseRun, resolution: ReviewPassResolution) {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW || !isGoalContinuationRun(request)) {
       return
@@ -3046,6 +3027,11 @@ internal class FeatureTaskRuntimeRunLoop(
     ReviewDriverFailed(
       "Runtime-owned review produced an invalid review-context envelope: ${error.message.orEmpty()}",
     )
+  } catch (error: RuntimeOwnedFactUnavailable) {
+    ReviewDriverFailed(
+      "Runtime-owned review could not establish a required persistence fact: ${error.message.orEmpty()}",
+      FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+    )
   } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
     ReviewDriverFailed(
       "Runtime-owned review failed: ${error::class.simpleName}: ${error.message.orEmpty()}",
@@ -3185,20 +3171,30 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifest,
       )?.let { return it }
     } else {
-      val persisted = recorder.recordCompletedPhase(
-        phaseStateRequest(
+      val persisted = try {
+        recorder.recordCompletedPhase(
+          phaseStateRequest(
+            run,
+            iteration,
+            STATUS_COMPLETED,
+            finished = true,
+            outputArtifact = outputText,
+            fileManifest = fileManifest,
+            normalizedOutput = normalizedOutput,
+            repairEvidence = acceptedOutput.repairEvidence,
+            reviewRunId = state.recordFor(run.phaseId)?.reviewRunId,
+          ),
+          run.request.dbPathOverride,
+        )
+      } catch (error: RuntimeOwnedFactUnavailable) {
+        return blockAndPersistInPhase(
           run,
           iteration,
-          STATUS_COMPLETED,
-          finished = true,
-          outputArtifact = outputText,
-          fileManifest = fileManifest,
-          normalizedOutput = normalizedOutput,
-          repairEvidence = acceptedOutput.repairEvidence,
-          reviewRunId = state.recordFor(run.phaseId)?.reviewRunId,
-        ),
-        run.request.dbPathOverride,
-      )
+          "Runtime-owned review settlement could not establish its persistence fact: ${error.message.orEmpty()}",
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        )
+      }
       if (!persisted) {
         return blockAndPersistInPhase(
           run,
@@ -5443,20 +5439,6 @@ internal class FeatureTaskRuntimeRunLoop(
     "$decisionReason The subtask is paused for an operator decision: choose retry_fix to allow one " +
       "further remediation attempt, or abandon_subtask to end the subtask."
 
-  private fun warnThresholdPauseReason(edge: FeatureTaskRuntimeBackwardEdge, edgeIteration: Int): String =
-    "Audit remediation loop '${edge.loopId}' crossed its warning threshold of " +
-      "${edge.warnAfterIterations} by entering iteration $edgeIteration for issue ${request.issueKey}, " +
-      "workflow ${request.workflowId}, subtask ${request.goalContinuation?.subtaskId ?: request.issueKey}. " +
-      "The run pauses on a warn-threshold condition for an operator decision: choose retry_fix to allow " +
-      "one further remediation attempt, or abandon_subtask to end the subtask."
-
-  private fun warnThresholdPauseApplies(edge: FeatureTaskRuntimeBackwardEdge, edgeIteration: Int): Boolean {
-    val threshold = edge.warnAfterIterations ?: return false
-    if (edgeIteration < threshold + 1) return false
-    if (auditGapPauseGrantActive()) return false
-    return true
-  }
-
   private fun terminalOutputAttempt(
     run: PhaseRun,
     iteration: Int,
@@ -6506,10 +6488,34 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     return FeatureTaskRuntimePriorGapMemory(
       round = round,
-      priorUnmetCriteria = priorUnmetCriteria,
-      lastImplementClaims = lastImplementClaims(state),
-      stickyIds = stickyIds,
+      priorUnmetCriteria = boundPriorGapNotes(priorUnmetCriteria),
+      lastImplementClaims = boundPriorGapNotes(lastImplementClaims(state)),
+      stickyIds = boundPriorGapNotes(stickyIds),
     )
+  }
+
+  private fun boundPriorGapNotes(values: List<String>): List<String> {
+    val truncatedCount = values.count { it.length > FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS }
+    val droppedCount = (values.size - FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT).coerceAtLeast(0)
+    if (truncatedCount > 0 || droppedCount > 0) {
+      runCatching {
+        diagnostics.warning(
+          "seam=FeatureTaskRuntimeRunLoop.priorGapMemoryFor " +
+            "value_expected=bounded_prior_gap_memory " +
+            "value_used=truncated_or_capped " +
+            "cause=truncated_notes=$truncatedCount;dropped_entries=$droppedCount",
+        )
+      }
+    }
+    return values
+      .take(FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT)
+      .map { note ->
+        if (note.length <= FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS) {
+          note
+        } else {
+          note.take(FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS)
+        }
+      }
   }
 
   /**

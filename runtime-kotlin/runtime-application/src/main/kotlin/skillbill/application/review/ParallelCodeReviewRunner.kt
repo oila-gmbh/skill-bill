@@ -5,6 +5,8 @@ import skillbill.application.evidence.SharedReviewEvidenceCommits
 import skillbill.application.evidence.SharedReviewEvidenceProjection
 import skillbill.application.evidence.SharedReviewEvidenceQuery
 import skillbill.application.evidence.SharedReviewEvidenceResolution
+import skillbill.application.featuretask.RuntimeOwnedFactUnavailable
+import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.agentFailureExcerpt
 import skillbill.application.model.DiffResolutionException
@@ -30,6 +32,8 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
@@ -150,7 +154,10 @@ class ParallelCodeReviewRunner(
   private val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
   private val registerParse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
+  private val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
+
   private data class InitialRun(
     val request: ParallelCodeReviewRequest,
     val detection: StackDetection,
@@ -196,7 +203,7 @@ class ParallelCodeReviewRunner(
       initial.budget,
       stageResumeReport(initial.request.reviewRunId),
     )
-    persistReviewPassClaims(initial.request.reviewRunId, result.mergeResult.findings, persistEmpty = false)
+    persistReviewPassClaims(initial.request.reviewRunId, result.mergeResult.findings, persistEmpty = true)
     recordReviewStageBoundary(initial.request.reviewRunId, integration, result.mergeResult.findings)
     recordMergedFindingLanes(initial.request.reviewRunId)
     val verificationVerdicts = runClaimVerification(initial, result)
@@ -210,7 +217,10 @@ class ParallelCodeReviewRunner(
     val assembled = ParallelReviewMerger.withRecordedVerdicts(result.mergeResult, recordedVerdicts)
       .copy(formattedOutput = prose)
     result.accountingSummary?.let { summary ->
-      database.transaction { unitOfWork ->
+      runtimeOwnedPersistence.requiredWrite(
+        seam = "ParallelCodeReviewRunner.saveAccounting",
+        expected = "runtime-owned review accounting",
+      ) { unitOfWork ->
         unitOfWork.reviews.saveAccounting(
           ReviewAccountingRecord(summary.reviewId, summary.packetDigest, summary.toBoundedPayload()),
         )
@@ -404,7 +414,10 @@ class ParallelCodeReviewRunner(
     launches: List<ReviewSpecialistLaunchRequest>,
   ): List<ReviewSpecialistLaunchRequest> {
     if (reviewRunId == null || launches.isEmpty()) return launches
-    val existing = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    val existing = runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.selectLaunchesForResume",
+      expected = "runtime-owned review lane dispositions",
+    ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
     if (existing.isEmpty()) return launches
     val completeNames = existing
       .filter { it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION }
@@ -427,7 +440,10 @@ class ParallelCodeReviewRunner(
     launches: List<ReviewSpecialistLaunchRequest>,
   ) {
     if (reviewRunId == null || launches.isEmpty()) return
-    val existing = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    val existing = runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.recordPlannedLanes.read",
+      expected = "runtime-owned review lane dispositions",
+    ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
     val preservedComplete = existing.filter {
       it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION
     }
@@ -457,7 +473,10 @@ class ParallelCodeReviewRunner(
         )
       }
     val merged = preservedComplete.filter { it.laneSkillName !in relaunchNames } + pending
-    database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, merged) }
+    runtimeOwnedPersistence.requiredWrite(
+      seam = "ParallelCodeReviewRunner.recordPlannedLanes.write",
+      expected = "runtime-owned review lane plan",
+    ) { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, merged) }
   }
 
   /**
@@ -516,7 +535,11 @@ class ParallelCodeReviewRunner(
     commitSequenceDigest: String,
   ): ReviewIntegrationPassOutcome? {
     if (reviewRunId == null) return null
-    val record = database.transaction { unitOfWork -> unitOfWork.reviews.fetchIntegrationPass(reviewRunId) }
+    val record = runtimeOwnedPersistence.optionalRead(
+      seam = "ParallelCodeReviewRunner.durableIntegrationOutcome",
+      expected = "optional durable review integration result",
+      fallback = null,
+    ) { unitOfWork -> unitOfWork.reviews.fetchIntegrationPass(reviewRunId) }
       ?: return null
     if (record.commitSequenceDigest != commitSequenceDigest) return null
     val terminal = ReviewIntegrationTerminalOutcome.entries
@@ -531,7 +554,10 @@ class ParallelCodeReviewRunner(
 
   private fun recordIntegrationBoundary(reviewRunId: String?, outcome: ReviewIntegrationPassOutcome) {
     if (reviewRunId == null) return
-    database.transaction { unitOfWork ->
+    runtimeOwnedPersistence.requiredWrite(
+      seam = "ParallelCodeReviewRunner.recordIntegrationBoundary",
+      expected = "runtime-owned review integration result",
+    ) { unitOfWork ->
       unitOfWork.reviews.recordIntegrationPass(
         reviewRunId,
         ReviewIntegrationPassRecord(outcome.commitSequenceDigest, outcome.terminalOutcome.wireValue),
@@ -569,7 +595,10 @@ class ParallelCodeReviewRunner(
       )
       is SpecIntentResolution.None -> ReviewSpecProjectionReference(absenceReason = resolution.reason.wireValue)
     }
-    database.transaction { unitOfWork ->
+    runtimeOwnedPersistence.requiredWrite(
+      seam = "ParallelCodeReviewRunner.recordSpecIntent",
+      expected = "runtime-owned review spec projection reference",
+    ) { unitOfWork ->
       unitOfWork.reviews.recordSpecProjectionReference(reviewRunId, reference)
       if (resolution is SpecIntentResolution.None) {
         unitOfWork.reviews.recordStageBoundary(
@@ -590,7 +619,10 @@ class ParallelCodeReviewRunner(
     inMemory: List<ReviewFindingVerdict>,
   ): List<ReviewFindingVerdict> {
     if (reviewRunId == null) return inMemory
-    return database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+    return runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.recordedFindingVerdicts",
+      expected = "runtime-owned finding verdicts",
+    ) { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
   }
 
   private fun runClaimVerification(initial: InitialRun, result: ParallelCodeReviewResult): List<ReviewFindingVerdict> {
@@ -628,7 +660,10 @@ class ParallelCodeReviewRunner(
   private fun reviewStageBoundaries(reviewRunId: String?): List<ReviewStageBoundary> = if (reviewRunId == null) {
     emptyList()
   } else {
-    database.transaction { unitOfWork -> unitOfWork.reviews.fetchStageBoundaries(reviewRunId) }
+    runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.reviewStageBoundaries",
+      expected = "runtime-owned review stage boundaries",
+    ) { unitOfWork -> unitOfWork.reviews.fetchStageBoundaries(reviewRunId) }
   }
 
   private fun claimVerificationClaims(
@@ -644,7 +679,10 @@ class ParallelCodeReviewRunner(
     if (!reviewReached) {
       emptyList()
     } else {
-      database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
+      runtimeOwnedPersistence.requiredRead(
+        seam = "ParallelCodeReviewRunner.claimVerificationClaims",
+        expected = "runtime-owned review pass claims",
+      ) { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
         ?.findings
         .orEmpty()
     }
@@ -653,7 +691,10 @@ class ParallelCodeReviewRunner(
   private fun reviewFindingVerdicts(reviewRunId: String?): List<ReviewFindingVerdict> = if (reviewRunId == null) {
     emptyList()
   } else {
-    database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+    runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.reviewFindingVerdicts",
+      expected = "runtime-owned finding verdicts",
+    ) { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
   }
 
   private fun emptyClaimsVerificationShortCircuit(
@@ -683,7 +724,10 @@ class ParallelCodeReviewRunner(
   ): List<ReviewFindingVerdict> {
     if (reviewRunId == null) return existing + outcome.verdicts
     if (outcome.verdicts.isNotEmpty()) {
-      database.transaction { unitOfWork ->
+      runtimeOwnedPersistence.requiredWrite(
+        seam = "ParallelCodeReviewRunner.persistClaimVerificationOutcome",
+        expected = "runtime-owned finding verification verdicts",
+      ) { unitOfWork ->
         unitOfWork.reviews.recordFindingVerdicts(reviewRunId, outcome.verdicts)
       }
     }
@@ -700,7 +744,10 @@ class ParallelCodeReviewRunner(
   }
 
   private fun recordVerificationBoundary(reviewRunId: String) {
-    database.transaction { unitOfWork ->
+    runtimeOwnedPersistence.requiredWrite(
+      seam = "ParallelCodeReviewRunner.recordVerificationBoundary",
+      expected = "runtime-owned verification stage boundary",
+    ) { unitOfWork ->
       unitOfWork.reviews.recordStageBoundary(
         reviewRunId,
         ReviewStageBoundary(
@@ -720,14 +767,20 @@ class ParallelCodeReviewRunner(
     val claims = if (reviewRunId == null) {
       result.mergeResult.findings
     } else {
-      database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
+      runtimeOwnedPersistence.requiredRead(
+        seam = "ParallelCodeReviewRunner.runSpecAdjudication.claims",
+        expected = "runtime-owned review pass claims",
+      ) { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
         ?.findings
         .orEmpty()
     }
     val existing = if (reviewRunId == null) {
       emptyList()
     } else {
-      database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+      runtimeOwnedPersistence.requiredRead(
+        seam = "ParallelCodeReviewRunner.runSpecAdjudication.verdicts",
+        expected = "runtime-owned finding verdicts",
+      ) { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
     }
     val outcome = ReviewSpecAdjudicationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
       packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
@@ -745,7 +798,10 @@ class ParallelCodeReviewRunner(
 
   private fun durableAdjudication(reviewRunId: String?): List<ReviewFindingVerdict>? {
     if (reviewRunId == null) return null
-    val boundaries = database.transaction { unitOfWork ->
+    val boundaries = runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.durableAdjudication",
+      expected = "runtime-owned adjudication stage boundaries",
+    ) { unitOfWork ->
       unitOfWork.reviews.fetchStageBoundaries(reviewRunId)
     }
     val verificationReached = boundaries.any {
@@ -756,7 +812,10 @@ class ParallelCodeReviewRunner(
       it.stage == ReviewStage.ADJUDICATION && it.reached == ReviewStageReached.REACHED
     }
     if (!adjudicationReached) return null
-    return database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+    return runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.durableAdjudication.verdicts",
+      expected = "runtime-owned finding verdicts",
+    ) { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
   }
 
   private fun persistAdjudication(
@@ -766,7 +825,10 @@ class ParallelCodeReviewRunner(
     if (reviewRunId == null) return outcome.verdicts
     if (outcome.skipReason == ReviewSpecAdjudicationRunner.SPEC_CONTEXT_NONE) return emptyList()
     if (outcome.verdicts.isNotEmpty()) {
-      database.transaction { unitOfWork ->
+      runtimeOwnedPersistence.requiredWrite(
+        seam = "ParallelCodeReviewRunner.persistAdjudication",
+        expected = "runtime-owned adjudication verdicts",
+      ) { unitOfWork ->
         unitOfWork.reviews.recordFindingVerdicts(reviewRunId, outcome.verdicts)
       }
     }
@@ -775,7 +837,10 @@ class ParallelCodeReviewRunner(
   }
 
   private fun recordAdjudicationBoundary(reviewRunId: String) {
-    database.transaction { unitOfWork ->
+    runtimeOwnedPersistence.requiredWrite(
+      seam = "ParallelCodeReviewRunner.recordAdjudicationBoundary",
+      expected = "runtime-owned adjudication stage boundary",
+    ) { unitOfWork ->
       unitOfWork.reviews.recordStageBoundary(
         reviewRunId,
         ReviewStageBoundary(
@@ -791,7 +856,11 @@ class ParallelCodeReviewRunner(
   private fun emitReviewStageDegradations(reviewRunId: String?, outcomes: ParallelReviewLaneRunResult) {
     if (reviewRunId == null) return
     val evidenceBoundaries = evidenceBoundaryAccountings(outcomes)
-    database.transaction { unitOfWork ->
+    val selected = runtimeOwnedPersistence.optionalRead(
+      seam = "ParallelCodeReviewRunner.emitReviewStageDegradations.read",
+      expected = "optional review stage degradation inputs",
+      fallback = emptyList(),
+    ) { unitOfWork ->
       ReviewStageDegradationSelection.select(
         reviewRunId = reviewRunId,
         spec = unitOfWork.reviews.fetchSpecProjectionReference(reviewRunId),
@@ -799,7 +868,14 @@ class ParallelCodeReviewRunner(
         verdicts = unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
         claims = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId),
         evidenceBoundaries = evidenceBoundaries,
-      ).forEach { unitOfWork.lifecycleTelemetry.reviewStageDegradation(it) }
+      )
+    }
+    runtimeOwnedPersistence.optionalWrite(
+      seam = "ParallelCodeReviewRunner.emitReviewStageDegradations.write",
+      expected = "optional review stage degradation telemetry",
+      fallback = Unit,
+    ) { unitOfWork ->
+      selected.forEach { unitOfWork.lifecycleTelemetry.reviewStageDegradation(it) }
     }
   }
 
@@ -834,12 +910,15 @@ class ParallelCodeReviewRunner(
   ) {
     if (reviewRunId == null) return
     if (findings.isEmpty() && !persistEmpty) return
-    database.transaction { unitOfWork ->
+    runtimeOwnedPersistence.requiredWrite(
+      seam = "ParallelCodeReviewRunner.persistReviewPassClaims",
+      expected = "runtime-owned review pass claims",
+    ) { unitOfWork ->
       val recorded = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId)
       val existing = recorded?.findings.orEmpty()
       val unioned = unionReviewPassClaims(existing, findings)
-      if (unioned.isEmpty() && !persistEmpty) return@transaction
-      if (recorded != null && existing == unioned) return@transaction
+      if (unioned.isEmpty() && !persistEmpty) return@requiredWrite
+      if (recorded != null && existing == unioned) return@requiredWrite
       unitOfWork.reviews.recordReviewPassClaims(reviewRunId, unioned)
     }
   }
@@ -850,12 +929,18 @@ class ParallelCodeReviewRunner(
     findings: List<ParallelReviewMergedFinding>,
   ) {
     if (reviewRunId == null || !integration.durable) return
-    val lanes = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    val lanes = runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.recordReviewStageBoundary.read",
+      expected = "runtime-owned review lane dispositions",
+    ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
     if (lanes.isEmpty() || lanes.any { it.reviewDisposition != ReviewRunLaneResolver.COMPLETE_DISPOSITION }) {
       return
     }
     persistReviewPassClaims(reviewRunId, findings, persistEmpty = true)
-    database.transaction { unitOfWork ->
+    runtimeOwnedPersistence.requiredWrite(
+      seam = "ParallelCodeReviewRunner.recordReviewStageBoundary.write",
+      expected = "runtime-owned review stage boundary",
+    ) { unitOfWork ->
       unitOfWork.reviews.recordStageBoundary(
         reviewRunId,
         ReviewStageBoundary(
@@ -870,7 +955,11 @@ class ParallelCodeReviewRunner(
 
   private fun stageResumeReport(reviewRunId: String?): ReviewStageResumeReport? {
     if (reviewRunId == null) return null
-    return database.transaction { unitOfWork ->
+    return runtimeOwnedPersistence.optionalRead(
+      seam = "ParallelCodeReviewRunner.stageResumeReport",
+      expected = "optional runtime-owned review resume report",
+      fallback = null,
+    ) { unitOfWork ->
       ReviewStageResumeSelection.select(
         unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
         unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
@@ -927,7 +1016,10 @@ class ParallelCodeReviewRunner(
     val alreadyRan = ranThisPass.map { it.lane }.toSet()
     val notRun = packet.selectedLanes.filterNot { it in alreadyRan }
     if (notRun.isEmpty()) return emptyList()
-    val completeSkills = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    val completeSkills = runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.durablyCompleteLanes",
+      expected = "runtime-owned review lane dispositions",
+    ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
       .filter { it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION }
       .map { it.laneSkillName }
       .toSet()
@@ -943,7 +1035,10 @@ class ParallelCodeReviewRunner(
   /** Writes final per-lane disposition after the parallel pass so resume stays lane-granular. */
   private fun recordLaneDispositions(initial: InitialRun, outcomes: ParallelReviewLaneRunResult) {
     val reviewRunId = initial.request.reviewRunId ?: return
-    val existing = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    val existing = runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.recordLaneDispositions.read",
+      expected = "runtime-owned review lane dispositions",
+    ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
     if (existing.isEmpty()) return
     val completionBySkill = initial.preparedLaunchRequests.associate { launch ->
       requireNotNull(launch.assignment.laneDecision.specialistSkillName) to
@@ -964,19 +1059,29 @@ class ParallelCodeReviewRunner(
         budgetDimension = completion.budgetDimension,
       )
     }
-    database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, updated) }
+    runtimeOwnedPersistence.requiredWrite(
+      seam = "ParallelCodeReviewRunner.recordLaneDispositions.write",
+      expected = "runtime-owned review lane dispositions",
+    ) { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, updated) }
   }
 
   private fun recordMergedFindingLanes(reviewRunId: String?) {
     if (reviewRunId == null) return
-    val claims = database.transaction { unitOfWork ->
+    val claims = runtimeOwnedPersistence.requiredRead(
+      seam = "ParallelCodeReviewRunner.recordMergedFindingLanes.read",
+      expected = "runtime-owned review pass claims",
+    ) { unitOfWork ->
       unitOfWork.reviews.fetchReviewPassClaims(reviewRunId)
     }?.findings.orEmpty()
     val attribution = claims.mapNotNull { finding ->
       finding.specialistSkillNames.firstOrNull()?.let { finding.fNumber to it }
     }.toMap()
     if (attribution.isEmpty()) return
-    database.transaction { unitOfWork -> unitOfWork.reviews.recordFindingLaneAttribution(reviewRunId, attribution) }
+    runtimeOwnedPersistence.optionalWrite(
+      seam = "ParallelCodeReviewRunner.recordMergedFindingLanes.write",
+      expected = "optional runtime-owned finding lane attribution",
+      fallback = Unit,
+    ) { unitOfWork -> unitOfWork.reviews.recordFindingLaneAttribution(reviewRunId, attribution) }
   }
 
   /**

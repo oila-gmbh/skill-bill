@@ -173,19 +173,21 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `m2 audit gaps pause at the warn-threshold crossing instead of continuing past iteration three`() {
+  fun `m2 audit gaps continue past the warn-threshold crossing`() {
     val threshold = FeatureTaskRuntimePhaseWorkflowDefinition.SEMANTIC_LOOP_WARNING_THRESHOLD
-    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
+    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = threshold + 2))
 
-    val report = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertContains(report.pauseReason, "warn-threshold")
-    assertContains(report.pauseReason, "iteration ${threshold + 1}")
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
       .mapNotNull { it.edgeIteration }
-    assertEquals((1..threshold).toList(), loopEdges, "the crossing iteration pauses rather than recording an edge")
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+    assertEquals(
+      (1..threshold + 1).toList(),
+      loopEdges,
+      "the crossing iteration must be recorded as an edge",
+    )
+    assertTrue(harness.launchedPromptPhaseOrder().any { it == "validate" })
   }
 
   @Test

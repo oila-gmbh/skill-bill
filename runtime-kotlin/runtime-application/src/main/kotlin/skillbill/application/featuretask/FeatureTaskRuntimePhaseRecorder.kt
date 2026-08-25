@@ -18,6 +18,8 @@ import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.ProducerOutputEvidenceValidator
@@ -177,6 +179,7 @@ class FeatureTaskRuntimePhaseRecorder(
     NoopFeatureTaskRuntimeImplementationAttemptValidator,
   private val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator = { },
   private val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator = { },
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   private sealed class DiagnosticWriteOutcome<out T> {
     class Written<T>(val value: T) : DiagnosticWriteOutcome<T>()
@@ -186,6 +189,7 @@ class FeatureTaskRuntimePhaseRecorder(
   }
 
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+  private val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
 
   fun recordRejectedOutput(
     request: RejectedOutputDiagnosticRequest,
@@ -529,9 +533,13 @@ class FeatureTaskRuntimePhaseRecorder(
   @Suppress("LongMethod", "CyclomaticComplexMethod", "ComplexCondition")
   fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean {
     require(request.status == "completed" && request.finished)
-    return database.transaction(dbOverride) { unitOfWork ->
+    return runtimeOwnedPersistence.requiredWrite(
+      seam = "FeatureTaskRuntimePhaseRecorder.recordCompletedPhase",
+      expected = "runtime-owned completed phase state",
+      dbOverride = dbOverride,
+    ) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
-        ?: return@transaction false
+        ?: return@requiredWrite false
       val artifacts = decodeArtifacts(record.artifactsJson)
       val existingRecords = phaseRecordsFrom(artifacts)
       val updatedRecords = LinkedHashMap(existingRecords).apply {
@@ -798,7 +806,11 @@ class FeatureTaskRuntimePhaseRecorder(
     dbOverride: String? = null,
   ): List<ReviewFindingVerdict> {
     val reviewRunId = GoalSubtaskReviewSummaryReducer.reviewRunIdOf(output) ?: return emptyList()
-    return database.transaction(dbOverride) { unitOfWork ->
+    return runtimeOwnedPersistence.requiredRead(
+      seam = "FeatureTaskRuntimePhaseRecorder.recordedFindingVerdicts",
+      expected = "runtime-owned finding verdicts",
+      dbOverride = dbOverride,
+    ) { unitOfWork ->
       unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
     }
   }
