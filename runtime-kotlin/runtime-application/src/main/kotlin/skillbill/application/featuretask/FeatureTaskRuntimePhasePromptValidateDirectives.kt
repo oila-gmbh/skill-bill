@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 
 private const val VALIDATE_PHASE_FORBIDDEN_EXTRAS: String =
   "Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, or any other " +
@@ -54,26 +53,36 @@ internal fun absentValidationGateDegradationDirective(phaseId: String, agentRunV
 
 internal fun phaseTaskDirective(
   phaseId: String,
-  agentRunValidateFallback: Boolean = false,
-  packCollectAllCommand: String? = null,
-  packBuildCommand: String? = null,
-  priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
-  validationGateRepair: Boolean = false,
-): String {
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
-    return runtimeOwnedBuildPhaseTask(packBuildCommand)
-  }
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
-    if (validationGateRepair) {
-      return validateRepairPhaseTask()
+  inputs: PhaseTaskDirectiveInputs = PhaseTaskDirectiveInputs(),
+): String = when (phaseId) {
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD ->
+    runtimeOwnedBuildPhaseTask(inputs.packBuildCommand)
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
+    if (inputs.validationGateRepair) {
+      validateRepairPhaseTask()
+    } else {
+      validatePhaseTask(
+        packCollectAllCommand = inputs.packCollectAllCommand,
+        packGateDeclared = !inputs.agentRunValidateFallback,
+      )
     }
-    return validatePhaseTask(
-      packCollectAllCommand = packCollectAllCommand,
-      packGateDeclared = !agentRunValidateFallback,
-    )
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+    auditPhaseTaskDirective(inputs.priorGapMemory)
+  else -> phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
+}
+
+internal fun phaseRequestedAction(
+  phaseId: String,
+  inputs: PhaseTaskDirectiveInputs = PhaseTaskDirectiveInputs(),
+): String {
+  val base = phaseTaskDirective(phaseId = phaseId, inputs = inputs)
+  if (
+    phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX ||
+    inputs.carriedFindingIds.isEmpty()
+  ) {
+    return base
   }
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-    return auditPhaseTaskDirective(priorGapMemory)
-  }
-  return phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
+  return base +
+    " Carried finding ids for this round: ${inputs.carriedFindingIds.sorted().joinToString(", ")}. " +
+    "State your disposition for every listed finding id in your returned prose."
 }
