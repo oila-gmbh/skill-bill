@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationResult
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivedSettlement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
@@ -35,7 +36,9 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
       ),
     )
     val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveSettlement(context)
-    val settlement = assertIs<FeatureTaskRuntimeDerivationResult.Decided<*>>(derived).value
+    val settlement = assertIs<FeatureTaskRuntimeDerivationResult.Decided<FeatureTaskRuntimeDerivedSettlement>>(
+      derived,
+    ).value
     assertEquals("blocked", settlement.status)
     assertEquals(FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, settlement.failureDisposition)
   }
@@ -45,7 +48,11 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
     val context = FeatureTaskRuntimeDerivationContext(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
       outputText = """{"status":"completed","summary":"gaps_found on AC-001"}""",
-      outputMap = mapOf("status" to "completed", "summary" to "gaps_found on AC-001", "produced_outputs" to mapOf("evidence" to "x")),
+      outputMap = mapOf(
+        "status" to "completed",
+        "summary" to "gaps_found on AC-001",
+        "produced_outputs" to mapOf("evidence" to "x"),
+      ),
       acceptanceCriterionRefs = listOf("AC-001"),
     )
     val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(context)
@@ -147,7 +154,11 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
     val context = FeatureTaskRuntimeDerivationContext(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
       outputText = """{"status":"completed","summary":"findings_verified for F-001"}""",
-      outputMap = mapOf("status" to "completed", "summary" to "findings_verified for F-001", "produced_outputs" to mapOf("note" to "x")),
+      outputMap = mapOf(
+        "status" to "completed",
+        "summary" to "findings_verified for F-001",
+        "produced_outputs" to mapOf("note" to "x"),
+      ),
       carriedFindingIds = setOf("F-001"),
     )
     val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(context)
@@ -162,30 +173,16 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
     val context = FeatureTaskRuntimeDerivationContext(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       outputText = """{"status":"completed","summary":"changes_requested"}""",
-      outputMap = mapOf("status" to "completed", "summary" to "changes_requested", "produced_outputs" to mapOf("findings" to emptyList<Any>())),
+      outputMap = mapOf(
+        "status" to "completed",
+        "summary" to "changes_requested",
+        "produced_outputs" to mapOf("findings" to emptyList<Any>()),
+      ),
       reviewFindingIds = setOf("F-001"),
     )
     val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(context)
     assertEquals(
       FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      assertIs<FeatureTaskRuntimeDerivationResult.Decided<*>>(derived).value,
-    )
-  }
-
-  @Test
-  fun `conflicting structured verdict and prose resolves to structured`() {
-    val context = FeatureTaskRuntimeDerivationContext(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-      outputText = """{"verdict":"changes_requested","summary":"approved"}""",
-      outputMap = mapOf(
-        "verdict" to "approved",
-        "summary" to "approved",
-        "produced_outputs" to mapOf("findings" to emptyList<Any>()),
-      ),
-    )
-    val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(context)
-    assertEquals(
-      FeatureTaskRuntimeVerdict.APPROVED,
       assertIs<FeatureTaskRuntimeDerivationResult.Decided<*>>(derived).value,
     )
   }
@@ -215,7 +212,9 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
       outputMap = mapOf("status" to "blocked", "summary" to "needs_user_action"),
     )
     val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveSettlement(context)
-    val settlement = assertIs<FeatureTaskRuntimeDerivationResult.Decided<*>>(derived).value
+    val settlement = assertIs<FeatureTaskRuntimeDerivationResult.Decided<FeatureTaskRuntimeDerivedSettlement>>(
+      derived,
+    ).value
     assertEquals("blocked", settlement.status)
     assertEquals(FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, settlement.failureDisposition)
   }

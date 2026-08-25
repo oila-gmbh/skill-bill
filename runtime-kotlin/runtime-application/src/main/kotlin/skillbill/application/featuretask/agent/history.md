@@ -17,6 +17,22 @@ Areas: runtime-application/featuretask
 Feature flag: N/A
 Acceptance criteria: n/a (main hotfix)
 
+## [2026-08-25] Goal execution liveness falls back to the parent lease
+Areas: runtime-application/goalrunner
+- When a child workflow exists but its worker lease is missing or expired, status reads the parent goal execution lease before reporting idle.
+- Prevents the IDE from projecting paused while the goal runner is still live and driving validate (or another phase) without a fresh child lease.
+- Pattern: child LIVE/UNKNOWN wins; child IDLE falls through to parent ownership. reusable
+Feature flag: N/A
+Acceptance criteria: n/a (hotfix)
+
+## [2026-08-25] SKILL-208 subtask 5 — Retire shape policing
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-application/workflow, runtime-domain/workflow/taskruntime, docs
+- Feature-task phase path drops `FeatureTaskRuntimePhaseOutputValidator`, structural repair, `RECORD_REJECTED` regeneration edges, and receipt shape policing; prose + derivation + sidecar remain authoritative.
+- Goal planning keeps `producerProjectionGateReason` and the planning-projection validator; sweep, checkpoint, hydrator, and preparation validator parse JSON objects only, then gate bounded projections.
+- Hard-reset messaging moves from phase-output contract to goal-planning preparation contract incompatibility.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-25] SKILL-208 subtask 4 — Prose phase result and string handoff
 Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-contracts, runtime-infra-fs/contracts/workflow, orchestration/contracts, docs
 - Phase launches use `AgentPhaseInput(input, requestedAction)`; durable result is agent prose plus a runtime-owned sidecar (R3), not a typed JSON envelope.

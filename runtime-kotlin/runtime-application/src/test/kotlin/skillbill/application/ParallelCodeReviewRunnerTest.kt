@@ -4,12 +4,12 @@ import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
+import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
 import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
-import skillbill.application.featuretask.RuntimeOwnedFactUnavailable
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewClaimVerificationRunner
@@ -1517,8 +1517,7 @@ private object ThrowingReviewDatabase : DatabaseSessionFactory {
 
   override fun databaseExists(dbOverride: String?): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T =
-    error("review database read unavailable")
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = error("review database read unavailable")
 
   override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
     error("review database write unavailable")

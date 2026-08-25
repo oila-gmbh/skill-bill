@@ -10,7 +10,7 @@ import skillbill.application.goalrunner.goalPlanningIncompatibleProvenanceStopRe
 import skillbill.application.goalrunner.goalPlanningMissingSharedContextPacketStopReason
 import skillbill.application.goalrunner.goalPlanningPreparationStateReadStopReason
 import skillbill.application.goalrunner.statusRecoverabilityOrRefuse
-import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.GoalPlanningStatusReasons
@@ -152,7 +152,7 @@ class GoalPlanningStatusReasonCoherenceTest {
         parentSpecHash = sha256HexUtf8(parentSpec),
         decompositionManifestHash = "stored-manifest",
         planningContractId = GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
-        phaseOutputContractId = FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID,
+        phaseOutputContractId = FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID,
       ),
       payloadSha256 = sha256HexUtf8(phasePayload("preplan")),
       preplanPayload = phasePayload("preplan"),

@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
+import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.WorkflowFamily
@@ -53,6 +54,7 @@ import kotlin.test.assertTrue
  * drive the real recorder against a workflow store and read the state back, rather than asserting on
  * objects the test constructs itself.
  */
+@Suppress("LargeClass")
 class GoalSubtaskReviewStateDurablePersistenceTest {
   private val workflowId = "wftr-skill142-1"
 
@@ -733,7 +735,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
         verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
         unresolvedFindingCount = 1,
         findings = emptyList(),
-      reviewRunId = "rvw-test-1",
+        reviewRunId = "rvw-test-1",
       )
     }
     return state
@@ -745,11 +747,9 @@ private object ThrowingReadDatabase : DatabaseSessionFactory {
 
   override fun databaseExists(dbOverride: String?): Boolean = true
 
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T =
-    error("database session unavailable")
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = error("database session unavailable")
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T =
-    error("database session unavailable")
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = error("database session unavailable")
 
   override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
     error("database session unavailable")

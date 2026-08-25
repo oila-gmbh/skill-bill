@@ -8,8 +8,8 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditVerdict
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivedSettlement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationResult
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivedSettlement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationVerdict
@@ -30,11 +30,12 @@ internal data class FeatureTaskRuntimeDerivationContext(
 
 @Suppress("TooManyFunctions")
 internal object FeatureTaskRuntimePhaseOutputDerivation {
-  private val STATUS_COMPLETED = "completed"
-  private val STATUS_BLOCKED = "blocked"
-  private val STATUS_FAILED = "failed"
+  private const val STATUS_COMPLETED = "completed"
+  private const val STATUS_BLOCKED = "blocked"
+  private const val STATUS_FAILED = "failed"
   private val AUDIT_CRITERION_REF = Regex("""(AC-\d+)""", RegexOption.IGNORE_CASE)
 
+  @Suppress("ReturnCount")
   fun deriveSettlement(
     context: FeatureTaskRuntimeDerivationContext,
   ): FeatureTaskRuntimeDerivationResult<FeatureTaskRuntimeDerivedSettlement> {
@@ -74,7 +75,9 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
       FeatureTaskRuntimeDerivationResult.Indecisive -> null
     }
 
-  fun dispositionsFrom(context: FeatureTaskRuntimeDerivationContext): List<FeatureTaskRuntimeFindingVerificationDisposition> =
+  fun dispositionsFrom(
+    context: FeatureTaskRuntimeDerivationContext,
+  ): List<FeatureTaskRuntimeFindingVerificationDisposition> =
     findingVerificationVerdictFrom(context.outputMap)?.dispositions.orEmpty()
 
   fun verifiedFindingDispositions(
@@ -124,13 +127,12 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
   private fun deriveReviewVerdict(
     context: FeatureTaskRuntimeDerivationContext,
   ): FeatureTaskRuntimeDerivationResult<FeatureTaskRuntimeVerdict> {
-    val structured = structuredReviewVerdict(context.outputMap)
-    val prose = proseReviewVerdict(context.outputText)
-    if (structured != null) {
-      val resolved = transitionalStructuredWins(structured, prose) { it.wireValue } ?: structured
-      return FeatureTaskRuntimeDerivationResult.Decided(resolved)
+    proseReviewVerdict(context.outputText)?.let {
+      return FeatureTaskRuntimeDerivationResult.Decided(it)
     }
-    if (prose != null) return FeatureTaskRuntimeDerivationResult.Decided(prose)
+    structuredReviewVerdict(context.outputMap)?.let {
+      return FeatureTaskRuntimeDerivationResult.Decided(it)
+    }
     val fromFindings = reviewVerdictFrom(context)
     if (fromFindings != null && fromFindings.findings.isNotEmpty()) {
       return FeatureTaskRuntimeDerivationResult.Decided(fromFindings.verdict)
@@ -141,13 +143,12 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
   private fun deriveAuditVerdict(
     context: FeatureTaskRuntimeDerivationContext,
   ): FeatureTaskRuntimeDerivationResult<FeatureTaskRuntimeVerdict> {
+    proseAuditVerdict(context.outputText)?.let {
+      return FeatureTaskRuntimeDerivationResult.Decided(it)
+    }
     val structured = structuredAuditVerdict(context.outputMap)
     val derivedFromGaps = auditVerdictFrom(context)?.verdict
-    val prose = proseAuditVerdict(context.outputText)
-    val fromStructuredOrGaps = structured ?: derivedFromGaps
-    val resolved = transitionalStructuredWins(fromStructuredOrGaps, prose) { it.wireValue }
-      ?: prose
-      ?: fromStructuredOrGaps
+    val resolved = structured ?: derivedFromGaps
       ?: return FeatureTaskRuntimeDerivationResult.Indecisive
     return FeatureTaskRuntimeDerivationResult.Decided(resolved)
   }
@@ -155,13 +156,12 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
   private fun deriveVerifyFindingsVerdict(
     context: FeatureTaskRuntimeDerivationContext,
   ): FeatureTaskRuntimeDerivationResult<FeatureTaskRuntimeVerdict> {
+    proseVerifyFindingsVerdict(context.outputText)?.let {
+      return FeatureTaskRuntimeDerivationResult.Decided(it)
+    }
     val structured = structuredVerifyFindingsVerdict(context.outputMap)
     val derived = findingVerificationVerdictFrom(context.outputMap)?.verdict
-    val prose = proseVerifyFindingsVerdict(context.outputText)
-    val fromStructuredOrDispositions = structured ?: derived
-    val resolved = transitionalStructuredWins(fromStructuredOrDispositions, prose) { it.wireValue }
-      ?: prose
-      ?: fromStructuredOrDispositions
+    val resolved = structured ?: derived
       ?: return FeatureTaskRuntimeDerivationResult.Indecisive
     return FeatureTaskRuntimeDerivationResult.Decided(resolved)
   }
@@ -169,7 +169,9 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
   private fun structuredReviewVerdict(outputMap: Map<String, Any?>): FeatureTaskRuntimeVerdict? =
     (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)
       ?.takeIf(String::isNotBlank)
-      ?.let { value -> runCatching { FeatureTaskRuntimeVerdict.rejectRemovedVerdict(value, "phase output verdict") }.getOrNull() }
+      ?.let { value ->
+        runCatching { FeatureTaskRuntimeVerdict.rejectRemovedVerdict(value, "phase output verdict") }.getOrNull()
+      }
       ?.takeIf { it == FeatureTaskRuntimeVerdict.APPROVED || it == FeatureTaskRuntimeVerdict.CHANGES_REQUESTED }
 
   private fun structuredAuditVerdict(outputMap: Map<String, Any?>): FeatureTaskRuntimeVerdict? =
@@ -182,7 +184,10 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
     (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)
       ?.takeIf(String::isNotBlank)
       ?.let { value -> runCatching { FeatureTaskRuntimeVerdict.fromWire(value) }.getOrNull() }
-      ?.takeIf { it == FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED || it == FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED }
+      ?.takeIf {
+        it == FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED ||
+          it == FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED
+      }
 
   private fun reviewVerdictFrom(context: FeatureTaskRuntimeDerivationContext): FeatureTaskRuntimeReviewVerdict? {
     val findingsRaw = context.outputMap["produced_outputs"]
@@ -206,6 +211,7 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
     )
   }
 
+  @Suppress("ReturnCount")
   private fun auditVerdictFrom(context: FeatureTaskRuntimeDerivationContext): FeatureTaskRuntimeAuditVerdict? {
     val producedOutputs = context.outputMap["produced_outputs"]?.let(JsonSupport::anyToStringAnyMap)
     val gapsRaw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS) as? List<*>
@@ -272,23 +278,12 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
     else -> null
   }
 
-  private fun <T> transitionalStructuredWins(
-    structured: T?,
-    prose: T?,
-    wire: (T) -> String,
-  ): T? {
-    if (structured == null) return prose
-    if (prose == null) return structured
-    return if (wire(structured) == wire(prose)) structured else structured
+  private fun resolveStructuredOrProse(structured: String?, prose: String?): String? = when {
+    structured != null && prose != null && structured != prose -> null
+    structured != null -> structured
+    prose != null -> prose
+    else -> null
   }
-
-  private fun resolveStructuredOrProse(structured: String?, prose: String?): String? =
-    when {
-      structured != null && prose != null && structured != prose -> null
-      structured != null -> structured
-      prose != null -> prose
-      else -> null
-    }
 
   private fun containsWholeToken(text: String, token: String): Boolean =
     Regex("""\b${Regex.escape(token)}\b""", RegexOption.IGNORE_CASE).containsMatchIn(text)

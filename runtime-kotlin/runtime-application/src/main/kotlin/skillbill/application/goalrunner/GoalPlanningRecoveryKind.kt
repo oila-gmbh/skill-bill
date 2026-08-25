@@ -2,7 +2,6 @@ package skillbill.application.goalrunner
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
-import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 
 internal enum class GoalPlanningRecoveryKind {
@@ -32,7 +31,7 @@ internal fun goalPlanningChildImportConflictBlockedReason(
   val detail = error.reason.ifBlank { error.message.orEmpty() }
   return when (kind) {
     GoalPlanningRecoveryKind.HARD_RESET ->
-      "Goal-subtask planning is incompatible with the installed phase-output contract " +
+      "Goal-subtask planning is incompatible with the installed goal-planning preparation contract " +
         "('$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'). Workflows created under an earlier version require a " +
         "hard reset. Recover with: '${goalPlanningHardResetRemedy(issueKey)}'. Planning failure: $detail"
     GoalPlanningRecoveryKind.SCOPED_REPLAN ->
@@ -46,7 +45,7 @@ internal fun goalPlanningChildImportConflictBlockedReason(
 }
 
 internal fun contractVersionHardResetStopReason(issueKey: String): String =
-  "Goal planning phase-output contract version is incompatible with the installed runtime " +
+  "Goal planning preparation contract version is incompatible with the installed runtime " +
     "('$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'). Workflows created under an earlier version require a " +
     "hard reset. Recover with: '${goalPlanningHardResetRemedy(issueKey)}'"
 
@@ -57,12 +56,6 @@ private fun causeIndicatesContractVersionHardReset(cause: Throwable?): Boolean {
       is InvalidGoalPlanningPreparationSchemaError ->
         if (reasonIndicatesContractVersionHardReset(current.fieldPath) ||
           reasonIndicatesContractVersionHardReset(current.reason)
-        ) {
-          return true
-        }
-      is InvalidFeatureTaskRuntimePhaseOutputSchemaError ->
-        if (reasonIndicatesContractVersionHardReset(current.reason) ||
-          reasonIndicatesContractVersionHardReset(current.payloadFreeReason.orEmpty())
         ) {
           return true
         }

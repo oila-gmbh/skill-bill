@@ -1,0 +1,88 @@
+---
+contract_version: "0.5"
+issue_key: "SKILL-208"
+feature_name: "prose-centric-phase-io"
+parent_spec_path: ".feature-specs/SKILL-208-prose-centric-phase-io/spec.md"
+status: "in_progress"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-208-prose-centric-phase-io"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 5
+  action: "resume"
+subtasks:
+- id: 1
+  name: "Demote payload shape policing to diagnostics"
+  spec_path: ".feature-specs/SKILL-208-prose-centric-phase-io/spec_subtask_1_demote-payload-shape-policing.md"
+  status: "complete"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260824-214841-psn4"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies: []
+- id: 2
+  name: "Runtime-held facts and runtime-minted evidence"
+  spec_path: ".feature-specs/SKILL-208-prose-centric-phase-io/spec_subtask_2_runtime-held-facts-and-evidence.md"
+  status: "complete"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260824-223933-t33t"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies: []
+- id: 3
+  name: "Derive settlement and verdicts"
+  spec_path: ".feature-specs/SKILL-208-prose-centric-phase-io/spec_subtask_3_derive-settlement-and-verdicts.md"
+  status: "complete"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260825-051814-dr04"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies:
+  - subtask_id: 2
+    optional: false
+    skipped: false
+- id: 4
+  name: "Prose phase result and string handoff"
+  spec_path: ".feature-specs/SKILL-208-prose-centric-phase-io/spec_subtask_4_prose-phase-result-and-string-handoff.md"
+  status: "complete"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260825-063445-95zy"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies:
+  - subtask_id: 3
+    optional: false
+    skipped: false
+- id: 5
+  name: "Retire shape policing and align contracts"
+  spec_path: ".feature-specs/SKILL-208-prose-centric-phase-io/spec_subtask_5_retire-shape-policing-and-align-contracts.md"
+  status: "in_progress"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260825-075955-a9z7"
+  blocked_reason: null
+  last_resumable_step: "validate"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies:
+  - subtask_id: 4
+    optional: false
+    skipped: false

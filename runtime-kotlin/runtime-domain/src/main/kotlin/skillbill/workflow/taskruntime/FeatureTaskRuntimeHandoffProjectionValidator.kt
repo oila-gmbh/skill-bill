@@ -3,11 +3,9 @@ package skillbill.workflow.taskruntime
 import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
-import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
@@ -16,19 +14,16 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionV
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.MAX_BOUNDED_POINTER_LENGTH
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.retainDerivationCriticalProsePrefix
-import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 
 /**
  * Builds the delivered handoff envelope from static declarations, rejecting rather than repairing.
@@ -382,7 +377,9 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     fields: List<FeatureTaskRuntimeHandoffProjectionField>,
   ) {
     if (usesProseHandoff(declaration)) {
-      val proseField = fields.singleOrNull { it.name == PHASE_OUTPUT_RECEIPT_FIELD || it.name == PHASE_OUTPUT_PROSE_FIELD }
+      val proseField = fields.singleOrNull {
+        it.name == PHASE_OUTPUT_RECEIPT_FIELD || it.name == PHASE_OUTPUT_PROSE_FIELD
+      }
       if (proseField == null) {
         reject(
           inputs,
@@ -521,66 +518,11 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
 
   private val SUPPORTED_PROJECTION_CONTRACT_VERSIONS: Set<String> = setOf("0.1")
 
-  private val PLANNING_PROJECTION_CONTRACT_IDS: Set<String> = setOf(
-    FeatureTaskRuntimePlanningProjectionContract.PREPLANNING_DIGEST_ID,
-    FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID,
-    FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
-    FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID,
-  )
-
-  private val PHASE_PROJECTION_CONTRACT_IDS: Set<String> = setOf(
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_CLEARANCE,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_DISPOSITIONS,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REPAIR_PLAN,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.HISTORY_RECEIPT,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
-  )
-
   /**
    * Selects named values from the validated phase envelope. The declaration is the allowlist:
    * summary, narration, raw output, reports, progress and telemetry have no route into this method.
    * Structured list entries are independently serialized so collection budgets count every item.
    */
-  private fun phaseProjectionFields(
-    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
-    declaration: PhaseHandoffProjectionDeclaration,
-    output: FeatureTaskRuntimePhaseOutput,
-  ): List<FeatureTaskRuntimeHandoffProjectionField>? {
-    if (declaration.projectionContractId !in PHASE_PROJECTION_CONTRACT_IDS) return null
-    val envelope = output.normalizedOutput?.envelope
-      ?: JsonSupport.parseObjectOrNull(output.payload)?.let { JsonSupport.jsonElementToValue(it) }
-        ?.let(JsonSupport::anyToStringAnyMap)
-      ?: reject(
-        inputs,
-        declaration,
-        FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
-        "validated producer output could not be decoded as an object.",
-      )
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
-    val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, produced)
-    return declaration.declaredFieldNames.mapNotNull { name ->
-      val value = runtimeOwned[name] ?: if (name == "verdict") {
-        envelope[name]
-      } else {
-        resolveDeclaredPhaseField(produced, name)
-      }
-      value?.let {
-        FeatureTaskRuntimeHandoffProjectionField(name, projectionValue(name, it, inputs, declaration))
-      }
-    }
-  }
-
   private fun runtimeOwnedPhaseProjectionValues(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
@@ -677,12 +619,11 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     )
   }
 
-  private fun boundedProjectionText(raw: Any?, fallback: String): String =
-    (raw as? String)
-      ?.trim()
-      ?.takeIf(String::isNotBlank)
-      ?.take(MAX_BOUNDED_POINTER_LENGTH)
-      ?: fallback
+  private fun boundedProjectionText(raw: Any?, fallback: String): String = (raw as? String)
+    ?.trim()
+    ?.takeIf(String::isNotBlank)
+    ?.take(MAX_BOUNDED_POINTER_LENGTH)
+    ?: fallback
 
   private fun reviewFindingsForVerificationProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
     (produced["findings"] as? List<*>).orEmpty()
@@ -878,70 +819,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       )
       else -> FeatureTaskRuntimeHandoffProjectionValue.Text(value.toString())
     }
-  }
-
-  /**
-   * Resolves the concrete bounded planning projection fields for a declared upstream edge, or null when
-   * the declaration is not a planning contract (the caller falls back to the coarse whole-receipt
-   * field). Parses the producing phase's schema-validated produced_outputs into the typed model and
-   * renders exactly that model's declared field set, so the complete producer envelope, narration, or
-   * raw payload never reaches the consumer. A plan_commitment declaration parses the source executable
-   * plan and narrows it to the obligation-only subset (AC-011).
-   */
-  private fun planningProjectionFields(
-    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
-    declaration: PhaseHandoffProjectionDeclaration,
-    producingPhaseId: String,
-    output: FeatureTaskRuntimePhaseOutput,
-  ): List<FeatureTaskRuntimeHandoffProjectionField>? {
-    val contractId = declaration.projectionContractId
-    if (contractId !in PLANNING_PROJECTION_CONTRACT_IDS) return null
-    // A plan_commitment is derived from the plan's executable_plan output, so the kind the PRODUCER
-    // must emit is not always the kind this edge delivers.
-    val expectedKind = when (contractId) {
-      FeatureTaskRuntimePlanningProjectionContract.PREPLANNING_DIGEST_ID ->
-        FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST
-      FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID,
-      FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
-      -> FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
-      else -> FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
-    }
-    val projection = try {
-      featureTaskRuntimePlanningProjectionFromEnvelope(
-        envelope = phaseOutputEnvelope(output, producingPhaseId),
-        producingPhaseId = producingPhaseId,
-        expectedKind = expectedKind,
-        schemaValidator = inputs.planningProjectionValidator,
-      )
-    } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
-      throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-        sourceLabel = error.sourceLabel,
-        reason = error.reason,
-        projectionName = declaration.projectionName,
-        cause = error,
-      )
-    }
-    // Exhaustive narrowing on the parsed type: no cast, so a shape the declaration did not ask for is
-    // a typed rejection rather than a ClassCastException on an already-completed producing phase.
-    return when {
-      contractId == FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID &&
-        projection is FeatureTaskRuntimeExecutablePlan -> projection.toPlanCommitment().toProjectionFields()
-      else -> projection.toProjectionFields()
-    }
-  }
-
-  private fun phaseOutputEnvelope(output: FeatureTaskRuntimePhaseOutput, producingPhaseId: String): Map<String, Any?> {
-    output.normalizedOutput?.envelope?.takeIf { it.isNotEmpty() }?.let { return it }
-    val parsed = output.payload.takeIf(String::isNotBlank)?.let(JsonSupport::parseObjectOrNull)
-      ?: throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-        sourceLabel = "$producingPhaseId#produced_outputs",
-        reason = "producing phase output payload is missing or not a JSON object.",
-      )
-    return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
-      ?: throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-        sourceLabel = "$producingPhaseId#produced_outputs",
-        reason = "producing phase output payload must decode to a JSON object.",
-      )
   }
 
   private fun usesProseHandoff(declaration: PhaseHandoffProjectionDeclaration): Boolean =

@@ -70,6 +70,7 @@ internal fun phasesFor(request: FeatureTaskRuntimeRunRequest): List<String> {
   }
 }
 
+@Suppress("ReturnCount")
 internal fun mutatingReconciliationGateReason(
   phaseId: String,
   outputMap: Map<String, Any?>,

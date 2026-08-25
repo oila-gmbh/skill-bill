@@ -2,6 +2,10 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.featuretask.model.RuntimeOwnedFindingVerdictsReadResolution
+import skillbill.application.featuretask.model.RuntimeOwnedReviewPassClaimsReadResolution
+import skillbill.application.featuretask.model.resolveRuntimeOwnedFindingVerdicts
+import skillbill.application.featuretask.model.resolveRuntimeOwnedReviewPassClaims
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.workflow.WorkflowFamily
@@ -12,8 +16,6 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
@@ -244,7 +246,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val recordedVerdicts = when (
       val resolution = unitOfWork.resolveRuntimeOwnedFindingVerdicts(reviewImport.reviewRunId)
     ) {
-      is RuntimeOwnedFindingVerdictsReadResolution.Present -> resolution.verdicts
+      is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
       is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
         recordRuntimeOwnedReadFailure(
           seam = "FeatureTaskRuntimeGoalContinuationRecorder.completeGoalReviewPass",
@@ -292,7 +294,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       "Goal review completion review run id must match the reserved runtime-owned review run id."
     }
     val claims = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-      is RuntimeOwnedReviewPassClaimsReadResolution.Present -> resolution.snapshot
+      is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
       is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> {
         recordRuntimeOwnedReadFailure(
           seam = "FeatureTaskRuntimeGoalContinuationRecorder.runtimeOwnedReviewImport",
@@ -315,12 +317,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     return skillbill.application.goalrunner.GoalSubtaskReviewImport(reviewRunId, claims.findings)
   }
 
-  private fun recordRuntimeOwnedReadFailure(
-    seam: String,
-    expected: String,
-    cause: String,
-    used: String = "none",
-  ) {
+  private fun recordRuntimeOwnedReadFailure(seam: String, expected: String, cause: String, used: String = "none") {
     runCatching {
       diagnostics.warning("seam=$seam value_expected=$expected value_used=$used cause=$cause")
     }

@@ -58,10 +58,9 @@ internal data class FeatureTaskRuntimeImplementationObligations(
     get() = loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
 
   /**
-   * Under a plan regeneration ([FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID])
-   * this still resolves to [plannedTaskIds] — and because those are read from the LATEST delivered
-   * executable-plan projection, they are the regenerated plan's ids. A receipt is therefore never
-   * charged with a phantom task id carried over from a superseded plan generation.
+   * Under a regenerated plan this still resolves to [plannedTaskIds] — and because those are read from the
+   * LATEST delivered executable-plan projection, they are the regenerated plan's ids. A receipt is therefore
+   * never charged with a phantom task id carried over from a superseded plan generation.
    */
   val requiredIds: List<String>
     get() = if (underAuditRepairLoop) carriedRepairItemIds else plannedTaskIds

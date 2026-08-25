@@ -1,3 +1,10 @@
+## [2026-08-25] SKILL-208 subtask 5 — Retire shape policing
+Areas: runtime-application/{featuretask,goalrunner,workflow}, runtime-domain/workflow/taskruntime, docs
+- Goal planning sweep, checkpoint, hydrator, and preparation validator no longer call `FeatureTaskRuntimePhaseOutputValidator`; bounded projection gate unchanged for `preplan`/`plan`.
+- Feature-task tests for phase-output shape policing, quarantine regeneration, and `RECORD_REJECTED` topology removed; repair-receipt coverage is id-membership round-trips only.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-21] Soft-admit optional register lines for claim verification
 Areas: runtime-application/review, runtime-application/featuretask, skills/bill-code-review-inline
 - Parent stdout stays free-form prose plus `verdict:`; missing or imperfect register lines never fail the lane.

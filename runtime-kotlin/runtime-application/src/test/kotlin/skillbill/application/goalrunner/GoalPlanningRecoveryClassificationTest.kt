@@ -2,7 +2,6 @@ package skillbill.application.goalrunner
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
-import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -43,24 +42,12 @@ class GoalPlanningRecoveryClassificationTest {
   }
 
   @Test
-  fun `phase output schema contract const failure classifies as hard reset via cause`() {
-    val cause = InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-      sourceLabel = "plan",
-      reason = "contract_version: must be the constant value '0.4'",
-      payloadFreeReason = "contract_version: must be the constant value '0.4'",
-    )
-    assertEquals(
-      GoalPlanningRecoveryKind.HARD_RESET,
-      classifyGoalPlanningRecovery("projection failure", cause),
-    )
-  }
-
-  @Test
   fun `preparation schema phase output provenance failure classifies as hard reset via cause`() {
     val cause = InvalidGoalPlanningPreparationSchemaError(
       sourceLabel = "wftr-parent",
       fieldPath = "provenance.phase_output_contract_version",
-      reason = "must be the constant value '0.4'. Existing workflow state is incompatible; hard-reset it.",
+      reason = "must be the constant value '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'. Existing workflow " +
+        "state is incompatible; hard-reset it.",
     )
     assertEquals(
       GoalPlanningRecoveryKind.HARD_RESET,

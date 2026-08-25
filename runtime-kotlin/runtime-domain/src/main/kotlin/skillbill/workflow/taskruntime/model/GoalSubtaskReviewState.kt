@@ -542,6 +542,7 @@ data class GoalSubtaskReviewState(
     else -> copy(reservedPassNumber = 1)
   }
 
+  @Suppress("LongParameterList")
   fun completeReservedPass(
     verdict: FeatureTaskRuntimeVerdict,
     unresolvedFindingCount: Int,

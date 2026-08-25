@@ -11,7 +11,7 @@ Route dominant-stack quality checks to the pack-declared quality-check sidecar. 
 
 ## Repair Window
 
-Run the collect-all check once and read that output. Fix every finding in the same session. Do not invoke the full gate, collect-all gate, or `bill-code-check` after each individual finding. Targeted compile, test, and module checks are allowed while repairing. When the set looks clean, run one confirmation check. If that fails, its output is the new complete finding set.
+Run the pack collect-all command, read the output, fix every finding, confirm with the same collect-all command. If the confirm fails, that output is the new finding set — loop until green. Do not re-run the full collect-all after each individual finding; targeted compile, test, and module checks are allowed only while repairing. Never suppress failures to pass.
 
 ## Pack validation_gate
 

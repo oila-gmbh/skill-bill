@@ -22,8 +22,8 @@ internal fun runtimeOwnedBuildPhaseTask(packBuildCommand: String?): String {
     "part of that same pack gate. When the set looks clean, you may run that same build command once to " +
     "sanity-check. Never silence findings with @Suppress, @file:Suppress, baselines, disabled rules, " +
     "weakened configuration, or skipped tests — fix root causes instead. After you stop, the runtime " +
-    "re-runs the pack build command and mints the receipt — do not emit build_receipt, " +
-    "or any phase-output JSON."
+    "re-runs the pack build command and mints the receipt — return prose only; do not invent gate " +
+    "receipts or structured build summaries."
 }
 
 internal fun nonBuildPhaseBuildOwnershipDirective(phaseId: String): String {

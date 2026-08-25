@@ -244,7 +244,8 @@ internal class FeatureTaskRuntimeRunObservability(
   fun derivationReask(phaseId: String, resolvedAgentId: String, attemptCount: Int, reaskCount: Int) {
     emitFeatureTaskRuntimeEventSafely(diagnostics, "derivation re-ask") {
       diagnostics.warning(
-        "seam=FeatureTaskRuntimeRunObservability.derivationReask phase=$phaseId attempt=$attemptCount reask=$reaskCount",
+        "seam=FeatureTaskRuntimeRunObservability.derivationReask " +
+          "phase=$phaseId attempt=$attemptCount reask=$reaskCount",
         null,
       )
     }

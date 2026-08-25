@@ -4,9 +4,9 @@ package skillbill.db.workflow
 
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
+import skillbill.contracts.workflow.isAcceptedGoalPlanningPhaseOutputContractId
 import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -619,8 +619,8 @@ class GoalPlanningPreparationStore(
     record.provenance.parentSpecHash.isBlank() -> "provenance.parent_spec_hash is required"
     record.provenance.subSpecHash.isBlank() -> "provenance.sub_spec_hash is required"
     record.provenance.decompositionManifestHash.isBlank() -> "provenance.decomposition_manifest_hash is required"
-    record.provenance.phaseOutputContractId != FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID ->
-      "provenance.phase_output_contract_id must be the feature-task-runtime phase output schema id"
+    !isAcceptedGoalPlanningPhaseOutputContractId(record.provenance.phaseOutputContractId) ->
+      "provenance.phase_output_contract_id must be a supported feature-task phase boundary contract id"
     record.provenance.phaseOutputContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION ->
       "provenance.phase_output_contract_version must be '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'"
     else -> null
@@ -1242,7 +1242,7 @@ private fun normalizedProvenanceFailure(provenance: GoalPlanningContractProvenan
     "provenance.planning_contract_id" to "planning_contract_id is incompatible"
   provenance.planningContractVersion != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ->
     "provenance.planning_contract_version" to "planning_contract_version is incompatible"
-  provenance.phaseOutputContractId != FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID ->
+  !isAcceptedGoalPlanningPhaseOutputContractId(provenance.phaseOutputContractId) ->
     "provenance.phase_output_contract_id" to "phase_output_contract_id is incompatible"
   provenance.phaseOutputContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION ->
     "provenance.phase_output_contract_version" to

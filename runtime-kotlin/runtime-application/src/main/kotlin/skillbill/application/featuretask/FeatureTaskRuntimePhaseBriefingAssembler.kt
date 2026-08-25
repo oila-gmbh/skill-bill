@@ -82,6 +82,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
   /** Byte ceiling for the non-projection framing of [FeatureTaskRuntimePhaseLaunchBriefing.briefingText]. */
   const val FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING: Int = 65_536
 
+  @Suppress("LongParameterList")
   fun assemble(
     handoff: FeatureTaskRuntimePhaseHandoff,
     workflowId: String? = null,

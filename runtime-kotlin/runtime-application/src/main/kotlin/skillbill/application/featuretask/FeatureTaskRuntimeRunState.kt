@@ -1,8 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
-import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -13,7 +11,18 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+internal fun featureTaskRuntimeNormalizePhaseOutputFromProse(
+  outputText: String,
+): NormalizedFeatureTaskRuntimePhaseOutput {
+  val envelope = JsonSupport.parseObjectOrNull(outputText)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    .orEmpty()
+  return NormalizedFeatureTaskRuntimePhaseOutput(
+    canonicalJson = outputText,
+    envelope = envelope,
+  )
+}
 
 /**
  * One attempt that ended without reaching the output gate: a process that died before producing
@@ -32,7 +41,6 @@ internal class FeatureTaskRuntimeRunState(
   private val initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
   private val transitions: FeatureTaskRuntimeTransitionDeclaration,
   private val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
-  private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   initialReviewGeneration: Int = 0,
 ) {
   private var reviewGeneration: Int = initialReviewGeneration
@@ -78,40 +86,19 @@ internal class FeatureTaskRuntimeRunState(
   // invalid artifact is genuine corruption rather than evidence.
   private fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? {
     val text = record.outputText ?: record.outputArtifact ?: return null
-    if (record.status == STATUS_COMPLETED) {
-      val parsedMap = parseOutputMap(text, record.phaseId)
-      return FeatureTaskRuntimePhaseOutput(
-        phaseId = record.phaseId,
-        iteration = record.attemptCount,
-        payload = text,
-        normalizedOutput = parsedMap?.let { NormalizedFeatureTaskRuntimePhaseOutput(text, it) },
-        repairEvidence = record.repairEvidence,
-      )
-    }
-    return try {
-      val accepted = outputValidator.validatePhaseOutput(text, record.phaseId).requireAcceptedOutput(record.phaseId)
-      FeatureTaskRuntimePhaseOutput(
-        phaseId = record.phaseId,
-        iteration = record.attemptCount,
-        payload = accepted.normalizedOutput.canonicalJson,
-        normalizedOutput = accepted.normalizedOutput,
-        repairEvidence = record.repairEvidence ?: accepted.repairEvidence,
-      )
-    } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-      null
-    }
+    val normalized = featureTaskRuntimeNormalizePhaseOutputFromProse(text)
+    return FeatureTaskRuntimePhaseOutput(
+      phaseId = record.phaseId,
+      iteration = record.attemptCount,
+      payload = text,
+      normalizedOutput = normalized,
+      repairEvidence = record.repairEvidence,
+    )
   }
 
-  private fun parseOutputMap(text: String, phaseId: String): Map<String, Any?>? =
-    JsonSupport.parseObjectOrNull(text)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: runCatching {
-        outputValidator.validatePhaseOutput(text, sourceLabel = phaseId)
-          .requireAcceptedOutput(phaseId)
-          .normalizedOutput
-          .envelope
-      }.getOrNull()
+  private fun parseOutputMap(text: String): Map<String, Any?>? = JsonSupport.parseObjectOrNull(text)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
   private val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
   private val phasesLaunchedThisProcess: MutableSet<String> = mutableSetOf()
   private val initialReviewRecord = initialRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
@@ -347,29 +334,6 @@ internal class FeatureTaskRuntimeRunState(
         ?.startsWith("Goal-subtask review state or durable raw evidence is malformed: [SQLITE_BUSY]") == true
   }
 
-  // A pre-quarantine build's launch-seam planning-projection rejection re-entered under the current
-  // build, which restarts the consumer's fix-loop budget. If that budget was already spent by the legacy
-  // attempts, the first re-entry blocked again and overwrote the reason with the generic fix-loop
-  // exhaustion text. Recognize that overwritten reason from the ledger — the prior block for this phase
-  // was the launch-seam rejection — so the phase re-enters and restarts its budget once more, reaching
-  // the live quarantine seam. Only a phase with a regeneration producer qualifies.
-  fun legacyLaunchSeamRejectionConsumedBudget(phaseId: String, currentReason: String): Boolean {
-    if (!currentReason.startsWith("Phase '$phaseId' exhausted the bounded fix loop") ||
-      phaseId !in FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_PRODUCER_BY_CONSUMER
-    ) {
-      return false
-    }
-    val recentBlocks = initialLedger
-      .filter { entry ->
-        entry.phaseId == phaseId && entry.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED
-      }
-      .sortedByDescending(FeatureTaskRuntimePhaseLedgerEntry::sequenceNumber)
-      .take(2)
-    return recentBlocks.firstOrNull()?.blockedReason == currentReason &&
-      recentBlocks.getOrNull(1)?.blockedReason
-        ?.contains("rejected an upstream bounded planning projection at the launch seam") == true
-  }
-
   // Resume reconstruction of the per-visit budget baselines (see fixLoopBudgetBaseByPhase). For every
   // backward edge whose loop durably fired (a per-edge watermark exists), seed each non-completed
   // phase in the reopened span (destination through source) from its durable attempt watermark,
@@ -526,7 +490,7 @@ internal class FeatureTaskRuntimeRunState(
   private fun parsedOutput(output: FeatureTaskRuntimePhaseOutput?): Map<String, Any?>? {
     val payload = output?.payload ?: return null
     return parsedOutputsByPayload.getOrPut(payload) {
-      parseOutputMap(payload, output.phaseId).orEmpty()
+      parseOutputMap(payload).orEmpty()
     }
   }
 

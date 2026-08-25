@@ -936,7 +936,6 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
     )
 
@@ -1006,7 +1005,6 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
     )
 
@@ -1063,7 +1061,6 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
     )
 
@@ -1097,7 +1094,6 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
     )
     val loaded = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
@@ -1225,7 +1221,6 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
     )
     val completed = pending.copy(
@@ -1272,7 +1267,6 @@ class WorkflowServiceTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
     )
 
@@ -1494,7 +1488,6 @@ class WorkflowGoalStatusProjectionTest {
         workflowSnapshotValidator = testWorkflowSnapshotValidator,
         decompositionManifestValidator = testDecompositionManifestValidator,
         decompositionManifestFileStore = TestDecompositionManifestFileStore,
-        phaseOutputValidator = AlwaysValidValidator,
         planningProjectionValidator = realPlanningProjectionValidator,
       ),
       outcomeStore = WorkflowGoalRunnerOutcomeStore(
@@ -2868,7 +2861,6 @@ private fun manifestStore(rejecting: Set<String>) = WorkflowGoalRunnerManifestSt
   workflowSnapshotValidator = testWorkflowSnapshotValidator,
   decompositionManifestValidator = rejectingDecompositionManifestValidator(rejecting),
   decompositionManifestFileStore = TestDecompositionManifestFileStore,
-  phaseOutputValidator = AlwaysValidValidator,
   planningProjectionValidator = realPlanningProjectionValidator,
 )
 
@@ -2901,7 +2893,6 @@ private fun scopedReplanStore(
     workflowSnapshotValidator = testWorkflowSnapshotValidator,
     decompositionManifestValidator = testDecompositionManifestValidator,
     decompositionManifestFileStore = TestDecompositionManifestFileStore,
-    phaseOutputValidator = AlwaysValidValidator,
     planningProjectionValidator = realPlanningProjectionValidator,
   )
 }
@@ -3435,7 +3426,6 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
       clock = java.time.Clock.fixed(java.time.Instant.parse(instant), java.time.ZoneOffset.UTC),
     )
@@ -3449,7 +3439,6 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
     )
 

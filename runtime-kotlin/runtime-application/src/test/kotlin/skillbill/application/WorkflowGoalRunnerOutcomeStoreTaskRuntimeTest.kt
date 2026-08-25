@@ -154,7 +154,6 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val store = WorkflowGoalRunnerOutcomeStore(
       database = FakeDatabaseSessionFactory(workflows),
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      phaseOutputValidator = AlwaysValidValidator,
     )
 
     assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {

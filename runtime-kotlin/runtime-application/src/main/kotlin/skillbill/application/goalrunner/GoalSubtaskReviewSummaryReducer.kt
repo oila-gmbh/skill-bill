@@ -14,10 +14,10 @@ import skillbill.goalrunner.model.toOutcomeRecord
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.context.model.requireRepositoryRelativePath
+import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -373,45 +373,66 @@ internal object GoalSubtaskReviewSummaryReducer {
       ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
       ?: return emptyList()
     return dispositionsRaw.mapIndexedNotNull { index, entry ->
-      val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapIndexedNotNull null
-      if ((map["disposition"] as? String)?.trim()?.lowercase() != "rejected") return@mapIndexedNotNull null
-      val findingId = (map["finding_id"] as? String)?.takeIf(String::isNotBlank)
-        ?: return@mapIndexedNotNull null
-      val reason = (map["reason"] as? String)?.takeIf(String::isNotBlank)
-        ?: return@mapIndexedNotNull null
-      val reviewFinding = reviewById[findingId]
-      val existingOrdinal = reviewFinding?.let {
-        structuredFindings(review, recordedVerdicts).indexOfFirst { candidate ->
-          candidate.findingId == findingId
-        }.takeIf { it >= 0 }?.plus(1)
-      }
-      val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
-        ?: reviewFinding?.severity
-        ?: UNADDRESSED_FINDING_DEFAULT_SEVERITY
-      UnaddressedFinding(
-        issueKey = scope.issueKey,
-        subtaskId = scope.subtaskId,
-        workflowId = scope.workflowId,
-        reviewPassNumber = scope.reviewPassNumber,
-        findingOrdinal = existingOrdinal ?: (index + 1),
-        severity = normalizedUnaddressedFindingSeverity(severity),
-        issueCategory = normalizedUnaddressedFindingCategory(
-          reviewFinding?.issueCategory ?: UNADDRESSED_FINDING_DEFAULT_CATEGORY,
+      rejectedVerificationFinding(
+        RejectedVerificationFindingContext(
+          index = index,
+          entry = entry,
+          reviewById = reviewById,
+          review = review,
+          scope = scope,
+          recordedVerdicts = recordedVerdicts,
         ),
-        location = (map["location"] as? String)?.takeIf(String::isNotBlank)
-          ?: reviewFinding?.location ?: "<unknown>",
-        summary = (map["message"] as? String)?.takeIf(String::isNotBlank)
-          ?: reviewFinding?.message ?: reason,
-        reviewRunId = review.reviewRunId,
-        findingId = findingId,
-        claimVerdict = reviewFinding?.claimVerdict,
-        scopeDisposition = reviewFinding?.scopeDisposition,
-        citations = reviewFinding?.citations.orEmpty(),
-        severityAdjustment = reviewFinding?.severityAdjustment,
-        verificationDisposition = "rejected",
-        verificationReason = reason,
       )
     }
+  }
+
+  private data class RejectedVerificationFindingContext(
+    val index: Int,
+    val entry: Any?,
+    val reviewById: Map<String, StructuredGoalReviewFinding>,
+    val review: GoalSubtaskReviewImport,
+    val scope: UnaddressedFindingLedgerScope,
+    val recordedVerdicts: List<ReviewFindingVerdict>,
+  )
+
+  private fun rejectedVerificationFinding(context: RejectedVerificationFindingContext): UnaddressedFinding? {
+    val map = JsonSupport.anyToStringAnyMap(context.entry) ?: return null
+    val disposition = (map["disposition"] as? String)?.trim()?.lowercase()
+    val findingId = (map["finding_id"] as? String)?.takeIf(String::isNotBlank)
+    val reason = (map["reason"] as? String)?.takeIf(String::isNotBlank)
+    if (disposition != "rejected" || findingId == null || reason == null) return null
+    val reviewFinding = context.reviewById[findingId]
+    val existingOrdinal = reviewFinding?.let {
+      structuredFindings(context.review, context.recordedVerdicts).indexOfFirst { candidate ->
+        candidate.findingId == findingId
+      }.takeIf { it >= 0 }?.plus(1)
+    }
+    val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
+      ?: reviewFinding?.severity
+      ?: UNADDRESSED_FINDING_DEFAULT_SEVERITY
+    return UnaddressedFinding(
+      issueKey = context.scope.issueKey,
+      subtaskId = context.scope.subtaskId,
+      workflowId = context.scope.workflowId,
+      reviewPassNumber = context.scope.reviewPassNumber,
+      findingOrdinal = existingOrdinal ?: (context.index + 1),
+      severity = normalizedUnaddressedFindingSeverity(severity),
+      issueCategory = normalizedUnaddressedFindingCategory(
+        reviewFinding?.issueCategory ?: UNADDRESSED_FINDING_DEFAULT_CATEGORY,
+      ),
+      location = (map["location"] as? String)?.takeIf(String::isNotBlank)
+        ?: reviewFinding?.location ?: "<unknown>",
+      summary = (map["message"] as? String)?.takeIf(String::isNotBlank)
+        ?: reviewFinding?.message ?: reason,
+      reviewRunId = context.review.reviewRunId,
+      findingId = findingId,
+      claimVerdict = reviewFinding?.claimVerdict,
+      scopeDisposition = reviewFinding?.scopeDisposition,
+      citations = reviewFinding?.citations.orEmpty(),
+      severityAdjustment = reviewFinding?.severityAdjustment,
+      verificationDisposition = "rejected",
+      verificationReason = reason,
+    )
   }
 
   /**

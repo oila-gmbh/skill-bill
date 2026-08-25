@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage
 
 internal object FeatureTaskRuntimeVerificationGateReasons {
@@ -38,7 +37,7 @@ internal object FeatureTaskRuntimeVerificationGateReasons {
     )
   }
 
-  fun reviewVerificationSignal(phaseId: String, outputMap: Map<String, Any?>): String? {
+  fun reviewVerificationSignal(phaseId: String): String? {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
     return null
   }

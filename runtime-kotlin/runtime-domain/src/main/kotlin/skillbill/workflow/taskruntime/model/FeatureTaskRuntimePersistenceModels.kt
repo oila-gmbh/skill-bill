@@ -633,10 +633,13 @@ const val FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED: String = "paused"
 const val FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED: String = "completed"
 
 data class FeatureTaskRuntimePhaseRecordSidecar(
+  @OpenBoundaryMap("Runtime-owned repository checkpoint artifact carried on the phase-record sidecar")
   val checkpoint: Map<String, Any?>? = null,
+  @OpenBoundaryMap("Runtime-owned validation or build gate receipts carried on the phase-record sidecar")
   val gateReceipts: Map<String, Any?>? = null,
   val commitSha: String? = null,
   val commitSubject: String? = null,
+  @OpenBoundaryMap("Runtime-owned decompose plan package carried on the phase-record sidecar")
   val decompositionPackage: Map<String, Any?>? = null,
 ) {
   init {
@@ -759,7 +762,12 @@ data class FeatureTaskRuntimePhaseRecord(
   }
 
   @OpenBoundaryMap("Feature-task-runtime per-phase record artifact map at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
+  fun toArtifactMap(): Map<String, Any?> = phaseRecordCoreArtifactMap().apply {
+    putOptionalPhaseRecordFields()
+    putLaunchPair()
+  }
+
+  private fun phaseRecordCoreArtifactMap(): MutableMap<String, Any?> = linkedMapOf(
     "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
     "record_kind" to "private_phase_record",
     "phase_id" to phaseId,
@@ -769,22 +777,35 @@ data class FeatureTaskRuntimePhaseRecord(
     "first_started_at" to firstStartedAt,
     "resolved_agent_id" to resolvedAgentId,
     "execution_origin" to executionOrigin.wireValue,
-  ).apply {
+  )
+
+  private fun MutableMap<String, Any?>.putOptionalPhaseRecordFields() {
+    putOptionalPhaseRecordTimingAndOutputFields()
+    putOptionalPhaseRecordStatusFields()
+    putOptionalPhaseRecordManifestAndLoopFields()
+  }
+
+  private fun MutableMap<String, Any?>.putOptionalPhaseRecordTimingAndOutputFields() {
     finishedAt?.let { put("finished_at", it) }
     durationMillis?.let { put("duration_millis", it) }
     outputArtifact?.let { put("output_artifact", it) }
     outputText?.let { put("output_text", it) }
     runtimeOwnedSidecar?.let { put("runtime_owned_sidecar", it.toArtifactMap()) }
+  }
+
+  private fun MutableMap<String, Any?>.putOptionalPhaseRecordStatusFields() {
     blockedReason?.let { put("blocked_reason", it) }
     failureDisposition?.let { put("failure_disposition", it.wireValue) }
+    repairEvidence?.let { put("repair_evidence", it.toArtifactMap()) }
+  }
+
+  private fun MutableMap<String, Any?>.putOptionalPhaseRecordManifestAndLoopFields() {
     if (fileManifestBefore.isNotEmpty()) put("file_manifest_before", fileManifestBefore)
     if (fileManifestAfter.isNotEmpty()) put("file_manifest_after", fileManifestAfter)
     if (fileManifestIntroduced.isNotEmpty()) put("file_manifest_introduced", fileManifestIntroduced)
     loopId?.let { put("loop_id", it) }
     edgeIteration?.let { put("edge_iteration", it) }
     reviewPassNumber?.let { put("review_pass_number", it) }
-    repairEvidence?.let { put("repair_evidence", it.toArtifactMap()) }
-    putLaunchPair()
   }
 
   private fun MutableMap<String, Any?>.putLaunchPair() {

@@ -4,19 +4,20 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
+import skillbill.application.featuretask.FeatureTaskRuntimeRunState
+import skillbill.application.featuretask.PhaseTaskDirectiveInputs
 import skillbill.application.featuretask.phaseDeclaration
 import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.application.featuretask.FeatureTaskRuntimeRunState
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -58,7 +59,10 @@ class FeatureTaskRuntimeProseCentricPhaseIoTest {
     val legacyPlan = """{"contract_version":"0.2","phase_id":"plan","status":"completed",""" +
       """"summary":"Legacy plan.","produced_outputs":{"steps":["do the thing"]}}"""
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = phaseDeclaration(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
+      declaration = phaseDeclaration(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ),
       runInvariants = FeatureTaskRuntimeRunInvariants(
         specReference = ".feature-specs/SKILL-208/spec.md",
         acceptanceCriteria = listOf("AC-1"),
@@ -74,7 +78,7 @@ class FeatureTaskRuntimeProseCentricPhaseIoTest {
   }
 
   @Test
-  fun `feature-task path does not quarantine legacy plan prose for RECORD_REJECTED regeneration`() {
+  fun `feature-task path does not quarantine legacy plan prose for shape rejection`() {
     val legacyPlan = """{"contract_version":"0.2","phase_id":"plan","status":"completed",""" +
       """"summary":"Legacy plan.","produced_outputs":{"steps":["do the thing"]}}"""
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
@@ -109,7 +113,10 @@ class FeatureTaskRuntimeProseCentricPhaseIoTest {
   @Test
   fun `composeAgentPhaseInput and framed prompt carry non-blank fields without JSON output contract`() {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = phaseDeclaration(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
+      declaration = phaseDeclaration(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ),
       runInvariants = FeatureTaskRuntimeRunInvariants(
         specReference = ".feature-specs/SKILL-208/spec.md",
         acceptanceCriteria = listOf("AC-1"),
@@ -131,7 +138,7 @@ class FeatureTaskRuntimeProseCentricPhaseIoTest {
     )
     val input = FeatureTaskRuntimePhasePromptComposer.composeAgentPhaseInput(
       briefing = briefing,
-      carriedFindingIds = setOf("F-001"),
+      inputs = PhaseTaskDirectiveInputs(carriedFindingIds = setOf("F-001")),
     )
     assertTrue(input.input.isNotBlank())
     assertTrue(input.requestedAction.isNotBlank())
@@ -180,9 +187,11 @@ class FeatureTaskRuntimeProseCentricPhaseIoTest {
         ),
       ),
       transitions = FeatureTaskRuntimePhaseWorkflowDefinition.transitions,
-      outputValidator = RejectingPhaseOutputValidator,
     )
-    assertEquals(FeatureTaskRuntimeVerdict.GAPS_FOUND, state.verdictFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT))
+    assertEquals(
+      FeatureTaskRuntimeVerdict.GAPS_FOUND,
+      state.verdictFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
+    )
   }
 }
 
@@ -193,29 +202,12 @@ private fun minimalBriefing(phaseId: String): FeatureTaskRuntimePhaseLaunchBrief
     featureSize = "M",
     acceptanceCriteria = listOf("AC-001"),
     mandatesAndOverrides = emptyList(),
-    handoffEnvelope = emptyMap(),
+    handoffEnvelope = FeatureTaskRuntimeHandoffEnvelope(consumerPhaseId = phaseId),
     derivedContextKeys = emptyList(),
     briefingText = "Upstream context for $phaseId.",
   )
 
-private object RejectingPhaseOutputValidator : FeatureTaskRuntimePhaseOutputValidator {
-  override fun validatePhaseOutput(
-    phaseOutputText: String,
-    sourceLabel: String,
-  ): FeatureTaskRuntimePhaseOutputValidationResult =
-    error("schema gate must not run for completed prose resume")
-
-  override fun validatePhaseOutputText(
-    phaseOutputText: String,
-    sourceLabel: String,
-  ): FeatureTaskRuntimePhaseOutputValidationResult =
-    error("schema gate must not run for completed prose resume")
-
-  override fun normalizePhaseOutput(phaseOutputText: String, sourceLabel: String) =
-    error("schema gate must not run for completed prose resume")
-}
-
-private val IMPLEMENT_DEVIATIONS_AS_STRINGS: String =
+private const val IMPLEMENT_DEVIATIONS_AS_STRINGS: String =
   """{"contract_version":"0.4","phase_id":"implement","status":"completed",""" +
     """"summary":"Phase produced a validated output.",""" +
     """"produced_outputs":{"projection_kind":"implementation_receipt","contract_version":"0.1",""" +

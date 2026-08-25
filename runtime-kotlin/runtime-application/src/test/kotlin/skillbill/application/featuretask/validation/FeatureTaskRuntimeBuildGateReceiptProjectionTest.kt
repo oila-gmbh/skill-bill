@@ -7,18 +7,7 @@ import kotlin.test.Test
 class FeatureTaskRuntimeBuildGateReceiptProjectionTest {
   @Test
   fun `settled build gate coordinator output validates against build_receipt contract`() {
-    val output = FeatureTaskRuntimeBuildGateCoordinator.runtimeOwnedBuildOutput(
-      repositoryCheckpoint = "checkpoint-fp",
-      measurements = listOf(
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord(
-          durationMs = 12,
-          outcome = "passed",
-          cacheMode = "cache_eligible",
-          executedWorkUnits = 1,
-        ),
-      ),
-      checks = emptyList(),
-    )
+    val output = FeatureTaskRuntimeBuildGateCoordinator.runtimeOwnedBuildOutput()
     val envelope = JsonSupport.parseObjectOrNull(output.payload)?.let(JsonSupport::jsonElementToValue)
       ?.let(JsonSupport::anyToStringAnyMap)
       ?: error("build gate output must parse as an object")
