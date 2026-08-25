@@ -87,14 +87,17 @@ validation_gate:
   full_gate_command:
     - ./gradlew
     - check
+    - --parallel
   cache_bypassing_full_gate_command:
     - ./gradlew
     - check
     - --no-build-cache
+    - --parallel
   collect_all_full_gate_command:
     - ./gradlew
     - check
     - --continue
+    - --parallel
   build_command:
     - ./gradlew
     - compileKotlin
@@ -107,6 +110,7 @@ validation_gate:
     - check
     - --continue
     - --no-build-cache
+    - --parallel
   findings:
     format: junit_xml
     artifact_globs:

@@ -64,7 +64,7 @@ internal fun Project.configureKotlinJvm() {
       }
     }
     testLogging {
-      events("passed", "skipped", "failed")
+      events("skipped", "failed")
       exceptionFormat = TestExceptionFormat.FULL
     }
   }

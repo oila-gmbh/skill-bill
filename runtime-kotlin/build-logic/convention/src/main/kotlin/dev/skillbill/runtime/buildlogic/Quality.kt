@@ -11,6 +11,7 @@ private const val MAX_LINE_LENGTH = 120
 
 internal fun Project.configureQuality() {
   configure<SpotlessExtension> {
+    ratchetFrom("origin/main")
     kotlin {
       target("src/**/*.kt")
       ktlint().editorConfigOverride(
@@ -43,8 +44,10 @@ internal fun Project.configureQuality() {
   tasks.withType<Detekt>().configureEach {
     exclude("**/build/**", "**/generated/**")
     reports {
-      html.required.set(true)
+      html.required.set(false)
       xml.required.set(true)
+      txt.required.set(false)
+      sarif.required.set(false)
     }
   }
 
