@@ -415,17 +415,10 @@ runtime-ports
     - `skillbill.workflow.model.appendBoundedHistoryBySequence`
     - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
     - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
+    - `skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
     - `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.checkpoint`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.gateReceipts`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.decompositionPackage`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.decompositionPackageMapFromProse`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint.toEnvelopeMap`
@@ -644,11 +637,8 @@ skillbill.workflow.verify
   store.
 - The Kotlin runtime definition is
   `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
-  (id prefix `wftr`, contract version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`, currently `0.5`);
+  (id prefix `wftr`, contract version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`);
   persisted rows use `workflow_name=bill-feature-task` and `mode=runtime`.
-- `FEATURE_TASK_RUNTIME_CONTRACT_VERSION` `0.5` demotes required `audit` verdict/gaps and
-  `verify_findings` verdict/finding_dispositions schema constraints; the runtime derives those
-  signals from prose. Workflows created under `0.4` or earlier require a hard reset.
 - `skill-bill feature-task` and `feature-task-stats` are the CLI surfaces for
   this workflow family.
 
@@ -752,21 +742,15 @@ SKILL-146 makes this boundary explicitly four-part: complete producer output is
 private evidence; a named consumer projection is the only prompt-visible
 derivative; repository state has an immutable checkpoint identity; and
 phase-local instructions use workflow-owned invariant allowlists. Declaration
-and persistence wires have independent incompatible contracts. Private phase-record
-persistence is `0.3` (SKILL-208): each durable record carries authoritative
-`output_text` plus an optional `runtime_owned_sidecar` for runtime-captured
-checkpoint, gate receipts, commit sha, and agent-authored delimited commit subject
-or decomposition package. Legacy `0.2` private phase records loud-fail at every
-decode seam; the operator action matches other incompatible persistence — restart
-the active run or use the documented out-of-band migration procedure, with no
-in-place upgrade for in-flight workflows. Delivered records identify the workflow,
-consumer, producer iteration, and checkpoint;
+and persistence wires have independent incompatible `0.2` contracts. Delivered
+records identify the workflow, consumer, producer iteration, and checkpoint;
 the versioned, exact-decoded `FeatureTaskRuntimePhaseRecord` wire is the
 authoritative durable private-evidence record written and read by the phase
 recorder. It remains under the private phase-record artifact key, separate from
 the delivered-projection key and prompt-facing read API. Unknown fields,
 missing record identity, and unsupported versions are incompatible rather than
-defaulted. Legacy records missing that identity loud-fail with restart or explicit
+defaulted.
+legacy records missing that identity loud-fail with restart or explicit
 out-of-band migration guidance. The operator action is deliberately identical at
 workflow, briefing, handoff, private-evidence, and delivered-projection read
 seams: restart the active run or use the documented out-of-band migration
@@ -774,10 +758,8 @@ procedure. Unsupported versions are never defaulted or interpreted as the
 current least-context shape.
 
 Budgets are enforced before launch against serialized UTF-8 bytes and
-collection items. Structured projections still reject on overflow; upstream prose
-handoff truncates with a visible marker, emits an observability record, and
-retains derivation-critical tokens ahead of narrative. Measurements contain identifiers,
-byte/item counts, token
+collection items. The runtime never truncates, drops fields, or falls back to a
+complete artifact. Measurements contain identifiers, byte/item counts, token
 estimates, and failure classifications only, never prompt or evidence bodies.
 They are written only through lifecycle telemetry and progress stores; no
 measurement or diagnostic field is added to a phase receipt or other
@@ -919,60 +901,87 @@ reproduces it; blocking durably keeps the phase row and the run's finalization
 consistent instead of unwinding out of a run that already persisted
 `STATUS_RUNNING`.
 
-### Producer-side enforcement (SKILL-140 Subtask 1; goal planning only after SKILL-208)
+### Producer-side enforcement (SKILL-140 Subtask 1)
 
-The feature-task phase path no longer runs `producerProjectionGateReason` or the
-retired phase-output shape schema. Goal planning (`GoalPlanningSweep`,
-`GoalPlanningPreparationCheckpoint`, child hydration) still owns the producer
-projection gate for `preplan` and `plan` only.
-
-For goal planning, a bounded planning projection was validated only at its
-consumer's launch seam, where the producing phase is already settled
-`completed`. The producer gate closes that gap: a completed phase that owns a
-projection must emit one its consumer can parse, checked before checkpointing so
-a violation re-enters that phase's bounded fix loop.
+A bounded planning projection was validated only at its consumer's launch seam,
+where the producing phase is already settled `completed`. A malformed digest,
+plan, or receipt therefore blocked the *next* phase — with no fix loop able to
+reach the phase that actually wrote it — and the run wedged. The producer gate
+closes that gap: a completed phase that owns a projection must emit one its
+consumer can parse, checked at the producing phase's own schema gate so a
+violation re-enters that phase's bounded fix loop and blocks only at the existing
+cap.
 
 `FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor` is the
 single domain-owned routing map from producing phase id to the projection kind it
 owes (`preplan` -> `preplanning_digest`, `plan` -> `executable_plan`, `implement`
--> `implementation_receipt`, and null for every other phase). `producerProjectionGateReason`
-reads that map and, for a completed envelope whose phase owns a kind, calls the
-same `featureTaskRuntimePlanningProjectionFromEnvelope` with the same
-`planningProjectionValidator` port the launch seam uses.
+-> `implementation_receipt`, and null for every other phase, including the derived
+`plan_commitment`, which no phase produces). `producerProjectionGateReason` in
+`FeatureTaskRuntimeRunnerPolicies` reads that map and, for a completed envelope
+whose phase owns a kind, calls the same `featureTaskRuntimePlanningProjectionFromEnvelope`
+with the same `planningProjectionValidator` port the launch seam uses — no
+projection rule is restated at the gate. `FeatureTaskRuntimePlanningProjectionEdgeTest`
+binds the two sides so any envelope the gate accepts the launch seam accepts for
+the corresponding consumer edge, and neither can be made stricter than the other.
 
-### Prose-centric phase boundary (SKILL-208)
+The gate runs in `settleValidatedOutput` only after `terminalBlockedReasonFrom`,
+so a blocked or failed envelope — whose `produced_outputs` carries blocking
+reasons, not a projection claim — settles through the terminal path and never
+reaches the gate. A `decompose`-mode plan is likewise exempt: it terminates the
+run at planning and hands the planning stopper a separately-contracted
+decomposition package (`featureTaskRuntimeIsDecompositionPackage`), which no
+consumer parses as an executable plan. That exemption is scoped to the
+executable-plan producer (`plan`), the only phase with a decompose stopper
+backstop; a `preplan` or `implement` output merely shaped like a decomposition
+package has no backstop and still faces the gate, so it cannot settle `completed`
+and wedge its consumer. The rejection reason names the phase, the
+expected projection kind, and the underlying validation failure (its source label
+plus reason), bounded by the existing `SCHEMA_GATE_DETAIL_MAX_CHARS` schema-gate
+detail truncation — no second truncation rule.
 
-`feature-task-runtime-phase-output-schema.yaml` is retired. The phase boundary is prose-first:
+### Quarantine-and-regenerate (SKILL-140 Subtask 4)
 
-**Durable result.** Each settled phase stores authoritative `output_text` (agent
-prose, optionally fenced JSON extracted for parsing) plus an optional
-`runtime_owned_sidecar` on the private phase record (`0.3`). The sidecar carries
-only runtime-minted evidence: repository checkpoint, gate receipts, commit sha,
-and the two agent-authored delimited artifacts (`commit_subject`,
-`decomposition_package`).
+Producer-side gating (Subtask 1) reduces launch-seam rejections to legacy and
+drift records — precisely the population an in-band recovery edge can repair.
+When `FeatureTaskRuntimeRunLoop.launchAndCapture` catches
+`InvalidFeatureTaskRuntimePlanningProjectionSchemaError` or an
+`InvalidWorkflowStateSchemaError` on an upstream handoff envelope, it no longer
+blocks on first occurrence. Instead the consumer settles with the synthetic
+`RECORD_REJECTED` verdict, which drives the existing
+`FeatureTaskRuntimeTransitionFunction` over a pinned consumer→producer
+regeneration edge (`plan`→`preplan`, `implement`→`plan`, `audit`→`implement`,
+each with its own `regenerate_*` loop id and the `MAX_RECORD_REGENERATION_ATTEMPTS`
+cap). No parallel state machine is introduced: the same loop-id, edge-iteration,
+watermark, and crash-resume machinery the review-fix and audit-gap loops use
+bounds regeneration, so a crash mid-regeneration resumes the same cap sequence
+without reset.
 
-**Derivation seam.** `FeatureTaskRuntimePhaseOutputDerivation` is the single
-reader for settlement (status + failure disposition) and routing verdicts
-(audit/review/verify_findings). It splits settlement from routing; when both are
-indecisive the run re-asks once under a dedicated budget, then durable-blocks
-with both outputs preserved. Obligation closure (plan tasks, repair items) is id
-membership over runtime-delivered sets in phase text, not receipt shape rules.
+Before the edge fires, the rejected record is appended to a durable, append-only
+quarantine store (`FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY`,
+validated by the canonical quarantine schema). That store is private evidence: it
+is never resolved into an upstream projection, so no rejected byte reaches an
+agent prompt or briefing, and no runtime path ever mutates or deletes an entry —
+only out-of-band operator action may. The producer's settled `completed` status
+is invalidated through the existing phase-record machinery (its rejected payload
+moves to `rejected_output`, its status returns to `running`), so the handoff
+contract's `selectLatestOutputsByPhase` no longer surfaces the rejected record and
+the regenerated higher-iteration output supersedes it on this or any resumed run.
 
-**Design rules (R1–R4).** R1: agent prose is the durable phase result. R2:
-routing/settlement derive from membership over closed candidate sets in that
-text. R3: runtime-owned facts live in the sidecar, never re-validated from agent
-echoes. R4: governed handoff projections remain declared, budgeted, and
-validator-backed — but only for consumer-visible derivatives, not for policing
-the producer envelope shape.
+Cap exhaustion blocks durably with a reason naming the quarantined record, its
+producing phase, and the attempt count. A record the runtime cannot attribute to
+a producing phase, or whose producer a goal-continuation truncation dropped from
+the resolved pipeline, blocks durably with an actionable reason rather than
+attempting an impossible re-entry. Static declaration/config drift
+(`InvalidFeatureTaskRuntimeHandoffProjectionError`), briefing byte-ceiling
+overflow, and an audit's own `audit_repair_state` drift keep their
+first-occurrence durable block: re-running a producer cannot fix them.
+Out-of-band row deletion or migration is the corruption fallback for records the
+edge cannot regenerate. Per-run regeneration telemetry records activation counts,
+attempt counts, and outcome-class tallies on the
+`skillbill_feature_task_runtime_finished` event — counts and class labels only, never record contents.
 
-**Hard reset.** Workflows created under the retired phase-output contract or
-structural-repair evidence are not migrated in place. Legacy `0.2` private phase records and incompatible goal-planning
-provenance loud-fail at every decode seam; the operator action is restart the
-active run or `skill-bill goal reset <issue-key> --hard --yes`.
-
-**Goal-planning exception.** `producerProjectionGateReason`, the planning-projection
-schema, and `FeatureTaskRuntimePlanningProjectionValidator` survive until goal
-planning adopts the same prose envelope as feature-task phases.
+Canonicalization and reconciliation of malformed durable projection records
+beyond this recovery edge belong to later SKILL-140 subtasks.
 
 ## Install Policy Ownership (SKILL-52.1 install-policy-foundation)
 
@@ -1211,17 +1220,10 @@ Categories:
 - `skillbill.workflow.model.appendBoundedHistoryBySequence`
 - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
 - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
+- `skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
 - `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.checkpoint`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.gateReceipts`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.decompositionPackage`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.decompositionPackageMapFromProse`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint.toEnvelopeMap`

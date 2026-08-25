@@ -82,7 +82,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
   /** Byte ceiling for the non-projection framing of [FeatureTaskRuntimePhaseLaunchBriefing.briefingText]. */
   const val FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING: Int = 65_536
 
-  @Suppress("LongParameterList")
   fun assemble(
     handoff: FeatureTaskRuntimePhaseHandoff,
     workflowId: String? = null,
@@ -90,7 +89,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       NoopFeatureTaskRuntimePlanningProjectionValidator,
     agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
     sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
-    recordHandoffTruncation: (String) -> Unit = {},
   ): FeatureTaskRuntimePhaseLaunchBriefing {
     val boundedAddonSelection = FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor(
       handoff.phaseId,
@@ -119,7 +117,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         planningProjectionValidator = planningProjectionValidator,
         sharedReviewEvidence = sharedReviewEvidence,
         addonContentBySlug = boundedAddonSelection.entries.associate { it.persisted.slug to it.content },
-        recordHandoffTruncation = recordHandoffTruncation,
       ),
     )
     val projectedHandoff = handoff.copy(projectionDeclarations = promptDeclarations)
@@ -148,7 +145,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
     sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference?,
     addonContentBySlug: Map<String, String>,
-    recordHandoffTruncation: (String) -> Unit = {},
   ): FeatureTaskRuntimeHandoffProjectionInputs = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = handoff.phaseId,
     declarations = declarations,
@@ -168,7 +164,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     addonContentBySlug = addonContentBySlug,
     validationDepth = handoff.validationDepth,
     qualityGateSelection = handoff.qualityGateSelection,
-    recordHandoffTruncation = recordHandoffTruncation,
   )
 
   private fun invariantDeclarations(phaseId: String): List<PhaseHandoffProjectionDeclaration> =

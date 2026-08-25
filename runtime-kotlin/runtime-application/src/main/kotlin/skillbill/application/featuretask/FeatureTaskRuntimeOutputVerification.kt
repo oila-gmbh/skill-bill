@@ -1,95 +1,68 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
+import skillbill.review.ReviewFindingActionability
+import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewScopeDisposition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditSeverity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 @Suppress("TooManyFunctions")
 internal object FeatureTaskRuntimeOutputVerification {
-  fun verdictFor(phaseId: String, outputObject: Map<String, Any?>?): FeatureTaskRuntimeVerdict? {
-    val map = outputObject.orEmpty()
-    val text = legacyOutputText(map)
-    return verdictFor(phaseId, text, map)
+  fun verdictFor(phaseId: String, outputObject: Map<String, Any?>?): FeatureTaskRuntimeVerdict {
+    val wireVerdict = (outputObject?.get("verdict") as? String)
+      ?.takeIf(String::isNotBlank)
+      ?.let { value -> FeatureTaskRuntimeVerdict.rejectRemovedVerdict(value, "phase output verdict") }
+    return when (phaseId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> reviewVerdict(outputObject, wireVerdict)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
+        findingVerificationVerdict(outputObject, wireVerdict)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditVerdict(outputObject, wireVerdict)
+      else -> wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
+    }
   }
 
-  fun verdictFor(
-    phaseId: String,
-    outputText: String,
-    outputObject: Map<String, Any?>? = null,
-  ): FeatureTaskRuntimeVerdict? =
-    FeatureTaskRuntimePhaseOutputDerivation.verdictFor(derivationContext(phaseId, outputText, outputObject))
-
-  fun dispositionsFrom(outputObject: Map<String, Any?>?): List<FeatureTaskRuntimeFindingVerificationDisposition> {
-    val map = outputObject.orEmpty()
-    return dispositionsFrom(legacyOutputText(map), map)
-  }
-
-  fun dispositionsFrom(
-    outputText: String,
-    outputObject: Map<String, Any?>? = null,
-  ): List<FeatureTaskRuntimeFindingVerificationDisposition> =
-    FeatureTaskRuntimePhaseOutputDerivation.dispositionsFrom(derivationContext("", outputText, outputObject))
+  fun dispositionsFrom(outputObject: Map<String, Any?>?): List<FeatureTaskRuntimeFindingVerificationDisposition> =
+    findingVerificationVerdictFrom(outputObject)?.dispositions.orEmpty()
 
   fun verifiedFindingDispositions(
     outputObject: Map<String, Any?>?,
-  ): List<FeatureTaskRuntimeFindingVerificationDisposition> {
-    val map = outputObject.orEmpty()
-    return verifiedFindingDispositions(legacyOutputText(map), map)
-  }
-
-  fun verifiedFindingDispositions(
-    outputText: String,
-    outputObject: Map<String, Any?>? = null,
   ): List<FeatureTaskRuntimeFindingVerificationDisposition> =
-    FeatureTaskRuntimePhaseOutputDerivation.verifiedFindingDispositions(derivationContext("", outputText, outputObject))
+    findingVerificationVerdictFrom(outputObject)?.verifiedDispositions.orEmpty()
 
   fun rejectedFindingDispositions(
     outputObject: Map<String, Any?>?,
-  ): List<FeatureTaskRuntimeFindingVerificationDisposition> {
-    val map = outputObject.orEmpty()
-    return rejectedFindingDispositions(legacyOutputText(map), map)
-  }
-
-  fun rejectedFindingDispositions(
-    outputText: String,
-    outputObject: Map<String, Any?>? = null,
   ): List<FeatureTaskRuntimeFindingVerificationDisposition> =
-    FeatureTaskRuntimePhaseOutputDerivation.rejectedFindingDispositions(derivationContext("", outputText, outputObject))
+    findingVerificationVerdictFrom(outputObject)?.rejectedDispositions.orEmpty()
 
-  fun unresolvedReviewFindings(outputObject: Map<String, Any?>?): List<FeatureTaskRuntimeReviewFinding> {
-    val map = outputObject.orEmpty()
-    return unresolvedReviewFindings(legacyOutputText(map), map)
-  }
+  fun unresolvedReviewFindings(outputObject: Map<String, Any?>?): List<FeatureTaskRuntimeReviewFinding> =
+    reviewVerdictFrom(outputObject)?.unresolvedFindings.orEmpty()
 
-  fun unresolvedReviewFindings(
-    outputText: String,
-    outputObject: Map<String, Any?>? = null,
-  ): List<FeatureTaskRuntimeReviewFinding> =
-    FeatureTaskRuntimePhaseOutputDerivation.unresolvedReviewFindings(derivationContext("", outputText, outputObject))
+  fun unmetAuditCriteria(outputObject: Map<String, Any?>?): List<String> =
+    auditVerdictFrom(outputObject)?.blockingCriteria?.map { it.message }.orEmpty()
 
-  fun unmetAuditCriteria(outputObject: Map<String, Any?>?): List<String> {
-    val map = outputObject.orEmpty()
-    return unmetAuditCriteria(legacyOutputText(map), map)
-  }
+  fun canonicalAuditCriterionRefs(outputObject: Map<String, Any?>?): List<String> = auditVerdictFrom(outputObject)
+    ?.blockingCriteria
+    ?.mapNotNull { AUDIT_CRITERION_REF.find(it.message)?.value?.uppercase() }
+    ?.distinct()
+    .orEmpty()
 
-  fun unmetAuditCriteria(outputText: String, outputObject: Map<String, Any?>? = null): List<String> =
-    FeatureTaskRuntimePhaseOutputDerivation.unmetAuditCriteria(derivationContext("", outputText, outputObject))
-
-  fun canonicalAuditCriterionRefs(outputObject: Map<String, Any?>?): List<String> {
-    val map = outputObject.orEmpty()
-    return canonicalAuditCriterionRefs(legacyOutputText(map), map)
-  }
-
-  fun canonicalAuditCriterionRefs(outputText: String, outputObject: Map<String, Any?>? = null): List<String> =
-    FeatureTaskRuntimePhaseOutputDerivation.canonicalAuditCriterionRefs(derivationContext("", outputText, outputObject))
+  private val AUDIT_CRITERION_REF: Regex = Regex("""(AC-\d+)""", RegexOption.IGNORE_CASE)
 
   fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
     val wireVerdict = outputObject["verdict"] as? String
     val producedOutputs = JsonSupport.anyToStringAnyMap(outputObject["produced_outputs"])
-    return auditGapsArrayPayloadError(wireVerdict, producedOutputs)
+    return rejectedCriteriaAliasError(producedOutputs)
+      ?: rejectedLegacyCriteriaKeyError(producedOutputs)
+      ?: auditGapsArrayPayloadError(wireVerdict, producedOutputs)
       ?: if (producedOutputs?.containsKey(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS) == true) {
         null
       } else {
@@ -97,22 +70,82 @@ internal object FeatureTaskRuntimeOutputVerification {
       }
   }
 
-  private fun legacyOutputText(map: Map<String, Any?>): String =
-    (map["output_text"] as? String)?.takeIf(String::isNotBlank)
-      ?: if (map.isNotEmpty()) JsonSupport.mapToJsonString(map) else ""
-
-  private fun derivationContext(
-    phaseId: String,
-    outputText: String,
+  private fun findingVerificationVerdict(
     outputObject: Map<String, Any?>?,
-  ): FeatureTaskRuntimeDerivationContext {
-    val map = outputObject.orEmpty()
-    val resolvedPhaseId = (map["phase_id"] as? String)?.takeIf(String::isNotBlank) ?: phaseId
-    return FeatureTaskRuntimeDerivationContext(
-      phaseId = resolvedPhaseId,
-      outputText = outputText,
-      outputMap = map,
+    wireVerdict: FeatureTaskRuntimeVerdict?,
+  ): FeatureTaskRuntimeVerdict {
+    val derived = findingVerificationVerdictFrom(outputObject)?.verdict
+    return derived ?: wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
+  }
+
+  private fun findingVerificationVerdictFrom(
+    outputObject: Map<String, Any?>?,
+  ): FeatureTaskRuntimeFindingVerificationVerdict? {
+    val dispositionsRaw = outputObject?.get("produced_outputs")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
+      ?: return null
+    val dispositions = FeatureTaskRuntimeFindingVerificationDisposition.parseList(
+      dispositionsRaw,
+      "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS}",
     )
+    return FeatureTaskRuntimeFindingVerificationVerdict(dispositions)
+  }
+
+  private fun reviewVerdict(
+    outputObject: Map<String, Any?>?,
+    wireVerdict: FeatureTaskRuntimeVerdict?,
+  ): FeatureTaskRuntimeVerdict {
+    val reviewVerdict = reviewVerdictFrom(outputObject)
+    return reviewVerdict?.verdict ?: wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
+  }
+
+  private fun auditVerdict(
+    outputObject: Map<String, Any?>?,
+    wireVerdict: FeatureTaskRuntimeVerdict?,
+  ): FeatureTaskRuntimeVerdict = auditVerdictFrom(outputObject)?.verdict
+    ?: wireVerdict?.takeIf(FeatureTaskRuntimeVerdict.AUDIT_VERDICTS::contains)
+    ?: FeatureTaskRuntimeVerdict.ADVANCE
+
+  private fun reviewVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeReviewVerdict? {
+    val findingsRaw = outputObject?.get("produced_outputs")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS) as? List<*>
+      ?: return null
+    val findings = findingsRaw.mapNotNull(::actionableReviewFinding)
+    return FeatureTaskRuntimeReviewVerdict(findings)
+  }
+
+  private fun actionableReviewFinding(entry: Any?): FeatureTaskRuntimeReviewFinding? {
+    val map = JsonSupport.anyToStringAnyMap(entry) ?: return null
+    val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
+    val message = (map["message"] as? String)?.takeIf(String::isNotBlank)
+    if (severity == null || message == null) return null
+    val claimVerdict = optionalClaimVerdict(map["claim_verdict"])
+    val scopeDisposition = optionalScopeDisposition(map["scope_disposition"])
+    if (!ReviewFindingActionability.isActionable(claimVerdict, scopeDisposition)) {
+      return null
+    }
+    return FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.fromWire(severity), message)
+  }
+
+  private fun optionalClaimVerdict(raw: Any?): ReviewClaimVerdict? {
+    val value = (raw as? String)?.trim()?.takeIf(String::isNotBlank) ?: return null
+    return ReviewClaimVerdict.entries.firstOrNull { it.wireValue == value }
+  }
+
+  private fun optionalScopeDisposition(raw: Any?): ReviewScopeDisposition? {
+    val value = (raw as? String)?.trim()?.takeIf(String::isNotBlank) ?: return null
+    return ReviewScopeDisposition.entries.firstOrNull { it.wireValue == value }
+  }
+
+  private fun auditVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeAuditVerdict? {
+    val producedOutputs = outputObject?.get("produced_outputs")?.let(JsonSupport::anyToStringAnyMap)
+    val gapsRaw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS) as? List<*>
+      ?: producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA) as? List<*>
+      ?: return null
+    val gaps = gapsRaw.mapNotNull(::auditCriterionGapFromEntry)
+    return FeatureTaskRuntimeAuditVerdict(gaps)
   }
 }
 
@@ -150,6 +183,29 @@ private fun auditCriterionGapMessage(criterion: String?, note: String?, issue: S
   issue != null -> issue
   criterion != null -> criterion
   else -> null
+}
+
+private fun rejectedCriteriaAliasError(producedOutputs: Map<String, Any?>?): String? {
+  val alias = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_REJECTED_ALIAS
+  if (producedOutputs?.containsKey(alias) != true) return null
+  return "Audit produced_outputs carries '$alias'; the canonical gap signal is " +
+    "'${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}'. Rename the array. The audit " +
+    "criteria signal has exactly one representation, so no alias reaches the audit_gap edge."
+}
+
+private fun rejectedLegacyCriteriaKeyError(producedOutputs: Map<String, Any?>?): String? {
+  val legacyKey = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
+  if (
+    producedOutputs?.containsKey(legacyKey) != true ||
+    producedOutputs.containsKey(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS)
+  ) {
+    return null
+  }
+  val legacy = producedOutputs[legacyKey]
+  if (legacy is List<*> && legacy.isEmpty()) return null
+  return "Audit produced_outputs carries '$legacyKey'; " +
+    "the canonical gap signal is '${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}'. " +
+    "Rename the array to gaps and pair it with the compact audit gap vocabulary."
 }
 
 private fun auditGapsArrayPayloadError(wireVerdict: String?, producedOutputs: Map<String, Any?>?): String? {

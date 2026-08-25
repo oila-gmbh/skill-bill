@@ -1,10 +1,3 @@
-## [2026-08-25] SKILL-208 subtask 5 — Retire shape policing
-Areas: runtime-application/{featuretask,goalrunner,workflow}, runtime-domain/workflow/taskruntime, docs
-- Feature-task phases settle on prose `output_text` plus runtime-owned sidecar; derivation owns settlement/routing; retired phase-output schema and `RECORD_REJECTED` regeneration topology.
-- Goal planning keeps planning-projection producer gate; hard reset targets preparation-contract drift, not phase-output schema version.
-Feature flag: N/A
-Acceptance criteria: 8/8 implemented
-
 ## [2026-08-24] SKILL-206 subtask 2 — Remove provider token accounting producers and projections
 Areas: runtime-kotlin/{application/goalrunner,domain,ports,infra-fs,infra-sqlite,mcp,core}, orchestration/contracts, docs
 - Removed provider-reported token fields and usage-key decoding from agent-run models and decoders while preserving child-session identity, terminal outcomes, and local byte-derived estimates.

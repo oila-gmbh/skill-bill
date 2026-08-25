@@ -12,11 +12,6 @@ import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.asPendingForOperatorResume
-import skillbill.application.featuretask.firstJsonObjectInPlanningPayload
-import skillbill.application.featuretask.model.RuntimeOwnedFindingVerdictsReadResolution
-import skillbill.application.featuretask.model.RuntimeOwnedReviewPassClaimsReadResolution
-import skillbill.application.featuretask.model.resolveRuntimeOwnedFindingVerdicts
-import skillbill.application.featuretask.model.resolveRuntimeOwnedReviewPassClaims
 import skillbill.application.featuretask.phaseLedgerFrom
 import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.model.GoalRunnerChildRepairApplyResult
@@ -32,6 +27,7 @@ import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.LegacyProseWorkflowError
@@ -48,8 +44,6 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
@@ -84,9 +78,8 @@ import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.review.model.ReviewFindingVerdict
-import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
@@ -109,6 +102,7 @@ import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -123,6 +117,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifacts
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Duration
@@ -157,6 +152,7 @@ class WorkflowGoalRunnerManifestStore(
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val decompositionManifestValidator: DecompositionManifestValidator,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
+  private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
   private val clock: Clock = Clock.systemUTC(),
 ) : GoalRunnerManifestStore {
@@ -199,7 +195,7 @@ class WorkflowGoalRunnerManifestStore(
   ): Boolean = controls.releaseExecutionLease(parentWorkflowId, ownerToken, generation, dbPathOverride)
 
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
-  private val planningHydrator = GoalChildPlanningHydrator(planningProjectionValidator)
+  private val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator, planningProjectionValidator)
   private val parentProjection = GoalParentProjectionWriter(engine, decompositionManifestValidator)
   private val controls = GoalRunnerControlCoordinator(
     database,
@@ -1543,13 +1539,13 @@ class WorkflowGoalRunnerOutcomeStore(
   // Ground-truth git read to recover the terminal commit SHA when an agent completes
   // commit_push under suppress_pr but omits the SHA. No-op default keeps artifact-only behavior.
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator = ReviewRawOutputFallbackValidator,
   // Injectable liveness probe for goal-parent crash reconciliation (AC-005). The no-op default never
   // confirms a process dead, so a seam wired without a real supervisor never reconciles.
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
   private val decompositionManifestValidator: DecompositionManifestValidator? = null,
   private val decompositionManifestFileStore: DecompositionManifestFileStore =
     UnavailableDecompositionManifestFileStore,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) : GoalRunnerWorkflowOutcomeStore, GoalRunnerAttemptLedgerStore, GoalRunnerChildRepairStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val childRepair = GoalRunnerChildRepairOperations(engine, gitOperations, decompositionManifestValidator)
@@ -1624,7 +1620,7 @@ class WorkflowGoalRunnerOutcomeStore(
     // where continuation children were never read by this RUNTIME-only emission path.
     if (GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY !in artifacts) return@read emptyList()
     val review = goalReviewArtifacts(artifacts) ?: return@read emptyList()
-    validatedGoalReviewPasses(review, unitOfWork, diagnostics)
+    validatedGoalReviewPasses(review, phaseOutputValidator, unitOfWork)
       .drop(review.state.emittedPassCount)
   }
 
@@ -1634,7 +1630,7 @@ class WorkflowGoalRunnerOutcomeStore(
       val artifacts = decodeArtifacts(record.artifactsJson)
       val review = goalReviewArtifacts(artifacts) ?: return@transaction false
       val state = review.state
-      validatedGoalReviewPasses(review, unitOfWork, diagnostics)
+      validatedGoalReviewPasses(review, phaseOutputValidator, unitOfWork)
       if (passNumber != state.emittedPassCount + 1 || passNumber > state.completedPassCount) {
         return@transaction false
       }
@@ -2578,121 +2574,56 @@ private fun goalReviewArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReview
 
 private fun validatedGoalReviewPasses(
   review: GoalSubtaskReviewArtifacts,
+  phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   unitOfWork: UnitOfWork,
-  diagnostics: RuntimeDiagnostics,
 ): List<GoalSubtaskReviewPassResult> {
   review.state.passResults.forEach { pass ->
-    validateGoalReviewPass(pass, review, unitOfWork, diagnostics)
+    val rawResult = review.rawResults.getValue(pass.passNumber.toString())
+    val output = phaseOutputValidator
+      .validatePhaseOutput(rawResult, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      .normalizedOutput
+      .envelope
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
+    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output, recordedVerdicts)
+    val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
+    if (
+      pass.verdict != outcome.verdict ||
+      pass.unresolvedFindingCount != outcome.unresolvedFindingCount ||
+      pass.findings != findings
+    ) {
+      throw InvalidGoalSubtaskReviewStateSchemaError(
+        sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
+        fieldPath = "pass_results.${pass.passNumber}",
+        reason =
+        "must exactly match the verdict, unresolved count, and compact findings derived from " +
+          "its durable raw review result.",
+      )
+    }
   }
   return review.state.passResults
 }
 
-private fun validateGoalReviewPass(
-  pass: GoalSubtaskReviewPassResult,
-  review: GoalSubtaskReviewArtifacts,
-  unitOfWork: UnitOfWork,
-  diagnostics: RuntimeDiagnostics,
-) {
-  val rawResult = review.rawResults.getValue(pass.passNumber.toString())
-  val output = parseGoalReviewOutputEnvelope(rawResult)
-  val reviewRunId = pass.reviewRunId.takeIf(String::isNotBlank)
-    ?: goalReviewPassSchemaError(pass.passNumber, "must have a runtime-owned review run id mapping.")
-  val importedClaims = resolveGoalReviewImportedClaims(pass.passNumber, reviewRunId, unitOfWork, diagnostics)
-  val reviewImport = GoalSubtaskReviewImport(reviewRunId, importedClaims.findings)
-  val recordedVerdicts = resolveGoalReviewFindingVerdicts(pass.passNumber, reviewRunId, unitOfWork, diagnostics)
-  val findings = GoalSubtaskReviewSummaryReducer.fromImport(reviewImport, recordedVerdicts)
-  val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
-  if (
-    pass.verdict != outcome.verdict ||
-    pass.unresolvedFindingCount != outcome.unresolvedFindingCount ||
-    pass.findings != findings
-  ) {
-    goalReviewPassSchemaError(
-      pass.passNumber,
-      "must exactly match the verdict, unresolved count, and compact findings derived from " +
-        "its durable raw review result.",
-    )
-  }
-}
-
-private fun goalReviewPassSchemaError(passNumber: Int, reason: String): Nothing =
-  throw InvalidGoalSubtaskReviewStateSchemaError(
-    sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-    fieldPath = "pass_results.$passNumber",
-    reason = reason,
-  )
-
-private fun resolveGoalReviewImportedClaims(
-  passNumber: Int,
-  reviewRunId: String,
-  unitOfWork: UnitOfWork,
-  diagnostics: RuntimeDiagnostics,
-): ReviewPassClaimSnapshot {
-  return when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-    is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
-    is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> {
-      recordGoalRunnerRuntimeFactFailure(
-        diagnostics,
-        "GoalRunnerWorkflowStores.validatedGoalReviewPasses",
-        "persisted runtime-owned review import",
-        resolution.cause,
-      )
-      goalReviewPassSchemaError(
-        passNumber,
-        "must have a persisted runtime-owned review import: ${resolution.cause}.",
-      )
-    }
-    is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> {
-      recordGoalRunnerRuntimeFactFailure(
-        diagnostics,
-        "GoalRunnerWorkflowStores.validatedGoalReviewPasses",
-        "persisted runtime-owned review import",
-        resolution.cause,
-      )
-      goalReviewPassSchemaError(
-        passNumber,
-        "could not read the persisted runtime-owned review import: ${resolution.cause}.",
+private object ReviewRawOutputFallbackValidator : FeatureTaskRuntimePhaseOutputValidator {
+  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+    if (JsonSupport.parseObjectOrNull(phaseOutputText) == null) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "must be a JSON object when no runtime schema validator is injected.",
       )
     }
   }
-}
 
-private fun resolveGoalReviewFindingVerdicts(
-  passNumber: Int,
-  reviewRunId: String,
-  unitOfWork: UnitOfWork,
-  diagnostics: RuntimeDiagnostics,
-): List<ReviewFindingVerdict> = when (val resolution = unitOfWork.resolveRuntimeOwnedFindingVerdicts(reviewRunId)) {
-  is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
-  is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
-    recordGoalRunnerRuntimeFactFailure(
-      diagnostics,
-      "GoalRunnerWorkflowStores.validatedGoalReviewPasses",
-      "runtime-owned finding verdicts",
-      resolution.cause,
-    )
-    goalReviewPassSchemaError(
-      passNumber,
-      "could not read runtime-owned finding verdicts: ${resolution.cause}.",
-    )
+  override fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> {
+    validatePhaseOutputText(phaseOutputText, sourceLabel)
+    return requireNotNull(JsonSupport.parseObjectOrNull(phaseOutputText))
+      .let(JsonSupport::jsonElementToValue)
+      .let(JsonSupport::anyToStringAnyMap)
+      ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "must decode to a string-keyed object when no runtime schema validator is injected.",
+      )
   }
-}
-
-private fun parseGoalReviewOutputEnvelope(rawResult: String): Map<String, Any?> {
-  val json = firstJsonObjectInPlanningPayload(rawResult)
-    ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      fieldPath = "raw_results",
-      reason = "must decode to a string-keyed object.",
-    )
-  return JsonSupport.parseObjectOrNull(json)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      fieldPath = "raw_results",
-      reason = "must decode to a string-keyed object.",
-    )
 }
 
 private fun taskRuntimeRecordOrNull(
@@ -2705,17 +2636,6 @@ private fun taskRuntimeRecordOrNull(
     null
   } else {
     throw error
-  }
-}
-
-private fun recordGoalRunnerRuntimeFactFailure(
-  diagnostics: RuntimeDiagnostics,
-  seam: String,
-  expected: String,
-  cause: String,
-) {
-  runCatching {
-    diagnostics.warning("seam=$seam value_expected=$expected value_used=none cause=$cause")
   }
 }
 

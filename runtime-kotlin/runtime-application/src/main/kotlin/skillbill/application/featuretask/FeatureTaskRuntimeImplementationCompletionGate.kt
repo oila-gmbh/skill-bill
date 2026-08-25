@@ -58,9 +58,10 @@ internal data class FeatureTaskRuntimeImplementationObligations(
     get() = loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
 
   /**
-   * Under a regenerated plan this still resolves to [plannedTaskIds] — and because those are read from the
-   * LATEST delivered executable-plan projection, they are the regenerated plan's ids. A receipt is therefore
-   * never charged with a phantom task id carried over from a superseded plan generation.
+   * Under a plan regeneration ([FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID])
+   * this still resolves to [plannedTaskIds] — and because those are read from the LATEST delivered
+   * executable-plan projection, they are the regenerated plan's ids. A receipt is therefore never
+   * charged with a phantom task id carried over from a superseded plan generation.
    */
   val requiredIds: List<String>
     get() = if (underAuditRepairLoop) carriedRepairItemIds else plannedTaskIds
@@ -105,9 +106,8 @@ internal fun featureTaskRuntimeImplementationCompletionReason(
   phaseId: String,
   obligations: FeatureTaskRuntimeImplementationObligations,
   claim: FeatureTaskRuntimeImplementationClaim,
-  returnedText: String = "",
 ): String? {
-  val missing = featureTaskRuntimeOpenObligations(obligations, claim, returnedText)
+  val missing = featureTaskRuntimeOpenObligations(obligations, claim)
   if (missing.isNotEmpty()) {
     return "Phase '$phaseId' reported 'completed' but its implementation receipt does not close every " +
       "${obligations.obligationNoun} the authoritative plan declared. Still open: ${missing.joinToString()}. " +
@@ -133,13 +133,8 @@ internal fun featureTaskRuntimeImplementationCompletionReason(
 internal fun featureTaskRuntimeOpenObligations(
   obligations: FeatureTaskRuntimeImplementationObligations,
   claim: FeatureTaskRuntimeImplementationClaim,
-  returnedText: String = "",
 ): List<String> {
-  val closedFromReceipt = claim.completedTaskIds.toSet()
-  val closedFromProse = FeatureTaskRuntimePhaseOutputDerivation
-    .closedObligationIds(returnedText, obligations.requiredIds)
-    .toSet()
-  val closed = closedFromReceipt + closedFromProse
+  val closed = claim.completedTaskIds.toSet()
   return obligations.requiredIds.filterNot { it in closed }
 }
 
@@ -257,7 +252,6 @@ internal fun featureTaskRuntimeIncompleteWorkGateReason(
   phaseId: String,
   outputMap: Map<String, Any?>,
   obligations: FeatureTaskRuntimeImplementationObligations,
-  returnedText: String = "",
 ): String? {
   val gateApplies = FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId) &&
     outputMap["status"] == PHASE_OUTPUT_STATUS_COMPLETED &&
@@ -267,7 +261,6 @@ internal fun featureTaskRuntimeIncompleteWorkGateReason(
   return featureTaskRuntimeImplementationCompletionReason(
     phaseId = phaseId,
     obligations = obligations,
-    claim = featureTaskRuntimeImplementationClaimFrom(outputMap, obligations, returnedText),
-    returnedText = returnedText,
+    claim = featureTaskRuntimeImplementationClaimFrom(outputMap, obligations),
   )
 }

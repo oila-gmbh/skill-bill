@@ -4,7 +4,6 @@ import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
-import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
 import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
@@ -32,7 +31,6 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
-import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
@@ -62,8 +60,6 @@ import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
-import skillbill.review.model.ReviewStage
-import skillbill.review.model.ReviewStageBoundary
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
@@ -86,70 +82,6 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 class ParallelCodeReviewRunnerTest {
-  @Test
-  fun `review lane persistence failure records the missing runtime-owned fact`() {
-    val tempDir = createGitRepo()
-    createStagedFile(tempDir)
-    val diagnostics = RecordingDiagnostics()
-    val launcher = ParallelSubtaskLauncher()
-    val runner = createRunner(
-      launcher,
-      RunnerFixtureConfig(
-        database = ThrowingReviewDatabase,
-        diagnostics = diagnostics,
-      ),
-    )
-
-    val error = assertFailsWith<RuntimeOwnedFactUnavailable> {
-      runner.run(
-        baseRequest(repoRoot = tempDir).copy(codeReviewMode = CodeReviewExecutionMode.DELEGATED),
-      )
-    }
-
-    assertContains(error.message.orEmpty(), "runtime-owned review lane dispositions")
-    assertTrue(
-      diagnostics.warnings.any {
-        it.contains("seam=ParallelCodeReviewRunner.selectLaunchesForResume") &&
-          it.contains("value_used=read_error")
-      },
-      diagnostics.warnings.toString(),
-    )
-    assertTrue(launcher.requests.isEmpty())
-  }
-
-  @Test
-  fun `review stage boundary persistence failure records the missing runtime-owned fact`() {
-    val tempDir = createGitRepo()
-    createStagedFile(tempDir)
-    val diagnostics = RecordingDiagnostics()
-    val database = RecordingReviewDatabase().also { it.failReviewStageBoundaryWrites = true }
-    val launcher = alwaysSuccessLauncher()
-    val runner = createRunner(
-      launcher,
-      RunnerFixtureConfig(
-        database = database,
-        diagnostics = diagnostics,
-        diffResolver = RecordingDiffResolver(default = diffFor("Test.kt")),
-      ),
-    )
-
-    val error = assertFailsWith<RuntimeOwnedFactUnavailable> {
-      runner.run(
-        baseRequest(repoRoot = tempDir, scope = ParallelReviewScope.STAGED)
-          .copy(codeReviewMode = CodeReviewExecutionMode.DELEGATED),
-      )
-    }
-
-    assertContains(error.message.orEmpty(), "runtime-owned review stage boundary")
-    assertTrue(
-      diagnostics.warnings.any {
-        it.contains("seam=ParallelCodeReviewRunner.recordReviewStageBoundary.write") &&
-          it.contains("value_used=blocked")
-      },
-      diagnostics.warnings.toString(),
-    )
-  }
-
   @Test
   fun `native worker preflight failure launches no parent agent`() {
     val tempDir = createGitRepo()
@@ -1376,10 +1308,9 @@ internal data class RunnerFixtureConfig(
   val rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
     ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
   },
-  val database: DatabaseSessionFactory = RecordingReviewDatabase(),
+  val database: RecordingReviewDatabase = RecordingReviewDatabase(),
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
-  val diagnostics: RuntimeDiagnostics = skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
   val registerParse: (String) -> skillbill.review.model.ParallelReviewParseResult =
     skillbill.review.ParallelReviewFindingParser::parse,
 ) {
@@ -1439,7 +1370,6 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
       ),
     ),
     nativeAgentPreflight = config.nativeAgentPreflight,
-    diagnostics = config.diagnostics,
     reviewEvidenceBrokerFactory = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
     governedEvidenceEndpointBinder = skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder(
       java.nio.file.Files.createTempDirectory("endpoint"),
@@ -1451,7 +1381,6 @@ internal class RecordingReviewDatabase : DatabaseSessionFactory {
   val laneWrites = mutableListOf<Pair<String, List<ReviewRunLane>>>()
   val findingLaneWrites = mutableListOf<Pair<String, Map<String, String>>>()
   var specProjection: ReviewSpecProjectionReference? = null
-  var failReviewStageBoundaryWrites = false
   private var passClaims: ReviewPassClaimSnapshot? = null
 
   private val reviews = Proxy.newProxyInstance(
@@ -1472,14 +1401,7 @@ internal class RecordingReviewDatabase : DatabaseSessionFactory {
         @Suppress("UNCHECKED_CAST")
         findingLaneWrites += args[0] as String to (args[1] as Map<String, String>)
       }
-      "recordFindingVerdicts" -> Unit
-      "recordStageBoundary" -> {
-        @Suppress("UNCHECKED_CAST")
-        val boundary = args[1] as ReviewStageBoundary
-        if (failReviewStageBoundaryWrites && boundary.stage == ReviewStage.REVIEW) {
-          error("review stage boundary persistence unavailable")
-        }
-      }
+      "recordFindingVerdicts", "recordStageBoundary" -> Unit
       "recordSpecProjectionReference" -> specProjection = args[1] as ReviewSpecProjectionReference
       "recordReviewPassClaims" -> {
         @Suppress("UNCHECKED_CAST")
@@ -1510,20 +1432,6 @@ internal class RecordingReviewDatabase : DatabaseSessionFactory {
   override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
 
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
-}
-
-private object ThrowingReviewDatabase : DatabaseSessionFactory {
-  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/tmp/throwing-review.db")
-
-  override fun databaseExists(dbOverride: String?): Boolean = true
-
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = error("review database read unavailable")
-
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
-    error("review database write unavailable")
-
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T =
-    error("review database transaction unavailable")
 }
 
 private object NoopReviewLifecycleTelemetry : LifecycleTelemetryRepository {

@@ -4,7 +4,7 @@ package skillbill.contracts.workflow
  * Runtime-side mirror of the schema's `contract_version`; a parity test fails
  * the build if they diverge. Bump both sites together.
  */
-const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.5"
+const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.4"
 
 /**
  * Version of the `implement_fix` repair-receipt payload nested under
@@ -16,6 +16,37 @@ const val FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION: String = "0.2"
 const val FEATURE_TASK_RUNTIME_REPAIR_LEDGER_CONTRACT_VERSION: String = "0.1"
 
 const val FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION: String = "0.1"
+
+/**
+ * Version of the typed phase-output validation result and repair-evidence contract.
+ * This is independent from the wire envelope schema version above: the result is
+ * an adapter/domain contract and does not change the phase-output payload shape.
+ */
+const val FEATURE_TASK_RUNTIME_PHASE_OUTPUT_VALIDATION_CONTRACT_VERSION: String = "0.1"
+
+/**
+ * Single source of truth for where the canonical feature-task-runtime
+ * per-phase output schema lives. The Gradle copy task in
+ * `runtime-infra-fs/build.gradle.kts` must mirror these values because
+ * Gradle's Kotlin DSL cannot import runtime constants directly.
+ */
+object FeatureTaskRuntimePhaseOutputSchemaPaths {
+  /** Repo-relative path to the canonical schema YAML on disk. */
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-phase-output-schema.yaml"
+
+  /** Classpath resource path where runtime-infra-fs bundles the schema for runtime loads. */
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-phase-output-schema.yaml"
+
+  /**
+   * Expected value of the canonical schema's `$id`. The validator
+   * asserts this value on load so stale or shadowed resources fail
+   * loudly at the parse seam.
+   */
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-phase-output-schema.yaml"
+}
 
 /**
  * Runtime-side mirror of the handoff-envelope schema's `contract_version`;
@@ -63,7 +94,7 @@ object FeatureTaskRuntimePhaseHandoffSchemaPaths {
  * Pins the durable private-phase-record/delivered-projection wire split. Legacy phase records
  * without the explicit record kind and version are not compatible.
  */
-const val FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION: String = "0.3"
+const val FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION: String = "0.2"
 
 /**
  * Pins the durable run-invariants artifact. Version 0.1 is the first version whose
@@ -173,20 +204,6 @@ object FeatureTaskRuntimeCheckpointIdentitySchemaPaths {
  * and every review lane for one repository checkpoint.
  */
 const val FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION: String = "0.1"
-
-const val FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID: String =
-  "https://skill-bill.dev/contracts/feature-task-runtime-prose-phase-boundary"
-
-const val LEGACY_FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_ID: String =
-  "https://skill-bill.dev/contracts/feature-task-runtime-phase-output-schema.yaml"
-
-val ACCEPTED_GOAL_PLANNING_PHASE_OUTPUT_CONTRACT_IDS: Set<String> = setOf(
-  FEATURE_TASK_RUNTIME_PROSE_PHASE_BOUNDARY_CONTRACT_ID,
-  LEGACY_FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_ID,
-)
-
-fun isAcceptedGoalPlanningPhaseOutputContractId(contractId: String): Boolean =
-  contractId in ACCEPTED_GOAL_PLANNING_PHASE_OUTPUT_CONTRACT_IDS
 
 const val FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION: String = "0.1"
 

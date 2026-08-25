@@ -217,26 +217,10 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   fun `repository changes between audits allow recurring gaps to continue`() {
     // Each audit iteration reads the fingerprint twice: once to refresh the receipt projection's
     // repository checkpoint at launch (AC-012), then once for audit-gap progress detection. Both reads
-    // in an iteration observe the same repository, so the values are paired. Each mutating implement
-    // pass also reads twice (launch projection refresh plus completion reconciliation), and
-    // runtime-owned review settlement reads once before the satisfied audit advances.
+    // in an iteration observe the same repository, so the values are paired.
     val git = RecordingWorkflowGitOperations().apply {
       repositoryFingerprintSequence.addAll(
-        listOf(
-          "before-repair",
-          "before-repair",
-          "before-repair",
-          "before-repair",
-          "after-repair",
-          "after-repair",
-          "after-repair",
-          "after-repair",
-          "after-repair",
-          "after-repair",
-          "after-repair",
-          "after-repair",
-          "after-repair",
-        ),
+        listOf("before-repair", "before-repair", "after-repair", "after-repair", "after-repair", "after-repair"),
       )
     }
     val harness = runnerHarness(

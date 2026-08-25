@@ -20,7 +20,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.8"
+    const: "0.6"
   review_base_sha:
     type: string
     pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
@@ -183,7 +183,6 @@ properties:
         - review_result_artifact
         - unresolved_finding_count
         - findings
-        - review_run_id
       properties:
         pass_number:
           type: integer
@@ -194,9 +193,6 @@ properties:
         executed_mode:
           type: string
           enum: [inline, delegated]
-        review_run_id:
-          type: string
-          minLength: 1
         commit_focused_accounting:
           description: >
             What a delegated commit-focused pass actually did: which commit sequence it covered, how

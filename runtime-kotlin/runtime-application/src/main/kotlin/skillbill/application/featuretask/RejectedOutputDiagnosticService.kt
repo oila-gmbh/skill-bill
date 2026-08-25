@@ -30,13 +30,7 @@ class RejectedOutputDiagnosticService(
 ) {
   fun record(request: RejectedOutputDiagnosticRequest): RejectedOutputDiagnostic {
     validate(request)
-    val identity = stableIdentity(
-      request.workflowId,
-      request.phaseId,
-      request.attempt,
-      request.repairTurn,
-      request.diagnosticDiscriminator,
-    )
+    val identity = stableIdentity(request.workflowId, request.phaseId, request.attempt, request.repairTurn)
     existing(identity)?.let { record ->
       if (!record.matches(request)) throw RejectedOutputDiagnosticError.Conflict(identity)
       metadataValidator.validate(record.metadata)
@@ -139,16 +133,9 @@ class RejectedOutputDiagnosticService(
     // need distinct identities; every ordinary attempt stays at turn 0 and therefore keeps hashing the
     // exact preimage it always did, which is what keeps an identity already persisted on a quarantine
     // entry resolvable.
-    fun stableIdentity(
-      workflowId: String,
-      phaseId: String,
-      attempt: Int,
-      repairTurn: Int = 0,
-      diagnosticDiscriminator: String? = null,
-    ): String {
+    fun stableIdentity(workflowId: String, phaseId: String, attempt: Int, repairTurn: Int = 0): String {
       val base = "$workflowId\u0000$phaseId\u0000$attempt"
-      val withRepairTurn = if (repairTurn == 0) base else "$base\u0000$repairTurn"
-      val preimage = diagnosticDiscriminator?.let { "$withRepairTurn\u0000$it" } ?: withRepairTurn
+      val preimage = if (repairTurn == 0) base else "$base\u0000$repairTurn"
       return "rod_${sha256(preimage.encodeToByteArray())}"
     }
 

@@ -35,7 +35,6 @@ data class RejectedOutputDiagnosticRequest(
   val observedByteSize: Long = rawResponse.size.toLong(),
   val observedSha256: String = RejectedOutputDiagnosticService.sha256(rawResponse),
   val truncated: Boolean = false,
-  val diagnosticDiscriminator: String? = null,
   /**
    * Repair turn within [attempt], zero for an ordinary attempt. A validation-gate repair cycle
    * launches several agent turns under one attempt, and each turn's rejection is its own diagnostic.

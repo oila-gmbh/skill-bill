@@ -11,8 +11,6 @@ import skillbill.ports.workflow.restoreIndexState
 import skillbill.ports.workflow.stagePaths
 import skillbill.ports.workflow.updateCheckpointRef
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar
-import skillbill.workflow.taskruntime.model.readCommitSubjectFromProse
 import java.nio.file.Path
 
 private const val COMMIT_PUSH_RESULT_KEY = "commit_push_result"
@@ -256,20 +254,6 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
      * payload costs nothing to reject. A blank outcome message is the load-bearing refusal: without it
      * the finalisation would publish the provisional checkpoint subject as the deliverable commit.
      */
-    fun readHandoffFromProse(prose: String): FeatureTaskRuntimeCommitPushHandoffResult {
-      val message = readCommitSubjectFromProse(prose)
-        ?: return invalid("<<<COMMIT_SUBJECT>>> delimited commit subject is missing or blank")
-      return FeatureTaskRuntimeCommitPushHandoffValid(
-        FeatureTaskRuntimeCommitPushHandoff(outcomeMessage = message, changedPaths = emptyList()),
-      )
-    }
-
-    fun withCommitShaSidecar(commitSubject: String, commitSha: String): FeatureTaskRuntimePhaseRecordSidecar =
-      FeatureTaskRuntimePhaseRecordSidecar(
-        commitSubject = commitSubject,
-        commitSha = commitSha,
-      )
-
     fun readHandoff(envelope: Map<String, Any?>): FeatureTaskRuntimeCommitPushHandoffResult {
       val result = commitPushResult(envelope)
         ?: return invalid("`produced_outputs.$COMMIT_PUSH_RESULT_KEY` is absent")

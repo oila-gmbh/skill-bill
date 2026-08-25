@@ -17,8 +17,6 @@ data class FeatureTaskRuntimePhaseStateRequest(
   val resolvedAgentId: String,
   val finished: Boolean,
   val outputArtifact: String? = null,
-  val outputText: String? = null,
-  val runtimeOwnedSidecar: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar? = null,
   val rejectedOutput: String? = null,
   val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
   val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
@@ -63,15 +61,6 @@ data class FeatureTaskRuntimePhaseStateRequest(
   val reviewRunId: String? = null,
   val findingVerificationCheckpoint:
   List<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition>? = null,
-  /**
-   * Runtime-delivered plan task ids for implementation-attempt closure parsing. Empty for non-mutating
-   * phases and for writes that do not carry an implementation receipt.
-   */
-  val implementationPlannedTaskIds: List<String> = emptyList(),
-  /**
-   * Runtime-delivered repair item ids under an audit-gap implement launch. Empty outside that loop.
-   */
-  val implementationCarriedRepairItemIds: List<String> = emptyList(),
 )
 
 /**

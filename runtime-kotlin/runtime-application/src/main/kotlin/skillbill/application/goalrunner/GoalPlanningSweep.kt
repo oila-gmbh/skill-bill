@@ -8,7 +8,6 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy
 import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.boundedSchemaGateDetail
-import skillbill.application.featuretask.parseGoalPlanningPhaseEnvelopeOrNull
 import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.model.GoalPlanningAttemptRecord
@@ -23,6 +22,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
@@ -52,6 +52,7 @@ import skillbill.ports.time.NoopRuntimeTimingPort
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
@@ -63,6 +64,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.time.Duration
@@ -99,6 +101,7 @@ internal data class GoalPlanningSharedContext(
 @Inject
 class DefaultGoalPlanningSweep(
   private val checkpoint: GoalPlanningPreparationCheckpoint,
+  private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val invariantsSource: FeatureTaskRuntimeRunInvariantsSource,
   private val manifestFileStore: DecompositionManifestFileStore,
@@ -618,7 +621,7 @@ class DefaultGoalPlanningSweep(
     resolvedBodies: GoalPlanningResolvedBoundaryBodies = GoalPlanningResolvedBoundaryBodies(),
     finalizePayload: (String) -> String = { it },
   ): GoalPlanningPhaseProduction {
-    var priorSettlementFailure: String? = null
+    var priorSchemaFailure: String? = null
     var retryableDeclines = 0
     var attempt = 0
     while (true) {
@@ -631,7 +634,7 @@ class DefaultGoalPlanningSweep(
         runInvariants,
         phaseId,
         recordedOutputs,
-        priorSettlementFailure,
+        priorSchemaFailure,
         resolvedBodies,
       )
       // Each branch yields the production to return, or null to relaunch under the same loop.
@@ -643,7 +646,7 @@ class DefaultGoalPlanningSweep(
 
         is GoalPlanningPhaseProduction.SchemaRejected -> {
           recordFailedAttempt(shared, phaseId, subtask, attempt, SCHEMA_REJECTED_PLANNING_RULE, production)
-          priorSettlementFailure = production.reason
+          priorSchemaFailure = production.reason
           null
         }
 
@@ -671,7 +674,7 @@ class DefaultGoalPlanningSweep(
           } else {
             val rejected = gated as GoalPlanningPhaseProduction.SchemaRejected
             recordFailedAttempt(shared, phaseId, subtask, attempt, SCHEMA_REJECTED_PLANNING_RULE, rejected)
-            priorSettlementFailure = rejected.reason
+            priorSchemaFailure = rejected.reason
             null
           }
         }
@@ -690,22 +693,22 @@ class DefaultGoalPlanningSweep(
     finalizePayload: (String) -> String,
   ): GoalPlanningPhaseProduction {
     val payload = finalizePayload(captured.payload)
-    val normalized = if (payload == captured.payload) {
-      captured.normalizedOutput
+    val accepted = if (payload == captured.payload) {
+      skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput(
+        normalizedOutput = captured.normalizedOutput,
+        repairEvidence = captured.repairEvidence,
+      )
     } else {
-      parseGoalPlanningPhaseEnvelopeOrNull(payload)
-        ?: return GoalPlanningPhaseProduction.SchemaRejected(
-          "Goal planning '$phaseId' payload is not a JSON object.",
-          payload,
-          captured.agentId,
-        )
+      outputValidator.validatePhaseOutput(payload, phaseId).requireAcceptedOutput(phaseId)
     }
-    val canonicalPayload = normalized.canonicalJson
+    val canonicalPayload = accepted.normalizedOutput.canonicalJson
     val gateReason = projectionGateReason(canonicalPayload, phaseId)
       ?: return GoalPlanningPhaseProduction.Captured(
         canonicalPayload,
-        normalized,
-        captured.repairEvidence,
+        accepted.normalizedOutput,
+        // Enrichment revalidates the final payload, but it must not discard evidence captured
+        // while structurally repairing the child output before enrichment.
+        accepted.repairEvidence ?: captured.repairEvidence,
         captured.agentId,
       )
     return GoalPlanningPhaseProduction.SchemaRejected(gateReason, canonicalPayload, captured.agentId)
@@ -719,7 +722,7 @@ class DefaultGoalPlanningSweep(
     runInvariants: FeatureTaskRuntimeRunInvariants,
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-    priorSettlementFailure: String?,
+    priorSchemaFailure: String?,
     resolvedBodies: GoalPlanningResolvedBoundaryBodies,
   ): GoalPlanningPhaseProduction = try {
     produceAttempt(
@@ -729,7 +732,7 @@ class DefaultGoalPlanningSweep(
       runInvariants,
       phaseId,
       recordedOutputs,
-      priorSettlementFailure,
+      priorSchemaFailure,
       resolvedBodies,
     )
   } catch (error: Exception) {
@@ -799,7 +802,7 @@ class DefaultGoalPlanningSweep(
    * Records the decline and decides whether the sweep may relaunch. Unlike an empty turn, a declined
    * envelope is a considered answer: retrying it forever would let an agent that declines identically
    * every time wedge a goal that has no planning budget, so the transient reading is bounded and then
-   * believed. Returns the stop to propagate, or null to relaunch. No `priorSettlementFailure` is set —
+   * believed. Returns the stop to propagate, or null to relaunch. No `priorSchemaFailure` is set —
    * the output was well-formed, and naming the schema gate would describe a failure that never
    * happened.
    */
@@ -914,7 +917,7 @@ class DefaultGoalPlanningSweep(
     runInvariants: FeatureTaskRuntimeRunInvariants,
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-    priorSettlementFailure: String?,
+    priorSchemaFailure: String?,
     resolvedBodies: GoalPlanningResolvedBoundaryBodies,
   ): GoalPlanningPhaseProduction {
     val currentSubtaskId = subtask?.id ?: 0
@@ -930,7 +933,7 @@ class DefaultGoalPlanningSweep(
         runInvariants,
         phaseId,
         recordedOutputs,
-        priorSettlementFailure,
+        priorSchemaFailure,
         resolvedBodies,
       )
     }
@@ -1015,34 +1018,49 @@ class DefaultGoalPlanningSweep(
     subtaskId: Int,
     phaseId: String,
     agentId: String,
-  ): GoalPlanningPhaseProduction {
-    val normalized = parseGoalPlanningPhaseEnvelopeOrNull(stdout)
-      ?: return GoalPlanningPhaseProduction.SchemaRejected(
-        "Goal planning '$phaseId' payload is not a JSON object.",
-        stdout,
-        agentId,
-      )
-    val payload = normalized.envelope
-    if (payload["status"] != "completed") {
-      val reason = unsuccessfulStatusReason(phaseId, payload)
-      val canonical = normalized.canonicalJson
-      if (FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(phaseId, payload).retryOnResume) {
-        return GoalPlanningPhaseProduction.RetryableDecline(reason, canonical, agentId)
+  ): GoalPlanningPhaseProduction = runCatching {
+    outputValidator.validatePhaseOutput(stdout, phaseId).requireAcceptedOutput(phaseId)
+  }.fold(
+    onSuccess = { accepted ->
+      val payload = accepted.normalizedOutput.envelope
+      if (payload["status"] != "completed") {
+        val reason = unsuccessfulStatusReason(phaseId, payload)
+        val canonical = accepted.normalizedOutput.canonicalJson
+        // The phase-output contract already decides which dispositions survive a relaunch; planning
+        // reuses that classifier rather than keeping a second opinion about the same enum.
+        if (FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(phaseId, payload).retryOnResume) {
+          GoalPlanningPhaseProduction.RetryableDecline(reason, canonical, agentId)
+        } else {
+          GoalPlanningPhaseProduction.UnsuccessfulStatus(
+            reason,
+            canonical,
+            agentId,
+            stopped(shared, subtaskId, reason, phaseId),
+          )
+        }
+      } else {
+        GoalPlanningPhaseProduction.Captured(
+          accepted.normalizedOutput.canonicalJson,
+          accepted.normalizedOutput,
+          accepted.repairEvidence,
+          agentId,
+        )
       }
-      return GoalPlanningPhaseProduction.UnsuccessfulStatus(
-        reason,
-        canonical,
-        agentId,
-        stopped(shared, subtaskId, reason, phaseId),
-      )
-    }
-    return GoalPlanningPhaseProduction.Captured(
-      normalized.canonicalJson,
-      normalized,
-      null,
-      agentId,
-    )
-  }
+    },
+    onFailure = { error ->
+      if (error is InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+        GoalPlanningPhaseProduction.SchemaRejected(
+          error.payloadFreeReason ?: "Goal planning phase output was rejected by its schema contract.",
+          stdout,
+          agentId,
+        )
+      } else {
+        GoalPlanningPhaseProduction.Stopped(
+          stopped(shared, subtaskId, malformedReason(phaseId, error), phaseId),
+        )
+      }
+    },
+  )
 
   private fun launchPlanningAttempt(
     shared: GoalPlanningSharedContext,
@@ -1081,7 +1099,7 @@ class DefaultGoalPlanningSweep(
     runInvariants: FeatureTaskRuntimeRunInvariants,
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-    priorSettlementFailure: String?,
+    priorSchemaFailure: String?,
     resolvedBodies: GoalPlanningResolvedBoundaryBodies,
   ): String {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
@@ -1098,7 +1116,7 @@ class DefaultGoalPlanningSweep(
       issueKey = request.issueKey,
       briefing = briefing,
       suppressDecomposition = true,
-      priorSettlementFailure = priorSettlementFailure,
+      priorSchemaFailure = priorSchemaFailure,
     )
     return GoalPlanningContextPromptFormatter.append(
       basePrompt,
@@ -1292,6 +1310,9 @@ class DefaultGoalPlanningSweep(
   private fun exhaustedDeclineReason(production: GoalPlanningPhaseProduction.RetryableDecline, declines: Int): String =
     "${production.reason} Relaunched $declines times under a retryable disposition " +
       "without a different outcome; the decline is not transient."
+
+  private fun malformedReason(phaseId: String, error: Throwable): String =
+    "Goal planning '$phaseId' output failed the schema gate and could not be prepared: ${error.message.orEmpty()}"
 
   private fun unexpectedPlanningFailureReason(phaseId: String, error: Exception): String =
     "Goal planning '$phaseId' failed before its output could be checkpointed: " +

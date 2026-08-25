@@ -233,7 +233,6 @@ class RemediationBaseReconciliationUnderAmendTest {
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
     )
     return state.reserveNextPass().copy(remediationBaseSha = remediationBaseSha)
   }

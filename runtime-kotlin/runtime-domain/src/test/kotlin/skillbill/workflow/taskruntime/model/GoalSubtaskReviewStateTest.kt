@@ -27,10 +27,8 @@ class GoalSubtaskReviewStateTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
     )
     assertEquals(CodeReviewExecutionMode.INLINE, completed.passResults.single().executedMode)
-    assertEquals("rvw-test-1", completed.passResults.single().reviewRunId)
     val recordedPass = (completed.toArtifactMap()["pass_results"] as List<*>).single() as Map<*, *>
     assertEquals("inline", recordedPass["executed_mode"])
 
@@ -66,7 +64,6 @@ class GoalSubtaskReviewStateTest {
               "review_result_artifact" to "goal_subtask_review_results.1",
               "unresolved_finding_count" to 0,
               "findings" to emptyList<Any>(),
-              "review_run_id" to "rvw-test-1",
               "executed_mode" to "delegated",
             ),
           ),
@@ -98,7 +95,6 @@ class GoalSubtaskReviewStateTest {
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Unsafe mutation")),
-      reviewRunId = "rvw-test-1",
     )
 
     assertEquals(1, state.completedPassCount)
@@ -118,7 +114,6 @@ class GoalSubtaskReviewStateTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
     )
 
     assertEquals(1, settled.completedPassCount)
@@ -152,7 +147,6 @@ class GoalSubtaskReviewStateTest {
           reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
           unresolvedFindingCount = 0,
           findings = emptyList(),
-          reviewRunId = "rvw-test-1",
         )
       }
     }
@@ -168,7 +162,6 @@ class GoalSubtaskReviewStateTest {
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
-      reviewRunId = "rvw-test-1",
     ).copy(disposition = GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED)
 
     assertTrue(capped.reviewCapReached)
@@ -194,7 +187,6 @@ class GoalSubtaskReviewStateTest {
             reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
             unresolvedFindingCount = 1,
             findings = listOf(GoalSubtaskReviewCompactFinding("minor", "Service", "Naming polish")),
-            reviewRunId = "rvw-test-$passNumber",
           )
         },
       )
@@ -211,7 +203,6 @@ class GoalSubtaskReviewStateTest {
       verdict = FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
     )
 
     assertTrue(skipped.reviewSkippedByUser)
@@ -239,7 +230,6 @@ class GoalSubtaskReviewStateTest {
               "review_result_artifact" to "goal_subtask_review_results.1",
               "unresolved_finding_count" to 0,
               "findings" to emptyList<Any>(),
-              "review_run_id" to "rvw-test-1",
             ),
           )
           ) + ("completed_pass_count" to 1),
@@ -301,7 +291,6 @@ class GoalSubtaskReviewStateTest {
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
     )
     val invalidated = GoalSubtaskReviewState.initial(
       reviewBaseSha = completed.reviewBaseSha,
@@ -328,7 +317,6 @@ class GoalSubtaskReviewStateTest {
       reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.1",
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
-      reviewRunId = "rvw-test-1",
     )
     assertTrue(pass.blocksAdvance)
     assertFalse(pass.findings.single().isBlocker)
@@ -343,7 +331,6 @@ class GoalSubtaskReviewStateTest {
       reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.1",
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("minor", "Naming", "Prefer clearer name")),
-      reviewRunId = "rvw-test-1",
     )
     assertFalse(pass.blocksAdvance)
     assertFalse(pass.findings.single().blocksAdvance)
@@ -357,7 +344,6 @@ class GoalSubtaskReviewStateTest {
       reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.1",
       unresolvedFindingCount = 2,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
     )
     assertTrue(pass.blocksAdvance)
   }
@@ -379,7 +365,6 @@ class GoalSubtaskReviewStateTest {
           evidence = listOf("still open"),
         ),
       ),
-      reviewRunId = "rvw-test-1",
     )
     val encoded = state.toArtifactMap()
     assertTrue("blocker_dispositions" in encoded)

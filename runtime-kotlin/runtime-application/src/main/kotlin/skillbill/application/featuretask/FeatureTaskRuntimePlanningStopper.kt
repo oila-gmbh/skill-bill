@@ -11,13 +11,14 @@ import skillbill.application.workflow.repoRoot
 import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposePlanOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeFromProse
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.io.IOException
 
 /**
@@ -29,6 +30,7 @@ import java.io.IOException
  */
 @Inject
 class FeatureTaskRuntimePlanningStopper(
+  private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val decompositionPlanner: FeatureTaskRuntimeDecompositionPlanner,
   private val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
@@ -72,7 +74,8 @@ class FeatureTaskRuntimePlanningStopper(
     return try {
       resolveFromPlanOutput(request, completedOutput, completedPhaseIds, resolvedBranch, specSource)
     } catch (error: SkillBillRuntimeException) {
-      // Covers decoder schema errors (InvalidWorkflowStateSchemaError, decomposition-manifest schema errors
+      // Covers decoder schema errors (InvalidFeatureTaskRuntimePhaseOutputSchemaError,
+      // InvalidWorkflowStateSchemaError), decomposition-manifest schema errors
       // (InvalidDecompositionManifestSchemaError), and writer business-rule rejections
       // (InvalidFeatureSpecPreparationRequestError, FeatureSpecPreparationModeConflictError) — all
       // share this base. Any malformed/invalid decomposition package blocks at planning.
@@ -91,14 +94,12 @@ class FeatureTaskRuntimePlanningStopper(
     resolvedBranch: String?,
     specSource: SpecSource,
   ): FeatureTaskRuntimePlanningStopDecision {
-    val prose = completedOutput.payload
-    val outcome = featureTaskRuntimeDecomposePlanOutcomeFromProse(prose, specSource)
-      ?: completedOutput.normalizedOutput?.envelope?.let { envelope ->
-        val wire = linkedMapOf<String, Any?>(
-          "produced_outputs" to (envelope["produced_outputs"] ?: envelope),
-        )
-        featureTaskRuntimeDecomposePlanOutcomeOrNull(wire, specSource)
-      }
+    val parsed = outputValidator
+      .validatePhaseOutput(completedOutput.payload, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN)
+      .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN)
+      .normalizedOutput
+      .envelope
+    val outcome = featureTaskRuntimeDecomposePlanOutcomeOrNull(parsed, specSource)
       ?: return FeatureTaskRuntimePlanningStopDecision.Proceed
     val terminal = writeDecompositionTerminal(request, outcome)
     decomposeTerminalRecorder.recordDecomposeTerminal(request.workflowId, terminal, request.dbPathOverride)

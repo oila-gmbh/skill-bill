@@ -142,10 +142,9 @@ internal fun commitShaFromPhaseRecords(
   recorder: FeatureTaskRuntimePhaseRecorder,
   request: FeatureTaskRuntimeRunRequest,
 ): String? {
-  val record = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+  val commitOutput = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
     .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH]
-  record?.runtimeOwnedSidecar?.commitSha?.let { return it }
-  val commitOutput = record?.outputArtifact
+    ?.outputArtifact
   val payload = commitOutput
     ?.let(JsonSupport::parseObjectOrNull)
     ?.let(JsonSupport::jsonElementToValue)

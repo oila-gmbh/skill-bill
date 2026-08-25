@@ -9,7 +9,6 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
@@ -20,13 +19,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap
 import skillbill.workflow.taskruntime.model.toArtifactMap
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -348,49 +345,6 @@ class FeatureTaskRuntimePersistenceModelsTest {
       listOf("start", "resume", "retry", "fix_loop_iteration", "loop_edge", "blocked", "paused", "complete"),
       FeatureTaskRuntimePhaseLedgerAction.entries.map { it.wireValue },
     )
-  }
-
-  @Test
-  fun `per-phase record round trips output_text and runtime_owned_sidecar`() {
-    val sidecar = FeatureTaskRuntimePhaseRecordSidecar(
-      commitSubject = "SKILL-208: prose-centric commit",
-      commitSha = "abc123",
-      decompositionPackage = mapOf("mode" to "decompose", "feature_name" to "feat"),
-    )
-    val record = FeatureTaskRuntimePhaseRecord(
-      phaseId = "commit_push",
-      status = FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED,
-      attemptCount = 1,
-      startedAt = "2026-08-25T10:00:00Z",
-      resolvedAgentId = "agent-commit-1",
-      outputArtifact = "prose body",
-      outputText = "prose body",
-      runtimeOwnedSidecar = sidecar,
-    )
-    val map = record.toArtifactMap()
-    assertEquals(FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION, map["contract_version"])
-    assertEquals("prose body", map["output_text"])
-    assertEquals(record, FeatureTaskRuntimePhaseRecord.fromArtifactMap(map))
-  }
-
-  @Test
-  fun `legacy persistence contract 0_2 loud-fails on private phase records`() {
-    val record = FeatureTaskRuntimePhaseRecord(
-      phaseId = "plan",
-      status = FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED,
-      attemptCount = 1,
-      startedAt = "2026-08-25T10:00:00Z",
-      resolvedAgentId = "agent-plan-1",
-      outputArtifact = "legacy",
-    )
-    val legacy = record.toArtifactMap().toMutableMap().apply {
-      this["contract_version"] = "0.2"
-    }
-    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      FeatureTaskRuntimePhaseRecord.fromArtifactMap(legacy)
-    }
-    assertContains(error.message.orEmpty(), "0.2")
-    assertContains(error.message.orEmpty(), "restart")
   }
 
   @Test

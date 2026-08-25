@@ -2,10 +2,6 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.featuretask.model.RuntimeOwnedFindingVerdictsReadResolution
-import skillbill.application.featuretask.model.RuntimeOwnedReviewPassClaimsReadResolution
-import skillbill.application.featuretask.model.resolveRuntimeOwnedFindingVerdicts
-import skillbill.application.featuretask.model.resolveRuntimeOwnedReviewPassClaims
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.workflow.WorkflowFamily
@@ -205,7 +201,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     dbOverride: String? = null,
   ): GoalSubtaskReviewState? = runtimeOwnedPersistence.requiredWrite(
     seam = "FeatureTaskRuntimeGoalContinuationRecorder.completeGoalReviewPass",
-    expected = "runtime-owned review import and completion persistence",
+    expected = "runtime-owned review completion persistence",
     dbOverride = dbOverride,
   ) { unitOfWork ->
     val loaded = loadGoalReviewPassWrite(unitOfWork, request) ?: return@requiredWrite null
@@ -214,7 +210,6 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       request.unresolvedFindingCount,
       request.findings,
       loaded.dispositions,
-      request.reviewRunId,
       request.commitFocusedAccounting,
     )
     persistGoalReviewPassWrite(unitOfWork, loaded, request, completed)
@@ -242,22 +237,9 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val continuation = continuationFromArtifacts(artifacts)
       ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
     val reservedPass = state.reservedPassNumber ?: 1
-    val reviewImport = runtimeOwnedReviewImport(unitOfWork, artifacts, request.reviewRunId)
-    val recordedVerdicts = when (
-      val resolution = unitOfWork.resolveRuntimeOwnedFindingVerdicts(reviewImport.reviewRunId)
-    ) {
-      is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
-      is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
-        recordRuntimeOwnedReadFailure(
-          seam = "FeatureTaskRuntimeGoalContinuationRecorder.completeGoalReviewPass",
-          expected = "runtime-owned finding verdicts",
-          cause = resolution.cause,
-        )
-        error("Goal review completion could not read runtime-owned finding verdicts: ${resolution.cause}")
-      }
-    }
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, request.normalizedOutput)
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
-      review = reviewImport,
+      output = request.normalizedOutput,
       scope = UnaddressedFindingLedgerScope(
         issueKey = continuation.issueKey,
         subtaskId = continuation.subtaskId,
@@ -276,51 +258,6 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       supersededFindings = supersededFindings,
       dispositions = dispositions,
     )
-  }
-
-  private fun runtimeOwnedReviewImport(
-    unitOfWork: UnitOfWork,
-    artifacts: Map<String, Any?>,
-    reviewRunId: String,
-  ): skillbill.application.goalrunner.GoalSubtaskReviewImport {
-    require(reviewRunId.isNotBlank()) {
-      "Goal review completion requires a runtime-owned review run id."
-    }
-    val currentReviewRunId = phaseRecordsFrom(artifacts)
-      .get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
-      ?.reviewRunId
-      ?.takeIf(String::isNotBlank)
-    require(currentReviewRunId == reviewRunId) {
-      "Goal review completion review run id must match the reserved runtime-owned review run id."
-    }
-    val claims = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-      is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
-      is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> {
-        recordRuntimeOwnedReadFailure(
-          seam = "FeatureTaskRuntimeGoalContinuationRecorder.runtimeOwnedReviewImport",
-          expected = "runtime-owned imported review findings",
-          used = "absent",
-          cause = resolution.cause,
-        )
-        error("Goal review completion requires runtime-owned imported review findings: ${resolution.cause}.")
-      }
-      is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> {
-        recordRuntimeOwnedReadFailure(
-          seam = "FeatureTaskRuntimeGoalContinuationRecorder.runtimeOwnedReviewImport",
-          expected = "runtime-owned imported review findings",
-          used = "read_error",
-          cause = resolution.cause,
-        )
-        error("Goal review completion could not read runtime-owned imported review findings: ${resolution.cause}.")
-      }
-    }
-    return skillbill.application.goalrunner.GoalSubtaskReviewImport(reviewRunId, claims.findings)
-  }
-
-  private fun recordRuntimeOwnedReadFailure(seam: String, expected: String, cause: String, used: String = "none") {
-    runCatching {
-      diagnostics.warning("seam=$seam value_expected=$expected value_used=$used cause=$cause")
-    }
   }
 
   private fun persistGoalReviewPassWrite(
@@ -990,7 +927,6 @@ internal data class GoalContinuationStateRecordRequest(
 
 internal data class GoalReviewPassCompletionRequest(
   val workflowId: String,
-  val reviewRunId: String,
   val verdict: FeatureTaskRuntimeVerdict,
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,

@@ -4,7 +4,9 @@ import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
+import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.infrastructure.fs.GoalPlanningPreparationEnvelopeValidatorAdapter
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
@@ -15,12 +17,14 @@ import skillbill.ports.persistence.model.GoalPlanningPreparationState
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -40,11 +44,53 @@ class GoalPlanningPreparationCheckpointTest {
   }
 
   @Test
+  fun `repaired planning payloads persist canonical bytes and typed evidence`() {
+    val harness = checkpointHarness()
+    val malformedShared = validShared(payload = validShared().preplanPayload + "}")
+    val malformedPlan = validPlan(payload = validPlan().planPayload + "}")
+
+    harness.checkpoint.checkpointSharedPreplan(malformedShared, harness.dbOverride)
+    harness.checkpoint.checkpointSubtaskPlan(malformedPlan, harness.dbOverride)
+
+    val storedShared = requireNotNull(harness.readShared())
+    val storedPlan = requireNotNull(harness.readPlan())
+    assertNotNull(storedShared.repairEvidence)
+    assertNotNull(storedPlan.repairEvidence)
+    assertEquals(validShared().preplanPayload, storedShared.preplanPayload)
+    assertEquals(validPlan().planPayload, storedPlan.planPayload)
+    assertEquals(sha256HexUtf8(storedShared.preplanPayload), storedShared.payloadSha256)
+    assertEquals(sha256HexUtf8(storedPlan.planPayload), storedPlan.payloadSha256)
+    assertEquals(sha256HexUtf8(malformedShared.preplanPayload), storedShared.repairEvidence?.originalDigest)
+    assertEquals(sha256HexUtf8(malformedPlan.planPayload), storedPlan.repairEvidence?.originalDigest)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER,
+      storedShared.repairEvidence?.operation,
+    )
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER,
+      storedPlan.repairEvidence?.operation,
+    )
+    assertEquals(sha256HexUtf8(validShared().preplanPayload), storedShared.repairEvidence?.repairedDigest)
+    assertEquals(sha256HexUtf8(validPlan().planPayload), storedPlan.repairEvidence?.repairedDigest)
+  }
+
+  @Test
   fun `preplan payload with the wrong phase id is rejected and nothing is stored`() {
     val harness = checkpointHarness()
     val shared = validShared(payload = payloadJson(phaseId = "plan"))
 
-    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      harness.checkpoint.checkpointSharedPreplan(shared, harness.dbOverride)
+    }
+    assertNull(harness.readShared())
+  }
+
+  @Test
+  fun `preplan payload with an incompatible phase output version is rejected and nothing is stored`() {
+    val harness = checkpointHarness()
+    val shared = validShared(payload = payloadJson(phaseId = "preplan", contractVersion = "9.9"))
+
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       harness.checkpoint.checkpointSharedPreplan(shared, harness.dbOverride)
     }
     assertNull(harness.readShared())
@@ -55,7 +101,7 @@ class GoalPlanningPreparationCheckpointTest {
     val harness = checkpointHarness().withShared()
     val plan = validPlan(payload = payloadJson(phaseId = "plan", status = "queued"))
 
-    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
     }
     assertNull(harness.readPlan())
@@ -77,7 +123,7 @@ class GoalPlanningPreparationCheckpointTest {
     val harness = checkpointHarness().withShared()
     val plan = validPlan(payload = payloadJson(phaseId = "plan", producedOutputsJson = "{}"))
 
-    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       harness.checkpoint.checkpointSubtaskPlan(plan, harness.dbOverride)
     }
     assertNull(harness.readPlan())
@@ -252,6 +298,7 @@ class GoalPlanningPreparationCheckpointTest {
     val checkpoint = GoalPlanningPreparationCheckpoint(
       database = database,
       envelopeValidator = GoalPlanningPreparationEnvelopeValidatorAdapter(),
+      phaseOutputValidator = FeatureTaskRuntimePhaseOutputValidatorAdapter(),
       planningProjectionValidator = FeatureTaskRuntimePlanningProjectionValidatorAdapter(),
     )
     return CheckpointHarness(checkpoint, database, dbOverride)

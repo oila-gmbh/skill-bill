@@ -3,10 +3,10 @@ package skillbill.application.workflow
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.GoalPlanningPreparationValidator
 import skillbill.application.featuretask.producerProjectionGateReason
-import skillbill.application.featuretask.requireGoalPlanningPhaseEnvelope
 import skillbill.application.featuretask.requireValidPlanningProjection
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
@@ -16,20 +16,25 @@ import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
 @Inject
 class GoalPlanningPreparationCheckpoint(
   private val database: DatabaseSessionFactory,
   envelopeValidator: GoalPlanningPreparationEnvelopeValidator,
+  phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
   private val envelopeValidator = envelopeValidator
+  private val phaseOutputValidator = phaseOutputValidator
   private val gate =
-    GoalPlanningPreparationProjectionGate(envelopeValidator, planningProjectionValidator)
+    GoalPlanningPreparationProjectionGate(envelopeValidator, phaseOutputValidator, planningProjectionValidator)
   private val preparationValidator =
-    GoalPlanningPreparationValidator(planningProjectionValidator)
+    GoalPlanningPreparationValidator(phaseOutputValidator, planningProjectionValidator)
 
   fun checkpoint(record: GoalPlanningPreparationRecord, dbOverride: String? = null) {
     val canonical = preparationValidator.canonicalize(record)
@@ -252,31 +257,40 @@ internal class GoalPlanningSharedPreplanRefresh(
  */
 internal class GoalPlanningPreparationProjectionGate(
   private val envelopeValidator: GoalPlanningPreparationEnvelopeValidator,
+  private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
   fun canonicalizeSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): SharedGoalPreplanCheckpoint {
-    val normalized = requireGoalPlanningPhaseEnvelope(
-      checkpoint.preplanPayload,
-      "preplan",
-      checkpoint.identity.parentGoalWorkflowId,
-    )
+    val accepted = phaseOutputValidator.validatePhaseOutput(checkpoint.preplanPayload, "preplan")
+      .requireAcceptedOutput("preplan")
+    val canonical = accepted.normalizedOutput.canonicalJson
     return checkpoint.copy(
-      preplanPayload = normalized.canonicalJson,
-      payloadSha256 = sha256HexUtf8(normalized.canonicalJson),
-      repairEvidence = checkpoint.repairEvidence,
+      preplanPayload = canonical,
+      payloadSha256 = sha256HexUtf8(canonical),
+      repairEvidence = planningRepairEvidenceFor(
+        phaseId = "preplan",
+        sourcePayload = checkpoint.preplanPayload,
+        acceptedEvidence = accepted.repairEvidence,
+        storedEvidence = checkpoint.repairEvidence,
+        sourceLabel = checkpoint.identity.parentGoalWorkflowId,
+      ),
     )
   }
 
   fun canonicalizeSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): GoalSubtaskPlanCheckpoint {
-    val normalized = requireGoalPlanningPhaseEnvelope(
-      checkpoint.planPayload,
-      "plan",
-      "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}",
-    )
+    val accepted = phaseOutputValidator.validatePhaseOutput(checkpoint.planPayload, "plan")
+      .requireAcceptedOutput("plan")
+    val canonical = accepted.normalizedOutput.canonicalJson
     return checkpoint.copy(
-      planPayload = normalized.canonicalJson,
-      payloadSha256 = sha256HexUtf8(normalized.canonicalJson),
-      repairEvidence = checkpoint.repairEvidence,
+      planPayload = canonical,
+      payloadSha256 = sha256HexUtf8(canonical),
+      repairEvidence = planningRepairEvidenceFor(
+        phaseId = "plan",
+        sourcePayload = checkpoint.planPayload,
+        acceptedEvidence = accepted.repairEvidence,
+        storedEvidence = checkpoint.repairEvidence,
+        sourceLabel = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}",
+      ),
     )
   }
 
@@ -314,7 +328,9 @@ internal class GoalPlanningPreparationProjectionGate(
   private fun sharedPreplanEnvelope(checkpoint: SharedGoalPreplanCheckpoint): Pair<String, Map<String, Any?>> {
     val label = checkpoint.identity.parentGoalWorkflowId
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
-    val normalized = requireGoalPlanningPhaseEnvelope(checkpoint.preplanPayload, "preplan", label)
+    val normalized = phaseOutputValidator.validatePhaseOutput(checkpoint.preplanPayload, "preplan")
+      .requireAcceptedOutput("preplan")
+      .normalizedOutput
     requirePlanningPayloadHash(checkpoint.payloadSha256, normalized.canonicalJson, label)
     return label to normalized.envelope
   }
@@ -322,7 +338,9 @@ internal class GoalPlanningPreparationProjectionGate(
   private fun subtaskPlanEnvelope(checkpoint: GoalSubtaskPlanCheckpoint): Pair<String, Map<String, Any?>> {
     val label = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}"
     envelopeValidator.validate(checkpoint.toEnvelopeMap(), label)
-    val normalized = requireGoalPlanningPhaseEnvelope(checkpoint.planPayload, "plan", label)
+    val normalized = phaseOutputValidator.validatePhaseOutput(checkpoint.planPayload, "plan")
+      .requireAcceptedOutput("plan")
+      .normalizedOutput
     requirePlanningPayloadHash(checkpoint.payloadSha256, normalized.canonicalJson, label)
     return label to normalized.envelope
   }
@@ -345,9 +363,30 @@ private fun requirePlanningPayloadHash(expected: String, payload: String, label:
   }
 }
 
+private fun planningRepairEvidenceFor(
+  phaseId: String,
+  sourcePayload: String,
+  acceptedEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  storedEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  sourceLabel: String,
+): FeatureTaskRuntimePhaseOutputRepairEvidence? {
+  acceptedEvidence?.let { evidence ->
+    if (evidence.originalDigest != sha256HexUtf8(sourcePayload)) {
+      throw InvalidGoalPlanningPreparationSchemaError(
+        sourceLabel,
+        "$phaseId.repair_evidence.original_digest",
+        "repair evidence does not describe the checkpoint input bytes",
+      )
+    }
+  }
+  return acceptedEvidence ?: storedEvidence
+}
+
 private fun planningRecordRejection(compute: () -> String?): String? = try {
   compute()
 } catch (error: InvalidGoalPlanningPreparationSchemaError) {
+  "stored record failed its durable contract: ${error.message.orEmpty()}"
+} catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
   "stored record failed its durable contract: ${error.message.orEmpty()}"
 }
 

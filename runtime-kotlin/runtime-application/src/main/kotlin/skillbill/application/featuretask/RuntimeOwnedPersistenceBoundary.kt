@@ -1,10 +1,11 @@
 package skillbill.application.featuretask
 
-import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import kotlin.coroutines.cancellation.CancellationException
+
+internal class RuntimeOwnedFactUnavailable(message: String) : IllegalStateException(message)
 
 internal class RuntimeOwnedPersistenceBoundary(
   private val database: DatabaseSessionFactory,
@@ -16,7 +17,12 @@ internal class RuntimeOwnedPersistenceBoundary(
   fun <T> transaction(dbOverride: String? = null, block: (UnitOfWork) -> T): T =
     database.transaction(dbOverride) { unitOfWork -> block(unitOfWork) }
 
-  fun <T> requiredRead(seam: String, expected: String, dbOverride: String? = null, block: (UnitOfWork) -> T): T = try {
+  fun <T> requiredRead(
+    seam: String,
+    expected: String,
+    dbOverride: String? = null,
+    block: (UnitOfWork) -> T,
+  ): T = try {
     read(dbOverride, block)
   } catch (cancellation: CancellationException) {
     throw cancellation
@@ -26,7 +32,12 @@ internal class RuntimeOwnedPersistenceBoundary(
     fail(seam, expected, "read_error", error)
   }
 
-  fun <T> requiredWrite(seam: String, expected: String, dbOverride: String? = null, block: (UnitOfWork) -> T): T = try {
+  fun <T> requiredWrite(
+    seam: String,
+    expected: String,
+    dbOverride: String? = null,
+    block: (UnitOfWork) -> T,
+  ): T = try {
     transaction(dbOverride, block)
   } catch (cancellation: CancellationException) {
     throw cancellation
@@ -70,25 +81,12 @@ internal class RuntimeOwnedPersistenceBoundary(
     fallback
   }
 
-  fun <T> resolvingRead(
+  private fun fail(
     seam: String,
     expected: String,
-    dbOverride: String? = null,
-    onPersistenceFailure: (cause: String) -> T,
-    block: (UnitOfWork) -> T,
-  ): T = try {
-    read(dbOverride, block)
-  } catch (cancellation: CancellationException) {
-    throw cancellation
-  } catch (error: RuntimeOwnedFactUnavailable) {
-    throw error
-  } catch (error: Exception) {
-    val cause = causeOf(error)
-    recordFailure(seam, expected, "read_error", error)
-    onPersistenceFailure(cause)
-  }
-
-  private fun fail(seam: String, expected: String, used: String, error: Exception): Nothing {
+    used: String,
+    error: Exception,
+  ): Nothing {
     val cause = causeOf(error)
     recordFailure(seam, expected, used, error)
     throw RuntimeOwnedFactUnavailable(

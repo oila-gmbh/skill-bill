@@ -6,22 +6,6 @@ oneOf:
   - $ref: "#/$defs/private_phase_record"
   - $ref: "#/$defs/delivered_projection"
 $defs:
-  phase_record_sidecar:
-    type: object
-    additionalProperties: false
-    properties:
-      checkpoint:
-        $ref: "#/$defs/checkpoint"
-      gate_receipts:
-        type: object
-      commit_sha:
-        type: string
-        minLength: 1
-      commit_subject:
-        type: string
-        minLength: 1
-      decomposition_package:
-        type: object
   checkpoint:
     type: object
     additionalProperties: false
@@ -57,7 +41,7 @@ $defs:
       - execution_origin
     properties:
       contract_version:
-        const: "0.3"
+        const: "0.2"
       record_kind:
         const: private_phase_record
       phase_id:
@@ -80,9 +64,6 @@ $defs:
       resolved_agent_id: { type: string, minLength: 1 }
       execution_origin: { enum: [agent-executed, goal-planning-hydrated] }
       output_artifact: { type: string }
-      output_text: { type: string, minLength: 1 }
-      runtime_owned_sidecar:
-        $ref: "#/$defs/phase_record_sidecar"
       repair_evidence:
         type: object
         additionalProperties: false
@@ -152,7 +133,7 @@ $defs:
       - handoff_envelope
     properties:
       contract_version:
-        const: "0.3"
+        const: "0.2"
       record_kind:
         const: delivered_projection
       workflow_id:

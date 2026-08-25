@@ -24,7 +24,6 @@ class GoalSubtaskBlockerDispositionTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
       blockerDispositions = listOf(
         disposition("F-001", GoalSubtaskReviewDispositionFixtures.RESOLVED),
         disposition("F-002", GoalSubtaskReviewDispositionFixtures.RESOLVED),
@@ -41,7 +40,6 @@ class GoalSubtaskBlockerDispositionTest {
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Still unsafe")),
-      reviewRunId = "rvw-test-1",
       blockerDispositions = listOf(
         disposition("F-001", GoalSubtaskReviewDispositionFixtures.RESOLVED),
         disposition("F-002", GoalSubtaskReviewDispositionFixtures.UNRESOLVED),
@@ -59,7 +57,6 @@ class GoalSubtaskBlockerDispositionTest {
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Still unsafe")),
-      reviewRunId = "rvw-test-1",
       blockerDispositions = listOf(disposition("F-002", GoalSubtaskReviewDispositionFixtures.UNRESOLVED)),
     )
     val reloaded = GoalSubtaskReviewState.fromArtifactMap(settled.toArtifactMap())
@@ -89,7 +86,6 @@ class GoalSubtaskBlockerDispositionTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
-      reviewRunId = "rvw-test-1",
       blockerDispositions = listOf(disposition("F-001", GoalSubtaskReviewDispositionFixtures.RESOLVED)),
     )
     assertEquals(listOf("F-001"), settled.blockerDispositions.map { it.findingId })
@@ -103,7 +99,6 @@ class GoalSubtaskBlockerDispositionTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
       blockerDispositions = listOf(disposition("F-001", GoalSubtaskReviewDispositionFixtures.RESOLVED)),
     )
     assertEquals(
@@ -137,7 +132,6 @@ class GoalSubtaskBlockerDispositionTest {
           listOf("src/main/kotlin/skillbill/Repo.kt:42 still mutates in place"),
         ),
       ),
-      reviewRunId = "rvw-test-1",
     )
     val summary = settled.boundedDispositionSummary().toString()
     assertFalse(summary.contains("Repo.kt"), "No path may reach a goal-facing surface.")

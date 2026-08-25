@@ -264,6 +264,11 @@ val copyGoalSubtaskReviewStateSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimePhaseOutputSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-phase-output-schema.yaml")
+    .absolutePath
+
 val canonicalRejectedOutputDiagnosticSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/rejected-output-diagnostic-schema.yaml")
@@ -333,6 +338,20 @@ val copyFeatureTaskExecutionIdentitySchema =
     doFirst {
       require(File(schemaPath).exists()) {
         "SKILL-120: canonical feature-task execution-identity schema is missing at $schemaPath."
+      }
+    }
+  }
+
+val copyFeatureTaskRuntimePhaseOutputSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimePhaseOutputSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimePhaseOutputSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-65: canonical feature-task-runtime phase output schema is missing at $schemaPath. " +
+          "Run from the repo root and ensure the schema file exists."
       }
     }
   }
@@ -573,6 +592,7 @@ tasks.named("processResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyIdeStatusSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyRejectedOutputDiagnosticSchema)
   dependsOn(copyProducerOutputEvidenceSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
@@ -605,6 +625,7 @@ tasks.named("processTestResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyIdeStatusSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
+  dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
   dependsOn(copyFeatureTaskRuntimePhaseLaunchBriefingSchema)
   dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)

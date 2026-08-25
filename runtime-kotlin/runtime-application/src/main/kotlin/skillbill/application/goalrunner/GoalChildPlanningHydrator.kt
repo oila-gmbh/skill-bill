@@ -1,18 +1,20 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.featuretask.requireGoalPlanningPhaseEnvelope
 import skillbill.application.featuretask.requireValidPlanningProjection
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.goalrunner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.WorkflowStateSnapshot
+import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
@@ -21,7 +23,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseExecutionOrig
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.time.Instant
 
 internal data class GoalChildPlanningHydration(
@@ -35,15 +37,11 @@ private data class PreparedGoalPlanning(
   val plan: GoalSubtaskPlanCheckpoint,
 )
 
-private data class PreparedPlanningOutput(
-  val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-  val repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
-)
-
 internal class GoalChildPlanningHydrator(
+  phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
-  private val payloadValidator = PreparedPlanningPayloadValidator(planningProjectionValidator)
+  private val payloadValidator = PreparedPlanningPayloadValidator(phaseOutputValidator, planningProjectionValidator)
   private val importMatcher = GoalChildPlanningImportMatcher(payloadValidator)
 
   fun hydrate(
@@ -131,8 +129,8 @@ internal class GoalChildPlanningHydrator(
   private fun createHydration(
     request: GoalChildPlanningHydrationRequest,
     prepared: PreparedGoalPlanning,
-    preplan: PreparedPlanningOutput,
-    plan: PreparedPlanningOutput,
+    preplan: AcceptedFeatureTaskRuntimePhaseOutput,
+    plan: AcceptedFeatureTaskRuntimePhaseOutput,
   ): GoalChildPlanningHydration {
     val importedAt = Instant.now().toString()
     val records = createImportedRecords(
@@ -151,10 +149,10 @@ internal class GoalChildPlanningHydrator(
     )
   }
 
-  private fun PreparedPlanningOutput.forPlanningImport(
+  private fun AcceptedFeatureTaskRuntimePhaseOutput.forPlanningImport(
     storedPayload: String,
     storedEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
-  ): PreparedPlanningOutput = copy(
+  ): AcceptedFeatureTaskRuntimePhaseOutput = copy(
     normalizedOutput = if (repairEvidence == null) {
       normalizedOutput.copy(canonicalJson = storedPayload)
     } else {
@@ -164,8 +162,8 @@ internal class GoalChildPlanningHydrator(
   )
 
   private fun createImportedRecords(
-    preplan: PreparedPlanningOutput,
-    plan: PreparedPlanningOutput,
+    preplan: AcceptedFeatureTaskRuntimePhaseOutput,
+    plan: AcceptedFeatureTaskRuntimePhaseOutput,
     importedAt: String,
   ): Map<String, Map<String, Any?>> = linkedMapOf(
     "preplan" to importedRecord(
@@ -217,6 +215,7 @@ internal class GoalChildPlanningHydrator(
 }
 
 private class PreparedPlanningPayloadValidator(
+  private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
   fun requireValid(
@@ -224,13 +223,25 @@ private class PreparedPlanningPayloadValidator(
     payload: String,
     expectedDigest: String,
     workflowId: String,
-  ): PreparedPlanningOutput {
+  ): AcceptedFeatureTaskRuntimePhaseOutput {
+    // The digest check stays ahead of the projection gate so a corrupted payload still reports as a
+    // digest failure rather than as whatever the corruption made the projection look like.
     val originalDigest = sha256HexUtf8(payload)
     if (originalDigest != expectedDigest) {
       invalidPlanningPreparation(workflowId, "$phaseId.payload_sha256", "payload digest differs")
     }
-    val normalized = requireGoalPlanningPhaseEnvelope(payload, phaseId, workflowId)
-    val decoded = normalized.envelope
+    val accepted = phaseOutputValidator.validatePhaseOutput(payload, phaseId).requireAcceptedOutput(phaseId)
+    val repairEvidence = accepted.repairEvidence
+    if (repairEvidence != null && repairEvidence.originalDigest != originalDigest) {
+      invalidPlanningPreparation(
+        workflowId,
+        "$phaseId.repair_evidence.original_digest",
+        "repair evidence does not describe the stored payload bytes",
+      )
+    }
+    val decoded = accepted.normalizedOutput.envelope
+    // The projection gate is a no-op on a non-completed envelope, because a blocked or failed producer
+    // makes no projection claim. An import, by contrast, only ever admits a settled completed payload.
     if (decoded["phase_id"] != phaseId || decoded["status"] != "completed") {
       invalidPlanningPreparation(
         workflowId,
@@ -245,7 +256,7 @@ private class PreparedPlanningPayloadValidator(
       planningProjectionValidator = planningProjectionValidator,
       fieldPath = "$phaseId.payload",
     )
-    return PreparedPlanningOutput(normalizedOutput = normalized, repairEvidence = null)
+    return accepted
   }
 }
 
@@ -255,6 +266,10 @@ private fun invalidPlanningPreparation(workflowId: String, fieldPath: String, re
 private class GoalChildPlanningImportMatcher(
   private val payloadValidator: PreparedPlanningPayloadValidator,
 ) {
+  // The identity of an import is its provenance, the parent-side checkpoints it was taken from,
+  // and the append-only ledger prefix proving it happened. Live phase records and steps are not
+  // part of that identity: a planning projection that fails its consumer gate re-enters the phase's
+  // own bounded fix loop, which legitimately rewrites attempt counts, resolved agent, and output.
   fun firstDivergence(
     unitOfWork: UnitOfWork,
     existing: WorkflowStateSnapshot,
@@ -284,6 +299,9 @@ private class GoalChildPlanningImportMatcher(
     }
   }
 
+  // The child has already imported these records, so regenerating them would conflict with the import
+  // this matcher exists to protect. A projection rejection here is therefore terminal — but it stops with
+  // the offending record and its projection failure named, not with a generic read-failure reason.
   private fun validateAvailablePayloads(
     shared: SharedGoalPreplanCheckpoint?,
     plan: GoalSubtaskPlanCheckpoint?,
@@ -309,6 +327,8 @@ private class GoalChildPlanningImportMatcher(
       payloadValidator.requireValid(phaseId, payload, digest, setup.workflowId)
     } catch (error: InvalidGoalPlanningPreparationSchemaError) {
       throw importedPayloadRecoveryError(phaseId, setup, request, error)
+    } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+      throw importedPayloadRecoveryError(phaseId, setup, request, error)
     }
   }
 
@@ -321,7 +341,7 @@ private class GoalChildPlanningImportMatcher(
     val detail = error.message.orEmpty()
     val reason = if (classifyGoalPlanningRecovery(detail, error) == GoalPlanningRecoveryKind.HARD_RESET) {
       "stored goal planning '$phaseId' record for subtask ${request.descriptor.subtaskId} fails the " +
-        "installed goal-planning preparation contract and requires a hard reset. Projection failure: $detail"
+        "installed phase-output contract and requires a hard reset. Projection failure: $detail"
     } else {
       "stored goal planning '$phaseId' record for subtask ${request.descriptor.subtaskId} was already " +
         "imported by this child and the stored version now fails its projection contract. " +
@@ -371,6 +391,9 @@ private class GoalChildPlanningImportMatcher(
       stepsSettled(existing, expectedStepStatuses)
   }
 
+  // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom: a quarantined
+  // producer lands running/running, and blocked is an interrupt that the quarantine produces and the
+  // fix loop handles. Accepting a status the recorder cannot emit would admit forged state.
   private fun settledStepStatus(record: Map<*, *>?, phaseId: String): String? {
     if (record == null || record["phase_id"] != phaseId) return null
     return when (record["status"]) {
@@ -397,6 +420,9 @@ private class GoalChildPlanningImportMatcher(
     }
   }
 
+  // Expected step statuses mirror FeatureTaskRuntimePhaseRecorder.stepUpdatesFrom, which writes both
+  // the phase record and its step from one record set: a quarantined producer lands running/running,
+  // never running/completed. Accepting a status the recorder cannot emit would admit forged state.
   private fun stepsSettled(existing: WorkflowStateSnapshot, expected: Map<String, String>): Boolean {
     val planningSteps = decodeWorkflowSteps(existing.stepsJson).filter { it.stepId in PLANNING_PHASE_IDS }
     return planningSteps.size == PLANNING_PHASE_IDS.size &&

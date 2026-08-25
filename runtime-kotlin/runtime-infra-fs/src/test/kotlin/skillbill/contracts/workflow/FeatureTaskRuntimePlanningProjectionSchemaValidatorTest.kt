@@ -152,6 +152,8 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
 
   @Test
   fun `a mutating receipt keeps its governed co-resident produced_outputs fields`() {
+    // reconciled_state and repair_item_results are required of a mutating phase by the phase-output and
+    // audit-repair contracts, so additionalProperties:false must not reject an output that carries them.
     FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
       payload = linkedMapOf<String, Any?>(
         "projection_kind" to "implementation_receipt",
@@ -161,6 +163,7 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
         "tests_executed" to listOf(linkedMapOf("name" to "XTest.kt", "outcome" to "passed")),
         "reconciliation_evidence" to linkedMapOf("reconciled" to true, "evidence" to "files at target"),
         "repository_checkpoint" to linkedMapOf("fingerprint" to "abc123"),
+        "reconciled_state" to linkedMapOf("reconciled" to true, "evidence" to "tree at target"),
         "repair_item_results" to listOf(linkedMapOf("repair_item_id" to "ac-001-gap-1-item-1")),
       ),
       sourceLabel = "implement#1",

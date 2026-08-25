@@ -26,10 +26,6 @@ naming:
     ignoreAnnotated:
       - Composable
 
-exceptions:
-  TooGenericExceptionCaught:
-    active: false
-
 style:
   # Explicit declaration matching the ktlint/spotless 120-char limit.
   # Spotless runs before detekt, so violations here are edge cases (long strings, comments).

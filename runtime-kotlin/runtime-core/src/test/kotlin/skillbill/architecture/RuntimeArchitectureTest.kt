@@ -2000,6 +2000,7 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.GoalProgressEventValidator.validate",
       "skillbill.workflow.model.appendBoundedHistoryBySequence",
       // Durable artifact-map seams riding inside the family workflow row's artifacts_json.
+      "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput",
       // SKILL-137: domain-owned canonical planning-projections schema gate (infra-fs adapter
       // bound in DI). Raw-map because the schema validates the produced_outputs wire map.
       "skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection",
@@ -2007,14 +2008,6 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap",
-      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.checkpoint",
-      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.gateReceipts",
-      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.decompositionPackage",
-      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.toArtifactMap",
-      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar.fromArtifactMap",
-      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState.toArtifactMap",
-      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState.fromArtifactMap",
-      "skillbill.workflow.taskruntime.model.decompositionPackageMapFromProse",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint.toEnvelopeMap",

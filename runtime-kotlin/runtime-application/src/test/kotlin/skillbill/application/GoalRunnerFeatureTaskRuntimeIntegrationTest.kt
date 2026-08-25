@@ -13,6 +13,7 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import java.nio.file.Path
@@ -330,6 +331,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val observed = GOAL_CHILD_WRAPPER_FORMS.mapValues { (_, wrap) ->
       val standalone = runnerHarness(
         launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
+        validator = CanonicalWrapperTestValidator,
       )
       assertEquals(null, standalone.request().goalContinuation)
       val standaloneReport =
@@ -337,6 +339,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       val standaloneObservation = standalone.goalChildObservation(standaloneReport)
       val parity = goalChildParityRun(
         launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
+        config = GoalChildParityConfig(validator = CanonicalWrapperTestValidator),
       )
       assertIs<GoalRunnerRunReport.Completed>(parity.report)
       parity.runtime.goalChildObservation(parity.childReports.last(), parity.authoritativeOutcome()).also {
@@ -621,6 +624,7 @@ private fun goalRunForChildReport(
 private data class GoalChildParityConfig(
   val gitOperations: RecordingWorkflowGitOperations =
     RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
+  val validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
   val ensureCommitSha: Boolean = true,
   val codeReviewMode: CodeReviewExecutionMode? = null,
   val parallelReviewAgent: String? = null,
@@ -637,6 +641,7 @@ private fun goalChildParityRun(
   val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
   val runtime = runnerHarness(
     launcher = launcher,
+    validator = config.validator,
     runtimeConfig = RuntimeHarnessConfig(
       branchSetup = BranchSetupTestConfig(gitOperations = config.gitOperations),
       acceptanceCriteria = config.acceptanceCriteria,

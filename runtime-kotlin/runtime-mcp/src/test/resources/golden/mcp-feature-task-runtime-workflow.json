@@ -98,7 +98,7 @@
     "artifacts": {
       "feature_task_runtime_phase_records": {
         "preplan": {
-          "contract_version": "0.3",
+          "contract_version": "0.2",
           "record_kind": "private_phase_record",
           "phase_id": "preplan",
           "status": "completed",
@@ -112,7 +112,7 @@
           "output_artifact": "{\"contract_version\":\"0.2\",\"phase_id\":\"preplan\",\"status\":\"completed\",\"summary\":\"preplanned\",\"produced_outputs\":{\"digest\":\"ok\"}}"
         },
         "plan": {
-          "contract_version": "0.3",
+          "contract_version": "0.2",
           "record_kind": "private_phase_record",
           "phase_id": "plan",
           "status": "completed",
@@ -126,7 +126,7 @@
           "output_artifact": "{\"contract_version\":\"0.2\",\"phase_id\":\"plan\",\"status\":\"completed\",\"summary\":\"planned\",\"produced_outputs\":{\"tasks\":[\"task-1\"]}}"
         },
         "implement": {
-          "contract_version": "0.3",
+          "contract_version": "0.2",
           "record_kind": "private_phase_record",
           "phase_id": "implement",
           "status": "running",
@@ -176,7 +176,7 @@
     "artifacts": {
       "feature_task_runtime_phase_records": {
         "preplan": {
-          "contract_version": "0.3",
+          "contract_version": "0.2",
           "record_kind": "private_phase_record",
           "phase_id": "preplan",
           "status": "completed",
@@ -190,7 +190,7 @@
           "output_artifact": "{\"contract_version\":\"0.2\",\"phase_id\":\"preplan\",\"status\":\"completed\",\"summary\":\"preplanned\",\"produced_outputs\":{\"digest\":\"ok\"}}"
         },
         "plan": {
-          "contract_version": "0.3",
+          "contract_version": "0.2",
           "record_kind": "private_phase_record",
           "phase_id": "plan",
           "status": "completed",
@@ -204,7 +204,7 @@
           "output_artifact": "{\"contract_version\":\"0.2\",\"phase_id\":\"plan\",\"status\":\"completed\",\"summary\":\"planned\",\"produced_outputs\":{\"tasks\":[\"task-1\"]}}"
         },
         "implement": {
-          "contract_version": "0.3",
+          "contract_version": "0.2",
           "record_kind": "private_phase_record",
           "phase_id": "implement",
           "status": "running",

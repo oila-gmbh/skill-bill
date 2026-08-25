@@ -11,10 +11,10 @@ import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.goalrunner.model.toOutcomeRecord
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.context.model.requireRepositoryRelativePath
-import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
@@ -24,6 +24,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
+import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.reviewStateError
 import skillbill.workflow.taskruntime.model.withStableFindingRefs
@@ -52,11 +53,6 @@ internal data class UnaddressedFindingLedgerScope(
   val subtaskId: Int,
   val workflowId: String,
   val reviewPassNumber: Int,
-)
-
-internal data class GoalSubtaskReviewImport(
-  val reviewRunId: String,
-  val findings: List<ParallelReviewMergedFinding>,
 )
 
 @Suppress("TooManyFunctions") // one reduction pipeline; each step is a named redaction stage
@@ -105,31 +101,18 @@ internal object GoalSubtaskReviewSummaryReducer {
       .let(::withStableFindingRefs)
   }
 
-  fun fromImport(
-    review: GoalSubtaskReviewImport,
-    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
-  ): List<GoalSubtaskReviewCompactFinding> = structuredFindings(review, recordedVerdicts)
-    .filter { finding ->
-      ReviewFindingActionability.isActionable(finding.claimVerdict, finding.scopeDisposition)
-    }
-    .map { finding ->
-      GoalSubtaskReviewCompactFinding(
-        severity = finding.severity,
-        label = finding.compactLabel,
-        text = sanitize(finding.message),
-        findingId = finding.findingId,
-      )
-    }
-    .groupBy { finding ->
-      finding.findingId?.trim()?.lowercase()?.takeIf(String::isNotBlank)
-        ?: finding.label.lowercase()
-    }
-    .values
-    .map { sameKeyFindings ->
-      sameKeyFindings.minByOrNull(::severityRank)
-        ?: error("A grouped compact review summary must contain at least one finding.")
-    }
-    .let(::withStableFindingRefs)
+  /**
+   * The delegated review pass's own commit-focused accounting, as it reported it. Absent for an
+   * inline or non-commit pass, which is exactly the shape durable lifecycle state expects: a
+   * missing record rather than a fabricated commit sequence identity. A malformed record fails
+   * loudly through [GoalSubtaskCommitFocusedAccounting] rather than persisting half a sequence.
+   */
+  fun commitFocusedAccounting(output: Map<String, Any?>): GoalSubtaskCommitFocusedAccounting? =
+    output["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("commit_focused_accounting")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let { GoalSubtaskCommitFocusedAccounting.fromArtifactMap(it, "produced_outputs.commit_focused_accounting") }
 
   fun structuredFindings(
     output: Map<String, Any?>,
@@ -181,49 +164,23 @@ internal object GoalSubtaskReviewSummaryReducer {
     }
   }
 
-  fun structuredFindings(
-    review: GoalSubtaskReviewImport,
-    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
-  ): List<StructuredGoalReviewFinding> = review.findings.map { finding ->
-    val findingMap = mapOf(
-      "finding_id" to finding.fNumber,
-      "severity" to finding.severity.name.lowercase(),
-      "message" to finding.description,
-      "location" to finding.location,
-      "repository_path" to finding.repositoryPath,
-    )
-    val overlay = ReviewFindingActionability.overlayOf(
-      findingRef = finding.fNumber,
-      recordedVerdicts = recordedVerdicts,
-      encoded = ReviewFindingFieldCodec.recordedFieldsOf(
-        claimVerdict = finding.claimVerdict,
-        scopeDisposition = finding.scopeDisposition,
-        citations = finding.citations,
-        severityAdjustment = finding.severityAdjustment,
-      ),
-    )
-    StructuredGoalReviewFinding(
-      severity = finding.severity.name.lowercase(),
-      message = finding.description,
-      issueCategory = "other",
-      location = finding.location.trim().takeIf(String::isNotBlank) ?: "<unknown>",
-      compactLabel = labelFor(findingMap, finding.description),
-      findingId = finding.fNumber,
-      repositoryPath = admissibleRepositoryPath(finding.repositoryPath),
-      claimVerdict = overlay.claimVerdict,
-      scopeDisposition = overlay.scopeDisposition,
-      citations = overlay.citations,
-      severityAdjustment = overlay.severityAdjustment,
-    )
-  }
-
+  /**
+   * The Review run ID the pass's `bill-code-review` invocation reported, read from the review phase's
+   * declared `produced_outputs.review_run_id`. This is the shared key half that resolves a
+   * workflow-loop finding to the findings and review_runs rows produced by the very review that
+   * reported it; the finding id is the other half. A pass that genuinely reported no run id leaves it
+   * null so the pair reads as unresolved rather than being bucketed to a guessed run.
+   */
   fun reviewRunIdOf(output: Map<String, Any?>): String? = (
     output["produced_outputs"]
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
     )?.trim()?.takeIf(String::isNotBlank)
 
-  fun reviewRunIdOf(review: GoalSubtaskReviewImport): String = review.reviewRunId
+  fun recordedVerdicts(unitOfWork: UnitOfWork, output: Map<String, Any?>): List<ReviewFindingVerdict> {
+    val reviewRunId = reviewRunIdOf(output) ?: return emptyList()
+    return unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
+  }
 
   fun verificationBoundaryFindingPaths(finding: StructuredGoalReviewFinding): List<String> {
     val paths = mutableListOf<String>()
@@ -285,30 +242,6 @@ internal object GoalSubtaskReviewSummaryReducer {
     }
   }
 
-  fun unaddressedFindings(
-    review: GoalSubtaskReviewImport,
-    scope: UnaddressedFindingLedgerScope,
-    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
-  ): List<UnaddressedFinding> = structuredFindings(review, recordedVerdicts).mapIndexed { index, finding ->
-    UnaddressedFinding(
-      issueKey = scope.issueKey,
-      subtaskId = scope.subtaskId,
-      workflowId = scope.workflowId,
-      reviewPassNumber = scope.reviewPassNumber,
-      findingOrdinal = index + 1,
-      severity = normalizedUnaddressedFindingSeverity(finding.severity),
-      issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
-      location = finding.location,
-      summary = finding.message,
-      reviewRunId = review.reviewRunId,
-      findingId = finding.findingId,
-      claimVerdict = finding.claimVerdict,
-      scopeDisposition = finding.scopeDisposition,
-      citations = finding.citations,
-      severityAdjustment = finding.severityAdjustment,
-    )
-  }
-
   @Suppress("CyclomaticComplexMethod")
   fun rejectedVerificationFindings(
     verifyOutput: Map<String, Any?>,
@@ -359,80 +292,6 @@ internal object GoalSubtaskReviewSummaryReducer {
         verificationReason = reason,
       )
     }
-  }
-
-  fun rejectedVerificationFindings(
-    verifyOutput: Map<String, Any?>,
-    review: GoalSubtaskReviewImport,
-    scope: UnaddressedFindingLedgerScope,
-    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
-  ): List<UnaddressedFinding> {
-    val reviewById = structuredFindings(review, recordedVerdicts).associateBy { it.findingId.orEmpty() }
-    val dispositionsRaw = verifyOutput["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
-      ?: return emptyList()
-    return dispositionsRaw.mapIndexedNotNull { index, entry ->
-      rejectedVerificationFinding(
-        RejectedVerificationFindingContext(
-          index = index,
-          entry = entry,
-          reviewById = reviewById,
-          review = review,
-          scope = scope,
-          recordedVerdicts = recordedVerdicts,
-        ),
-      )
-    }
-  }
-
-  private data class RejectedVerificationFindingContext(
-    val index: Int,
-    val entry: Any?,
-    val reviewById: Map<String, StructuredGoalReviewFinding>,
-    val review: GoalSubtaskReviewImport,
-    val scope: UnaddressedFindingLedgerScope,
-    val recordedVerdicts: List<ReviewFindingVerdict>,
-  )
-
-  private fun rejectedVerificationFinding(context: RejectedVerificationFindingContext): UnaddressedFinding? {
-    val map = JsonSupport.anyToStringAnyMap(context.entry) ?: return null
-    val disposition = (map["disposition"] as? String)?.trim()?.lowercase()
-    val findingId = (map["finding_id"] as? String)?.takeIf(String::isNotBlank)
-    val reason = (map["reason"] as? String)?.takeIf(String::isNotBlank)
-    if (disposition != "rejected" || findingId == null || reason == null) return null
-    val reviewFinding = context.reviewById[findingId]
-    val existingOrdinal = reviewFinding?.let {
-      structuredFindings(context.review, context.recordedVerdicts).indexOfFirst { candidate ->
-        candidate.findingId == findingId
-      }.takeIf { it >= 0 }?.plus(1)
-    }
-    val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
-      ?: reviewFinding?.severity
-      ?: UNADDRESSED_FINDING_DEFAULT_SEVERITY
-    return UnaddressedFinding(
-      issueKey = context.scope.issueKey,
-      subtaskId = context.scope.subtaskId,
-      workflowId = context.scope.workflowId,
-      reviewPassNumber = context.scope.reviewPassNumber,
-      findingOrdinal = existingOrdinal ?: (context.index + 1),
-      severity = normalizedUnaddressedFindingSeverity(severity),
-      issueCategory = normalizedUnaddressedFindingCategory(
-        reviewFinding?.issueCategory ?: UNADDRESSED_FINDING_DEFAULT_CATEGORY,
-      ),
-      location = (map["location"] as? String)?.takeIf(String::isNotBlank)
-        ?: reviewFinding?.location ?: "<unknown>",
-      summary = (map["message"] as? String)?.takeIf(String::isNotBlank)
-        ?: reviewFinding?.message ?: reason,
-      reviewRunId = context.review.reviewRunId,
-      findingId = findingId,
-      claimVerdict = reviewFinding?.claimVerdict,
-      scopeDisposition = reviewFinding?.scopeDisposition,
-      citations = reviewFinding?.citations.orEmpty(),
-      severityAdjustment = reviewFinding?.severityAdjustment,
-      verificationDisposition = "rejected",
-      verificationReason = reason,
-    )
   }
 
   /**

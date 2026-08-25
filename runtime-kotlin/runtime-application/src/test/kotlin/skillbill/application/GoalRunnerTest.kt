@@ -186,7 +186,6 @@ class GoalRunnerTest {
         reviewResultArtifact = "goal_subtask_review_results.1",
         unresolvedFindingCount = 1,
         findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
-        reviewRunId = "rvw-test-1",
       ),
     )
     val launcher = RecordingSubtaskLauncher { request ->

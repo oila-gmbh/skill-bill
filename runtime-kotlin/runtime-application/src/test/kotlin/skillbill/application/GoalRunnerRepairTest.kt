@@ -668,7 +668,6 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       repairChildRecord(
@@ -774,7 +773,6 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
-      reviewRunId = "rvw-test-1",
     ).copy(remediationBaseSha = unreachable)
     workflows.saveFeatureTaskRuntimeWorkflow(
       repairChildRecord(

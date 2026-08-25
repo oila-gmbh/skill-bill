@@ -86,8 +86,11 @@ class FeatureTaskRuntimeImplementationContinuationTest {
       "task-2",
       "task-3",
       "task-1",
+      "src/Foo.kt",
       "used a sibling file",
       "task-2 tests still owed",
+      "re-read every changed path",
+      "abc123",
     ).forEach { expected ->
       assertTrue(directive.contains(expected), "Directive must carry '$expected'; got:\n$directive")
     }

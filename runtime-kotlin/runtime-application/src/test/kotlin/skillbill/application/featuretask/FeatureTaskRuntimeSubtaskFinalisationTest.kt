@@ -1,10 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -307,57 +303,6 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertEquals(listOf("owned/nested/One.kt", "owned/nested/Two.kt"), committed)
     assertEquals(finalised.commitSha, remoteBranchTip(repo.remote))
     assertEquals("", git(repo.root, "status", "--porcelain"), "no deliverable dirt may remain")
-  }
-
-  @Test
-  fun `prose delimited commit subject is accepted and sha sidecar is consistent`() {
-    val subject = "SKILL-208: delimited commit subject"
-    val prose = """
-      Work complete.
-      <<<COMMIT_SUBJECT>>>
-      $subject
-      <<<END_COMMIT_SUBJECT>>>
-    """.trimIndent()
-    val read = FeatureTaskRuntimeSubtaskFinalisation.readHandoffFromProse(prose)
-    val valid = assertIs<FeatureTaskRuntimeCommitPushHandoffValid>(read)
-    assertEquals(subject, valid.handoff.outcomeMessage)
-    val sidecar = FeatureTaskRuntimeSubtaskFinalisation.withCommitShaSidecar(subject, "c".repeat(40))
-    assertEquals(subject, sidecar.commitSubject)
-    assertEquals("c".repeat(40), sidecar.commitSha)
-  }
-
-  @Test
-  fun `commitShaFromPhaseRecords prefers runtime owned sidecar over legacy envelope`() {
-    val legacyEnvelope = """{"produced_outputs":{"commit_push_result":{"commit_sha":"legacy-sha"}}}"""
-    val record = FeatureTaskRuntimePhaseRecord(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-      status = "completed",
-      attemptCount = 1,
-      startedAt = "2026-01-01T00:00:00Z",
-      resolvedAgentId = "committer",
-      outputArtifact = legacyEnvelope,
-      runtimeOwnedSidecar = FeatureTaskRuntimePhaseRecordSidecar(
-        commitSubject = "SKILL-208: subject",
-        commitSha = "sidecar-sha",
-      ),
-    )
-    val resolved = record.runtimeOwnedSidecar?.commitSha
-      ?: legacyEnvelope.let(JsonSupport::parseObjectOrNull)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
-        ?.commitShaFromPhasePayload()
-    assertEquals("sidecar-sha", resolved)
-  }
-
-  @Test
-  fun `blank delimited commit subject is rejected before any git write`() {
-    val blank = FeatureTaskRuntimeSubtaskFinalisation.readHandoffFromProse(
-      "<<<COMMIT_SUBJECT>>>   <<<END_COMMIT_SUBJECT>>>",
-    )
-    assertContains(
-      assertIs<FeatureTaskRuntimeCommitPushHandoffInvalid>(blank).reason,
-      "<<<COMMIT_SUBJECT>>>",
-    )
   }
 
   @Test

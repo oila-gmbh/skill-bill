@@ -1,12 +1,5 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
-## [2026-08-25] SKILL-208 subtask 5 — Retire shape policing
-Areas: runtime-infra-fs/contracts/workflow (retired phase-output schema references in docs only), runtime-application/goalrunner
-- Phase-output shape validator and structural-repair contracts are no longer on the feature-task path; goal planning JSON parse helpers live in runtime-application.
-- Planning-projection schema, validator adapter, and parity tests remain for goal-planning gate only.
-Feature flag: N/A
-Acceptance criteria: 8/8 implemented
-
 ## [2026-08-20] Output-gate failures block on the first invalid envelope
 Areas: runtime-application/featuretask, runtime-infra-fs/contracts/workflow
 - Programmatic JSON extract-and-shape-repair still runs on the existing capture.

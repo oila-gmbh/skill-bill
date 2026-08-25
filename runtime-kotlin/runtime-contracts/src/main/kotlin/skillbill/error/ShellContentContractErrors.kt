@@ -247,6 +247,98 @@ class InvalidDecompositionManifestSchemaError(
   cause,
 )
 
+/**
+ * Surfaced when a feature-task-runtime phase output fails the canonical
+ * phase-output schema. The message carries the source label and violation
+ * reason.
+ */
+enum class FeatureTaskRuntimePhaseOutputFailureKind { MALFORMED, SCHEMA_INVALID }
+
+data class FeatureTaskRuntimePhaseOutputStructuralRepairSource(
+  val label: String,
+  val offset: Int,
+  val line: Int,
+  val column: Int,
+)
+
+data class FeatureTaskRuntimePhaseOutputStructuralRepair(
+  val originalDigest: String,
+  val repairedDigest: String,
+  val format: String,
+  val operation: String,
+  val source: FeatureTaskRuntimePhaseOutputStructuralRepairSource,
+)
+
+class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+  /**
+   * The same violation as [reason], restated with schema-side content only: the violated rule, the
+   * expected shape, and the offending field's name or path. It never carries an instance value, a body
+   * fragment, or any other span of the response that failed — [reason] is the value-bearing variant and
+   * belongs only in a private diagnostic row or a local log. Null means the throwing seam had no
+   * mechanically value-free restatement available; a consumer must then fall back to its own payload-free
+   * rejection sentence and must never substitute [reason].
+   */
+  val payloadFreeReason: String? = null,
+  /** Stable wire code used by the typed adapter result; old callers may omit it. */
+  val failureCode: String = "schema_invalid",
+  /**
+   * Payload-free structural-repair correlation retained when delimiter repair accepted this capture
+   * and the phase schema later rejected it. Digests, format/operation wire values, and source
+   * location only — never response body text. Absence means no prior syntax repair on this capture.
+   */
+  val structuralRepair: FeatureTaskRuntimePhaseOutputStructuralRepair? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime phase output '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+) {
+  val failureKind: FeatureTaskRuntimePhaseOutputFailureKind
+    get() = when (failureCode) {
+      "malformed",
+      "root_not_object",
+      "no_repair_candidate",
+      "ambiguous_repair",
+      "repair_limit_exceeded",
+      "unsupported_repair",
+      "duplicate_key",
+      -> FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED
+      else -> FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID
+    }
+
+  val structuralRepairOriginalDigest: String?
+    get() = structuralRepair?.originalDigest
+
+  val structuralRepairRepairedDigest: String?
+    get() = structuralRepair?.repairedDigest
+
+  val structuralRepairFormat: String?
+    get() = structuralRepair?.format
+
+  val structuralRepairOperation: String?
+    get() = structuralRepair?.operation
+
+  val structuralRepairSourceLabel: String?
+    get() = structuralRepair?.source?.label
+
+  val structuralRepairSourceOffset: Int?
+    get() = structuralRepair?.source?.offset
+
+  val structuralRepairSourceLine: Int?
+    get() = structuralRepair?.source?.line
+
+  val structuralRepairSourceColumn: Int?
+    get() = structuralRepair?.source?.column
+
+  /**
+   * True when deterministic delimiter repair previously accepted this capture and the phase schema
+   * later rejected it. Syntax success must not be read as phase-schema acceptance.
+   */
+  val acceptedAfterStructuralRepair: Boolean
+    get() = structuralRepair != null
+}
+
 /** Why a handoff projection was rejected before an agent was launched. */
 enum class FeatureTaskRuntimeHandoffProjectionFailureKind {
   MISSING_REQUIRED_SOURCE,

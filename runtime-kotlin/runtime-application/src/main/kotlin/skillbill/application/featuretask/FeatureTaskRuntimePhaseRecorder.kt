@@ -3,19 +3,12 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
-import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
-import skillbill.application.featuretask.model.RuntimeOwnedFindingVerdictsReadResolution
-import skillbill.application.featuretask.model.RuntimeOwnedReviewImportResolution
-import skillbill.application.featuretask.model.RuntimeOwnedReviewPassClaimsReadResolution
-import skillbill.application.featuretask.model.resolveRuntimeOwnedFindingVerdicts
-import skillbill.application.featuretask.model.resolveRuntimeOwnedReviewPassClaims
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.normalizeIssueKey
-import skillbill.application.review.unionReviewPassClaims
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
@@ -37,7 +30,6 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.model.evidenceKey
-import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
@@ -57,7 +49,6 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_BUILD_GATE_PROG
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
@@ -79,7 +70,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDerivationReaskState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
@@ -244,7 +234,6 @@ class FeatureTaskRuntimePhaseRecorder(
           request.phaseId,
           request.attempt,
           request.repairTurn,
-          request.diagnosticDiscriminator,
         ),
       )
       is DiagnosticWriteOutcome.Degraded -> FeatureTaskRuntimeRejectedOutputWrite.Degraded(outcome.failureClass)
@@ -544,9 +533,13 @@ class FeatureTaskRuntimePhaseRecorder(
   @Suppress("LongMethod", "CyclomaticComplexMethod", "ComplexCondition")
   fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean {
     require(request.status == "completed" && request.finished)
-    return database.transaction(dbOverride) { unitOfWork ->
+    return runtimeOwnedPersistence.requiredWrite(
+      seam = "FeatureTaskRuntimePhaseRecorder.recordCompletedPhase",
+      expected = "runtime-owned completed phase state",
+      dbOverride = dbOverride,
+    ) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
-        ?: return@transaction false
+        ?: return@requiredWrite false
       val artifacts = decodeArtifacts(record.artifactsJson)
       val existingRecords = phaseRecordsFrom(artifacts)
       val updatedRecords = LinkedHashMap(existingRecords).apply {
@@ -605,12 +598,9 @@ class FeatureTaskRuntimePhaseRecorder(
       ?.get("projection_kind") == FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue
     if (!carriesReceipt) return emptyMap()
     val existing = implementationAttemptsFrom(artifacts)
-    val returnedText = request.normalizedOutput.canonicalJson
-    val obligations = implementationObligationsFrom(request, artifacts, request.workflowId)
     val claim = featureTaskRuntimeImplementationClaimFrom(
       envelope,
-      obligations,
-      returnedText,
+      FeatureTaskRuntimeImplementationObligations(emptyList(), emptyList(), request.loopId),
     )
     val appended = featureTaskRuntimeAppendImplementationAttempt(
       existing = existing,
@@ -622,9 +612,7 @@ class FeatureTaskRuntimePhaseRecorder(
         status = attemptStatus,
         recordedAt = Instant.now().toString(),
         completedTaskIds = claim.completedTaskIds.distinct(),
-        changedPaths = (
-          request.fileManifestAfter + request.fileManifestIntroduced
-          ).distinct().sorted(),
+        changedPaths = claim.changedPaths.distinct(),
         loopId = request.loopId,
         edgeIteration = request.edgeIteration,
         failureDisposition = request.failureDisposition,
@@ -640,34 +628,6 @@ class FeatureTaskRuntimePhaseRecorder(
       FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY,
     )
     return mapOf(FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY to wire)
-  }
-
-  private fun implementationObligationsFrom(
-    request: FeatureTaskRuntimePhaseStateRequest,
-    artifacts: Map<String, Any?>,
-    workflowId: String,
-  ): FeatureTaskRuntimeImplementationObligations {
-    if (request.implementationPlannedTaskIds.isNotEmpty() || request.implementationCarriedRepairItemIds.isNotEmpty()) {
-      return FeatureTaskRuntimeImplementationObligations(
-        plannedTaskIds = request.implementationPlannedTaskIds,
-        carriedRepairItemIds = request.implementationCarriedRepairItemIds,
-        loopId = request.loopId,
-        edgeIteration = request.edgeIteration,
-      )
-    }
-    val delivered = deliveredProjectionsFrom(
-      artifacts,
-      validateEnvelope = { envelope -> handoffEnvelopeValidator.validateEnvelope(envelope, workflowId) },
-      validatePersistenceRecord = { persistence ->
-        handoffFoundationValidator.validatePersistenceRecord(persistence, "delivered-projection:$workflowId")
-      },
-    ).values
-    return FeatureTaskRuntimeImplementationObligations(
-      plannedTaskIds = featureTaskRuntimePlannedTaskIdsFrom(delivered, request.phaseId),
-      carriedRepairItemIds = emptyList(),
-      loopId = request.loopId,
-      edgeIteration = request.edgeIteration,
-    )
   }
 
   /**
@@ -841,130 +801,19 @@ class FeatureTaskRuntimePhaseRecorder(
     true
   }
 
-  internal fun resolveRuntimeOwnedReviewImport(
-    workflowId: String,
+  internal fun recordedFindingVerdicts(
+    output: Map<String, Any?>,
     dbOverride: String? = null,
-  ): RuntimeOwnedReviewImportResolution = try {
-    database.read(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@read RuntimeOwnedReviewImportResolution.Absent("workflow row is missing")
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val reviewState = GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly(artifacts)
-      val reviewRecord = phaseRecordsFrom(artifacts)[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
-      val reviewRunId = if (reviewState?.reservedPassNumber != null) {
-        reviewRecord?.reviewRunId
-      } else {
-        reviewState?.passResults?.lastOrNull()?.reviewRunId ?: reviewRecord?.reviewRunId
-      }?.takeIf(String::isNotBlank)
-        ?: return@read RuntimeOwnedReviewImportResolution.Absent("review phase has no runtime-owned run id")
-      val claims = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-        is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
-        is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> return@read RuntimeOwnedReviewImportResolution.Absent(
-          "review pass claims are missing for runtime-owned run id '$reviewRunId': ${resolution.cause}",
-        )
-        is RuntimeOwnedReviewPassClaimsReadResolution.ReadError ->
-          return@read RuntimeOwnedReviewImportResolution.ReadError(
-            "review pass claims could not be read for runtime-owned run id '$reviewRunId': ${resolution.cause}",
-          )
-      }
-      RuntimeOwnedReviewImportResolution.ResolvedReviewImport(
-        skillbill.application.goalrunner.GoalSubtaskReviewImport(reviewRunId, claims.findings),
-      )
-    }
-  } catch (error: Exception) {
-    RuntimeOwnedReviewImportResolution.ReadError(
-      error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
-    )
-  }
-
-  internal fun persistRuntimeOwnedReviewPassClaims(
-    reviewRunId: String,
-    findings: List<ParallelReviewMergedFinding>,
-    dbOverride: String? = null,
-  ) {
-    if (reviewRunId.isBlank()) return
-    runtimeOwnedPersistence.requiredWrite(
-      seam = "FeatureTaskRuntimePhaseRecorder.persistRuntimeOwnedReviewPassClaims",
-      expected = "runtime-owned review pass claims",
+  ): List<ReviewFindingVerdict> {
+    val reviewRunId = GoalSubtaskReviewSummaryReducer.reviewRunIdOf(output) ?: return emptyList()
+    return runtimeOwnedPersistence.requiredRead(
+      seam = "FeatureTaskRuntimePhaseRecorder.recordedFindingVerdicts",
+      expected = "runtime-owned finding verdicts",
       dbOverride = dbOverride,
     ) { unitOfWork ->
-      val recorded = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-        is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
-        is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> null
-        is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> {
-          recordRuntimeOwnedReadFailure(
-            seam = "FeatureTaskRuntimePhaseRecorder.persistRuntimeOwnedReviewPassClaims",
-            expected = "runtime-owned review pass claims",
-            used = "read_error",
-            cause = resolution.cause,
-          )
-          throw RuntimeOwnedFactUnavailable(
-            "Runtime-owned review pass claims could not be read for '$reviewRunId': ${resolution.cause}",
-          )
-        }
-      }
-      val existing = recorded?.findings.orEmpty()
-      val unioned = unionReviewPassClaims(existing, findings)
-      if (recorded != null && existing == unioned) return@requiredWrite
-      unitOfWork.reviews.recordReviewPassClaims(reviewRunId, unioned)
+      unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
     }
   }
-
-  internal fun resolveRuntimeOwnedReviewImportByRunId(
-    reviewRunId: String,
-    dbOverride: String? = null,
-  ): RuntimeOwnedReviewImportResolution = try {
-    database.read(dbOverride) { unitOfWork ->
-      val claims = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-        is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
-        is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> return@read RuntimeOwnedReviewImportResolution.Absent(
-          "review pass claims are missing for runtime-owned run id '$reviewRunId': ${resolution.cause}",
-        )
-        is RuntimeOwnedReviewPassClaimsReadResolution.ReadError ->
-          return@read RuntimeOwnedReviewImportResolution.ReadError(
-            "review pass claims could not be read for runtime-owned run id '$reviewRunId': ${resolution.cause}",
-          )
-      }
-      RuntimeOwnedReviewImportResolution.ResolvedReviewImport(
-        skillbill.application.goalrunner.GoalSubtaskReviewImport(reviewRunId, claims.findings),
-      )
-    }
-  } catch (error: Exception) {
-    RuntimeOwnedReviewImportResolution.ReadError(
-      error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
-    )
-  }
-
-  internal fun resolveRecordedFindingVerdicts(
-    reviewRunId: String,
-    dbOverride: String? = null,
-  ): RuntimeOwnedFindingVerdictsReadResolution = try {
-    database.read(dbOverride) { unitOfWork ->
-      unitOfWork.resolveRuntimeOwnedFindingVerdicts(reviewRunId)
-    }
-  } catch (error: Exception) {
-    RuntimeOwnedFindingVerdictsReadResolution.ReadError(
-      error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
-    )
-  }
-
-  internal fun recordedFindingVerdicts(reviewRunId: String, dbOverride: String? = null): List<ReviewFindingVerdict> =
-    when (
-      val resolution = resolveRecordedFindingVerdicts(reviewRunId, dbOverride)
-    ) {
-      is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
-      is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
-        recordRuntimeOwnedReadFailure(
-          seam = "FeatureTaskRuntimePhaseRecorder.recordedFindingVerdicts",
-          expected = "runtime-owned finding verdicts",
-          used = "read_error",
-          cause = resolution.cause,
-        )
-        throw RuntimeOwnedFactUnavailable(
-          "Runtime-owned finding verdicts could not be read for review run '$reviewRunId': ${resolution.cause}",
-        )
-      }
-    }
 
   internal fun fetchUnaddressedLedger(
     workflowId: String,
@@ -1095,27 +944,8 @@ class FeatureTaskRuntimePhaseRecorder(
     dbOverride: String? = null,
   ): Boolean {
     val request = validatedGoalReviewPhaseState(completion)
-    return try {
-      runtimeOwnedPersistence.requiredWrite(
-        seam = "FeatureTaskRuntimePhaseRecorder.completeGoalReviewPhase",
-        expected = "runtime-owned review import and completion persistence",
-        dbOverride = dbOverride,
-      ) { unitOfWork ->
-        persistCompletedGoalReview(unitOfWork, request, completion)
-      }
-    } catch (error: RuntimeOwnedFactUnavailable) {
-      throw error
-    } catch (error: Exception) {
-      val cause = error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty()
-      recordRuntimeOwnedReadFailure(
-        seam = "FeatureTaskRuntimePhaseRecorder.completeGoalReviewPhase",
-        expected = "runtime-owned review import and completion persistence",
-        used = "blocked",
-        cause = cause,
-      )
-      throw RuntimeOwnedFactUnavailable(
-        "Goal-subtask review completion could not establish its runtime-owned persistence facts: $cause",
-      )
+    return database.transaction(dbOverride) { unitOfWork ->
+      persistCompletedGoalReview(unitOfWork, request, completion)
     }
   }
 
@@ -1182,10 +1012,9 @@ class FeatureTaskRuntimePhaseRecorder(
     val envelope = requireNotNull(request.normalizedOutput) {
       "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
     }.envelope
-    val reviewImport = runtimeOwnedReviewImport(unitOfWork, artifacts, completion.reviewRunId)
-    val recordedVerdicts = runtimeOwnedFindingVerdicts(unitOfWork, reviewImport.reviewRunId)
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, envelope)
     val currentFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
-      review = reviewImport,
+      output = envelope,
       scope = UnaddressedFindingLedgerScope(
         issueKey = reviewArtifacts.continuation.issueKey,
         subtaskId = reviewArtifacts.continuation.subtaskId,
@@ -1210,7 +1039,6 @@ class FeatureTaskRuntimePhaseRecorder(
         unresolvedFindingCount = completion.unresolvedFindingCount,
         findings = completion.findings,
         blockerDispositions = dispositions,
-        reviewRunId = completion.reviewRunId,
         commitFocusedAccounting = completion.commitFocusedAccounting,
       ),
       dispositions = dispositions,
@@ -1267,20 +1095,12 @@ class FeatureTaskRuntimePhaseRecorder(
     passNumber: Int,
     blockerDispositions: List<GoalSubtaskBlockerDisposition>,
   ) {
-    requireNotNull(request.normalizedOutput) {
+    val output = requireNotNull(request.normalizedOutput) {
       "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
-    }
-    val reviewImport = runtimeOwnedReviewImport(
-      unitOfWork,
-      decodeArtifacts(
-        WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)?.artifactsJson
-          ?: error("Goal review completion requires runtime state."),
-      ),
-      request.reviewRunId ?: error("Goal review completion requires a runtime-owned review run id."),
-    )
-    val recordedVerdicts = runtimeOwnedFindingVerdicts(unitOfWork, reviewImport.reviewRunId)
+    }.envelope
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
     val findings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
-      review = reviewImport,
+      output = output,
       scope = UnaddressedFindingLedgerScope(
         issueKey = continuation.issueKey,
         subtaskId = continuation.subtaskId,
@@ -1298,66 +1118,6 @@ class FeatureTaskRuntimePhaseRecorder(
         blockerDispositions = blockerDispositions,
       ),
     )
-  }
-
-  private fun runtimeOwnedReviewImport(
-    unitOfWork: UnitOfWork,
-    artifacts: Map<String, Any?>,
-    reviewRunId: String,
-  ): skillbill.application.goalrunner.GoalSubtaskReviewImport {
-    require(reviewRunId.isNotBlank()) {
-      "Goal review completion requires a runtime-owned review run id."
-    }
-    val currentReviewRunId = phaseRecordsFrom(artifacts)
-      .get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
-      ?.reviewRunId
-      ?.takeIf(String::isNotBlank)
-    require(currentReviewRunId == reviewRunId) {
-      "Goal review completion review run id must match the reserved runtime-owned review run id."
-    }
-    val claims = when (val resolution = unitOfWork.resolveRuntimeOwnedReviewPassClaims(reviewRunId)) {
-      is RuntimeOwnedReviewPassClaimsReadResolution.ResolvedPassClaims -> resolution.snapshot
-      is RuntimeOwnedReviewPassClaimsReadResolution.Absent -> {
-        recordRuntimeOwnedReadFailure(
-          seam = "FeatureTaskRuntimePhaseRecorder.runtimeOwnedReviewImport",
-          expected = "runtime-owned imported review findings",
-          used = "absent",
-          cause = resolution.cause,
-        )
-        error("Goal review completion requires runtime-owned imported review findings: ${resolution.cause}.")
-      }
-      is RuntimeOwnedReviewPassClaimsReadResolution.ReadError -> {
-        recordRuntimeOwnedReadFailure(
-          seam = "FeatureTaskRuntimePhaseRecorder.runtimeOwnedReviewImport",
-          expected = "runtime-owned imported review findings",
-          used = "read_error",
-          cause = resolution.cause,
-        )
-        error("Goal review completion could not read runtime-owned imported review findings: ${resolution.cause}.")
-      }
-    }
-    return skillbill.application.goalrunner.GoalSubtaskReviewImport(reviewRunId, claims.findings)
-  }
-
-  private fun runtimeOwnedFindingVerdicts(unitOfWork: UnitOfWork, reviewRunId: String): List<ReviewFindingVerdict> =
-    when (val resolution = unitOfWork.resolveRuntimeOwnedFindingVerdicts(reviewRunId)) {
-      is RuntimeOwnedFindingVerdictsReadResolution.ResolvedFindingVerdicts -> resolution.verdicts
-      is RuntimeOwnedFindingVerdictsReadResolution.ReadError -> {
-        recordRuntimeOwnedReadFailure(
-          seam = "FeatureTaskRuntimePhaseRecorder.runtimeOwnedFindingVerdicts",
-          expected = "runtime-owned finding verdicts",
-          cause = resolution.cause,
-        )
-        error("Runtime-owned finding verdicts could not be read for review run '$reviewRunId': ${resolution.cause}")
-      }
-    }
-
-  private fun recordRuntimeOwnedReadFailure(seam: String, expected: String, cause: String, used: String = "none") {
-    runCatching {
-      diagnostics.warning(
-        "seam=$seam value_expected=$expected value_used=$used cause=$cause",
-      )
-    }
   }
 
   private fun validatedGoalReviewPhaseState(
@@ -1721,66 +1481,6 @@ class FeatureTaskRuntimePhaseRecorder(
       )
     }
   }
-
-  fun loadDerivationReaskState(
-    workflowId: String,
-    phaseId: String,
-    dbOverride: String? = null,
-  ): FeatureTaskRuntimeDerivationReaskState? = database.read(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
-    derivationReaskStatesFrom(decodeArtifacts(record.artifactsJson))[phaseId]
-  }
-
-  fun persistDerivationReaskState(
-    workflowId: String,
-    state: FeatureTaskRuntimeDerivationReaskState,
-    dbOverride: String? = null,
-  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@transaction false
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    val updated = LinkedHashMap(derivationReaskStatesFrom(artifacts)).apply {
-      put(state.phaseId, state)
-    }
-    persistPatch(
-      unitOfWork.workflowStates,
-      record,
-      mapOf(FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY to derivationReaskStatesToWire(updated)),
-    )
-    true
-  }
-
-  fun clearDerivationReaskState(workflowId: String, phaseId: String, dbOverride: String? = null): Boolean =
-    database.transaction(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@transaction false
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val existing = derivationReaskStatesFrom(artifacts)
-      if (!existing.containsKey(phaseId)) return@transaction true
-      val updated = LinkedHashMap(existing).apply { remove(phaseId) }
-      val patch = if (updated.isEmpty()) {
-        mapOf(FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY to null)
-      } else {
-        mapOf(FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY to derivationReaskStatesToWire(updated))
-      }
-      persistPatch(unitOfWork.workflowStates, record, patch)
-      true
-    }
-
-  private fun derivationReaskStatesFrom(
-    artifacts: Map<String, Any?>,
-  ): Map<String, FeatureTaskRuntimeDerivationReaskState> {
-    val raw = artifacts[FEATURE_TASK_RUNTIME_DERIVATION_REASK_ARTIFACT_KEY] ?: return emptyMap()
-    val wire = JsonSupport.anyToStringAnyMap(raw) ?: return emptyMap()
-    return wire.mapNotNull { (phaseId, entry) ->
-      val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapNotNull null
-      phaseId to FeatureTaskRuntimeDerivationReaskState.fromArtifactMap(map)
-    }.toMap()
-  }
-
-  private fun derivationReaskStatesToWire(
-    states: Map<String, FeatureTaskRuntimeDerivationReaskState>,
-  ): Map<String, Any?> = states.mapValues { (_, state) -> state.toArtifactMap() }
 
   fun loadBuildGateProgress(
     workflowId: String,
@@ -2347,8 +2047,6 @@ class FeatureTaskRuntimePhaseRecorder(
       durationMillis = if (request.finished) durationMillis(startedAt, now) else null,
       resolvedAgentId = request.resolvedAgentId,
       outputArtifact = request.outputArtifact,
-      outputText = request.outputText ?: request.outputArtifact,
-      runtimeOwnedSidecar = request.runtimeOwnedSidecar,
       rejectedOutput = request.rejectedOutput,
       blockedReason = request.blockedReason,
       failureDisposition = request.failureDisposition,
@@ -2372,7 +2070,6 @@ class FeatureTaskRuntimePhaseRecorder(
 
 internal data class GoalReviewPhaseCompletionRequest(
   val phaseState: FeatureTaskRuntimePhaseStateRequest,
-  val reviewRunId: String,
   val verdict: FeatureTaskRuntimeVerdict,
   val unresolvedFindingCount: Int,
   val findings: List<GoalSubtaskReviewCompactFinding>,

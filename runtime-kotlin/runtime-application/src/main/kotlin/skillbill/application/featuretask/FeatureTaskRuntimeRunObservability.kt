@@ -241,46 +241,6 @@ internal class FeatureTaskRuntimeRunObservability(
     )
   }
 
-  fun derivationReask(phaseId: String, resolvedAgentId: String, attemptCount: Int, reaskCount: Int) {
-    emitFeatureTaskRuntimeEventSafely(diagnostics, "derivation re-ask") {
-      diagnostics.warning(
-        "seam=FeatureTaskRuntimeRunObservability.derivationReask " +
-          "phase=$phaseId attempt=$attemptCount reask=$reaskCount",
-        null,
-      )
-    }
-    appendLedger(
-      FeatureTaskRuntimePhaseLedgerRequest(
-        workflowId = request.workflowId,
-        action = FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION,
-        phaseId = phaseId,
-        attemptCount = attemptCount,
-        resolvedAgentId = resolvedAgentId,
-        fixLoopIteration = reaskCount,
-        blockedReason = "derivation_reask",
-      ),
-    )
-  }
-
-  fun derivationBlocked(phaseId: String, resolvedAgentId: String, attemptCount: Int, reason: String) {
-    emitFeatureTaskRuntimeEventSafely(diagnostics, "derivation block") {
-      diagnostics.warning(
-        "seam=FeatureTaskRuntimeRunObservability.derivationBlocked phase=$phaseId attempt=$attemptCount reason=$reason",
-        null,
-      )
-    }
-    appendLedger(
-      FeatureTaskRuntimePhaseLedgerRequest(
-        workflowId = request.workflowId,
-        action = FeatureTaskRuntimePhaseLedgerAction.BLOCKED,
-        phaseId = phaseId,
-        attemptCount = attemptCount,
-        resolvedAgentId = resolvedAgentId,
-        blockedReason = reason,
-      ),
-    )
-  }
-
   fun completed(phaseId: String, resolvedAgentId: String, attemptCount: Int) {
     completedEvent(phaseId, resolvedAgentId, attemptCount)
     appendLedger(
@@ -303,15 +263,6 @@ internal class FeatureTaskRuntimeRunObservability(
         attemptCount = attemptCount,
       ),
     )
-  }
-
-  fun runtimeOwnedFactUnavailable(seam: String, expected: String, actual: String, cause: String) {
-    emitFeatureTaskRuntimeEventSafely(diagnostics, "runtime-owned fact unavailable") {
-      diagnostics.warning(
-        "seam=$seam expected=$expected actual=$actual cause=$cause",
-        null,
-      )
-    }
   }
 
   fun paused(phaseId: String, resolvedAgentId: String, attemptCount: Int, pauseReason: String) {

@@ -68,11 +68,7 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
   companion object {
     @OpenBoundaryMap("Finding verification disposition decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeFindingVerificationDisposition {
-      val findingId = listOf("finding_id", "finding_ref", "id", "ref")
-        .asSequence()
-        .mapNotNull { key -> (raw[key] as? String)?.trim()?.takeIf(String::isNotBlank) }
-        .firstOrNull()
-        ?: invalid(path, "finding_id")
+      val findingId = (raw["finding_id"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "finding_id")
       val disposition = (raw["disposition"] as? String)
         ?.let(FeatureTaskRuntimeFindingVerificationDispositionVerdict::fromWire)
         ?: invalid(path, "disposition")

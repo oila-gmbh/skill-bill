@@ -4,7 +4,6 @@ internal object FeatureTaskRuntimeAttemptBudgets {
   const val MAX_OUTPUT_GATE_RETRY_ATTEMPTS: Int = 1
   const val MAX_FORMAT_RETRY_ATTEMPTS: Int = MAX_OUTPUT_GATE_RETRY_ATTEMPTS
   const val MAX_PROCESS_FAILURE_ATTEMPTS: Int = 3
-  const val MAX_DERIVATION_REASK_ATTEMPTS: Int = 1
 
   fun processFailureBlockReason(phaseId: String, processFailureCount: Int, lastFailureReason: String?): String? {
     require(processFailureCount >= 0) {
@@ -32,17 +31,6 @@ internal object FeatureTaskRuntimeAttemptBudgets {
 
   fun malformedOutputBlockReason(phaseId: String, malformedAttemptCount: Int): String? =
     outputGateBlockReason(phaseId, malformedAttemptCount)
-
-  fun derivationReaskBlockReason(phaseId: String, reaskCount: Int): String? {
-    require(reaskCount >= 1) { "reaskCount must be >= 1, was $reaskCount." }
-    return if (reaskCount > MAX_DERIVATION_REASK_ATTEMPTS) {
-      "Phase '$phaseId' could not derive a decisive settlement or routing verdict after " +
-        "$reaskCount derivation re-ask(s) (cap=$MAX_DERIVATION_REASK_ATTEMPTS); the run blocks durably " +
-        "rather than defaulting to an advancing verdict."
-    } else {
-      null
-    }
-  }
 
   /**
    * Whether a round that reported it tried and could not close a finding may try that finding again.

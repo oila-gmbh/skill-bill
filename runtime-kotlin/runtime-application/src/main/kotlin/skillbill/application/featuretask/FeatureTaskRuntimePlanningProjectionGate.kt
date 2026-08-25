@@ -1,50 +1,12 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
-import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
-
-internal fun firstJsonObjectInPlanningPayload(text: String): String? {
-  val fenced = Regex("```[A-Za-z]*\\s*\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
-    .find(text)?.groupValues?.get(1)
-  val candidate = (fenced ?: text).trim()
-  val open = candidate.indexOf('{')
-  val close = candidate.lastIndexOf('}')
-  return if (open in 0 until close) candidate.substring(open, close + 1) else null
-}
-
-internal fun parseGoalPlanningPhaseEnvelopeOrNull(payload: String): NormalizedFeatureTaskRuntimePhaseOutput? {
-  val json = firstJsonObjectInPlanningPayload(payload) ?: return null
-  val envelope = JsonSupport.parseObjectOrNull(json)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?: return null
-  return NormalizedFeatureTaskRuntimePhaseOutput(
-    canonicalJson = JsonSupport.mapToJsonString(envelope),
-    envelope = envelope,
-  )
-}
-
-internal fun requireGoalPlanningPhaseEnvelope(
-  payload: String,
-  phaseId: String,
-  sourceLabel: String,
-  fieldPath: String = "${phaseId}_payload",
-): NormalizedFeatureTaskRuntimePhaseOutput {
-  val normalized = parseGoalPlanningPhaseEnvelopeOrNull(payload)
-    ?: throw InvalidGoalPlanningPreparationSchemaError(
-      sourceLabel = sourceLabel,
-      fieldPath = fieldPath,
-      reason = "Goal planning '$phaseId' payload is not a JSON object.",
-    )
-  return normalized
-}
 
 /**
  * SKILL-140 producer gate: a phase that owns a bounded planning projection must emit one that its

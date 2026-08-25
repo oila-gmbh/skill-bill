@@ -1,9 +1,9 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.workflow.DecompositionManifestDocumentRepair
-import skillbill.contracts.workflow.DecompositionManifestDocumentRepairDecision
 import skillbill.contracts.workflow.DecompositionManifestSchemaValidator
+import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputStructuralRepair
+import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputStructuralRepairDecision
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.workflow.DecompositionManifestCodec
 import skillbill.workflow.DecompositionManifestValidator
@@ -41,15 +41,15 @@ class DecompositionManifestValidatorAdapter : DecompositionManifestValidator {
     DecompositionManifestSchemaValidator.validateYamlText(yamlText, sourceLabel)
 
   override fun validateYamlTextResult(yamlText: String, sourceLabel: String): DecompositionManifestValidationResult {
-    val decision = DecompositionManifestDocumentRepair.inspectWholeDocument(yamlText, sourceLabel)
+    val decision = FeatureTaskRuntimePhaseOutputStructuralRepair.inspectWholeDocument(yamlText, sourceLabel)
     return when (decision) {
-      is DecompositionManifestDocumentRepairDecision.Rejected ->
+      is FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Rejected ->
         DecompositionManifestValidationResult.Rejected(
           code = decision.code.toManifestFailureCode(),
           reason = decision.reason,
           sourceLocation = decision.sourceLocation?.toManifestLocation(),
         )
-      is DecompositionManifestDocumentRepairDecision.Accepted -> try {
+      is FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Accepted -> try {
         val wireMap = DecompositionManifestSchemaValidator.validateYamlText(decision.text, sourceLabel)
         val manifest = DecompositionManifestCodec.decodeMap(wireMap, sourceLabel)
         val evidence = decision.evidence?.toManifestEvidence()

@@ -120,9 +120,9 @@ private fun formatBuildReceiptViolationReasons(
 ): BuildReceiptViolationReasons {
   val violations = sorted.map { error ->
     val location = error.instanceLocation?.toString().orEmpty()
-    val fieldPath = workflowStateSchemaDottedFieldPath(location).ifBlank { "<root>" }
+    val fieldPath = featureTaskRuntimePhaseOutputDottedFieldPath(location).ifBlank { "<root>" }
     val head = "$fieldPath: ${error.message}"
-    Pair(head, extractOffendingValueFromInstance(instance, location))
+    head to extractFeatureTaskRuntimePhaseOutputOffendingValue(instance, location)
   }
   fun render(includeOffendingValues: Boolean): String =
     violations.joinToString(separator = " | ") { (head, offendingValue) ->

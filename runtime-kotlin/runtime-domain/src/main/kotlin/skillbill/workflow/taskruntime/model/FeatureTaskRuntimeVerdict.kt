@@ -54,6 +54,14 @@ data class FeatureTaskRuntimeVerdict(
      */
     val GAPS_FOUND: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("gaps_found")
 
+    /**
+     * A synthetic launch-seam verdict: a consumer phase rejected an upstream producer's durable
+     * record at projection validation. The run takes the producer's regeneration backward edge to
+     * re-run the producer under a bounded cap, quarantining the rejected record as private evidence.
+     * It is not an agent-emitted verdict; the runtime mints it when a launch seam quarantines a record.
+     */
+    val RECORD_REJECTED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("record_rejected")
+
     val REPAIR_PLANNED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("repair_planned")
 
     val ESCALATED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("escalated")

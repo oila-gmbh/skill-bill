@@ -23,6 +23,7 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeProviderLimitDetector
@@ -55,6 +56,7 @@ class FeatureTaskRuntimeRunner(
   private val recorder: FeatureTaskRuntimePhaseRecorder,
   private val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
   private val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
+  private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val phaseGates: FeatureTaskRuntimePhaseGates,
   private val crashReconciler: FeatureTaskRuntimeCrashReconciler,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
@@ -174,12 +176,14 @@ class FeatureTaskRuntimeRunner(
         recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         transitions,
         recorder.loadPhaseLedger(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
+        outputValidator,
         recorder.reconcileReviewGeneration(runRequest.workflowId, runRequest.dbPathOverride),
       )
       val loop = FeatureTaskRuntimeRunLoop(
         FeatureTaskRuntimeRunLoopDependencies(
           recorder,
           goalContinuationRecorder,
+          outputValidator,
           phaseGates,
           subtaskLauncher,
         ),

@@ -1,8 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation
@@ -113,7 +111,7 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
     val regenerated = FeatureTaskRuntimeImplementationObligations(
       plannedTaskIds = listOf("task-1", "task-2"),
       carriedRepairItemIds = emptyList(),
-      loopId = "implement_regeneration",
+      loopId = FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID,
     )
 
     assertNull(
@@ -303,44 +301,6 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
       parsed.actionableDeviations(obligations().requiredIds).map { it.ref },
       "A routine deviation note carrying a backtick must not erase the open-work signal.",
     )
-  }
-
-  @Test
-  fun `prose-closed plan task ids merge into attempt claim completedTaskIds`() {
-    val parsed = featureTaskRuntimeImplementationClaimFrom(
-      mapOf(
-        "produced_outputs" to mapOf(
-          "projection_kind" to "implementation_receipt",
-          "completed_task_ids" to emptyList<String>(),
-        ),
-      ),
-      obligations(),
-      returnedText = """{"summary":"Closed task-1 from prose only"}""",
-    )
-
-    assertEquals(listOf("task-1"), parsed.completedTaskIds)
-  }
-
-  @Test
-  fun `prose-closed obligations on a prior attempt stay closed in continuation`() {
-    val history = listOf(
-      FeatureTaskRuntimeImplementationAttempt(
-        sequenceNumber = 1,
-        phaseId = "implement",
-        attemptNumber = 1,
-        agentId = "claude",
-        status = FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE,
-        recordedAt = "2026-01-01T00:00:00Z",
-        completedTaskIds = listOf("task-1"),
-        changedPaths = emptyList(),
-        loopId = null,
-        edgeIteration = null,
-      ),
-    )
-
-    val continuation = featureTaskRuntimeImplementationContinuationFrom("implement", history, obligations())
-
-    assertEquals(listOf("task-2", "task-3"), continuation?.openObligationIds)
   }
 
   private fun reasonFor(claim: FeatureTaskRuntimeImplementationClaim): String? =
