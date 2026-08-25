@@ -68,6 +68,23 @@ const val FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS: Int = 1024
 // would otherwise reject with no way to discover the rule. Ingest seams canonicalize instead.
 fun canonicalAuditIdentifier(rawIdentifier: String): String = rawIdentifier.trim().lowercase()
 
+private val AUDIT_CRITERION_REF_PATTERN = Regex("""(AC-\d+)""", RegexOption.IGNORE_CASE)
+
+fun canonicalObligationId(rawId: String): String {
+  val trimmed = rawId.trim()
+  AUDIT_CRITERION_REF_PATTERN.find(trimmed)?.value?.let { return canonicalAuditIdentifier(it) }
+  return canonicalAuditIdentifier(trimmed)
+}
+
+fun auditCriterionRefCanonical(message: String): String? =
+  AUDIT_CRITERION_REF_PATTERN.find(message)?.value?.let(::canonicalAuditIdentifier)
+
+fun displayAuditCriterionRef(canonicalId: String): String {
+  val trimmed = canonicalId.trim()
+  val match = Regex("""^ac-(\d+)$""", RegexOption.IGNORE_CASE).matchEntire(trimmed)
+  return if (match != null) "AC-${match.groupValues[1]}" else trimmed
+}
+
 /**
  * What the audit loop is worth observing once the report is just a criterion list: whether the first
  * audit already found every criterion implemented, and how many remediation rounds the loop ran.

@@ -310,7 +310,10 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun auditGapCriteriaForResume(): List<String> {
-    val fromAudit = state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+    val fromAudit = auditGapCanonicalCriteriaFrom(
+      state,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+    )
     if (fromAudit.isNotEmpty()) return fromAudit
     return recorder.loadPhaseBriefings(request.workflowId, request.dbPathOverride)
       ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
@@ -2115,7 +2118,7 @@ internal class FeatureTaskRuntimeRunLoop(
     reopenedSpan.forEach(state::reopenForReentry)
     state.recordEdgeIteration(loopId, edgeIteration)
     val reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
-      state.unmetAuditCriteria(edge.fromPhaseId)
+      auditGapCanonicalCriteriaFrom(state, edge.fromPhaseId)
     } else {
       emptyList()
     }
@@ -7281,7 +7284,15 @@ internal class FeatureTaskRuntimeRunLoop(
     if (run.phaseId !in scopedPhases || !auditGapFired) {
       return emptyList()
     }
-    return state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+    return auditGapCanonicalCriteriaFrom(state, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+  }
+
+  private fun auditGapCanonicalCriteriaFrom(
+    state: FeatureTaskRuntimeRunState,
+    auditPhaseId: String,
+  ): List<String> {
+    val output = state.outputFor(auditPhaseId) ?: return emptyList()
+    return FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(outputEnvelopeOf(output))
   }
 
   /**

@@ -719,7 +719,7 @@ fun `prior-gap memory appears on the second audit_gap implement and the audit th
   assertContains(implementBriefing, "AC-002")
   // Sticky ids are the two refs both audits reported, never the ref+note text: the directive pins the
   // exact ref set, which a leaked "AC-002: <note>" line would break.
-  assertContains(implementBriefing, "Prioritize the sticky criterion ids (AC-003, AC-002)")
+  assertContains(implementBriefing, "Prioritize the sticky criterion ids (ac-003, ac-002)")
   // last_implement_claims is the union of the prior implement receipt's completed task criterion refs
   // through the plan mapping (task-1 -> AC-001).
   assertContains(implementBriefing, "last_implement_claims")

@@ -89,7 +89,7 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
         envelope,
       ),
     )
-    assertEquals(listOf("AC-003"), FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(envelope))
+    assertEquals(listOf("ac-003"), FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(envelope))
     assertEquals(listOf("AC-003"), FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(envelope))
   }
 
@@ -108,7 +108,7 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
         envelope,
       ),
     )
-    assertEquals(listOf("AC-003"), FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(envelope))
+    assertEquals(listOf("ac-003"), FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(envelope))
     assertEquals(listOf("AC-003"), FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(envelope))
   }
 
@@ -127,7 +127,7 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
         envelope,
       ),
     )
-    assertEquals(listOf("AC-003"), FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(envelope))
+    assertEquals(listOf("ac-003"), FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(envelope))
     assertEquals(listOf("AC-003"), FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(envelope))
   }
 
@@ -144,7 +144,7 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
       acceptanceCriterionRefs = listOf("AC-001", "AC-002"),
     )
     assertEquals(
-      listOf("AC-001"),
+      listOf("ac-001"),
       FeatureTaskRuntimePhaseOutputDerivation.canonicalAuditCriterionRefs(context),
     )
   }
@@ -183,6 +183,24 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
     val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(context)
     assertEquals(
       FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      assertIs<FeatureTaskRuntimeDerivationResult.Decided<*>>(derived).value,
+    )
+  }
+
+  @Test
+  fun `conflicting structured verdict and prose resolves to structured`() {
+    val context = FeatureTaskRuntimeDerivationContext(
+      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      outputText = """{"verdict":"changes_requested","summary":"approved"}""",
+      outputMap = mapOf(
+        "verdict" to "approved",
+        "summary" to "approved",
+        "produced_outputs" to mapOf("findings" to emptyList<Any>()),
+      ),
+    )
+    val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(context)
+    assertEquals(
+      FeatureTaskRuntimeVerdict.APPROVED,
       assertIs<FeatureTaskRuntimeDerivationResult.Decided<*>>(derived).value,
     )
   }

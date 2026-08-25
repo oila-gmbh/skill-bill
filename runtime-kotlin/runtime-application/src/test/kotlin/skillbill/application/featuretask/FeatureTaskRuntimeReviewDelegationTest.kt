@@ -116,7 +116,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
   }
 
   @Test
-  fun `extractReviewVerdict reads changes_requested and defaults to approved`() {
+  fun `extractReviewVerdict reads changes_requested and stays indecisive without a verdict token`() {
     assertEquals(
       FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       FeatureTaskRuntimeReviewEnvelope.extractReviewVerdict("notes\nverdict: needs_fix"),
@@ -126,7 +126,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
       FeatureTaskRuntimeReviewEnvelope.extractReviewVerdict("verdict: changes_requested"),
     )
     assertEquals(
-      FeatureTaskRuntimeVerdict.APPROVED,
+      null,
       FeatureTaskRuntimeReviewEnvelope.extractReviewVerdict("clean prose without a verdict line"),
     )
   }

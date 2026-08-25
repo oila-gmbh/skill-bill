@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-08-25] SKILL-208 subtask 3 — Derive settlement and verdicts
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime/model
+- Runtime-owned derivation settles status plus disposition and routes audit/review/verify_findings via membership over closed candidate sets; run loop and completion gate consume those signals.
+- Plan-obligation and repair-item closure is id membership in returned text with canonical AC- form; when structured and prose disagree, the structured value wins (transitional until envelope retirement).
+- Indecisive settlement or routing never advances; audit-gap remediation reads canonical criterion refs from derived audit output.
+- Pattern: derive routing/settlement from R2 membership rather than producer-required fields. reusable
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-25] SKILL-208 subtask 2 — Runtime-held facts and runtime-minted evidence
 Areas: runtime-application/featuretask, docs
 - Goal-subtask review completion loads commit-focused accounting from runtime-owned review accounting rows via `loadRuntimeOwnedCommitFocusedAccounting`; agent `commit_focused_accounting` echoes are unused.
@@ -60,16 +69,6 @@ Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-cont
 - Limitation: retired schemas, repair passes, and docs cleanup remain subtask 5.
 Feature flag: N/A
 Acceptance criteria: 10/10 implemented
-
-## [2026-08-25] SKILL-208 subtask 3 — Derive settlement and verdicts
-Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-infra-fs/contracts/workflow, runtime-infra-sqlite, orchestration/contracts, docs
-- One runtime-owned reader derives settlement (status + disposition) and audit/review/verify_findings routing verdicts via membership over closed candidate sets; run loop, recorder, and gates consume those derived signals.
-- Plan-obligation and repair-item closure is id membership over runtime-delivered sets in phase text; schema demotes required `verdict`/`gaps`/`finding_dispositions` so prose-only verifying output validates (contract bump, legacy records loud-fail).
-- Indecisive settlement or routing re-asks once under a dedicated budget, then durable-blocks keeping both outputs; crash mid-re-ask resumes as a fresh re-ask.
-- Pattern: derive routing/settlement from R2 membership rather than producer fields; structured field wins over prose when both present (transitional until subtask 5). reusable
-- Limitation: phase envelope remains typed JSON until subtask 4; retired schemas and repair passes stay until subtask 5.
-Feature flag: N/A
-Acceptance criteria: 11/11 implemented
 
 ## [2026-08-24] SKILL-207 subtask 1 — Phase I/O envelope and prose review handoff
 Areas: runtime-application/{featuretask,model,review}, runtime-domain/{agent,review}, runtime-cli/codereview

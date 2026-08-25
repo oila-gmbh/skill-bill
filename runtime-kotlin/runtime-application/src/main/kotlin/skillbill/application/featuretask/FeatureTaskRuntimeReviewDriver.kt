@@ -238,7 +238,7 @@ internal object FeatureTaskRuntimeReviewEnvelope {
 
 internal data class FeatureTaskRuntimeReviewDriverCycleOutcome(
   val outputText: String,
-  val verdict: FeatureTaskRuntimeVerdict,
+  val verdict: FeatureTaskRuntimeVerdict?,
   val commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
 )
 
@@ -252,7 +252,6 @@ internal object FeatureTaskRuntimeReviewDriverCycle {
     val accounting = FeatureTaskRuntimeReviewEnvelope.commitFocusedAccounting(result, cycle.resolvedTier)
     val outputText = FeatureTaskRuntimeReviewEnvelope.assemble(result)
     val verdict = FeatureTaskRuntimeReviewEnvelope.extractReviewVerdict(outputText)
-      ?: FeatureTaskRuntimeVerdict.APPROVED
     return FeatureTaskRuntimeReviewDriverCycleOutcome(outputText, verdict, accounting)
   }
 

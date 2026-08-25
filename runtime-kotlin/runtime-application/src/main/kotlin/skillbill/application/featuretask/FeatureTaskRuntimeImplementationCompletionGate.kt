@@ -13,6 +13,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
+import skillbill.workflow.taskruntime.model.canonicalObligationId
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage
 
 /**
@@ -135,12 +136,12 @@ internal fun featureTaskRuntimeOpenObligations(
   claim: FeatureTaskRuntimeImplementationClaim,
   returnedText: String = "",
 ): List<String> {
-  val closedFromReceipt = claim.completedTaskIds.toSet()
+  val closedFromReceipt = claim.completedTaskIds.map(::canonicalObligationId).toSet()
   val closedFromProse = FeatureTaskRuntimePhaseOutputDerivation
     .closedObligationIds(returnedText, obligations.requiredIds)
     .toSet()
   val closed = closedFromReceipt + closedFromProse
-  return obligations.requiredIds.filterNot { it in closed }
+  return obligations.requiredIds.filterNot { canonicalObligationId(it) in closed }
 }
 
 /**

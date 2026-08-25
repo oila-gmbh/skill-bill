@@ -343,6 +343,40 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
     assertEquals(listOf("task-2", "task-3"), continuation?.openObligationIds)
   }
 
+  @Test
+  fun `audit repair loop closes canonical obligation when prose echoes uppercase criterion ref`() {
+    val auditObligations = FeatureTaskRuntimeImplementationObligations(
+      plannedTaskIds = listOf("task-1"),
+      carriedRepairItemIds = listOf("ac-005"),
+      loopId = FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID,
+    )
+    assertNull(
+      featureTaskRuntimeImplementationCompletionReason(
+        phaseId = "implement",
+        obligations = auditObligations,
+        claim = claim(completedTaskIds = emptyList()),
+        returnedText = """{"summary":"Remediated AC-005"}""",
+      ),
+    )
+  }
+
+  @Test
+  fun `audit repair loop blocks when canonical obligation is absent from prose`() {
+    val auditObligations = FeatureTaskRuntimeImplementationObligations(
+      plannedTaskIds = listOf("task-1"),
+      carriedRepairItemIds = listOf("ac-005", "ac-007"),
+      loopId = FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID,
+    )
+    val reason = featureTaskRuntimeImplementationCompletionReason(
+      phaseId = "implement",
+      obligations = auditObligations,
+      claim = claim(completedTaskIds = emptyList()),
+      returnedText = """{"summary":"Remediated AC-005 only"}""",
+    )
+    assertNotNull(reason)
+    assertTrue(reason.contains("ac-007"), "got: $reason")
+  }
+
   private fun reasonFor(claim: FeatureTaskRuntimeImplementationClaim): String? =
     featureTaskRuntimeImplementationCompletionReason("implement", obligations(), claim)
 

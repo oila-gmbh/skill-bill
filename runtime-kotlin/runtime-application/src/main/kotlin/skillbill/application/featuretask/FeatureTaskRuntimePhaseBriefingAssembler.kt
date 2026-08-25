@@ -17,6 +17,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.auditCriterionRefCanonical
+import skillbill.workflow.taskruntime.model.displayAuditCriterionRef
 import java.nio.charset.StandardCharsets
 
 /**
@@ -246,7 +248,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     // no gap criteria, so their briefings stay byte-for-byte identical.
     if (handoff.reentryGapCriteria.isNotEmpty()) {
       appendLine("audit_gaps:")
-      handoff.reentryGapCriteria.forEach { gap -> appendLine("  - $gap") }
+      auditGapBriefingLines(handoff).forEach { gap -> appendLine("  - $gap") }
     }
     if (handoff.reentryGapCriteria.isNotEmpty()) {
       appendLine("audit_remediation_rules:")
@@ -317,5 +319,16 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF ->
       SELF_READ_DIFF_INSTRUCTION
     else -> null
+  }
+
+  private fun auditGapBriefingLines(handoff: FeatureTaskRuntimePhaseHandoff): List<String> {
+    if (handoff.reentryGapCriteria.isEmpty()) return emptyList()
+    val noteByCanonicalId = linkedMapOf<String, String>()
+    handoff.priorGapMemory?.priorUnmetCriteria.orEmpty().forEach { note ->
+      auditCriterionRefCanonical(note)?.let { ref -> noteByCanonicalId.putIfAbsent(ref, note) }
+    }
+    return handoff.reentryGapCriteria.map { canonicalId ->
+      noteByCanonicalId[canonicalId] ?: displayAuditCriterionRef(canonicalId)
+    }
   }
 }

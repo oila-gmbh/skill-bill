@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
+import skillbill.workflow.taskruntime.model.canonicalObligationId
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRenderOpenWorkItem
 
 /**
@@ -40,7 +41,7 @@ internal fun featureTaskRuntimeImplementationClaimFrom(
     featureTaskRuntimeClosedRepairItemIds(outputMap)
   } else {
     produced.stringList("completed_task_ids")
-  }.filter(::isAttemptTaskId).distinct().take(ATTEMPT_MAX_ITEMS)
+  }.map(::canonicalObligationId).filter(::isAttemptTaskId).distinct().take(ATTEMPT_MAX_ITEMS)
   val proseClosed = FeatureTaskRuntimePhaseOutputDerivation
     .closedObligationIds(returnedText, obligations.requiredIds)
     .filter(::isAttemptTaskId)
