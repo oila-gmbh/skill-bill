@@ -4,6 +4,26 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-25] A process failure stores the child's output instead of a bounded excerpt
+
+Context: WE-4860 subtask 4 blocked four times on `agent exited with non-zero status 1`, each time carrying the child's own claim that the host had slept mid-response. The host's `pmset` log showed no sleep at any of those timestamps. Nothing durable existed to check the claim against: a process failure reaches no output gate, so `rejected_output_diagnostics` and `producer_output_evidence` both stayed empty, and the only surviving trace was the excerpt inlined in the block reason, capped at `STDERR_EXCERPT_MAX_CHARS`. `reconcileLaunch` read `AgentRunLaunchFacts`, which holds both streams in full, and dropped them.
+
+Decision: `LaunchResult.InfraFailure` carries the child's stdout and stderr, and the block seam stores them as a rejected-output diagnostic under rule `process-failure`, retrievable by the existing `feature-task rejected-output --raw-output`. The body is framed: both streams labelled with their lengths, plus exit status, timeout, interruption and spawn flags. Absent output stores nothing rather than an empty row. The write is best-effort and precedes the block.
+
+Reason: A failure whose only evidence is a 200-character excerpt cannot be diagnosed, and this one was actively misleading — the child named a cause the host's own log contradicted. Both streams are kept because a child's diagnosis arrives on whichever it happens to use, and attributing the wrong one is how a false cause gets believed. The write is best-effort because the block is what settles the phase: a lost artifact is a worse diagnosis, while a lost block is a wedged run.
+
+Alternatives considered: Widen the inline excerpt (rejected: the block reason is read by operators and prompts, and a full transport dump does not belong in either). A new table for process failures (rejected: the rejected-output store already has payload retention, sha/size verification, lifecycle and a CLI; a second store would need all of it again and a second command to reach it). Store only stderr (rejected: this failure class printed its message on stdout, so stderr alone would have retained nothing).
+
+## [2026-08-25] A misnamed key's prose is adopted, not discarded and then reported missing
+
+Context: WE-4860 subtask 4 emitted `reconciliation_evidence` as `{"reconciled": true, "notes": "<the evidence>"}`. `notes` is not declared on that closed object, so canonicalization discarded it as an unknown key, and strict validation then rejected the receipt for `required property 'evidence' not found`. Correct, in-cap prose was deleted by the repair layer and then reported absent. The producer cannot learn from that rejection either: from its side it did supply the text.
+
+Decision: before the unknown-key discard, a closed object whose prose field is absent adopts the value of a lone unknown key holding non-blank text, recorded as `misnamed_key_adopted`. Wired per call site — currently `reconciliation_evidence.evidence` — rather than as a general rule.
+
+Reason: The two halves of the closed-object contract were defeating each other: the SKILL-152 class-1 repair manufactured its own class-2 failure. Adoption is information-preserving in the way the class-2 prohibition cares about — nothing is synthesized, the producer's own text is moved to the field it was written for.
+
+Alternatives considered: A general "single unknown key fills the single missing required field" rule (rejected: `deviation` requires `ref` and `note`, so a general rule would file a sentence as an identifier — worse than rejecting; a test pins that adoption never reaches `deviations`). Adopt when several unknown keys are present (rejected: which one is the evidence is a guess, and the earlier `{reconciled, method, observations}` shape must keep rejecting). Truncate over-length adopted prose (rejected: SKILL-169 forbids it, and a length violation is the one class whose correction tells the producer to compress).
+
 ## [2026-08-25] Goal liveness falls back to the parent lease when the child lease is idle
 
 Context: SKILL-208's goal runner was live with a fresh parent execution lease,

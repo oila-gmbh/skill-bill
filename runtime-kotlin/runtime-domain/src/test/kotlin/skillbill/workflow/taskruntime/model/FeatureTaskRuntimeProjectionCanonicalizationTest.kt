@@ -227,6 +227,99 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
     assertEquals(listOf("at target"), wrongContainer.canonical["reconciliation_evidence"])
   }
 
+  /**
+   * The observed defect: the discard stripped `notes` and the schema then rejected the object for the
+   * required field `notes` was. In-cap, correct prose was deleted and reported missing.
+   */
+  @Test
+  fun `a lone misnamed prose key is adopted as evidence instead of being discarded`() {
+    val produced = mapOf(
+      "reconciliation_evidence" to mapOf(
+        "reconciled" to true,
+        "notes" to "  Resumed implement phase; tasks 1-7 confirmed at target and treated as no-ops.  ",
+      ),
+    )
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    assertEquals(
+      mapOf(
+        "reconciled" to true,
+        "evidence" to "Resumed implement phase; tasks 1-7 confirmed at target and treated as no-ops.",
+      ),
+      result.canonical["reconciliation_evidence"] as Map<*, *>,
+    )
+    val record = result.diagnostics.single { it.fieldPath == "reconciliation_evidence.evidence" }
+    assertEquals(listOf(Transform.MISNAMED_KEY_ADOPTED), record.transforms)
+    assertNull(record.originalId, "an adoption must never record the producer's prose")
+  }
+
+  @Test
+  fun `two unknown keys are an ambiguity no rename resolves, so both are discarded`() {
+    val produced = mapOf(
+      "reconciliation_evidence" to mapOf(
+        "reconciled" to true,
+        "method" to "git status and read-only greps",
+        "observations" to "tree converged",
+      ),
+    )
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    assertEquals(mapOf("reconciled" to true), result.canonical["reconciliation_evidence"] as Map<*, *>)
+    assertTrue(result.diagnostics.none { it.transforms.contains(Transform.MISNAMED_KEY_ADOPTED) })
+  }
+
+  @Test
+  fun `a stated evidence is never replaced by a misnamed sibling`() {
+    val produced = mapOf(
+      "reconciliation_evidence" to mapOf(
+        "reconciled" to true,
+        "evidence" to "the stated evidence",
+        "notes" to "a sibling that must not win",
+      ),
+    )
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    val evidence = result.canonical["reconciliation_evidence"] as Map<*, *>
+    assertEquals("the stated evidence", evidence["evidence"])
+    assertTrue(result.diagnostics.none { it.transforms.contains(Transform.MISNAMED_KEY_ADOPTED) })
+  }
+
+  @Test
+  fun `a non-string or blank misnamed value is discarded rather than adopted`() {
+    val nonString = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(
+      mapOf("reconciliation_evidence" to mapOf("reconciled" to true, "observations" to listOf("a", "b"))),
+    )
+    val blank = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(
+      mapOf("reconciliation_evidence" to mapOf("reconciled" to true, "notes" to "   ")),
+    )
+
+    assertEquals(mapOf("reconciled" to true), nonString.canonical["reconciliation_evidence"] as Map<*, *>)
+    assertEquals(mapOf("reconciled" to true), blank.canonical["reconciliation_evidence"] as Map<*, *>)
+    assertTrue(
+      (nonString.diagnostics + blank.diagnostics).none { it.transforms.contains(Transform.MISNAMED_KEY_ADOPTED) },
+    )
+  }
+
+  /**
+   * Adoption is per call site precisely so this cannot happen: `deviation` requires `ref` and `note`,
+   * and a general single-unknown-key rule would file a sentence as an identifier.
+   */
+  @Test
+  fun `adoption never reaches an object whose missing required field is an identifier`() {
+    val produced = mapOf(
+      "deviations" to listOf(mapOf("note" to "what deviated", "reason" to "a sentence, not a ref")),
+    )
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    val deviation = (result.canonical["deviations"] as List<*>).single() as Map<*, *>
+    assertEquals(mapOf("note" to "what deviated"), deviation)
+    assertTrue(result.diagnostics.none { it.transforms.contains(Transform.MISNAMED_KEY_ADOPTED) })
+  }
+
   @Test
   fun `an unknown key on a nested closed object is discarded and recorded without its value`() {
     val produced = mapOf(
@@ -382,7 +475,10 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
   @Test
   fun `a discarded key name is length-bounded in the record`() {
     val longKey = "k".repeat(MAX_RECORDED_ID_LENGTH + 40)
-    val produced = mapOf("reconciliation_evidence" to mapOf("reconciled" to true, longKey to "v"))
+    // `evidence` is stated so prose adoption cannot claim the long key: this pins the discard path.
+    val produced = mapOf(
+      "reconciliation_evidence" to mapOf("reconciled" to true, "evidence" to "stated", longKey to "v"),
+    )
 
     val record = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced).diagnostics
       .single { it.transforms == listOf(Transform.UNKNOWN_KEY_DISCARDED) }

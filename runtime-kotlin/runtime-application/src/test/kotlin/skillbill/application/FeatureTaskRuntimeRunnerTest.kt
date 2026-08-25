@@ -7790,6 +7790,90 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
   }
 }
 
+/**
+ * A process failure reaches no output gate, so nothing in the schema-rejection path records what the
+ * child said. Four identical `exited with non-zero status 1` blocks on WE-4860 left no artifact
+ * behind any of them, and the child's own stated cause turned out to be contradicted by the host's
+ * sleep log — exactly the disagreement a stored body settles.
+ */
+class ChildProcessFailureDiagnosticTest {
+  @Test
+  fun `a child that dies leaves its full stdout and stderr behind under the process-failure rule`() {
+    val stdout = "API Error: Your computer went to sleep mid-response. The response above may be incomplete."
+    val stderr = "at Object.<anonymous> (/opt/claude/cli.js:1:2)"
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = 1,
+          stdout = stdout,
+          stderr = stderr,
+          timedOut = false,
+          spawnFailed = false,
+        )
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    val diagnostic = harness.io.database.rejectedDiagnostics()
+      .single { it.metadata.rule == "process-failure" }
+    val body = diagnostic.payload?.decodeToString().orEmpty()
+    assertContains(body, stdout, message = "the child's own account must survive in full")
+    assertContains(body, stderr, message = "both streams are kept: a cause can arrive on either")
+    assertContains(body, "exit_status=1")
+    assertContains(body, "timed_out=false")
+  }
+
+  @Test
+  fun `a child that wrote nothing stores no diagnostic rather than an empty one`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = 1,
+          stdout = "",
+          stderr = "",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertTrue(
+      harness.io.database.rejectedDiagnostics().none { it.metadata.rule == "process-failure" },
+      "a stored diagnostic must mean the child really did say something",
+    )
+  }
+
+  @Test
+  fun `a spawn failure that carries stderr still stores it`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = null,
+          stdout = "",
+          stderr = "claude: command not found",
+          timedOut = false,
+          spawnFailed = true,
+        )
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    val body = harness.io.database.rejectedDiagnostics()
+      .single { it.metadata.rule == "process-failure" }
+      .payload?.decodeToString().orEmpty()
+    assertContains(body, "claude: command not found")
+    assertContains(body, "spawn_failed=true")
+    assertContains(body, "exit_status=none", message = "no exit status and status 0 must not read alike")
+  }
+}
+
 class InfraFailureReasonStderrSurfacingTest {
   @Test
   fun `non-zero exit with non-blank stderr surfaces a bounded stderr excerpt in blocked reason`() {

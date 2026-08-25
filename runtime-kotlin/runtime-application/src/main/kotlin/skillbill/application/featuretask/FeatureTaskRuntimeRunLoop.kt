@@ -87,6 +87,8 @@ import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_NO_PROGRESS
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
@@ -104,8 +106,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
@@ -4451,6 +4451,9 @@ internal class FeatureTaskRuntimeRunLoop(
       return AttemptResult.settled(pauseAndPersistInPhase(run, iteration, reason, observability, launch.fileManifest))
     }
     launch.infraFailureReason?.let { reason ->
+      // Persisted before the block so the artifact exists even if the block write then degrades:
+      // the whole point is to leave something readable behind a failure that reaches no output gate.
+      persistChildProcessFailureOutput(run, iteration, reason, launch.infraFailureChildOutput)
       return AttemptResult.settled(
         blockAndPersistInPhase(
           run,
@@ -4643,6 +4646,45 @@ internal class FeatureTaskRuntimeRunLoop(
     run.request.dbPathOverride,
     state.evidenceGeneration(phaseId),
   )
+
+  /**
+   * Stores what the child wrote before it died, under rule
+   * [FEATURE_TASK_RUNTIME_PROCESS_FAILURE_RULE].
+   *
+   * A process failure reaches no output gate, so without this the run keeps only the bounded excerpt
+   * inlined in the block reason. That was enough to report a failure and never enough to diagnose
+   * one: a phase could die four times over reporting a cause its own output would have contradicted,
+   * with no artifact to check it against.
+   *
+   * Best-effort by construction. The block that follows is what actually settles the phase, so a
+   * diagnostic that cannot be written must never take the settle down with it — a lost artifact is a
+   * worse diagnosis, while a lost block is a wedged run. Absent output writes nothing rather than an
+   * empty row, so a stored diagnostic always means the child really did say something.
+   */
+  private fun persistChildProcessFailureOutput(
+    run: PhaseRun,
+    iteration: Int,
+    reason: String,
+    childOutput: FeatureTaskRuntimeChildOutput?,
+  ) {
+    val output = childOutput ?: return
+    runCatching {
+      recordRejectedOutput(
+        run = run,
+        iteration = iteration,
+        rule = FEATURE_TASK_RUNTIME_PROCESS_FAILURE_RULE,
+        reason = boundedSchemaGateDetail(reason),
+        outputBytes = output.storedBody().encodeToByteArray(),
+      )
+    }.onFailure { error ->
+      diagnostics.warning(
+        "Feature-task-runtime could not persist the child process-failure diagnostic for issue " +
+          "${request.issueKey}, workflow ${request.workflowId}, phase '${run.phaseId}'. The block " +
+          "reason keeps its bounded excerpt; the full child output is lost.",
+        error,
+      )
+    }
+  }
 
   // Complexity here is the settle decision table itself: one branch per phase-output disposition.
   // Splitting it would scatter a single contract across helpers without removing a branch.
@@ -6608,6 +6650,7 @@ internal class FeatureTaskRuntimeRunLoop(
             it,
             fileManifest,
             childNeverLaunched = outcome.spawnFailed || !outcome.processStarted,
+            childOutput = featureTaskRuntimeChildOutput(outcome),
           )
         }
       ?: LaunchResult.captured(
@@ -6690,6 +6733,14 @@ internal class FeatureTaskRuntimeRunLoop(
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest?,
       val disposition: FeatureTaskRuntimeFailureDisposition,
       val neverLaunched: Boolean,
+      /**
+       * Whatever the child wrote before it died, or null where no child ran to write anything.
+       *
+       * Carried rather than dropped because a process failure reaches no output gate, so nothing
+       * else persists it: the only surviving trace was the bounded excerpt inlined in the block
+       * reason, which is far too small to diagnose a child that died mid-response.
+       */
+      val childOutput: FeatureTaskRuntimeChildOutput? = null,
     ) : LaunchResult
     private data class RecordRejected(
       val rejection: RecordRejection,
@@ -6709,6 +6760,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val capturedStdoutByteSize: Long? get() = (this as? Captured)?.stdoutByteSize
     val capturedStdoutSha256: String? get() = (this as? Captured)?.stdoutSha256
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
+    val infraFailureChildOutput: FeatureTaskRuntimeChildOutput? get() = (this as? InfraFailure)?.childOutput
     val providerLimitReason: String? get() = (this as? ProviderLimited)?.reason
     val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
 
@@ -6748,8 +6800,14 @@ internal class FeatureTaskRuntimeRunLoop(
         reason: String,
         fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
         childNeverLaunched: Boolean,
-      ): LaunchResult =
-        InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE, childNeverLaunched)
+        childOutput: FeatureTaskRuntimeChildOutput? = null,
+      ): LaunchResult = InfraFailure(
+        reason,
+        fileManifest,
+        FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        childNeverLaunched,
+        childOutput,
+      )
 
       /** The provider refused at a usage limit: resumable on its own clock, so the phase pauses. */
       fun providerLimited(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =

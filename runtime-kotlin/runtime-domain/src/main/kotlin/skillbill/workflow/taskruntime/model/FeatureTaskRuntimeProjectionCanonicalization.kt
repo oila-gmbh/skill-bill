@@ -104,7 +104,14 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     }
     "reconciliation_evidence" -> mapObject(promotedReconciliationEvidence(value, records)) {
       trimNonBlank(
-        discardUnknownKeys(it, RECONCILIATION_EVIDENCE_KEYS, key, records),
+        // Adoption runs BEFORE the discard: afterwards the misnamed key is already gone, and all the
+        // schema can report is the absence the discard itself created.
+        discardUnknownKeys(
+          adoptedProseKey(it, RECONCILIATION_EVIDENCE_KEYS, "evidence", key, records),
+          RECONCILIATION_EVIDENCE_KEYS,
+          key,
+          records,
+        ),
         "evidence",
         records,
         "reconciliation_evidence.evidence",
@@ -270,6 +277,45 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
       }
     }
     return retained
+  }
+
+  /**
+   * Adopts a misnamed key's prose under the field that was meant to hold it.
+   *
+   * Without this the two halves of the closed-object contract defeat each other: the discard strips
+   * an unknown key, and the schema then rejects the object for the required field that key WAS. That
+   * is how `{"reconciled": true, "notes": "<the evidence>"}` became "required property 'evidence' not
+   * found" — the runtime deleted in-cap, correct prose and then reported it missing. The producer
+   * cannot learn from that rejection either, because from its side it did supply the text.
+   *
+   * Deliberately refuses to guess. It fires only when the prose field is absent, exactly one unknown
+   * key exists, and that key holds non-blank text; two unknown keys are an ambiguity no rename should
+   * resolve. It is also driven per call site rather than generally, because a general
+   * "single unknown key fills the single missing required field" rule would happily move prose into
+   * an identifier — `deviation` requires `ref` and `note`, and misfiling a sentence as `ref` is worse
+   * than rejecting.
+   *
+   * Over-length prose is adopted as-is and left to fail on length. That reports the real problem, and
+   * a length violation is the one class with a correction that tells the producer to compress.
+   */
+  private fun adoptedProseKey(
+    map: Map<String, Any?>,
+    governedKeys: Set<String>,
+    proseKey: String,
+    fieldPath: String,
+    records: MutableList<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
+  ): Map<String, Any?> {
+    if (map.containsKey(proseKey)) return map
+    val donor = map.keys.singleOrNull { it !in governedKeys } ?: return map
+    val prose = (map[donor] as? String)?.trim()?.takeIf(String::isNotEmpty) ?: return map
+    records += textFreeRecord(
+      "$fieldPath.$proseKey",
+      listOf(FeatureTaskRuntimeProjectionCanonicalizationTransform.MISNAMED_KEY_ADOPTED),
+    )
+    val adopted = LinkedHashMap<String, Any?>(map.size)
+    map.forEach { (key, value) -> if (key != donor) adopted[key] = value }
+    adopted[proseKey] = prose
+    return adopted
   }
 
   @Suppress("UNCHECKED_CAST")
@@ -452,6 +498,9 @@ enum class FeatureTaskRuntimeProjectionCanonicalizationTransform(val wireValue: 
 
   /** A scalar rewritten as the single-meaningful-field object its declared shape expects. */
   SCALAR_PROMOTED_TO_OBJECT("scalar_promoted_to_object"),
+
+  /** A lone unknown key's prose adopted under the absent required field it was written for. */
+  MISNAMED_KEY_ADOPTED("misnamed_key_adopted"),
 }
 
 /**
