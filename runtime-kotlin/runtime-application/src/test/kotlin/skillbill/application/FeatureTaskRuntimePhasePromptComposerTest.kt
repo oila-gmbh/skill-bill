@@ -379,7 +379,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
       assertContains(prompt, "A prior gate run parsed these items")
       assertContains(prompt, "full open set for this repair turn")
-      assertContains(prompt, "Invoke bill-code-check")
+      assertContains(prompt, "validate repair agent")
+      assertFalse(prompt.contains("Invoke bill-code-check for collect-all and confirmation"))
+      assertContains(prompt, "collect_all_full_gate_command")
       assertContains(prompt, "Do not run `skill-bill validate`")
       assertContains(prompt, "Do not spawn delegated subagents")
       assertContains(prompt, "Gate repair — prose only, no phase-output schema")

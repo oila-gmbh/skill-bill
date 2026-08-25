@@ -1,6 +1,13 @@
 # featuretask runtime boundary history
 
-Revisit when: prune eligibility or the checkpoint namespace layout changes.
+## [2026-08-25] Validate repair Task forbids re-running collect-all
+Areas: runtime-application/featuretask
+- Runtime-owned validate repair turns use `validateRepairPhaseTask` as the Task line when findings are projected; it forbids `bill-code-check`, pack collect-all, and `check --continue`.
+- Findings preamble matches build: fix the listed set; targeted checker tasks only; no rediscovery via full suite.
+- Agent-run validate fallback (no pack `validation_gate`) keeps the collect-all Task unchanged.
+- Pattern: Requested/Task text for repair must not invite a second full gate, or agents buffer `check | tail` and stop editing. reusable
+Feature flag: N/A
+Acceptance criteria: n/a (main hotfix)
 
 ## [2026-08-24] SKILL-207 subtask 1 — Phase I/O envelope and prose review handoff
 Areas: runtime-application/{featuretask,model,review}, runtime-domain/{agent,review}, runtime-cli/codereview

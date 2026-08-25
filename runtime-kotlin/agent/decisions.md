@@ -4,6 +4,29 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-25] Validate repair Task must not re-invoke collect-all
+
+Context: SKILL-208 validate sat "live" for hours while the repair agent ran
+`./gradlew check --continue | tail -15`. The Task line still ordered
+bill-code-check collect-all even after the runtime had projected findings, so
+the agent rediscovered the suite and buffered all output until EOF — no fixes.
+
+Decision: when `validationGateFindings` is present, the validate Task is
+`validateRepairPhaseTask`: fix the listed set; forbid bill-code-check, pack
+collect-all, and `check --continue`; allow only targeted pack-checker tasks.
+The findings preamble matches that forbid list. Absent-gate agent-run fallback
+keeps the collect-all Task.
+
+Reason: Runtime already owns discovery and post-repair verify. A second full
+suite in the repair session duplicates wall clock and, with `tail`, hides
+findings from the agent. Build repair already forbade collect-all; validate
+must match.
+
+Alternatives considered: Soften only the findings preamble (rejected: Task is
+authoritative and still invited collect-all). Intercept shell gradle in the
+runner (rejected: prompt contract is the cheaper fix and matches existing
+build ownership).
+
 ## [2026-08-25] An over-bound review input elides deleted bodies rather than blocking
 
 Context: WE-4860 subtask 3 retires a module. Its review input measured 1,716,726 bytes against the 1,000,000-byte bound, of which 1,114,385 — 65% — was the complete body of 170 deleted files. The bound blocked the subtask, so the 14 added, 238 modified, and 29 renamed files went unreviewed as well.

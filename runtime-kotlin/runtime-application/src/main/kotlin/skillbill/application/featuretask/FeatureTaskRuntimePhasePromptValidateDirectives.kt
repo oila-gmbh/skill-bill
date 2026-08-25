@@ -10,6 +10,24 @@ private const val VALIDATE_PHASE_FORBIDDEN_EXTRAS: String =
 internal val RUNTIME_OWNED_VALIDATE_PHASE_TASK: String =
   validatePhaseTask(packCollectAllCommand = null, packGateDeclared = true)
 
+private const val VALIDATE_REPAIR_FORBIDDEN_EXTRAS: String =
+  "Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, `bill-code-check`, " +
+    "`./gradlew check`, `check " + "--" + "continue`, or the pack collect_all_full_gate_command. Those are not " +
+    "this repair turn. "
+
+internal fun validateRepairPhaseTask(): String =
+  "You are the only validate repair agent for this step — do not spawn delegated subagents. The runtime " +
+    "already ran the pack collect-all gate and listed the open findings in this briefing. The runtime may " +
+    "give you up to three repair turns against whatever remains; each turn is another session of this same " +
+    "agent. Fix every listed finding in this same session (shared root causes may collapse several into one " +
+    "change). $VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
+    "You may run targeted `test`, `compileKotlin`, `detekt`, and `ktlintCheck` while repairing when those " +
+    "tasks are part of the routed pack checker. Do not re-run the full gate or bill-code-check to rediscover " +
+    "or confirm findings — after you stop, the runtime re-runs the pack gate and mints the receipt. Never " +
+    "silence findings with annotations, baselines, disabled rules, weakened configuration, or skipped " +
+    "tests; fix root causes instead. Return prose only; do not emit validation_result, gate_run_count, or " +
+    "any phase-output JSON."
+
 internal fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared: Boolean): String {
   val collectAllLine = when {
     !packCollectAllCommand.isNullOrBlank() ->
@@ -59,11 +77,15 @@ internal fun phaseTaskDirective(
   packCollectAllCommand: String? = null,
   packBuildCommand: String? = null,
   priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
+  validationGateRepair: Boolean = false,
 ): String {
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
     return runtimeOwnedBuildPhaseTask(packBuildCommand)
   }
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
+    if (validationGateRepair) {
+      return validateRepairPhaseTask()
+    }
     return validatePhaseTask(
       packCollectAllCommand = packCollectAllCommand,
       packGateDeclared = !agentRunValidateFallback,

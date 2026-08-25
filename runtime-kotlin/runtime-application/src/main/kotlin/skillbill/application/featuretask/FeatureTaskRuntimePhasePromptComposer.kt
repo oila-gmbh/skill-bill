@@ -80,6 +80,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         packCollectAllCommand,
         packBuildCommand,
         briefing.priorGapMemory,
+        validationGateFindings != null,
       ),
       ceremonyDirective(briefing),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
@@ -370,6 +371,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     packCollectAllCommand: String? = null,
     packBuildCommand: String? = null,
     priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
+    validationGateRepair: Boolean = false,
   ): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
     val directive = phaseTaskDirective(
@@ -378,6 +380,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       packCollectAllCommand,
       packBuildCommand,
       priorGapMemory,
+      validationGateRepair,
     )
     // Composed directly rather than as an indented raw string with trimIndent(). trimIndent() runs
     // after interpolation and strips only the common minimal indent, so one column-0 line anywhere
@@ -666,10 +669,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> Pair(
         "## Runtime validation gate findings",
         "A prior gate run parsed these items. They are the full open set for this repair turn — fix " +
-          "every one in this session (shared root causes may collapse several into one change). Invoke " +
-          "bill-code-check / the pack collect-all command only as needed to understand failures; do not " +
-          "run `skill-bill validate`, `npx agnix`, or `scripts/validate_agent_configs`. Do not spawn " +
-          "delegated subagents.",
+          "every one in this session (shared root causes may collapse several into one change). Do not " +
+          "run `skill-bill validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, " +
+          "or the pack collect_all_full_gate_command. Targeted `test`, `compileKotlin`, `detekt`, and " +
+          "`ktlintCheck` are allowed while repairing when they are part of the routed pack checker. Do " +
+          "not spawn delegated subagents.",
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> Pair(
         "## Runtime build gate findings",
