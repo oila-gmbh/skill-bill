@@ -2579,11 +2579,7 @@ private fun validatedGoalReviewPasses(
 ): List<GoalSubtaskReviewPassResult> {
   review.state.passResults.forEach { pass ->
     val rawResult = review.rawResults.getValue(pass.passNumber.toString())
-    val output = phaseOutputValidator
-      .validatePhaseOutput(rawResult, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
-      .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
-      .normalizedOutput
-      .envelope
+    val output = goalReviewEmissionEnvelope(rawResult, phaseOutputValidator)
     val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
@@ -2602,6 +2598,18 @@ private fun validatedGoalReviewPasses(
     }
   }
   return review.state.passResults
+}
+
+private fun goalReviewEmissionEnvelope(
+  rawResult: String,
+  phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
+): Map<String, Any?> {
+  if (JsonSupport.parseObjectOrNull(rawResult.trim()) == null) return emptyMap()
+  return phaseOutputValidator
+    .validatePhaseOutput(rawResult, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+    .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+    .normalizedOutput
+    .envelope
 }
 
 private object ReviewRawOutputFallbackValidator : FeatureTaskRuntimePhaseOutputValidator {

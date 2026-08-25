@@ -165,6 +165,38 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   }
 
   @Test
+  fun `prose raw review evidence with a matching empty compact pass can be emitted`() {
+    val workflows = InMemoryWorkflowStates()
+    val state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "a".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.APPROVED,
+      unresolvedFindingCount = 0,
+      findings = emptyList(),
+    )
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      goalReviewWorkflowRecord(
+        workflowId = "wftr-goal-review-prose",
+        state = state,
+        rawReviewResult = """
+          [F-001] Major | path="runtime-kotlin/Example.kt" | line=10 | description=example finding in prose.
+        """.trimIndent(),
+      ),
+    )
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val passes = store.unemittedGoalReviewPasses("wftr-goal-review-prose")
+    assertEquals(1, passes.size)
+    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, passes.single().verdict)
+    assertTrue(store.acknowledgeGoalReviewPass("wftr-goal-review-prose", 1))
+  }
+
+  @Test
   fun `evidence-based reconcile keeps a running subtask with recent declared progress`() {
     // SKILL-87 (AC4): an empty active set with requireStalenessEvidence must NOT stale-block a child
     // that is plainly alive — a recent declared operation_heartbeat is positive liveness evidence.
