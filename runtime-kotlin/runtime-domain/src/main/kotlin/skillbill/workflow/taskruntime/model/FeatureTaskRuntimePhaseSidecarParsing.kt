@@ -40,23 +40,36 @@ fun decompositionPackageMapFromProse(prose: String): Map<String, Any?>? {
   return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
 }
 
-fun retainDerivationCriticalProsePrefix(text: String, maxUtf8Bytes: Int): String {
-  if (text.encodeToByteArray().size <= maxUtf8Bytes) return text
+data class ProseHandoffTruncationResult(
+  val delivered: String,
+  val criticalExceededBudget: Boolean,
+)
+
+fun retainDerivationCriticalProsePrefix(text: String, maxUtf8Bytes: Int): ProseHandoffTruncationResult {
+  if (text.encodeToByteArray().size <= maxUtf8Bytes) {
+    return ProseHandoffTruncationResult(delivered = text, criticalExceededBudget = false)
+  }
   val lines = text.lineSequence().toList()
   val critical = lines.filter { DERIVATION_CRITICAL_LINE.containsMatchIn(it) }
   val criticalBlock = critical.joinToString("\n")
   val criticalBytes = criticalBlock.encodeToByteArray().size
   if (criticalBytes >= maxUtf8Bytes) {
-    return truncateUtf8(criticalBlock, maxUtf8Bytes.coerceAtLeast(0))
+    return ProseHandoffTruncationResult(
+      delivered = criticalBlock + FEATURE_TASK_RUNTIME_HANDOFF_TRUNCATION_MARKER,
+      criticalExceededBudget = true,
+    )
   }
   val remainingBudget = maxUtf8Bytes - criticalBytes - FEATURE_TASK_RUNTIME_HANDOFF_TRUNCATION_MARKER
     .encodeToByteArray().size
   if (remainingBudget <= 0) {
-    return criticalBlock + FEATURE_TASK_RUNTIME_HANDOFF_TRUNCATION_MARKER
+    return ProseHandoffTruncationResult(
+      delivered = criticalBlock + FEATURE_TASK_RUNTIME_HANDOFF_TRUNCATION_MARKER,
+      criticalExceededBudget = false,
+    )
   }
   val narrative = lines.filterNot { DERIVATION_CRITICAL_LINE.containsMatchIn(it) }.joinToString("\n")
   val narrativePrefix = truncateUtf8(narrative, remainingBudget)
-  return buildString {
+  val delivered = buildString {
     if (criticalBlock.isNotBlank()) {
       append(criticalBlock)
       append('\n')
@@ -64,6 +77,7 @@ fun retainDerivationCriticalProsePrefix(text: String, maxUtf8Bytes: Int): String
     append(narrativePrefix)
     append(FEATURE_TASK_RUNTIME_HANDOFF_TRUNCATION_MARKER)
   }
+  return ProseHandoffTruncationResult(delivered = delivered, criticalExceededBudget = false)
 }
 
 private const val UTF8_CONTINUATION_BYTE_MASK = 0xC0

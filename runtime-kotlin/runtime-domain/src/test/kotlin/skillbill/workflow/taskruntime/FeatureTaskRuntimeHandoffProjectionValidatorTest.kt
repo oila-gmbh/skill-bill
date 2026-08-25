@@ -25,6 +25,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -536,6 +537,30 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     ).text
     assertContains(delivered, FEATURE_TASK_RUNTIME_HANDOFF_TRUNCATION_MARKER)
     assertContains(delivered, "changes_requested")
+  }
+
+  @Test
+  fun `prose handoff keeps full derivation-critical block with marker when critical alone exceeds budget`() {
+    val criticalLines = List(40) { "AC-${it.toString().padStart(3, '0')}: criterion detail" }
+    val oversized = criticalLines.joinToString("\n") + "\n" + "narrative ".repeat(200)
+    val truncationRecords = mutableListOf<String>()
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        declarations = listOf(
+          declaration(budget = FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 128, maxCollectionItems = 8)),
+        ),
+        resolvedUpstream = upstream(oversized),
+        recordHandoffTruncation = truncationRecords::add,
+      ),
+    )
+    assertEquals(1, truncationRecords.size)
+    assertContains(truncationRecords.single(), "derivation-critical block alone exceeded budget")
+    val delivered = assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(
+      envelope.projections.single().fields.single().value,
+    ).text
+    assertContains(delivered, FEATURE_TASK_RUNTIME_HANDOFF_TRUNCATION_MARKER)
+    criticalLines.forEach { assertContains(delivered, it) }
+    assertFalse(delivered.contains("narrative"))
   }
 
   @Test

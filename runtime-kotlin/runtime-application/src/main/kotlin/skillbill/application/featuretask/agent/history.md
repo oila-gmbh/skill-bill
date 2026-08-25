@@ -1,5 +1,16 @@
 # featuretask runtime boundary history
 
+## [2026-08-25] SKILL-208 subtask 4 — Prose phase result and string handoff
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-contracts, orchestration/contracts, docs
+- Phase launches use `AgentPhaseInput(input, requestedAction)`; durable result is agent prose plus a runtime-owned sidecar (R3), not a typed JSON envelope.
+- Consumers receive producer `output` text under existing handoff budgets; declared-field filtering and producer projection gates leave the feature-task path (goal planning keeps the gate).
+- Budget truncation retains derivation-critical lines ahead of narrative, emits an observability record, and when the critical block alone exceeds budget delivers the full critical lines with a visible marker and omits narrative.
+- `commit_push` subject and decompose packages stay as explicitly delimited sidecar artifacts; blank subject blocks rather than publishing a provisional one.
+- Pattern: prose-centric phase I/O with runtime-minted sidecar evidence; truncation never silently drops derivation tokens. reusable
+- Limitation: retired schemas, repair passes, and docs cleanup remain subtask 5.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-25] SKILL-208 subtask 3 — Derive settlement and verdicts
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime/model
 - Runtime-owned derivation settles status plus disposition and routes audit/review/verify_findings via membership over closed candidate sets; run loop and completion gate consume those signals.
@@ -59,16 +70,6 @@ Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-
 - Hard-reset messaging moves from phase-output contract to goal-planning preparation contract incompatibility.
 Feature flag: N/A
 Acceptance criteria: 8/8 implemented
-
-## [2026-08-25] SKILL-208 subtask 4 — Prose phase result and string handoff
-Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-contracts, runtime-infra-fs/contracts/workflow, orchestration/contracts, docs
-- Phase launches use `AgentPhaseInput(input, requestedAction)`; durable result is agent prose plus a runtime-owned sidecar (R3), not a typed JSON envelope.
-- Consumers receive producer `output` text under existing handoff budgets; declared-field filtering and producer projection gates leave the feature-task path (goal planning keeps the gate).
-- `commit_push` subject and decompose packages stay as explicitly delimited sidecar artifacts; blank subject blocks rather than publishing a provisional one.
-- Pattern: prose-centric phase I/O with runtime-minted sidecar evidence; truncation retains derivation regions and emits observability. reusable
-- Limitation: retired schemas, repair passes, and docs cleanup remain subtask 5.
-Feature flag: N/A
-Acceptance criteria: 10/10 implemented
 
 ## [2026-08-24] SKILL-207 subtask 1 — Phase I/O envelope and prose review handoff
 Areas: runtime-application/{featuretask,model,review}, runtime-domain/{agent,review}, runtime-cli/codereview

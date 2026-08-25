@@ -834,14 +834,20 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     val delivered = if (byteSize <= declaration.budget.maxUtf8Bytes) {
       raw
     } else {
+      val truncation = retainDerivationCriticalProsePrefix(raw, declaration.budget.maxUtf8Bytes)
+      val truncationCause = if (truncation.criticalExceededBudget) {
+        "derivation-critical block alone exceeded budget; delivered full critical lines " +
+          "with visible marker and omitted narrative"
+      } else {
+        "truncated with visible marker while retaining derivation-critical tokens"
+      }
       inputs.recordHandoffTruncation(
         "seam=FeatureTaskRuntimeHandoffProjectionValidator.proseHandoffField " +
           "value_used='$byteSize bytes' value_expected='<=${declaration.budget.maxUtf8Bytes} bytes' " +
           "cause=prose handoff for consumer '${inputs.consumerPhaseId}' projection " +
-          "'${declaration.projectionName}' truncated with visible marker while retaining " +
-          "derivation-critical tokens",
+          "'${declaration.projectionName}' $truncationCause",
       )
-      retainDerivationCriticalProsePrefix(raw, declaration.budget.maxUtf8Bytes)
+      truncation.delivered
     }
     return FeatureTaskRuntimeHandoffProjectionField(
       name = PHASE_OUTPUT_RECEIPT_FIELD,

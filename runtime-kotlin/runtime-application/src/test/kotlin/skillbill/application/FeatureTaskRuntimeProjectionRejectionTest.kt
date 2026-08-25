@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -108,11 +109,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
   }
 
   @Test
-  fun `a legacy free-form upstream record quarantines and regenerates the producer instead of blocking`() {
-    // SKILL-140 (AC-001, AC-002): a durable plan record predating the bounded projection (no
-    // projection_kind) is no longer a first-occurrence durable block. The launch seam quarantines it as
-    // private evidence and re-enters the plan phase; a subsequently valid plan advances the run with no
-    // operator action. Out-of-band row surgery is the corruption fallback, not the primary recovery.
+  fun `a legacy free-form upstream record advances without quarantine or producer regeneration`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
@@ -135,35 +132,18 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val report = harness.runner.run(harness.request())
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    // The plan phase regenerated, and the consumer advanced past it under the valid regenerated record.
-    assertTrue(harness.launchedPromptPhaseOrder().any { it == "plan" }, "the plan phase must regenerate")
+    assertNull(
+      harness.recorder.loadQuarantinedRecords(WORKFLOW_ID)?.firstOrNull { it.producingPhaseId == "plan" },
+      "prose-shaped plan output must not enter quarantine for shape-only rejection",
+    )
     assertTrue(
       harness.launchedPromptPhaseOrder().any { it == "implement" },
-      "the consumer advances after the producer regenerates a valid record",
-    )
-    // The rejected record survives as private quarantine evidence attributed to its producing phase.
-    val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
-    val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "plan" })
-    assertEquals("implement", entry.consumingPhaseId)
-    assertTrue(entry.diagnosticIdentity?.startsWith("rod_") == true)
-    assertEquals(false, entry.diagnosticDegraded)
-    assertTrue("diagnostic_degraded" !in entry.toArtifactMap())
-    assertTrue(Regex("[0-9a-f]{64}").matches(entry.rejectedRecordSha256))
-    // Evidence is never delivered to any agent prompt.
-    assertTrue(
-      harness.launcher.requests.none {
-        requireNotNull(it.skillRunRequest.promptOverride).contains("free-form legacy body")
-      },
-      "quarantined evidence must never reach an agent prompt",
+      "the consumer advances from producer prose without regenerating the producer",
     )
   }
 
   @Test
-  fun `a legacy launch-seam projection-rejection block is re-entered and self-heals on resume`() {
-    // SKILL-140 (AC-003, AC-008, AC-010): a consumer phase durably blocked by a PRE-quarantine build's
-    // launch-seam planning-projection rejection (persisted needs_user_action) is stale, not terminal. On
-    // resume the phase re-enters, the live seam quarantines the offending upstream record and regenerates
-    // its producer, and the run advances with no reset and no operator surgery.
+  fun `a legacy launch-seam projection-rejection block is re-entered and advances from producer prose`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
@@ -172,7 +152,6 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
-    // The upstream implement record predates the bounded projection (free-form body, no projection_kind).
     val legacyImplementation =
       """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
         """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}"""
@@ -184,9 +163,6 @@ class FeatureTaskRuntimeProjectionRejectionTest {
       legacyImplementation,
     )
     harness.retainExactProducerEvidence("implement", legacyImplementation)
-    // The consumer was blocked by the pre-quarantine build with the exact legacy launch-seam reason, and
-    // those rejections already spent its fix-loop budget (attempt 4 > cap 3). Re-entry must restart the
-    // budget — the consumer never actually ran — so it reaches the live seam instead of re-blocking.
     harness.seedBlockedPhase(
       "audit",
       4,
@@ -199,25 +175,10 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val report = harness.runner.run(harness.request())
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    // audit re-entered rather than re-surfacing the durable block, and the rejected producer regenerated.
     assertTrue(harness.launchedPromptPhaseOrder().any { it == "audit" }, "the blocked audit phase must re-enter")
-    assertTrue(
-      harness.launchedPromptPhaseOrder().any { it == "implement" },
-      "the rejected upstream producer regenerates",
-    )
-    // The rejected implement record survives as private quarantine evidence attributed to its producer.
-    val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
-    val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "implement" })
-    assertEquals("audit", entry.consumingPhaseId)
-    assertTrue(entry.diagnosticIdentity?.startsWith("rod_") == true)
-    assertEquals(false, entry.diagnosticDegraded)
-    assertTrue("diagnostic_degraded" !in entry.toArtifactMap())
-    assertTrue(Regex("[0-9a-f]{64}").matches(entry.rejectedRecordSha256))
-    assertTrue(
-      harness.launcher.requests.none {
-        requireNotNull(it.skillRunRequest.promptOverride).contains("free-form legacy body")
-      },
-      "quarantined evidence must never reach an agent prompt",
+    assertNull(
+      harness.recorder.loadQuarantinedRecords(WORKFLOW_ID)?.firstOrNull { it.producingPhaseId == "implement" },
+      "prose-shaped implement output must not enter quarantine for shape-only rejection",
     )
   }
 

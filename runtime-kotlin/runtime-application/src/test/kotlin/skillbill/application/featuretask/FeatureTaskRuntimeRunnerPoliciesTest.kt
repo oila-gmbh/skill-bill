@@ -278,6 +278,8 @@ private fun accountingRecorder(vararg records: ReviewAccountingRecord): FeatureT
       override val telemetryReconciliation = error("unused")
       override val telemetryOutbox = error("unused")
       override val workflowStates = error("unused")
+      override val workList = skillbill.ports.persistence.EmptyWorkListRepository
+      override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
       override val featureTaskRuntimeAuditGenerations = error("unused")
       override val rejectedOutputDiagnosticPermissions = error("unused")
       override val rejectedOutputDiagnostics = error("unused")
@@ -303,8 +305,8 @@ private fun accountingRecorder(vararg records: ReviewAccountingRecord): FeatureT
 
 private fun accountingDefaultPortReturn(method: java.lang.reflect.Method): Any? = when {
   method.returnType == Void.TYPE -> null
-  java.util.List::class.java.isAssignableFrom(method.returnType) -> emptyList<Any>()
-  java.util.Map::class.java.isAssignableFrom(method.returnType) -> emptyMap<Any, Any>()
+  List::class.java.isAssignableFrom(method.returnType) -> emptyList<Any>()
+  Map::class.java.isAssignableFrom(method.returnType) -> emptyMap<Any, Any>()
   method.returnType == java.lang.Boolean.TYPE -> false
   method.returnType == Integer.TYPE -> 0
   method.returnType == java.lang.Long.TYPE -> 0L

@@ -96,6 +96,7 @@ class FeatureTaskRuntimeProseCentricPhaseIoTest {
   @Test
   fun `goal planning sweep still rejects malformed bounded projections through producer gate`() {
     val envelope = mapOf<String, Any?>(
+      "status" to "completed",
       "produced_outputs" to mapOf(
         "projection_kind" to "executable_plan",
         "contract_version" to "0.1",
@@ -129,10 +130,12 @@ class FeatureTaskRuntimeProseCentricPhaseIoTest {
     val briefing = FeatureTaskRuntimePhaseLaunchBriefing(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
       specReference = ".feature-specs/SKILL-208/spec.md",
-      featureSize = "M",
+      featureSize = "MEDIUM",
       acceptanceCriteria = listOf("AC-1"),
       mandatesAndOverrides = emptyList(),
-      handoffEnvelope = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff).handoffEnvelope,
+      handoffEnvelope = FeatureTaskRuntimeHandoffEnvelope(
+        consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+      ),
       derivedContextKeys = emptyList(),
       briefingText = "Fix briefing with upstream prose.",
     )
@@ -153,8 +156,8 @@ class FeatureTaskRuntimeProseCentricPhaseIoTest {
     assertContains(framed, "Phase input:")
     assertContains(framed, "Requested action:")
     assertFalse(framed.contains("Required final output"))
-    assertFalse(framed.contains("produced_outputs"))
-    assertFalse(framed.contains("\"contract_version\""))
+    assertFalse(input.requestedAction.contains("produced_outputs"))
+    assertFalse(input.requestedAction.contains("\"contract_version\""))
   }
 
   @Test
@@ -199,7 +202,7 @@ private fun minimalBriefing(phaseId: String): FeatureTaskRuntimePhaseLaunchBrief
   FeatureTaskRuntimePhaseLaunchBriefing(
     phaseId = phaseId,
     specReference = ".feature-specs/SKILL-208/spec.md",
-    featureSize = "M",
+    featureSize = "MEDIUM",
     acceptanceCriteria = listOf("AC-001"),
     mandatesAndOverrides = emptyList(),
     handoffEnvelope = FeatureTaskRuntimeHandoffEnvelope(consumerPhaseId = phaseId),

@@ -93,13 +93,11 @@ internal fun verdictPlanOutput(verdict: String): String = """
 // what the `pr` consumer projection reads, so any suite that assembles a pr briefing from static
 // records must use this rather than the pre-finalisation agent payload.
 internal val FINALISED_COMMIT_PUSH_OUTPUT: String = """
-  {
-    "contract_version": "0.4",
-    "phase_id": "commit_push",
-    "status": "completed",
-    "summary": "Phase produced a validated output.",
-    "produced_outputs": ${commitPushProducedOutputs(commitSha = "commit-runtime-1")}
-  }
+  status: completed. Commit complete for the subtask.
+  <<<COMMIT_SUBJECT>>>
+  SKILL-65: runtime feature-task parity
+  <<<END_COMMIT_SUBJECT>>>
+  Changed paths: src/Foo.kt
 """.trimIndent()
 
 // The runtime, not the agent, supplies commit_sha: the agent contributes the outcome message and the
@@ -127,6 +125,14 @@ internal fun commitPushProducedOutputs(
 internal fun validJsonOutput(phaseId: String, commitPushChangedPaths: List<String>? = null): String {
   if (phaseId == "verify_findings") {
     return verifyFindingsOutput()
+  }
+  if (phaseId == "commit_push") {
+    return """
+      status: completed. Subtask ready to publish.
+      <<<COMMIT_SUBJECT>>>
+      SKILL-65: runtime feature-task parity
+      <<<END_COMMIT_SUBJECT>>>
+    """.trimIndent()
   }
   if (phaseId == "audit") {
     return """
