@@ -11,6 +11,8 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleTer
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.config.model.applyValidationGateGradleWrapper
+import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
@@ -31,8 +33,31 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepa
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
+private const val RUNTIME_OWNED_BUILD_RECEIPT_FINGERPRINT = "runtime-owned-build-gate"
+
 private fun runtimeOwnedBuildProse(): String =
   "Build satisfied by runtime-owned gate execution. Verdict: ${FeatureTaskRuntimeVerdict.SATISFIED.wireValue}."
+
+private fun runtimeOwnedBuildEnvelope(
+  measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
+  repositoryCheckpointFingerprint: String,
+): String {
+  val buildReceipt = linkedMapOf<String, Any?>(
+    "contract_version" to FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION,
+    "validation_status" to "passed",
+    "checks" to emptyList<String>(),
+    "repository_checkpoint" to mapOf("fingerprint" to repositoryCheckpointFingerprint),
+    "gate_run_count" to measurements.size,
+    "gate_runs" to measurements.map(FeatureTaskRuntimeValidationGateRunRecord::toArtifactMap),
+  )
+  val envelope = linkedMapOf<String, Any?>(
+    "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+    "status" to "completed",
+    "summary" to runtimeOwnedBuildProse(),
+    "produced_outputs" to mapOf("build_receipt" to buildReceipt),
+  )
+  return JsonSupport.mapToJsonString(envelope)
+}
 
 private data class BuildGateCycleState(
   val cycle: ValidationGateCycleRequest,
@@ -92,7 +117,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
       repairsUsed = 0,
     )
     if (discoveryFindings.isEmpty()) {
-      return terminalCompletedResult()
+      return terminalCompletedResult(state)
     }
     return repairLoop(
       state = state,
@@ -113,7 +138,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
     var currentFindings = openFindings
     while (true) {
       if (currentFindings.isEmpty()) {
-        return terminalCompletedResult()
+        return terminalCompletedResult(state)
       }
       val projection = ValidationFindingSetProjection(findings = currentFindings)
       if (repairsUsed >= MAX_REPAIR_TURNS) {
@@ -156,7 +181,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
         repairsUsed = repairsUsed,
       )
       if (verifyFindings.isEmpty()) {
-        return terminalCompletedResult()
+        return terminalCompletedResult(state)
       }
       currentFindings = verifyFindings
     }
@@ -256,10 +281,13 @@ class FeatureTaskRuntimeBuildGateCoordinator(
     private fun operatorResumeRepairTurns(repairsUsed: Int): Int =
       if (repairsUsed >= MAX_REPAIR_TURNS) 0 else repairsUsed
 
-    fun runtimeOwnedBuildOutput(): FeatureTaskRuntimePhaseOutput = FeatureTaskRuntimePhaseOutput(
+    fun runtimeOwnedBuildOutput(
+      measurements: List<FeatureTaskRuntimeValidationGateRunRecord> = emptyList(),
+      repositoryCheckpointFingerprint: String = RUNTIME_OWNED_BUILD_RECEIPT_FINGERPRINT,
+    ): FeatureTaskRuntimePhaseOutput = FeatureTaskRuntimePhaseOutput(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
       iteration = 1,
-      payload = runtimeOwnedBuildProse(),
+      payload = runtimeOwnedBuildEnvelope(measurements, repositoryCheckpointFingerprint),
     )
   }
 }
@@ -295,11 +323,15 @@ private fun decodeBuildPersistedFindings(raw: List<Map<String, String?>>): List<
     )
   }
 
-private fun terminalCompletedResult(): ValidationGateCycleResult = ValidationGateCycleResult.Terminal(
-  ValidationGateCycleTerminalOutcome.Completed(
-    output = FeatureTaskRuntimeBuildGateCoordinator.runtimeOwnedBuildOutput(),
-  ),
-)
+private fun terminalCompletedResult(state: BuildGateCycleState): ValidationGateCycleResult =
+  ValidationGateCycleResult.Terminal(
+    ValidationGateCycleTerminalOutcome.Completed(
+      output = FeatureTaskRuntimeBuildGateCoordinator.runtimeOwnedBuildOutput(
+        measurements = state.measurements,
+        repositoryCheckpointFingerprint = state.cycle.repositoryCheckpoint,
+      ),
+    ),
+  )
 
 private fun terminalBlockedResult(
   reason: String,

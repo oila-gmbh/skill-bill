@@ -170,12 +170,11 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
     )
 
     assertEquals(listOf("task-1"), parsed.completedTaskIds)
-    assertEquals(listOf("runtime-kotlin/Sample.kt"), parsed.changedPaths)
+    assertEquals(emptyList(), parsed.changedPaths)
     assertEquals(listOf("open item"), parsed.unresolvedItems)
     assertEquals(listOf("fine"), parsed.deviations.map { it.note })
-    assertNull(parsed.repositoryCheckpoint?.baseRef)
-    assertNull(parsed.repositoryCheckpoint?.headRef)
-    assertEquals("abc", parsed.repositoryCheckpoint?.fingerprint)
+    assertNull(parsed.repositoryCheckpoint)
+    assertNull(parsed.reconciliationEvidence)
   }
 
   @Test

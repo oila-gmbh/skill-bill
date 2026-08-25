@@ -327,6 +327,59 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
   }
 
   @Test
+  fun `audit without verdict stays indecisive instead of advancing`() {
+    val envelope = mapOf(
+      "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      "status" to "completed",
+      "summary" to "audit finished",
+      "produced_outputs" to mapOf("gaps" to emptyList<Any>()),
+    )
+    assertEquals(
+      null,
+      FeatureTaskRuntimeOutputVerification.verdictFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+        envelope,
+      ),
+    )
+    assertIs<FeatureTaskRuntimeDerivationResult.Indecisive>(
+      FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(
+        FeatureTaskRuntimeDerivationContext(
+          phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+          outputText = """{"status":"completed","summary":"audit finished"}""",
+          outputMap = envelope,
+        ),
+      ),
+    )
+  }
+
+  @Test
+  fun `verify_findings without finding dispositions stays indecisive instead of advancing`() {
+    val envelope = mapOf(
+      "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+      "status" to "completed",
+      "summary" to "verification finished",
+      "produced_outputs" to emptyMap<String, Any?>(),
+    )
+    assertEquals(
+      null,
+      FeatureTaskRuntimeOutputVerification.verdictFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+        envelope,
+      ),
+    )
+    assertIs<FeatureTaskRuntimeDerivationResult.Indecisive>(
+      FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(
+        FeatureTaskRuntimeDerivationContext(
+          phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+          outputText = """{"status":"completed","summary":"verification finished"}""",
+          outputMap = envelope,
+          reviewFindingIds = setOf("F-001"),
+        ),
+      ),
+    )
+  }
+
+  @Test
   fun `prose mentioning task-10 does not close task-1 obligation`() {
     val text = """{"completed_task_ids":[],"summary":"Closed task-10 only"}"""
     val open = featureTaskRuntimeOpenObligations(

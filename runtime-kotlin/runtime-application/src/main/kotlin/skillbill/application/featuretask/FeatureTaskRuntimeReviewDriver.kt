@@ -7,7 +7,6 @@ import skillbill.application.model.ParallelCodeReviewResult
 import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.review.toBoundedPayload
-import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ParallelReviewMergeResult
@@ -131,14 +130,7 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     resolvedTier: CodeReviewExecutionMode,
   ): GoalSubtaskCommitFocusedAccounting? =
     commitFocusedAccountingFromBoundedPayload(result.accountingSummary?.toBoundedPayload(), resolvedTier)
-      ?: commitFocusedAccountingFromExecution(
-        routing = result.accountingSummary?.commitRouting,
-        parentAnalysis = result.accountingSummary?.parentAnalysis,
-        integrationAccounting = result.accountingSummary?.integration,
-        integrationPass = result.integration,
-        integrationNotApplicableReason = result.coverage?.integrationNotApplicableReason,
-        resolvedTier = resolvedTier,
-      )
+      ?: commitFocusedAccountingFromExecution(result, resolvedTier)
 
   internal fun commitFocusedAccountingFromBoundedPayload(
     boundedPayload: Map<String, Any?>?,
@@ -157,13 +149,14 @@ internal object FeatureTaskRuntimeReviewEnvelope {
   }
 
   private fun commitFocusedAccountingFromExecution(
-    routing: skillbill.review.context.model.ReviewCommitRoutingAccounting?,
-    parentAnalysis: skillbill.review.context.model.ReviewParentAnalysisConsumption?,
-    integrationAccounting: skillbill.review.context.model.ReviewIntegrationAccounting?,
-    integrationPass: ReviewIntegrationPassOutcome?,
-    integrationNotApplicableReason: String?,
+    result: ParallelCodeReviewResult,
     resolvedTier: CodeReviewExecutionMode,
   ): GoalSubtaskCommitFocusedAccounting? {
+    val routing = result.accountingSummary?.commitRouting
+    val parentAnalysis = result.accountingSummary?.parentAnalysis
+    val integrationAccounting = result.accountingSummary?.integration
+    val integrationPass = result.integration
+    val integrationNotApplicableReason = result.coverage?.integrationNotApplicableReason
     if (routing == null || resolvedTier != CodeReviewExecutionMode.DELEGATED || routing.commitCount < 1) {
       return null
     }
@@ -202,10 +195,9 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     resolvedTier: CodeReviewExecutionMode,
   ): GoalSubtaskCommitFocusedAccounting? {
     if (routingMap == null || resolvedTier != CodeReviewExecutionMode.DELEGATED) return null
-    val commitCount = (routingMap["commit_count"] as? Number)?.toInt() ?: return null
-    if (commitCount < 1) return null
+    val commitCount = (routingMap["commit_count"] as? Number)?.toInt()?.takeIf { it >= 1 } ?: return null
     val commitSequenceDigest = (routingMap["commit_sequence_digest"] as? String)?.trim().orEmpty()
-    if (commitSequenceDigest.isBlank()) return null
+      .takeIf(String::isNotBlank) ?: return null
     val terminalOutcome = (integrationMap?.get("terminal_outcome") as? String)?.trim()
       ?: GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE
     return GoalSubtaskCommitFocusedAccounting(

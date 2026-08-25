@@ -40,7 +40,6 @@ import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.model.evidenceKey
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
@@ -49,6 +48,7 @@ import skillbill.workflow.NoopFeatureTaskRuntimeImplementationAttemptValidator
 import skillbill.workflow.NoopFeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence

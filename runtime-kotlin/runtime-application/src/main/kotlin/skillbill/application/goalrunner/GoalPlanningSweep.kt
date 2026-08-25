@@ -62,7 +62,9 @@ import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.time.Duration
@@ -1084,6 +1086,7 @@ class DefaultGoalPlanningSweep(
     priorSettlementFailure: String?,
     resolvedBodies: GoalPlanningResolvedBoundaryBodies,
   ): String {
+    rejectSettledUpstreamPlanningProjections(recordedOutputs)
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, runInvariants.featureSize),
       runInvariants = runInvariants,
@@ -1094,11 +1097,14 @@ class DefaultGoalPlanningSweep(
       planningProjectionValidator = planningProjectionValidator,
       agentAddonSelection = request.agentAddonSelection,
     )
-    val basePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      issueKey = request.issueKey,
-      briefing = briefing,
-      suppressDecomposition = true,
-      priorSettlementFailure = priorSettlementFailure,
+    val basePrompt = FeatureTaskRuntimePhasePromptComposer.frameAgentPhaseLaunchPrompt(
+      phaseInput = FeatureTaskRuntimePhasePromptComposer.composeAgentPhaseInput(briefing),
+      directiveSections = FeatureTaskRuntimePhasePromptComposer.compose(
+        issueKey = request.issueKey,
+        briefing = briefing,
+        suppressDecomposition = true,
+        priorSettlementFailure = priorSettlementFailure,
+      ),
     )
     return GoalPlanningContextPromptFormatter.append(
       basePrompt,
@@ -1107,6 +1113,27 @@ class DefaultGoalPlanningSweep(
       phaseId,
       resolvedBodies,
     )
+  }
+
+  private fun rejectSettledUpstreamPlanningProjections(recordedOutputs: List<FeatureTaskRuntimePhaseOutput>) {
+    recordedOutputs.forEach { output ->
+      val expectedKind = FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor(output.phaseId)
+        ?: return@forEach
+      val envelope = parseGoalPlanningPhaseEnvelopeOrNull(output.payload)?.envelope
+        ?: JsonSupport.parseObjectOrNull(output.payload)
+          ?.let(JsonSupport::jsonElementToValue)
+          ?.let(JsonSupport::anyToStringAnyMap)
+        ?: throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+          sourceLabel = "${output.phaseId}#produced_outputs",
+          reason = "producing phase output payload is missing or not a JSON object.",
+        )
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = envelope,
+        producingPhaseId = output.phaseId,
+        expectedKind = expectedKind,
+        schemaValidator = planningProjectionValidator,
+      )
+    }
   }
 
   /**

@@ -11,7 +11,6 @@ import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -27,177 +26,6 @@ import kotlin.test.assertTrue
 
 @Suppress("LargeClass") // one suite per producer/consumer projection edge; they share the payload fixtures
 class FeatureTaskRuntimePlanningProjectionEdgeTest {
-  @Test
-  fun `plan receives only the bounded preplanning digest fields, never the complete preplan envelope`() {
-    val briefing = assemble(
-      consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-      recordedOutputs = listOf(phaseOutput(phasePreplan, preplanDigestPayload(undeclaredFields = true))),
-      runInvariants = runInvariants(),
-    )
-
-    assertContains(briefing.briefingText, "affected_boundaries:")
-    assertContains(briefing.briefingText, "risks:")
-    assertContains(briefing.briefingText, "validation_strategy:")
-    assertFalse(
-      briefing.briefingText.contains("complete_envelope_secret"),
-      "complete preplan envelope must not survive projection",
-    )
-    assertFalse(
-      briefing.briefingText.contains("progress_diagnostics"),
-      "progress diagnostics must not survive projection",
-    )
-  }
-
-  @Test
-  fun `implement receives only the executable plan projection, never the preplan digest`() {
-    val declaration = FeatureTaskRuntimePhaseDeclaration(
-      phaseId = phaseImplement,
-      projectionDeclarations = listOf(
-        FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement),
-      ),
-      derivedContextKeys = emptyList(),
-    )
-    // implement's declared source set excludes preplan entirely.
-    assertFalse(declaration.consumedUpstreamPhaseIds.contains(phasePreplan))
-
-    val briefing = assemble(
-      consumer = phaseImplement,
-      declarations = declaration.projectionDeclarations,
-      recordedOutputs = listOf(phaseOutput(phasePlan, executablePlanPayload(undeclaredFields = true))),
-      runInvariants = runInvariants(),
-    )
-
-    assertContains(briefing.briefingText, "mode: direct")
-    assertContains(briefing.briefingText, "tasks:")
-    assertFalse(
-      briefing.briefingText.contains("planning_narration"),
-      "planning narration must not survive projection",
-    )
-    assertFalse(
-      briefing.briefingText.contains("decomposition_subtask_count"),
-      "decomposition data must not reach implement under DIRECT mode",
-    )
-  }
-
-  @Test
-  fun `implement receives per-task target paths, test obligations, and constraints from the executable plan`() {
-    val briefing = assemble(
-      consumer = phaseImplement,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
-      recordedOutputs = listOf(phaseOutput(phasePlan, executablePlanWithPerTaskFieldsPayload())),
-      runInvariants = runInvariants(),
-    )
-
-    assertContains(briefing.briefingText, "targets: runtime-domain/model/X.kt")
-    assertContains(briefing.briefingText, "tests: parity")
-    assertContains(briefing.briefingText, "constraints: closed-world only")
-  }
-
-  @Test
-  fun `audit receives a bounded commitment and receipt, never the complete plan or implement envelopes`() {
-    val briefing = assemble(
-      consumer = phaseAudit,
-      declarations = listOf(
-        FeatureTaskRuntimePhaseWorkflowDefinition.planCommitmentDeclaration(phaseAudit),
-        FeatureTaskRuntimePhaseWorkflowDefinition.implementationReceiptDeclaration(phaseAudit),
-      ),
-      recordedOutputs = listOf(
-        phaseOutput(phasePlan, executablePlanPayload(undeclaredFields = true)),
-        phaseOutput(phaseImplement, implementationReceiptPayload(undeclaredFields = true)),
-      ),
-      runInvariants = runInvariants(),
-    )
-
-    assertContains(briefing.briefingText, "task_commitments:")
-    assertContains(briefing.briefingText, "changed_paths:")
-    assertContains(briefing.briefingText, "tests_executed:")
-    assertContains(briefing.briefingText, "reconciliation_evidence:")
-    assertFalse(
-      briefing.briefingText.contains("complete_plan_envelope_secret"),
-      "complete plan envelope must not reach audit",
-    )
-    assertFalse(
-      briefing.briefingText.contains("complete_implement_envelope_secret"),
-      "complete implement envelope must not reach audit",
-    )
-    assertFalse(
-      briefing.briefingText.contains("planning_narration"),
-      "plan narration must not reach audit through the commitment",
-    )
-  }
-
-  @Test
-  fun `a DECOMPOSE-mode executable plan is never forwarded to the implement projection as decomposition data`() {
-    val briefing = assemble(
-      consumer = phaseImplement,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
-      recordedOutputs = listOf(phaseOutput(phasePlan, executablePlanPayload(mode = "decompose"))),
-      runInvariants = runInvariants(),
-    )
-    // The executable_plan projection renders only mode/tasks/validation_strategy; decomposition fields
-    // stay private to the preparation/goal boundary.
-    assertFalse(briefing.briefingText.contains("decomposition_manifest_ref_value"))
-    assertContains(briefing.briefingText, "mode: decompose")
-  }
-
-  @Test
-  fun `a free-form producer payload loud-fails rather than being forwarded as a coarse receipt`() {
-    var threw = false
-    try {
-      assemble(
-        consumer = phasePlan,
-        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-        recordedOutputs = listOf(phaseOutput(phasePreplan, """{"free":"form","narration":"whole envelope"}""")),
-        runInvariants = runInvariants(),
-      )
-    } catch (error: skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
-      threw = true
-      assertTrue(error.message!!.contains("planning projection"))
-    }
-    assertTrue(threw, "a free-form payload under a planning contract must loud-fail")
-  }
-
-  @Test
-  fun `the delivered checkpoint is the runtime fingerprint, with the producer claim kept as provenance`() {
-    val briefing = assemble(
-      consumer = phaseAudit,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.implementationReceiptDeclaration(phaseAudit)),
-      recordedOutputs = listOf(phaseOutput(phaseImplement, implementationReceiptPayload(checkpoint = "stale-abc"))),
-      runInvariants = runInvariants(),
-    )
-
-    assertContains(
-      briefing.briefingText,
-      "fixture-checkpoint-1${FeatureTaskRuntimeHandoffProjectionValidator.CHECKPOINT_PRODUCER_CLAIM_SEPARATOR}" +
-        "stale-abc",
-    )
-    // Only the repository-derived field is substituted; the producer's own claims survive intact.
-    assertContains(briefing.briefingText, "task-01")
-    assertContains(briefing.briefingText, "runtime-domain/model/X.kt")
-    assertContains(briefing.briefingText, "files at target")
-  }
-
-  @Test
-  fun `an agent-authored checkpoint never suppresses the substitution by coinciding with the fingerprint`() {
-    // The carried value is free-form agent text and the resolved one is a git content hash, so equality
-    // between them carries no information. The runtime fingerprint is delivered either way.
-    val briefing = assemble(
-      consumer = phaseAudit,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.implementationReceiptDeclaration(phaseAudit)),
-      recordedOutputs = listOf(
-        phaseOutput(phaseImplement, implementationReceiptPayload(checkpoint = "fixture-checkpoint-1")),
-      ),
-      runInvariants = runInvariants(),
-    )
-
-    assertContains(
-      briefing.briefingText,
-      "fixture-checkpoint-1${FeatureTaskRuntimeHandoffProjectionValidator.CHECKPOINT_PRODUCER_CLAIM_SEPARATOR}" +
-        "fixture-checkpoint-1",
-    )
-  }
-
   @Test
   fun `audit receives the resolved repository checkpoint as scoped comparison context`() {
     val briefing = assemble(
@@ -295,98 +123,6 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     )
 
     assertFalse(briefing.briefingText.contains("## Repository checkpoint"))
-  }
-
-  @Test
-  fun `the canonical planning-projections schema gate runs on every parsed upstream projection`() {
-    val validator = RecordingPlanningProjectionValidator()
-
-    assemble(
-      consumer = phasePlan,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-      recordedOutputs = listOf(phaseOutput(phasePreplan, preplanDigestPayload())),
-      runInvariants = runInvariants(),
-      planningProjectionValidator = validator,
-    )
-
-    assertEquals(listOf("preplan#produced_outputs"), validator.sourceLabels)
-    assertEquals(
-      "preplanning_digest",
-      validator.payloads.single()["projection_kind"],
-      "the gate must see the producer payload, not a re-serialized projection",
-    )
-  }
-
-  @Test
-  fun `a schema rejection surfaces as the typed planning-projection error, not an opaque failure`() {
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      assemble(
-        consumer = phasePlan,
-        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-        recordedOutputs = listOf(phaseOutput(phasePreplan, preplanDigestPayload())),
-        runInvariants = runInvariants(),
-        planningProjectionValidator = RejectingPlanningProjectionValidator,
-      )
-    }
-
-    assertContains(error.reason, "additionalProperties")
-    assertEquals(
-      FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan).projectionName,
-      error.projectionName,
-    )
-  }
-
-  @Test
-  fun `a producer projection_kind that disagrees with the declared edge is a typed rejection`() {
-    // F-003: dispatch was on the producer's kind while the cast was on the declaration's contract id,
-    // so a disagreement threw a raw ClassCastException on an already-completed producing phase.
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      assemble(
-        consumer = phaseImplement,
-        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
-        recordedOutputs = listOf(phaseOutput(phasePlan, implementationReceiptPayload())),
-        runInvariants = runInvariants(),
-      )
-    }
-
-    assertContains(error.reason, "expects projection_kind 'executable_plan'")
-    assertContains(error.reason, "emitted 'implementation_receipt'")
-  }
-
-  @Test
-  fun `a projection payload on a different contract version is rejected rather than reinterpreted`() {
-    val legacy = preplanDigestPayload().replace(""""contract_version":"0.1"""", """"contract_version":"0.0"""")
-
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      assemble(
-        consumer = phasePlan,
-        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-        recordedOutputs = listOf(phaseOutput(phasePreplan, legacy)),
-        runInvariants = runInvariants(),
-      )
-    }
-
-    assertContains(error.reason, "contract_version")
-  }
-
-  @Test
-  fun `a typed model rule violation leaves the parse seam as the planning-projection error`() {
-    // F-002: model init blocks threw bare IllegalArgumentException, which no run-loop catch site
-    // handled, so a malformed durable record aborted the driver instead of blocking the phase. The id
-    // is a leading-digit value canonicalization leaves untouched (it repairs casing/separators, never
-    // fabricates a valid id), so it still reaches — and trips — the model's taskId pattern rule.
-    val badTaskId = executablePlanPayload().replace(""""task_id":"task-01"""", """"task_id":"1task"""")
-
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      assemble(
-        consumer = phaseImplement,
-        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
-        recordedOutputs = listOf(phaseOutput(phasePlan, badTaskId)),
-        runInvariants = runInvariants(),
-      )
-    }
-
-    assertContains(error.reason, "taskId")
   }
 
   @Test
@@ -605,91 +341,25 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   }
 
   @Test
-  fun `every envelope the producer gate accepts is accepted by the launch-seam parse for its consumer edge`() {
-    // AC-004: the producer gate (producerProjectionGateReason) and the launch seam (the briefing
-    // assemble) both route through featureTaskRuntimePlanningProjectionFromEnvelope with the same
-    // validator, so what one accepts the other accepts. Each producing-phase envelope is driven through
-    // the real gate and the real consumer edge; both must accept, including the derived plan_commitment.
-    val validator = NoopFeatureTaskRuntimePlanningProjectionValidator
-    parityEdges.forEach { edge ->
-      assertNull(
-        producerProjectionGateReason(edge.producer, producerEnvelope(edge.payload), validator),
-        "the producer gate must accept the ${edge.producer} fixture",
-      )
-      // The launch seam accepts the same envelope for the corresponding consumer edge without throwing.
-      assemble(
-        consumer = edge.consumer,
-        declarations = listOf(edge.declaration),
-        recordedOutputs = listOf(phaseOutput(edge.producer, edge.payload)),
-        runInvariants = runInvariants(),
-        planningProjectionValidator = validator,
-      )
-    }
-  }
-
-  @Test
-  fun `the producer gate and the launch seam reject in lockstep so neither can be made stricter`() {
-    // Both sides are driven through the same validator instance and the same parse function, so the
-    // accept/reject decision is one decision. A rejecting validator must reject at BOTH the gate and the
-    // launch seam; if the gate could reject while the seam accepted (a stricter gate), this fails.
-    val rejecting = RejectingPlanningProjectionValidator
-    parityEdges.forEach { edge ->
-      val gateRejected = producerProjectionGateReason(edge.producer, producerEnvelope(edge.payload), rejecting) != null
-      val seamRejected = try {
-        assemble(
-          consumer = edge.consumer,
-          declarations = listOf(edge.declaration),
-          recordedOutputs = listOf(phaseOutput(edge.producer, edge.payload)),
-          runInvariants = runInvariants(),
-          planningProjectionValidator = rejecting,
-        )
-        false
-      } catch (_: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
-        true
-      }
-      assertTrue(gateRejected, "the gate must reject the ${edge.producer} edge under a rejecting validator")
-      assertEquals(gateRejected, seamRejected, "gate and launch seam must agree on the ${edge.producer} edge")
-    }
-  }
-
-  @Test
-  fun `an envelope canonicalized at the producer gate parses identically at the consumer launch seam`() {
-    // AC-005: canonicalization lives inside the shared parse function, so the gate (subtask 1's
-    // producerProjectionGateReason) and the launch seam observe it identically. A canonicalizable plan
-    // (uppercase task id + matching depends_on) is accepted at the real gate call site and, at the
-    // corresponding consumer edge, delivers the canonical ids — the same rewrite, one source, no drift.
-    // The real Draft 2020-12 validator runs at both call sites, not the Noop stand-in.
+  fun `a canonicalizable plan is accepted by the producer gate regardless of the seam's casing`() {
+    // Canonicalization (uppercase task id + matching depends_on) still lives inside the shared parse
+    // function the producer gate calls; the consumer launch seam no longer re-parses or re-validates
+    // producer prose, so only the gate side of this behavior remains testable here.
     val validator = realPlanningProjectionValidator
 
     assertNull(
       producerProjectionGateReason(phasePlan, producerEnvelope(canonicalizablePlanPayload()), validator),
       "the producer gate must accept the canonicalizable plan",
     )
-
-    val briefing = assemble(
-      consumer = phaseImplement,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
-      recordedOutputs = listOf(phaseOutput(phasePlan, canonicalizablePlanPayload())),
-      runInvariants = runInvariants(),
-      planningProjectionValidator = validator,
-    )
-
-    // The seam delivers the canonical declaration and its reference, proving the gate and the seam
-    // applied one identical canonicalization.
-    assertContains(briefing.briefingText, "t1")
-    assertContains(briefing.briefingText, "task-2 [depends: t1]")
-    assertFalse(briefing.briefingText.contains("Task_2"), "no pre-canonical id may survive to the consumer")
   }
 
   @Test
-  fun `an object-shaped open-work entry is accepted by the producer gate and rendered for the consumer`() {
+  fun `an object-shaped open-work entry is accepted by the producer gate and forwarded verbatim to the consumer`() {
     // SKILL-136 regression. `unresolved_items` had two readers with opposite policies: the terminal
     // path's claim parser deliberately RENDERS a non-string entry rather than dropping an open-work
-    // signal, while this gate's schema typed the field as bare strings and rejected the same entry.
-    // An agent authors ONE receipt without knowing which seam will read it, so the {ref, note} pair it
-    // naturally copies from the adjacent `deviations` field was legal on one path and fatal on the
-    // other — it exhausted the implement fix loop on three consecutive attempts. Both seams now accept
-    // both shapes and render them through featureTaskRuntimeRenderOpenWorkItem.
+    // signal, while this gate's schema typed the field as bare strings and rejected the same entry. The
+    // producer gate still enforces the {ref, note} shape; the consumer now receives the whole prose
+    // receipt unfiltered, so the entry's raw content simply survives rather than being re-rendered.
     val objectShaped = implementationReceiptPayload().replace(
       """"repository_checkpoint":{"fingerprint":"abc123"}""",
       """"repository_checkpoint":{"fingerprint":"abc123"},""" +
@@ -709,7 +379,8 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       planningProjectionValidator = realPlanningProjectionValidator,
     )
 
-    assertContains(briefing.briefingText, "task-01: migration harness still owed")
+    assertContains(briefing.briefingText, "task-01")
+    assertContains(briefing.briefingText, "migration harness still owed")
   }
 
   @Test
@@ -776,10 +447,11 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   }
 
   @Test
-  fun `a plan with empty test_obligations is rejected producer-side and never reaches implement's launch seam`() {
+  fun `a plan with empty test_obligations is rejected producer-side and cannot hydrate as a goal preparation`() {
     // The exact SKILL-141 escape observed on wftr-20260724-184042-578i. Rejected producer-side, it
-    // re-enters plan's own bounded fix loop with the offending path named; because it never settles, the
-    // same payload cannot be reached at implement's consumer edge either.
+    // re-enters plan's own bounded fix loop with the offending path named. The feature-task consumer
+    // launch seam no longer re-validates producer prose, so only the producer-side gates remain in
+    // scope here: the run-loop plan gate and the goal-planning preparation writer.
     val validator = realPlanningProjectionValidator
     val payload = emptyTestObligationsPlanPayload()
 
@@ -789,19 +461,6 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     )
     assertContains(gateReason, "test_obligations")
 
-    // Rejection at the consumer edge too: the payload is refused wherever it is parsed, so no path
-    // exists on which it settles at plan and is then handed to implement.
-    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      assemble(
-        consumer = phaseImplement,
-        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
-        recordedOutputs = listOf(phaseOutput(phasePlan, payload)),
-        runInvariants = runInvariants(),
-        planningProjectionValidator = validator,
-      )
-    }
-
-    // And it cannot be written as a goal planning preparation, so no hydration can import it.
     assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
       requireValidPlanningProjection(producerEnvelope(payload), phasePlan, "goal-1#1", validator)
     }
@@ -960,18 +619,6 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     """.trimIndent()
   }
 
-  private fun executablePlanWithPerTaskFieldsPayload(): String = """
-    {"produced_outputs":{
-      "projection_kind":"executable_plan",
-      "contract_version":"0.1",
-      "mode":"direct",
-      "tasks":[{"task_id":"task-01","depends_on":[],"description":"add contract",
-      "criterion_refs":["AC-005"],"target_paths_or_symbols":["runtime-domain/model/X.kt"],
-      "test_obligations":["parity"],"constraints":["closed-world only"]}],
-      "validation_strategy":["focused gradle"]
-    }}
-  """.trimIndent()
-
   private fun implementationReceiptPayload(checkpoint: String = "abc123", undeclaredFields: Boolean = false): String {
     val undeclared = if (undeclaredFields) ""","complete_implement_envelope_secret":"MUST NOT SURVIVE"""" else ""
     return """
@@ -992,17 +639,6 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   private val phaseImplement = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
   private val phaseAudit = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
   private val phaseReview = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
-}
-
-/** Records what the canonical schema gate was actually handed, proving it has a production caller. */
-private class RecordingPlanningProjectionValidator : FeatureTaskRuntimePlanningProjectionValidator {
-  val payloads = mutableListOf<Map<String, Any?>>()
-  val sourceLabels = mutableListOf<String>()
-
-  override fun validatePlanningProjection(producedOutputs: Map<String, Any?>, sourceLabel: String) {
-    payloads += producedOutputs
-    sourceLabels += sourceLabel
-  }
 }
 
 /** Stands in for the infra-fs adapter rejecting an undeclared wire field. */

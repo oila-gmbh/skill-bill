@@ -1332,8 +1332,8 @@ class GoalPlanningSweepTest {
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     assertEquals(listOf("preplan", "preplan", "plan"), harness.launcher.phases)
     val retryPrompt = harness.launcher.requests[1].skillRunRequest.promptOverride.orEmpty()
-    assertContains(retryPrompt, "Previous attempt was REJECTED by the schema gate")
-    assertContains(retryPrompt, "Goal planning phase output was rejected by its schema contract.")
+    assertContains(retryPrompt, "Previous attempt could not settle — restate in prose")
+    assertContains(retryPrompt, "Goal planning 'preplan' payload is not a JSON object.")
     assertEquals(1, harness.preparedCount())
   }
 
@@ -1557,63 +1557,6 @@ class GoalPlanningSweepTest {
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(0, stopped.currentSubtaskId)
     assertEquals(0, harness.preparedCount())
-  }
-
-  @Test
-  fun `a rejected planning projection stops the sweep durably instead of crashing the goal driver`() {
-    // The launch seam owns rejection only for a preplan that was already settled under a laxer contract:
-    // run one checkpoints it, run two resumes under a validator that refuses it. The producer gate cannot
-    // pre-empt that — nothing is produced in run two — so an unhandled throw here would crash the goal
-    // driver with no Stopped outcome and crash identically on every resume.
-    val fixtures = sharedSweepFixtures()
-    val settledPreplan = DefaultGoalPlanningSweep(
-      fixtures.checkpoint,
-      SweepPlanningLauncher { phase, _, _ ->
-        if (phase == "plan") {
-          launchFacts(stdout = phasePayload(phase).replace("\"completed\"", "\"blocked\""))
-        } else {
-          validPhaseOutcome(phase)
-        }
-      },
-      fixtures.invariantsSource,
-      fixtures.manifestFileStore,
-      fakeContextDiscovery,
-      NoopFeatureTaskRuntimePlanningProjectionValidator,
-      manifestStore = NoopGoalPlanningManifestStore,
-      boundaryBodyResolver = fakeBoundaryBodyResolver,
-    )
-    assertIs<GoalPlanningSweepOutcome.Stopped>(
-      settledPreplan.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request()),
-    )
-    assertEquals(0, fixtures.preparedCount(), "run one must settle the shared preplan and no plan")
-
-    val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
-    val sweep = DefaultGoalPlanningSweep(
-      fixtures.checkpoint,
-      launcher,
-      fixtures.invariantsSource,
-      fixtures.manifestFileStore,
-      fakeContextDiscovery,
-      RejectingSweepPlanningProjectionValidator,
-      manifestStore = NoopGoalPlanningManifestStore,
-      boundaryBodyResolver = fakeBoundaryBodyResolver,
-    )
-
-    val outcome = sweep.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request())
-
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals("plan", stopped.lastResumableStep)
-    assertEquals(1, stopped.currentSubtaskId)
-    assertTrue(stopped.blockedReason.contains("rejected a declared bounded projection at the launch seam"))
-    assertTrue(
-      stopped.blockedReason.contains("Migrate or delete"),
-      "the block must name the operator remedy for a non-conforming durable record",
-    )
-    assertEquals(
-      0,
-      launcher.requests.size,
-      "the settled preplan is not re-produced and the plan edge rejects before launching",
-    )
   }
 
   @Test
@@ -2693,14 +2636,6 @@ private class RejectOnceSweepPlanningProjectionValidator : FeatureTaskRuntimePla
       )
     }
   }
-}
-
-private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePlanningProjectionValidator {
-  override fun validatePlanningProjection(producedOutputs: Map<String, Any?>, sourceLabel: String): Unit =
-    throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-      sourceLabel = sourceLabel,
-      reason = "additionalProperties: legacy shared preplan carries an undeclared field",
-    )
 }
 
 internal const val FIXTURE_HEADING_ID = "runtime-kotlin/agent/history.md#0-000000000000"

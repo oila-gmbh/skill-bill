@@ -927,31 +927,37 @@ class FeatureTaskRuntimeStatusAttributionTest {
   }
 
   @Test
-  fun `bounded regeneration edge exposes iteration and cap without labeling it a semantic loop`() {
+  fun `bounded edge exposes iteration and cap without labeling it a semantic loop`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     harness.recordCompleted("preplan", attemptCount = 1)
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
-        phaseId = "plan",
+        phaseId = "implement_fix",
         status = "running",
         attemptCount = 2,
         resolvedAgentId = "claude",
         finished = false,
-        loopId = "regenerate_plan",
+        loopId = "review_fix",
         edgeIteration = 1,
       ),
+    )
+    harness.recordLoopEdge(
+      phaseId = "implement_fix",
+      attemptCount = 2,
+      loopId = "review_fix",
+      edgeIteration = 1,
     )
 
     val projection = requireNotNull(
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
     val execution = requireNotNull(projection.currentPhaseExecution)
-    assertEquals("plan", execution.phaseId)
+    assertEquals("implement_fix", execution.phaseId)
     assertEquals(IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE, execution.kind)
     assertEquals(1, execution.count)
-    assertEquals(2, execution.total)
+    assertEquals(1, execution.total)
   }
 
   @Test
@@ -962,19 +968,19 @@ class FeatureTaskRuntimeStatusAttributionTest {
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
-        phaseId = "plan",
+        phaseId = "implement_fix",
         status = "running",
         attemptCount = 3,
         resolvedAgentId = "claude",
         finished = false,
-        loopId = "regenerate_plan",
+        loopId = "review_fix",
         edgeIteration = 1,
       ),
     )
     harness.recordLoopEdge(
-      phaseId = "plan",
+      phaseId = "implement_fix",
       attemptCount = 3,
-      loopId = "regenerate_plan",
+      loopId = "review_fix",
       edgeIteration = 2,
     )
 
@@ -982,10 +988,10 @@ class FeatureTaskRuntimeStatusAttributionTest {
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
     val execution = requireNotNull(projection.currentPhaseExecution)
-    assertEquals("plan", execution.phaseId)
+    assertEquals("implement_fix", execution.phaseId)
     assertEquals(IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE, execution.kind)
     assertEquals(2, execution.count)
-    assertEquals(2, execution.total)
+    assertEquals(1, execution.total)
   }
 
   @Test

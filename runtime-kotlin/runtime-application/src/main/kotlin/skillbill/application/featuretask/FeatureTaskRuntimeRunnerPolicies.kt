@@ -1,11 +1,11 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.DelegatedCommitFocusedAccountingResolution
 import skillbill.application.featuretask.model.RuntimeOwnedCommitFocusedAccountingLoadResolution
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
-import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 
 internal const val STATUS_RUNNING = "running"
 internal const val STATUS_COMPLETED = "completed"
@@ -73,15 +73,6 @@ internal fun phasesFor(request: FeatureTaskRuntimeRunRequest): List<String> {
 }
 
 @Suppress("ReturnCount")
-internal sealed interface DelegatedCommitFocusedAccountingResolution {
-  data class Resolved(val accounting: GoalSubtaskCommitFocusedAccounting?) : DelegatedCommitFocusedAccountingResolution
-
-  data class UnreadableBlocked(val reason: String) : DelegatedCommitFocusedAccountingResolution
-}
-
-internal const val DELEGATED_COMMIT_FOCUSED_ACCOUNTING_UNREADABLE_BLOCK_REASON =
-  "Delegated goal-subtask review cannot reconcile without readable runtime-owned commit-focused accounting."
-
 internal fun resolveDelegatedCommitFocusedAccounting(
   loadResult: RuntimeOwnedCommitFocusedAccountingLoadResolution,
 ): DelegatedCommitFocusedAccountingResolution = when (loadResult) {
@@ -95,6 +86,10 @@ internal fun resolveDelegatedCommitFocusedAccounting(
     )
 }
 
+internal const val DELEGATED_COMMIT_FOCUSED_ACCOUNTING_UNREADABLE_BLOCK_REASON =
+  "Delegated goal-subtask review cannot reconcile without readable runtime-owned commit-focused accounting."
+
+@Suppress("ReturnCount")
 internal fun mutatingReconciliationGateReason(
   phaseId: String,
   outputMap: Map<String, Any?>,

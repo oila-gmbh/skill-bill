@@ -363,7 +363,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
     "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase. " +
-    "Do not run `./gradlew check`, the pack collect-all gate, or `bill-code-check`; validate owns those.",
+    "Do not run `./gradlew check`, the pack collect-all gate, or `bill-code-check`; validate owns those. " +
+    "Settle the review in returned prose with exactly one verdict token: approved or changes_requested.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to
     "Verify every finding from the single preceding review pass against the subtask spec intent " +
     "projection and the scoped boundary-memory catalog in the briefing. Each finding receives a " +

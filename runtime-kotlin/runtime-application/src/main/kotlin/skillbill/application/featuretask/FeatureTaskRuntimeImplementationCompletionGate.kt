@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.JsonSupport
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
@@ -203,24 +204,52 @@ internal fun featureTaskRuntimeImplementationContinuationFrom(
 internal fun featureTaskRuntimePlannedTaskIdsFrom(
   delivered: Collection<FeatureTaskRuntimeDeliveredProjectionRecord>,
   consumerPhaseId: String,
-): List<String> = delivered
-  .filter { it.consumerPhaseId == consumerPhaseId }
-  .sortedBy { it.iteration }
-  .lastOrNull { record ->
-    record.envelope.projections.any {
-      it.projectionContractId == FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID
+): List<String> {
+  val projection = delivered
+    .filter { it.consumerPhaseId == consumerPhaseId }
+    .sortedBy { it.iteration }
+    .lastOrNull { record ->
+      record.envelope.projections.any {
+        it.projectionContractId == FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID
+      }
     }
+    ?.envelope
+    ?.projections
+    ?.firstOrNull { it.projectionContractId == FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID }
+    ?: return emptyList()
+  val fromStructured = projection.fields
+    .firstOrNull { it.name == FeatureTaskRuntimeExecutablePlan.FIELD_TASKS }
+    ?.value
+    ?.let { it as? FeatureTaskRuntimeHandoffProjectionValue.TextList }
+    ?.items
+    ?.mapNotNull(FeatureTaskRuntimePlanTask.Companion::taskIdFromBriefingLine)
+    .orEmpty()
+  if (fromStructured.isNotEmpty()) return fromStructured
+  val receipt = projection.fields
+    .firstOrNull {
+      it.name == FeatureTaskRuntimeHandoffProjectionValidator.PHASE_OUTPUT_RECEIPT_FIELD
+    }
+    ?.value
+    ?.let { it as? FeatureTaskRuntimeHandoffProjectionValue.Text }
+    ?.text
+    ?: return emptyList()
+  return plannedTaskIdsFromPhaseOutputReceipt(receipt)
+}
+
+private fun plannedTaskIdsFromPhaseOutputReceipt(receipt: String): List<String> {
+  val json = firstJsonObjectInPlanningPayload(receipt) ?: return emptyList()
+  val envelope = JsonSupport.parseObjectOrNull(json)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?: return emptyList()
+  val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+  val tasks = produced["tasks"] as? List<*> ?: return emptyList()
+  return tasks.mapNotNull { entry ->
+    (JsonSupport.anyToStringAnyMap(entry)?.get("task_id") as? String)
+      ?.trim()
+      ?.takeIf(String::isNotBlank)
   }
-  ?.envelope
-  ?.projections
-  ?.firstOrNull { it.projectionContractId == FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID }
-  ?.fields
-  ?.firstOrNull { it.name == FeatureTaskRuntimeExecutablePlan.FIELD_TASKS }
-  ?.value
-  ?.let { it as? FeatureTaskRuntimeHandoffProjectionValue.TextList }
-  ?.items
-  ?.mapNotNull(FeatureTaskRuntimePlanTask.Companion::taskIdFromBriefingLine)
-  .orEmpty()
+}
 
 /**
  * The repair items an audit-gap re-entry carries. Read from the receipt's own result/deferral lists is

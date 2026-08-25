@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_COMMIT_SUBJECT_END
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -14,14 +15,39 @@ import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOut
 internal fun featureTaskRuntimeNormalizePhaseOutputFromProse(
   outputText: String,
 ): NormalizedFeatureTaskRuntimePhaseOutput {
-  val envelope = JsonSupport.parseObjectOrNull(outputText)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-    .orEmpty()
+  val unfenced = unfencePhaseOutputProse(outputText)
+  val json = firstJsonObjectInPlanningPayload(outputText)
+  if (json != null) {
+    val envelope = JsonSupport.parseObjectOrNull(json)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      .orEmpty()
+    if (envelope.isNotEmpty()) {
+      return NormalizedFeatureTaskRuntimePhaseOutput(
+        canonicalJson = JsonSupport.mapToJsonString(envelope),
+        envelope = envelope,
+      )
+    }
+  }
+  val commitPushCanonical = canonicalCommitPushProse(unfenced)
   return NormalizedFeatureTaskRuntimePhaseOutput(
-    canonicalJson = outputText,
-    envelope = envelope,
+    canonicalJson = commitPushCanonical ?: unfenced,
+    envelope = emptyMap(),
   )
+}
+
+private fun unfencePhaseOutputProse(text: String): String {
+  val fenced = Regex("```[A-Za-z]*\\s*\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
+    .find(text)
+    ?.groupValues
+    ?.get(1)
+  return (fenced ?: text).trim()
+}
+
+private fun canonicalCommitPushProse(outputText: String): String? {
+  val endIndex = outputText.lastIndexOf(FEATURE_TASK_RUNTIME_COMMIT_SUBJECT_END)
+  if (endIndex < 0) return null
+  return outputText.substring(0, endIndex + FEATURE_TASK_RUNTIME_COMMIT_SUBJECT_END.length).trimEnd()
 }
 
 /**

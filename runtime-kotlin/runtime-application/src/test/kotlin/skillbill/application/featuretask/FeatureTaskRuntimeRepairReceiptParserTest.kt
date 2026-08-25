@@ -5,7 +5,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES
 import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 import kotlin.test.Test
@@ -195,6 +198,19 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
   }
 
   @Test
+  fun `repair receipt covering none of three carried findings names coverage shortfall`() {
+    val state = reviewStateCarrying(
+      finding("F-001"),
+      finding("F-002"),
+      finding("F-003"),
+    )
+    val receipt = receiptFor(finding("F-001"))
+    val rejection = assertNotNull(featureTaskRuntimeRepairReceiptSettleRejection(receipt, state))
+    assertTrue(rejection.contains("/repair_receipt/entries"))
+    assertTrue(rejection.contains("every finding carried into this round"))
+  }
+
+  @Test
   fun `parse of an absent receipt key is a no-op`() {
     assertNull(featureTaskRuntimeParseRepairReceiptOrNull(emptyMap(), sha, 1))
   }
@@ -217,5 +233,46 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
     roundNumber = 1,
     preFixCheckpointSha = sha,
     entries = entries.toList(),
+  )
+
+  private fun receiptFor(vararg findings: GoalSubtaskReviewCompactFinding) = FeatureTaskRuntimeRepairReceipt(
+    roundNumber = 1,
+    preFixCheckpointSha = sha,
+    entries = findings.map { carried ->
+      FeatureTaskRuntimeRepairReceiptEntry(
+        severity = carried.severity,
+        label = carried.label,
+        text = carried.text,
+        outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Foo.member")),
+        intent = "close the finding",
+        findingId = requireNotNull(carried.findingId),
+      )
+    },
+  )
+
+  private fun finding(id: String) = GoalSubtaskReviewCompactFinding(
+    severity = "blocker",
+    label = "Foo",
+    text = "finding $id",
+    findingId = id,
+  )
+
+  private fun reviewStateCarrying(vararg findings: GoalSubtaskReviewCompactFinding) = GoalSubtaskReviewState(
+    reviewBaseSha = sha,
+    baselineUntrackedPaths = emptyList(),
+    codeReviewMode = skillbill.workflow.model.CodeReviewExecutionMode.INLINE,
+    completedPassCount = 1,
+    remediationBaseSha = sha,
+    passResults = listOf(
+      GoalSubtaskReviewPassResult(
+        passNumber = 1,
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        reviewResultArtifact = "goal_subtask_review_results.1",
+        unresolvedFindingCount = findings.size,
+        findings = findings.toList(),
+        reviewRunId = "review-run-1",
+      ),
+    ),
   )
 }

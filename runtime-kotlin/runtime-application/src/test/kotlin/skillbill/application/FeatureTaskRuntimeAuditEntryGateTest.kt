@@ -18,6 +18,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import java.time.Instant
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -255,7 +256,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   }
 
   @Test
-  fun `an undecidable audit fails its own schema gate rather than wedging the run behind the gate`() {
+  fun `an undecidable audit gets one derivation re-ask before its own gate blocks`() {
     var auditLaunches = 0
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
@@ -263,7 +264,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId == "audit") {
           auditLaunches += 1
-          facts(if (auditLaunches == 1) UNDECIDABLE_AUDIT_OUTPUT else defaultPhaseOutput(request))
+          facts(UNDECIDABLE_AUDIT_OUTPUT)
         } else {
           facts(defaultPhaseOutput(request))
         }
@@ -272,10 +273,16 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertEquals(1, auditLaunches, "an undecidable audit settles on its own gate, without a relaunch")
-    assertGateBlockNamesRule(blocked.blockedReason, "output-verification")
+    assertEquals(
+      2,
+      auditLaunches,
+      "an undecidable verdict gets one derivation re-ask before its own gate blocks",
+    )
+    assertContains(blocked.blockedReason, "audit")
+    assertContains(blocked.blockedReason, "derivation re-ask")
+    assertContains(blocked.blockedReason, "cap=1")
     assertTrue(
-      !blocked.blockedReason.contains("off-vocabulary verdict 'x' and no y'"),
+      !blocked.blockedReason.contains("x' and no y"),
       "the blocked reason must not quote the response wire verdict",
     )
     assertTrue(
@@ -598,14 +605,16 @@ private val PREPLAN_DIGEST_OUTPUT = validJsonOutput("preplan")
 private val PLAN_STEPS_OUTPUT = validJsonOutput("plan")
 private const val CLEAN_REVIEW_OUTPUT = """{"contract_version":"0.1","produced_outputs":{"findings":[]}}"""
 
-// Carries a verdict but one outside the closed audit vocabulary, with no criteria array to derive a
-// decidable verdict from, so the audit verification-signal gate rejects it. The interior
-// `' and no` in the wire value is the realistic scrub bug: a non-greedy `'.*?'(?= and no)` match
-// stops early and leaves a response-derived suffix in Violated constraint outside the authorized
-// repair section.
-private const val UNDECIDABLE_AUDIT_OUTPUT = """{"contract_version":"0.1","verdict":"x' and no y"}"""
+// Carries a verdict but one outside the closed audit vocabulary, with no criteria array and no
+// gaps_found/satisfied prose to derive a decidable routing verdict from, so this stays indecisive
+// on every attempt and burns the bounded derivation re-ask budget. The interior `' and no` in the
+// wire value is the realistic scrub bug: a non-greedy `'.*?'(?= and no)` match stops early and
+// leaves a response-derived suffix in Violated constraint outside the authorized repair section.
+private const val UNDECIDABLE_AUDIT_OUTPUT =
+  """{"contract_version":"0.1","phase_id":"audit","status":"completed","verdict":"x' and no y"}"""
 
 // Affirms every criterion through the criteria array while wording the verdict off-vocabulary: the
 // derived verdict is decidable, so this settles satisfied and review proceeds.
 private const val SYNONYM_SATISFIED_AUDIT_OUTPUT =
-  """{"contract_version":"0.1","verdict":"Satisfied","produced_outputs":{"gaps":[]}}"""
+  """{"contract_version":"0.1","phase_id":"audit","status":"completed","verdict":"Satisfied",""" +
+    """"produced_outputs":{"gaps":[]}}"""

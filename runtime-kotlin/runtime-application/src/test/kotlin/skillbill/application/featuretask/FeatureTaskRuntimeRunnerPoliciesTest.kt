@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.DelegatedCommitFocusedAccountingResolution
 import skillbill.application.featuretask.model.RuntimeOwnedCommitFocusedAccountingLoadResolution
 import skillbill.application.review.toBoundedPayload
 import skillbill.application.testWorkflowSnapshotValidator
@@ -252,6 +253,7 @@ private fun accountingRecord(payload: Map<String, Any?>): ReviewAccountingRecord
 
 private fun accountingRecorder(vararg records: ReviewAccountingRecord): FeatureTaskRuntimePhaseRecorder {
   val stored = records.associateBy { it.reviewId }.toMutableMap()
+
   @Suppress("UNCHECKED_CAST")
   val reviews = Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
@@ -273,16 +275,16 @@ private fun accountingRecorder(vararg records: ReviewAccountingRecord): FeatureT
     private val unitOfWork = object : UnitOfWork {
       override val dbPath: Path = Path.of("/tmp/feature-task-runtime-policies-test.db")
       override val reviews: ReviewRepository = reviews
-      override val learnings = error("unused")
-      override val lifecycleTelemetry = error("unused")
-      override val telemetryReconciliation = error("unused")
-      override val telemetryOutbox = error("unused")
-      override val workflowStates = error("unused")
+      override val learnings get() = error("unused")
+      override val lifecycleTelemetry get() = error("unused")
+      override val telemetryReconciliation get() = error("unused")
+      override val telemetryOutbox get() = error("unused")
+      override val workflowStates get() = error("unused")
       override val workList = skillbill.ports.persistence.EmptyWorkListRepository
       override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
-      override val featureTaskRuntimeAuditGenerations = error("unused")
-      override val rejectedOutputDiagnosticPermissions = error("unused")
-      override val rejectedOutputDiagnostics = error("unused")
+      override val featureTaskRuntimeAuditGenerations get() = error("unused")
+      override val rejectedOutputDiagnosticPermissions get() = error("unused")
+      override val rejectedOutputDiagnostics get() = error("unused")
     }
 
     override fun resolveDbPath(dbOverride: String?): Path = unitOfWork.dbPath

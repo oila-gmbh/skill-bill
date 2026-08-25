@@ -65,11 +65,11 @@ class VerdictAwareRegisterAndConsumersTest {
     assertEquals(ReviewClaimVerdict.REFUTED, ledger.single().claimVerdict)
     assertEquals(listOf(citation), ledger.single().citations)
 
-    val projected = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+    val projected = assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(
       implementFixReviewRepairEnvelope(recordedVerdicts).projections.single().fields.first().value,
     )
-    assertTrue(projected.items.none { it.contains("F-001") })
-    assertFalse(projected.items.any { it.contains("Token logged") })
+    assertFalse(projected.text.contains("F-001"))
+    assertFalse(projected.text.contains("Token logged"))
   }
 
   @Test

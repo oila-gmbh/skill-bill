@@ -35,6 +35,13 @@ internal sealed interface RuntimeOwnedCommitFocusedAccountingLoadResolution {
   data class Unreadable(val cause: String) : RuntimeOwnedCommitFocusedAccountingLoadResolution
 }
 
+internal sealed interface DelegatedCommitFocusedAccountingResolution {
+  data class Resolved(val accounting: GoalSubtaskCommitFocusedAccounting?) :
+    DelegatedCommitFocusedAccountingResolution
+
+  data class UnreadableBlocked(val reason: String) : DelegatedCommitFocusedAccountingResolution
+}
+
 internal class RuntimeOwnedFactUnavailable(message: String) : IllegalStateException(message)
 
 internal fun UnitOfWork.resolveRuntimeOwnedReviewPassClaims(

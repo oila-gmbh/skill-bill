@@ -12,6 +12,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import kotlin.test.Test
@@ -108,7 +110,7 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
         "${actual.projectionName} changed contract identity",
       )
       assertEquals(
-        declaredProjection.declaredFieldNames,
+        expectedFieldNames(declaredProjection),
         actual.fields.map { it.name },
         "${actual.projectionName} changed its required-field shape",
       )
@@ -137,6 +139,23 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
       deliveredWire.containsKey("output_artifact"),
       "$phaseId delivered record exposed a complete private phase artifact",
     )
+  }
+
+  // Prose handoff (an upstream agent's own output) delivers one opaque receipt field instead of the
+  // producer's declared field list, plus a substituted repository_checkpoint when the checkpoint
+  // policy requires one and the declaration names that field.
+  private fun expectedFieldNames(declaration: PhaseHandoffProjectionDeclaration): List<String> {
+    if (declaration.sourceRef !is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput) {
+      return declaration.declaredFieldNames
+    }
+    val fields = mutableListOf(FeatureTaskRuntimeHandoffProjectionValidator.PHASE_OUTPUT_RECEIPT_FIELD)
+    if (
+      declaration.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED &&
+      FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT in declaration.declaredFieldNames
+    ) {
+      fields += FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT
+    }
+    return fields
   }
 
   private fun invariantDeclarations(phaseId: String): List<PhaseHandoffProjectionDeclaration> =

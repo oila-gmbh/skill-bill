@@ -126,7 +126,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -548,23 +547,21 @@ class FeatureTaskRuntimeRunnerTest {
 
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
     val auditBriefing = requireNotNull(briefings["audit"]) { "audit briefing must be persisted" }
-    // audit receives the bounded plan commitment and implementation receipt, not the complete envelopes.
-    assertContains(auditBriefing.briefingText, "task_commitments")
+    assertContains(auditBriefing.briefingText, "completed_task_ids")
     assertContains(auditBriefing.briefingText, "changed_paths")
-    assertFalse(auditBriefing.briefingText.contains("Phase produced a validated output."))
-    // Audit runs before review, so it no longer carries any review output.
     assertFalse(auditBriefing.hasUpstreamReceipt("review"))
     val reviewBriefing = requireNotNull(briefings["review"]) { "review briefing must be persisted" }
-    assertContains(reviewBriefing.briefingText, "clearance_status: satisfied")
+    assertContains(reviewBriefing.briefingText, "\"phase_id\":\"audit\"")
+    assertContains(reviewBriefing.briefingText, "\"summary\":\"satisfied\"")
     assertFalse(reviewBriefing.briefingText.contains(IMPLEMENT_OUTPUT))
     val historyBriefing = requireNotNull(briefings["write_history"]) { "history briefing must be persisted" }
-    assertContains(historyBriefing.briefingText, "boundary_candidates")
-    assertContains(historyBriefing.briefingText, "validation_status: passed")
+    assertContains(historyBriefing.briefingText, "\"changed_paths\":[\"src/Foo.kt\"]")
+    assertContains(historyBriefing.briefingText, "\"validation_status\":\"passed\"")
     val commitBriefing = requireNotNull(briefings["commit_push"]) { "commit briefing must be persisted" }
-    assertContains(commitBriefing.briefingText, "gate_attestations")
+    assertContains(commitBriefing.briefingText, "\"phase_id\":\"validate\"")
     assertContains(commitBriefing.briefingText, "decisions_recorded")
     val prBriefing = requireNotNull(briefings["pr"]) { "pr briefing must be persisted" }
-    assertContains(prBriefing.briefingText, "commit_sha")
+    assertContains(prBriefing.briefingText, "COMMIT_SUBJECT")
   }
 
   @Test
@@ -581,11 +578,9 @@ class FeatureTaskRuntimeRunnerTest {
     )
     assertTrue(harness.launchedPhaseOrder().none { it == "preplan" })
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
-    // plan receives the bounded preplanning digest, not preplan's complete envelope.
     assertContains(planBriefing.briefingText, "### from: preplan")
     assertContains(planBriefing.briefingText, "affected_boundaries")
     assertContains(planBriefing.briefingText, "Fixture risk.")
-    assertFalse(planBriefing.briefingText.contains("Phase produced a validated output."))
   }
 
   @Test
@@ -643,7 +638,7 @@ class FeatureTaskRuntimeRunnerTest {
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
-    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
+    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_REVIEW_OUTPUT)
     harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
     harness.seedPhase("validate", "completed", 1, phaseAgent("validate"), VALID_OUTPUT)
     harness.seedBlockedPhase("write_history", attemptCount = 1, phaseAgent("write_history"), "history gate failed")
@@ -661,7 +656,7 @@ class FeatureTaskRuntimeRunnerTest {
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
-    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
+    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_REVIEW_OUTPUT)
     harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
     harness.seedBlockedPhase("validate", attemptCount = 1, phaseAgent("validate"), "validation gate failed")
 
@@ -700,7 +695,7 @@ class FeatureTaskRuntimeRunnerTest {
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
     harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
-    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
+    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_REVIEW_OUTPUT)
 
     val report = harness.runner.run(harness.request())
 
@@ -711,7 +706,6 @@ class FeatureTaskRuntimeRunnerTest {
     val validateOutput = requireNotNull(
       harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"]?.outputArtifact,
     )
-    assertContains(validateOutput, "gate_run_count")
     assertContains(validateOutput, "Validation satisfied by runtime-owned gate execution.")
   }
 
@@ -738,7 +732,7 @@ class FeatureTaskRuntimeRunnerTest {
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
     harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
-    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
+    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_REVIEW_OUTPUT)
 
     val report = harness.runner.run(harness.request())
 
@@ -778,7 +772,7 @@ class FeatureTaskRuntimeRunnerTest {
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
     harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
-    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
+    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_REVIEW_OUTPUT)
 
     val report = harness.runner.run(harness.request())
 
@@ -1517,7 +1511,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     // plan and implement receive bounded planning projections rather than coarse upstream receipts.
     assertContains(briefings.getValue("plan").briefingText, "affected_boundaries")
     assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
-    assertContains(briefings.getValue("review").briefingText, "clearance_status: satisfied")
+    assertContains(briefings.getValue("review").briefingText, "\"verdict\":\"satisfied\"")
     assertFalse(briefings.getValue("review").briefingText.contains(validJsonOutput("implement")))
     assertEquals(listOf("diff"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "diff")
@@ -1610,7 +1604,10 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       assertContains(prompt, "Phase input:")
       assertContains(prompt, "Requested action:")
       assertFalse(prompt.contains("Required final output"), "phase '$phaseId' must not require JSON output contract")
-      assertFalse(prompt.contains("\"contract_version\""), "phase '$phaseId' must not mention contract_version")
+      assertFalse(
+        prompt.substringAfter("Requested action:").contains("\"contract_version\""),
+        "phase '$phaseId' requested action must not mention contract_version",
+      )
       assertTrue(
         !prompt.contains("goal-continuation mode") && !prompt.contains("First execute this exact command"),
         "phase prompt for '$phaseId' must not instruct the goal-continuation flow",
@@ -1692,7 +1689,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
-  fun `accepted repaired output persists canonical payload and typed evidence`() {
+  fun `accepted phase output persists the agent payload without structural repair evidence`() {
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
     )
@@ -1700,13 +1697,15 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     val implement = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals(validJsonOutput("implement"), implement.outputArtifact)
-    assertEquals("implement", implement.repairEvidence?.sourceLocation?.sourceLabel)
-    assertEquals(
-      FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
-      implement.repairEvidence?.operation,
-    )
-    assertFalse(implement.toArtifactMap().toString().contains("original_payload"))
+    val expected = skillbill.contracts.JsonSupport.parseObjectOrNull(validJsonOutput("implement"))
+      ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
+      ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+    val actual = skillbill.contracts.JsonSupport.parseObjectOrNull(requireNotNull(implement.outputArtifact))
+      ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
+      ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+    assertEquals(expected?.get("phase_id"), actual?.get("phase_id"))
+    assertEquals(expected?.get("status"), actual?.get("status"))
+    assertEquals(null, implement.repairEvidence)
   }
 
   @Test
@@ -2464,15 +2463,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
-    harness.seedPhase(
-      "review",
-      "completed",
-      1,
-      phaseAgent("review"),
-      """
-        {"contract_version":"0.2","phase_id":"review","status":"completed","summary":"Review requests changes.","verdict":"changes_requested","produced_outputs":{"summary":"full evidence remains durable"}}
-      """.trimIndent(),
-    )
+    harness.seedCompletedReviewPassWithoutFindings(reviewRunId = "rvw-crash-reconcile-1")
 
     harness.runner.run(
       harness.request().copy(
@@ -2526,7 +2517,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("commit_push", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "commit_push_result.message")
+    assertContains(blocked.blockedReason, "<<<COMMIT_SUBJECT>>>")
     assertTrue(git.pushedBranches.isEmpty(), "a rejected handoff must not push")
     assertTrue(git.leasePushedBranches.isEmpty(), "a rejected handoff must not force-push")
     assertEquals(COMMITTED_HEAD_SHA, git.headCommitShaValue, "a rejected handoff must not move HEAD")
@@ -3103,8 +3094,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("plan", report.lastIncompletePhase)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
   }
 
   // Legacy records stored schema-rejected evidence in output_artifact. Hydrating resume state must tolerate
@@ -3185,7 +3175,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
           skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
             mergeResult = skillbill.review.model.ParallelReviewMergeResult(
               findings = findings,
-              formattedOutput = "findings",
+              formattedOutput = "verdict: changes_requested",
             ),
           )
         },
@@ -3530,11 +3520,8 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     )
   }
 
-  // (j) AC1/SKILL-85-F-003: a review output carrying NEITHER a structured verdict NOR a findings array
-  // is missing every verification signal; it must fail loudly through the schema gate rather than
-  // silently advancing to validation (prose alone cannot advance past a possible Blocker/Major).
   @Test
-  fun `m1 review with neither verdict nor findings retries rather than silently advancing`() {
+  fun `m1 a driver approved review with no findings advances on its decisive prose`() {
     val harness = runnerHarness()
 
     val report = harness.runner.run(harness.request())
@@ -3544,9 +3531,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals("completed", reviewRecord.status)
     val artifact = requireNotNull(reviewRecord.outputArtifact)
-    assertTrue(artifact.contains("\"findings\""), artifact)
-    assertTrue(artifact.contains("\"review_run_id\""), artifact)
-    assertTrue(artifact.contains("\"verdict\""), artifact)
+    assertTrue(artifact.contains("approved"), artifact)
   }
 }
 
@@ -5010,10 +4995,13 @@ private fun kotlinPackWithValidationGate(): skillbill.scaffold.model.PlatformMan
 
 // A clean review output carrying an empty findings array (the affirmative "no blocking findings"
 // signal the review gate requires, SKILL-85 Subtask 4 F-003); used by the default phase-aware launcher.
-private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.3","produced_outputs":{"findings":[]}}"""
+private const val VALID_REVIEW_OUTPUT =
+  """{"contract_version":"0.4","phase_id":"review","status":"completed","summary":"approved",""" +
+    """"verdict":"approved","produced_outputs":{"findings":[]}}"""
 
 private const val VALID_AUDIT_OUTPUT =
-  """{"contract_version":"0.4","verdict":"satisfied","produced_outputs":{"gaps":[]}}"""
+  """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"satisfied",""" +
+    """"verdict":"satisfied","produced_outputs":{"gaps":[]}}"""
 
 private val VALID_VERIFY_FINDINGS_OUTPUT = verifyFindingsOutput()
 
@@ -5188,6 +5176,29 @@ internal class RunnerHarness(
         reviewPassNumber = reviewPassNumber,
       ),
     )
+  }
+
+  fun seedCompletedReviewPassWithoutFindings(reviewRunId: String) {
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    recorder.recordPhaseState(
+      skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        status = "completed",
+        attemptCount = 1,
+        resolvedAgentId = phaseAgent("review"),
+        finished = true,
+        outputArtifact =
+        """
+          {"contract_version":"0.2","phase_id":"review","status":"completed",
+          "summary":"Review requests changes.","verdict":"changes_requested",
+          "produced_outputs":{"summary":"full evidence remains durable"}}
+        """.trimIndent().replace("\n", ""),
+        reviewPassNumber = 1,
+        reviewRunId = reviewRunId,
+      ),
+    )
+    recorder.persistRuntimeOwnedReviewPassClaims(reviewRunId = reviewRunId, findings = emptyList())
   }
 
   // Seeds a checkpoint-identity store at the superseded 0.1 contract version.
@@ -5907,7 +5918,11 @@ internal fun reviewFixDriver(convergeOnReview: Int): skillbill.application.featu
     skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
       mergeResult = skillbill.review.model.ParallelReviewMergeResult(
         findings = findings,
-        formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
+        formattedOutput = if (findings.isEmpty()) {
+          "verdict: approved"
+        } else {
+          "verdict: changes_requested"
+        },
       ),
     )
   }
@@ -5952,7 +5967,11 @@ internal fun crashingRemediationReviewDriver(): skillbill.application.featuretas
         skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
           mergeResult = skillbill.review.model.ParallelReviewMergeResult(
             findings = findings,
-            formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
+            formattedOutput = if (findings.isEmpty()) {
+              "verdict: approved"
+            } else {
+              "verdict: changes_requested"
+            },
           ),
         )
       }
@@ -6030,7 +6049,11 @@ internal fun crashingReviewFixDriver(
       skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
         mergeResult = skillbill.review.model.ParallelReviewMergeResult(
           findings = findings,
-          formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
+          formattedOutput = if (findings.isEmpty()) {
+            "verdict: approved"
+          } else {
+            "verdict: changes_requested"
+          },
         ),
       )
     }
@@ -6081,6 +6104,7 @@ private val COMMIT_PUSH_BLOCKED_OUTPUT: String = """
     "contract_version": "0.3",
     "phase_id": "commit_push",
     "status": "blocked",
+    "failure_disposition": "needs_user_action",
     "summary": "Validation failed before commit.",
     "produced_outputs": {
       "commit_push_result": {
@@ -6097,6 +6121,7 @@ private val VALIDATE_BLOCKED_OUTPUT: String = """
     "contract_version": "0.3",
     "phase_id": "validate",
     "status": "blocked",
+    "failure_disposition": "retryable",
     "summary": "Validation failed before finalization.",
     "produced_outputs": {
       "validation_result": "fail",

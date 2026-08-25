@@ -205,33 +205,6 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
       kinds,
     )
   }
-
-  @Test
-  fun `a receipt that both under-closes and breaks its projection contract takes the structural path`() {
-    // AC-005: evaluating incompleteness before the projection gate routed a repairable contract defect
-    // into the continuation loop, where the defect is never named to the agent and the run burns every
-    // continuation segment before blocking. The structural gates must see it first.
-    val harness = runnerHarness(launcher = malformedProjectionImplementLauncher())
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    val attempts = harness.recorder.loadImplementationAttempts(WORKFLOW_ID).orEmpty()
-      .filter { it.phaseId == "implement" }
-    assertEquals(
-      emptyList(),
-      attempts.filter { it.status == FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE },
-      "a receipt failing its projection contract is a structural failure, not an incomplete-work segment",
-    )
-    assertEquals("implement", blocked.lastIncompletePhase)
-    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
-    assertEquals(
-      1,
-      harness.launcher.requests
-        .map { requireNotNull(it.skillRunRequest.promptOverride) }
-        .count { phaseIdFromPrompt(it) == "implement" },
-      "the structural gate settles the phase instead of burning continuation segments",
-    )
-  }
 }
 
 internal const val CONVERGENCE_PLAN_TASK_COUNT = 3
@@ -336,48 +309,6 @@ internal fun convergingImplementLauncher(
 
 // A `completed` implement envelope that both under-closes the plan AND breaks the receipt projection
 // contract: deviations must carry {ref, note} objects, so free-text entries fail the projection gate.
-private fun malformedProjectionImplementOutput(): String = """
-  {
-    "contract_version": "0.2",
-    "phase_id": "implement",
-    "status": "completed",
-    "summary": "Implementation segment produced a validated envelope with an invalid receipt.",
-    "produced_outputs": {
-      "projection_kind":"implementation_receipt",
-      "contract_version":"0.1",
-      "completed_task_ids":["task-1"],
-      "changed_paths":["src/Foo1.kt"],
-      "tests_executed":[],
-      "deviations":["a free-text deviation the projection contract forbids"],
-      "reconciliation_evidence":{"reconciled":true,"evidence":"Segment tree at target state."},
-      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
-      "reconciled_state":{"reconciled":true},
-      "deferred_repair_item_ids":[],
-      "repair_item_results":[]
-    }
-  }
-""".trimIndent()
-
-private fun malformedProjectionImplementLauncher(): RuntimeRecordingLauncher {
-  var implementLaunches = 0
-  return RuntimeRecordingLauncher { request ->
-    when (phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
-      "plan" -> facts(threeTaskPlanOutput())
-      "implement" -> {
-        implementLaunches += 1
-        facts(
-          if (implementLaunches == 1) {
-            malformedProjectionImplementOutput()
-          } else {
-            partialImplementOutput(CONVERGENCE_PLAN_TASK_COUNT)
-          },
-        )
-      }
-      else -> facts(defaultPhaseOutput(request))
-    }
-  }
-}
-
 private fun alwaysTerminalImplementLauncher(
   status: String,
   recoverAfter: Int = Int.MAX_VALUE,

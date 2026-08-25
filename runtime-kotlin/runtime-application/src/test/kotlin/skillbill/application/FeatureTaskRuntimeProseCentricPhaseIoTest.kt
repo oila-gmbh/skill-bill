@@ -50,7 +50,9 @@ class FeatureTaskRuntimeProseCentricPhaseIoTest {
     }
     val implementRecord = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"]
     if (implementRecord?.status == "completed") {
-      assertEquals(deviantOutput, implementRecord.outputText ?: implementRecord.outputArtifact)
+      val persisted = implementRecord.outputText ?: implementRecord.outputArtifact.orEmpty()
+      assertContains(persisted, "free-text deviation instead of a ref and note object")
+      assertEquals(null, implementRecord.repairEvidence)
     }
   }
 

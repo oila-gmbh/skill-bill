@@ -23,8 +23,9 @@ private val CEILING = FeatureTaskRuntimePhaseBriefingAssembler.FEATURE_TASK_RUNT
 class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
   @Test
-  fun `an oversized upstream projection is rejected, never truncated into the briefing`() {
-    val oversizedBytes = 400_000
+  fun `an oversized upstream projection is truncated into the briefing, retaining derivation-critical lines`() {
+    val criticalLine = "finding_id: F-1 disposition: verified"
+    val narrative = ("filler ".repeat(200) + "\n").repeat(400)
     val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
       "fixture-checkpoint",
     )
@@ -32,24 +33,28 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
       runInvariants = multiUpstreamInvariants(),
-      recordedOutputs = multiUpstreamOutputs(oversizedBytes),
+      recordedOutputs = multiUpstreamOutputs("$criticalLine\n$narrative"),
       repositoryCheckpoint = checkpoint,
       expectedRepositoryCheckpoint = checkpoint,
     )
+    val truncationMessages = mutableListOf<String>()
 
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
-    }
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      workflowId = "wftr-1",
+      recordHandoffTruncation = truncationMessages::add,
+    )
 
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, error.consumerPhaseId)
-    assertEquals("wftr-1", error.workflowId)
-    assertContains(error.message.orEmpty(), "wftr-1")
-    assertContains(error.message.orEmpty(), error.projectionName)
-    assertContains(error.message.orEmpty(), error.projectionContractId)
+    assertTrue(truncationMessages.isNotEmpty(), "an oversized prose handoff must record a truncation observation")
+    assertContains(briefing.briefingText, "HANDOFF_TRUNCATED")
+    assertContains(
+      briefing.briefingText,
+      criticalLine,
+      message = "a derivation-critical line must survive truncation",
+    )
     assertFalse(
-      error.message.orEmpty().contains("p".repeat(64)),
-      "the rejection echoed the oversized payload body; typed errors must name identifiers, not content",
+      briefing.briefingText.contains(narrative.takeLast(500)),
+      "narrative filler content past the byte budget must be dropped by truncation",
     )
   }
 
@@ -82,7 +87,8 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     assertFalse(briefing.briefingText.contains(planBody))
     assertFalse(briefing.briefingText.contains(implementBody))
     assertFalse(briefing.briefingText.contains(reviewBody))
-    assertContains(briefing.briefingText, "unresolved_blocker_findings")
+    assertContains(briefing.briefingText, "finding_id")
+    assertContains(briefing.briefingText, "F-1")
     assertContains(briefing.briefingText, "repository_checkpoint")
   }
 
@@ -268,13 +274,11 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     mandatesAndOverrides = (1..6).map { "mandate-$it: ${"override-detail ".repeat(20)}" },
   )
 
-  private fun multiUpstreamOutputs(bodyBytes: Int) = listOf(
+  private fun multiUpstreamOutputs(message: String) = listOf(
     phaseOutput(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
       """{"produced_outputs":{"finding_dispositions":[{"finding_id":"F-1","disposition":"verified",""" +
-        """"reason":"Matches spec intent.","severity":"blocker","location":"x","message":"${"r".repeat(
-          bodyBytes,
-        )}"}]}}""",
+        """"reason":"Matches spec intent.","severity":"blocker","location":"x","message":"$message"}]}}""",
     ),
   )
 

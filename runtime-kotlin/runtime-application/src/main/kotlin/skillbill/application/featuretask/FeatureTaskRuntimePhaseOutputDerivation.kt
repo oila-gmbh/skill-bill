@@ -68,8 +68,15 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> deriveReviewVerdict(context)
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> deriveAuditVerdict(context)
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS -> deriveVerifyFindingsVerdict(context)
-    else -> FeatureTaskRuntimeDerivationResult.Decided(FeatureTaskRuntimeVerdict.ADVANCE)
+    else -> FeatureTaskRuntimeDerivationResult.Decided(
+      genericStructuredVerdict(context) ?: FeatureTaskRuntimeVerdict.ADVANCE,
+    )
   }
+
+  private fun genericStructuredVerdict(context: FeatureTaskRuntimeDerivationContext): FeatureTaskRuntimeVerdict? =
+    (context.outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)
+      ?.takeIf(String::isNotBlank)
+      ?.let(FeatureTaskRuntimeVerdict::fromWire)
 
   fun verdictFor(context: FeatureTaskRuntimeDerivationContext): FeatureTaskRuntimeVerdict? =
     when (val routing = deriveRoutingVerdict(context)) {
@@ -116,11 +123,10 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
     return candidates.any { containsWholeObligationId(returnedText, it) }
   }
 
-  fun closedObligationIds(returnedText: String, obligationIds: List<String>): List<String> =
-    obligationIds
-      .filter { obligationIdPresentInReturnedText(returnedText, it) }
-      .map(::canonicalObligationId)
-      .distinct()
+  fun closedObligationIds(returnedText: String, obligationIds: List<String>): List<String> = obligationIds
+    .filter { obligationIdPresentInReturnedText(returnedText, it) }
+    .map(::canonicalObligationId)
+    .distinct()
 
   private fun deriveFailureDisposition(
     context: FeatureTaskRuntimeDerivationContext,
@@ -133,9 +139,13 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
     }?.let(FeatureTaskRuntimeFailureDisposition::fromWireValue)
   }
 
+  @Suppress("ReturnCount")
   private fun deriveReviewVerdict(
     context: FeatureTaskRuntimeDerivationContext,
   ): FeatureTaskRuntimeDerivationResult<FeatureTaskRuntimeVerdict> {
+    if (structuredReviewFindingsArrayNonEmpty(context)) {
+      reviewVerdictFrom(context)?.let { return FeatureTaskRuntimeDerivationResult.Decided(it.verdict) }
+    }
     val structured = structuredReviewVerdict(context.outputMap)
     val prose = proseReviewVerdict(context.outputText)
     if (structured != null) {
@@ -153,15 +163,30 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
   private fun deriveAuditVerdict(
     context: FeatureTaskRuntimeDerivationContext,
   ): FeatureTaskRuntimeDerivationResult<FeatureTaskRuntimeVerdict> {
+    if (structuredAuditGapsArrayNonEmpty(context)) {
+      auditVerdictFrom(context)?.let { return FeatureTaskRuntimeDerivationResult.Decided(it.verdict) }
+    }
     val structured = structuredAuditVerdict(context.outputMap)
-    val derivedFromGaps = auditVerdictFrom(context)?.verdict
     val prose = proseAuditVerdict(context.outputText)
-    val fromStructuredOrGaps = structured ?: derivedFromGaps
-    val resolved = transitionalStructuredWins(fromStructuredOrGaps, prose) { it.wireValue }
+    val resolved = transitionalStructuredWins(structured, prose) { it.wireValue }
       ?: prose
-      ?: fromStructuredOrGaps
+      ?: structured
       ?: return FeatureTaskRuntimeDerivationResult.Indecisive
     return FeatureTaskRuntimeDerivationResult.Decided(resolved)
+  }
+
+  private fun structuredReviewFindingsArrayNonEmpty(context: FeatureTaskRuntimeDerivationContext): Boolean {
+    val findingsRaw = context.outputMap["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS) as? List<*>
+    return findingsRaw?.isNotEmpty() == true
+  }
+
+  private fun structuredAuditGapsArrayNonEmpty(context: FeatureTaskRuntimeDerivationContext): Boolean {
+    val producedOutputs = context.outputMap["produced_outputs"]?.let(JsonSupport::anyToStringAnyMap)
+    val gapsRaw = producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS) as? List<*>
+      ?: producedOutputs?.get(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA) as? List<*>
+    return gapsRaw?.isNotEmpty() == true
   }
 
   private fun deriveVerifyFindingsVerdict(
@@ -290,11 +315,7 @@ internal object FeatureTaskRuntimePhaseOutputDerivation {
     else -> null
   }
 
-  private fun <T> transitionalStructuredWins(
-    structured: T?,
-    prose: T?,
-    wire: (T) -> String,
-  ): T? {
+  private fun <T> transitionalStructuredWins(structured: T?, prose: T?, wire: (T) -> String): T? {
     if (structured == null) return prose
     if (prose == null) return structured
     return if (wire(structured) == wire(prose)) structured else structured

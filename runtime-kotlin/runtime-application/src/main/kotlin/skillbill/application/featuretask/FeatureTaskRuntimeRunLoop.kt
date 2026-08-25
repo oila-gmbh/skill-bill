@@ -6,6 +6,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolved
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
+import skillbill.application.featuretask.model.DelegatedCommitFocusedAccountingResolution
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
@@ -446,9 +447,16 @@ internal class FeatureTaskRuntimeRunLoop(
         PhaseSettlement.stop()
       }
       else -> {
-        val verdict = requireNotNull(state.verdictFor(phaseId)) {
-          "Phase '$phaseId' completed without a derivable routing verdict."
-        }
+        // A phase with no recorded output at all (corrupted durable state, not an indecisive
+        // derivation over a real artifact) has nothing to route on; the missing-upstream check the
+        // next phase's entry performs when it tries to read this phase's output is the loud block for
+        // that condition, so this visit passes through rather than crashing on an absent artifact.
+        val verdict = state.verdictFor(phaseId)
+          ?: if (state.outputFor(phaseId) == null) {
+            FeatureTaskRuntimeVerdict.ADVANCE
+          } else {
+            error("Phase '$phaseId' completed without a derivable routing verdict.")
+          }
         PhaseSettlement.completed(phaseId, verdict)
       }
     }
@@ -2734,7 +2742,7 @@ internal class FeatureTaskRuntimeRunLoop(
       reentry = reentry,
     )
     preLaunchBlock(run, state, observability)?.let { return it }
-    return when (val prepared = prepareGoalReviewRun(run, observability)) {
+    return when (val prepared = prepareGoalReviewRun(run)) {
       is GoalReviewRunReady -> when {
         run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
           runDeclaredReviewDriverCycle(prepared.run, state, observability)
@@ -2771,25 +2779,17 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun openAuditCriterionRefs(closedCriterionRefs: List<String> = durablyClosedCriterionRefs()): List<String> =
     declaredCriterionRefs() - closedCriterionRefs.toSet()
 
-  private fun prepareGoalReviewRun(
-    run: PhaseRun,
-    observability: FeatureTaskRuntimeRunObservability,
-  ): GoalReviewRunPreparation = when {
+  private fun prepareGoalReviewRun(run: PhaseRun): GoalReviewRunPreparation = when {
     run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> GoalReviewRunReady(run)
-    isGoalReviewRun(run) -> reserveGoalReviewRun(run, observability)
-    else -> prepareStandaloneReviewRun(run, observability)
+    isGoalReviewRun(run) -> reserveGoalReviewRun(run)
+    else -> prepareStandaloneReviewRun(run)
   }
 
-  private fun prepareStandaloneReviewRun(
-    run: PhaseRun,
-    observability: FeatureTaskRuntimeRunObservability,
-  ): GoalReviewRunPreparation {
+  private fun prepareStandaloneReviewRun(run: PhaseRun): GoalReviewRunPreparation {
     val resolved = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
-      ?: return blockedGoalReviewRun(run, observability, "Standalone review is missing its durable resolved branch.")
+      ?: return blockedGoalReviewRun("Standalone review is missing its durable resolved branch.")
     val reviewBaseSha = resolved.reviewBaseSha
       ?: return blockedGoalReviewRun(
-        run,
-        observability,
         "Standalone review is missing the immutable review base captured before implementation.",
       )
     val result = phaseGates.gitOperations.buildGoalSubtaskReviewInput(
@@ -2803,7 +2803,7 @@ internal class FeatureTaskRuntimeRunLoop(
       resolved.branch,
     )
     val input = result.input
-      ?: return blockedGoalReviewRun(run, observability, result.error.ifBlank { "Standalone review input failed." })
+      ?: return blockedGoalReviewRun(result.error.ifBlank { "Standalone review input failed." })
     return GoalReviewRunReady(run.copy(goalReviewInput = input))
   }
 
@@ -2819,40 +2819,30 @@ internal class FeatureTaskRuntimeRunLoop(
       resolved,
     )
 
-  private fun reserveGoalReviewRun(
-    run: PhaseRun,
-    observability: FeatureTaskRuntimeRunObservability,
-  ): GoalReviewRunPreparation = runCatching {
+  private fun reserveGoalReviewRun(run: PhaseRun): GoalReviewRunPreparation = runCatching {
     goalContinuationRecorder.reserveGoalReviewPass(run.request.workflowId, run.request.dbPathOverride)
   }.fold(
     onSuccess = { reservation ->
       when (reservation) {
         GoalSubtaskReviewPassReservation.MissingState -> blockedGoalReviewRun(
-          run,
-          observability,
           "Goal-subtask review state is missing; review_base_sha must be captured before implementation " +
             "and cannot be substituted.",
         )
         is GoalSubtaskReviewPassCarryForward -> GoalReviewRunPreparation.CarryForward
         is GoalSubtaskReviewPassInFlight,
         is GoalSubtaskReviewPassReserved,
-        -> buildGoalReviewRun(run, observability)
+        -> buildGoalReviewRun(run)
       }
     },
     onFailure = { error ->
       blockedGoalReviewRun(
-        run,
-        observability,
         goalReviewPreparationFailure("reservation", error),
         goalReviewPreparationDisposition(error),
       )
     },
   )
 
-  private fun buildGoalReviewRun(
-    run: PhaseRun,
-    observability: FeatureTaskRuntimeRunObservability,
-  ): GoalReviewRunPreparation = runCatching {
+  private fun buildGoalReviewRun(run: PhaseRun): GoalReviewRunPreparation = runCatching {
     val resolved = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
     goalContinuationRecorder.buildGoalReviewInput(
       workflowId = run.request.workflowId,
@@ -2868,10 +2858,10 @@ internal class FeatureTaskRuntimeRunLoop(
     onSuccess = { prepared ->
       when (prepared) {
         GoalSubtaskReviewInputPreparation.MissingState -> {
-          blockedGoalReviewRun(run, observability, "Goal-subtask review state disappeared before review launch.")
+          blockedGoalReviewRun("Goal-subtask review state disappeared before review launch.")
         }
         is GoalSubtaskReviewInputBlocked -> {
-          blockedGoalReviewRun(run, observability, prepared.reason)
+          blockedGoalReviewRun(prepared.reason)
         }
         is GoalSubtaskReviewInputReady ->
           GoalReviewRunReady(run.copy(goalReviewInput = prepared.input))
@@ -2879,8 +2869,6 @@ internal class FeatureTaskRuntimeRunLoop(
     },
     onFailure = { error ->
       blockedGoalReviewRun(
-        run,
-        observability,
         goalReviewPreparationFailure("input persistence", error),
         goalReviewPreparationDisposition(error),
       )
@@ -2902,14 +2890,9 @@ internal class FeatureTaskRuntimeRunLoop(
     }
 
   private fun blockedGoalReviewRun(
-    run: PhaseRun,
-    observability: FeatureTaskRuntimeRunObservability,
     reason: String,
     failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-  ): GoalReviewRunPreparation {
-    blockAndPersist(run, 1, reason, observability, failureDisposition = failureDisposition)
-    return GoalReviewRunPreparation.Blocked(reason, failureDisposition)
-  }
+  ): GoalReviewRunPreparation = GoalReviewRunPreparation.Blocked(reason, failureDisposition)
 
   private class MissingCarriedForwardGoalReviewResultException : IllegalStateException()
 
@@ -3825,7 +3808,9 @@ internal class FeatureTaskRuntimeRunLoop(
         settleRuntimeOwnedBuild(
           run,
           iteration,
-          FeatureTaskRuntimeBuildGateCoordinator.runtimeOwnedBuildOutput().payload,
+          FeatureTaskRuntimeBuildGateCoordinator.runtimeOwnedBuildOutput(
+            repositoryCheckpointFingerprint = checkpoint,
+          ).payload,
           observability,
         )
       is ValidationGateCycleResult.Terminal ->
@@ -4187,7 +4172,7 @@ internal class FeatureTaskRuntimeRunLoop(
         run.request.dbPathOverride,
       )
       val firstOutput = durablePending?.firstOutputArtifact ?: pendingOutput.canonicalJson
-      observability.derivationBlocked(run.phaseId, agentId, loop.iteration, capReason)
+      observability.derivationBlocked(run.phaseId, loop.iteration, capReason)
       recorder.persistDerivationReaskState(
         run.request.workflowId,
         FeatureTaskRuntimeDerivationReaskState(
@@ -5142,7 +5127,7 @@ internal class FeatureTaskRuntimeRunLoop(
       fileManifest,
       repositoryFingerprint,
       runtimeOwnedSidecar = commitSidecar ?: buildPlanSidecar(run, capture.outputText),
-      outputText = capture.outputText,
+      outputText = acceptedOutput.canonicalJson,
     )
   }
 
@@ -5524,16 +5509,11 @@ internal class FeatureTaskRuntimeRunLoop(
         actual = "absent",
         cause = "the checkpoint resolver returned no usable identity",
       )
-      validationResult.putIfAbsent("validation_status", "passed")
-      validationResult.putIfAbsent("checks", emptyList<Any?>())
-      produced["validation_result"] = validationResult
-      val envelope = normalizedOutput.envelope.toMutableMap()
-      envelope["produced_outputs"] = produced
-      return revalidated(envelope)
+    } else {
+      validationResult["repository_checkpoint"] = checkpoint.toEnvelopeMap()
     }
     validationResult.putIfAbsent("validation_status", "passed")
     validationResult.putIfAbsent("checks", emptyList<Any?>())
-    validationResult["repository_checkpoint"] = checkpoint.toEnvelopeMap()
     validationResult["gate_run_count"] = 0
     validationResult["gate_runs"] = emptyList<Any?>()
     validationResult.remove("suppression_justifications")
@@ -6280,14 +6260,7 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun findingVerificationBoundarySections(run: PhaseRun): List<FeatureTaskRuntimeFindingBoundaryMemorySection> {
-    if (!isGoalContinuationRun(run.request)) return emptyList()
-    val reviewImport = resolveRuntimeOwnedReviewImport(
-      run.phaseId,
-      "claims are missing while preparing verification boundary context",
-    ) ?: return emptyList()
-    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, run.request.dbPathOverride)
-    val findings = skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
-      .structuredFindings(reviewImport, recordedVerdicts)
+    val findings = verificationFindingsForBoundaryMemory(run) ?: return emptyList()
     return phaseGates.findingVerificationBoundaryMemory.sectionsForFindings(
       run.request.repoRoot,
       findings.mapNotNull { finding ->
@@ -6298,6 +6271,23 @@ internal class FeatureTaskRuntimeRunLoop(
         )
       },
     )
+  }
+
+  @Suppress("ReturnCount")
+  private fun verificationFindingsForBoundaryMemory(
+    run: PhaseRun,
+  ): List<skillbill.application.goalrunner.StructuredGoalReviewFinding>? {
+    if (isGoalContinuationRun(run.request)) {
+      val reviewImport = resolveRuntimeOwnedReviewImport(
+        run.phaseId,
+        "claims are missing while preparing verification boundary context",
+      ) ?: return null
+      val recordedVerdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, run.request.dbPathOverride)
+      return GoalSubtaskReviewSummaryReducer.structuredFindings(reviewImport, recordedVerdicts)
+    }
+    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) ?: return emptyList()
+    val envelope = outputEnvelopeOf(reviewOutput) ?: return emptyList()
+    return GoalSubtaskReviewSummaryReducer.structuredFindings(envelope)
   }
 
   // Every return is a distinct delivery decision — NotApplicable, Reject, or Continue — and the
@@ -6375,14 +6365,21 @@ internal class FeatureTaskRuntimeRunLoop(
     return null
   }
 
+  @Suppress("ReturnCount")
   private fun reviewFindingIdsForVerification(): Set<String> {
-    if (!isGoalContinuationRun(request)) return emptySet()
-    val reviewImport = resolveRuntimeOwnedReviewImport(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
-      "claims are missing while checking verification finding coverage",
-    ) ?: return emptySet()
-    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, request.dbPathOverride)
-    return GoalSubtaskReviewSummaryReducer.structuredFindings(reviewImport, recordedVerdicts)
+    if (isGoalContinuationRun(request)) {
+      val reviewImport = resolveRuntimeOwnedReviewImport(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+        "claims are missing while checking verification finding coverage",
+      ) ?: return emptySet()
+      val recordedVerdicts = recorder.recordedFindingVerdicts(reviewImport.reviewRunId, request.dbPathOverride)
+      return GoalSubtaskReviewSummaryReducer.structuredFindings(reviewImport, recordedVerdicts)
+        .mapNotNull { it.findingId }
+        .toSet()
+    }
+    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) ?: return emptySet()
+    val envelope = outputEnvelopeOf(reviewOutput) ?: return emptySet()
+    return GoalSubtaskReviewSummaryReducer.structuredFindings(envelope)
       .mapNotNull { it.findingId }
       .toSet()
   }
@@ -7287,10 +7284,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return auditGapCanonicalCriteriaFrom(state, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
   }
 
-  private fun auditGapCanonicalCriteriaFrom(
-    state: FeatureTaskRuntimeRunState,
-    auditPhaseId: String,
-  ): List<String> {
+  private fun auditGapCanonicalCriteriaFrom(state: FeatureTaskRuntimeRunState, auditPhaseId: String): List<String> {
     val output = state.outputFor(auditPhaseId) ?: return emptyList()
     return FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(outputEnvelopeOf(output))
   }

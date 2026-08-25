@@ -222,13 +222,36 @@ internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<
       "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
       "reconciled_state":{"reconciled":true},
       "deferred_repair_item_ids":[],
-      "repair_item_results":[{
-        "repair_item_id":"ac-002-gap-1-item-1",
-        "outcome":"fixed",
-        "changed_paths_or_symbols":["src/Foo.kt"],
-        "executed_verification":["Focused test passed."],
-        "result_evidence":{"observation":"fix_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}
-      }]
+      "repair_item_results":[
+        {
+          "repair_item_id":"ac-001",
+          "outcome":"fixed",
+          "changed_paths_or_symbols":["src/Foo.kt"],
+          "executed_verification":["Focused test passed."],
+          "result_evidence":{"observation":"fix_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-001"}
+        },
+        {
+          "repair_item_id":"ac-002",
+          "outcome":"fixed",
+          "changed_paths_or_symbols":["src/Foo.kt"],
+          "executed_verification":["Focused test passed."],
+          "result_evidence":{"observation":"fix_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}
+        },
+        {
+          "repair_item_id":"ac-003",
+          "outcome":"fixed",
+          "changed_paths_or_symbols":["src/Foo.kt"],
+          "executed_verification":["Focused test passed."],
+          "result_evidence":{"observation":"fix_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-003"}
+        },
+        {
+          "repair_item_id":"ac-002-gap-1-item-1",
+          "outcome":"fixed",
+          "changed_paths_or_symbols":["src/Foo.kt"],
+          "executed_verification":["Focused test passed."],
+          "result_evidence":{"observation":"fix_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}
+        }
+      ]
     }
       """.trimIndent()
     "implement_fix" ->

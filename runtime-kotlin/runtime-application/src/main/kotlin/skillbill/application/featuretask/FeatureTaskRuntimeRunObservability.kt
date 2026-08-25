@@ -262,23 +262,13 @@ internal class FeatureTaskRuntimeRunObservability(
     )
   }
 
-  fun derivationBlocked(phaseId: String, resolvedAgentId: String, attemptCount: Int, reason: String) {
+  fun derivationBlocked(phaseId: String, attemptCount: Int, reason: String) {
     emitFeatureTaskRuntimeEventSafely(diagnostics, "derivation block") {
       diagnostics.warning(
         "seam=FeatureTaskRuntimeRunObservability.derivationBlocked phase=$phaseId attempt=$attemptCount reason=$reason",
         null,
       )
     }
-    appendLedger(
-      FeatureTaskRuntimePhaseLedgerRequest(
-        workflowId = request.workflowId,
-        action = FeatureTaskRuntimePhaseLedgerAction.BLOCKED,
-        phaseId = phaseId,
-        attemptCount = attemptCount,
-        resolvedAgentId = resolvedAgentId,
-        blockedReason = reason,
-      ),
-    )
   }
 
   fun completed(phaseId: String, resolvedAgentId: String, attemptCount: Int) {

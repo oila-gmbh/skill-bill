@@ -4,6 +4,7 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
+import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -21,13 +22,8 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   fun `pass two ceremony directive orders the remediation delta, not the complete immutable-base delta`() {
     val prompt = implementFixPrompt()
 
-    assertContains(prompt, "Address every finding verify_findings carried")
+    assertContains(prompt, "Address every verified finding from verify_findings")
     assertContains(prompt, "Every carried finding — Blocker, Major, Minor, and Nit — is in scope")
-    // The earlier "every *verified* finding" wording read as a narrower scope than the coverage gate
-    // measured, so a round that skipped a refuted finding was correct by the prose and rejected by
-    // the gate. Carried is now the only scope word, and the refuted carve-out is stated once.
-    assertContains(prompt, "a finding verification refuted is not carried at all")
-    assertFalse(prompt.contains("Address every verified finding"))
     assertFalse(
       prompt.contains("to the subtask's complete delta from its immutable base"),
       "implement_fix must not order the complete immutable-base delta.",
@@ -97,7 +93,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   fun `pass two orders one evidenced disposition per prior Blocker finding id`() {
     val prompt = implementFixPrompt()
 
-    assertContains(prompt, "produced_outputs.repair_receipt")
+    assertContains(prompt, "State your disposition for every carried finding id in your returned prose")
     assertFalse(
       prompt.contains("blocker_dispositions"),
       "implement_fix emits repair receipts; review dispositions stay on verify_findings.",
@@ -157,10 +153,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
       expectedRepositoryCheckpoint = checkpoint,
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      issueKey = "SKILL-142",
-      briefing = briefing,
-    )
+    val prompt = launchPrompt(issueKey = "SKILL-142", briefing = briefing)
 
     assertContains(prompt, touched.first())
     assertContains(prompt, "must fix")
@@ -203,10 +196,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
       expectedRepositoryCheckpoint = checkpoint,
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      issueKey = "SKILL-178",
-      briefing = briefing,
-    )
+    val prompt = launchPrompt(issueKey = "SKILL-178", briefing = briefing)
 
     assertContains(prompt, "F-MINOR")
     assertContains(prompt, "minor")
@@ -253,10 +243,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
       expectedRepositoryCheckpoint = checkpoint,
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    return FeatureTaskRuntimePhasePromptComposer.compose(
-      issueKey = "SKILL-142",
-      briefing = briefing,
-    )
+    return launchPrompt(issueKey = "SKILL-142", briefing = briefing)
   }
 
   private fun composeReview(
@@ -264,16 +251,27 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     resolvedTier: CodeReviewExecutionMode,
     reviewInput: GoalSubtaskReviewInput? = null,
     baselineUntrackedPaths: List<String> = emptyList(),
-  ): String = FeatureTaskRuntimePhasePromptComposer.compose(
-    issueKey = "SKILL-142",
-    briefing = reviewBriefing(),
-    codeReviewMode = resolvedTier,
-    reviewPassNumber = passNumber,
-    goalSubtaskReviewInput = reviewInput,
-    resolvedReviewTier = resolvedTier,
-    reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
-    baselineUntrackedPaths = baselineUntrackedPaths,
-  )
+  ): String {
+    val briefing = reviewBriefing()
+    val directives = FeatureTaskRuntimePhasePromptComposer.compose(
+      issueKey = "SKILL-142",
+      briefing = briefing,
+      codeReviewMode = resolvedTier,
+      reviewPassNumber = passNumber,
+      goalSubtaskReviewInput = reviewInput,
+      resolvedReviewTier = resolvedTier,
+      reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
+      baselineUntrackedPaths = baselineUntrackedPaths,
+    )
+    val phaseInput = FeatureTaskRuntimePhasePromptComposer.composeAgentPhaseInput(briefing = briefing)
+    return FeatureTaskRuntimePhasePromptComposer.frameAgentPhaseLaunchPrompt(phaseInput, directives)
+  }
+
+  private fun launchPrompt(issueKey: String, briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+    val directives = FeatureTaskRuntimePhasePromptComposer.compose(issueKey = issueKey, briefing = briefing)
+    val phaseInput = FeatureTaskRuntimePhasePromptComposer.composeAgentPhaseInput(briefing = briefing)
+    return FeatureTaskRuntimePhasePromptComposer.frameAgentPhaseLaunchPrompt(phaseInput, directives)
+  }
 }
 
 private val REVIEW_INPUT = GoalSubtaskReviewInput(

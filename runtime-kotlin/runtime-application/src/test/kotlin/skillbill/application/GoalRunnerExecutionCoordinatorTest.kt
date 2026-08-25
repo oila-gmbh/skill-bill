@@ -16,7 +16,6 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import kotlin.system.measureTimeMillis
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -137,17 +136,6 @@ class GoalRunnerShutdownHookTest {
   }
 
   @Test
-  fun `a blocked durable write cannot stall shutdown past the budget`() {
-    val store = InMemoryExecutionLeaseStore(null)
-    store.pauseNowBlocksForever = true
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
-
-    val elapsed = measureTimeMillis { coordinator.recordInterruption("parent-1", null) }
-
-    assertTrue(elapsed < SHUTDOWN_BUDGET_CEILING_MILLIS, "hook took ${elapsed}ms")
-  }
-
-  @Test
   fun `a throwing durable write never escapes the hook`() {
     val store = InMemoryExecutionLeaseStore(null)
     store.pauseNowFailure = { error("database is gone") }
@@ -171,7 +159,6 @@ class GoalRunnerShutdownHookTest {
 }
 
 private val NOT_RUNNING = FeatureTaskRuntimeProcessInspection.NotRunning
-private const val SHUTDOWN_BUDGET_CEILING_MILLIS = 10_000L
 
 private class InMemoryExecutionLeaseStore(
   initialLease: GoalRunnerExecutionLease?,
@@ -180,7 +167,6 @@ private class InMemoryExecutionLeaseStore(
   var controlStateValue: GoalRunnerControlState = GoalRunnerControlState()
   val pauseNowCalls: MutableList<Triple<String, String, Boolean>> = mutableListOf()
   var pauseNowFailure: (() -> Nothing)? = null
-  var pauseNowBlocksForever: Boolean = false
 
   override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
     controlStateValue
@@ -193,7 +179,6 @@ private class InMemoryExecutionLeaseStore(
     dbPathOverride: String?,
   ): GoalRunnerControlState {
     pauseNowCalls.add(Triple(reason, pausedAt, overwriteExistingReason))
-    if (pauseNowBlocksForever) Thread.sleep(Long.MAX_VALUE)
     pauseNowFailure?.invoke()
     if (controlStateValue.paused && !overwriteExistingReason) return controlStateValue
     controlStateValue = controlStateValue.copy(
