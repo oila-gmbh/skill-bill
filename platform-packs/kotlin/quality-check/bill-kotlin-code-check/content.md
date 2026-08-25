@@ -19,7 +19,6 @@ Make the pack `validation_gate.collect_all_full_gate_command` green. Fix root ca
 5. Fix those failures at their root cause. Targeted compile, test, and module checks are allowed only while repairing a known finding.
 6. Run the pack `validation_gate.collect_all_full_gate_command` again to confirm.
 7. If everything is green, stop. If anything failed, go back to step 3 with that output as the finding set.
-8. Attribute each failure to scoped work, pre-existing state, environment, or maintainer-owned configuration.
 
 ## Fix Strategy
 
