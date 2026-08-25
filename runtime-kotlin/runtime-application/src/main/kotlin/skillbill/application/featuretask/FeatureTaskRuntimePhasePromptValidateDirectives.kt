@@ -95,3 +95,29 @@ internal fun phaseTaskDirective(
   }
   return phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
 }
+
+internal fun phaseRequestedAction(
+  phaseId: String,
+  carriedFindingIds: Set<String> = emptySet(),
+  agentRunValidateFallback: Boolean = false,
+  packCollectAllCommand: String? = null,
+  packBuildCommand: String? = null,
+  priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
+): String {
+  val base = phaseTaskDirective(
+    phaseId = phaseId,
+    agentRunValidateFallback = agentRunValidateFallback,
+    packCollectAllCommand = packCollectAllCommand,
+    packBuildCommand = packBuildCommand,
+    priorGapMemory = priorGapMemory,
+  )
+  if (
+    phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX ||
+    carriedFindingIds.isEmpty()
+  ) {
+    return base
+  }
+  return base +
+    " Carried finding ids for this round: ${carriedFindingIds.sorted().joinToString(", ")}. " +
+    "State your disposition for every listed finding id in your returned prose."
+}

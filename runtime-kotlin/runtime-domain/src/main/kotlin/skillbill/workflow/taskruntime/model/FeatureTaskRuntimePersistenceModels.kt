@@ -632,6 +632,46 @@ const val FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED: String = "paused"
 /** Terminal success. A completed phase's launch context is history, never current state. */
 const val FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED: String = "completed"
 
+data class FeatureTaskRuntimePhaseRecordSidecar(
+  val checkpoint: Map<String, Any?>? = null,
+  val gateReceipts: Map<String, Any?>? = null,
+  val commitSha: String? = null,
+  val commitSubject: String? = null,
+  val decompositionPackage: Map<String, Any?>? = null,
+) {
+  init {
+    commitSha?.let { sha ->
+      require(sha.isNotBlank()) { "FeatureTaskRuntimePhaseRecordSidecar.commitSha must be non-blank when present." }
+    }
+    commitSubject?.let { subject ->
+      require(subject.isNotBlank()) {
+        "FeatureTaskRuntimePhaseRecordSidecar.commitSubject must be non-blank when present."
+      }
+    }
+  }
+
+  @OpenBoundaryMap("Feature-task-runtime phase-record sidecar artifact map")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>().apply {
+    checkpoint?.let { put("checkpoint", it) }
+    gateReceipts?.let { put("gate_receipts", it) }
+    commitSha?.let { put("commit_sha", it) }
+    commitSubject?.let { put("commit_subject", it) }
+    decompositionPackage?.let { put("decomposition_package", it) }
+  }
+
+  companion object {
+    @OpenBoundaryMap("Feature-task-runtime phase-record sidecar decode")
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseRecordSidecar =
+      FeatureTaskRuntimePhaseRecordSidecar(
+        checkpoint = JsonSupport.anyToStringAnyMap(raw["checkpoint"]),
+        gateReceipts = JsonSupport.anyToStringAnyMap(raw["gate_receipts"]),
+        commitSha = raw["commit_sha"]?.toString()?.trim()?.takeIf(String::isNotBlank),
+        commitSubject = raw["commit_subject"]?.toString()?.trim()?.takeIf(String::isNotBlank),
+        decompositionPackage = JsonSupport.anyToStringAnyMap(raw["decomposition_package"]),
+      )
+  }
+}
+
 /**
  * Durable per-phase record: one entry per phase id holding its latest persisted state.
  * `finishedAt`/`durationMillis`/`outputArtifact` are nullable because a phase may be
@@ -654,6 +694,8 @@ data class FeatureTaskRuntimePhaseRecord(
   val executionOrigin: FeatureTaskRuntimePhaseExecutionOrigin =
     FeatureTaskRuntimePhaseExecutionOrigin.AGENT_EXECUTED,
   val outputArtifact: String? = null,
+  val outputText: String? = null,
+  val runtimeOwnedSidecar: FeatureTaskRuntimePhaseRecordSidecar? = null,
   /**
    * Schema-rejected agent output kept as diagnostic evidence. Held apart from [outputArtifact] because it
    * is invalid by construction: storing it as an output makes resume hydration re-validate and reject it.
@@ -731,6 +773,8 @@ data class FeatureTaskRuntimePhaseRecord(
     finishedAt?.let { put("finished_at", it) }
     durationMillis?.let { put("duration_millis", it) }
     outputArtifact?.let { put("output_artifact", it) }
+    outputText?.let { put("output_text", it) }
+    runtimeOwnedSidecar?.let { put("runtime_owned_sidecar", it.toArtifactMap()) }
     blockedReason?.let { put("blocked_reason", it) }
     failureDisposition?.let { put("failure_disposition", it.wireValue) }
     if (fileManifestBefore.isNotEmpty()) put("file_manifest_before", fileManifestBefore)
@@ -769,6 +813,14 @@ data class FeatureTaskRuntimePhaseRecord(
             raw.requireStringField("execution_origin"),
           ),
           outputArtifact = raw.optionalStringField("output_artifact"),
+          outputText = raw.optionalStringField("output_text"),
+          runtimeOwnedSidecar = raw["runtime_owned_sidecar"]?.let { value ->
+            val sidecar = value as? Map<*, *> ?: incompatiblePhaseRecord()
+            @Suppress("UNCHECKED_CAST")
+            FeatureTaskRuntimePhaseRecordSidecar.fromArtifactMap(
+              sidecar.entries.associate { (key, item) -> key.toString() to item },
+            )
+          },
           rejectedOutput = null,
           blockedReason = raw.optionalStringField("blocked_reason"),
           failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
@@ -804,7 +856,8 @@ data class FeatureTaskRuntimePhaseRecord(
         "first_started_at", "resolved_agent_id", "execution_origin",
       )
       val allowed = required + setOf(
-        "finished_at", "duration_millis", "output_artifact", "blocked_reason",
+        "finished_at", "duration_millis", "output_artifact", "output_text", "runtime_owned_sidecar",
+        "blocked_reason",
         "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
         "loop_id", "edge_iteration", "review_pass_number", "rejected_output",
         "repair_evidence", "launched_model", "launched_effort", "review_run_id",

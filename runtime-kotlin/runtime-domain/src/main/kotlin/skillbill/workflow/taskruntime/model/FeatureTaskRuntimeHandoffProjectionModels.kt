@@ -759,6 +759,7 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
    */
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
+  val recordHandoffTruncation: (String) -> Unit = {},
 )
 
 /** Bound on a repository-fingerprint pointer carried in a handoff projection. */

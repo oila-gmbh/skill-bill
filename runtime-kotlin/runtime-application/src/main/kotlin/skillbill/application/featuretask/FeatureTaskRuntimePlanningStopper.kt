@@ -17,8 +17,8 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposePlanOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeFromProse
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull
-import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.io.IOException
 
 /**
@@ -94,12 +94,14 @@ class FeatureTaskRuntimePlanningStopper(
     resolvedBranch: String?,
     specSource: SpecSource,
   ): FeatureTaskRuntimePlanningStopDecision {
-    val parsed = outputValidator
-      .validatePhaseOutput(completedOutput.payload, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN)
-      .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN)
-      .normalizedOutput
-      .envelope
-    val outcome = featureTaskRuntimeDecomposePlanOutcomeOrNull(parsed, specSource)
+    val prose = completedOutput.payload
+    val outcome = featureTaskRuntimeDecomposePlanOutcomeFromProse(prose, specSource)
+      ?: completedOutput.normalizedOutput?.envelope?.let { envelope ->
+        val wire = linkedMapOf<String, Any?>(
+          "produced_outputs" to (envelope["produced_outputs"] ?: envelope),
+        )
+        featureTaskRuntimeDecomposePlanOutcomeOrNull(wire, specSource)
+      }
       ?: return FeatureTaskRuntimePlanningStopDecision.Proceed
     val terminal = writeDecompositionTerminal(request, outcome)
     decomposeTerminalRecorder.recordDecomposeTerminal(request.workflowId, terminal, request.dbPathOverride)

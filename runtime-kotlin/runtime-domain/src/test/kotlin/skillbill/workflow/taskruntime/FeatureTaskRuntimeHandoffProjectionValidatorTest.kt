@@ -5,7 +5,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_HANDOFF_TRUNCATION_MARKER
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
@@ -544,25 +544,51 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `budget overflow rejects instead of truncating or substituting the source artifact`() {
-    val oversized = """{"plan":"${"p".repeat(5_000)}"}"""
+  fun `prose handoff truncates oversized upstream text records observability and retains derivation tokens`() {
+    val oversized = "changes_requested\n" + "narrative ".repeat(400)
+    val truncationRecords = mutableListOf<String>()
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        declarations = listOf(
+          declaration(budget = FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 256, maxCollectionItems = 8)),
+        ),
+        resolvedUpstream = upstream(oversized),
+        recordHandoffTruncation = truncationRecords::add,
+      ),
+    )
+    assertEquals(1, truncationRecords.size)
+    assertContains(truncationRecords.single(), "proseHandoffField")
+    val delivered = assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(
+      envelope.projections.single().fields.single().value,
+    ).text
+    assertContains(delivered, FEATURE_TASK_RUNTIME_HANDOFF_TRUNCATION_MARKER)
+    assertContains(delivered, "changes_requested")
+  }
+
+  @Test
+  fun `budget overflow rejects non-prose projections instead of truncating`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimeHandoffProjectionValidator.validate(
         inputs(
           declarations = listOf(
-            declaration(budget = FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 128, maxCollectionItems = 8)),
+            PhaseHandoffProjectionDeclaration(
+              consumerPhaseId = CONSUMER,
+              sourceRef = FeatureTaskRuntimeHandoffSourceRef
+                .RunInvariantField(FeatureTaskRuntimeRunInvariantPromptField.ACCEPTANCE_CRITERIA),
+              projectionName = "criteria",
+              projectionContractId = "test.criteria",
+              projectionContractVersion = "0.1",
+              promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+              budget = FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 128, maxCollectionItems = 8),
+              declaredFieldNames = listOf("acceptance_criteria"),
+            ),
           ),
-          resolvedUpstream = upstream(oversized),
+          runInvariants = runInvariants(acceptanceCriteria = List(50) { "AC-$it" }),
         ),
       )
     }
 
     assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
-    assertFalse(
-      error.message.orEmpty().contains("ppppppppppppppppppppppppppppppp"),
-      "the rejection echoed the oversized body; a typed error must name identifiers, not payload content",
-    )
-    assertContains(error.message.orEmpty(), "128-byte budget")
   }
 
   @Test
@@ -813,6 +839,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     qualityGateSelection: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection =
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
     priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
+    recordHandoffTruncation: (String) -> Unit = {},
   ) = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = consumerPhaseId,
     declarations = declarations,
@@ -824,6 +851,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     validationDepth = validationDepth,
     qualityGateSelection = qualityGateSelection,
     priorGapMemory = priorGapMemory,
+    recordHandoffTruncation = recordHandoffTruncation,
   )
 
   private fun validationRequestFields(

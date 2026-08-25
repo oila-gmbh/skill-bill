@@ -2388,6 +2388,8 @@ class FeatureTaskRuntimePhaseRecorder(
       durationMillis = if (request.finished) durationMillis(startedAt, now) else null,
       resolvedAgentId = request.resolvedAgentId,
       outputArtifact = request.outputArtifact,
+      outputText = request.outputText ?: request.outputArtifact,
+      runtimeOwnedSidecar = request.runtimeOwnedSidecar,
       rejectedOutput = request.rejectedOutput,
       blockedReason = request.blockedReason,
       failureDisposition = request.failureDisposition,

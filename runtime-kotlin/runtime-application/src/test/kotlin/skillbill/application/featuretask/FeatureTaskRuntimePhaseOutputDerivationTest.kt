@@ -56,6 +56,18 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
   }
 
   @Test
+  fun `prose outputText drives audit verdict when envelope map is empty`() {
+    assertEquals(
+      FeatureTaskRuntimeVerdict.GAPS_FOUND,
+      FeatureTaskRuntimeOutputVerification.verdictFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+        "status: completed. gaps_found on AC-007.",
+        emptyMap(),
+      ),
+    )
+  }
+
+  @Test
   fun `prose-only gaps_found recovers unmet criterion refs without acceptanceCriterionRefs`() {
     val envelope = mapOf(
       "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,

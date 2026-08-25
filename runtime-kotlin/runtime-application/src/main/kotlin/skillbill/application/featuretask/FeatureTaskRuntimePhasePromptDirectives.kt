@@ -3,8 +3,6 @@
 package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -339,7 +337,7 @@ internal fun goalContinuationDirective(phaseId: String, suppressDecomposition: B
     ## Goal-continuation planning constraint
     This run is already executing one governed decomposed subtask. Do not propose or emit a new
     decomposition package in the plan phase. Produce an implementable single-subtask plan for the
-    current spec; `produced_outputs.mode` must not be "decompose".
+    current spec; do not propose or emit a new decomposition package.
     Never include installer, uninstall, or install-sync commands in the plan: do not plan to run
     `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any
     equivalent install refresh inside a goal-continuation child. The plan phase defines how future
@@ -355,65 +353,34 @@ internal fun goalContinuationDirective(phaseId: String, suppressDecomposition: B
 internal val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
     "Produce the scaled pre-planning digest for the resolved feature size. Do not modify " +
-    "repository files during this phase. Emit a schema-valid produced_outputs object carrying the " +
-    "bounded digest for the downstream plan phase: projection_kind \"preplanning_digest\", " +
-    "contract_version \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", and the " +
-    "declared digest fields (affected_boundaries, patterns_and_decisions, risks, rollout, " +
-    "validation_strategy, unresolved_questions, evidence_refs). Do not forward the complete " +
-    "preplan envelope, a generic summary, or progress diagnostics.",
+    "repository files during this phase. Return prose covering affected boundaries, patterns and " +
+    "decisions, risks, rollout, validation strategy, unresolved questions, and evidence refs at " +
+    "the requested depth. Do not forward a generic summary or progress diagnostics.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
     "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
     "the upstream preplan digest as planning context. Do not modify repository files during " +
-    "this phase. Emit a schema-valid produced_outputs object carrying the bounded executable plan: " +
-    "projection_kind \"executable_plan\", contract_version " +
-    "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", mode (direct or decompose), " +
-    "stable ordered tasks " +
-    "(task_id, depends_on, description, criterion_refs, target_paths_or_symbols, test_obligations, " +
-    "constraints), and validation_strategy. Exclude planning narration, presentation summary, and " +
-    "generic producer notes; decomposition detail stays private to the preparation boundary.",
+    "this phase. Return prose describing the plan. For a decompose outcome, include a delimited " +
+    "decomposition package block: <<<DECOMPOSITION_PACKAGE>>>{...}<<<END_DECOMPOSITION_PACKAGE>>> " +
+    "validated against the existing decomposition contract.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
     "Reconcile the repository to the intended state the upstream plan output describes: make the " +
     "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
-    "idempotency contract below. Emit produced_outputs carrying the bounded implementation receipt " +
-    "(projection_kind \"implementation_receipt\", contract_version " +
-    "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\": completed_task_ids, " +
-    "tests_added, tests_updated, deviations, and unresolved_items). Runtime-owned paths, checkpoints, " +
-    "and reconciliation evidence are added after settlement; never invent them.\n" +
-    "      fingerprint. Every receipt field is a bounded summary, not a transcript: a segment that " +
-    "applied no edits reports that it applied none, names what already satisfied the work, and " +
-    "stops — the audit re-reads the tree " +
-    "itself, so proving convergence path by path here only risks overflowing the field. When the " +
-    "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
-    "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
-    "settled implementation. Under the audit-gap loop, follow each listed gap's implement-ready fix " +
-    "plan in this one invocation and report the ordinary implementation receipt; the next audit " +
-    "re-reads the tree and decides every criterion again. Repair evidence is read-only repository " +
-    "facts: do not run builds or tests here.",
+    "idempotency contract below. Report a bounded summary in prose: completed task ids from the plan, " +
+    "tests added or updated (names only), deviations, and unresolved items. Runtime-owned paths, " +
+    "checkpoints, and reconciliation evidence are added after settlement; never invent them. Every " +
+    "summary field is bounded, not a transcript: a segment that applied no edits reports that it " +
+    "applied none, names what already satisfied the work, and stops — the audit re-reads the tree " +
+    "itself. When the briefing carries audit_gaps, reuse its immutable initial preplan and plan " +
+    "outputs and change only what the latest listed gaps require; do not regenerate planning, expand " +
+    "scope, or disturb settled implementation. Under the audit-gap loop, follow each listed gap's " +
+    "implement-ready fix plan in this one invocation; the next audit re-reads the tree and decides " +
+    "every criterion again. Repair evidence is read-only repository facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
-    "Address every finding verify_findings carried on the CURRENT working tree as " +
+    "Address every verified finding from verify_findings on the CURRENT working tree as " +
     "incremental reconciliation. Every carried finding — Blocker, Major, Minor, and Nit — is in " +
-    "scope; specialist narratives and raw review output are not, and a finding verification " +
-    "refuted is not carried at all: do not fix it and do not file an entry for it. Do not re-apply " +
-    "the plan from scratch or expand scope beyond the carried findings. Treat any fix already present " +
-    "as a no-op. See the mutating-phase idempotency contract below. Emit " +
-    "produced_outputs.repair_receipt " +
-    "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\" and exactly one " +
-    "entry per carried finding named by finding_id (the briefing's finding_id values; aliases " +
-    "finding_ref, id, and ref are accepted). Coverage matches on finding_id alone — do not restate " +
-    "severity, label, or sanitized text as identity; label and text are optional decoration. Each " +
-    "entry needs an explicit outcome (addressed; no_edit_required with no_edit_reason; or " +
-    "attempted_unresolved with unresolved_reason when you tried and the finding is still open), " +
-    "symbol-granularity closing constructs (Type or Type.member, optional file basename — never a bare " +
-    "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +
-    "no_edit_required entry, and a finding you could not close needs its attempted_unresolved entry, " +
-    "which buys it one more attempt before it goes to an operator. Leaving a *carried* finding out is " +
-    "never an outcome: the round is sent back for it. A refuted finding is the one exception, because " +
-    "it was never carried. Fit every field inside its limit rather than " +
-    "writing to length and hoping: no_edit_reason and unresolved_reason are capped at " +
-    "$REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES and " +
-    "$REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES characters. State the decision in one sentence " +
-    "and stop; do not restate the contract, cite acceptance criteria, or argue the case. A field over " +
-    "its cap is rejected even when what it says is right.",
+    "scope. Do not re-apply the plan from scratch or expand scope beyond the carried findings. " +
+    "Treat any fix already present as a no-op. See the mutating-phase idempotency contract below. " +
+    "State your disposition for every carried finding id in your returned prose.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
     "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase. " +
@@ -421,24 +388,21 @@ internal val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to
     "Verify every finding from the single preceding review pass against the subtask spec intent " +
     "projection and the scoped boundary-memory catalog in the briefing. Each finding receives a " +
-    "titles-only heading catalog for boundaries that own its paths; select relevant heading_id " +
-    "values in selected_boundary_headings and set boundary_context_unavailable when no eligible " +
-    "boundary owns the finding paths. Emit exactly one disposition per finding — verified or " +
-    "rejected — each with a bounded reason derived from that intent projection and selected " +
-    "boundary titles. Do not edit the worktree. Settle once: verdict findings_verified when at " +
-    "least one finding is verified, otherwise no_findings_verified. Emit " +
-    "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
-    "with finding_id, disposition, reason, severity, location, message, optional " +
-    "selected_boundary_headings, and boundary_context_unavailable per entry.",
+    "titles-only heading catalog for boundaries that own its paths; name relevant boundary titles " +
+    "when helpful and state when no eligible boundary owns the finding paths. State exactly one " +
+    "disposition per finding — verified or rejected — each with a bounded reason derived from that " +
+    "intent projection and selected boundary titles. Do not edit the worktree. Settle once: state " +
+    "findings_verified when at least one finding is verified, otherwise no_findings_verified, and " +
+    "name every carried finding id with its disposition and bounded reason in your returned prose.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Answer one question: is every acceptance criterion in the briefing implemented in the repository? " +
     "Read the tree itself at the resolved checkpoint — the diff over its base_ref/head_ref plus its " +
     "scoped_owned_paths. The upstream implementation receipt is a producer CLAIM, not evidence: never " +
     "mark a criterion satisfied because the receipt lists a completed task id, a changed path, or " +
     "reconciliation_evidence claiming reconciled. A claim the tree contradicts is itself unmet. " +
-    "Report the answer as verdict plus produced_outputs.gaps: verdict satisfied with an " +
-    "empty array when every criterion is implemented, or verdict gaps_found with one entry per unmet " +
-    "criterion. Every unmet entry must carry its criterion ref and one dense note that both names " +
+    "Report the answer plainly: state satisfied when every criterion is implemented, or gaps_found " +
+    "with one note per unmet criterion. Every unmet note must carry its criterion ref and one dense " +
+    "line that both names " +
     "what is missing and hands implement a complete fix plan for that gap. Before you emit a gap, " +
     "plan the repair carefully: name the minimal production change that closes the criterion; " +
     "inspect blast radius across callers, DI/bindings, sibling phases, contracts, and fixtures that " +
@@ -455,23 +419,20 @@ internal val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to RUNTIME_OWNED_VALIDATE_PHASE_TASK,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
     "Invoke bill-boundary-history inline and apply its write/skip rules for the implemented " +
-    "runtime change. Emit a bounded history_result containing changed_paths and decisions_recorded " +
-    "alongside whether history was written or skipped; do not forward implementation or validation reports.",
+    "runtime change. Return prose stating whether history was written or skipped, which paths " +
+    "changed, and which decisions were recorded; do not forward implementation or validation reports.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to
     "Run no git command in this phase. The runtime stages, commits, and pushes the subtask on the " +
-    "resolved feature branch from what you emit here. Emit commit_push_result with `message` (the " +
-    "commit subject describing the implemented, reviewed, audited, validated, and history-updated " +
-    "outcome) and optional `changed_paths` (advisory). The runtime stages every dirty non-ignored " +
-    "worktree path except `.feature-specs/` — including validate repairs and concurrent operator " +
-    "edits — so an incomplete list cannot strand deliverable dirt. A missing or blank `message` " +
-    "blocks the subtask rather than publishing a provisional subject. Do not emit commit_sha: the " +
-    "runtime captures it after the " +
-    "commit. If goal-continuation suppresses PR, this successful phase is the terminal success " +
-    "signal for the goal subtask.",
+    "resolved feature branch from what you emit here. Put the commit subject on its own delimited " +
+    "line: <<<COMMIT_SUBJECT>>>your subject<<<END_COMMIT_SUBJECT>>>. A blank or absent subject " +
+    "blocks the subtask rather than publishing a provisional one. Optionally list advisory changed " +
+    "paths in prose. The runtime stages every dirty non-ignored worktree path except `.feature-specs/` " +
+    "and captures commit_sha after the commit. If goal-continuation suppresses PR, this successful " +
+    "phase is the terminal success signal for the goal subtask.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to
     "Invoke bill-pr-description, honor any repo-native PR template, create or reuse the open " +
-    "pull request for the branch idempotently, and emit pr_result with the PR URL/number, " +
-    "title, and whether a new PR was created.",
+    "pull request for the branch idempotently, and return prose with the PR URL or number, title, " +
+    "and whether a new PR was created.",
 )
 
 // The blank-slate sentence in the shared PHASE_AUDIT directive. It is subordinated for a

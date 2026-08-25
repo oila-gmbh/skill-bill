@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecordSidecar
+import skillbill.workflow.taskruntime.model.readCommitSubjectFromProse
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.amendHeadCommit
@@ -254,6 +256,22 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
      * payload costs nothing to reject. A blank outcome message is the load-bearing refusal: without it
      * the finalisation would publish the provisional checkpoint subject as the deliverable commit.
      */
+    fun readHandoffFromProse(prose: String): FeatureTaskRuntimeCommitPushHandoffResult {
+      val message = readCommitSubjectFromProse(prose)
+        ?: return invalid("<<<COMMIT_SUBJECT>>> delimited commit subject is missing or blank")
+      return FeatureTaskRuntimeCommitPushHandoffValid(
+        FeatureTaskRuntimeCommitPushHandoff(outcomeMessage = message, changedPaths = emptyList()),
+      )
+    }
+
+    fun withCommitShaSidecar(
+      commitSubject: String,
+      commitSha: String,
+    ): FeatureTaskRuntimePhaseRecordSidecar = FeatureTaskRuntimePhaseRecordSidecar(
+      commitSubject = commitSubject,
+      commitSha = commitSha,
+    )
+
     fun readHandoff(envelope: Map<String, Any?>): FeatureTaskRuntimeCommitPushHandoffResult {
       val result = commitPushResult(envelope)
         ?: return invalid("`produced_outputs.$COMMIT_PUSH_RESULT_KEY` is absent")
