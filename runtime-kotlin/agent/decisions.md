@@ -4,6 +4,16 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-25] An over-bound review input elides deleted bodies rather than blocking
+
+Context: WE-4860 subtask 3 retires a module. Its review input measured 1,716,726 bytes against the 1,000,000-byte bound, of which 1,114,385 — 65% — was the complete body of 170 deleted files. The bound blocked the subtask, so the 14 added, 238 modified, and 29 renamed files went unreviewed as well.
+
+Decision: when the delta exceeds the bound, the review input keeps every added, modified, and renamed patch in full and replaces each deleted file's body with a manifest line naming the path and the lines it lost. Elision is conditional: a delta that already fits is unchanged, byte for byte. A delta still over the bound after elision keeps its full text so the failure reports the real size. Operator-chosen over raising the bound and over chunking the review.
+
+Reason: A deleted file's body is the part of a retirement delta a reviewer can act on least, and the alternative was reviewing none of it. The reduction is consistent with how this review already works: lanes read bodies on demand through `read_evidence` and reach past their assigned hunks through `request_expansion`, so the manifest's paths are a locator rather than a dead end. Measured at 625,771 bytes on the real delta, 37% under the bound.
+
+Alternatives considered: Raise `GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES` (rejected by the operator: it pushes 1.1MB of deleted source into the review context and moves the wall rather than removing it). Chunk an over-bound delta across passes and merge findings (rejected: most faithful, but it breaks the one-pass-per-delta assumption the findings ledger, coverage gate, and repair receipt are all built on). Elide unconditionally (rejected: an ordinary subtask's review input should not change, and a reviewer should never wonder which shape they are holding). Note the cost accepted here: a block of logic relocated out of a deleted file is easier to miss when only the deletion's path is inline.
+
 ## [2026-08-24] An absent summary is filled from the producer's prose, not rejected
 
 Context: WE-4860 subtask 3's implement receipt narrated its work in prose, then emitted a fenced envelope carrying all thirteen closed tasks and no `summary`. The envelope walker requires every declared field before a span can be a candidate, so nothing matched and a 23KB receipt was discarded over the one root field no consumer branches on — `terminalBlockedReasonFrom` reads it as `.orEmpty()`, and the runtime already authors its own for gate-executed phases.

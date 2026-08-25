@@ -9,7 +9,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import java.nio.file.Path
 
-private const val GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES: Int = 1_000_000
+internal const val GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES: Int = 1_000_000
 
 internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations {
   override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult {
@@ -259,16 +259,16 @@ private fun materializeReviewInput(
   }
   // Pathspec-limited to the workflow-owned inventory: a tracked file this run does not own stays
   // out of the review input no matter how dirty the worktree is around it.
-  val trackedDelta = indexTree?.takeIf(String::isNotBlank)?.let {
-    val arguments = listOf("diff", "--binary", baseline.reviewBaseSha) +
-      baseline.ownedPathspec.takeIf { spec -> spec.isNotEmpty() }?.let { spec -> listOf("--") + spec }.orEmpty()
-    goalReviewGitValue(repoRoot, arguments)
+  val fullDelta = indexTree?.takeIf(String::isNotBlank)?.let {
+    goalReviewGitValue(repoRoot, goalReviewDiffArguments(baseline))
   }
-  val untracked = trackedDelta?.let { goalReviewUntrackedPaths(repoRoot) }
+  val untracked = fullDelta?.let { goalReviewUntrackedPaths(repoRoot) }
   val patches = untracked?.let { paths ->
     ownedUntrackedPatches(repoRoot, paths.filterNot { it in baseline.baselineUntrackedPaths })
   }
-  val totalBytes = trackedDelta?.toByteArray()?.size?.plus(patches?.value?.toByteArray()?.size ?: 0)
+  val untrackedBytes = patches?.value?.toByteArray()?.size ?: 0
+  val trackedDelta = fullDelta?.let { full -> withinReviewInputBound(repoRoot, baseline, full, untrackedBytes) }
+  val totalBytes = trackedDelta?.toByteArray()?.size?.plus(untrackedBytes)
   return GoalReviewInputMaterial(
     branch,
     head,

@@ -492,6 +492,68 @@ class GitWorkflowGitOperationsTest {
     assertFalse("preexisting.tmp" in reviewText)
   }
 
+  /**
+   * WE-4860 subtask 3 retired a module: 1.1MB of its 1.7MB delta was the bodies of 170 deleted
+   * files. Blocking there refuses to review the additions and modifications too, so an over-bound
+   * delta keeps every surviving patch in full and reduces the deletions to a named manifest.
+   */
+  @Test
+  fun `an over-bound delta elides deleted bodies and keeps every surviving patch in full`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-elided-deletions")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    // One deleted file large enough on its own to put the delta over the bound.
+    Files.writeString(repoRoot.resolve("retired.txt"), "retired body line\n".repeat(70_000))
+    Files.writeString(repoRoot.resolve("kept.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    val ops = GitWorkflowGitOperations()
+    val branch = git(repoRoot, "branch", "--show-current")
+    val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot, branch)
+    assertTrue(baseline.ok, baseline.error)
+    Files.delete(repoRoot.resolve("retired.txt"))
+    Files.writeString(repoRoot.resolve("kept.txt"), "base\nsurviving edit\n")
+    git(repoRoot, "add", "-A")
+
+    val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline), branch)
+
+    assertTrue(input.ok, input.error)
+    val reviewText = requireNotNull(input.input).reviewText
+    assertContains(reviewText, "deleted files, bodies elided from this review input")
+    assertContains(reviewText, "retired.txt (-70000 lines)")
+    assertContains(reviewText, "request_expansion")
+    assertContains(reviewText, "surviving edit", message = "an elided deletion must not cost the surviving patches")
+    assertFalse(
+      "retired body line" in reviewText,
+      "the elided body is what the reduction exists to drop",
+    )
+  }
+
+  @Test
+  fun `a delta within the bound keeps deleted bodies inline`() {
+    val repoRoot = Files.createTempDirectory("skillbill-goal-review-small-deletion")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("retired.txt"), "retired body line\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    val ops = GitWorkflowGitOperations()
+    val branch = git(repoRoot, "branch", "--show-current")
+    val baseline = ops.captureGoalSubtaskReviewBaseline(repoRoot, branch)
+    assertTrue(baseline.ok, baseline.error)
+    Files.delete(repoRoot.resolve("retired.txt"))
+    git(repoRoot, "add", "-A")
+
+    val input = ops.buildGoalSubtaskReviewInput(repoRoot, requireNotNull(baseline.baseline), branch)
+
+    assertTrue(input.ok, input.error)
+    val reviewText = requireNotNull(input.input).reviewText
+    assertContains(reviewText, "retired body line", message = "an ordinary review input is unchanged by this path")
+    assertFalse("bodies elided" in reviewText)
+  }
+
   @Test
   fun `goal review baseline capture rejects a branch other than the durable child branch`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-baseline-branch")
