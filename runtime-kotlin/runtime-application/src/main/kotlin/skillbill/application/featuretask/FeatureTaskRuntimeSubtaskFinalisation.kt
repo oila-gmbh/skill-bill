@@ -4,6 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.amendHeadCommit
 import skillbill.ports.workflow.captureIndexState
+import skillbill.ports.workflow.deleteCheckpointRefsUnderPrefix
 import skillbill.ports.workflow.headCommitMessage
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.resolveCheckpointRef
@@ -377,6 +378,8 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
  *
  * [allowUnchangedIndex] is set only by finalisation, which amends to replace a provisional message on an
  * already-committed tree. A checkpoint amending with nothing staged is a caller bug and stays refused.
+ * Finalisation also reclaims the subtask checkpoint namespace when a prior abandoned run left a foreign
+ * occupant on the target ref; mid-run checkpoint amends still refuse that overwrite.
  */
 @Suppress("ReturnCount", "LongParameterList") // each early return is one unrecoverable preservation failure
 internal fun WorkflowGitOperations.writeSubtaskCommitPreservingHistory(
@@ -404,11 +407,27 @@ internal fun WorkflowGitOperations.writeSubtaskCommitPreservingHistory(
   }
   val occupant = existing.value.orEmpty().trim()
   if (occupant.isNotBlank() && occupant != decision.ownedHeadSha) {
-    return preAmendPreservationFailure(
-      refName,
-      "that ref already preserves '$occupant' and writing '${decision.ownedHeadSha}' over it would discard " +
-        "the only reachability that commit has; the checkpoint sequence restarted, so this ref name is not " +
-        "this checkpoint's to reuse",
+    if (!allowUnchangedIndex) {
+      return preAmendPreservationFailure(
+        refName,
+        "that ref already preserves '$occupant' and writing '${decision.ownedHeadSha}' over it would discard " +
+          "the only reachability that commit has; the checkpoint sequence restarted, so this ref name is not " +
+          "this checkpoint's to reuse",
+      )
+    }
+    val prefix = featureTaskRuntimeSubtaskCheckpointRefPrefix(identity.issueKey, identity.subtaskId)
+    val swept = deleteCheckpointRefsUnderPrefix(repoRoot, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, prefix)
+    if (!swept.ok) {
+      return preAmendPreservationFailure(
+        refName,
+        "stale checkpoint refs under '$prefix' could not be swept before reclaiming the ref (${swept.error})",
+      )
+    }
+    record(
+      "seam=writeSubtaskCommitPreservingHistory value_used='swept ${swept.value.orEmpty()} stale checkpoint " +
+        "ref(s) under $prefix (foreign occupant $occupant)' value_expected=checkpoint ref '$refName' free for " +
+        "pre-amend '${decision.ownedHeadSha}' cause=commit_push finalisation reclaims the subtask checkpoint " +
+        "namespace when a prior run left a foreign occupant",
     )
   }
   val written =

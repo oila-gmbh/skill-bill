@@ -51,6 +51,49 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
   }
 
   @Test
+  fun `commit_push sweeps foreign prior-run checkpoint refs and still finalises`() {
+    val repo = repoWithRemote()
+    Files.writeString(repo.root.resolve("stale.txt"), "abandoned prior run\n")
+    git(repo.root, "add", "stale.txt")
+    git(repo.root, "commit", "-m", "abandoned prior checkpoint")
+    val staleSha = git(repo.root, "rev-parse", "HEAD")
+    val staleRef0 = identity.checkpointRefName(0)
+    val staleRef1 = identity.checkpointRefName(1)
+    git(repo.root, "update-ref", staleRef0, staleSha)
+    git(repo.root, "update-ref", staleRef1, staleSha)
+    git(repo.root, "reset", "--hard", "HEAD~1")
+
+    Files.writeString(repo.root.resolve("owned.txt"), "checkpoint\n")
+    git(repo.root, "add", "owned.txt")
+    git(repo.root, "commit", "-m", "$issueKey: subtask $subtaskId\n\nprovisional\n\n${identity.trailer}")
+    val checkpointSha = git(repo.root, "rev-parse", "HEAD")
+    Files.writeString(repo.root.resolve("owned.txt"), "final\n")
+    records.clear()
+
+    val finalised = assertIs<FeatureTaskRuntimeSubtaskFinalised>(
+      finalise(repo, durableCommitSha = checkpointSha, paths = listOf("owned.txt")),
+    )
+
+    assertTrue(records.any { it.contains("foreign occupant") && it.contains("swept") })
+    assertEquals(
+      checkpointSha,
+      git(repo.root, "rev-parse", staleRef0),
+      "sequence 0 must preserve the pre-amend commit after reclaim",
+    )
+    assertEquals(
+      staleRef0,
+      git(
+        repo.root,
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/skill-bill/checkpoints/$issueKey/$subtaskId/",
+      ),
+      "prior-run sequence refs must be gone after the sweep",
+    )
+    assertEquals(finalised.commitSha, remoteBranchTip(repo.remote))
+  }
+
+  @Test
   fun `a subtask that never checkpointed ends with one created commit carrying the enumerated work`() {
     val repo = repoWithRemote()
     val baseSha = git(repo.root, "rev-parse", "HEAD")
