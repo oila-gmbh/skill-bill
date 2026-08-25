@@ -6,6 +6,8 @@ import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
 import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.review.toBoundedPayload
+import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ParallelReviewMergeResult
@@ -127,15 +129,46 @@ internal object FeatureTaskRuntimeReviewEnvelope {
   internal fun commitFocusedAccounting(
     result: ParallelCodeReviewResult,
     resolvedTier: CodeReviewExecutionMode,
+  ): GoalSubtaskCommitFocusedAccounting? =
+    commitFocusedAccountingFromBoundedPayload(result.accountingSummary?.toBoundedPayload(), resolvedTier)
+      ?: commitFocusedAccountingFromExecution(
+        routing = result.accountingSummary?.commitRouting,
+        parentAnalysis = result.accountingSummary?.parentAnalysis,
+        integrationAccounting = result.accountingSummary?.integration,
+        integrationPass = result.integration,
+        integrationNotApplicableReason = result.coverage?.integrationNotApplicableReason,
+        resolvedTier = resolvedTier,
+      )
+
+  internal fun commitFocusedAccountingFromBoundedPayload(
+    boundedPayload: Map<String, Any?>?,
+    resolvedTier: CodeReviewExecutionMode,
   ): GoalSubtaskCommitFocusedAccounting? {
-    val summary = result.accountingSummary ?: return null
-    val routing = summary.commitRouting
-      ?.takeIf { resolvedTier == CodeReviewExecutionMode.DELEGATED && it.commitCount >= 1 }
-      ?: return null
-    val accounting = summary.integration
-    val pass = result.integration
-    val terminalOutcome = accounting?.terminalOutcome
-      ?: pass?.terminalOutcome?.wireValue
+    val payload = boundedPayload?.let(JsonSupport::anyToStringAnyMap) ?: return null
+    val routingMap = payload["commit_routing_accounting"]?.let(JsonSupport::anyToStringAnyMap)
+    val integrationMap = payload["integration"]?.let(JsonSupport::anyToStringAnyMap)
+    val parentAnalysisMap = payload["parent_analysis_consumption"]?.let(JsonSupport::anyToStringAnyMap)
+    return commitFocusedAccountingFromMaps(
+      routingMap = routingMap,
+      parentAnalysisMap = parentAnalysisMap,
+      integrationMap = integrationMap,
+      resolvedTier = resolvedTier,
+    )
+  }
+
+  private fun commitFocusedAccountingFromExecution(
+    routing: skillbill.review.context.model.ReviewCommitRoutingAccounting?,
+    parentAnalysis: skillbill.review.context.model.ReviewParentAnalysisConsumption?,
+    integrationAccounting: skillbill.review.context.model.ReviewIntegrationAccounting?,
+    integrationPass: ReviewIntegrationPassOutcome?,
+    integrationNotApplicableReason: String?,
+    resolvedTier: CodeReviewExecutionMode,
+  ): GoalSubtaskCommitFocusedAccounting? {
+    if (routing == null || resolvedTier != CodeReviewExecutionMode.DELEGATED || routing.commitCount < 1) {
+      return null
+    }
+    val terminalOutcome = integrationAccounting?.terminalOutcome
+      ?: integrationPass?.terminalOutcome?.wireValue
       ?: GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE
     return GoalSubtaskCommitFocusedAccounting(
       commitSequenceDigest = routing.commitSequenceDigest,
@@ -148,34 +181,57 @@ internal object FeatureTaskRuntimeReviewEnvelope {
       focusedPairCount = routing.focusedPairCount,
       skippedPairCount = routing.skippedPairCount,
       incompleteLanes = routing.incompleteLanes,
-      parentAnalysisPairs = summary.parentAnalysis?.analyzedPairs,
-      parentAnalysisBytes = summary.parentAnalysis?.analyzedBytes,
+      parentAnalysisPairs = parentAnalysis?.analyzedPairs,
+      parentAnalysisBytes = parentAnalysis?.analyzedBytes,
       integrationSkipReason = when (terminalOutcome) {
         GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE ->
-          accounting?.skipReason?.takeIf { it.isNotBlank() }
-            ?: pass?.skipReason?.takeIf { it.isNotBlank() }
-            ?: result.coverage?.integrationNotApplicableReason?.takeIf { it.isNotBlank() }
+          integrationAccounting?.skipReason?.takeIf { it.isNotBlank() }
+            ?: integrationPass?.skipReason?.takeIf { it.isNotBlank() }
+            ?: integrationNotApplicableReason?.takeIf { it.isNotBlank() }
             ?: "commit-focused accounting was recorded without a settled integration pass"
-        else -> accounting?.skipReason ?: pass?.skipReason
+        else -> integrationAccounting?.skipReason ?: integrationPass?.skipReason
       },
-      integrationFindingCount = accounting?.findingCount ?: pass?.findings?.size,
+      integrationFindingCount = integrationAccounting?.findingCount ?: integrationPass?.findings?.size,
     )
   }
 
-  internal fun commitFocusedAccounting(
-    output: Map<String, Any?>,
+  private fun commitFocusedAccountingFromMaps(
+    routingMap: Map<String, Any?>?,
+    parentAnalysisMap: Map<String, Any?>?,
+    integrationMap: Map<String, Any?>?,
     resolvedTier: CodeReviewExecutionMode,
   ): GoalSubtaskCommitFocusedAccounting? {
-    if (resolvedTier != CodeReviewExecutionMode.DELEGATED) return null
-    val produced = output["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: return null
-    val accounting = produced["commit_focused_accounting"]
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: return null
-    return GoalSubtaskCommitFocusedAccounting.fromArtifactMap(
-      accounting,
-      "produced_outputs.commit_focused_accounting",
+    if (routingMap == null || resolvedTier != CodeReviewExecutionMode.DELEGATED) return null
+    val commitCount = (routingMap["commit_count"] as? Number)?.toInt() ?: return null
+    if (commitCount < 1) return null
+    val commitSequenceDigest = (routingMap["commit_sequence_digest"] as? String)?.trim().orEmpty()
+    if (commitSequenceDigest.isBlank()) return null
+    val terminalOutcome = (integrationMap?.get("terminal_outcome") as? String)?.trim()
+      ?: GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE
+    return GoalSubtaskCommitFocusedAccounting(
+      commitSequenceDigest = commitSequenceDigest,
+      commitCount = commitCount,
+      laneCount = (routingMap["lane_count"] as? Number)?.toInt() ?: 0,
+      focusedCommitCount = (routingMap["focused_commit_count"] as? Number)?.toInt() ?: 0,
+      skippedCommitCount = (routingMap["skipped_commit_count"] as? Number)?.toInt() ?: 0,
+      integrationTerminalOutcome = terminalOutcome,
+      routingDigest = (routingMap["routing_digest"] as? String)?.trim()?.takeIf(String::isNotBlank),
+      focusedPairCount = (routingMap["focused_pair_count"] as? Number)?.toInt(),
+      skippedPairCount = (routingMap["skipped_pair_count"] as? Number)?.toInt(),
+      incompleteLanes = (routingMap["incomplete_lanes"] as? List<*>)
+        ?.mapNotNull { it as? String }
+        ?.map(String::trim)
+        ?.filter(String::isNotBlank)
+        .orEmpty(),
+      parentAnalysisPairs = (parentAnalysisMap?.get("analyzed_pairs") as? Number)?.toInt(),
+      parentAnalysisBytes = (parentAnalysisMap?.get("analyzed_bytes") as? Number)?.toLong(),
+      integrationSkipReason = when (terminalOutcome) {
+        GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE ->
+          (integrationMap?.get("skip_reason") as? String)?.trim()?.takeIf(String::isNotBlank)
+            ?: "commit-focused accounting was recorded without a settled integration pass"
+        else -> (integrationMap?.get("skip_reason") as? String)?.trim()?.takeIf(String::isNotBlank)
+      },
+      integrationFindingCount = (integrationMap?.get("finding_count") as? Number)?.toInt(),
     )
   }
 }

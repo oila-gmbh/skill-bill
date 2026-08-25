@@ -4,6 +4,7 @@ import skillbill.application.goalrunner.GoalSubtaskReviewImport
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewPassClaimSnapshot
+import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 
 internal sealed interface RuntimeOwnedReviewImportResolution {
   data class ResolvedReviewImport(val review: GoalSubtaskReviewImport) : RuntimeOwnedReviewImportResolution
@@ -23,6 +24,15 @@ internal sealed interface RuntimeOwnedFindingVerdictsReadResolution {
   data class ResolvedFindingVerdicts(val verdicts: List<ReviewFindingVerdict>) :
     RuntimeOwnedFindingVerdictsReadResolution
   data class ReadError(val cause: String) : RuntimeOwnedFindingVerdictsReadResolution
+}
+
+internal sealed interface RuntimeOwnedCommitFocusedAccountingLoadResolution {
+  data class AbsentSequence(val cause: String) : RuntimeOwnedCommitFocusedAccountingLoadResolution
+
+  data class Established(val accounting: GoalSubtaskCommitFocusedAccounting) :
+    RuntimeOwnedCommitFocusedAccountingLoadResolution
+
+  data class Unreadable(val cause: String) : RuntimeOwnedCommitFocusedAccountingLoadResolution
 }
 
 internal class RuntimeOwnedFactUnavailable(message: String) : IllegalStateException(message)

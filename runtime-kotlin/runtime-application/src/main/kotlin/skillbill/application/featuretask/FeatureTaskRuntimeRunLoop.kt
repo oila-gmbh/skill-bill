@@ -11,6 +11,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScope
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
+import skillbill.application.featuretask.model.RuntimeOwnedCommitFocusedAccountingLoadResolution
 import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
 import skillbill.application.featuretask.model.RuntimeOwnedReviewImportResolution
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
@@ -74,6 +75,7 @@ import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.telemetry.estimation.estimateTokens
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -558,9 +560,35 @@ internal class FeatureTaskRuntimeRunLoop(
       reviewState.codeReviewMode,
       reviewState.reservedPassNumber ?: 1,
     )
-    val commitFocusedAccounting = FeatureTaskRuntimeReviewEnvelope.commitFocusedAccounting(outputMap, resolvedTier)
-    if (commitFocusedAccounting == null) {
-      recordCommitFocusedAccountingAbsence()
+    val commitFocusedAccounting = when (resolvedTier) {
+      CodeReviewExecutionMode.INLINE -> {
+        recordCommitFocusedAccountingAbsence()
+        null
+      }
+      else -> {
+        val loadResult = recorder.loadRuntimeOwnedCommitFocusedAccounting(
+          reviewImport.reviewRunId,
+          resolvedTier,
+          request.dbPathOverride,
+        )
+        when (val resolution = resolveDelegatedCommitFocusedAccounting(loadResult)) {
+          is DelegatedCommitFocusedAccountingResolution.Resolved -> {
+            if (resolution.accounting == null) recordCommitFocusedAccountingAbsence()
+            resolution.accounting
+          }
+          is DelegatedCommitFocusedAccountingResolution.UnreadableBlocked -> {
+            val unreadable = loadResult as RuntimeOwnedCommitFocusedAccountingLoadResolution.Unreadable
+            recordRuntimeOwnedFactUnavailable(
+              seam = "FeatureTaskRuntimeRunLoop.completeReservedGoalReviewPass",
+              expected = "runtime-owned commit-focused accounting",
+              actual = "unreadable",
+              cause = "persisted accounting for review run '${reviewImport.reviewRunId}' could not be read: " +
+                unreadable.cause,
+            )
+            return resolution.reason
+          }
+        }
+      }
     }
     return if (
       goalContinuationRecorder.completeGoalReviewPass(

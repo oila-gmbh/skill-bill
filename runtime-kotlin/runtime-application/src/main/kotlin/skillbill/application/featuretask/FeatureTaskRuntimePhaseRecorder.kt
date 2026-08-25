@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
+import skillbill.application.featuretask.model.RuntimeOwnedCommitFocusedAccountingLoadResolution
 import skillbill.application.featuretask.model.RuntimeOwnedFactUnavailable
 import skillbill.application.featuretask.model.RuntimeOwnedFindingVerdictsReadResolution
 import skillbill.application.featuretask.model.RuntimeOwnedReviewImportResolution
@@ -39,6 +40,7 @@ import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.model.evidenceKey
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
+import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
@@ -907,6 +909,55 @@ class FeatureTaskRuntimePhaseRecorder(
       val unioned = unionReviewPassClaims(existing, findings)
       if (recorded != null && existing == unioned) return@requiredWrite
       unitOfWork.reviews.recordReviewPassClaims(reviewRunId, unioned)
+    }
+  }
+
+  internal fun loadRuntimeOwnedCommitFocusedAccounting(
+    reviewRunId: String,
+    resolvedTier: CodeReviewExecutionMode,
+    dbOverride: String? = null,
+  ): RuntimeOwnedCommitFocusedAccountingLoadResolution {
+    if (reviewRunId.isBlank()) {
+      return RuntimeOwnedCommitFocusedAccountingLoadResolution.AbsentSequence("review run id is blank")
+    }
+    return database.read(dbOverride) { unitOfWork ->
+      val record = unitOfWork.reviews.loadAccounting(reviewRunId)
+      if (record == null) {
+        return@read RuntimeOwnedCommitFocusedAccountingLoadResolution.AbsentSequence(
+          "no persisted accounting row for review run '$reviewRunId'",
+        )
+      }
+      val routingMap = JsonSupport.anyToStringAnyMap(record.boundedPayload)
+        ?.get("commit_routing_accounting")
+        ?.let(JsonSupport::anyToStringAnyMap)
+      if (routingMap == null) {
+        return@read RuntimeOwnedCommitFocusedAccountingLoadResolution.AbsentSequence(
+          "accounting row has no commit_routing_accounting section",
+        )
+      }
+      val commitCount = (routingMap["commit_count"] as? Number)?.toInt()
+      if (commitCount == null || commitCount < 1) {
+        return@read RuntimeOwnedCommitFocusedAccountingLoadResolution.AbsentSequence(
+          "accounting row has no real commit sequence (commit_count=$commitCount)",
+        )
+      }
+      try {
+        val accounting = FeatureTaskRuntimeReviewEnvelope.commitFocusedAccountingFromBoundedPayload(
+          record.boundedPayload,
+          resolvedTier,
+        )
+        if (accounting != null) {
+          RuntimeOwnedCommitFocusedAccountingLoadResolution.Established(accounting)
+        } else {
+          RuntimeOwnedCommitFocusedAccountingLoadResolution.Unreadable(
+            "commit-focused accounting row with commit_count=$commitCount could not be mapped",
+          )
+        }
+      } catch (error: Exception) {
+        RuntimeOwnedCommitFocusedAccountingLoadResolution.Unreadable(
+          error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty(),
+        )
+      }
     }
   }
 

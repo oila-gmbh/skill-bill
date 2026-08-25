@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-08-25] SKILL-208 subtask 2 — Runtime-held facts and runtime-minted evidence
+Areas: runtime-application/featuretask, docs
+- Goal-subtask review completion loads commit-focused accounting from runtime-owned review accounting rows via `loadRuntimeOwnedCommitFocusedAccounting`; agent `commit_focused_accounting` echoes are unused.
+- Inline passes and absent/blank commit sequences record absence; unreadable rows emit an observability record and block delegated completion.
+- Envelope helpers map accounting from bounded payloads or live execution state; observability policy lists commit-focused accounting among unestablishable runtime-owned facts.
+- Pattern: mint R1 facts the runtime can observe (`RuntimeOwnedCommitFocusedAccountingLoadResolution`) instead of reading producer claims. reusable
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-25] SKILL-208 subtask 1 — Demote payload shape policing to diagnostics
 Areas: runtime-application/featuretask
 - `implement_fix` repair-receipt settlement records over-length text, path-shaped symbols, finding-id aliases, and coverage shortfalls as diagnostics, then advances; only receipt write failure still blocks.
@@ -61,17 +70,6 @@ Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-infr
 - Limitation: phase envelope remains typed JSON until subtask 4; retired schemas and repair passes stay until subtask 5.
 Feature flag: N/A
 Acceptance criteria: 11/11 implemented
-
-## [2026-08-25] SKILL-208 subtask 2 — Runtime-held facts and runtime-minted evidence
-Areas: runtime-application/{featuretask,goalrunner,review}, runtime-domain/taskruntime, orchestration/contracts, docs
-- Review run id and finding set now come from the runtime's own review import; phase prompts no longer ask agents to echo either, and measurement consumers read the same import.
-- Commit-focused accounting is recorded from runtime-owned review execution state, or recorded absent with a record when no real commit sequence exists.
-- Repository checkpoints, changed_paths, and gate run counts are taken from runtime state; agent-supplied echoes are ignored rather than validated.
-- Mutating-phase idempotency compares the repository against the runtime-resolved checkpoint; reconciled_state leaves the schema and prompt.
-- Pattern: mint facts the runtime can observe (R1) instead of reading producer claims; unestablishable facts emit a record and block or degrade. reusable
-- Limitation: verdict/settlement derivation and plan-obligation closure remain subtask 3; envelope/prose output remains subtask 4.
-Feature flag: N/A
-Acceptance criteria: 8/8 implemented
 
 ## [2026-08-24] SKILL-207 subtask 1 — Phase I/O envelope and prose review handoff
 Areas: runtime-application/{featuretask,model,review}, runtime-domain/{agent,review}, runtime-cli/codereview
