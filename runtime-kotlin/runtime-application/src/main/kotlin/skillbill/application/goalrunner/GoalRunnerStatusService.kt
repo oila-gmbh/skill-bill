@@ -365,7 +365,15 @@ class GoalRunnerStatusService(
   ): ExecutionLiveness {
     val workflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
       ?: return resolveParentExecutionLiveness(parentWorkflowId, dbPathOverride)
-    return runCatching {
+    val childLiveness = resolveChildExecutionLiveness(workflowId, dbPathOverride)
+    if (childLiveness == ExecutionLiveness.LIVE || childLiveness == ExecutionLiveness.UNKNOWN) {
+      return childLiveness
+    }
+    return resolveParentExecutionLiveness(parentWorkflowId, dbPathOverride)
+  }
+
+  private fun resolveChildExecutionLiveness(workflowId: String, dbPathOverride: String?): ExecutionLiveness =
+    runCatching {
       if (phaseRecorder.existingWorkflowMode(workflowId, dbPathOverride) != FeatureTaskWorkflowMode.RUNTIME) {
         ExecutionLiveness.UNKNOWN
       } else {
@@ -377,7 +385,6 @@ class GoalRunnerStatusService(
         }
       }
     }.getOrDefault(ExecutionLiveness.UNKNOWN)
-  }
 
   private fun resolveParentExecutionLiveness(parentWorkflowId: String, dbPathOverride: String?): ExecutionLiveness =
     runCatching {

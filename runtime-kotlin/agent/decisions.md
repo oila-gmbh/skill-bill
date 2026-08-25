@@ -4,6 +4,27 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-25] Goal liveness falls back to the parent lease when the child lease is idle
+
+Context: SKILL-208's goal runner was live with a fresh parent execution lease,
+but status reported `execution_liveness: idle` because the child worker lease
+was still the expired implement-phase row. The IDE maps idle to paused, so the
+plugin showed paused while the validate agent was running.
+
+Decision: child LIVE or UNKNOWN still wins. Child IDLE (missing or expired
+worker lease, or a dead local owner) falls through to the parent goal
+execution lease before status reports idle.
+
+Reason: The parent lease is the authority that a goal runner still owns the
+goal. Child leases are phase-scoped and routinely lag across resume, runtime-
+owned gates, and agent turns. Treating an idle child as global idle hides a
+live parent.
+
+Alternatives considered: Require every phase to renew the child lease before
+status can be live (rejected: races with runtime-owned work and resume). Change
+only the IDE mapping so idle stays active (rejected: idle must still mean no
+live runner when both leases are gone).
+
 ## [2026-08-25] Validate repair Task must not re-invoke collect-all
 
 Context: SKILL-208 validate sat "live" for hours while the repair agent ran

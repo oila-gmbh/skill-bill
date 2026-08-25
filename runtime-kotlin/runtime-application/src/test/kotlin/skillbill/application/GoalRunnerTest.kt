@@ -1772,6 +1772,40 @@ class GoalRunnerStatusProjectionTest {
   }
 
   @Test
+  fun `execution liveness falls back to the parent lease when the child worker lease is idle`() {
+    val harness = GoalStatusPhaseLedgerHarness()
+    harness.openRuntimeWorkflow("wfl-child-idle")
+    harness.seedOwnership("wfl-child-idle", expiresAt = "2026-07-27T11:59:59Z")
+    val store = InMemoryGoalManifestStore(
+      manifest(subtaskCount = 1)
+        .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"))
+        .withWorkflowId(1, "wfl-child-idle"),
+    ).apply {
+      executionLeaseForTest = GoalRunnerExecutionLease(
+        generation = 1,
+        ownerToken = "parent-owner",
+        hostIdentity = "host",
+        bootIdentity = "boot",
+        pid = 42,
+        processBirthToken = "birth-42",
+        heartbeatAt = "2026-07-27T11:59:50Z",
+        expiresAt = "2026-07-27T12:00:01Z",
+      )
+    }
+    val service = GoalRunnerStatusService(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = harness.recorder,
+      clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
+    )
+
+    assertEquals(ExecutionLiveness.LIVE, requireNotNull(service.status(goalStatusRequest())).executionLiveness)
+
+    store.executionLeaseForTest = null
+    assertEquals(ExecutionLiveness.IDLE, requireNotNull(service.status(goalStatusRequest())).executionLiveness)
+  }
+
+  @Test
   fun `status projection includes latest observability and requested diff stat when present`() {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)

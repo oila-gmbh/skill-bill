@@ -1,5 +1,13 @@
 # featuretask runtime boundary history
 
+## [2026-08-25] Goal execution liveness falls back to the parent lease
+Areas: runtime-application/goalrunner
+- When a child workflow exists but its worker lease is missing or expired, status reads the parent goal execution lease before reporting idle.
+- Prevents the IDE from projecting paused while the goal runner is still live and driving a phase without a fresh child lease.
+- Pattern: child LIVE/UNKNOWN wins; child IDLE falls through to parent ownership. reusable
+Feature flag: N/A
+Acceptance criteria: n/a (main hotfix)
+
 ## [2026-08-25] Validate repair Task forbids re-running collect-all
 Areas: runtime-application/featuretask
 - Runtime-owned validate repair turns use `validateRepairPhaseTask` as the Task line when findings are projected; it forbids `bill-code-check`, pack collect-all, and `check --continue`.
