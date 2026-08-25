@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-08-25] SKILL-208 subtask 1 — Demote payload shape policing to diagnostics
+Areas: runtime-application/featuretask
+- `implement_fix` repair-receipt settlement records over-length text, path-shaped symbols, finding-id aliases, and coverage shortfalls as diagnostics, then advances; only receipt write failure still blocks.
+- Routing-bearing fields stay required: audit without `verdict`/`gaps`, and verify_findings without `verdict`/`finding_dispositions`, remain indecisive.
+- Pattern: shape diagnostics ride the settled path via `RepairReceiptSettlement.diagnostic` and rejected-output rows; they must not charge the correction budget. reusable
+- Limitation: envelope presence and routing keys are unchanged until later SKILL-208 derivation work.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-25] Goal execution liveness falls back to the parent lease
 Areas: runtime-application/goalrunner
 - When a child workflow exists but its worker lease is missing or expired, status reads the parent goal execution lease before reporting idle.
@@ -63,16 +72,6 @@ Areas: runtime-application/{featuretask,goalrunner,review}, runtime-domain/taskr
 - Limitation: verdict/settlement derivation and plan-obligation closure remain subtask 3; envelope/prose output remains subtask 4.
 Feature flag: N/A
 Acceptance criteria: 8/8 implemented
-
-## [2026-08-25] SKILL-208 subtask 1 — Demote payload shape policing to diagnostics
-Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-infra-fs/contracts/workflow
-- Nested repair-receipt and phase-output entry constraints now emit demoted violations instead of blocking settlement or charging correction budgets.
-- Structural-repair and duplicate-key outcomes remain observable, while routing-bearing fields (`audit` verdict/gaps and `verify_findings` verdict/finding dispositions) stay required.
-- Finding identity aliases and malformed verified dispositions are tolerated at projection boundaries with bounded fallback values so the next verification pass can re-decide from the repository.
-- Pattern: separate payload-shape diagnostics from the fields that control phase routing. reusable
-- Limitation: envelope requirements and routing-field validation remain unchanged; demoted schema rules are retained for diagnostics.
-Feature flag: N/A
-Acceptance criteria: 7/7 implemented
 
 ## [2026-08-24] SKILL-207 subtask 1 — Phase I/O envelope and prose review handoff
 Areas: runtime-application/{featuretask,model,review}, runtime-domain/{agent,review}, runtime-cli/codereview

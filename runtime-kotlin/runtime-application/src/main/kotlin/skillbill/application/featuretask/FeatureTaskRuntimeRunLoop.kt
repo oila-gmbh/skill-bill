@@ -1697,19 +1697,16 @@ internal class FeatureTaskRuntimeRunLoop(
     receipt: FeatureTaskRuntimeRepairReceipt,
     reviewState: GoalSubtaskReviewState,
   ): RepairReceiptSettlement {
-    val omitted = featureTaskRuntimeRepairReceiptOmittedFindings(
+    val coverageRejection = featureTaskRuntimeRepairReceiptSettleRejection(
       receipt,
       reviewState,
       refutedCarriedFindingIds(reviewState),
     )
-    if (omitted.isNotEmpty()) {
-      recordRepairReceiptCoverageDegradation(omitted)
-    }
     val writeFailure = persistImplementFixRepairReceipt(receipt)
-    return if (writeFailure != null) {
-      RepairReceiptSettlement.writeFailed(writeFailure)
-    } else {
-      RepairReceiptSettlement.None
+    return when {
+      writeFailure != null -> RepairReceiptSettlement.writeFailed(writeFailure)
+      coverageRejection != null -> RepairReceiptSettlement.diagnostic(coverageRejection)
+      else -> RepairReceiptSettlement.None
     }
   }
 
@@ -1731,17 +1728,6 @@ internal class FeatureTaskRuntimeRunLoop(
       )
       emptySet()
     }
-  }
-
-  private fun recordRepairReceiptCoverageDegradation(
-    omitted: List<skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding>,
-  ) {
-    diagnostics.warning(
-      "seam=FeatureTaskRuntimeRunLoop.settledRepairReceipt value_used='${omitted.size} omitted findings' " +
-        "value_expected='every carried finding named in prose' cause=coverage the runtime cannot " +
-        "establish from repair-receipt shape; the next verification pass re-decides from the tree " +
-        "(${omitted.joinToString(", ") { featureTaskRuntimeCompactFindingRef(it) }})",
-    )
   }
 
   private fun repairReceiptAnchor(reviewState: GoalSubtaskReviewState): RepairReceiptAnchor? {
