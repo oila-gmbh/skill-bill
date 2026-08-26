@@ -45,6 +45,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
+      # Spotless ratchetFrom("origin/main") fails task-graph creation when the
+      # shallow default checkout has no origin/main (hosted ubuntu). Self-hosted
+      # clones usually already have it; this fetch is cheap and idempotent.
+      - name: Fetch origin/main for Spotless ratchet
+        run: git fetch --no-tags --prune --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:

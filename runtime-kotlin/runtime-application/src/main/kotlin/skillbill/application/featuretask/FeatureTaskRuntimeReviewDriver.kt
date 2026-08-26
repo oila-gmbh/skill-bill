@@ -36,7 +36,6 @@ fun interface FeatureTaskRuntimeReviewDriver {
           formattedOutput = "verdict: approved",
         ),
         lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
-        lane2 = ParallelReviewLaneStatus(agentId = "", success = true),
       )
     }
   }
@@ -44,7 +43,6 @@ fun interface FeatureTaskRuntimeReviewDriver {
 
 internal data class FeatureTaskRuntimeReviewDriverAgents(
   val agent1Id: String,
-  val parallelReviewAgent: String?,
 )
 
 internal data class FeatureTaskRuntimeReviewDriverPass(
@@ -78,7 +76,6 @@ internal object FeatureTaskRuntimeReviewDriverMapper {
     val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pass.pinnedMode, pass.passNumber)
     return ParallelCodeReviewRequest(
       agent1Id = agents.agent1Id,
-      agent2Id = null,
       scope = ParallelReviewScope.UNSTAGED,
       repoRoot = workspace.repoRoot,
       timeout = workspace.timeout,

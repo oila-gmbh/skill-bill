@@ -6,8 +6,6 @@ import com.github.ajalt.clikt.core.CliktCommand
 import me.tatarka.inject.annotations.Inject
 import skillbill.cli.agentaddon.AgentAddonCommand
 import skillbill.cli.codereview.CodeReviewCommand
-import skillbill.cli.codereview.CodeReviewMergeCommand
-import skillbill.cli.codereview.CodeReviewParallelCommand
 import skillbill.cli.config.ConfigCommand
 import skillbill.cli.featuretask.FeatureTaskRuntimeDeprecatedRunCommand
 import skillbill.cli.featuretask.FeatureTaskRuntimeRunCommand
@@ -60,8 +58,6 @@ class UtilityCliCommandGroup(
   doctorCommand: DoctorCliCommand,
   removeCommand: RemoveCliCommand,
   codeReviewCommand: CodeReviewCommand,
-  codeReviewParallelCommand: CodeReviewParallelCommand,
-  codeReviewMergeCommand: CodeReviewMergeCommand,
   configCommand: ConfigCommand,
   workCommands: WorkTopLevelCommands,
   agentAddonCommand: AgentAddonCommand,
@@ -78,8 +74,6 @@ class UtilityCliCommandGroup(
       doctorCommand,
       removeCommand,
       codeReviewCommand,
-      codeReviewParallelCommand,
-      codeReviewMergeCommand,
       configCommand,
       workCommands.command,
       agentAddonCommand,

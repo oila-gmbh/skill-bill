@@ -9,7 +9,6 @@ import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.RepoLocalConfigKey
 import skillbill.config.model.ValidationGateRepoConfig
 import skillbill.config.model.ValidationGateRepoConfigParse
-import skillbill.config.model.parseCodeReviewParallelAgent
 import skillbill.config.model.parseSpecType
 import skillbill.config.model.parseValidationGateRepoConfig
 import skillbill.error.MalformedRepoLocalConfigError
@@ -37,15 +36,13 @@ class FileSystemRepoLocalConfig(
     }
     val payload = readConfigPayload(configPath)
     val raw = parseConfigMap(configPath, payload)
+    rejectRemovedParallelAgentConfig(configPath, raw)
     return ReadRepoLocalConfigResult(buildConfig(configPath, raw))
   }
 
   private fun buildConfig(path: Path, raw: Map<String, Any?>): RepoLocalConfig = RepoLocalConfig(
     specType = parseKnownKey(path, raw, RepoLocalConfigKey.SPEC_TYPE) { value -> parseSpecType(value) }
       ?: RepoLocalConfig.defaults().specType,
-    codeReviewParallelAgent = parseKnownKey(path, raw, RepoLocalConfigKey.CODE_REVIEW_PARALLEL_AGENT) { value ->
-      parseCodeReviewParallelAgent(value)
-    } ?: RepoLocalConfig.defaults().codeReviewParallelAgent,
     reviewContextBudget = if (raw.containsKey("review_context_budget")) {
       parseReviewContextBudget(path, raw["review_context_budget"])
     } else {
@@ -57,6 +54,18 @@ class FileSystemRepoLocalConfig(
       ValidationGateRepoConfig.defaults()
     },
   )
+
+  private fun rejectRemovedParallelAgentConfig(path: Path, raw: Map<String, Any?>) {
+    if (!raw.containsKey(REMOVED_PARALLEL_AGENT_KEY)) return
+    val normalized = raw[REMOVED_PARALLEL_AGENT_KEY]?.toString()?.trim()?.lowercase()
+    if (normalized.isNullOrBlank() || normalized == "none") return
+    throw MalformedRepoLocalConfigError(
+      path = path.toString(),
+      key = REMOVED_PARALLEL_AGENT_KEY,
+      value = raw[REMOVED_PARALLEL_AGENT_KEY].toString(),
+      reason = "names a removed capability; delete this key or set it to none.",
+    )
+  }
 
   private fun parseValidationGate(path: Path, value: Any?): ValidationGateRepoConfig =
     when (val parsed = parseValidationGateRepoConfig(value)) {
@@ -153,6 +162,8 @@ class FileSystemRepoLocalConfig(
     throw UnreadableRepoLocalConfigError(path.toString(), error)
   }
 }
+
+private const val REMOVED_PARALLEL_AGENT_KEY = "code_review_parallel_agent"
 
 private fun budgetMapping(path: Path, key: String, value: Any?): Map<*, *> {
   if (value == null) malformedBudget(path, key, value, "must be a mapping, not null.")

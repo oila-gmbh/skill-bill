@@ -294,7 +294,6 @@ internal fun terminalRetryDirective(priorTerminalFailure: String?): String {
  */
 internal data class ReviewExecutionDirectiveInputs(
   val codeReviewMode: CodeReviewExecutionMode,
-  val parallelReviewAgent: String?,
   val goalSubtaskReviewInput: GoalSubtaskReviewInput?,
   val reviewPassNumber: Int?,
   val resolvedReviewTier: CodeReviewExecutionMode?,

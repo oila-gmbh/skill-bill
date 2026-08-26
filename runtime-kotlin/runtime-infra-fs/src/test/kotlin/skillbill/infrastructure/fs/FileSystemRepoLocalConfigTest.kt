@@ -19,17 +19,11 @@ class FileSystemRepoLocalConfigTest {
 
   @Test
   fun `reads typed values from a valid config file`() {
-    val repoRoot = writeConfig(
-      """
-      spec_type: linear
-      code_review_parallel_agent: claude
-      """.trimIndent(),
-    )
+    val repoRoot = writeConfig("spec_type: linear")
 
     val config = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
 
     assertEquals(SpecType.LINEAR, config.specType)
-    assertEquals("claude", config.codeReviewParallelAgent)
   }
 
   @Test
@@ -40,7 +34,6 @@ class FileSystemRepoLocalConfigTest {
 
     assertEquals(RepoLocalConfig.defaults(), config)
     assertEquals(SpecType.LOCAL, config.specType)
-    assertEquals(RepoLocalConfig.NO_PARALLEL_AGENT, config.codeReviewParallelAgent)
   }
 
   @Test
@@ -50,7 +43,6 @@ class FileSystemRepoLocalConfigTest {
     val config = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
 
     assertEquals(SpecType.LINEAR, config.specType)
-    assertEquals(RepoLocalConfig.NO_PARALLEL_AGENT, config.codeReviewParallelAgent)
   }
 
   @Test
@@ -99,15 +91,30 @@ class FileSystemRepoLocalConfigTest {
   }
 
   @Test
-  fun `invalid parallel agent value loud-fails`() {
-    val repoRoot = writeConfig("code_review_parallel_agent: not-an-agent")
+  fun `non-none parallel agent config loud-fails naming removed capability`() {
+    val repoRoot = writeConfig("code_review_parallel_agent: claude")
 
     val error = assertFailsWith<MalformedRepoLocalConfigError> {
       adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
     }
 
     assertEquals("code_review_parallel_agent", error.key)
-    assertEquals("not-an-agent", error.value)
+    assertEquals("claude", error.value)
+    assertContains(error.message.orEmpty(), "removed capability")
+  }
+
+  @Test
+  fun `code_review_parallel_agent none is ignored as legacy key`() {
+    val repoRoot = writeConfig(
+      """
+      spec_type: linear
+      code_review_parallel_agent: none
+      """.trimIndent(),
+    )
+
+    val config = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
+
+    assertEquals(SpecType.LINEAR, config.specType)
   }
 
   @Test
@@ -161,7 +168,6 @@ class FileSystemRepoLocalConfigTest {
     val config = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
 
     assertEquals(SpecType.LINEAR, config.specType)
-    assertEquals(RepoLocalConfig.NO_PARALLEL_AGENT, config.codeReviewParallelAgent)
   }
 
   @Test
@@ -331,7 +337,6 @@ class FileSystemRepoLocalConfigTest {
     val config = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
 
     assertEquals(SpecType.LINEAR, config.specType)
-    assertEquals(RepoLocalConfig.NO_PARALLEL_AGENT, config.codeReviewParallelAgent)
   }
 
   private fun writeConfig(content: String): Path {

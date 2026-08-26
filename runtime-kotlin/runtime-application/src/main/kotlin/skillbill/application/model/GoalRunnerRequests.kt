@@ -25,8 +25,6 @@ data class GoalRunnerRunRequest(
   val eventSink: GoalRunnerEventSink = GoalRunnerEventSink.NONE,
   /** Null means reuse the parent goal's durable mode, or AUTO for a new parent. */
   val codeReviewMode: CodeReviewExecutionMode? = null,
-  /** Null means reuse the parent goal's durable parallel lane, or run one lane for a new parent. */
-  val parallelReviewAgent: String? = null,
   val agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
   val stopAfterSubtaskId: Int? = null,
   val observabilitySequenceStart: Int = DEFAULT_GOAL_OBSERVABILITY_SEQUENCE_START,
@@ -35,7 +33,6 @@ data class GoalRunnerRunRequest(
     require(issueKey.isNotBlank()) { "issueKey is required." }
     require(invokedAgentId.isNotBlank()) { "invokedAgentId is required." }
     configuredAgentOverrideId?.let { require(it.isNotBlank()) { "configuredAgentOverrideId must not be blank." } }
-    parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must not be blank." } }
     stopAfterSubtaskId?.let { require(it > 0) { "stopAfterSubtaskId must be positive when provided." } }
     timeout?.let { maxWallClockTimeout ->
       require(maxWallClockTimeout.isPositive()) { "timeout must be positive when provided." }

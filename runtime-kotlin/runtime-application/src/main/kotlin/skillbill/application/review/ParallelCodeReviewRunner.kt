@@ -5,7 +5,6 @@ import skillbill.application.evidence.SharedReviewEvidenceCommits
 import skillbill.application.evidence.SharedReviewEvidenceProjection
 import skillbill.application.evidence.SharedReviewEvidenceQuery
 import skillbill.application.evidence.SharedReviewEvidenceResolution
-import skillbill.application.featuretask.RuntimeOwnedFactUnavailable
 import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.agentFailureExcerpt
@@ -44,14 +43,12 @@ import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
-import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
-import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
@@ -127,14 +124,12 @@ import java.nio.file.Path
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
 
 @Inject
 @Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
 class ParallelCodeReviewRunner(
   private val parentReviewLauncher: GoalRunnerSubtaskLauncher,
   private val diffResolver: DiffResolverPort,
-  private val parallelLaneRunner: ParallelReviewLaneRunner,
   private val repoLocalConfig: RepoLocalConfigPort,
   private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
   private val reviewRubricResolver: ReviewRubricResolver,
@@ -163,7 +158,6 @@ class ParallelCodeReviewRunner(
     val detection: StackDetection,
     val resolvedMode: ResolvedReviewExecutionMode,
     val agent1Id: String,
-    val agent2Id: String?,
     val preparedLaunchRequests: List<ReviewSpecialistLaunchRequest>,
     /**
      * Every lane the packet compiled, including lanes this resume did not re-launch because they
@@ -195,7 +189,6 @@ class ParallelCodeReviewRunner(
     val coverage = coverageReport(initial, outcomes, integration)
     val result = parallelResult(
       initial.agent1Id,
-      initial.agent2Id,
       outcomes,
       integration,
       coverage,
@@ -234,11 +227,6 @@ class ParallelCodeReviewRunner(
 
   private fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): InitialRun {
     val agent1 = resolveAgent(originalRequest.agent1Id, "--agent1")
-    if (!originalRequest.agent2Id.isNullOrBlank()) {
-      throw UsageValidationException(
-        "Dual-agent parallel lanes are disconnected. Omit agent2Id; single-agent review uses agent1 only.",
-      )
-    }
     val revisions = resolveReviewRevisions(originalRequest)
     val sharedEvidence = SharedReviewEvidenceResolution(sharedEvidenceResolver, diffResolver).resolve(
       SharedReviewEvidenceQuery(
@@ -256,7 +244,7 @@ class ParallelCodeReviewRunner(
       .config.reviewContextBudget
     val lane1ResolvedMode = resolvedMode(originalRequest)
     val request = originalRequest.withResolvedTier(lane1ResolvedMode.toCodeReviewExecutionMode())
-    val resolvedMode = ReviewExecutionModePolicy.resolve(request.lane2Tier)
+    val resolvedMode = ReviewExecutionModePolicy.resolve(request.resolvedTier ?: request.codeReviewMode)
     val compiled = prepare(
       request,
       revisions,
@@ -275,7 +263,6 @@ class ParallelCodeReviewRunner(
       detection = detection,
       resolvedMode = resolvedMode,
       agent1Id = agent1.id,
-      agent2Id = null,
       preparedLaunchRequests = compiled.toRun,
       compiledLaunchRequests = compiled.all,
       budget = budget,
@@ -292,7 +279,7 @@ class ParallelCodeReviewRunner(
   private fun runLanes(initial: InitialRun): ParallelReviewLaneRunResult {
     val request = initial.request
     val byAgent = initial.preparedLaunchRequests.groupBy { it.agentId }
-    val lane1 = {
+    val lane1 = captureLane {
       launchParentLane(
         initial.agent1Id,
         byAgent[initial.agent1Id].orEmpty(),
@@ -303,30 +290,7 @@ class ParallelCodeReviewRunner(
         initial.resolvedMode,
       )
     }
-    val agent2Id = initial.agent2Id ?: return ParallelReviewLaneRunResult(
-      lane1 = captureLane(lane1),
-      lane2 = ParallelReviewLaneOutcome(success = true, rawOutput = ""),
-    )
-    val timeoutSec = request.timeout?.inWholeSeconds ?: DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE
-    return parallelLaneRunner.runTwoLanes(
-      ParallelReviewLaneRunRequest(
-        lane1 = { captureLane(lane1) },
-        lane2 = {
-          captureLane {
-            launchParentLane(
-              agent2Id,
-              byAgent[agent2Id].orEmpty(),
-              initial.detection.routed,
-              initial.budget,
-              request,
-              request.agent2Model,
-              initial.resolvedMode,
-            )
-          }
-        },
-        timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
-      ),
-    )
+    return ParallelReviewLaneRunResult(lane1 = lane1)
   }
 
   private fun verifyNativeWorkers(initial: InitialRun) {
@@ -343,7 +307,7 @@ class ParallelCodeReviewRunner(
     nativeAgentPreflight.verify(
       ReviewNativeAgentPreflightRequest(
         repoRoot = initial.request.repoRoot,
-        agentIds = listOfNotNull(initial.agent1Id, initial.agent2Id),
+        agentIds = listOf(initial.agent1Id),
         logicalNames = logicalNames,
       ),
     )
@@ -503,7 +467,7 @@ class ParallelCodeReviewRunner(
       )
     }
     durableIntegrationOutcome(initial.request.reviewRunId, packet.commitSequenceDigest)?.let { return it }
-    val findingsByLane = (outcomes.lane1.findings + outcomes.lane2.findings)
+    val findingsByLane = outcomes.lane1.findings
       .groupingBy { it.specialistSkillName.orEmpty() }.eachCount()
     val lanes = initial.compiledLaunchRequests.map { launch ->
       ReviewLaneIntegrationInput(
@@ -881,7 +845,7 @@ class ParallelCodeReviewRunner(
 
   private fun evidenceBoundaryAccountings(
     outcomes: ParallelReviewLaneRunResult,
-  ): List<ReviewEvidenceBoundaryAccounting> = listOf(outcomes.lane1, outcomes.lane2).mapNotNull(::laneEvidenceBoundary)
+  ): List<ReviewEvidenceBoundaryAccounting> = listOfNotNull(outcomes.lane1.let(::laneEvidenceBoundary))
 
   private fun laneEvidenceBoundary(outcome: ParallelReviewLaneOutcome): ReviewEvidenceBoundaryAccounting? {
     if (outcome.accounting?.terminalStatus == UNSUPPORTED_PROVIDER_TERMINAL_STATUS) return null
@@ -990,8 +954,7 @@ class ParallelCodeReviewRunner(
     // durable results. Expected stays the packet's full selection either way: that is what makes a
     // lane silently vanishing between attempts a loud aggregation failure rather than clean coverage.
     val results = ranThisPass + durablyCompleteLanes(initial, packet, ranThisPass)
-    val bothAgentsSucceeded = outcomes.lane1.success &&
-      (initial.agent2Id == null || outcomes.lane2.success)
+    val bothAgentsSucceeded = outcomes.lane1.success
     return ReviewLaneAggregation.requireCompleteLaneResults(
       expectedLanes = packet.selectedLanes,
       results = results,
@@ -1129,7 +1092,6 @@ class ParallelCodeReviewRunner(
     return ParallelCodeReviewResult(
       mergeResult = ParallelReviewMergeResult(findings = emptyList(), formattedOutput = "NO_FINDINGS"),
       lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
-      lane2 = ParallelReviewLaneStatus(agentId = request.agent2Id.orEmpty(), success = true),
     )
   }
 
@@ -1399,7 +1361,7 @@ class ParallelCodeReviewRunner(
           invokedAgentId = launch.agentId,
           configuredAgentOverrideId = null,
           skillRunRequest = SkillRunRequest(
-            issueKey = "code-review-parallel",
+            issueKey = "code-review",
             repoRoot = request.repoRoot,
             timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
             promptOverride = request.withSelectedAgentAddons(launch.prompt),
@@ -1768,7 +1730,7 @@ class ParallelCodeReviewRunner(
     outcomes: ParallelReviewLaneRunResult,
   ): ReviewLaneCompletionState {
     val governed = governedLaunchFor(launch)
-    val runCompletion = if (outcomes.lane1.success && outcomes.lane2.success) {
+    val runCompletion = if (outcomes.lane1.success) {
       governed.completionState
     } else {
       governed.completionState.asFailedLaneRun(
@@ -1778,7 +1740,7 @@ class ParallelCodeReviewRunner(
     val assignedUnits = governed.assembledBundle.entries
       .map { "${it.commitSha}@${it.hunk.path}" }
       .toSet()
-    val deniedUnits = listOf(outcomes.lane1, outcomes.lane2)
+    val deniedUnits = listOf(outcomes.lane1)
       .flatMap { outcome ->
         val fromAccounting = (outcome.specialistAccounting + listOfNotNull(outcome.accounting))
           .filter { it.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION }
@@ -1972,7 +1934,6 @@ class ParallelCodeReviewRunner(
 @Suppress("LongParameterList") // assembles the full result record; every part is required
 private fun parallelResult(
   agent1Id: String,
-  @Suppress("UnusedParameter") agent2Id: String?,
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
   integration: ReviewIntegrationPassOutcome,
   coverage: ReviewCoverageReport?,
@@ -1985,17 +1946,21 @@ private fun parallelResult(
     agentId = agent1Id,
     findings = outcomes.lane1.findings,
   )
-  val merged = ParallelReviewMerger.merge(
-    lane1Result,
-    ParallelReviewLaneResult(agentId = "", findings = emptyList()),
-    integration.findings.takeIf { it.isNotEmpty() }
-      ?.let { ParallelReviewLaneResult(ReviewIntegrationPassRunner.INTEGRATION_LANE, it) },
-  )
+  val integrationLane = integration.findings.takeIf { it.isNotEmpty() }?.let {
+    ParallelReviewLaneResult(ReviewIntegrationPassRunner.INTEGRATION_LANE, it)
+  }
+  val merged = if (integrationLane != null) {
+    ParallelReviewMerger.merge(lane1Result, integrationLane)
+  } else {
+    ParallelReviewMerger.merge(
+      lane1Result,
+      ParallelReviewLaneResult(agentId = agent1Id, findings = emptyList()),
+    )
+  }
   return ParallelCodeReviewResult(
     mergeResult = merged.copy(formattedOutput = prose),
     lane1 = outcomes.lane1.toStatus(agent1Id),
-    lane2 = ParallelReviewLaneStatus(agentId = "", success = true),
-    accountingSummary = parallelAccountingSummary(outcomes, includeLane2 = false)
+    accountingSummary = parallelAccountingSummary(outcomes)
       ?.withCommitFocusedAccounting(packet, budget, integration, coverage),
     integration = integration,
     coverage = coverage,
@@ -2015,9 +1980,8 @@ private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReview
 
 private fun parallelAccountingSummary(
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
-  includeLane2: Boolean,
 ): ReviewAccountingSummary? {
-  val accountedLanes = listOfNotNull(outcomes.lane1, outcomes.lane2.takeIf { includeLane2 })
+  val accountedLanes = listOf(outcomes.lane1)
   val specialists = accountedLanes.flatMap { it.specialistAccounting }
   if (specialists.isEmpty()) return null
   fun ReviewLaneAccounting.toInput() = ReviewAccountingInput(

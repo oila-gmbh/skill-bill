@@ -192,12 +192,6 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val cases = listOf(
       "run-wide override" to listOf("--agent-override", "codex"),
       "phase override" to listOf("--phase-agent", "plan=codex"),
-      "parallel review agent" to listOf(
-        "--code-review-mode",
-        "inline",
-        "--parallel-review-agent",
-        "codex",
-      ),
     )
 
     cases.forEach { (case, overrideArgs) ->
@@ -231,12 +225,6 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val cases = listOf(
       "run-wide override" to listOf("--agent-override", "claude"),
       "phase override" to listOf("--phase-agent", "plan=claude"),
-      "parallel review agent" to listOf(
-        "--code-review-mode",
-        "inline",
-        "--parallel-review-agent",
-        "claude",
-      ),
     )
 
     cases.forEach { (case, overrideArgs) ->
@@ -2439,38 +2427,17 @@ class CursorAgentRuntimeCliTest {
   }
 
   @Test
-  fun `cursor accepted for parallel review agent selection`() {
+  fun `feature-task rejects removed parallel-review-agent option`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()
-    val git = FakeRuntimeGitOperations(
-      trackedDelta = """
-        diff --git a/src/Foo.kt b/src/Foo.kt
-        --- a/src/Foo.kt
-        +++ b/src/Foo.kt
-        @@ -0,0 +1 @@
-        +fun foo() = 1
-      """.trimIndent(),
-    )
 
     val result = CliRuntime.run(
-      fixture.runCommand(
-        extra = listOf(
-          "--agent",
-          "codex",
-          "--code-review-mode",
-          "inline",
-          "--parallel-review-agent",
-          "cursor",
-        ),
-      ),
-      fixture.context(launcher, workflowGitOperations = git),
+      fixture.runCommand(extra = listOf("--parallel-review-agent", "cursor")),
+      fixture.context(launcher),
     )
 
-    assertEquals(0, result.exitCode, result.stdout)
-    assertTrue(
-      launcher.requests.none { it.agentId == "cursor" },
-      "dual-agent parallel lanes are disconnected; parallel-review-agent is continuation policy only",
-    )
-    assertTrue(launcher.requests.all { it.agentId == "codex" })
+    assertEquals(1, result.exitCode)
+    assertContains(result.stdout, "parallel-review-agent")
+    assertEquals(emptyList(), launcher.requests)
   }
 }

@@ -18,8 +18,6 @@ enum class ParallelReviewScope { STAGED, UNSTAGED, BRANCH, PR }
 
 data class ParallelCodeReviewRequest(
   val agent1Id: String,
-  val agent2Id: String?,
-  val agent2Model: String? = null,
   val scope: ParallelReviewScope,
   val repoRoot: Path,
   val timeout: Duration?,
@@ -54,23 +52,11 @@ data class ParallelCodeReviewRequest(
         "resolvedTier must be a concrete mode, got $tier."
       }
       require(codeReviewMode == CodeReviewExecutionMode.AUTO || codeReviewMode == tier) {
-        "Both parallel review lanes must share one resolved depth tier: lane 1 resolved to " +
-          "${tier.wireValue} but the requested mode is ${codeReviewMode.wireValue}."
+        "The resolved depth tier is ${tier.wireValue} but the requested mode is ${codeReviewMode.wireValue}."
       }
     }
   }
 
-  /**
-   * Lane 2 never resolves depth for itself; it inherits whatever lane 1 resolved to so a light lane
-   * can never be paired with a full-depth one.
-   */
-  val lane2Tier: CodeReviewExecutionMode get() = resolvedTier ?: codeReviewMode
-
-  /**
-   * Pins lane 1's resolved depth onto the request so lane 2 inherits it rather than re-resolving.
-   * The `init` check above is what rejects a mixed-tier pairing, and it runs before either lane
-   * starts because the pinned request is built before the lanes are launched.
-   */
   fun withResolvedTier(tier: CodeReviewExecutionMode): ParallelCodeReviewRequest = copy(resolvedTier = tier)
 
   fun withSelectedAgentAddons(prompt: String): String {
@@ -99,14 +85,8 @@ data class ReviewPrelaunchExpansion(
 data class ParallelCodeReviewResult(
   val mergeResult: ParallelReviewMergeResult,
   val lane1: ParallelReviewLaneStatus,
-  val lane2: ParallelReviewLaneStatus,
   val accountingSummary: ReviewAccountingSummary? = null,
-  /** Terminal state of the single integration pass; null only for a non-delegated run. */
   val integration: ReviewIntegrationPassOutcome? = null,
-  /**
-   * Coverage as it actually stands. Reported alongside [integration] precisely so a completed
-   * integration pass is never read as compensating for a lane that ended incomplete.
-   */
   val coverage: ReviewCoverageReport? = null,
   val stageResume: ReviewStageResumeReport? = null,
 ) {
@@ -124,24 +104,12 @@ data class ParallelReviewLaneStatus(
   val specialistAccounting: List<ReviewLaneAccounting> = accounting?.let(::listOf) ?: emptyList(),
 )
 
-data class ParallelCodeReviewMergeRequest(
-  val lane1AgentId: String,
-  val lane1RawOutput: String,
-  val lane2AgentId: String,
-  val lane2RawOutput: String,
-)
-
-data class ParallelCodeReviewMergeResult(
-  val formattedOutput: String,
-)
-
 class DiffResolutionException(message: String) : RuntimeException(message)
 
 class UsageValidationException(message: String) : RuntimeException(message)
 
 class StackDetectionException(message: String, cause: Throwable) : RuntimeException(message, cause)
 
-/** One lane's finished state as the integration pass sees it: coverage plus a finding count. */
 data class ReviewLaneIntegrationInput(
   val launch: ReviewSpecialistLaunchRequest,
   val completion: ReviewLaneCompletionState,

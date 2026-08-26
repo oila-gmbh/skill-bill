@@ -59,7 +59,7 @@ class ParallelCodeReviewRegressionTest {
     assertTrue(result.mergeResult.formattedOutput.isNotBlank())
   }
 
-  @Test fun `a failed lane reports its own failure without taking the other lane down`() {
+  @Test fun `a failed parent lane reports its own failure without masking sibling specialist output`() {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(
       config { request ->
@@ -76,7 +76,6 @@ class ParallelCodeReviewRegressionTest {
 
     assertFalse(result.lane1.success)
     assertNotNull(result.lane1.failureReason)
-    assertTrue(result.lane2.success)
   }
 
   @Test fun `each lane accounts its own launch bytes and terminal outcome`() {

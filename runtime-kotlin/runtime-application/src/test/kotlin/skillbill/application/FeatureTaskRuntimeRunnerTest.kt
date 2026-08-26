@@ -5713,7 +5713,6 @@ internal data class RuntimeHarnessConfig(
     NoopFeatureTaskRuntimePlanningProjectionValidator,
   val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator =
     NoopFeatureTaskRuntimeBuildReceiptValidator,
-  val parallelReviewAgent: String? = null,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
   val sharedEvidenceResolver: skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort =
     skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
@@ -5862,7 +5861,6 @@ private fun runnerHarnessRequest(
   dbPathOverride = null,
   repoRoot = runtimeConfig.repoRoot,
   goalContinuation = runtimeConfig.goalContinuation,
-  parallelReviewAgent = runtimeConfig.parallelReviewAgent,
   eventSink = sink,
 )
 

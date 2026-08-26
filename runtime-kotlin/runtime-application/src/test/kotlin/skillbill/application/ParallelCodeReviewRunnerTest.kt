@@ -38,24 +38,17 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
-import skillbill.ports.review.model.ParallelReviewLaneOutcome
-import skillbill.ports.review.model.ParallelReviewLaneRunRequest
-import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.ParallelReviewFindingParser
-import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.context.model.ReviewLaneReviewDisposition
-import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
@@ -108,17 +101,6 @@ class ParallelCodeReviewRunnerTest {
 
     assertTrue(launcher.requests.isEmpty())
     assertContains(error.message.orEmpty(), "skill-bill install apply")
-  }
-
-  @Test
-  fun `non-blank agent2 throws UsageValidationException before any launch`() {
-    val launcher = ParallelSubtaskLauncher()
-    val runner = runner(launcher)
-
-    assertThrowsUsageValidation {
-      runner.run(baseRequest(agent2Id = "codex"))
-    }
-    assertTrue(launcher.requests.isEmpty())
   }
 
   @Test
@@ -193,7 +175,6 @@ class ParallelCodeReviewRunnerTest {
       )
 
       assertTrue(result.lane1.success)
-      assertTrue(result.lane2.success)
     } finally {
       System.setProperty("user.dir", originalWorkingDirectory)
     }
@@ -205,25 +186,14 @@ class ParallelCodeReviewRunnerTest {
     createStagedFile(tempDir)
     val launcher = GoalRunnerSubtaskLauncher { request ->
       val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")
-      if (request.invokedAgentId == "claude") {
-        AgentRunLaunchFacts(
-          agent = agent,
-          exitStatus = null,
-          stdout = "",
-          stderr = "",
-          timedOut = true,
-          spawnFailed = false,
-        )
-      } else {
-        AgentRunLaunchFacts(
-          agent = agent,
-          exitStatus = 0,
-          stdout = "- [F-001] Minor | Low | path=\"Test.kt\" | line=1 | Issue",
-          stderr = "",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      }
+      AgentRunLaunchFacts(
+        agent = agent,
+        exitStatus = null,
+        stdout = "",
+        stderr = "",
+        timedOut = true,
+        spawnFailed = false,
+      )
     }
     val runner = runner(launcher)
 
@@ -233,7 +203,6 @@ class ParallelCodeReviewRunnerTest {
 
     assertFalse(result.lane1.success)
     assertEquals("agent timed out", result.lane1.failureReason)
-    assertTrue(result.lane2.success, "An independent sibling lane survives lane 1's timeout.")
   }
 
   @Test
@@ -242,25 +211,14 @@ class ParallelCodeReviewRunnerTest {
     createStagedFile(tempDir)
     val launcher = GoalRunnerSubtaskLauncher { request ->
       val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")
-      if (request.invokedAgentId == "claude") {
-        AgentRunLaunchFacts(
-          agent = agent,
-          exitStatus = null,
-          stdout = "",
-          stderr = "",
-          timedOut = false,
-          spawnFailed = true,
-        )
-      } else {
-        AgentRunLaunchFacts(
-          agent = agent,
-          exitStatus = 0,
-          stdout = "NO_FINDINGS",
-          stderr = "",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      }
+      AgentRunLaunchFacts(
+        agent = agent,
+        exitStatus = null,
+        stdout = "",
+        stderr = "",
+        timedOut = false,
+        spawnFailed = true,
+      )
     }
     val runner = runner(launcher)
 
@@ -421,7 +379,7 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
-  fun `the parallel-review lane inherits the primary lane resolved mode`() {
+  fun `the parent lane inherits the resolved mode`() {
     listOf(
       CodeReviewExecutionMode.INLINE to "inline",
       CodeReviewExecutionMode.DELEGATED to "delegated",
@@ -623,7 +581,7 @@ class ParallelCodeReviewInlineFindingTest {
       "[F-001] Major | High | specialist=bill-kotlin-code-review-persistence | " +
         "path=\"$persistencePath\" | line=956 | RunStateConflict hides a cancelled committed attempt"
     val result = kotlinPersistenceInlineRunner(finding, persistencePath)
-      .run(baseRequest(agent2Id = null, scope = ParallelReviewScope.STAGED))
+      .run(baseRequest(scope = ParallelReviewScope.STAGED))
     assertTrue(result.lane1.success, result.lane1.failureReason.orEmpty())
     assertEquals(
       listOf("bill-kotlin-code-review-persistence"),
@@ -637,7 +595,7 @@ class ParallelCodeReviewInlineFindingTest {
       "[F-001] Major | High | specialist=bill-kotlin-code-review-unknown | " +
         "path=\"src/FooTest.kt\" | line=12 | test dispatcher never advances"
     val result = kotlinArchitectureTestingRunner(finding)
-      .run(baseRequest(agent2Id = null, scope = ParallelReviewScope.STAGED))
+      .run(baseRequest(scope = ParallelReviewScope.STAGED))
     assertTrue(result.lane1.success, result.lane1.failureReason.orEmpty())
     assertEquals(1, result.mergeResult.findings.size)
     assertEquals(
@@ -652,7 +610,7 @@ class ParallelCodeReviewInlineFindingTest {
       "[F-001] Major | High | specialist=bill-kotlin-code-review-unknown | " +
         "path=\"docs/OUTSIDE.md\" | line=3 | cited a file the packet does not own"
     val result = kotlinArchitectureTestingRunner(finding)
-      .run(baseRequest(agent2Id = null, scope = ParallelReviewScope.STAGED))
+      .run(baseRequest(scope = ParallelReviewScope.STAGED))
     assertTrue(result.lane1.success, result.lane1.failureReason.orEmpty())
     val reported = result.mergeResult.findings.single()
     assertEquals("docs/OUTSIDE.md:3", reported.location)
@@ -825,7 +783,7 @@ class ParallelCodeReviewSuppliedDiffTest {
         diff = diffForPaths("src/Main.kt"),
         response = { request ->
           when (request.skillRunRequest.issueKey) {
-            "code-review-parallel" -> RecordedWorkerResponse(stdout = STAGE_ADDON_FINDING)
+            "code-review" -> RecordedWorkerResponse(stdout = STAGE_ADDON_FINDING)
             ReviewClaimVerificationRunner.ISSUE_KEY -> RecordedWorkerResponse(stdout = STAGE_ADDON_CONFIRMED)
             else -> RecordedWorkerResponse()
           }
@@ -836,7 +794,6 @@ class ParallelCodeReviewSuppliedDiffTest {
       harnessRequest(
         reviewRunId = "runner-addons-stage",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
-        agent2Id = null,
       ).copy(
         suppliedDiff = diffForPaths("src/Main.kt"),
         selectedAgentAddonsSection = formatted,
@@ -858,84 +815,13 @@ class ParallelCodeReviewRunnerFailureTest {
   fun `lane1 interrupted produces lane1Success false`() {
     val launcher = GoalRunnerSubtaskLauncher { request ->
       val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")
-      if (request.invokedAgentId == "claude") {
-        AgentRunLaunchFacts(
-          agent = agent,
-          exitStatus = null,
-          stdout = "",
-          stderr = "",
-          timedOut = false,
-          interrupted = true,
-          spawnFailed = false,
-        )
-      } else {
-        AgentRunLaunchFacts(
-          agent = agent,
-          exitStatus = 0,
-          stdout = "- [F-001] Minor | Low | path=\"A.kt\" | line=1 | Issue",
-          stderr = "",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      }
-    }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
-
-    val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
-
-    assertFalse(result.lane1.success)
-    assertEquals("agent was interrupted", result.lane1.failureReason)
-    assertTrue(result.lane2.success, "An independent sibling lane survives lane 1's interruption.")
-  }
-
-  @Test
-  fun `failed lane findings are excluded from merge result`() {
-    val launcher = GoalRunnerSubtaskLauncher { request ->
-      val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")
-      if (request.invokedAgentId == "claude") {
-        AgentRunLaunchFacts(
-          agent = agent,
-          exitStatus = null,
-          stdout = "- [F-001] Major | High | path=\"A.kt\" | line=1 | Should not appear in merge",
-          stderr = "",
-          timedOut = true,
-          spawnFailed = false,
-        )
-      } else {
-        AgentRunLaunchFacts(
-          agent = agent,
-          exitStatus = 0,
-          stdout = "- [F-001] Minor | Low | path=\"A.kt\" | line=2 | Lane 2 finding",
-          stderr = "",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      }
-    }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
-
-    val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
-
-    assertFalse(result.lane1.success)
-    assertTrue(result.lane2.success)
-    assertTrue(
-      result.mergeResult.findings.none { it.description.contains("Should not appear in merge") },
-      "A failed lane's own output must not reach the merge.",
-    )
-  }
-
-  @Test
-  fun `launcher exception produces ExecutionException outcome without killing sibling lane`() {
-    val launcher = GoalRunnerSubtaskLauncher { request ->
-      if (request.invokedAgentId == "claude") {
-        error("internal failure in launcher")
-      }
       AgentRunLaunchFacts(
-        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = 0,
-        stdout = "- [F-001] Minor | Low | path=\"A.kt\" | line=1 | Issue",
+        agent = agent,
+        exitStatus = null,
+        stdout = "",
         stderr = "",
         timedOut = false,
+        interrupted = true,
         spawnFailed = false,
       )
     }
@@ -944,8 +830,44 @@ class ParallelCodeReviewRunnerFailureTest {
     val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success)
+    assertEquals("agent was interrupted", result.lane1.failureReason)
+  }
+
+  @Test
+  fun `failed lane findings are excluded from merge result`() {
+    val launcher = GoalRunnerSubtaskLauncher { request ->
+      val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")
+      AgentRunLaunchFacts(
+        agent = agent,
+        exitStatus = null,
+        stdout = "- [F-001] Major | High | path=\"A.kt\" | line=1 | Should not appear in merge",
+        stderr = "",
+        timedOut = true,
+        spawnFailed = false,
+      )
+    }
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
+
+    assertFalse(result.lane1.success)
+    assertTrue(
+      result.mergeResult.findings.none { it.description.contains("Should not appear in merge") },
+      "A failed lane's own output must not reach the merge.",
+    )
+  }
+
+  @Test
+  fun `launcher exception produces ExecutionException outcome`() {
+    val launcher = GoalRunnerSubtaskLauncher { _ ->
+      error("internal failure in launcher")
+    }
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
+
+    assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "IllegalStateException")
-    assertTrue(result.lane2.success, "A launcher exception in lane 1 must not kill the sibling lane.")
   }
 
   @Test
@@ -968,29 +890,6 @@ class ParallelCodeReviewRunnerFailureTest {
 
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "timed out")
-  }
-
-  @Test
-  fun `denied units outside the lane assigned bundle never become a coverage gap`() {
-    val tempDir = createGitRepo()
-    createStagedFile(tempDir)
-    val compositionDigest = "a".repeat(64)
-    val runner = runnerWithParallelLane(
-      alwaysSuccessLauncher(),
-      RecordingDiffResolver(default = diffForChanges("src/A.kt" to "a", "src/B.kt" to "b")),
-      StaticParallelLaneRunner(
-        ParallelReviewLaneRunResult(
-          lane1 = brokerEvidenceIncompleteOutcome(compositionDigest, listOf("not-an-assigned-sha@src/A.kt")),
-          lane2 = brokerEvidenceIncompleteOutcome(compositionDigest, listOf("not-an-assigned-sha@src/B.kt")),
-        ),
-      ),
-    )
-
-    val result = runner.run(baseRequest(repoRoot = tempDir))
-
-    val coverage = assertNotNull(result.coverage)
-    assertTrue(coverage.isCleanCoverage, coverage.render())
-    assertTrue(coverage.incompleteLanes.flatMap { it.unreviewedUnits }.isEmpty())
   }
 
   @Test
@@ -1304,7 +1203,6 @@ class ParallelCodeReviewRunnerFailureTest {
 internal data class RunnerFixtureConfig(
   val catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
   val diffResolver: DiffResolverPort = RealProcessDiffResolver(),
-  val parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
   val rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
     ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
   },
@@ -1334,20 +1232,10 @@ internal fun runner(
   ),
 )
 
-private fun runnerWithParallelLane(
-  launcher: GoalRunnerSubtaskLauncher,
-  diffResolver: DiffResolverPort,
-  parallelLaneRunner: ParallelReviewLaneRunner,
-): ParallelCodeReviewRunner = createRunner(
-  launcher,
-  RunnerFixtureConfig(diffResolver = diffResolver, parallelLaneRunner = parallelLaneRunner),
-)
-
 internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
   ParallelCodeReviewRunner(
     parentReviewLauncher = launcher,
     diffResolver = config.diffResolver,
-    parallelLaneRunner = config.parallelLaneRunner,
     repoLocalConfig = object : RepoLocalConfigPort {
       override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
         ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
@@ -1483,13 +1371,11 @@ private val HEAD_BRANCH_QUERY = listOf("git", "rev-parse", "--abbrev-ref", "HEAD
 
 internal fun baseRequest(
   agent1Id: String = "claude",
-  agent2Id: String? = null,
   scope: ParallelReviewScope = ParallelReviewScope.STAGED,
   repoRoot: Path = Files.createTempDirectory("pr-runner-test"),
   timeout: Duration? = null,
 ) = ParallelCodeReviewRequest(
   agent1Id = agent1Id,
-  agent2Id = agent2Id,
   scope = scope,
   repoRoot = repoRoot,
   timeout = timeout,
@@ -1645,42 +1531,6 @@ internal class RecordingDiffResolver(
     return if (responses.containsKey(args)) responses[args] else default
   }
 }
-
-internal class TestParallelLaneRunner : ParallelReviewLaneRunner {
-  override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult =
-    ParallelReviewLaneRunResult(runLane(request.lane1), runLane(request.lane2))
-
-  private fun runLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome = try {
-    lane()
-  } catch (seam: ReviewRegisterParseSeamException) {
-    throw seam
-  } catch (e: Exception) {
-    ParallelReviewLaneOutcome(
-      success = false,
-      rawOutput = "",
-      failureReason = "lane launch threw ${e::class.simpleName}: ${e.message ?: "no detail"}",
-    )
-  }
-}
-
-private class StaticParallelLaneRunner(
-  private val result: ParallelReviewLaneRunResult,
-) : ParallelReviewLaneRunner {
-  override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult = result
-}
-
-private fun brokerEvidenceIncompleteOutcome(
-  compositionDigest: String,
-  deniedUnits: List<String>,
-): ParallelReviewLaneOutcome = ParallelReviewLaneOutcome(
-  success = true,
-  rawOutput = "NO_FINDINGS",
-  reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
-  bundleCompositionDigest = compositionDigest,
-  unreviewedSegmentIds = listOf("seg-evidence-refused"),
-  budgetDimension = LANE_EVIDENCE_BYTES_DIMENSION,
-  unreviewedUnits = deniedUnits,
-)
 
 private class RealProcessDiffResolver : DiffResolverPort {
   override fun runProcess(args: List<String>, workDir: Path): String? = try {

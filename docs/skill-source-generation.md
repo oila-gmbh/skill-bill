@@ -234,7 +234,7 @@ The Skill tool on every supported agent resolves only listed skills; there is no
 invocable-but-hidden state. A listed parent therefore invokes an internal skill
 by **reading the sidecar file from its own installed directory** (a sibling file
 read) and executing its instructions in the current session, passing the same
-argument conventions as before (`parallel-review:<agent>`, issue key, spec path).
+argument conventions as before (issue key, spec path).
 The Skill tool is never used
 to invoke an internal skill. This file-read pattern is already established for
 other sibling sidecars (`shell-ceremony.md`, `compose-guidelines.md`) and is
@@ -248,8 +248,7 @@ resolves its specialist rubrics as sibling sidecars (e.g.
 `bill-kotlin-code-review.md` as a sibling sidecar. Delegated specialist subagents keep
 receiving rendered runtime instructions and rubric content/paths from the parent
 orchestrator — no worker ever resolves a hidden skill via the Skill tool or a
-standalone `skills_dir` path. Lane-2 parallel reviews keep invoking
-`/bill-code-review`, which remains listed.
+standalone `skills_dir` path.
 
 ### Worked example: the feature entry family
 
@@ -271,7 +270,7 @@ review-pack skill is internal — all entries under
 `bill-code-review/`'s staged directory; the eight stack entries do **not** become
 parents of their specialists (PD2 flatten rule). After install with all packs
 selected, the agent skill list shows `bill-code-review` (plus the listed
-`bill-code-review-parallel` and `bill-code-check`) but none of those internal sidecars.
+`bill-code-check`) but none of those internal sidecars.
 `bill-code-review` reads the dominant pack's entry sidecar, which reads its
 specialist rubric sidecars as siblings. With only the Kotlin pack selected,
 the Kotlin entry plus its ten specialists stage; other packs contribute nothing (PD3). The KMP pack declares

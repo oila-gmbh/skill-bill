@@ -154,6 +154,16 @@ Reason: Machine admission of register lines dropped usable findings and blocked 
 
 Alternatives considered: Soften the parser only (rejected: still two agents and a hard merge gate). Keep dual lanes under one owner (deferred: disconnect first).
 
+## [2026-08-26] SKILL-209 removes dual-agent parallel review
+
+Context: Parallel second-parent lanes, merge commands, and config keys duplicated review orchestration without a distinct product surface after single-agent prose review landed.
+
+Decision: Delete `bill-code-review-parallel`, `code-review-parallel`, `code-review-merge`, and `config resolve-parallel-agent`. Drop `--agent2`, `--model2`, `--parallel-review-agent`, and `code_review_parallel_agent` from new writes and CLI surfaces. Standalone review uses one parent lane with issue key `code-review`. Legacy continuation and review-policy artifacts may still carry `parallel_review_agent` on read; the value is ignored and is not written again. Non-`none` `code_review_parallel_agent` config loud-fails naming the removed capability; `none` is ignored as a legacy key.
+
+Reason: One parent agent plus delegated specialists is the supported review model; dual-lane merge and parallel config added failure modes without separate operator value.
+
+Alternatives considered: Keep config fallback mapping to a single lane (rejected: implies a second parent still exists). Migrate historical accounting rows keyed `code-review-parallel-*` (out of scope).
+
 ## [2026-08-20] Output-gate failures block on the first invalid envelope
 
 Context: The one salvage agent launch after a schema-invalid audit did not recover. SKILL-202 burned both attempts on missing `verdict` then prose in `carried_gap_dispositions.evidence.observation`.
@@ -763,8 +773,7 @@ runtime target, so fixing either bug is not worth it.
 Decision: opencode is prose-only. Runtime mode refuses, loudly and at the
 boundary, whenever the resolved runtime agent is opencode by ANY route — host-agent
 detection, `SKILL_BILL_AGENT=opencode`, `--agent opencode`,
-`--phase-agent plan=opencode`, `--agent-override opencode`, and
-`--parallel-review-agent opencode` on the feature-task CLI, plus the invoked agent and `--agent-override`
+`--phase-agent plan=opencode`, `--agent-override opencode` on the feature-task CLI, plus the invoked agent and `--agent-override`
 on the goal CLI — failing fast before opening a workflow, resolving a branch, or
 spawning a phase. The single source of truth is one domain set,
 `skillbill.install.model.RUNTIME_REFUSED_AGENTS` (`{OPENCODE}`), with the predicate
@@ -772,7 +781,7 @@ spawning a phase. The single source of truth is one domain set,
 layer consumes that set so re-enabling an agent's runtime path is a one-line change
 rather than scattered edits that drift. Enforcement is defense-in-depth over two
 layers: (L1) the runtime CLI preflights — feature-task, goal, and
-`code-review-parallel` — all funnel their reachable agent ids through one shared gate
+`code-review` — all funnel their reachable agent ids through one shared gate
 `skillbill.cli.core.refuseRuntimeRefusedAgents`, which throws a `UsageError` with the
 actionable message naming the governed prose alternative and the prose mode;
 (L2) the launcher source-disablement —
@@ -795,11 +804,9 @@ retained: opencode must stay detectable (to refuse) and installable/scaffoldable
 LAUNCH path is disabled. No app-layer guard is added (`AgentRunService` /
 `FeatureTaskRuntimeRunner` / `GoalRunner` are unguarded) so their
 resolution/recording tests stay green and the launcher backstop remains the single
-spawner chokepoint. `bill-code-review-parallel` runtime is disabled for opencode the
-same way (a parallel-review subprocess hits the same 120s-kill/PTY-harvest wall): its
-command now runs the shared preflight on both resolved lanes, so an opencode lane
-refuses upfront with the actionable message instead of degrading to a silent one-lane
-review.
+spawner chokepoint. Standalone `code-review` runs the same shared preflight on the
+resolved parent agent, so an opencode parent refuses upfront with the actionable
+message instead of degrading to a silent one-lane review.
 
 Non-goals: no change to opencode install/scaffold/MCP, prose orchestration, or
 telemetry (all byte-for-byte unchanged); no change to runtime support for claude,

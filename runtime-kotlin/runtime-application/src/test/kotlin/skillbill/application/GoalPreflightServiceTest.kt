@@ -66,7 +66,6 @@ class GoalPreflightServiceTest {
         root = root,
         reviewMode = CodeReviewExecutionMode.DELEGATED,
         agentOverride = "claude",
-        parallelReviewAgent = "gemini",
         addons = listOf("first-addon", "second-addon"),
       ),
     )
@@ -75,7 +74,6 @@ class GoalPreflightServiceTest {
     assertEquals("delegated (experimental)", gate.reviewMode)
     assertEquals("claude", gate.childAgent)
     assertEquals("claude", gate.childAgentOverride)
-    assertEquals("gemini", gate.parallelReviewAgent)
     assertEquals(listOf("first-addon", "second-addon"), gate.agentAddons.map { it.slug })
     assertEquals(listOf(1, 2), gate.subtasks.map { it.id })
     assertEquals("requires subtask 1", gate.subtasks[1].dependencies.single().note)
@@ -280,14 +278,12 @@ class GoalPreflightServiceTest {
     issueKey: String = "SKILL-901",
     reviewMode: CodeReviewExecutionMode? = null,
     agentOverride: String? = null,
-    parallelReviewAgent: String? = null,
     addons: List<String> = emptyList(),
   ): GoalPreflightRequest = GoalPreflightRequest(
     issueKey = issueKey,
     repoRoot = root,
     invokedAgentId = "codex",
     agentOverrideId = agentOverride,
-    parallelReviewAgent = parallelReviewAgent,
     requestedReviewMode = reviewMode,
     requestedAgentAddonSlugs = addons,
   )

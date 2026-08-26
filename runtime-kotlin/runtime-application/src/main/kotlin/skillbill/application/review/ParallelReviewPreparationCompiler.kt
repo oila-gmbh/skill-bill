@@ -148,7 +148,7 @@ internal object ParallelReviewPreparationCompiler {
     hunkLocatorReader,
   ).prepare(
     ReviewPreparationRequest(
-      reviewId = input.reviewRunId ?: "code-review-parallel-$revisionId",
+      reviewId = input.reviewRunId ?: "code-review-$revisionId",
       reviewRevision = ReviewRevision(revisionId, 1),
       criteriaReferences = criteriaReferences(routes, input.specIntentResolution),
       baselineUntrackedPolicy = input.baselineUntrackedPolicy,

@@ -113,4 +113,4 @@ class ParallelCodeReviewStageResumeTest {
 }
 
 private val ReviewRecorder.specialistLaunches: List<GoalRunnerSubtaskLaunchRequest>
-  get() = parentLaunches.filter { it.skillRunRequest.issueKey == "code-review-parallel" }
+  get() = parentLaunches.filter { it.skillRunRequest.issueKey == "code-review" }

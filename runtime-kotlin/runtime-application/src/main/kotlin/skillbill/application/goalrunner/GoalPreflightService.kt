@@ -49,7 +49,6 @@ class GoalPreflightService(
       )
     }
     validateOptionalIdentity("agent_override_id", request.agentOverrideId)
-    validateOptionalIdentity("parallel_review_agent", request.parallelReviewAgent)
     val root = runCatching {
       request.repoRoot.toAbsolutePath().normalize().toRealPath()
     }.getOrElse {
@@ -83,7 +82,6 @@ class GoalPreflightService(
     val receivingAgents = listOfNotNull(
       request.invokedAgentId,
       request.agentOverrideId,
-      request.parallelReviewAgent,
     ).filter(String::isNotBlank).distinct()
     val selection = resolveSelection(
       request = request,
@@ -220,7 +218,6 @@ class GoalPreflightService(
       goalRunnerReviewPolicyMismatch(
         parentWorkflowId = parentWorkflowId.orEmpty(),
         requestedReviewMode = request.requestedReviewMode,
-        requestedParallelReviewAgent = request.parallelReviewAgent?.takeIf(String::isNotBlank),
         persisted = it,
       )
     }
@@ -229,7 +226,6 @@ class GoalPreflightService(
     }
     val effectiveReviewPolicy = effectiveGoalRunnerReviewPolicy(
       request.requestedReviewMode,
-      request.parallelReviewAgent?.takeIf(String::isNotBlank),
       durablePolicy,
     )
     val selectionResult = GoalRunnerPlanner.selectNext(manifest)
@@ -245,7 +241,6 @@ class GoalPreflightService(
       expectedFirstRunnableSubtask = firstRunnable,
       childAgent = request.agentOverrideId?.takeIf(String::isNotBlank) ?: request.invokedAgentId,
       childAgentOverride = request.agentOverrideId?.takeIf(String::isNotBlank),
-      parallelReviewAgent = effectiveReviewPolicy.parallelReviewAgent ?: "none",
       reviewMode = effectiveReviewPolicy.codeReviewMode.displayName(request.requestedReviewMode == null),
       agentAddons = selection.entries.map { entry ->
         GoalPreflightAgentAddon(

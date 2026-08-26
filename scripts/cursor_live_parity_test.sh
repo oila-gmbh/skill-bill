@@ -153,20 +153,14 @@ else
   chk "goal_runtime_available" "0" "goal command not found"
 fi
 
-# Scenario 5: Delegated review plus parallel lane
-section "Scenario 5: Delegated review infrastructure"
+# Scenario 5: Dual-agent parallel review removed
+section "Scenario 5: Dual-agent parallel review removed"
 
-echo "  Checking review infrastructure exists..."
-if [[ -f "$REPO_ROOT/skills/bill-code-review-parallel/content.md" ]]; then
-  chk "parallel_review_skill_exists" "1"
+echo "  Checking parallel review skill is absent..."
+if [[ ! -f "$REPO_ROOT/skills/bill-code-review-parallel/content.md" ]]; then
+  chk "parallel_review_skill_removed" "1"
 else
-  chk "parallel_review_skill_exists" "0" "bill-code-review-parallel not found"
-fi
-
-if grep -q "cursor" "$REPO_ROOT/skills/bill-code-review-parallel/content.md" 2>/dev/null; then
-  chk "cursor_in_parallel_review" "1"
-else
-  chk "cursor_in_parallel_review" "0" "cursor not listed in parallel review"
+  chk "parallel_review_skill_removed" "0" "bill-code-review-parallel still present"
 fi
 
 # Scenario 6: Paused workflow resume (infrastructure check)

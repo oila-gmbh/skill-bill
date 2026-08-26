@@ -187,7 +187,6 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
         repoRoot = runtime.request().repoRoot,
         invokedAgentId = INVOKED_AGENT,
         codeReviewMode = CodeReviewExecutionMode.INLINE,
-        parallelReviewAgent = "claude",
       ),
     )
 
@@ -205,7 +204,6 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val parity = standaloneAndGoalChildParity(
       launcher = ::defaultPhaseAwareLauncher,
       codeReviewMode = CodeReviewExecutionMode.INLINE,
-      parallelReviewAgent = "claude",
     )
 
     assertIs<GoalRunnerRunReport.Completed>(parity.report)
@@ -512,7 +510,6 @@ private fun standaloneAndGoalChildParity(
     RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
   },
   codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.INLINE,
-  parallelReviewAgent: String? = null,
   acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
 ): GoalChildParityRun {
   val standaloneGit = gitOperations().apply {
@@ -527,7 +524,6 @@ private fun standaloneAndGoalChildParity(
   )
   val standaloneRequest = standalone.request().copy(
     requestedCodeReviewMode = codeReviewMode,
-    parallelReviewAgent = parallelReviewAgent,
   )
   assertEquals(null, standaloneRequest.goalContinuation)
   val standaloneReport = standalone.runner.run(standaloneRequest)
@@ -536,7 +532,6 @@ private fun standaloneAndGoalChildParity(
     config = GoalChildParityConfig(
       gitOperations = gitOperations(),
       codeReviewMode = codeReviewMode,
-      parallelReviewAgent = parallelReviewAgent,
       acceptanceCriteria = acceptanceCriteria,
     ),
   )
@@ -627,7 +622,6 @@ private data class GoalChildParityConfig(
   val validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
   val ensureCommitSha: Boolean = true,
   val codeReviewMode: CodeReviewExecutionMode? = null,
-  val parallelReviewAgent: String? = null,
   val acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
 )
 
@@ -659,7 +653,6 @@ private fun goalChildParityRun(
     repoRoot = runtime.request().repoRoot,
     invokedAgentId = INVOKED_AGENT,
     codeReviewMode = config.codeReviewMode,
-    parallelReviewAgent = config.parallelReviewAgent,
   )
   val report = goalRunner.run(runRequest)
   return GoalChildParityRun(
@@ -691,7 +684,6 @@ private class RuntimeChildLauncher(
         repoRoot = request.skillRunRequest.repoRoot,
         invokedAgentId = request.invokedAgentId,
         requestedCodeReviewMode = continuation.codeReviewMode,
-        parallelReviewAgent = continuation.parallelReviewAgent,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
           parentIssueKey = continuation.parentIssueKey,
           subtaskId = continuation.subtaskId,
@@ -700,7 +692,6 @@ private class RuntimeChildLauncher(
           parentWorkflowId = continuation.parentWorkflowId,
           lastResumableStep = continuation.lastResumableStep,
           codeReviewMode = continuation.codeReviewMode,
-          parallelReviewAgent = continuation.parallelReviewAgent,
           reviewBaseline = assertNotNull(continuation.reviewBaseline),
         ),
       ),

@@ -994,8 +994,12 @@ private fun FeatureTaskRuntimeGoalContinuationArtifact?.compatibleWith(
     agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection(),
     validationDepth = validationDepth ?: supplied.validationDepth,
     qualityGateSelection = qualityGateSelection ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+    parallelReviewAgent = null,
   )
-  return healed == supplied.copy(agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection())
+  return healed == supplied.copy(
+    agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection(),
+    parallelReviewAgent = null,
+  )
 }
 
 private fun reviewStatePatch(

@@ -55,7 +55,6 @@ import skillbill.cli.workflow.toCliMap
 import skillbill.config.model.CompactionSettings
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
-import skillbill.install.model.InstallAgent
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
@@ -148,11 +147,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     "--goal-baseline-untracked-path",
     help = "Baseline untracked path. Repeat for every path owned before this child starts.",
   ).multiple()
-  protected val parallelReviewAgent by option(
-    "--parallel-review-agent",
-    help = "Run the review phase with a second parallel agent lane. " +
-      "Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
-  )
   protected val codeReviewModes by option(
     "--code-review-mode",
     help = "Review execution mode: inline (default, one review subagent per pass), auto " +
@@ -231,7 +225,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           dbPathOverride = state.dbOverride,
           repoRoot = prepared.repoRoot,
           timeout = maxWallClockMinutes?.minutes,
-          parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
           requestedCodeReviewMode = requestedReviewMode,
           goalContinuation = goalContinuation,
           operatorDecision = requestedOperatorDecision(),
@@ -272,10 +265,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       addAll(resolvedAgentIds.values)
       addAll(parsePhaseAgents(phaseAgents).values)
       agentOverride?.takeIf(String::isNotBlank)?.let(::add)
-      parallelReviewAgent?.takeIf(String::isNotBlank)?.let(::add)
-      deps.configResolutionService.resolveCodeReviewParallelAgent(repoRoot, parallelReviewAgent)
-        .takeUnless { it == "none" }
-        ?.let(::add)
     }.distinct()
     refuseUnavailableAgentLaunchers(receivingAgents, deps.executableLookup)
     val persistedSelection = parseAgentAddonSelection(agentAddonSelectionJson)
@@ -346,7 +335,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       codeReviewMode = requestedReviewMode,
       validationDepth = ValidationDepth.FULL,
       qualityGateSelection = requestedQualityGateSelection(),
-      parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
       reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) {
         "--goal-review-base-sha is required with goal-continuation options."
       }.let { base ->

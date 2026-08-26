@@ -2956,7 +2956,6 @@ internal class FeatureTaskRuntimeRunLoop(
         runInvariants = run.request.runInvariants,
         agents = FeatureTaskRuntimeReviewDriverAgents(
           agent1Id = run.resolvedAgent.resolvedAgentId,
-          parallelReviewAgent = run.request.parallelReviewAgent,
         ),
         pass = FeatureTaskRuntimeReviewDriverPass(
           passNumber = passNumber,
@@ -3118,11 +3117,9 @@ internal class FeatureTaskRuntimeRunLoop(
         .orEmpty()
 
   private fun failedReviewLaneReason(result: ParallelCodeReviewResult): String? {
-    val failed = listOf(result.lane1, result.lane2).filter { lane ->
-      lane.agentId.isNotBlank() && !lane.success
-    }
-    if (failed.isEmpty()) return null
-    val detail = failed.first().failureReason?.takeIf(String::isNotBlank) ?: "lane failed"
+    val parent = result.lane1
+    if (parent.agentId.isBlank() || parent.success) return null
+    val detail = parent.failureReason?.takeIf(String::isNotBlank) ?: "lane failed"
     return "Feature-task-runtime phase 'review' $detail"
   }
 
@@ -6118,8 +6115,6 @@ internal class FeatureTaskRuntimeRunLoop(
       issueKey = run.request.issueKey,
       briefing = briefing,
       suppressDecomposition = isGoalContinuationRun(run.request),
-      parallelReviewAgent = run.request.parallelReviewAgent
-        ?.takeIf { run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW },
       codeReviewMode = depthResolution?.resolvedTier ?: run.request.runInvariants.codeReviewMode,
       reviewPassNumber = passNumber,
       goalSubtaskReviewInput = run.goalReviewInput,

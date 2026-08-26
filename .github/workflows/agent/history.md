@@ -1,5 +1,12 @@
 # .github/workflows — Boundary History
 
+## [2026-08-26] spotless-ratchet-origin-main-fetch
+Areas: .github/workflows/validate-agent-configs.yml
+- Hosted ubuntu `validate` failed at `:runtime-application:spotlessCheck` with `No such reference 'origin/main'` because Spotless `ratchetFrom("origin/main")` (Quality.kt) needs that ref at task-graph creation, and `actions/checkout@v5` default `fetch-depth: 1` never creates it. Self-hosted macmini already had a fuller clone, so only the ubuntu matrix leg failed.
+- After checkout, fetch `origin/main` at depth 1 into `refs/remotes/origin/main` before `./gradlew check`. Idempotent on the self-hosted runner. Do not skip ratchet when the ref is missing: that would format the whole tree and fail on unrelated files.
+Feature flag: N/A
+Acceptance criteria: N/A (CI follow-up)
+
 ## [2026-08-07] SKILL-167 subtask 1 plugin-ci-workflow
 Areas: .github/workflows/plugin-ci.yml
 - New `plugin-ci.yml` gates `intellij-plugin/**` on PR + push-to-main via a `check` job running the exact command `(cd intellij-plugin && ./gradlew check)`; the plugin build is a standalone Gradle build, so CI must `cd` into it rather than invoke the root wrapper.

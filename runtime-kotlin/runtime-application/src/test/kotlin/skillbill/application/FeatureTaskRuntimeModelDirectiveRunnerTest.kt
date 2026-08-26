@@ -276,7 +276,7 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
   }
 
   @Test
-  fun `cursor parallel-review route selects cursor adapter`() {
+  fun `cursor review phase route selects cursor adapter`() {
     var capturedAgent1 = ""
     val harness = runnerHarness(
       agentAssignment = FeatureTaskRuntimeAgentAssignment(

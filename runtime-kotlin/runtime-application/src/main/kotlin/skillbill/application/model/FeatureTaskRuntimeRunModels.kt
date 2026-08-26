@@ -35,9 +35,6 @@ data class FeatureTaskRuntimeRunRequest(
   val repoRoot: Path,
   /** Optional per-phase wall-clock cap forwarded to each phase agent launch. */
   val timeout: Duration? = null,
-  /** When set, the review phase runs `bill-code-review parallel:<agent>` alongside the primary review. */
-  val parallelReviewAgent: String? = null,
-  /** Null means use the persisted mode on resume, or AUTO for a new run. */
   val requestedCodeReviewMode: CodeReviewExecutionMode? = null,
   /** Present only for non-interactive goal-runner continuation children. */
   val goalContinuation: FeatureTaskRuntimeGoalContinuationContext? = null,
@@ -75,7 +72,6 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val codeReviewMode: CodeReviewExecutionMode? = null,
   val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
-  val parallelReviewAgent: String? = null,
   val subtaskName: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
   val agentAddonSelection: skillbill.agentaddon.model.AgentAddonSelection =
@@ -90,7 +86,6 @@ data class FeatureTaskRuntimeGoalContinuationContext(
     }
     parentWorkflowId?.let { require(it.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
-    parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must be non-blank when provided." } }
     subtaskName?.let { require(it.isNotBlank()) { "subtaskName must be non-blank when provided." } }
   }
 }

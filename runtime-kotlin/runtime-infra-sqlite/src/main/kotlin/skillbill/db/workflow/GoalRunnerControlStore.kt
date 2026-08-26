@@ -138,7 +138,6 @@ internal class GoalRunnerControlStore(
 
 private fun GoalRunnerReviewPolicy.toArtifactMap(): Map<String, Any?> = buildMap {
   put("code_review_mode", codeReviewMode.wireValue)
-  parallelReviewAgent?.let { put("parallel_review_agent", it) }
   if (agentAddonSelection.entries.isNotEmpty()) {
     put(
       "agent_addon_selection",
@@ -345,12 +344,6 @@ private fun decodeReviewPolicy(raw: String): GoalRunnerReviewPolicy {
   val mode = policy["code_review_mode"] as? String
     ?: error("Goal review policy durable record is missing code_review_mode.")
   val codeReviewMode = CodeReviewExecutionMode.fromWire(mode)
-  val parallelReviewAgent = when (val value = policy["parallel_review_agent"]) {
-    null -> null
-    is String -> value.takeIf(String::isNotBlank)
-      ?: error("Goal review policy durable record has a blank parallel_review_agent.")
-    else -> error("Goal review policy durable record parallel_review_agent must be a string.")
-  }
   val addOns = (policy["agent_addon_selection"] as? List<*>).orEmpty().mapIndexed { index, value ->
     val entry = JsonSupport.anyToStringAnyMap(value)
       ?: error("Goal review policy durable add-on entry $index must be a map.")
@@ -362,7 +355,7 @@ private fun decodeReviewPolicy(raw: String): GoalRunnerReviewPolicy {
         ?: error("Goal review policy durable add-on entry $index is missing content_sha256."),
     )
   }
-  return GoalRunnerReviewPolicy(codeReviewMode, parallelReviewAgent, AgentAddonSelection(addOns))
+  return GoalRunnerReviewPolicy(codeReviewMode, AgentAddonSelection(addOns))
 }
 
 private fun decodeAcceptances(raw: String): Map<Int, GoalRunnerOutOfBandAcceptance> {

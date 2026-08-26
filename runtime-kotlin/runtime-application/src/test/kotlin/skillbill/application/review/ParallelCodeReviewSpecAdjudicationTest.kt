@@ -135,7 +135,7 @@ class ParallelCodeReviewSpecAdjudicationTest {
       diff = diffForPaths(*paths.toTypedArray()),
       response = { request ->
         when (request.skillRunRequest.issueKey) {
-          "code-review-parallel" -> RecordedWorkerResponse(stdout = FINDINGS)
+          "code-review" -> RecordedWorkerResponse(stdout = FINDINGS)
           ReviewClaimVerificationRunner.ISSUE_KEY -> RecordedWorkerResponse(stdout = verificationStdout)
           ReviewSpecAdjudicationRunner.ISSUE_KEY -> RecordedWorkerResponse(stdout = adjudicationStdout)
           else -> RecordedWorkerResponse()
@@ -166,4 +166,4 @@ private val ReviewRecorder.verificationLaunches: List<GoalRunnerSubtaskLaunchReq
   get() = parentLaunches.filter { it.skillRunRequest.issueKey == ReviewClaimVerificationRunner.ISSUE_KEY }
 
 private val ReviewRecorder.specialistLaunches: List<GoalRunnerSubtaskLaunchRequest>
-  get() = parentLaunches.filter { it.skillRunRequest.issueKey == "code-review-parallel" }
+  get() = parentLaunches.filter { it.skillRunRequest.issueKey == "code-review" }

@@ -41,7 +41,6 @@ object FeatureTaskRuntimePhasePromptComposer {
     issueKey: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     suppressDecomposition: Boolean = false,
-    parallelReviewAgent: String? = null,
     codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
     reviewPassNumber: Int? = null,
     goalSubtaskReviewInput: GoalSubtaskReviewInput? = null,
@@ -96,7 +95,6 @@ object FeatureTaskRuntimePhasePromptComposer {
         briefing.phaseId,
         ReviewExecutionDirectiveInputs(
           codeReviewMode = codeReviewMode,
-          parallelReviewAgent = parallelReviewAgent,
           goalSubtaskReviewInput = goalSubtaskReviewInput,
           reviewPassNumber = reviewPassNumber,
           resolvedReviewTier = resolvedReviewTier,

@@ -7,7 +7,7 @@ import kotlin.test.assertTrue
 
 class ParallelCodeReviewStandaloneEntryTest {
   @Test
-  fun `null agent2 launches one parent lane and keeps parent prose without a findings register`() {
+  fun `single parent lane keeps parent prose without a findings register`() {
     val pack = sparseReviewPack(
       slug = "kotlin",
       requiredArea = "architecture",
@@ -21,7 +21,7 @@ class ParallelCodeReviewStandaloneEntryTest {
         diff = diffForPaths("src/Main.kt"),
         response = { request ->
           when (request.skillRunRequest.issueKey) {
-            "code-review-parallel" -> RecordedWorkerResponse(stdout = prose)
+            "code-review" -> RecordedWorkerResponse(stdout = prose)
             else -> RecordedWorkerResponse()
           }
         },
@@ -29,7 +29,6 @@ class ParallelCodeReviewStandaloneEntryTest {
       recorder,
     ).run(
       harnessRequest(
-        agent2Id = null,
         reviewRunId = "standalone-single-lane",
         codeReviewMode = CodeReviewExecutionMode.INLINE,
       ),
@@ -37,7 +36,7 @@ class ParallelCodeReviewStandaloneEntryTest {
 
     assertEquals(
       1,
-      recorder.parentLaunches.count { it.skillRunRequest.issueKey == "code-review-parallel" },
+      recorder.parentLaunches.count { it.skillRunRequest.issueKey == "code-review" },
     )
     assertTrue(result.mergeResult.findings.isEmpty())
     assertEquals(prose, result.mergeResult.formattedOutput)
