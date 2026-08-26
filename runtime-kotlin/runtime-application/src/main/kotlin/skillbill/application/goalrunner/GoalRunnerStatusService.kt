@@ -3,8 +3,10 @@ package skillbill.application.goalrunner
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.agentAttributionFromPhaseState
 import skillbill.application.featuretask.pruneResetSubtaskCheckpointRefs
+import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.GoalPlanningStatusAlignRequest
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
@@ -28,6 +30,7 @@ import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.model.GoalRunnerStopStatus
 import skillbill.application.model.GoalRunnerStopVerbResult
 import skillbill.application.workflow.repoRoot
+import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_STOP
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
@@ -56,6 +59,7 @@ import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import java.io.IOException
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -92,6 +96,7 @@ class GoalRunnerStatusService(
   private val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence =
     GoalPlanningStatusReasonCoherence.NONE,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val runtimeStatusService: FeatureTaskRuntimeStatusService? = null,
 ) {
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
     return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
@@ -122,10 +127,11 @@ class GoalRunnerStatusService(
     currentSubtask: DecompositionSubtask?,
     acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
   ): GoalRunnerStatusProjectionExtras {
-    val progress = currentSubtask
-      ?.workflowId
-      ?.takeIf(String::isNotBlank)
-      ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
+    val childWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
+    val progress = childWorkflowId?.let { workflowId ->
+      outcomeStore.progress(workflowId, request.dbPathOverride)
+    }
+    val derivedCurrentStep = derivedChildCurrentStep(childWorkflowId, request.dbPathOverride)
     val ledgerSummary = runCatching {
       attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey, request.dbPathOverride)
     }.getOrNull()
@@ -156,7 +162,7 @@ class GoalRunnerStatusService(
           ),
         )
       },
-      currentStepOverride = progress?.currentStepId,
+      currentStepOverride = derivedCurrentStep ?: progress?.currentStepId,
       currentWorkflowStatus = progress?.workflowStatus,
       latestLivenessSignal = progress?.latestLivenessSignal,
       latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
@@ -356,6 +362,30 @@ class GoalRunnerStatusService(
         currentSubtaskIntent.action == SUBTASK_ACTION_START
     } == true
     return !activeChildExists && (unselected || selectedButNotLaunched)
+  }
+
+  private fun derivedChildCurrentStep(childWorkflowId: String?, dbPathOverride: String?): String? {
+    val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return null
+    val statusService = runtimeStatusService ?: return null
+    return try {
+      statusService.status(
+        FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = dbPathOverride),
+      )?.currentPhaseId?.takeIf(String::isNotBlank)
+    } catch (error: ShellContentContractException) {
+      diagnostics.warning(
+        "Goal status omitted derived child phase for workflow '$workflowId': " +
+          "the child's durable status could not be read.",
+        error,
+      )
+      null
+    } catch (error: IOException) {
+      diagnostics.warning(
+        "Goal status omitted derived child phase for workflow '$workflowId': " +
+          "the child's durable status could not be read.",
+        error,
+      )
+      null
+    }
   }
 
   private fun resolveExecutionLiveness(

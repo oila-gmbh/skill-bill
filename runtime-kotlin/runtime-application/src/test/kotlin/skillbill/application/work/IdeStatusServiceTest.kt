@@ -533,9 +533,56 @@ class IdeStatusServiceTest {
     ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
 
     val execution = requireNotNull(result.snapshot.currentPhaseExecution)
+    assertEquals("review", result.snapshot.currentStep.id)
     assertEquals("review", execution.phaseId)
     assertEquals(IdeStatusCurrentPhaseExecutionKind.PASS, execution.kind)
     assertEquals(2, execution.count)
+  }
+
+  @Test
+  fun `goal prefers child derived phase over stale child current_step_id`() {
+    val fixture = gitRepoFixture("ide-status-goal-stale-step")
+    val identity = goalRepositoryIdentity(fixture)
+    val database = goalWithLaunchedChildDatabase(
+      identity,
+      Instant.parse("2026-08-06T09:15:00Z"),
+      childCurrentStep = "verify_findings",
+      childArtifactsJson = phaseRecordsArtifactsJson(
+        "preplan" to phaseRecordWire("preplan", "completed", null),
+        "plan" to phaseRecordWire("plan", "completed", null),
+        "implement" to phaseRecordWire("implement", "completed", null),
+        "audit" to phaseRecordWire("audit", "completed", null),
+        "review" to phaseRecordWire("review", "completed", null),
+        "verify_findings" to phaseRecordWire("verify_findings", "completed", null),
+      ),
+    )
+    val staleProgress = GoalRunnerWorkflowProgress(
+      workflowId = "w-child",
+      workflowStatus = "running",
+      currentStepId = "verify_findings",
+      progressToken = "stale-verify-findings",
+      latestLivenessSignal = "workflow_status=running; step=verify_findings",
+    )
+    val result = service(
+      database,
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child").let { state ->
+          state.copy(
+            manifest = state.manifest.copy(
+              subtasks = state.manifest.subtasks.map { subtask ->
+                if (subtask.id == 2) subtask.copy(lastResumableStep = "verify_findings") else subtask
+              },
+            ),
+          )
+        },
+      ),
+      outcomeStore = object : GoalRunnerWorkflowOutcomeStore by EmptyOutcomeStore {
+        override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? =
+          staleProgress.takeIf { workflowId == "w-child" }
+      },
+    ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals("validate", result.snapshot.currentStep.id)
   }
 
   @Test
@@ -842,10 +889,11 @@ class IdeStatusServiceTest {
     identity: String,
     childStarted: Instant,
     childArtifactsJson: String = "{}",
+    childCurrentStep: String = "implement",
   ): TrackingDatabase {
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
-      runtimeRecord("w-child", "2026-08-06T11:00:00Z")
+      runtimeRecord("w-child", "2026-08-06T11:00:00Z", currentStep = childCurrentStep)
         .copy(startedAt = childStarted.toString(), artifactsJson = childArtifactsJson),
     )
     workflows.saveFeatureTaskExecutionIdentity(
@@ -1200,6 +1248,7 @@ class IdeStatusServiceTest {
   private fun service(
     database: TrackingDatabase,
     manifestStore: GoalRunnerManifestStore = EmptyManifestStore,
+    outcomeStore: GoalRunnerWorkflowOutcomeStore = EmptyOutcomeStore,
   ): IdeStatusService {
     val snapshotValidator = object : WorkflowSnapshotValidator {
       override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
@@ -1210,18 +1259,20 @@ class IdeStatusServiceTest {
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
       AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
     )
+    val runtimeStatusService = FeatureTaskRuntimeStatusService(
+      recorder = phaseRecorder,
+      runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, snapshotValidator),
+      decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, snapshotValidator),
+    )
     val projector = IdeStatusProjector(
       workflowSnapshotValidator = snapshotValidator,
       goalRunnerStatusService = GoalRunnerStatusService(
         manifestStore = manifestStore,
-        outcomeStore = EmptyOutcomeStore,
+        outcomeStore = outcomeStore,
         phaseRecorder = phaseRecorder,
+        runtimeStatusService = runtimeStatusService,
       ),
-      featureTaskRuntimeStatusService = FeatureTaskRuntimeStatusService(
-        recorder = phaseRecorder,
-        runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, snapshotValidator),
-        decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, snapshotValidator),
-      ),
+      featureTaskRuntimeStatusService = runtimeStatusService,
     )
     return IdeStatusService(
       database = database,

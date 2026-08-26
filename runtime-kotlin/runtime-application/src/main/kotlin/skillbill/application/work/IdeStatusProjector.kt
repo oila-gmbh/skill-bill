@@ -52,6 +52,7 @@ internal data class IdeStatusProjectionContext(
 
 /** Optional child-workflow fields loaded from one runtime status projection. */
 private data class ChildOptionalContext(
+  val currentPhaseId: String? = null,
   val currentModel: IdeStatusCurrentModel?,
   val currentPhaseExecution: IdeStatusCurrentPhaseExecution?,
   val operatorDecisionPause: FeatureTaskRuntimeOperatorDecisionPause? = null,
@@ -98,10 +99,17 @@ class IdeStatusProjector(
     // Ordered ahead of the currentStep preference: a mid-planning goal can already carry a
     // stale currentStep string, and planning is the more accurate label while it runs.
     val planningStep = planning?.takeIf { it.state != GoalPlanningStatusState.PREPARED && !lifecycle.isSettled() }
+    val freshness = IdeStatusFreshnessClassifier.classify(candidate.updatedAt, context.observedAt)
+    // One child-status load feeds step, model, and execution so they cannot drift.
+    // Mid-planning keeps planning as the sole progress surface — never duplicate into execution.
+    val childContext = childOptionalContext(projection?.currentChildWorkflowId, lifecycle, context)
     // A finished goal can carry a leftover step string; "Complete" is the honest label.
+    val childPhaseStep = childContext.currentPhaseId
+      ?.takeIf { it.isNotBlank() && planningStep == null && lifecycle != IdeStatusLifecycleState.TERMINAL }
     val step = goalStep(
       planningStep,
-      projection?.currentStep?.takeUnless { lifecycle == IdeStatusLifecycleState.TERMINAL },
+      childPhaseStep
+        ?: projection?.currentStep?.takeUnless { lifecycle == IdeStatusLifecycleState.TERMINAL },
       lifecycle,
     )
     val total = (projection?.let { it.completeCount + it.pendingCount + it.blockedCount })
@@ -110,10 +118,6 @@ class IdeStatusProjector(
       IdeStatusProgress(completed = projection.completeCount, total = it)
     }
     val currentSubtask = goalCurrentSubtask(projection, context)
-    val freshness = IdeStatusFreshnessClassifier.classify(candidate.updatedAt, context.observedAt)
-    // One child-status load feeds both optional fields so model and execution cannot drift.
-    // Mid-planning keeps planning as the sole progress surface — never duplicate into execution.
-    val childContext = childOptionalContext(projection?.currentChildWorkflowId, lifecycle, context)
     return IdeStatusSnapshot(
       repositoryIdentity = context.repositoryIdentity,
       issueKey = issueKey,
@@ -257,6 +261,7 @@ class IdeStatusProjector(
       null
     } ?: return ChildOptionalContext.EMPTY
     return ChildOptionalContext(
+      currentPhaseId = status.currentPhaseId?.takeIf(String::isNotBlank),
       currentModel = status.currentPhaseId?.let { phaseId ->
         status.phases.firstOrNull { it.phaseId == phaseId }?.toIdeStatusCurrentModel()
       },
