@@ -225,6 +225,26 @@ class FileSystemValidationGateRunnerTest {
     }
   }
 
+  @Test
+  fun `expandGlob skips git metadata and keeps matching build artifacts`() {
+    val repo = Files.createTempDirectory("gate-expand-glob-git")
+    try {
+      val realArtifact = repo.resolve("module-b/build/test-results/test/TEST-B.xml")
+      Files.createDirectories(realArtifact.parent)
+      Files.writeString(realArtifact, "<testsuite/>")
+      val gitArtifact = repo.resolve(".git/build/test-results/test/TEST-git.xml")
+      Files.createDirectories(gitArtifact.parent)
+      Files.writeString(gitArtifact, "<testsuite/>")
+      Files.writeString(repo.resolve(".git/index.lock"), "lock")
+
+      val matches = FileSystemValidationGateRunner.expandGlob(repo, "**/build/test-results/**/*.xml")
+
+      assertEquals(listOf(realArtifact), matches)
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
   private fun writeGateScript(repo: Path): Path {
     val script = repo.resolve("gate.sh")
     Files.writeString(
