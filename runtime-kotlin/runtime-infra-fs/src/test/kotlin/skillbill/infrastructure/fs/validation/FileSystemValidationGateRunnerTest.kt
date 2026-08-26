@@ -13,6 +13,9 @@ import skillbill.scaffold.model.ValidationGateFindingsFormat
 import skillbill.scaffold.model.ValidationGateFindingsLocator
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.FileTime
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -240,6 +243,43 @@ class FileSystemValidationGateRunnerTest {
       val matches = FileSystemValidationGateRunner.expandGlob(repo, "**/build/test-results/**/*.xml")
 
       assertEquals(listOf(realArtifact), matches)
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `a green gate run ignores failing JUnit reports left on disk by an earlier run`() {
+    val repo = Files.createTempDirectory("gate-stale-artifacts")
+    try {
+      val stale = repo.resolve("module-b/build/test-results/test/TEST-Stale.xml")
+      Files.createDirectories(stale.parent)
+      Files.writeString(
+        stale,
+        """<?xml version="1.0"?><testsuite><testcase classname="module.b.StaleTest" name="fails">""" +
+          """<failure message="assertion failed"/></testcase></testsuite>""",
+      )
+      Files.setLastModifiedTime(stale, FileTime.from(Instant.now().minus(1, ChronoUnit.HOURS)))
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        printf '%s\n' '172 actionable tasks: 172 up-to-date'
+        exit 0
+        """.trimIndent(),
+      )
+
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+        ),
+      )
+
+      assertEquals(ValidationGateRunOutcome.PASSED, result.outcome)
+      assertEquals(emptyList(), result.findings)
     } finally {
       repo.toFile().deleteRecursively()
     }

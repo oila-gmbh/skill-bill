@@ -19,6 +19,8 @@ import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
 
@@ -26,6 +28,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 class FileSystemValidationGateRunner : ValidationGateRunner {
   override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
     val started = System.nanoTime()
+    val artifactFloor = Instant.now().truncatedTo(ChronoUnit.SECONDS)
     val outputFile = Files.createTempFile("skillbill-validation-gate", ".out")
     return try {
       val process = ProcessBuilder(request.argv)
@@ -44,7 +47,7 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
       val durationMs = ((System.nanoTime() - started) / NANOS_PER_MILLIS).coerceAtLeast(0L)
       val executedWorkUnits = deriveExecutedWorkUnits(request, stdout)
       val exitCode = process.exitValue()
-      val parsedFindings = parseFindings(request, stdout)
+      val parsedFindings = parseFindings(request, stdout, artifactFloor)
       val outcome = deriveOutcome(exitCode, parsedFindings)
       ValidationGateRunResult(
         exitCode = exitCode,
@@ -72,8 +75,12 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     }
   }
 
-  private fun parseFindings(request: ValidationGateRunRequest, stdout: String): List<ValidationGateFinding> {
-    val artifacts = parseArtifactFindings(request)
+  private fun parseFindings(
+    request: ValidationGateRunRequest,
+    stdout: String,
+    artifactFloor: Instant,
+  ): List<ValidationGateFinding> {
+    val artifacts = parseArtifactFindings(request, artifactFloor)
     if (request.findingParseMode != ValidationGateFindingParseMode.COLLECT_ALL) {
       return artifacts
     }
@@ -105,11 +112,15 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     return parsed
   }
 
-  private fun parseArtifactFindings(request: ValidationGateRunRequest): List<ValidationGateFinding> =
+  private fun parseArtifactFindings(
+    request: ValidationGateRunRequest,
+    artifactFloor: Instant,
+  ): List<ValidationGateFinding> =
     when (request.declaration.findings.format) {
       ValidationGateFindingsFormat.JUNIT_XML ->
         request.declaration.findings.artifactGlobs
           .flatMap { glob -> expandGlob(request.repoRoot, glob) }
+          .filter { producedByThisRun(it, artifactFloor) }
           .flatMap(::parseJUnitXmlFile)
           .distinctBy { findingIdentity(it) }
     }
@@ -239,6 +250,9 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
       val realBase = current?.let(::canonicalizeExisting) ?: return path
       return tail.fold(realBase) { acc, name -> acc.resolve(name) }
     }
+
+    internal fun producedByThisRun(path: Path, artifactFloor: Instant): Boolean =
+      runCatching { !Files.getLastModifiedTime(path).toInstant().isBefore(artifactFloor) }.getOrDefault(true)
 
     internal fun expandGlob(repoRoot: Path, glob: String): List<Path> {
       val normalized = glob.replace('\\', '/')
