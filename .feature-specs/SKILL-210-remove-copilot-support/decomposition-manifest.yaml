@@ -1,0 +1,27 @@
+---
+contract_version: "0.5"
+issue_key: "SKILL-210"
+feature_name: "remove-copilot-support"
+parent_spec_path: ".feature-specs/SKILL-210-remove-copilot-support/spec.md"
+status: "pending"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-210-remove-copilot-support"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 1
+  action: "start"
+subtasks:
+  - id: 1
+    name: "Remove Copilot from the live product"
+    spec_path: ".feature-specs/SKILL-210-remove-copilot-support/spec_subtask_1_remove-copilot-from-the-live-product.md"
+    status: "pending"
+    branch: null
+    commit_sha: null
+    workflow_id: null
+    blocked_reason: null
+    last_resumable_step: null
+    linear_issue_id: null
+    finalizing_agent_id: null
+    participating_agent_ids: []
+    dependencies: []
