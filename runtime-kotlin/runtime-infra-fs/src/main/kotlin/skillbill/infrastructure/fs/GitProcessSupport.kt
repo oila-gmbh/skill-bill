@@ -7,6 +7,17 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 internal const val GIT_TIMEOUT_SECONDS = 30L
+internal const val GIT_HOOKED_COMMAND_TIMEOUT_SECONDS = 600L
+
+private val HOOKED_GIT_COMMANDS = setOf("commit", "push")
+
+internal fun gitTimeoutSeconds(args: List<String>): Long {
+  val command = args.firstOrNull { arg -> !arg.startsWith("-") } ?: return GIT_TIMEOUT_SECONDS
+  return if (command in HOOKED_GIT_COMMANDS) GIT_HOOKED_COMMAND_TIMEOUT_SECONDS else GIT_TIMEOUT_SECONDS
+}
+
+internal fun gitTimedOutError(args: List<String>): String =
+  "git ${args.joinToString(" ")} timed out after ${gitTimeoutSeconds(args)}s."
 
 internal fun runGitCommand(repoRoot: Path, vararg args: String): WorkflowGitOperationResult =
   runGitCommand(repoRoot, args.toList())
@@ -17,7 +28,7 @@ internal fun runGitCommand(repoRoot: Path, args: List<String>): WorkflowGitOpera
   return when {
     result.timedOut -> WorkflowGitOperationResult(
       status = "error",
-      error = "git ${argList.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+      error = gitTimedOutError(argList),
     )
     result.readFailure != null -> WorkflowGitOperationResult(
       status = "error",
@@ -36,7 +47,7 @@ internal fun runGitForActivity(repoRoot: Path, args: List<String>): WorkflowGitO
   return when {
     result.timedOut -> WorkflowGitOperationResult(
       status = "error",
-      error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+      error = gitTimedOutError(args),
     )
     result.readFailure != null -> WorkflowGitOperationResult(
       status = "error",
@@ -57,7 +68,7 @@ internal fun runGitCommandWithStdin(repoRoot: Path, args: List<String>, stdin: B
   return when {
     result.timedOut -> WorkflowGitOperationResult(
       status = "error",
-      error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+      error = gitTimedOutError(args),
     )
     result.readFailure != null -> WorkflowGitOperationResult(
       status = "error",
@@ -96,7 +107,8 @@ internal fun runGitProcess(repoRoot: Path, args: List<String>, stdin: ByteArray?
       readFailure = error
     }
   }
-  val finished = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+  val timeoutSeconds = gitTimeoutSeconds(args)
+  val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
   return if (!finished) {
     process.destroyForcibly()
     closeInputAndJoin(process, outputThread)

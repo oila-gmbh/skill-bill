@@ -376,11 +376,13 @@ object FeatureTaskRuntimePhasePromptComposer {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
     val directive = phaseTaskDirective(
       phaseId,
-      agentRunValidateFallback,
-      packCollectAllCommand,
-      packBuildCommand,
-      priorGapMemory,
-      validationGateRepair,
+      PhaseTaskDirectiveArgs(
+        agentRunValidateFallback = agentRunValidateFallback,
+        packCollectAllCommand = packCollectAllCommand,
+        packBuildCommand = packBuildCommand,
+        priorGapMemory = priorGapMemory,
+        validationGateRepair = validationGateRepair,
+      ),
     )
     // Composed directly rather than as an indented raw string with trimIndent(). trimIndent() runs
     // after interpolation and strips only the common minimal indent, so one column-0 line anywhere

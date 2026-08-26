@@ -59,7 +59,7 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     if (staged.timedOut || staged.readFailure != null) {
       return WorkflowGitOperationResult(
         status = "error",
-        error = staged.readFailure?.message ?: "git diff --cached timed out after ${GIT_TIMEOUT_SECONDS}s.",
+        error = staged.readFailure?.message ?: gitTimedOutError(listOf("diff", "--cached")),
       )
     }
     if (staged.exitCode != 0) return null

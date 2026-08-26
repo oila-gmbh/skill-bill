@@ -71,28 +71,30 @@ internal fun absentValidationGateDegradationDirective(phaseId: String, agentRunV
   """.trimIndent()
 }
 
-internal fun phaseTaskDirective(
-  phaseId: String,
-  agentRunValidateFallback: Boolean = false,
-  packCollectAllCommand: String? = null,
-  packBuildCommand: String? = null,
-  priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
-  validationGateRepair: Boolean = false,
-): String {
+internal data class PhaseTaskDirectiveArgs(
+  val agentRunValidateFallback: Boolean = false,
+  val packCollectAllCommand: String? = null,
+  val packBuildCommand: String? = null,
+  val priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
+  val validationGateRepair: Boolean = false,
+)
+
+internal fun phaseTaskDirective(phaseId: String, args: PhaseTaskDirectiveArgs = PhaseTaskDirectiveArgs()): String {
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
-    return runtimeOwnedBuildPhaseTask(packBuildCommand)
+    return runtimeOwnedBuildPhaseTask(args.packBuildCommand)
   }
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
-    if (validationGateRepair) {
-      return validateRepairPhaseTask()
+    return if (args.validationGateRepair) {
+      validateRepairPhaseTask()
+    } else {
+      validatePhaseTask(
+        packCollectAllCommand = args.packCollectAllCommand,
+        packGateDeclared = !args.agentRunValidateFallback,
+      )
     }
-    return validatePhaseTask(
-      packCollectAllCommand = packCollectAllCommand,
-      packGateDeclared = !agentRunValidateFallback,
-    )
   }
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-    return auditPhaseTaskDirective(priorGapMemory)
+    return auditPhaseTaskDirective(args.priorGapMemory)
   }
   return phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
 }

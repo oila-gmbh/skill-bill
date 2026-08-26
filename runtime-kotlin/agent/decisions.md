@@ -4,6 +4,16 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-26] Runtime git commit waits for the target repo's hooks
+
+Context: Atlas `commit_push` died at the runtime's 30s git timeout while `.githooks/pre-commit` ran `./gradlew ktfmtFormat` against a cold Gradle daemon. The implementation work was already on disk.
+
+Decision: `commit` and `push` wait 10 minutes. Other git calls stay at 30s. Hooks still run; the runtime does not pass `--no-verify`.
+
+Reason: The target repo declared those hooks. Skipping them would land unformatted code. Raising every git call would hide hung `status`/`rev-parse`. Ten minutes covers a cold daemon plus format without matching the 120-minute validation-gate budget.
+
+Alternatives considered: `--no-verify` on runtime commits (rejected: bypasses the repo's format gate). A single raised timeout for all git (rejected: plumbing hangs would sit for minutes). No timeout on commit (rejected: a stuck hook would wedge finalisation with no bound).
+
 ## [2026-08-25] A process failure stores the child's output instead of a bounded excerpt
 
 Context: WE-4860 subtask 4 blocked four times on `agent exited with non-zero status 1`, each time carrying the child's own claim that the host had slept mid-response. The host's `pmset` log showed no sleep at any of those timestamps. Nothing durable existed to check the claim against: a process failure reaches no output gate, so `rejected_output_diagnostics` and `producer_output_evidence` both stayed empty, and the only surviving trace was the excerpt inlined in the block reason, capped at `STDERR_EXCERPT_MAX_CHARS`. `reconcileLaunch` read `AgentRunLaunchFacts`, which holds both streams in full, and dropped them.

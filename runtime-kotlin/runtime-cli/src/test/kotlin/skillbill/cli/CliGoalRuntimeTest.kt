@@ -1325,7 +1325,7 @@ class CliGoalExecutionOptionsTest {
     assertContains(status.stdout, "pending: 1")
     assertContains(status.stdout, "blocked: 1")
     assertContains(status.stdout, "current_subtask: 2")
-    assertContains(status.stdout, "current_step: review")
+    assertContains(status.stdout, "current_step: implement")
     // SKILL-103 AC1: CLI child carries no persisted agent => active_agent omitted.
     assertContains(status.stdout, "active_agent: none")
   }

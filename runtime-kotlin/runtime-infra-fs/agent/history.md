@@ -1,5 +1,13 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-26] Git commit and push wait for hooks instead of dying at 30s
+Areas: runtime-infra-fs/GitProcessSupport
+- `git commit` and `git push` wait 10 minutes; every other git call stays at 30s.
+- A consumer-repo pre-commit hook that starts a cold Gradle daemon (`./gradlew ktfmtFormat`) can finish instead of being killed mid-run.
+- Timeout errors name the budget that was actually used.
+Feature flag: N/A
+Acceptance criteria: N/A (defect fix)
+
 ## [2026-08-20] Output-gate failures block on the first invalid envelope
 Areas: runtime-application/featuretask, runtime-infra-fs/contracts/workflow
 - Programmatic JSON extract-and-shape-repair still runs on the existing capture.

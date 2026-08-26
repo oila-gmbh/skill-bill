@@ -162,7 +162,7 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
   private fun parseCheckIgnore(result: GitProcessResult): WorkflowGitOperationResult = when {
     result.timedOut -> WorkflowGitOperationResult(
       status = "error",
-      error = "git check-ignore timed out after ${GIT_TIMEOUT_SECONDS}s.",
+      error = gitTimedOutError(listOf("check-ignore", "-z", "--stdin")),
     )
     result.readFailure != null -> WorkflowGitOperationResult(
       status = "error",

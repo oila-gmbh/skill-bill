@@ -17,35 +17,15 @@ internal class RuntimeOwnedPersistenceBoundary(
   fun <T> transaction(dbOverride: String? = null, block: (UnitOfWork) -> T): T =
     database.transaction(dbOverride) { unitOfWork -> block(unitOfWork) }
 
-  fun <T> requiredRead(
-    seam: String,
-    expected: String,
-    dbOverride: String? = null,
-    block: (UnitOfWork) -> T,
-  ): T = try {
-    read(dbOverride, block)
-  } catch (cancellation: CancellationException) {
-    throw cancellation
-  } catch (error: RuntimeOwnedFactUnavailable) {
-    throw error
-  } catch (error: Exception) {
-    fail(seam, expected, "read_error", error)
-  }
+  fun <T> requiredRead(seam: String, expected: String, dbOverride: String? = null, block: (UnitOfWork) -> T): T =
+    invokeOrHandle({ fail(seam, expected, "read_error", it) }) {
+      read(dbOverride, block)
+    }
 
-  fun <T> requiredWrite(
-    seam: String,
-    expected: String,
-    dbOverride: String? = null,
-    block: (UnitOfWork) -> T,
-  ): T = try {
-    transaction(dbOverride, block)
-  } catch (cancellation: CancellationException) {
-    throw cancellation
-  } catch (error: RuntimeOwnedFactUnavailable) {
-    throw error
-  } catch (error: Exception) {
-    fail(seam, expected, "blocked", error)
-  }
+  fun <T> requiredWrite(seam: String, expected: String, dbOverride: String? = null, block: (UnitOfWork) -> T): T =
+    invokeOrHandle({ fail(seam, expected, "blocked", it) }) {
+      transaction(dbOverride, block)
+    }
 
   fun <T> optionalRead(
     seam: String,
@@ -53,15 +33,11 @@ internal class RuntimeOwnedPersistenceBoundary(
     fallback: T,
     dbOverride: String? = null,
     block: (UnitOfWork) -> T,
-  ): T = try {
-    read(dbOverride, block)
-  } catch (cancellation: CancellationException) {
-    throw cancellation
-  } catch (error: RuntimeOwnedFactUnavailable) {
-    throw error
-  } catch (error: Exception) {
-    recordFailure(seam, expected, "degraded", error)
+  ): T = invokeOrHandle({
+    recordFailure(seam, expected, "degraded", it)
     fallback
+  }) {
+    read(dbOverride, block)
   }
 
   fun <T> optionalWrite(
@@ -70,23 +46,23 @@ internal class RuntimeOwnedPersistenceBoundary(
     fallback: T,
     dbOverride: String? = null,
     block: (UnitOfWork) -> T,
-  ): T = try {
-    transaction(dbOverride, block)
-  } catch (cancellation: CancellationException) {
-    throw cancellation
-  } catch (error: RuntimeOwnedFactUnavailable) {
-    throw error
-  } catch (error: Exception) {
-    recordFailure(seam, expected, "degraded", error)
+  ): T = invokeOrHandle({
+    recordFailure(seam, expected, "degraded", it)
     fallback
+  }) {
+    transaction(dbOverride, block)
   }
 
-  private fun fail(
-    seam: String,
-    expected: String,
-    used: String,
-    error: Exception,
-  ): Nothing {
+  private inline fun <T> invokeOrHandle(onFailure: (Exception) -> T, block: () -> T): T {
+    val outcome = runCatching(block)
+    val error = outcome.exceptionOrNull() ?: return outcome.getOrThrow()
+    if (error is Exception && error !is CancellationException && error !is RuntimeOwnedFactUnavailable) {
+      return onFailure(error)
+    }
+    throw error
+  }
+
+  private fun fail(seam: String, expected: String, used: String, error: Exception): Nothing {
     val cause = causeOf(error)
     recordFailure(seam, expected, used, error)
     throw RuntimeOwnedFactUnavailable(

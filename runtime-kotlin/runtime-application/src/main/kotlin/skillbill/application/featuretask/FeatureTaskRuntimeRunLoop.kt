@@ -85,6 +85,7 @@ import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUB
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_NO_PROGRESS
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD
+import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
@@ -3205,39 +3206,14 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifest,
       )?.let { return it }
     } else {
-      val persisted = try {
-        recorder.recordCompletedPhase(
-          phaseStateRequest(
-            run,
-            iteration,
-            STATUS_COMPLETED,
-            finished = true,
-            outputArtifact = outputText,
-            fileManifest = fileManifest,
-            normalizedOutput = normalizedOutput,
-            repairEvidence = acceptedOutput.repairEvidence,
-            reviewRunId = state.recordFor(run.phaseId)?.reviewRunId,
-          ),
-          run.request.dbPathOverride,
-        )
-      } catch (error: RuntimeOwnedFactUnavailable) {
-        return blockAndPersistInPhase(
-          run,
-          iteration,
-          "Runtime-owned review settlement could not establish its persistence fact: ${error.message.orEmpty()}",
-          observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-        )
-      }
-      if (!persisted) {
-        return blockAndPersistInPhase(
-          run,
-          iteration,
-          "Runtime-owned review settlement could not be persisted.",
-          observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-        )
-      }
+      persistStandaloneReviewCompletion(
+        run,
+        iteration,
+        outputText,
+        acceptedOutput,
+        observability,
+        fileManifest,
+      )?.let { return it }
     }
     observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
     return PhaseOutcome.completed(
@@ -5854,6 +5830,51 @@ internal class FeatureTaskRuntimeRunLoop(
       rejected = rejected,
       dbOverride = run.request.dbPathOverride,
     )
+  }
+
+  private fun persistStandaloneReviewCompletion(
+    run: PhaseRun,
+    iteration: Int,
+    outputText: String,
+    acceptedOutput: AcceptedFeatureTaskRuntimePhaseOutput,
+    observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ): PhaseOutcome? {
+    val persisted = try {
+      recorder.recordCompletedPhase(
+        phaseStateRequest(
+          run,
+          iteration,
+          STATUS_COMPLETED,
+          finished = true,
+          outputArtifact = outputText,
+          fileManifest = fileManifest,
+          normalizedOutput = acceptedOutput.normalizedOutput,
+          repairEvidence = acceptedOutput.repairEvidence,
+          reviewRunId = state.recordFor(run.phaseId)?.reviewRunId,
+        ),
+        run.request.dbPathOverride,
+      )
+    } catch (error: RuntimeOwnedFactUnavailable) {
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Runtime-owned review settlement could not establish its persistence fact: ${error.message.orEmpty()}",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
+    return if (persisted) {
+      null
+    } else {
+      blockAndPersistInPhase(
+        run,
+        iteration,
+        "Runtime-owned review settlement could not be persisted.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
   }
 
   private fun persistGoalReviewCompletion(

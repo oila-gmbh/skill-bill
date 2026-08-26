@@ -116,7 +116,11 @@ open class CodeReviewDriverCommand(
     writeParallelReviewResult(state, result)
   }
 
-  private fun request(resolvedAgent1: String, resolvedScope: ParallelReviewScope, repo: Path): ParallelCodeReviewRequest {
+  private fun request(
+    resolvedAgent1: String,
+    resolvedScope: ParallelReviewScope,
+    repo: Path,
+  ): ParallelCodeReviewRequest {
     val (resolvedBase, resolvedHead) = resolveCodeReviewRevisions(commitTarget, baseRevision, headRevision)
     return ParallelCodeReviewRequest(
       agent1Id = resolvedAgent1,

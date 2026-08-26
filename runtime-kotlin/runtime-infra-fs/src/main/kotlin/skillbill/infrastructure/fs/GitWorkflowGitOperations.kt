@@ -166,7 +166,7 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     return when {
       existing.timedOut -> WorkflowGitOperationResult(
         status = "error",
-        error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+        error = gitTimedOutError(args),
       )
       existing.readFailure != null -> WorkflowGitOperationResult(
         status = "error",
@@ -267,7 +267,7 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     return when {
       result.timedOut -> WorkflowGitOperationResult(
         status = "error",
-        error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+        error = gitTimedOutError(args),
       )
       result.readFailure != null -> WorkflowGitOperationResult(
         status = "error",
@@ -710,13 +710,14 @@ private fun readSelectedDiffHunks(
       }
     }
   }
-  val finished = process.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+  val timeoutSeconds = gitTimeoutSeconds(args)
+  val finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
   val result = if (!finished) {
     process.destroyForcibly()
     closeInputAndJoin(process, outputThread)
     SelectedDiffReadResult(
       status = "error",
-      error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+      error = gitTimedOutError(args),
     )
   } else {
     outputThread.join()
