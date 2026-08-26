@@ -104,6 +104,15 @@ const val REPO_ROOT_OPTION: String = "--repo-root"
 /** Default poll interval — seconds-scale, never sub-second. */
 const val DEFAULT_REFRESH_INTERVAL_SECONDS: Long = 15L
 
+/**
+ * Poll interval bounds shared by the settings editor and the preference sanitizer.
+ * The floor stays well under [DEFAULT_CLI_TIMEOUT_MS] so a slow status poll cannot be
+ * outpaced by the next one.
+ */
+const val MIN_REFRESH_INTERVAL_SECONDS: Long = 5L
+
+const val MAX_REFRESH_INTERVAL_SECONDS: Long = 3_600L
+
 /** Process timeout for a single status poll. */
 const val DEFAULT_CLI_TIMEOUT_MS: Long = 30_000L
 

@@ -30,6 +30,11 @@
             serviceImplementation="dev.skillbill.intellij.infrastructure.prefs.SkillBillProjectDisplayCache"/>
         <applicationService
             serviceImplementation="dev.skillbill.intellij.infrastructure.prefs.SkillBillApplicationSettings"/>
+        <applicationConfigurable
+            parentId="tools"
+            id="dev.skillbill.settings"
+            displayName="Skill Bill"
+            instance="dev.skillbill.intellij.ui.SkillBillSettingsConfigurable"/>
         <statusBarWidgetFactory
             id="SkillBillStatusBarWidget"
             implementation="dev.skillbill.intellij.ui.SkillBillStatusBarWidgetFactory"

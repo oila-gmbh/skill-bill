@@ -28,7 +28,7 @@ class CliGoalMutationRepositoryTest {
         val pause = CliGoalPauseRepository(
             preferences = prefs,
             processRunner = ProcessRunner(processFactory = pauseFactory),
-            executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill") },
+            executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill", CliExecutableSource.SEARCH_PATH) },
         )
         val pauseOutcome = runBlocking { pause.requestPause(root.resolve("..").resolve(root.fileName), "SKILL-168") }
         assertEquals(GoalPauseOutcome.Requested, pauseOutcome)
@@ -41,7 +41,7 @@ class CliGoalMutationRepositoryTest {
         val stop = CliGoalStopRepository(
             preferences = prefs,
             processRunner = ProcessRunner(processFactory = stopFactory),
-            executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill") },
+            executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill", CliExecutableSource.SEARCH_PATH) },
         )
         val stopOutcome = runBlocking { stop.requestStop(root, "SKILL-168") }
         assertEquals(GoalStopOutcome.Requested, stopOutcome)
@@ -58,13 +58,13 @@ class CliGoalMutationRepositoryTest {
             val pause = CliGoalPauseRepository(
                 preferences = prefs,
                 processRunner = ProcessRunner(processFactory = pauseFactory),
-                executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill") },
+                executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill", CliExecutableSource.SEARCH_PATH) },
             )
             val stopFactory = ScriptedProcessFactory()
             val stop = CliGoalStopRepository(
                 preferences = prefs,
                 processRunner = ProcessRunner(processFactory = stopFactory),
-                executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill") },
+                executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill", CliExecutableSource.SEARCH_PATH) },
             )
             val root = Files.createTempDirectory("blank-key")
             runBlocking {
@@ -121,7 +121,7 @@ class CliGoalMutationRepositoryTest {
 
     private fun failureSummaries(
         root: Path,
-        resolution: CliExecutableResolution = CliExecutableResolution.Found("/usr/bin/skill-bill"),
+        resolution: CliExecutableResolution = CliExecutableResolution.Found("/usr/bin/skill-bill", CliExecutableSource.SEARCH_PATH),
         timeoutMs: Long = 2_000,
         runner: () -> ProcessRunner,
     ): List<String> = runBlocking {

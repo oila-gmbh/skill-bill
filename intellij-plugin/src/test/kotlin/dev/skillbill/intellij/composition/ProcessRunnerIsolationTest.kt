@@ -6,6 +6,7 @@ import dev.skillbill.intellij.fakes.FakePreferenceCache
 import dev.skillbill.intellij.fakes.FakeStatusRepository
 import dev.skillbill.intellij.fakes.ScriptedProcessFactory
 import dev.skillbill.intellij.infrastructure.cli.CliExecutableResolution
+import dev.skillbill.intellij.infrastructure.cli.CliExecutableSource
 import dev.skillbill.intellij.infrastructure.cli.CliGoalStopRepository
 import dev.skillbill.intellij.infrastructure.cli.ProcessRunner
 import dev.skillbill.intellij.infrastructure.cli.ProcessSpec
@@ -81,7 +82,7 @@ class ProcessRunnerIsolationTest {
         val stop = CliGoalStopRepository(
             preferences = FakePreferenceCache(),
             processRunner = stopRunner,
-            executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill") },
+            executableResolver = { CliExecutableResolution.Found("/usr/bin/skill-bill", CliExecutableSource.SEARCH_PATH) },
         )
         val outcome = withContext(Dispatchers.Default) { stop.requestStop(root, "SKILL-168") }
 

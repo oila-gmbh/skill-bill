@@ -9,6 +9,8 @@ import dev.skillbill.intellij.application.PreferenceCachePort
 import dev.skillbill.intellij.domain.CachedDisplaySnapshot
 import dev.skillbill.intellij.domain.DEFAULT_REFRESH_INTERVAL_SECONDS
 import dev.skillbill.intellij.domain.LastKnownDisplayCache
+import dev.skillbill.intellij.domain.MAX_REFRESH_INTERVAL_SECONDS
+import dev.skillbill.intellij.domain.MIN_REFRESH_INTERVAL_SECONDS
 import dev.skillbill.intellij.infrastructure.AbsolutePathGuard
 import java.time.Instant
 
@@ -181,8 +183,8 @@ object PreferenceSanitizer {
 
     fun sanitizeRefreshInterval(seconds: Long): Long =
         when {
-            seconds < 1L -> DEFAULT_REFRESH_INTERVAL_SECONDS
-            seconds > 3_600L -> 3_600L
+            seconds < MIN_REFRESH_INTERVAL_SECONDS -> MIN_REFRESH_INTERVAL_SECONDS
+            seconds > MAX_REFRESH_INTERVAL_SECONDS -> MAX_REFRESH_INTERVAL_SECONDS
             else -> seconds
         }
 

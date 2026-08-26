@@ -22,7 +22,7 @@ class CliGoalStopRepository(
     private val preferences: PreferenceCachePort,
     private val processRunner: ProcessRunner,
     private val executableResolver: () -> CliExecutableResolution = {
-        CliSkillBillStatusRepository.resolveExecutable(preferences)
+        CliExecutableResolver.resolve(preferences)
     },
     private val timeoutMs: Long = DEFAULT_CLI_TIMEOUT_MS,
 ) : GoalStopRepository {

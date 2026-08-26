@@ -12,7 +12,8 @@ source-of-truth rules, status-bar expected states, and the deferred tool-window 
 
 - JDK 21
 - IntelliJ IDEA 2025.2 or newer (Community or Ultimate) for `runIde`
-- A `skill-bill` CLI on `PATH`, or a preference override to the executable
+- A `skill-bill` CLI on `PATH`, in `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, or named by
+  the CLI path setting
 
 ## Installing the plugin
 
@@ -35,12 +36,24 @@ Then install that archive with the same *Install Plugin from Disk…* step.
 
 ## Setup: Skill Bill CLI path
 
-1. Optional preference override (`SkillBillApplicationSettings.cliExecutableOverride`)
-2. Else `PATH` lookup of `skill-bill`
+Resolution order:
+
+1. The CLI path override from **Settings | Tools | Skill Bill**, when set
+2. Else `skill-bill` on the search path — the IDE's shell-aware environment merged with
+   the IDE process environment, because a desktop-launched IDE inherits the session
+   `PATH`, not the login shell's
+3. Else the installer launcher directory: `$SKILL_BILL_BIN_DIR`, then `~/.local/bin`
+
+An override that is set but is not an executable file is **misconfigured** and never
+falls back to the search path — running some other `skill-bill` than the one asked for
+would be worse than reporting the problem.
 
 Missing or unusable executables become typed **unavailable** / misconfigured
 outcomes — never stack traces in the UI. Contract-version mismatches become
 **incompatible**.
+
+**Settings | Tools | Skill Bill** also carries the status refresh interval, and shows
+which executable the plugin currently resolves.
 
 Do **not** run `install.sh`, `uninstall.sh`, or `skill-bill install apply` from this
 plugin module. Beyond the read-only `skill-bill work status --format json` contract,

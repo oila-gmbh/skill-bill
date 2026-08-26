@@ -10,14 +10,7 @@ import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.StatusClock
 import dev.skillbill.intellij.domain.StatusDiagnostic
 import dev.skillbill.intellij.domain.UnavailableReason
-import java.nio.file.Files
 import java.nio.file.Path
-
-sealed class CliExecutableResolution {
-    data class Found(val path: String) : CliExecutableResolution()
-    data object Missing : CliExecutableResolution()
-    data object Misconfigured : CliExecutableResolution()
-}
 
 /**
  * CLI-backed [StatusRepository]. Runs
@@ -27,7 +20,7 @@ class CliSkillBillStatusRepository(
     private val preferences: PreferenceCachePort,
     private val processRunner: ProcessRunner,
     private val clock: StatusClock = StatusClock.system(),
-    private val executableResolver: () -> CliExecutableResolution = { resolveExecutable(preferences) },
+    private val executableResolver: () -> CliExecutableResolution = { CliExecutableResolver.resolve(preferences) },
     private val timeoutMs: Long = DEFAULT_CLI_TIMEOUT_MS,
     private val stdoutLimitBytes: Int = DEFAULT_STDOUT_LIMIT_BYTES,
     private val stderrLimitBytes: Int = DEFAULT_STDERR_LIMIT_BYTES,
@@ -39,14 +32,14 @@ class CliSkillBillStatusRepository(
             CliExecutableResolution.Missing ->
                 return SkillBillStatusOutcome.Unavailable(
                     observedAt = observedAt,
-                    summary = "Skill Bill CLI executable not found",
+                    summary = MISSING_EXECUTABLE_SUMMARY,
                     reasonCode = UnavailableReason.MISSING_EXECUTABLE,
                     diagnostic = StatusDiagnostic(reasonCode = "missing_executable"),
                 )
             CliExecutableResolution.Misconfigured ->
                 return SkillBillStatusOutcome.Unavailable(
                     observedAt = observedAt,
-                    summary = "Skill Bill CLI executable override is not usable",
+                    summary = MISCONFIGURED_EXECUTABLE_SUMMARY,
                     reasonCode = UnavailableReason.MISCONFIGURED,
                     diagnostic = StatusDiagnostic(reasonCode = "misconfigured_executable"),
                 )
@@ -113,42 +106,16 @@ class CliSkillBillStatusRepository(
     }
 
     companion object {
+        const val MISSING_EXECUTABLE_SUMMARY: String =
+            "Skill Bill CLI not found — set its path in Settings | Tools | Skill Bill"
+        const val MISCONFIGURED_EXECUTABLE_SUMMARY: String =
+            "Skill Bill CLI path override is not usable — check Settings | Tools | Skill Bill"
+
         fun intellijEdtGuard(): EdtGuard = EdtGuard {
             val app = ApplicationManager.getApplication()
             if (app != null && app.isDispatchThread) {
                 error("Skill Bill status CLI must not run on the EDT")
             }
-        }
-
-        fun resolveExecutable(preferences: PreferenceCachePort): CliExecutableResolution {
-            val override = preferences.getCliExecutableOverride()?.trim()?.takeIf { it.isNotEmpty() }
-            if (override != null) {
-                val path = Path.of(override)
-                return if (Files.isRegularFile(path) && Files.isExecutable(path)) {
-                    CliExecutableResolution.Found(path.toString())
-                } else {
-                    // Override set but unusable — do not fall back to PATH.
-                    CliExecutableResolution.Misconfigured
-                }
-            }
-            val onPath = findOnPath("skill-bill")
-            return if (onPath != null) {
-                CliExecutableResolution.Found(onPath)
-            } else {
-                CliExecutableResolution.Missing
-            }
-        }
-
-        fun findOnPath(name: String): String? {
-            val pathEnv = System.getenv("PATH") ?: return null
-            val separators = if (pathEnv.contains(';') && !pathEnv.contains(':')) ";" else ":"
-            return pathEnv.split(separators)
-                .asSequence()
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .map { Path.of(it, name) }
-                .firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }
-                ?.toString()
         }
     }
 }

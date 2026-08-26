@@ -31,7 +31,7 @@ dev.skillbill.intellij
 ├── application/      StatusRepository, PreferenceCachePort, StatusRefreshCoordinator
 ├── infrastructure/   CLI process adapter, IntelliJ PersistentStateComponent prefs
 ├── presentation/     ViewModel, UI state, StatusUiMapper, StatusBarPresentation
-├── ui/               StatusBarWidgetFactory + SkillBillStatusBarWidget (IntelliJ APIs)
+├── ui/               StatusBarWidgetFactory + SkillBillStatusBarWidget + settings Configurable (IntelliJ APIs)
 └── composition/      SkillBillStatusCompositionRoot, SkillBillProjectStatusService
 ```
 
@@ -106,8 +106,12 @@ IDE does not own.
 
 ### Troubleshooting unavailable / incompatible
 
-- **Unavailable / missing executable**: ensure `skill-bill` is on `PATH`, or set the
-  CLI path preference override to an absolute executable.
+- **Unavailable / missing executable**: ensure `skill-bill` is on `PATH` or in
+  `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, or set an absolute path in
+  **Settings | Tools | Skill Bill**. Search-path lookup merges the platform's
+  shell-aware environment with the IDE process environment: a desktop-launched IDE
+  inherits the session `PATH`, which on macOS omits `~/.local/bin` and everything else
+  a shell profile adds.
 - **Unavailable / misconfigured / process failure / timeout**: verify the CLI runs
   `skill-bill work status --format json` for the open project root outside the IDE.
 - **Incompatible**: upgrade Skill Bill CLI or the plugin so IDE status

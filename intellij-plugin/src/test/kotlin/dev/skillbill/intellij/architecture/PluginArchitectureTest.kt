@@ -1,11 +1,15 @@
 package dev.skillbill.intellij.architecture
 
+import com.intellij.openapi.options.Configurable
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
+import org.w3c.dom.Document
+import org.w3c.dom.Element
 import java.nio.file.Files
 import java.nio.file.Path
+import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.io.path.extension
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.readText
@@ -91,15 +95,42 @@ class PluginArchitectureTest {
 
     @Test
     fun `plugin declares only the platform dependency`() {
-        val descriptor = listOf(
-            Path.of("src/main/resources/META-INF/plugin.xml"),
-            Path.of("intellij-plugin/src/main/resources/META-INF/plugin.xml"),
-        ).firstOrNull { it.isRegularFile() } ?: error("Cannot locate plugin.xml")
+        val descriptor = locateDescriptor()
         val depends = Regex("<depends[^>]*>([^<]*)</depends>")
             .findAll(descriptor.readText())
             .map { it.groupValues[1].trim() }
             .toList()
         assertEquals(listOf("com.intellij.modules.platform"), depends)
+    }
+
+    @Test
+    fun `plugin registers a loadable settings editor for the CLI path override`() {
+        val elements = parseDescriptor().getElementsByTagName("applicationConfigurable")
+        assertEquals(
+            "plugin.xml must register exactly one applicationConfigurable: without it the CLI " +
+                "path override is only reachable by hand-editing skillBillSettings.xml",
+            1,
+            elements.length,
+        )
+        val element = elements.item(0) as Element
+        assertEquals("tools", element.getAttribute("parentId"))
+
+        val instance = element.getAttribute("instance")
+        val loaded = try {
+            Class.forName(instance, false, javaClass.classLoader)
+        } catch (_: ClassNotFoundException) {
+            fail("applicationConfigurable instance is not on the classpath: $instance")
+            return
+        }
+        assertTrue(
+            "$instance must implement Configurable",
+            Configurable::class.java.isAssignableFrom(loaded),
+        )
+        try {
+            loaded.getDeclaredConstructor()
+        } catch (_: NoSuchMethodException) {
+            fail("$instance needs a no-argument constructor for the platform to instantiate it")
+        }
     }
 
     private fun scanPackage(relative: String, check: (String, Path) -> String?): List<String> {
@@ -114,6 +145,15 @@ class PluginArchitectureTest {
                 .toList()
         }
     }
+
+    private fun parseDescriptor(): Document =
+        DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(locateDescriptor().toFile())
+
+    private fun locateDescriptor(): Path =
+        listOf(
+            Path.of("src/main/resources/META-INF/plugin.xml"),
+            Path.of("intellij-plugin/src/main/resources/META-INF/plugin.xml"),
+        ).firstOrNull { it.isRegularFile() } ?: error("Cannot locate plugin.xml")
 
     private fun locateMainSources(): Path {
         val candidates = listOf(
