@@ -2062,10 +2062,7 @@ private fun phasePlanningPayload(phaseId: String): String =
 // preplan and plan feed the bounded planning projections, so their payloads carry the declared shape.
 private fun planningProjectionOutputs(phaseId: String): String? = when (phaseId) {
   "preplan" ->
-    """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["runtime-cli"],""" +
-      """"risks":["Fixture risk."],""" +
-      """"rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},""" +
-      """"validation_strategy":["Focused runtime tests."]}"""
+    """{"value":"Fixture preplan prose for downstream plan."}"""
   "plan" ->
     """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{"task_id":"task-1",""" +
       """"description":"Fixture task.","criterion_refs":["AC-001"],""" +

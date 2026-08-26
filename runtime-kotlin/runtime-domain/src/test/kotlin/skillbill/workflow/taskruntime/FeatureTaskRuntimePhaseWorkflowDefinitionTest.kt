@@ -189,15 +189,14 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
-  fun `the three record-regeneration edges keep their caps and cap-exhaustion behavior`() {
+  fun `the two record-regeneration edges keep their caps and cap-exhaustion behavior`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val expected = mapOf(
-      def.PREPLAN_REGENERATION_LOOP_ID to (def.PHASE_PLAN to def.PHASE_PREPLAN),
       def.PLAN_REGENERATION_LOOP_ID to (def.PHASE_IMPLEMENT to def.PHASE_PLAN),
       def.IMPLEMENT_REGENERATION_LOOP_ID to (def.PHASE_AUDIT to def.PHASE_IMPLEMENT),
     )
 
-    assertEquals(setOf("regenerate_preplan", "regenerate_plan", "regenerate_implement"), def.REGENERATION_LOOP_IDS)
+    assertEquals(setOf("regenerate_plan", "regenerate_implement"), def.REGENERATION_LOOP_IDS)
     assertEquals(2, def.MAX_RECORD_REGENERATION_ATTEMPTS)
     expected.forEach { (loopId, endpoints) ->
       val edge = def.transitions.backwardEdges.single { it.loopId == loopId }
@@ -214,7 +213,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   fun `the audit_gap backward edge reopens implement-through-audit without planning and without a cap`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val transitions = def.transitions
-    assertEquals(5, transitions.backwardEdges.size)
+    assertEquals(4, transitions.backwardEdges.size)
     val edge = transitions.backwardEdges.single { it.loopId == def.AUDIT_GAP_LOOP_ID }
     assertEquals(def.PHASE_AUDIT, edge.fromPhaseId)
     assertEquals(def.PHASE_IMPLEMENT, edge.destinationPhaseId)
@@ -290,7 +289,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   fun `consumer projection matrix is exact and downstream edges never receive whole phase receipts`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val expected = mapOf(
-      def.PHASE_PLAN to setOf(def.PHASE_PREPLAN to "feature_task_runtime.preplanning_digest"),
+      def.PHASE_PLAN to setOf(def.PHASE_PREPLAN to "feature_task_runtime.preplan_prose"),
       def.PHASE_IMPLEMENT to setOf(def.PHASE_PLAN to "feature_task_runtime.executable_plan"),
       def.PHASE_AUDIT to setOf(
         def.PHASE_PLAN to "feature_task_runtime.plan_commitment",
@@ -553,7 +552,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   @Test
   fun `all backward edges declare PER_SUBTASK capScope explicitly`() {
     val edges = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges
-    assertEquals(5, edges.size, "expected exactly five declared backward edges: ${edges.map { it.loopId }}")
+    assertEquals(4, edges.size, "expected exactly four declared backward edges: ${edges.map { it.loopId }}")
     edges.forEach { edge ->
       assertEquals(
         FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,

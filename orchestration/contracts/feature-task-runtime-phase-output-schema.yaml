@@ -528,3 +528,22 @@ allOf:
           required: [repair_receipt]
           properties:
             repair_receipt: { $ref: "#/$defs/repairReceipt" }
+  - if:
+      properties:
+        phase_id: { const: preplan }
+        status: { const: completed }
+      required: [phase_id, status]
+    then:
+      properties:
+        produced_outputs:
+          type: object
+          required: [value]
+          properties:
+            value:
+              type: string
+              minLength: 1
+              pattern: ".*\\S.*"
+            prompt:
+              type: string
+              minLength: 1
+              pattern: ".*\\S.*"

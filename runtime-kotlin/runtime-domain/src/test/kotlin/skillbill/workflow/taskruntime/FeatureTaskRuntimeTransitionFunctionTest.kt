@@ -648,7 +648,6 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   fun `RECORD_REJECTED below cap re-enters the producer on its regeneration loop`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val cases = listOf(
-      Triple(def.PHASE_PLAN, def.PHASE_PREPLAN, def.PREPLAN_REGENERATION_LOOP_ID),
       Triple(def.PHASE_IMPLEMENT, def.PHASE_PLAN, def.PLAN_REGENERATION_LOOP_ID),
       Triple(def.PHASE_AUDIT, def.PHASE_IMPLEMENT, def.IMPLEMENT_REGENERATION_LOOP_ID),
     )
@@ -678,28 +677,16 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `a producer absent from the resolved pipeline yields no regeneration edge`() {
+  fun `RECORD_REJECTED at plan advances forward when no regeneration edge targets preplan`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
-    // A truncated pipeline that dropped preplan cannot legally carry the plan->preplan edge, so the
-    // transition function computes no re-entry: RECORD_REJECTED at plan simply advances forward.
-    val truncated = FeatureTaskRuntimeTransitionDeclaration(
-      forwardPhaseIds = listOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_AUDIT),
-      backwardEdges = shipped.backwardEdges.filter {
-        it.fromPhaseId != def.PHASE_PLAN || it.destinationPhaseId != def.PHASE_PREPLAN
-      }.filter {
-        it.fromPhaseId in listOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_AUDIT) &&
-          it.destinationPhaseId in listOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_AUDIT)
-      },
-    )
     val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-      FeatureTaskRuntimeTransitionFunction.nextTransition(
-        declaration = truncated,
-        currentPhaseId = def.PHASE_PLAN,
-        verdict = FeatureTaskRuntimeVerdict.RECORD_REJECTED,
+      shippedTransition(
+        def.PHASE_PLAN,
+        FeatureTaskRuntimeVerdict.RECORD_REJECTED,
         edgeIterationCount = 0,
       ),
     )
-    assertEquals(def.PHASE_IMPLEMENT, next.phaseId, "no edge to a dropped producer; plain forward advance")
+    assertEquals(def.PHASE_IMPLEMENT, next.phaseId)
     assertEquals(null, next.loopId)
   }
 }

@@ -2,23 +2,23 @@ package skillbill.contracts.workflow
 
 import org.yaml.snakeyaml.Yaml
 import skillbill.testing.repoRootFromTest
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class FeatureTaskRuntimeProjectionCanonicalizationSchemaRepoTest {
-  // The schema's list-cap-budget-agreement check names the constant in prose; only this binds it.
   @Test
-  fun `the schema literal cap equals the Kotlin selected boundary heading cap`() {
+  fun `the schema literal task cap equals the Kotlin projection list cap`() {
     val schema = Yaml().load<Map<String, Any?>>(
       Files.readString(
         repoRootFromTest().resolve("orchestration/contracts/feature-task-runtime-planning-projections-schema.yaml"),
       ),
     )
-    val digest = (schema["\$defs"] as Map<*, *>)["preplanning_digest"] as Map<*, *>
-    val headings = (digest["properties"] as Map<*, *>)["selected_boundary_headings"] as Map<*, *>
+    val plan = (schema["\$defs"] as Map<*, *>)["executable_plan"] as Map<*, *>
+    val tasks = (plan["properties"] as Map<*, *>)["tasks"] as Map<*, *>
+    val maxItems = (tasks["maxItems"] as? Number)?.toInt()
 
-    assertEquals(FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT, headings["maxItems"])
+    assertEquals(FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT, maxItems)
   }
 }

@@ -344,16 +344,14 @@ internal fun goalContinuationDirective(phaseId: String, suppressDecomposition: B
 // Validate Task-line specialization lives in FeatureTaskRuntimePhasePromptValidateDirectives.
 internal val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
-    "Produce the scaled pre-planning digest for the resolved feature size. Do not modify " +
-    "repository files during this phase. Emit a schema-valid produced_outputs object carrying the " +
-    "bounded digest for the downstream plan phase: projection_kind \"preplanning_digest\", " +
-    "contract_version \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", and the " +
-    "declared digest fields (affected_boundaries, patterns_and_decisions, risks, rollout, " +
-    "validation_strategy, unresolved_questions, evidence_refs). Do not forward the complete " +
-    "preplan envelope, a generic summary, or progress diagnostics.",
+    "Produce the scaled pre-planning prose for the resolved feature size. Do not modify " +
+    "repository files during this phase. Emit produced_outputs with a non-blank value string " +
+    "carrying your planning prose for the downstream plan phase; optional prompt may add a short " +
+    "directive when non-blank. Do not forward the complete preplan envelope, a generic summary, " +
+    "or progress diagnostics.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
     "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
-    "the upstream preplan digest as planning context. Do not modify repository files during " +
+    "the upstream preplan prose as planning context. Do not modify repository files during " +
     "this phase. Emit a schema-valid produced_outputs object carrying the bounded executable plan: " +
     "projection_kind \"executable_plan\", contract_version " +
     "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", mode (direct or decompose), " +

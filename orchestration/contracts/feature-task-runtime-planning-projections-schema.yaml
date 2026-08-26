@@ -1,9 +1,8 @@
 # Feature-task-runtime planning-projections schema (canonical source of truth).
 #
-# This file describes the four concrete, bounded projections that replace the coarse whole-receipt
-# projection for the preplan->plan, plan->implement, and plan+implement->audit handoff edges:
+# This file describes the three concrete, bounded projections that replace the coarse whole-receipt
+# projection for the plan->implement and plan+implement->audit handoff edges:
 #
-# - preplanning_digest   : what `plan` receives from `preplan` (AC-003)
 # - executable_plan      : what `implement` receives from `plan` (AC-005)
 # - plan_commitment      : the bounded task/criterion obligation `audit` receives from `plan` (AC-011)
 # - implementation_receipt: the bounded producer claim `audit` receives from `implement` (AC-008/009)
@@ -39,10 +38,9 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://skill-bill.dev/contracts/feature-task-runtime-planning-projections-schema.yaml"
 title: "Feature-task-runtime planning projections"
-description: "Strict oneOf over the four concrete bounded projections for the planning/implementation/audit edges."
+description: "Strict oneOf over the three concrete bounded projections for the plan/implement/audit edges."
 type: object
 oneOf:
-  - $ref: "#/$defs/preplanning_digest"
   - $ref: "#/$defs/executable_plan"
   - $ref: "#/$defs/plan_commitment"
   - $ref: "#/$defs/implementation_receipt"
@@ -51,7 +49,7 @@ x-coherence-checks:
   - id: discriminator-uniqueness
     description: >-
       Each variant carries a unique projection_kind. The Kotlin ProjectionKind enum mirrors these
-      four values; an unknown or missing kind is a malformed-projection rejection.
+      three values; an unknown or missing kind is a malformed-projection rejection.
   - id: decomposition-data-only-under-decompose
     description: >-
       decomposition_* fields are accepted only when executable_plan.mode is "decompose". A DIRECT
@@ -68,8 +66,7 @@ x-coherence-checks:
     description: >-
       Every `maxItems` here equals the matching Kotlin cap
       (FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT, FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT
-      for changed_paths and working_tree_owned_paths, or
-      FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT for selected_boundary_headings), and
+      for changed_paths and working_tree_owned_paths), and
       FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION sums the widest variant's caps.
       A schema-valid projection therefore cannot overflow the item budget it is delivered under.
   - id: tests-executed-distinct
@@ -158,50 +155,6 @@ $defs:
         type: array
         maxItems: 512
         items: { $ref: "#/$defs/repoPath" }
-
-  preplanning_digest:
-    type: object
-    additionalProperties: false
-    required:
-      - projection_kind
-      - contract_version
-      - affected_boundaries
-      - risks
-      - rollout
-      - validation_strategy
-    properties:
-      projection_kind: { const: "preplanning_digest" }
-      contract_version: { $ref: "#/$defs/contractVersion" }
-      affected_boundaries: { $ref: "#/$defs/nonEmptyStrings" }
-      patterns_and_decisions: { $ref: "#/$defs/strings" }
-      risks: { $ref: "#/$defs/nonEmptyStrings" }
-      rollout:
-        type: object
-        additionalProperties: false
-        required: [flag_required, notes]
-        properties:
-          flag_required: { type: boolean }
-          flag_pattern:
-            type: string
-            enum: [none, simple_conditional, di_switch, legacy]
-          notes: { $ref: "#/$defs/nonBlank" }
-      validation_strategy: { $ref: "#/$defs/nonEmptyStrings" }
-      unresolved_questions: { $ref: "#/$defs/strings" }
-      evidence_refs: { $ref: "#/$defs/strings" }
-      # SKILL-174 heading-selection channel: the boundary-memory heading ids the preplan agent judged
-      # relevant, resolved to bodies for the plan phase only. contract_version stays "0.1" because the
-      # field is additive and optional. The accepted cost: preplanning_digest is
-      # additionalProperties:false, so rolling the runtime back across this change quarantines
-      # in-flight digests as carrying an unknown key. Downgrade is not supported here.
-      # maxItems equals FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT (list-cap-budget-agreement).
-      selected_boundary_headings:
-        type: array
-        maxItems: 64
-        items: { $ref: "#/$defs/nonBlank" }
-      # Governed co-resident of the goal-planning sweep's preplan produced_outputs, owned by
-      # goal-planning-preparation-schema.yaml. Named here only so additionalProperties:false does not
-      # reject an output that seam requires; it is not part of the digest this variant delivers.
-      _goal_planning_shared_context: { type: object }
 
   executable_plan:
     type: object

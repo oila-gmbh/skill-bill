@@ -94,14 +94,6 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     "deviations" -> mapEntries(value) { index, entry -> canonicalizeDeviationEntry(entry, records, index) }
     "completed_task_ids" -> canonicalizeReferenceIds(value, declaredIds, records, key)
     "tests_executed" -> discardUnknownKeysInEntries(value, TEST_EXECUTION_KEYS, key, records)
-    "rollout" -> mapObject(value) {
-      trimNonBlank(
-        discardUnknownKeys(it, ROLLOUT_KEYS, key, records),
-        "notes",
-        records,
-        "rollout.notes",
-      )
-    }
     "reconciliation_evidence" -> mapObject(promotedReconciliationEvidence(value, records)) {
       trimNonBlank(
         // Adoption runs BEFORE the discard: afterwards the misnamed key is already gone, and all the
@@ -446,7 +438,6 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
   )
 
   private val RECONCILIATION_EVIDENCE_KEYS = governedKeysOf("reconciliation_evidence")
-  private val ROLLOUT_KEYS = governedKeysOf("preplanning_digest.rollout")
   private val REPOSITORY_CHECKPOINT_KEYS = governedKeysOf("repositoryCheckpoint")
   private val PLAN_TASK_KEYS = governedKeysOf("plan_task")
   private val TASK_COMMITMENT_KEYS = governedKeysOf("task_commitment")
@@ -504,7 +495,7 @@ enum class FeatureTaskRuntimeProjectionCanonicalizationTransform(val wireValue: 
 }
 
 /**
- * Governed key sets of the fully-enumerated closed projection objects — the four top-level variants and
+ * Governed key sets of the fully-enumerated closed projection objects — the three top-level variants and
  * every nested one — keyed by their location in
  * `orchestration/contracts/feature-task-runtime-planning-projections-schema.yaml`: a `$defs` name, or a
  * `<variant>.<property>` path for an inline object. A top-level variant's entry is keyed by its
@@ -516,19 +507,6 @@ enum class FeatureTaskRuntimeProjectionCanonicalizationTransform(val wireValue: 
  * appear here and the prune retains them.
  */
 internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set<String>> = mapOf(
-  "preplanning_digest" to setOf(
-    "projection_kind",
-    "contract_version",
-    "affected_boundaries",
-    "patterns_and_decisions",
-    "risks",
-    "rollout",
-    "validation_strategy",
-    "unresolved_questions",
-    "evidence_refs",
-    "selected_boundary_headings",
-    "_goal_planning_shared_context",
-  ),
   "executable_plan" to setOf(
     "projection_kind",
     "contract_version",
@@ -558,7 +536,6 @@ internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set
     "repair_receipt",
   ),
   "reconciliation_evidence" to setOf("reconciled", "evidence"),
-  "preplanning_digest.rollout" to setOf("flag_required", "flag_pattern", "notes"),
   "repositoryCheckpoint" to setOf("fingerprint", "base_ref", "head_ref", "working_tree_owned_paths"),
   "plan_task" to setOf(
     "task_id",

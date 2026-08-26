@@ -38,11 +38,7 @@ internal val FINALIZATION_PHASE_IDS: Set<String> = setOf("write_history", "commi
  */
 internal object PlanningProjectionFixtures {
   const val PREPLAN_DIGEST: String =
-    """{"projection_kind":"preplanning_digest","contract_version":"0.1",""" +
-      """"affected_boundaries":["runtime-application"],""" +
-      """"risks":["Fixture risk."],""" +
-      """"rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},""" +
-      """"validation_strategy":["Focused runtime tests."]}"""
+    """{"value":"Fixture preplan prose for downstream plan."}"""
 
   const val EXECUTABLE_PLAN: String =
     """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{"task_id":"task-1",""" +

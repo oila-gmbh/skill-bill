@@ -21,7 +21,6 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
-import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
@@ -33,14 +32,11 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
-import skillbill.ports.goalrunner.GoalPlanningBoundaryBodyResolver
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalPlanningBoundaryBody
 import skillbill.ports.goalrunner.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.model.GoalPlanningContext
-import skillbill.ports.goalrunner.model.GoalPlanningResolvedBoundaryBodies
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -268,15 +264,16 @@ class GoalPlanningSweepTest {
 
     val preplanPrompt = harness.launcher.requests.first().skillRunRequest.promptOverride.orEmpty()
     assertContains(preplanPrompt, FIXTURE_HEADING_ID)
-    assertContains(preplanPrompt, "selected_boundary_headings")
+    assertContains(preplanPrompt, "produced_outputs.value")
     assertFalse(preplanPrompt.contains(FIXTURE_BODY), "the catalog never carries entry bodies")
   }
 
   @Test
-  fun `a selected heading id delivers only that body to the plan prompt`() {
+  fun `preplan prose reaches the plan prompt`() {
+    val prose = "Distinctive preplan prose for plan."
     val harness = sweepHarness { phase, _, _ ->
       if (phase == "preplan") {
-        launchFacts(stdout = preplanPayloadSelecting(FIXTURE_HEADING_ID))
+        launchFacts(stdout = preplanProsePayload(value = prose))
       } else {
         validPhaseOutcome(phase)
       }
@@ -285,12 +282,11 @@ class GoalPlanningSweepTest {
     harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
     val planPrompt = harness.launcher.requests[1].skillRunRequest.promptOverride.orEmpty()
-    assertContains(planPrompt, "## Selected boundary memory")
-    assertContains(planPrompt, FIXTURE_BODY)
+    assertContains(planPrompt, prose)
   }
 
   @Test
-  fun `a preplan without a selection field yields a catalog only plan prompt`() {
+  fun `a preplan without optional prompt yields a plan prompt without a prompt field`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
@@ -609,7 +605,7 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume refreshes stale shared preplan in-run when parent spec body changes with identical headings`() {
+  fun `resume refreshes stale shared preplan in-run when parent spec body changes with identical prose`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 1))
     harness.sweep.prepare(state, harness.request())
@@ -650,17 +646,17 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume refreshes and cascades via shared helper when heading set changes`() {
+  fun `resume refreshes and cascades via shared helper when prose content changes`() {
     var preplanLaunches = 0
     val harness = sweepHarness { phase, _, _ ->
       if (phase == "preplan") {
         preplanLaunches += 1
-        val headings = if (preplanLaunches == 1) {
-          arrayOf(FIXTURE_HEADING_ID)
+        val value = if (preplanLaunches == 1) {
+          "First preplan prose payload."
         } else {
-          emptyArray()
+          "Refreshed preplan prose payload."
         }
-        launchFacts(stdout = preplanPayloadSelecting(*headings))
+        launchFacts(stdout = preplanProsePayload(value = value))
       } else {
         validPhaseOutcome(phase)
       }
@@ -676,7 +672,7 @@ class GoalPlanningSweepTest {
         ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
       ),
     )
-    val refreshedParentSpec = "# Initial feature contract edited for heading drift"
+    val refreshedParentSpec = "# Initial feature contract edited for prose drift"
     harness.manifestFileStore.replaceSpec("spec.md", refreshedParentSpec)
 
     val outcome = harness.sweep.prepare(state, harness.request())
@@ -711,7 +707,7 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `changed heading set refresh preserves complete-with-commit sibling plan`() {
+  fun `changed prose refresh preserves complete-with-commit sibling plan`() {
     val fixture = changedHeadingSetRefreshFixture()
     val outcome = fixture.harness.sweep.prepare(
       fixture.harness.stateFor(fixture.resumeManifest),
@@ -775,12 +771,12 @@ class GoalPlanningSweepTest {
     val harness = sweepHarness(manifestStore = store) { phase, _, _ ->
       if (phase == "preplan") {
         preplanLaunches += 1
-        val headings = if (preplanLaunches == 1) {
-          arrayOf(FIXTURE_HEADING_ID)
+        val value = if (preplanLaunches == 1) {
+          "First preplan prose for cascade test."
         } else {
-          emptyArray()
+          "Refreshed preplan prose for cascade test."
         }
-        launchFacts(stdout = preplanPayloadSelecting(*headings))
+        launchFacts(stdout = preplanProsePayload(value = value))
       } else {
         validPhaseOutcome(phase)
       }
@@ -801,7 +797,7 @@ class GoalPlanningSweepTest {
       ),
     )
     val launchCount = harness.launcher.requests.size
-    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited for heading drift")
+    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited for prose drift")
     return ChangedHeadingSetRefreshFixture(harness, store, resumeManifest, plan1Before, launchCount)
   }
 
@@ -907,11 +903,11 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume reuses saved planning when a selected boundary heading is absent from the fresh catalog`() {
+  fun `resume reuses saved planning when the fresh catalog no longer lists a referenced heading`() {
     val discovery = MutableContextDiscovery()
     val harness = sweepHarness(contextDiscovery = discovery) { phase, _, _ ->
       if (phase == "preplan") {
-        launchFacts(stdout = preplanPayloadSelecting(FIXTURE_HEADING_ID))
+        launchFacts(stdout = preplanProsePayload(value = "Preplan prose with catalog context."))
       } else {
         validPhaseOutcome(phase)
       }
@@ -928,7 +924,7 @@ class GoalPlanningSweepTest {
     assertEquals(
       sharedBefore.preplanPayload,
       sharedAfter.preplanPayload,
-      "An unresolvable heading must not discard the accepted preplan.",
+      "An absent catalog heading must not discard the accepted preplan.",
     )
   }
 
@@ -1135,7 +1131,6 @@ class GoalPlanningSweepTest {
       discovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
-      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
 
     val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
@@ -1154,7 +1149,6 @@ class GoalPlanningSweepTest {
       discovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
-      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
 
     val resumed = initial.copy(
@@ -1570,11 +1564,7 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `a rejected planning projection stops the sweep durably instead of crashing the goal driver`() {
-    // The launch seam owns rejection only for a preplan that was already settled under a laxer contract:
-    // run one checkpoints it, run two resumes under a validator that refuses it. The producer gate cannot
-    // pre-empt that — nothing is produced in run two — so an unhandled throw here would crash the goal
-    // driver with no Stopped outcome and crash identically on every resume.
+  fun `a settled preplan with blank prose stops the sweep durably at plan launch`() {
     val fixtures = sharedSweepFixtures()
     val settledPreplan = DefaultGoalPlanningSweep(
       fixtures.checkpoint,
@@ -1591,12 +1581,18 @@ class GoalPlanningSweepTest {
       fakeContextDiscovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
-      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
     assertIs<GoalPlanningSweepOutcome.Stopped>(
       settledPreplan.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request()),
     )
     assertEquals(0, fixtures.preparedCount(), "run one must settle the shared preplan and no plan")
+    fixtures.database.repository.blankSettledPreplanValue(
+      GoalPlanningIdentity(
+        "wfl-parent",
+        "SKILL-56",
+        "repo-root-realpath-v1:${fixtures.repoRoot.toRealPath()}",
+      ),
+    )
 
     val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
     val sweep = DefaultGoalPlanningSweep(
@@ -1606,13 +1602,10 @@ class GoalPlanningSweepTest {
       fixtures.invariantsSource,
       fixtures.manifestFileStore,
       fakeContextDiscovery,
-      RejectingSweepPlanningProjectionValidator,
+      NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
-      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
-
     val outcome = sweep.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request())
-
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals("plan", stopped.lastResumableStep)
     assertEquals(1, stopped.currentSubtaskId)
@@ -1621,6 +1614,7 @@ class GoalPlanningSweepTest {
       stopped.blockedReason.contains("Migrate or delete"),
       "the block must name the operator remedy for a non-conforming durable record",
     )
+    assertTrue(stopped.blockedReason.contains("produced_outputs.value must contain non-blank prose"))
     assertEquals(
       0,
       launcher.requests.size,
@@ -1659,7 +1653,6 @@ class GoalPlanningSweepTest {
       fakeContextDiscovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
-      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val runner = GoalRunner(
@@ -1729,7 +1722,6 @@ class GoalPlanningSweepTest {
       fakeContextDiscovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
-      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
     val state = GoalRunnerManifestState(
       parentWorkflowId = "wfl-parent",
@@ -1937,19 +1929,29 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `the preplan gate observes the enriched payload that is actually checkpointed`() {
-    // Enrichment, not raw child stdout, produces the checkpointed bytes. A rejecting validator must
-    // therefore be reached through the enriched payload, before checkpointSharedPreplan runs.
-    val validator = RejectOnceSweepPlanningProjectionValidator()
+  fun `preplan settles without consulting the planning projection producer gate`() {
+    val labels = mutableListOf<String>()
+    val validator = object : FeatureTaskRuntimePlanningProjectionValidator {
+      override fun validatePlanningProjection(producedOutputs: Map<String, Any?>, sourceLabel: String) {
+        labels += sourceLabel
+      }
+    }
     val harness = sweepHarness(planningProjectionValidator = validator) { phase, _, _ ->
-      validPhaseOutcome(phase)
+      if (phase == "plan") {
+        launchFacts(stdout = phasePayload(phase).replace("\"completed\"", "\"blocked\""))
+      } else {
+        validPhaseOutcome(phase)
+      }
     }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
-    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
-    assertEquals(2, harness.launcher.phases.count { it == "preplan" })
-    assertTrue(validator.calls >= 1, "the gate must observe the enriched payload before checkpointing")
+    assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(1, harness.launcher.phases.count { it == "preplan" })
+    assertTrue(
+      labels.none { it.startsWith("preplan#") },
+      "producedProjectionKindFor(preplan) is null, so the producer gate must not validate preplan prose",
+    )
   }
 
   @Test
@@ -2072,10 +2074,7 @@ private const val RAW_REPAIRED_PREPLAN = "raw preplan repaired before enrichment
 
 private const val REPAIRED_PREPLAN_PAYLOAD =
   """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"preplan",""" +
-    """"status":"completed","summary":"s","produced_outputs":{"projection_kind":"preplanning_digest",""" +
-    """"contract_version":"0.1","affected_boundaries":["runtime-application/workflow"],""" +
-    """"risks":["fixture risk"],"rollout":{"flag_required":false,"notes":"fixture"},""" +
-    """"validation_strategy":["Focused runtime tests"]}}"""
+    """"status":"completed","summary":"s","produced_outputs":{"value":"fixture preplan prose"}}"""
 
 private class RepairingPreplanOutputValidator(
   private val evidence: FeatureTaskRuntimePhaseOutputRepairEvidence,
@@ -2232,12 +2231,11 @@ private fun blockedPhasePayload(phaseId: String, summary: String, disposition: S
     """"status":"blocked","failure_disposition":"$disposition","summary":"$summary",""" +
     """"produced_outputs":{"result":"$phaseId"}}"""
 
-private fun preplanPayloadSelecting(vararg headingIds: String): String {
-  val ids = headingIds.joinToString(",") { id -> "\"" + id + "\"" }
-  val digest = PlanningProjectionFixtures.PREPLAN_DIGEST.dropLast(1) +
-    ""","selected_boundary_headings":[""" + ids + "]}"
+private fun preplanProsePayload(value: String = "Fixture preplan prose.", prompt: String? = null): String {
+  val promptPart = prompt?.let { ""","prompt":"$it"""" } ?: ""
+  val produced = """{"value":"$value"$promptPart}"""
   return """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"preplan",""" +
-    """"status":"completed","summary":"s","produced_outputs":""" + digest + "}"
+    """"status":"completed","summary":"s","produced_outputs":$produced}"""
 }
 
 private fun fencedPhasePayload(phaseId: String): String =
@@ -2556,6 +2554,27 @@ private class InMemoryPreparationRepository(
     plans[subtaskId] = plan.copy(provenance = plan.provenance.copy(parentSpecHash = "stale-parent-spec-hash"))
   }
 
+  fun overwriteSharedPreplanPayload(preplanPayload: String) {
+    val shared = requireNotNull(sharedPreplan)
+    sharedPreplan = shared.copy(
+      payloadSha256 = sha256HexUtf8(preplanPayload),
+      preplanPayload = preplanPayload,
+    )
+  }
+
+  fun blankSettledPreplanValue(identity: GoalPlanningIdentity) {
+    val settled = requireNotNull(findSharedPreplan(identity))
+    val root = requireNotNull(
+      JsonSupport.parseObjectOrNull(settled.preplanPayload)
+        ?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap),
+    )
+    val produced = requireNotNull(JsonSupport.anyToStringAnyMap(root["produced_outputs"]))
+    overwriteSharedPreplanPayload(
+      JsonSupport.mapToJsonString(root + ("produced_outputs" to (produced + ("value" to "   ")))),
+    )
+  }
+
   override fun findSharedPreplan(expectedIdentity: skillbill.ports.persistence.model.GoalPlanningIdentity) =
     sharedPreplan?.takeIf { it.identity == expectedIdentity }
 
@@ -2775,7 +2794,6 @@ private fun sweepHarness(
   planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
   timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
   burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
-  boundaryBodyResolver: GoalPlanningBoundaryBodyResolver = fakeBoundaryBodyResolver,
   refreshLiveness: GoalPlanningRefreshLiveness = GoalPlanningRefreshLiveness.IDLE,
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
@@ -2798,7 +2816,6 @@ private fun sweepHarness(
     planningRejectionRecorder = planningRejectionRecorder,
     timingPort = timingPort,
     burstSchedule = burstSchedule,
-    boundaryBodyResolver = boundaryBodyResolver,
     refreshLiveness = refreshLiveness,
   )
   return SweepHarness(fixtures, launcher, sweep)
@@ -2849,28 +2866,6 @@ private class MutablePauseGoalPlanningManifestStore : GoalRunnerManifestStore {
   ): Boolean = true
 }
 
-private class RejectOnceSweepPlanningProjectionValidator : FeatureTaskRuntimePlanningProjectionValidator {
-  var calls: Int = 0
-
-  override fun validatePlanningProjection(producedOutputs: Map<String, Any?>, sourceLabel: String) {
-    calls += 1
-    if (calls == 1) {
-      throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-        sourceLabel = sourceLabel,
-        reason = "additionalProperties: legacy shared preplan carries an undeclared field",
-      )
-    }
-  }
-}
-
-private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePlanningProjectionValidator {
-  override fun validatePlanningProjection(producedOutputs: Map<String, Any?>, sourceLabel: String): Unit =
-    throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-      sourceLabel = sourceLabel,
-      reason = "additionalProperties: legacy shared preplan carries an undeclared field",
-    )
-}
-
 internal const val FIXTURE_HEADING_ID = "runtime-kotlin/agent/history.md#0-000000000000"
 internal const val FIXTURE_HEADING = "## [2026-08-01] fixture-entry"
 internal const val FIXTURE_BODY = "distinctive fixture body sentence"
@@ -2895,21 +2890,6 @@ private val fakeContextDiscovery = object : GoalPlanningContextDiscovery {
       boundaryCatalogTruncated = false,
       boundaryContextUnavailable = findingPaths.isEmpty(),
     )
-}
-
-private val fakeBoundaryBodyResolver = object : GoalPlanningBoundaryBodyResolver {
-  override fun resolve(
-    repoRoot: Path,
-    headingIds: List<String>,
-    catalogHeadingIds: Set<String>,
-    caps: skillbill.ports.goalrunner.model.GoalPlanningBoundaryBodyResolutionCaps,
-    loudFailOnCapExceeded: Boolean,
-  ) = GoalPlanningResolvedBoundaryBodies(
-    bodies = headingIds.filter { id -> id == FIXTURE_HEADING_ID }.map { id ->
-      GoalPlanningBoundaryBody(id, "runtime-kotlin/agent/history.md", FIXTURE_HEADING, FIXTURE_BODY)
-    },
-    unresolvedHeadingIds = headingIds.filterNot { id -> id == FIXTURE_HEADING_ID },
-  )
 }
 
 private object NoopGoalPlanningManifestStore : GoalRunnerManifestStore {

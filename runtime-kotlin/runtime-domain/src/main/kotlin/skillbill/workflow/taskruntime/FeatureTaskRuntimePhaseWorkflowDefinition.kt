@@ -18,7 +18,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanCommitment
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrePlanningDigest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
@@ -91,14 +90,11 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // producer maps to that producer's regeneration edge. A consumer absent from this map has no
   // attributable producer, so its rejection blocks durably rather than re-entering an impossible edge.
   val REGENERATION_LOOP_ID_BY_PRODUCER: Map<String, String> = mapOf(
-    PHASE_PREPLAN to PREPLAN_REGENERATION_LOOP_ID,
     PHASE_PLAN to PLAN_REGENERATION_LOOP_ID,
     PHASE_IMPLEMENT to IMPLEMENT_REGENERATION_LOOP_ID,
   )
 
-  // Consumer phase -> the producer whose bounded planning projection it parses at its launch seam.
   val REGENERATION_PRODUCER_BY_CONSUMER: Map<String, String> = mapOf(
-    PHASE_PLAN to PHASE_PREPLAN,
     PHASE_IMPLEMENT to PHASE_PLAN,
     PHASE_AUDIT to PHASE_IMPLEMENT,
   )
@@ -243,6 +239,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    */
   object PhaseProjectionContract {
     const val VERSION: String = "0.1"
+    const val PREPLAN_PROSE: String = "feature_task_runtime.preplan_prose"
     const val AUDIT_CLEARANCE: String = "feature_task_runtime.audit_clearance"
     const val AUDIT_REPAIR_REQUEST: String = "feature_task_runtime.audit_repair_request"
     const val REVIEW_CLEARANCE: String = "feature_task_runtime.review_clearance"
@@ -302,18 +299,18 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     priorGapMemoryDeclaration(PHASE_IMPLEMENT),
   )
 
-  fun preplanningDigestDeclaration(
+  fun preplanProseDeclaration(
     consumerPhaseId: String,
     producingPhaseId: String = PHASE_PREPLAN,
   ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
     consumerPhaseId = consumerPhaseId,
     sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
-    projectionName = "${producingPhaseId}_preplanning_digest",
-    projectionContractId = FeatureTaskRuntimePlanningProjectionContract.PREPLANNING_DIGEST_ID,
-    projectionContractVersion = FeatureTaskRuntimePlanningProjectionContract.VERSION,
+    projectionName = "${producingPhaseId}_prose",
+    projectionContractId = PhaseProjectionContract.PREPLAN_PROSE,
+    projectionContractVersion = PhaseProjectionContract.VERSION,
     promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
     budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-    declaredFieldNames = FeatureTaskRuntimePrePlanningDigest.DECLARED_FIELD_NAMES,
+    declaredFieldNames = listOf("value", "directive"),
     checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
     required = true,
   )
@@ -439,7 +436,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    */
   private val PHASE_PROJECTION_MATRIX: Map<String, List<PhaseHandoffProjectionDeclaration>> = mapOf(
     PHASE_PREPLAN to emptyList(),
-    PHASE_PLAN to listOf(preplanningDigestDeclaration(PHASE_PLAN)),
+    PHASE_PLAN to listOf(preplanProseDeclaration(PHASE_PLAN)),
     PHASE_IMPLEMENT to listOf(executablePlanDeclaration(PHASE_IMPLEMENT)),
     // The shared evidence is a floor for audit, never a replacement for its scoped repository read: it is
     // appended to the existing declarations, which stay exactly as they were.
@@ -732,14 +729,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         // SKILL-140: quarantine-and-regenerate edges. A consumer that rejects an upstream producer's
         // durable record at its launch seam re-enters that producer under a bounded cap; cap
         // exhaustion blocks durably (BLOCK, the default), naming the quarantined record.
-        FeatureTaskRuntimeBackwardEdge(
-          fromPhaseId = PHASE_PLAN,
-          triggeringVerdict = FeatureTaskRuntimeVerdict.RECORD_REJECTED,
-          destinationPhaseId = PHASE_PREPLAN,
-          loopId = PREPLAN_REGENERATION_LOOP_ID,
-          perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
-          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
-        ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_IMPLEMENT,
           triggeringVerdict = FeatureTaskRuntimeVerdict.RECORD_REJECTED,

@@ -2,13 +2,16 @@
 
 package skillbill.application
 
+import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -54,13 +57,39 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   }
 
   @Test
-  fun `a preplan digest whose rollout is an array instead of an object blocks preplan (RDN-29)`() {
-    val outcome = runRejectedProducer("preplan", PREPLAN_ROLLOUT_AS_ARRAY)
+  fun `a preplan output missing value blocks preplan and never reaches plan`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "preplan") PREPLAN_MISSING_VALUE else validJsonOutput(phaseId))
+      },
+      validator = realFeatureTaskRuntimePhaseOutputValidator,
+      agentAssignment = phasePerAgentAssignment(),
+    )
 
-    assertEquals(1, outcome.launchCount("preplan"))
-    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
-    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "preplanning_digest", "rollout")
-    assertTrue(!outcome.launched("plan"))
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals("preplan", blocked.lastIncompletePhase)
+    assertTrue(
+      blocked.blockedReason.contains("value", ignoreCase = true) ||
+        harness.io.database.rejectedDiagnostics().any {
+          it.metadata.phaseId == "preplan" && it.metadata.reason.contains("value", ignoreCase = true)
+        },
+    )
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "plan" })
+  }
+
+  @Test
+  fun `leftover digest keys plus value complete preplan without producer-projection re-entry`() {
+    val envelope = JsonSupport.anyToStringAnyMap(
+      JsonSupport.jsonElementToValue(JsonSupport.parseObjectOrNull(PREPLAN_LEFTOVER_DIGEST_KEYS)!!),
+    )!!
+    assertNull(
+      producerProjectionGateReason(
+        phaseId = "preplan",
+        outputMap = envelope,
+        planningProjectionValidator = realPlanningProjectionValidator,
+      ),
+    )
   }
 
   @Test
@@ -117,16 +146,6 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
       "implementation_receipt",
       "deviations",
     )
-  }
-
-  @Test
-  fun `a decompose-shaped preplan output faces the gate because preplan owns no decompose backstop`() {
-    val outcome = runRejectedProducer("preplan", PREPLAN_DECOMPOSE_SHAPED)
-
-    assertEquals(1, outcome.launchCount("preplan"))
-    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
-    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "preplanning_digest", "is not a valid")
-    assertEquals(0, outcome.launchCount("plan"), "a decompose-shaped preplan must not bypass the gate and wedge plan")
   }
 
   @Test
@@ -407,26 +426,22 @@ private val PLAN_UNDECLARED_DEPENDENCY: String = envelope(
     """"criterion_refs":["AC-001"],"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
 )
 
-// A completed producing-phase output shaped like a decomposition package (mode=decompose, no
-// projection_kind). Only `plan` has a decompose stopper backstop, so for any other producer this must
-// still face the projection gate rather than the exemption. The implement variant carries
-// reconciled_state so it clears the separate mutating-phase reconciliation gate and actually reaches
-// the projection gate under test.
-private val PREPLAN_DECOMPOSE_SHAPED: String = envelope(
+private val PREPLAN_MISSING_VALUE: String = envelope(
   "preplan",
-  """{"mode":"decompose","reason":"looks like a decompose but preplan owns no stopper"}""",
+  """{"prompt":"optional only"}""",
+)
+
+private val PREPLAN_LEFTOVER_DIGEST_KEYS: String = envelope(
+  "preplan",
+  """{"value":"prose preplan with leftover digest keys","affected_boundaries":["runtime-domain"],""" +
+    """"risks":["Fixture risk."],"rollout":{"flag_required":false,"flag_pattern":"none","notes":"n"},""" +
+    """"validation_strategy":["Focused runtime tests."]}""",
 )
 
 private val IMPLEMENT_DECOMPOSE_SHAPED: String = envelope(
   "implement",
   """{"mode":"decompose","reason":"looks like a decompose but implement owns no stopper",""" +
     """"reconciled_state":{"reconciled":true}}""",
-)
-
-private val PREPLAN_ROLLOUT_AS_ARRAY: String = envelope(
-  "preplan",
-  """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
-    """"risks":["r"],"rollout":[{"flag_required":false,"notes":"n"}],"validation_strategy":["v"]}""",
 )
 
 private val IMPLEMENT_INVENTED_CHECKPOINT: String = envelope(

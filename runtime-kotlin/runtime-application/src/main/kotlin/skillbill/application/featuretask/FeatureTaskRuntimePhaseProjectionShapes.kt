@@ -35,25 +35,19 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
     else -> ""
   }
 
-  private val PREPLAN: String =
-    "\n    - Required produced_outputs shape: emit these fields DIRECTLY on produced_outputs — do NOT\n" +
-      "      nest them under a \"preplanning_digest\" key — and \"rollout\" is an OBJECT, never a string:\n" +
+  private const val PREPLAN: String =
+    "\n    - Required produced_outputs shape: emit a non-blank value string carrying your planning prose.\n" +
+      "      Optional prompt may add a short directive when non-blank. Extra keys are allowed.\n" +
       "      ```json\n" +
-      "      { \"projection_kind\": \"preplanning_digest\",\n" +
-      "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
-      "        \"affected_boundaries\": [\"<module or boundary touched>\"], \"patterns_and_decisions\": [],\n" +
-      "        \"risks\": [\"<concrete risk>\"],\n" +
-      "        \"rollout\": { \"flag_required\": false, \"flag_pattern\": \"none\",\n" +
-      "          \"notes\": \"<rollout note, or N/A>\" },\n" +
-      "        \"validation_strategy\": [\"<how the change is validated>\"],\n" +
-      "        \"unresolved_questions\": [], \"evidence_refs\": [],\n" +
-      "        \"selected_boundary_headings\": [\"<heading_id copied verbatim from the boundary catalog>\"] }\n" +
+      "      { \"value\": \"<dense planning prose for the plan phase>\",\n" +
+      "        \"prompt\": \"<optional short directive>\" }\n" +
       "      ```\n" +
-      "      flag_pattern is one of none, simple_conditional, di_switch, legacy. Optional arrays may be\n" +
-      "      omitted or []; every listed string must be non-empty."
+      "      Walk boundary_memory headings for relevance; weave context into value rather than listing " +
+      "selected_boundary_headings."
 
   private val PLAN: String =
-    "\n    - Required produced_outputs shape: emit these fields DIRECTLY on produced_outputs. Every\n" +
+    "\n    - Upstream preplan is prose (value, optional prompt), not a bounded digest. Required " +
+      "produced_outputs shape: emit these fields DIRECTLY on produced_outputs. Every\n" +
       "      task_id MUST match ^[a-z][a-z0-9-]*\$ (lowercase kebab; \"T1\" is REJECTED — use \"task-1\") and\n" +
       "      criterion_refs use the AC-### form:\n" +
       "      ```json\n" +

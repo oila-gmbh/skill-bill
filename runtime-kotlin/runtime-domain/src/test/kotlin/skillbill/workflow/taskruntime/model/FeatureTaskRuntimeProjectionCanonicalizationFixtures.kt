@@ -30,15 +30,6 @@ internal object FeatureTaskRuntimeProjectionCanonicalizationFixtures {
     "validation_strategy" to listOf("  focused gradle  "),
   )
 
-  private val CANONICAL_PREPLAN_DIGEST: Map<String, Any?> = mapOf(
-    "projection_kind" to "preplanning_digest",
-    "contract_version" to "0.1",
-    "affected_boundaries" to listOf("  runtime-domain  "),
-    "risks" to listOf("producer may omit fields"),
-    "rollout" to mapOf("flag_required" to false, "notes" to "  no flag needed  "),
-    "validation_strategy" to listOf("snapshot tests"),
-  )
-
   private val PLAN_COMMITMENT: Map<String, Any?> = mapOf(
     "projection_kind" to "plan_commitment",
     "contract_version" to "0.1",
@@ -65,7 +56,6 @@ internal object FeatureTaskRuntimeProjectionCanonicalizationFixtures {
 
   val ALL: List<Map<String, Any?>> = listOf(
     UPPERCASE_EXECUTABLE_PLAN,
-    CANONICAL_PREPLAN_DIGEST,
     PLAN_COMMITMENT,
     IMPLEMENTATION_RECEIPT,
   )

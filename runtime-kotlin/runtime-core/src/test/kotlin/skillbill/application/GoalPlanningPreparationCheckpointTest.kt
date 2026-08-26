@@ -212,12 +212,8 @@ class GoalPlanningPreparationCheckpointTest {
   fun `re-checkpointing a gate-satisfying record with different bytes still loud-fails as immutable`() {
     val harness = checkpointHarness()
     harness.checkpoint.checkpointSharedPreplan(validShared(), harness.dbOverride)
-    val otherProjection = """
-      {"projection_kind":"preplanning_digest","contract_version":"0.1",
-      "affected_boundaries":["runtime-application/workflow"],"risks":["a different risk"],
-      "rollout":{"flag_required":false,"notes":"no flag needed"},
-      "validation_strategy":["focused gradle"]}
-    """.trimIndent().replace("\n", "")
+    val otherProjection =
+      """{"value":"A different preplan prose payload for refresh testing."}"""
     val different = validShared(payload = payloadJson("preplan", producedOutputsJson = otherProjection))
 
     assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
@@ -389,12 +385,7 @@ class GoalPlanningPreparationCheckpointTest {
     """.trimIndent().replace("\n", "")
 
     fun projectionJson(phaseId: String): String = if (phaseId == "preplan") {
-      """
-      {"projection_kind":"preplanning_digest","contract_version":"0.1",
-      "affected_boundaries":["runtime-application/workflow"],"risks":["producer may omit obligations"],
-      "rollout":{"flag_required":false,"notes":"no flag needed"},
-      "validation_strategy":["focused gradle"]}
-      """.trimIndent().replace("\n", "")
+      """{"value":"Producer may omit obligations in prose."}"""
     } else {
       """
       {"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",

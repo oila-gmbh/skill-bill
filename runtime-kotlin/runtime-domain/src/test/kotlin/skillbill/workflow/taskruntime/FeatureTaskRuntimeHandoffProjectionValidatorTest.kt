@@ -678,6 +678,31 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `preplan prose handoff rejects whitespace-only value`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
+    val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.preplanProseDeclaration(consumer)
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          consumerPhaseId = consumer,
+          declarations = listOf(declaration),
+          resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+            mapOf(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to FeatureTaskRuntimePhaseOutput(
+                phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+                iteration = 1,
+                payload = """{"produced_outputs":{"value":"   "}}""",
+              ),
+            ),
+          ),
+        ),
+      )
+    }
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD, error.failureKind)
+    assertContains(error.message.orEmpty(), "non-blank prose")
+  }
+
+  @Test
   fun `null prior gap memory omits the optional projection while present memory enforces the declared shape`() {
     val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
     val memoryDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.priorGapMemoryDeclaration(consumer)

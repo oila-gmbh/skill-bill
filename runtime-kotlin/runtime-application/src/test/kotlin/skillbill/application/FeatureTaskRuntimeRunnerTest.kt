@@ -451,7 +451,7 @@ class FeatureTaskRuntimeRunnerTest {
       assertContains(briefing.briefingText, "mandate-X", message = "mandates missing for $phaseId")
     }
     // plan and implement receive bounded planning projections rather than coarse upstream receipts.
-    assertContains(briefings.getValue("plan").briefingText, "affected_boundaries")
+    assertContains(briefings.getValue("plan").briefingText, "Fixture preplan prose for downstream plan.")
     assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
     assertEquals(listOf("current_unit_of_work"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "current_unit_of_work")
@@ -710,7 +710,7 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  fun `resume skips completed preplan and restores its digest into plan briefing`() {
+  fun `resume skips completed preplan and restores its prose into plan briefing`() {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
 
@@ -723,10 +723,8 @@ class FeatureTaskRuntimeRunnerTest {
     )
     assertTrue(harness.launchedPhaseOrder().none { it == "preplan" })
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
-    // plan receives the bounded preplanning digest, not preplan's complete envelope.
     assertContains(planBriefing.briefingText, "### from: preplan")
-    assertContains(planBriefing.briefingText, "affected_boundaries")
-    assertContains(planBriefing.briefingText, "Fixture risk.")
+    assertContains(planBriefing.briefingText, "Fixture preplan prose for downstream plan.")
     assertFalse(planBriefing.briefingText.contains("Phase produced a validated output."))
   }
 
@@ -741,7 +739,7 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(AGENT_LAUNCHED_PHASES, harness.launchedPhaseOrder())
     val planBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["plan"])
     assertContains(planBriefing.briefingText, "### from: preplan")
-    assertContains(planBriefing.briefingText, "affected_boundaries")
+    assertContains(planBriefing.briefingText, "Fixture preplan prose for downstream plan.")
   }
 
   @Test
@@ -1624,7 +1622,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       }
     }
     // plan and implement receive bounded planning projections rather than coarse upstream receipts.
-    assertContains(briefings.getValue("plan").briefingText, "affected_boundaries")
+    assertContains(briefings.getValue("plan").briefingText, "Fixture preplan prose for downstream plan.")
     assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
     assertContains(briefings.getValue("review").briefingText, "clearance_status: satisfied")
     assertFalse(briefings.getValue("review").briefingText.contains(validJsonOutput("implement")))

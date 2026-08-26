@@ -28,17 +28,16 @@ import kotlin.test.assertTrue
 @Suppress("LargeClass") // one suite per producer/consumer projection edge; they share the payload fixtures
 class FeatureTaskRuntimePlanningProjectionEdgeTest {
   @Test
-  fun `plan receives only the bounded preplanning digest fields, never the complete preplan envelope`() {
+  fun `plan receives only preplan prose fields, never the complete preplan envelope`() {
     val briefing = assemble(
       consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-      recordedOutputs = listOf(phaseOutput(phasePreplan, preplanDigestPayload(undeclaredFields = true))),
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanProseDeclaration(phasePlan)),
+      recordedOutputs = listOf(phaseOutput(phasePreplan, preplanProsePayload(undeclaredFields = true))),
       runInvariants = runInvariants(),
     )
 
-    assertContains(briefing.briefingText, "affected_boundaries:")
-    assertContains(briefing.briefingText, "risks:")
-    assertContains(briefing.briefingText, "validation_strategy:")
+    assertContains(briefing.briefingText, "Dense preplan prose for downstream plan.")
+    assertContains(briefing.briefingText, "optional directive")
     assertFalse(
       briefing.briefingText.contains("complete_envelope_secret"),
       "complete preplan envelope must not survive projection",
@@ -47,6 +46,19 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       briefing.briefingText.contains("progress_diagnostics"),
       "progress diagnostics must not survive projection",
     )
+  }
+
+  @Test
+  fun `value-only completed preplan reaches plan and omits absent prompt cleanly`() {
+    val briefing = assemble(
+      consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanProseDeclaration(phasePlan)),
+      recordedOutputs = listOf(phaseOutput(phasePreplan, preplanProsePayload(includePrompt = false))),
+      runInvariants = runInvariants(),
+    )
+
+    assertContains(briefing.briefingText, "Dense preplan prose for downstream plan.")
+    assertFalse(briefing.briefingText.contains("optional directive"))
   }
 
   @Test
@@ -143,19 +155,15 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
 
   @Test
   fun `a free-form producer payload loud-fails rather than being forwarded as a coarse receipt`() {
-    var threw = false
-    try {
+    val error = assertFailsWith<skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError> {
       assemble(
         consumer = phasePlan,
-        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
+        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanProseDeclaration(phasePlan)),
         recordedOutputs = listOf(phaseOutput(phasePreplan, """{"free":"form","narration":"whole envelope"}""")),
         runInvariants = runInvariants(),
       )
-    } catch (error: skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
-      threw = true
-      assertTrue(error.message!!.contains("planning projection"))
     }
-    assertTrue(threw, "a free-form payload under a planning contract must loud-fail")
+    assertContains(error.message.orEmpty(), "produced_outputs.value is required")
   }
 
   @Test
@@ -289,8 +297,8 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   fun `a phase whose declarations require no checkpoint renders no checkpoint section`() {
     val briefing = assemble(
       consumer = phasePlan,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-      recordedOutputs = listOf(phaseOutput(phasePreplan, preplanDigestPayload())),
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanProseDeclaration(phasePlan)),
+      recordedOutputs = listOf(phaseOutput(phasePreplan, preplanProsePayload())),
       runInvariants = runInvariants(),
     )
 
@@ -302,16 +310,16 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     val validator = RecordingPlanningProjectionValidator()
 
     assemble(
-      consumer = phasePlan,
-      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-      recordedOutputs = listOf(phaseOutput(phasePreplan, preplanDigestPayload())),
+      consumer = phaseImplement,
+      declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
+      recordedOutputs = listOf(phaseOutput(phasePlan, executablePlanPayload())),
       runInvariants = runInvariants(),
       planningProjectionValidator = validator,
     )
 
-    assertEquals(listOf("preplan#produced_outputs"), validator.sourceLabels)
+    assertEquals(listOf("plan#produced_outputs"), validator.sourceLabels)
     assertEquals(
-      "preplanning_digest",
+      "executable_plan",
       validator.payloads.single()["projection_kind"],
       "the gate must see the producer payload, not a re-serialized projection",
     )
@@ -321,9 +329,9 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   fun `a schema rejection surfaces as the typed planning-projection error, not an opaque failure`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
       assemble(
-        consumer = phasePlan,
-        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-        recordedOutputs = listOf(phaseOutput(phasePreplan, preplanDigestPayload())),
+        consumer = phaseImplement,
+        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
+        recordedOutputs = listOf(phaseOutput(phasePlan, executablePlanPayload())),
         runInvariants = runInvariants(),
         planningProjectionValidator = RejectingPlanningProjectionValidator,
       )
@@ -331,7 +339,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
 
     assertContains(error.reason, "additionalProperties")
     assertEquals(
-      FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan).projectionName,
+      FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement).projectionName,
       error.projectionName,
     )
   }
@@ -355,13 +363,13 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
 
   @Test
   fun `a projection payload on a different contract version is rejected rather than reinterpreted`() {
-    val legacy = preplanDigestPayload().replace(""""contract_version":"0.1"""", """"contract_version":"0.0"""")
+    val legacy = executablePlanPayload().replace(""""contract_version":"0.1"""", """"contract_version":"0.0"""")
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
       assemble(
-        consumer = phasePlan,
-        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan)),
-        recordedOutputs = listOf(phaseOutput(phasePreplan, legacy)),
+        consumer = phaseImplement,
+        declarations = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement)),
+        recordedOutputs = listOf(phaseOutput(phasePlan, legacy)),
         runInvariants = runInvariants(),
       )
     }
@@ -842,12 +850,6 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   private val parityEdges: List<ParityEdge>
     get() = listOf(
       ParityEdge(
-        phasePreplan,
-        phasePlan,
-        FeatureTaskRuntimePhaseWorkflowDefinition.preplanningDigestDeclaration(phasePlan),
-        preplanDigestPayload(),
-      ),
-      ParityEdge(
         phasePlan,
         phaseImplement,
         FeatureTaskRuntimePhaseWorkflowDefinition.executablePlanDeclaration(phaseImplement),
@@ -916,23 +918,16 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     mandatesAndOverrides = emptyList(),
   )
 
-  // The undeclared fields the projection must strip are the point of the leak tests, but the real
-  // preplanning_digest schema sets additionalProperties:false, so a payload carrying them cannot also
-  // stand in for an envelope the gate accepts. Parity fixtures take the clean form.
-  private fun preplanDigestPayload(undeclaredFields: Boolean = false): String {
+  private fun preplanProsePayload(undeclaredFields: Boolean = false, includePrompt: Boolean = true): String {
     val undeclared = if (undeclaredFields) {
       ""","complete_envelope_secret":"MUST NOT SURVIVE","progress_diagnostics":"MUST NOT SURVIVE""""
     } else {
       ""
     }
+    val prompt = if (includePrompt) ""","prompt":"optional directive"""" else ""
     return """
       {"produced_outputs":{
-        "projection_kind":"preplanning_digest",
-        "contract_version":"0.1",
-        "affected_boundaries":["runtime-domain/model"],
-        "risks":["producer may omit fields"],
-        "rollout":{"flag_required":false,"notes":"no flag needed"},
-        "validation_strategy":["snapshot projection tests"]$undeclared
+        "value":"Dense preplan prose for downstream plan."$prompt$undeclared
       }}
     """.trimIndent()
   }

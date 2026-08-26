@@ -94,7 +94,6 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
   fun `nonBlank scalar and array string fields are trimmed without touching interior content`() {
     val produced = mapOf(
       "affected_boundaries" to listOf("  runtime-domain  ", "runtime-application"),
-      "rollout" to mapOf("flag_required" to false, "notes" to "  no flag  "),
       "reconciliation_evidence" to mapOf("reconciled" to true, "evidence" to "  at target  "),
       "repository_checkpoint" to mapOf("fingerprint" to "  abc  ", "base_ref" to " main "),
     )
@@ -102,7 +101,6 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
     val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
 
     assertEquals(listOf("runtime-domain", "runtime-application"), result.canonical["affected_boundaries"])
-    assertEquals("no flag", (result.canonical["rollout"] as Map<*, *>)["notes"])
     assertEquals("at target", (result.canonical["reconciliation_evidence"] as Map<*, *>)["evidence"])
     val checkpoint = result.canonical["repository_checkpoint"] as Map<*, *>
     assertEquals("abc", checkpoint["fingerprint"])
@@ -362,7 +360,7 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
       ),
       "tests_executed" to listOf(mapOf("name" to "FooTest", "outcome" to "passed", "duration_ms" to 12)),
       "deviations" to listOf(mapOf("ref" to "AC-001", "note" to "n", "severity" to "minor")),
-      "rollout" to mapOf("flag_required" to false, "notes" to "n", "owner" to "me"),
+      "reconciliation_evidence" to mapOf("reconciled" to true, "evidence" to "n", "owner" to "me"),
       "repository_checkpoint" to mapOf("fingerprint" to "abc", "dirty" to true),
     )
 
@@ -377,12 +375,11 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
         "task_commitments[0].owner",
         "tests_executed[0].duration_ms",
         "deviations[0].severity",
-        "rollout.owner",
+        "reconciliation_evidence.owner",
         "repository_checkpoint.dirty",
       ).sorted(),
       discarded.sorted(),
     )
-    // Every governed field survives the prune.
     val task = (result.canonical["tasks"] as List<*>).single() as Map<*, *>
     assertEquals(setOf("task_id", "description", "criterion_refs", "test_obligations"), task.keys)
     val checkpoint = result.canonical["repository_checkpoint"] as Map<*, *>
@@ -392,18 +389,18 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
   @Test
   fun `the discard never synthesizes a missing field nor coerces a type`() {
     val produced = mapOf(
-      // A required governed field is absent and an unknown key is present: only the unknown key goes.
       "reconciliation_evidence" to mapOf("reconciled" to true, "extra" to 1),
-      // A wrong-typed governed field keeps its wrong type for the schema to reject.
-      "rollout" to mapOf("flag_required" to "yes", "notes" to "n", "extra" to 1),
+      "repository_checkpoint" to mapOf("fingerprint" to 42, "base_ref" to "main", "extra" to 1),
     )
 
     val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
 
     val evidence = result.canonical["reconciliation_evidence"] as Map<*, *>
     assertEquals(mapOf("reconciled" to true), evidence, "no field may be synthesized to satisfy the schema")
-    val rollout = result.canonical["rollout"] as Map<*, *>
-    assertEquals("yes", rollout["flag_required"], "a wrong-typed governed field must not be coerced")
+    val checkpoint = result.canonical["repository_checkpoint"] as Map<*, *>
+    assertEquals(42, checkpoint["fingerprint"], "a wrong-typed governed field must not be coerced")
+    assertEquals("main", checkpoint["base_ref"])
+    assertEquals(setOf("fingerprint", "base_ref"), checkpoint.keys)
   }
 
   @Test
@@ -429,24 +426,6 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
         .filter { it.transforms == listOf(Transform.UNKNOWN_KEY_DISCARDED) }
         .map { it.fieldPath },
     )
-  }
-
-  @Test
-  fun `the goal-planning shared context survives the preplanning digest prune`() {
-    val sharedContext = mapOf("goal_id" to "SKILL-152")
-    val produced = mapOf(
-      "projection_kind" to "preplanning_digest",
-      "contract_version" to "0.1",
-      "_goal_planning_shared_context" to sharedContext,
-      "presentation_summary" to "prose the consumer never asked for",
-    )
-
-    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
-
-    assertEquals(sharedContext, result.canonical["_goal_planning_shared_context"])
-    assertEquals("preplanning_digest", result.canonical["projection_kind"])
-    assertEquals("0.1", result.canonical["contract_version"])
-    assertTrue("presentation_summary" !in result.canonical.keys)
   }
 
   @Test

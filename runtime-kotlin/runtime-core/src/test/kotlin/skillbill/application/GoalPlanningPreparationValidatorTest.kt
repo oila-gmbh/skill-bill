@@ -53,12 +53,12 @@ class GoalPlanningPreparationValidatorTest {
   }
 
   @Test
-  fun `a preplan payload that is not a valid preplanning digest is rejected at write time`() {
+  fun `a preplan payload missing value is rejected at write time`() {
     val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
-      preplanPayload = payloadJson(phaseId = "preplan", producedOutputsJson = """{"mode":"implement"}"""),
+      preplanPayload = payloadJson(phaseId = "preplan", producedOutputsJson = """{"prompt":"optional only"}"""),
     )
 
-    assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { validator.validate(record) }
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> { validator.validate(record) }
   }
 
   @Test
@@ -165,15 +165,10 @@ class GoalPlanningPreparationValidatorTest {
   """.trimIndent().replace("\n", "")
 
   private fun defaultProjectionJson(phaseId: String): String =
-    if (phaseId == "preplan") preplanProjectionJson() else planProjectionJson()
+    if (phaseId == "preplan") preplanProjectionJson else planProjectionJson()
 
-  private fun preplanProjectionJson(): String = """
-    {"projection_kind":"preplanning_digest","contract_version":"0.1",
-    "affected_boundaries":["runtime-application/goalrunner"],
-    "risks":["producer may omit test obligations"],
-    "rollout":{"flag_required":false,"notes":"no flag needed"},
-    "validation_strategy":["focused gradle"]}
-  """.trimIndent().replace("\n", "")
+  private val preplanProjectionJson =
+    """{"value":"Producer may omit test obligations in prose."}"""
 
   private fun planProjectionJson(testObligations: String = """["parity"]"""): String = """
     {"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",

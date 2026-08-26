@@ -654,6 +654,68 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     }
   }
 
+  @Test
+  fun `completed preplan with non-blank value passes validation`() {
+    val preplan =
+      """
+      contract_version: "0.4"
+      phase_id: "preplan"
+      status: "completed"
+      summary: "Preplan prose ready for plan."
+      produced_outputs:
+        value: "Dense planning prose for the plan phase."
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(preplan, "preplan")
+  }
+
+  @Test
+  fun `completed preplan with blank value fails validation`() {
+    val preplan =
+      """
+      contract_version: "0.4"
+      phase_id: "preplan"
+      status: "completed"
+      summary: "Preplan missing prose."
+      produced_outputs:
+        value: ""
+      """.trimIndent()
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(preplan, "preplan")
+    }
+  }
+
+  @Test
+  fun `completed preplan with whitespace-only value fails validation`() {
+    val preplan =
+      """
+      contract_version: "0.4"
+      phase_id: "preplan"
+      status: "completed"
+      summary: "Preplan whitespace-only prose."
+      produced_outputs:
+        value: "   "
+      """.trimIndent()
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(preplan, "preplan")
+    }
+  }
+
+  @Test
+  fun `completed preplan missing value fails validation`() {
+    val preplan =
+      """
+      contract_version: "0.4"
+      phase_id: "preplan"
+      status: "completed"
+      summary: "Preplan missing value."
+      produced_outputs:
+        prompt: "optional only"
+      """.trimIndent()
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(preplan, "preplan")
+    }
+  }
+
   private fun buildPhaseEnvelope(buildReceipt: String): String =
     """{"contract_version":"0.4","phase_id":"build","status":"completed",""" +
       """"summary":"Build satisfied by runtime-owned gate execution.",""" +
