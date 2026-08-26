@@ -1,3 +1,13 @@
+## [2026-08-26] SKILL-209 — Delete dual-agent parallel review
+Areas: runtime-kotlin/{application/review,application/featuretask,application/goalrunner,application/config,cli,domain,ports,infra-fs,infra-sqlite,core}, skills/{bill-code-review,bill-code-review-parallel,bill-feature}, platform-packs/{kotlin,kmp}, docs, scripts
+- Removed the second-parent review product: skill, CLI (`code-review-parallel`, `code-review-merge`, `resolve-parallel-agent`), `--agent2`/`--model2`/`--parallel-review-agent`, and `code_review_parallel_agent` from typed config and new install writes.
+- Single-parent review keeps delegated specialists, evidence brokerage, integration, coverage, claim verification, and `ParallelReviewMerger`; `ParallelCodeReviewRunner` and `ParallelReview*` finding types stay named.
+- Parent launches use issue key `code-review` (not `code-review-parallel`); leftover `parallel:` / `parallel-review:` tokens and non-`none` config values loud-fail before launch.
+- Pattern: delete disconnected dual-agent surfaces while preserving read-ignore for in-flight `parallel_review_agent` on continuation/policy; no historical accounting migration. reusable
+- Limitation: historical `code-review-parallel-*` accounting rows are not migrated.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-08-24] SKILL-206 subtask 2 — Remove provider token accounting producers and projections
 Areas: runtime-kotlin/{application/goalrunner,domain,ports,infra-fs,infra-sqlite,mcp,core}, orchestration/contracts, docs
 - Removed provider-reported token fields and usage-key decoding from agent-run models and decoders while preserving child-session identity, terminal outcomes, and local byte-derived estimates.

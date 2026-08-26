@@ -7,7 +7,6 @@ import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
-import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -25,11 +24,7 @@ import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
-import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricResolver
-import skillbill.ports.review.model.ParallelReviewLaneOutcome
-import skillbill.ports.review.model.ParallelReviewLaneRunRequest
-import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceRequest
@@ -187,7 +182,6 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
         }
       }
     },
-    parallelLaneRunner = SequentialLaneRunner(),
     repoLocalConfig = object : RepoLocalConfigPort {
       override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
         ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
@@ -222,23 +216,6 @@ private fun parentOf(commits: List<RecordedCommit>, commit: RecordedCommit): Str
   commits.getOrNull(commits.indexOf(commit) - 1)?.sha ?: HARNESS_BASE_REVISION
 
 /** Runs both lanes to completion in a fixed order so recorded evidence stays deterministic. */
-private class SequentialLaneRunner : ParallelReviewLaneRunner {
-  override fun <T> runWave(tasks: List<() -> T>): List<Result<T>> = JdkParallelReviewLaneRunner().runWave(tasks)
-
-  override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult =
-    ParallelReviewLaneRunResult(runLane(request.lane1), runLane(request.lane2))
-
-  private fun runLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome = try {
-    lane()
-  } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-    ParallelReviewLaneOutcome(
-      success = false,
-      rawOutput = "",
-      failureReason = "lane launch threw ${e::class.simpleName}: ${e.message ?: "no detail"}",
-    )
-  }
-}
-
 private fun recordingRubricResolver(recorder: ReviewRecorder, rubricBody: (String) -> String) =
   object : ReviewRubricResolver {
     override fun resolve(manifest: PlatformManifest?): ResolvedReviewRubric {
@@ -394,7 +371,6 @@ private fun recordingCatalogGateway(manifests: List<PlatformManifest>): Scaffold
 fun harnessRequest(
   repoRoot: Path = Files.createTempDirectory("review-e2e"),
   agent1Id: String = "codex",
-  agent2Id: String? = null,
   timeout: Duration? = null,
   reviewRunId: String? = null,
   prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
@@ -402,7 +378,6 @@ fun harnessRequest(
   scope: ParallelReviewScope = ParallelReviewScope.BRANCH,
 ) = ParallelCodeReviewRequest(
   agent1Id = agent1Id,
-  agent2Id = agent2Id,
   scope = scope,
   repoRoot = repoRoot,
   timeout = timeout,

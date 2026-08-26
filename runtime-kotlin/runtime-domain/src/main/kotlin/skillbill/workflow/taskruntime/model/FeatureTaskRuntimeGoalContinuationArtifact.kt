@@ -46,7 +46,6 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
     parentWorkflowId?.let { put("parent_workflow_id", it) }
     validationDepth?.let { put("validation_depth", it.wireValue) }
     qualityGateSelection?.let { put("quality_gate_selection", it.wireValue) }
-    parallelReviewAgent?.let { put("parallel_review_agent", it) }
     subtaskName?.let { put("subtask_name", it) }
     if (agentAddonSelection.entries.isNotEmpty()) {
       put(

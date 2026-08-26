@@ -126,7 +126,6 @@ import skillbill.infrastructure.fs.GoalProgressEventValidatorAdapter
 import skillbill.infrastructure.fs.IdeStatusValidatorAdapter
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
-import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
 import skillbill.infrastructure.fs.ProducerOutputEvidenceValidatorAdapter
@@ -181,7 +180,6 @@ import skillbill.ports.persistence.ProducerOutputEvidenceValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
-import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewInputSource
@@ -465,10 +463,6 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics): RuntimeDiagnostics = adapter
-
-  @Provides
-  @JvmSynthetic
-  internal fun parallelReviewLaneRunner(adapter: JdkParallelReviewLaneRunner): ParallelReviewLaneRunner = adapter
 
   @Provides
   @JvmSynthetic

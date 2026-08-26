@@ -123,7 +123,6 @@ data class SkillRunGoalContinuationContext(
   val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
     FeatureTaskRuntimeQualityGateSelection.VALIDATE,
-  val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {
@@ -136,7 +135,6 @@ data class SkillRunGoalContinuationContext(
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
     childWorkflowId?.let { require(it.isNotBlank()) { "childWorkflowId must be non-blank when provided." } }
     assignedWorkflowId?.let { require(it.isNotBlank()) { "assignedWorkflowId must be non-blank when provided." } }
-    parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must be non-blank when provided." } }
   }
 }
 

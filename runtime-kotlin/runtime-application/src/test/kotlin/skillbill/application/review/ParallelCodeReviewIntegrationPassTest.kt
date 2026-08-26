@@ -271,4 +271,4 @@ private val ReviewRecorder.integrationLaunches: List<GoalRunnerSubtaskLaunchRequ
   get() = parentLaunches.filter { it.skillRunRequest.issueKey == "code-review-integration" }
 
 private val ReviewRecorder.specialistLaunches: List<GoalRunnerSubtaskLaunchRequest>
-  get() = parentLaunches.filter { it.skillRunRequest.issueKey == "code-review-parallel" }
+  get() = parentLaunches.filter { it.skillRunRequest.issueKey == "code-review" }

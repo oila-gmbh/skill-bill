@@ -37,10 +37,12 @@ If the issue key is missing, stop and ask for it. Do not invent one.
 
 ## Token Forwarding
 
-Accept at most one `code-review:auto|inline|delegated`, at most one
-`parallel-review:<agent>`, and zero or more ordered `agent-addon:<slug>`
+Accept at most one `code-review:auto|inline|delegated`, and zero or more ordered `agent-addon:<slug>`
 arguments. Forward supplied values as flags without resolving a catalogue or
 constructing JSON. Omitted values remain omitted.
+
+If the caller passes `parallel-review:<agent>`, stop immediately, name the removed
+dual-agent parallel review capability, and do not run preflight or launch.
 
 ## Preflight
 
@@ -50,7 +52,7 @@ Call this command exactly once:
 skill-bill goal preflight <issue-key> --format json
 ```
 
-Forward the agent, review, parallel-review, and agent add-on values as flags.
+Forward the agent, review, and agent add-on values as flags.
 Derive the next action from the returned `verdict`. Invoke `bill-feature-spec`
 after this preflight when the verdict reports new work, retaining the returned
 gate state without recomputing it. Report and stop for an already-running or
@@ -79,7 +81,7 @@ After confirmation and any required rehydration, run:
 skill-bill goal <issue-key> --agent <currently-executing-agent> --no-live-output
 ```
 
-Forward the supplied review, parallel-review, and agent add-on flags. Never ask
+Forward the supplied review and agent add-on flags. Never ask
 the user to run the command manually.
 
 ## Relay

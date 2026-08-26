@@ -42,7 +42,6 @@ agent/model path that this launch is about to use:
 - `--agent`
 - `--agent-override`
 - each `--phase-agent <phase-id>=<agent-id>` entry
-- `parallel-review:<agent>` / `--parallel-review-agent`
 
 Match only against provider/model labels configured in the machine-global
 config. Do not infer a model family from an agent name alone.

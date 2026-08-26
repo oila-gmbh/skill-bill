@@ -17,12 +17,12 @@ sections:
       stack routing, specialist fan-out, or lane merge in the parent session.
 
       The driver owns those rules: `ParallelCodeReviewRunner` resolves the caller
-      scope, routes packs, enforces native-worker preflight, runs one or two parent
-      lanes through `AgentRunLauncher`, and returns the register with stage verdicts.
+      scope, routes packs, enforces native-worker preflight, runs one parent lane
+      through `AgentRunLauncher`, and returns the register with stage verdicts.
 
       Keep this shell thin:
 
-      - recognize `mode:`, `parallel:`, and `context:feature-remediation`
+      - recognize `mode:` and `context:feature-remediation`
       - invoke `skill-bill code-review` with the resolved arguments
       - present the returned register without rewriting it
 
@@ -31,11 +31,6 @@ sections:
   - heading: Setup
     body: |
       Recognize at most one `mode:auto|inline|delegated` argument. Omission resolves to `inline`; malformed, repeated, unknown, or conflicting values fail before the driver is invoked. Explicit `auto` resolves to `inline` under both named rules — `auto_mode_by_pass_number` wherever a review pass number exists, first pass included, and `auto_mode_default` for a standalone review with no pass number; diff size, risk, and stack layering never change that resolution, and the applicable named auto rule is retained for auditable metadata. `delegated` is the experimental full-depth tier and is reached only by an explicit `delegated` selection. Pass the resolved mode to `skill-bill code-review --execution-mode`. Do not launch a review worker from this session.
-
-      Recognize `parallel:<agent>` or `parallel:<agent>:<model>` and the
-      `code_review_parallel_agent` config fallback with precedence
-      `parallel: arg > config > none`. An unsupported agent or malformed config
-      fails before launch. Omitted second lane is a single-lane driver run.
 
       Pass the caller's scope through `--scope` or an exact `--diff-file` with paired
       revisions. The driver records the diff; do not rediscover a branch range.
@@ -73,9 +68,7 @@ sections:
 
   - heading: Execution Contract
     body: |
-      Invoke `skill-bill code-review` as the standalone entry over `ParallelCodeReviewRunner`. Lane 1 and every specialist stage run through the existing `AgentRunLauncher` route. Do not introduce a `claude -p`, `codex exec`, stdin-pipe, or `mktemp` lane-2 path, and do not call `skill-bill code-review-merge` on this entry.
-
-      An omitted second lane is a single parent run on the calling thread. `--agent2` or a non-`none` `code_review_parallel_agent` adds the second lane to the same driver.
+      Invoke `skill-bill code-review` as the standalone entry over `ParallelCodeReviewRunner`. The parent lane and every specialist stage run through the existing `AgentRunLauncher` route. Do not introduce a `claude -p`, `codex exec`, stdin-pipe, or `mktemp` lane path.
 
       `inline` is the light depth tier the driver runs as the declared `bill-code-review-inline` native agent. `delegated` is the experimental full-depth specialist fan-out. Native-worker preflight is mandatory before any parent or specialist AgentRun.
 

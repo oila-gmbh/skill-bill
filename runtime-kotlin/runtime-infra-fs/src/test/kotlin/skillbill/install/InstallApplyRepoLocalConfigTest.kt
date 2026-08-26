@@ -7,6 +7,7 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class InstallApplyRepoLocalConfigTest : InstallApplyTestSupport() {
@@ -23,7 +24,7 @@ class InstallApplyRepoLocalConfigTest : InstallApplyTestSupport() {
     assertTrue(Files.exists(configPath), "install should scaffold the repo-local config")
     val configContent = Files.readString(configPath)
     assertContains(configContent, "spec_type: local")
-    assertContains(configContent, "code_review_parallel_agent: none")
+    assertFalse(configContent.contains("code_review_parallel_agent"))
     val gitignoreContent = Files.readString(fixture.repoRoot.resolve(".gitignore"))
     assertEquals(1, gitignoreContent.lines().count { line -> line.trim() == ".skill-bill/**" })
     assertEquals(1, gitignoreContent.lines().count { line -> line.trim() == "!.skill-bill/config.yaml" })

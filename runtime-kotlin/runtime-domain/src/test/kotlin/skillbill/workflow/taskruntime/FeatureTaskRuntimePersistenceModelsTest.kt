@@ -636,7 +636,6 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
       parentWorkflowId = "wfl-parent",
       codeReviewMode = CodeReviewExecutionMode.DELEGATED,
       validationDepth = ValidationDepth.FULL,
-      parallelReviewAgent = "claude",
       agentAddonSelection = AgentAddonSelection(
         listOf(
           PersistedAgentAddonSelectionEntry(

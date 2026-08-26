@@ -4,17 +4,9 @@ import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
 import skillbill.review.model.ParallelReviewRawFinding
-import kotlin.time.Duration
-
-data class ParallelReviewLaneRunRequest(
-  val lane1: () -> ParallelReviewLaneOutcome,
-  val lane2: () -> ParallelReviewLaneOutcome,
-  val timeout: Duration,
-)
 
 data class ParallelReviewLaneRunResult(
   val lane1: ParallelReviewLaneOutcome,
-  val lane2: ParallelReviewLaneOutcome,
 )
 
 data class ParallelReviewLaneOutcome(

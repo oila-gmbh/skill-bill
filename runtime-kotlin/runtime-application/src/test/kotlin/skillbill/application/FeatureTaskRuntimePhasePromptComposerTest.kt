@@ -44,7 +44,6 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("review"),
-      parallelReviewAgent = "claude",
       codeReviewMode = CodeReviewExecutionMode.INLINE,
     )
 
@@ -474,7 +473,6 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ISSUE_KEY,
       briefingFor("review"),
       codeReviewMode = CodeReviewExecutionMode.INLINE,
-      parallelReviewAgent = "claude",
       reviewPassNumber = 1,
       baselineUntrackedPaths = listOf("z-before.tmp", "a-before.tmp"),
     )

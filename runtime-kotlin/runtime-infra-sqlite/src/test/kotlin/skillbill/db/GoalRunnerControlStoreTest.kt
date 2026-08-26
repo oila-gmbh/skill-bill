@@ -21,7 +21,7 @@ class GoalRunnerControlStoreTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = GoalRunnerControlStore(connection)
-      val policy = GoalRunnerReviewPolicy(CodeReviewExecutionMode.INLINE, parallelReviewAgent = "reviewer")
+      val policy = GoalRunnerReviewPolicy(CodeReviewExecutionMode.INLINE)
       val acceptance = GoalRunnerOutOfBandAcceptance(
         subtaskId = 2,
         commitSha = "abc123",

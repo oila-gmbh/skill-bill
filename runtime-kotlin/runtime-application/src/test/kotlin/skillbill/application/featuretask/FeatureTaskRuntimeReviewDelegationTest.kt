@@ -39,7 +39,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
     val input = reviewInput(trackedDelta = "diff --git a/Child.kt b/Child.kt\n+owned")
     val request = mappedRequest(
       input = input,
-      agents = FeatureTaskRuntimeReviewDriverAgents("codex", "claude"),
+      agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
       pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.DELEGATED, "rvw-191-delta"),
     )
 
@@ -49,11 +49,6 @@ class FeatureTaskRuntimeReviewDelegationTest {
     assertTrue(request.scope != ParallelReviewScope.BRANCH)
     assertEquals(CodeReviewExecutionMode.DELEGATED, request.codeReviewMode)
     assertEquals(CodeReviewExecutionMode.DELEGATED, request.resolvedTier)
-    assertEquals(
-      null,
-      request.agent2Id,
-      "dual-agent parallel lanes are disconnected; parallelReviewAgent must not map to agent2Id",
-    )
     assertEquals(Path.of("spec.md"), request.specPath)
   }
 
@@ -77,13 +72,12 @@ class FeatureTaskRuntimeReviewDelegationTest {
   fun `explicit empty child-owned delta remains a supplied diff`() {
     val request = mappedRequest(
       input = reviewInput(trackedDelta = ""),
-      agents = FeatureTaskRuntimeReviewDriverAgents("codex", null),
+      agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
       pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "rvw-191-empty"),
     )
 
     assertEquals("", request.suppliedDiff)
     assertNotNull(request.suppliedDiff)
-    assertEquals(null, request.agent2Id)
     assertEquals(CodeReviewExecutionMode.INLINE, request.resolvedTier)
   }
 
@@ -105,7 +99,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
     )
     val formatted = AgentAddonPromptFormatter.format(selection)
     val request = mappedRequest(
-      agents = FeatureTaskRuntimeReviewDriverAgents("codex", null),
+      agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
       pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "rvw-191-addons"),
       workspace = FeatureTaskRuntimeReviewDriverWorkspace(
         repoRoot = Path.of("/tmp/repo"),
@@ -143,7 +137,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
   fun `settlement envelope takes findings and review_run_id from the driver register`() {
     val result = FeatureTaskRuntimeReviewDriver.EMPTY.run(
       mappedRequest(
-        agents = FeatureTaskRuntimeReviewDriverAgents("codex", null),
+        agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
         pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "rvw-191-empty-register"),
       ),
     ).copy(
@@ -210,7 +204,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
     val delta = diffForPaths("src/Main.kt")
     val mapped = mappedRequest(
       input = reviewInput(trackedDelta = delta),
-      agents = FeatureTaskRuntimeReviewDriverAgents("codex", "claude"),
+      agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
       pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "parity-mapper"),
       workspace = FeatureTaskRuntimeReviewDriverWorkspace(
         repoRoot = repo,
@@ -220,7 +214,6 @@ class FeatureTaskRuntimeReviewDelegationTest {
     )
     val standalone = ParallelCodeReviewRequest(
       agent1Id = mapped.agent1Id,
-      agent2Id = mapped.agent2Id,
       scope = ParallelReviewScope.BRANCH,
       repoRoot = repo,
       timeout = mapped.timeout,
@@ -247,7 +240,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
 
   private fun mappedRequest(
     input: GoalSubtaskReviewInput = reviewInput(),
-    agents: FeatureTaskRuntimeReviewDriverAgents = FeatureTaskRuntimeReviewDriverAgents("codex", "claude"),
+    agents: FeatureTaskRuntimeReviewDriverAgents = FeatureTaskRuntimeReviewDriverAgents("codex"),
     pass: FeatureTaskRuntimeReviewDriverPass,
     workspace: FeatureTaskRuntimeReviewDriverWorkspace = FeatureTaskRuntimeReviewDriverWorkspace(
       repoRoot = Path.of("/tmp/repo"),
@@ -288,7 +281,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
       diff = diffForPaths("src/Main.kt"),
       response = { request ->
         when (request.skillRunRequest.issueKey) {
-          "code-review-parallel" -> RecordedWorkerResponse(stdout = PARITY_FINDING)
+          "code-review" -> RecordedWorkerResponse(stdout = PARITY_FINDING)
           ReviewClaimVerificationRunner.ISSUE_KEY -> RecordedWorkerResponse(stdout = PARITY_CONFIRMED)
           ReviewSpecAdjudicationRunner.ISSUE_KEY -> RecordedWorkerResponse(stdout = PARITY_IN_SCOPE)
           else -> RecordedWorkerResponse()

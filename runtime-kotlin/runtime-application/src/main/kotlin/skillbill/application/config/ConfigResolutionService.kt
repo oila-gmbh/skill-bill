@@ -7,7 +7,6 @@ import skillbill.config.model.CompactionSettingsParse
 import skillbill.config.model.EXECUTION_MATRIX_KEY
 import skillbill.config.model.ExecutionMatrix
 import skillbill.config.model.ExecutionMatrixParse
-import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.RepoLocalConfigResolution
 import skillbill.config.model.SpecType
 import skillbill.config.model.parseCompactionSettings
@@ -85,19 +84,5 @@ class ConfigResolutionService(
   fun resolveSpecType(repoRoot: Path, explicit: SpecType?): SpecType {
     val config = repoLocalConfigPort.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
     return RepoLocalConfigResolution.resolve(explicit, config.specType, SpecType.LOCAL)
-  }
-
-  /**
-   * Resolves the code-review parallel lane-2 agent: `explicit parallel: arg > config
-   * code_review_parallel_agent > none`. A validated config value (or [explicit]) wins; a missing
-   * key or no config file resolves to `none` (single-lane). Reading a malformed config loud-fails.
-   */
-  fun resolveCodeReviewParallelAgent(repoRoot: Path, explicit: String?): String {
-    val config = repoLocalConfigPort.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
-    return RepoLocalConfigResolution.resolve(
-      explicit,
-      config.codeReviewParallelAgent,
-      RepoLocalConfig.NO_PARALLEL_AGENT,
-    )
   }
 }

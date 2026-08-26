@@ -221,7 +221,7 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
     dbPathOverride: String? = null,
   ): GoalRunnerReviewPolicy = GoalRunnerReviewPolicy(
     codeReviewMode = persistReviewMode(parentWorkflowId, policy.codeReviewMode, dbPathOverride),
-    parallelReviewAgent = policy.parallelReviewAgent,
+    agentAddonSelection = policy.agentAddonSelection,
   )
 
   fun outOfBandAcceptances(

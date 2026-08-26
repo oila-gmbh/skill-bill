@@ -726,7 +726,6 @@ class WorkflowGoalRunnerManifestStore(
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
       validationDepth = ValidationDepth.FULL,
       qualityGateSelection = GoalRunnerQualityGateSelectionResolver.resolve(state.manifest, setup.subtaskId),
-      parallelReviewAgent = setup.reviewPolicy.parallelReviewAgent,
       subtaskName = state.manifest.subtasks.firstOrNull { it.id == setup.subtaskId }?.name?.takeIf(String::isNotBlank),
     ).toArtifactMap(),
     GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
@@ -1442,14 +1441,8 @@ private fun reviewPolicyFromLegacyArtifacts(artifacts: Map<String, Any?>): GoalR
   } catch (error: IllegalArgumentException) {
     throw IllegalStateException("Goal review policy artifact has invalid code_review_mode '$mode'.", error)
   }
-  val parallelReviewAgent = when (val value = policy["parallel_review_agent"]) {
-    null -> null
-    is String -> value.takeIf(String::isNotBlank)
-      ?: error("Goal review policy artifact has a blank parallel_review_agent.")
-    else -> error("Goal review policy artifact parallel_review_agent must be a string.")
-  }
   val agentAddonSelection = decodeGoalAgentAddonSelection(policy["agent_addon_selection"])
-  return GoalRunnerReviewPolicy(codeReviewMode, parallelReviewAgent, agentAddonSelection)
+  return GoalRunnerReviewPolicy(codeReviewMode, agentAddonSelection)
 }
 
 private fun outOfBandAcceptancesFromLegacyArtifacts(

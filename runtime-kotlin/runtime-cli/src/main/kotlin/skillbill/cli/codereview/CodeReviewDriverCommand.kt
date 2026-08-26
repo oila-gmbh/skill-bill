@@ -43,14 +43,6 @@ open class CodeReviewDriverCommand(
     "--agent1",
     help = "Agent for the default lane. " + invokingAgentResolutionHelp("--agent1"),
   )
-  private val agent2 by option(
-    "--agent2",
-    help = "Removed. Dual-agent parallel lanes are disconnected; omit this option.",
-  )
-  private val model2 by option(
-    "--model2",
-    help = "Removed. Dual-agent parallel lanes are disconnected; omit this option.",
-  )
   private val scope by option(
     "--scope",
     help = "Diff scope: staged, unstaged, branch (default), or pr.",
@@ -102,12 +94,6 @@ open class CodeReviewDriverCommand(
     val resolvedAgent1 = resolveAgent1()
     val repo = Path.of(repoRoot).toAbsolutePath().normalize()
     validateCommitTarget()
-    if (!agent2.isNullOrBlank() || !model2.isNullOrBlank()) {
-      throw UsageError(
-        "Dual-agent parallel lanes are disconnected. Omit --agent2/--model2; " +
-          "single-agent review uses --agent1 only.",
-      )
-    }
     val result = runParallelReviewDriver(
       runner,
       request(resolvedAgent1, parsedReviewScope(scope), repo),
@@ -124,8 +110,6 @@ open class CodeReviewDriverCommand(
     val (resolvedBase, resolvedHead) = resolveCodeReviewRevisions(commitTarget, baseRevision, headRevision)
     return ParallelCodeReviewRequest(
       agent1Id = resolvedAgent1,
-      agent2Id = null,
-      agent2Model = null,
       scope = resolvedScope,
       repoRoot = repo,
       timeout = timeoutMinutes?.minutes,
@@ -225,11 +209,11 @@ private fun usageError(error: Throwable): Nothing {
 }
 
 private fun writeParallelReviewResult(state: CliRunState, result: ParallelCodeReviewResult) {
-  val lanes = listOf(result.lane1, result.lane2).filter { it.agentId.isNotBlank() }
-  val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
+  val parent = result.lane1
+  val exitCode = if (parent.success) 0 else 1
   val output = buildString {
-    append(laneStatusOutput(lanes, result.output))
-    laneDiagnosticsOutput(lanes)?.let { diagnostics ->
+    append(laneStatusOutput(listOf(parent), result.output))
+    laneDiagnosticsOutput(listOf(parent))?.let { diagnostics ->
       appendLine()
       append(diagnostics)
     }

@@ -119,7 +119,6 @@ Omit `mode:` to use inline review, the default single-prompt light tier; `mode:d
 | `/bill-boundary-history` | Record reusable feature history in `agent/history.md` |
 | `/bill-code-check` | Stable quality-check entry point that routes to the matching platform checker (stack-specific checker skills install as internal sidecars, not listed commands) |
 | `/bill-code-review` | Stable code-review entry point that routes to the matching platform pack; accepts `mode:auto|inline|delegated` (stack-specific review skills install as internal sidecars, not listed commands) |
-| `/bill-code-review-parallel` | Run two review agents in parallel on the same diff and merge their findings |
 | `/bill-feature` | Primary feature entry point that prepares a spec, then routes to implementation or the goal loop (dispatches internally to the feature-execution family, which is not listed) |
 | `/bill-feature-guard` | Add feature-flag rollout safety to an implementation |
 | `/bill-feature-guard-cleanup` | Remove feature flags and legacy code after rollout |

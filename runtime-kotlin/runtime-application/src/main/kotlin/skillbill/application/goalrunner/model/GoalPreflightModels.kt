@@ -10,7 +10,6 @@ data class GoalPreflightRequest(
   val repoRoot: Path,
   val invokedAgentId: String,
   val agentOverrideId: String? = null,
-  val parallelReviewAgent: String? = null,
   val requestedReviewMode: CodeReviewExecutionMode? = null,
   val requestedAgentAddonSlugs: List<String> = emptyList(),
   val dbPathOverride: String? = null,
@@ -36,7 +35,6 @@ data class GoalPreflightGateBlock(
   val expectedFirstRunnableSubtask: Int?,
   val childAgent: String,
   val childAgentOverride: String?,
-  val parallelReviewAgent: String,
   val reviewMode: String,
   val agentAddons: List<GoalPreflightAgentAddon>,
 )

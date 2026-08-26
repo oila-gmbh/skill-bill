@@ -62,7 +62,6 @@ import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
-import skillbill.install.model.InstallAgent
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
@@ -133,12 +132,6 @@ class GoalRunCommand(
       "pass), auto (also resolves inline on every pass), or delegated (experimental " +
       "specialist fan-out, explicit only).",
   )
-  private val parallelReviewAgent by option(
-    "--parallel-review-agent",
-    help =
-    "Run every child review with a second parallel agent lane. " +
-      "Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
-  )
   private val agentAddonSelectionJson by option(
     "--agent-addon-selection-json",
     help = "Already-resolved ordered agent add-on selection JSON. Use --agent-addon for raw slugs.",
@@ -207,7 +200,6 @@ class GoalRunCommand(
     val candidateAgentIds = listOf(
       invokedAgentId,
       agentOverride,
-      parallelReviewAgent?.takeIf(String::isNotBlank),
     )
     // An agent whose headless CLI is absent would otherwise spawn-fail at goal planning, after the
     // goal record already exists and is blocked at subtask 0.
@@ -219,7 +211,6 @@ class GoalRunCommand(
     val receivingAgents = listOfNotNull(
       invokedAgentId,
       agentOverride?.takeIf(String::isNotBlank),
-      parallelReviewAgent?.takeIf(String::isNotBlank),
     ).distinct()
     if (agentAddonSlugs.isNotEmpty() && agentAddonSelectionJson != null) {
       throw UsageError("Use either --agent-addon or --agent-addon-selection-json, not both.")
@@ -286,7 +277,6 @@ class GoalRunCommand(
     outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
     eventSink = presenter.eventSink(),
     codeReviewMode = parseCodeReviewMode(codeReviewMode),
-    parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
     agentAddonSelection = hydratedSelection,
     stopAfterSubtaskId = stopAfterSubtask,
   )
@@ -310,10 +300,6 @@ class GoalPreflightCommand(
     "--agent-override",
     help = "Agent to use for child subtask runs instead of the invoking agent.",
   )
-  private val parallelReviewAgent by option(
-    "--parallel-review-agent",
-    help = "Run every child review with a second parallel agent lane.",
-  )
   private val codeReviewMode by option(
     "--code-review-mode",
     help = "Review mode: inline (default), auto, or delegated (experimental).",
@@ -334,7 +320,6 @@ class GoalPreflightCommand(
         repoRoot = root,
         invokedAgentId = invokedAgentId,
         agentOverrideId = agentOverride,
-        parallelReviewAgent = parallelReviewAgent,
         requestedReviewMode = codeReviewMode?.let(RequestedReviewMode::parse),
         requestedAgentAddonSlugs = agentAddonSlugs,
         dbPathOverride = state.dbOverride,
@@ -390,7 +375,6 @@ private fun GoalPreflightResult.toGoalPreflightCliMap(): Map<String, Any?> = lin
       "expected_first_runnable_subtask" to block.expectedFirstRunnableSubtask,
       "child_agent" to block.childAgent,
       "child_agent_override" to block.childAgentOverride,
-      "parallel_review_agent" to block.parallelReviewAgent,
       "review_mode" to block.reviewMode,
       "agent_addons" to block.agentAddons.map { addon ->
         linkedMapOf(

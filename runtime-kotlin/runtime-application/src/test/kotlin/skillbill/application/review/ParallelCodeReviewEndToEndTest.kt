@@ -33,18 +33,18 @@ class ParallelCodeReviewEndToEndTest {
     )
     assertEquals(
       1,
-      recorder.parentLaunches.filter { it.skillRunRequest.issueKey == "code-review-parallel" }.size,
+      recorder.parentLaunches.filter { it.skillRunRequest.issueKey == "code-review" }.size,
       "Single-agent parallel review runs one parent lane.",
     )
     assertEquals(
       listOf("codex"),
       recorder.parentLaunches
-        .filter { it.skillRunRequest.issueKey == "code-review-parallel" }
+        .filter { it.skillRunRequest.issueKey == "code-review" }
         .map { it.invokedAgentId },
       "Single-agent parallel review uses agent1 only.",
     )
     recorder.parentLaunches
-      .filter { it.skillRunRequest.issueKey == "code-review-parallel" }
+      .filter { it.skillRunRequest.issueKey == "code-review" }
       .mapNotNull { it.skillRunRequest.promptOverride }
       .forEach { prompt ->
         kotlinAreas.forEach { area ->
@@ -54,7 +54,7 @@ class ParallelCodeReviewEndToEndTest {
           )
         }
       }
-    assertTrue(result.lane1.success && result.lane2.success)
+    assertTrue(result.lane1.success)
   }
 
   @Test fun `inline prompts carry no rediscovery affordance`() {
@@ -173,7 +173,7 @@ class ParallelCodeReviewEndToEndTest {
     reviewHarness(kotlinConfig { RecordedWorkerResponse() }, recorder)
       .run(harnessRequest())
 
-    assertTrue(recorder.savedAccounting.single().reviewId.startsWith("code-review-parallel-"))
+    assertTrue(recorder.savedAccounting.single().reviewId.startsWith("code-review-"))
   }
 
   private fun kotlinConfig(

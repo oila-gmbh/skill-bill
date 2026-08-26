@@ -206,7 +206,6 @@ internal class FeatureTaskRuntimeRunPreparation(
           codeReviewMode = selectedMode,
           validationDepth = context.validationDepth,
           qualityGateSelection = context.qualityGateSelection,
-          parallelReviewAgent = context.parallelReviewAgent ?: request.parallelReviewAgent,
           subtaskName = context.subtaskName,
           agentAddonSelection = context.agentAddonSelection.takeUnless { it.entries.isEmpty() }
             ?: request.agentAddonSelection.persisted,
@@ -239,7 +238,6 @@ internal class FeatureTaskRuntimeRunPreparation(
     return FeatureTaskRuntimePreparation.Prepared(
       request.copy(
         runInvariants = durable,
-        parallelReviewAgent = durableContinuation?.parallelReviewAgent ?: request.parallelReviewAgent,
         goalContinuation = durableContinuation?.let { continuationArtifact ->
           goalContinuationContext(continuationArtifact, requireNotNull(continuation).baseline, request)
         },
@@ -306,7 +304,6 @@ private fun goalContinuationContext(
     ?: request.goalContinuation?.validationDepth
     ?: ValidationDepth.DEFAULT,
   qualityGateSelection = continuation.qualityGateSelection.orLegacyValidate(),
-  parallelReviewAgent = continuation.parallelReviewAgent,
   subtaskName = continuation.subtaskName,
   reviewBaseline = baseline,
   agentAddonSelection = continuation.agentAddonSelection,

@@ -14,7 +14,6 @@ the driver:
 Accepted arguments:
   <commit>                         Review a commit against its first parent.
   mode:auto|inline|delegated       Select review depth.
-  parallel:<agent>[:<model>]      Add a parallel review lane.
   context:feature-remediation     Review a bounded remediation delta.
 ```
 
@@ -70,6 +69,11 @@ state `resolved`, `unresolved`, or `superseded` under the durable
 `blocker_dispositions` key, and cite the specific changed lines that settle it.
 A disposition without that evidence is not admissible.
 
+## Removed parallel lane argument
+
+If the caller passes `parallel:<agent>` or `parallel:<agent>:<model>`, stop immediately,
+name the removed dual-agent parallel review capability, and do not invoke the driver.
+
 ## Commit target argument
 
 Recognize at most one non-blank positional commit target. Pass it through to the
@@ -80,37 +84,6 @@ A positional commit target cannot be combined with `--diff-file`,
 `--base-revision`, `--head-revision`, or a non-default `--scope`.
 When a commit target is supplied, omit `--scope`; the driver uses its default
 branch scope. Without a commit target, pass the caller's scope normally.
-
-## Parallel lane argument
-
-When the caller passes `parallel:<agent>` or `parallel:<agent>:<model>` in args —
-for example `parallel:codex`, `parallel:codex:o3`, or
-`parallel:claude:claude-opus-4-8` — add a second lane on the same driver. Both
-lanes share the resolved depth. Do not pass `parallel:` into lane 2.
-
-Recognise `parallel:<agent>` or `parallel:<agent>:<model>` where `<agent>` is a
-supported agent ID and `<model>` is an optional model override for lane 2.
-Parse by splitting on `:` — the first token is always `parallel`, the second is
-the agent ID, and the optional third token is the model. Any further colons are
-part of the model ID. If `<agent>` is blank or unsupported, stop immediately,
-name the unsupported value, and list supported agents. Do not invoke the driver.
-
-## Config fallback when `parallel:` is absent
-
-The `parallel:` arg, when present, always wins. When it is absent, the driver
-resolves lane 2 with precedence `parallel: arg > code_review_parallel_agent
-config > none`. A missing file, missing key, or explicit `none` is single-lane.
-An unrecognized config value or malformed config is a hard failure naming
-`code_review_parallel_agent`; do not treat it as `none`.
-
-Resolve the effective lane-2 agent with:
-
-```bash
-skill-bill config resolve-parallel-agent --repo-root <repo-root>
-```
-
-Pass a supported agent id through as `--agent2`. Pass nothing when the result is
-`none`.
 
 ## Invoke the driver
 
@@ -126,9 +99,7 @@ skill-bill code-review \
   --repo-root <repo-root>
 ```
 
-Add `--agent2 <id>` when a `parallel:` arg or a non-`none` config fallback
-selected a second lane. Add `--model2 <model>` only when `parallel:<agent>:<model>`
-supplied a model. Pass `--diff-file` with paired `--base-revision` and
+Pass `--diff-file` with paired `--base-revision` and
 `--head-revision` when the caller already materialized an exact diff. Pass
 `--baseline-untracked-include` / `--baseline-untracked-exclude` when the caller
 supplied that inventory.

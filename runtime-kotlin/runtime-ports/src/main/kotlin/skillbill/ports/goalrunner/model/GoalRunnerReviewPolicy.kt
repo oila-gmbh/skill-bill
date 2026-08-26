@@ -9,13 +9,8 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 
 data class GoalRunnerReviewPolicy(
   val codeReviewMode: CodeReviewExecutionMode,
-  val parallelReviewAgent: String? = null,
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
-) {
-  init {
-    parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must not be blank." } }
-  }
-}
+)
 
 data class GoalRunnerChildWorkflowSetup(
   val subtaskId: Int,
