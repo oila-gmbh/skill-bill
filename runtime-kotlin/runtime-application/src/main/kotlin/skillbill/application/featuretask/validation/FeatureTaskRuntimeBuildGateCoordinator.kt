@@ -25,6 +25,7 @@ import skillbill.ports.validation.model.ValidationGateFindingParseMode
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
+import skillbill.ports.validation.model.unparseableGateFailureMessage
 import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -300,8 +301,12 @@ private fun buildFindingsForRepairFromResult(result: ValidationGateRunResult): L
         ValidationGateFinding(
           module = "<build-gate>",
           ruleOrTestId = "unparseable_gate_failure",
-          message = "Build gate reported outcome=${result.outcome.wireValue} exit=${result.exitCode} " +
-            "without parseable findings.",
+          message = unparseableGateFailureMessage(
+            gateLabel = "Build gate",
+            outcome = result.outcome.wireValue,
+            exitCode = result.exitCode,
+            stdout = result.stdout,
+          ),
           location = null,
         ),
       )

@@ -8,6 +8,7 @@ import skillbill.ports.validation.model.ValidationGateFindingParseMode
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
+import skillbill.ports.validation.model.unparseableGateFailureMessage
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
 import skillbill.scaffold.model.ValidationGateFindingsFormat
@@ -55,7 +56,8 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
         outcome = outcome,
         cacheMode = request.cacheMode,
         executedWorkUnits = executedWorkUnits,
-        findings = finalizeFindings(request, parsedFindings, exitCode, outcome),
+        findings = finalizeFindings(request, parsedFindings, exitCode, outcome, stdout),
+        stdout = stdout,
       )
     } finally {
       runCatching { Files.deleteIfExists(outputFile) }
@@ -93,6 +95,7 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     parsed: List<ValidationGateFinding>,
     exitCode: Int,
     outcome: ValidationGateRunOutcome,
+    stdout: String,
   ): List<ValidationGateFinding> {
     if (request.findingParseMode != ValidationGateFindingParseMode.COLLECT_ALL) {
       return parsed
@@ -103,8 +106,12 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
         ValidationGateFinding(
           module = UNPARSEABLE_GATE_MODULE,
           ruleOrTestId = UNPARSEABLE_GATE_RULE_ID,
-          message = "Validation gate reported outcome=${outcome.wireValue} exit=$exitCode " +
-            "without parseable findings; repair the underlying failure the gate detected.",
+          message = unparseableGateFailureMessage(
+            gateLabel = "Validation gate",
+            outcome = outcome.wireValue,
+            exitCode = exitCode,
+            stdout = stdout,
+          ),
           location = null,
         ),
       )

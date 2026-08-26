@@ -12,13 +12,16 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeValidationGateTest {
   @Test
   fun `FAILED gate with empty findings launches repair with synthetic finding`() {
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val repairLaunches = AtomicInteger(0)
-    val runner = ScriptedGateRunner(listOf(failedEmptyFindings(), passed(forced = true)))
+    val runner = ScriptedGateRunner(
+      listOf(failedEmptyFindings("Execution failed for task :spotlessCheck."), passed(forced = true)),
+    )
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
@@ -30,6 +33,7 @@ class FeatureTaskRuntimeValidationGateTest {
           repairLaunches.incrementAndGet()
           assertEquals(1, findings.findings.size)
           assertEquals("unparseable_gate_failure", findings.findings.single().ruleOrTestId)
+          assertTrue(findings.findings.single().message.contains("Execution failed for task :spotlessCheck."))
           completedRepair(findings.findings)
         },
       ),

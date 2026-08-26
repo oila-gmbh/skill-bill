@@ -119,7 +119,16 @@ class FileSystemValidationGateRunnerTest {
     val repo = Files.createTempDirectory("gate-unparseable")
     try {
       val script = repo.resolve("gate.sh")
-      Files.writeString(script, "#!/bin/sh\nexit 1\n")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        printf '%s\n' 'FAILURE: Build failed with an exception.'
+        printf '%s\n' '* What went wrong:'
+        printf '%s\n' 'Execution failed for task :spotlessCheck.'
+        exit 1
+        """.trimIndent(),
+      )
       val result = FileSystemValidationGateRunner().run(
         request(
           repo,
@@ -127,8 +136,11 @@ class FileSystemValidationGateRunnerTest {
           parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
         ),
       )
-      assertEquals(listOf("unparseable_gate_failure"), result.findings.map { it.ruleOrTestId })
-      assertEquals("<validation-gate>", result.findings.single().module)
+      val finding = result.findings.single()
+      assertEquals("unparseable_gate_failure", finding.ruleOrTestId)
+      assertEquals("<validation-gate>", finding.module)
+      assertTrue(finding.message.contains("Execution failed for task :spotlessCheck."))
+      assertTrue(finding.message.contains("Gate stdout (head+tail):"))
     } finally {
       repo.toFile().deleteRecursively()
     }

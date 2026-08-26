@@ -26,6 +26,7 @@ import skillbill.ports.validation.model.ValidationGateFindingParseMode
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
+import skillbill.ports.validation.model.unparseableGateFailureMessage
 import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -280,8 +281,12 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     fun unparseableGateFailureFinding(result: ValidationGateRunResult): ValidationGateFinding = ValidationGateFinding(
       module = "<validation-gate>",
       ruleOrTestId = "unparseable_gate_failure",
-      message = "Validation gate reported outcome=${result.outcome.wireValue} exit=${result.exitCode} " +
-        "without parseable findings; repair the underlying failure the gate detected.",
+      message = unparseableGateFailureMessage(
+        gateLabel = "Validation gate",
+        outcome = result.outcome.wireValue,
+        exitCode = result.exitCode,
+        stdout = result.stdout,
+      ),
       location = null,
     )
 

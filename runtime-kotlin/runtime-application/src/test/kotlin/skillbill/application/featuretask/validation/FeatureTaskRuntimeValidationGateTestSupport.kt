@@ -153,13 +153,14 @@ internal fun passed(forced: Boolean = false): ValidationGateRunResult = Validati
   findings = emptyList(),
 )
 
-internal fun failedEmptyFindings(): ValidationGateRunResult = ValidationGateRunResult(
+internal fun failedEmptyFindings(stdout: String = ""): ValidationGateRunResult = ValidationGateRunResult(
   exitCode = 1,
   durationMs = 1,
   outcome = ValidationGateRunOutcome.FAILED,
   cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
   executedWorkUnits = 1,
   findings = emptyList(),
+  stdout = stdout,
 )
 
 internal fun failedWith(vararg findings: ValidationGateFinding): ValidationGateRunResult = ValidationGateRunResult(
