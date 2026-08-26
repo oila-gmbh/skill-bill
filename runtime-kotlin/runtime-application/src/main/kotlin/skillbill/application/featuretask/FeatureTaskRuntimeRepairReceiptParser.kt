@@ -4,10 +4,8 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRemediationRoundNumber
-import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 
 internal fun featureTaskRuntimeParseRepairReceiptOrNull(
   producedOutputs: Map<String, Any?>,
@@ -83,26 +81,3 @@ internal fun featureTaskRuntimeRemediationRoundNumberOrNull(reviewState: GoalSub
     .getOrElse { error ->
       if (error is InvalidFeatureTaskRuntimeRepairReceiptError) null else throw error
     }
-
-internal fun featureTaskRuntimeRepairReceiptSettleRejection(
-  receipt: FeatureTaskRuntimeRepairReceipt,
-  reviewState: GoalSubtaskReviewState,
-  refutedFindingIds: Set<String> = emptySet(),
-): String? = featureTaskRuntimeRepairReceiptCoverageRejection(
-  receipt,
-  featureTaskRuntimeCarriedFindings(reviewState, refutedFindingIds),
-)
-
-internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
-  receipt: FeatureTaskRuntimeRepairReceipt,
-  carriedFindings: List<GoalSubtaskReviewCompactFinding>,
-): String? = if (receipt.omittedCarriedFindings(carriedFindings).isEmpty()) {
-  null
-} else {
-  featureTaskRuntimeRepairReceiptRejectionDetail(
-    "entries",
-    "must include one entry for every finding carried into this round; omitted findings require an " +
-      "explicit no_edit_required outcome. Findings verification refuted are not carried and owe no " +
-      "entry.",
-  )
-}

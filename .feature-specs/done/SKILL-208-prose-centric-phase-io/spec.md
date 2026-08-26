@@ -88,7 +88,7 @@ per-subtask criteria are applications of them, not independent judgements.
 - **R4 — Indecision never advances.** A derivation that cannot decide blocks or
   re-asks. It never defaults to the advancing verdict and never defaults to
   `completed`. Every re-ask, degradation, and block emits a record per
-  `docs/observability-policy.md`.
+  `../../../docs/observability-policy.md`.
 
 ## Acceptance Criteria
 
@@ -147,7 +147,7 @@ per-subtask criteria are applications of them, not independent judgements.
     gate a run.
 13. Contract versions bump where durable records change, parity tests pin the new
     versions, legacy records are rejected loudly, and the hard-reset path is
-    documented in `runtime-kotlin/ARCHITECTURE.md`.
+    documented in `../../../runtime-kotlin/ARCHITECTURE.md`.
 14. Governance surfaces are unchanged: workflow-state contract, decomposition
     manifest, platform-pack manifests, handoff budgets, checkpoint policy,
     evidence-broker binding, telemetry contracts and the records that feed them,

@@ -8,10 +8,12 @@ Areas: runtime-kotlin/{application/review,application/featuretask,application/go
 Feature flag: N/A
 Acceptance criteria: 12/12 implemented
 
-## [2026-08-25] SKILL-208 subtask 5 — Retire shape policing
-Areas: runtime-application/{featuretask,goalrunner,workflow}, runtime-domain/workflow/taskruntime, docs
-- Feature-task phases settle on prose `output_text` plus runtime-owned sidecar; derivation owns settlement/routing; retired phase-output schema and `RECORD_REJECTED` regeneration topology.
-- Goal planning keeps planning-projection producer gate; hard reset targets preparation-contract drift, not phase-output schema version.
+## [2026-08-26] SKILL-208 subtask 5 — Retire shape policing and align contracts
+Areas: runtime-kotlin, runtime-application/featuretask, docs
+- Deleted feature-task phase-output schema/validator/repair passes and `RECORD_REJECTED` regeneration topology; phases settle on prose plus runtime-owned sidecar with derivation membership routing.
+- Retired repair-receipt entry rules and coverage settle-check; finding-id membership decides coverage. Receipt type kept only for durable/goal-review readers.
+- Restated design rules R1–R4 (mint over read; closed vocabulary; sidecar authorship limited to `commit_subject`/`decomposition_package`; indecision never advances) in ARCHITECTURE and boundary decisions.
+- Goal-planning producer projection gate and planning-projection contract survive; hard-reset path covers workflows created under retired phase-output contracts.
 Feature flag: N/A
 Acceptance criteria: 8/8 implemented
 

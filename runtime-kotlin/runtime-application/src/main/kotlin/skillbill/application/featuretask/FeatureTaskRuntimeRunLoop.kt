@@ -46,7 +46,6 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -1728,44 +1727,16 @@ internal class FeatureTaskRuntimeRunLoop(
     return when (val parsed = featureTaskRuntimeParseRepairReceipt(produced, anchor.baseSha, anchor.roundNumber)) {
       FeatureTaskRuntimeRepairReceiptMissing -> RepairReceiptSettlement.None
       is FeatureTaskRuntimeRepairReceiptRejected -> RepairReceiptSettlement.diagnostic(parsed.rejectionDetail)
-      is FeatureTaskRuntimeRepairReceiptValid -> settledRepairReceipt(parsed.receipt, reviewState)
+      is FeatureTaskRuntimeRepairReceiptValid -> settledRepairReceipt(parsed.receipt)
     }
   }
 
-  private fun settledRepairReceipt(
-    receipt: FeatureTaskRuntimeRepairReceipt,
-    reviewState: GoalSubtaskReviewState,
-  ): RepairReceiptSettlement {
-    val coverageRejection = featureTaskRuntimeRepairReceiptSettleRejection(
-      receipt,
-      reviewState,
-      refutedCarriedFindingIds(reviewState),
-    )
+  private fun settledRepairReceipt(receipt: FeatureTaskRuntimeRepairReceipt): RepairReceiptSettlement {
     val writeFailure = persistImplementFixRepairReceipt(receipt)
-    return when {
-      writeFailure != null -> RepairReceiptSettlement.writeFailed(writeFailure)
-      coverageRejection != null -> RepairReceiptSettlement.diagnostic(coverageRejection)
-      else -> RepairReceiptSettlement.None
-    }
-  }
-
-  private fun refutedCarriedFindingIds(reviewState: GoalSubtaskReviewState): Set<String> {
-    val passNumber = reviewState.passResults.lastOrNull()?.passNumber ?: return emptySet()
-    return runCatching {
-      recorder.fetchUnaddressedLedger(request.workflowId, request.dbPathOverride)
-        .asSequence()
-        .filter { finding -> finding.reviewPassNumber == passNumber }
-        .filter { finding -> finding.verificationDisposition == UNADDRESSED_FINDING_REJECTED_DISPOSITION }
-        .mapNotNull { finding -> finding.findingId?.takeIf(String::isNotBlank) }
-        .toSet()
-    }.getOrElse { error ->
-      diagnostics.warning(
-        "Feature-task-runtime could not read the unaddressed-findings ledger for issue " +
-          "${request.issueKey}, workflow ${request.workflowId}; repair-receipt coverage waives no " +
-          "refuted finding for this round.",
-        error,
-      )
-      emptySet()
+    return if (writeFailure != null) {
+      RepairReceiptSettlement.writeFailed(writeFailure)
+    } else {
+      RepairReceiptSettlement.None
     }
   }
 

@@ -65,7 +65,7 @@ echoes and runtime-minted facts (subtask 2), and deleting the retired rules
 4. Absent, blank, or unparseable phase output stays a loud failure with the
    offending phase id, and the root-level envelope requirements are unchanged.
 5. Every demoted rule emits an observability record carrying the phase id, the
-   rule name, and the rejection pointer, per `docs/observability-policy.md`.
+   rule name, and the rejection pointer, per `../../../docs/observability-policy.md`.
 6. No durable record shape changes: a workflow blocked under a now-demoted rule
    resumes and completes without a hard reset, and every record already written
    still validates.

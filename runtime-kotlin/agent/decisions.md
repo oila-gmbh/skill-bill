@@ -1365,9 +1365,10 @@ closure, and sidecar facts are authoritative; governed handoff projections and
 the goal-planning producer projection gate remain validator-backed on their own
 surfaces.
 
-**Boundary.** R1 prose result; R2 derived membership routing; R3 runtime-minted
-sidecar; R4 declared consumer projections only. Legacy phase-output records and
-`RECORD_REJECTED` regeneration edges are retired without in-place migration.
+**Boundary.** R1 mint over read; R2 closed vocabulary only; R3 runtime-owned sidecar
+with `commit_subject` and `decomposition_package`; R4 indecision never advances.
+Legacy phase-output records and `RECORD_REJECTED` regeneration edges are retired
+without in-place migration.
 
 ## 2026-08-10 — Runtime-owned validate gate (SKILL-180)
 

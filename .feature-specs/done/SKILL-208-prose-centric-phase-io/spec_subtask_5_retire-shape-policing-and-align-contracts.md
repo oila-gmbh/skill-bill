@@ -35,7 +35,7 @@ In scope:
 - Delete the repair-receipt entry rules and coverage check now that id membership
   decides coverage, keeping the receipt type only where a surviving durable record
   or the goal review state still reads it.
-- Align `runtime-kotlin/ARCHITECTURE.md`, the module catalog, and the runtime
+- Align `../../../runtime-kotlin/ARCHITECTURE.md`, the module catalog, and the runtime
   contract inventory: document the prose boundary, the runtime-owned sidecar and
   its two agent-authored entries, the derivation seam with its settlement and
   routing split and its indecisive path, the four design rules, and the
@@ -62,10 +62,10 @@ envelope; goal-planning artifacts and their gate; telemetry schemas; pack routin
    workflow state, decomposition manifest, platform-pack manifests, goal-planning
    preparation, handoff budgets, checkpoint policy, evidence-broker binding, and
    telemetry contracts.
-5. Every surviving contract under `orchestration/contracts/` still has a Kotlin
+5. Every surviving contract under `../../../orchestration/contracts` still has a Kotlin
    contract-version constant, a parity test, and a typed
    `Invalid<Contract>SchemaError`, with no orphaned reference to a retired one.
-6. `runtime-kotlin/ARCHITECTURE.md` describes the prose-centric phase boundary,
+6. `../../../runtime-kotlin/ARCHITECTURE.md` describes the prose-centric phase boundary,
    the runtime-owned sidecar and the two governed artifacts that travel in it,
    the derivation seam with its settlement/routing split and indecisive path, the
    four design rules, and the hard-reset path for workflows created under the

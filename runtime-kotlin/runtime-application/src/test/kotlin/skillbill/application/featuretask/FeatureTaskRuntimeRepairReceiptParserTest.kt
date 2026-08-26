@@ -5,10 +5,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES
 import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 import kotlin.test.Test
@@ -109,69 +106,6 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
   }
 
   @Test
-  fun `a receipt that omits a carried finding names it for the next attempt without echoing it`() {
-    val edited = GoalSubtaskReviewCompactFinding("blocker", "Type", "unsafe mutation at the seam", "F-001")
-    val leftover = GoalSubtaskReviewCompactFinding("major", "Policy", "stale comment is already gone", "F-002")
-    val receipt = receiptFor(
-      FeatureTaskRuntimeRepairReceiptEntry(
-        severity = edited.severity,
-        label = edited.label,
-        text = edited.text,
-        outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
-        intent = "close the finding at Type.member",
-        findingId = edited.findingId!!,
-      ),
-    )
-    val omitted = receipt.omittedCarriedFindings(listOf(edited, leftover))
-
-    assertEquals(listOf(leftover), omitted)
-    val reason = featureTaskRuntimeOmittedFindingsRetryReason(omitted)
-    assertTrue(reason.contains("attempted_unresolved"))
-    assertTrue(!reason.contains(leftover.text))
-  }
-
-  @Test
-  fun `an attempted_unresolved entry carries the finding ref and the producer's own account`() {
-    val carried = GoalSubtaskReviewCompactFinding("major", "Policy", "the gate still admits an empty set", "F-002")
-    val receipt = receiptFor(
-      FeatureTaskRuntimeRepairReceiptEntry(
-        severity = carried.severity,
-        label = carried.label,
-        text = carried.text,
-        outcome = FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED,
-        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
-        intent = "reject an empty disposition set at the gate",
-        findingId = requireNotNull(carried.findingId),
-        unresolvedReason = "the gate has no access to the review pass ids it would have to compare",
-      ),
-    )
-
-    assertTrue(receipt.omittedCarriedFindings(listOf(carried)).isEmpty())
-    val unresolved = assertNotNull(featureTaskRuntimeUnresolvedFindings(receipt))
-    assertEquals(setOf("F-002"), unresolved.refs)
-    assertTrue(unresolved.detail.contains("the gate has no access to the review pass ids"))
-    assertTrue(unresolved.retryReason.contains("one more attempt"))
-  }
-
-  @Test
-  fun `a receipt with no attempted_unresolved entry owes nothing`() {
-    val receipt = receiptFor(
-      FeatureTaskRuntimeRepairReceiptEntry(
-        severity = "major",
-        label = "Policy",
-        text = "the gate still admits an empty set",
-        outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
-        intent = "reject an empty disposition set at the gate",
-        findingId = "F-002",
-      ),
-    )
-
-    assertNull(featureTaskRuntimeUnresolvedFindings(receipt))
-  }
-
-  @Test
   fun `a review finding that no receipt sanitizer would accept never fails the round`() {
     val locationBearing = GoalSubtaskReviewCompactFinding(
       severity = "blocker",
@@ -198,19 +132,6 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
   }
 
   @Test
-  fun `repair receipt covering none of three carried findings names coverage shortfall`() {
-    val state = reviewStateCarrying(
-      finding("F-001"),
-      finding("F-002"),
-      finding("F-003"),
-    )
-    val receipt = receiptFor(finding("F-001"))
-    val rejection = assertNotNull(featureTaskRuntimeRepairReceiptSettleRejection(receipt, state))
-    assertTrue(rejection.contains("/repair_receipt/entries"))
-    assertTrue(rejection.contains("every finding carried into this round"))
-  }
-
-  @Test
   fun `parse of an absent receipt key is a no-op`() {
     assertNull(featureTaskRuntimeParseRepairReceiptOrNull(emptyMap(), sha, 1))
   }
@@ -233,46 +154,5 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
     roundNumber = 1,
     preFixCheckpointSha = sha,
     entries = entries.toList(),
-  )
-
-  private fun receiptFor(vararg findings: GoalSubtaskReviewCompactFinding) = FeatureTaskRuntimeRepairReceipt(
-    roundNumber = 1,
-    preFixCheckpointSha = sha,
-    entries = findings.map { carried ->
-      FeatureTaskRuntimeRepairReceiptEntry(
-        severity = carried.severity,
-        label = carried.label,
-        text = carried.text,
-        outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Foo.member")),
-        intent = "close the finding",
-        findingId = requireNotNull(carried.findingId),
-      )
-    },
-  )
-
-  private fun finding(id: String) = GoalSubtaskReviewCompactFinding(
-    severity = "blocker",
-    label = "Foo",
-    text = "finding $id",
-    findingId = id,
-  )
-
-  private fun reviewStateCarrying(vararg findings: GoalSubtaskReviewCompactFinding) = GoalSubtaskReviewState(
-    reviewBaseSha = sha,
-    baselineUntrackedPaths = emptyList(),
-    codeReviewMode = skillbill.workflow.model.CodeReviewExecutionMode.INLINE,
-    completedPassCount = 1,
-    remediationBaseSha = sha,
-    passResults = listOf(
-      GoalSubtaskReviewPassResult(
-        passNumber = 1,
-        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-        reviewResultArtifact = "goal_subtask_review_results.1",
-        unresolvedFindingCount = findings.size,
-        findings = findings.toList(),
-        reviewRunId = "review-run-1",
-      ),
-    ),
   )
 }

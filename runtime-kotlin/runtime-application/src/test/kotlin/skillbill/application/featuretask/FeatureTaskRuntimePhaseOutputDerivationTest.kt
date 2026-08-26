@@ -188,24 +188,6 @@ class FeatureTaskRuntimePhaseOutputDerivationTest {
   }
 
   @Test
-  fun `conflicting structured verdict and prose resolves to structured`() {
-    val context = FeatureTaskRuntimeDerivationContext(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-      outputText = """{"verdict":"changes_requested","summary":"approved"}""",
-      outputMap = mapOf(
-        "verdict" to "approved",
-        "summary" to "approved",
-        "produced_outputs" to mapOf("findings" to emptyList<Any>()),
-      ),
-    )
-    val derived = FeatureTaskRuntimePhaseOutputDerivation.deriveRoutingVerdict(context)
-    assertEquals(
-      FeatureTaskRuntimeVerdict.APPROVED,
-      assertIs<FeatureTaskRuntimeDerivationResult.Decided<*>>(derived).value,
-    )
-  }
-
-  @Test
   fun `missing review verdict is indecisive rather than approved`() {
     val context = FeatureTaskRuntimeDerivationContext(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,

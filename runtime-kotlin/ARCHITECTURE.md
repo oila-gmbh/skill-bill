@@ -958,12 +958,14 @@ indecisive the run re-asks once under a dedicated budget, then durable-blocks
 with both outputs preserved. Obligation closure (plan tasks, repair items) is id
 membership over runtime-delivered sets in phase text, not receipt shape rules.
 
-**Design rules (R1–R4).** R1: agent prose is the durable phase result. R2:
-routing/settlement derive from membership over closed candidate sets in that
-text. R3: runtime-owned facts live in the sidecar, never re-validated from agent
-echoes. R4: governed handoff projections remain declared, budgeted, and
-validator-backed — but only for consumer-visible derivatives, not for policing
-the producer envelope shape.
+**Design rules (R1–R4).** R1 — Mint over read: where the runtime can observe a
+fact, it mints it and ignores any agent claim. R2 — Closed vocabulary only:
+derivation is membership over candidate sets the runtime already holds (verdict
+enums, plan task ids, carried finding ids), not open-vocabulary parsing. R3 —
+Governed artifacts stay typed in the runtime-owned sidecar; the only
+agent-authored sidecar entries are `commit_subject` and `decomposition_package`.
+R4 — Indecision never advances: a derivation that cannot decide blocks or
+re-asks; it never defaults to the advancing verdict or to `completed`.
 
 **Hard reset.** Workflows created under the retired phase-output contract or
 structural-repair evidence are not migrated in place. Legacy `0.2` private phase records and incompatible goal-planning
