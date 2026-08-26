@@ -2672,12 +2672,7 @@ private fun resolveGoalReviewFindingVerdicts(
 }
 
 private fun parseGoalReviewOutputEnvelope(rawResult: String): Map<String, Any?> {
-  val json = firstJsonObjectInPlanningPayload(rawResult)
-    ?: throw InvalidGoalSubtaskReviewStateSchemaError(
-      sourceLabel = GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY,
-      fieldPath = "raw_results",
-      reason = "must decode to a string-keyed object.",
-    )
+  val json = firstJsonObjectInPlanningPayload(rawResult) ?: return emptyMap()
   return JsonSupport.parseObjectOrNull(json)
     ?.let(JsonSupport::jsonElementToValue)
     ?.let(JsonSupport::anyToStringAnyMap)

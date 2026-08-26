@@ -60,7 +60,7 @@ internal class RuntimeOwnedPersistenceBoundary(
     block: (UnitOfWork) -> T,
   ): T = invokeOrHandle({
     recordFailure(seam, expected, "read_error", it)
-    onPersistenceFailure(causeOf(it))
+    onPersistenceFailure(persistenceFailureCause(it))
   }) {
     read(dbOverride, block)
   }
@@ -75,7 +75,7 @@ internal class RuntimeOwnedPersistenceBoundary(
   }
 
   private fun fail(seam: String, expected: String, used: String, error: Exception): Nothing {
-    val cause = causeOf(error)
+    val cause = persistenceFailureCause(error)
     recordFailure(seam, expected, used, error)
     throw RuntimeOwnedFactUnavailable(
       "Runtime-owned persistence fact '$expected' could not be established at $seam: $cause",
@@ -83,14 +83,14 @@ internal class RuntimeOwnedPersistenceBoundary(
   }
 
   private fun recordFailure(seam: String, expected: String, used: String, error: Exception) {
-    val cause = causeOf(error)
+    val cause = persistenceFailureCause(error)
     runCatching {
       diagnostics.warning(
         "seam=$seam value_expected=$expected value_used=$used cause=$cause",
       )
     }
   }
-
-  private fun causeOf(error: Exception): String =
-    error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty()
 }
+
+private fun persistenceFailureCause(error: Exception): String =
+  error.message?.takeIf(String::isNotBlank) ?: error::class.simpleName.orEmpty()

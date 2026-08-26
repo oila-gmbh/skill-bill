@@ -3586,6 +3586,7 @@ internal class FakeDatabaseSessionFactory(
     skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository,
   private val goalRunnerControls: GoalRunnerControlRepository =
     skillbill.ports.persistence.EmptyGoalRunnerControlRepository,
+  private val reviewsRepository: ReviewRepository? = null,
 ) : DatabaseSessionFactory {
   override fun resolveDbPath(dbOverride: String?): Path = fakeDbPath
   override fun databaseExists(dbOverride: String?): Boolean = true
@@ -3600,7 +3601,7 @@ internal class FakeDatabaseSessionFactory(
     override val learnings: LearningRepository
       get() = error("LearningRepository is not exercised in WorkflowServiceTest.")
     override val reviews: ReviewRepository
-      get() = error("ReviewRepository is not exercised in WorkflowServiceTest.")
+      get() = reviewsRepository ?: error("ReviewRepository is not exercised in WorkflowServiceTest.")
     override val lifecycleTelemetry: LifecycleTelemetryRepository
       get() = error("LifecycleTelemetryRepository is not exercised in WorkflowServiceTest.")
     override val telemetryReconciliation: TelemetryReconciliationRepository

@@ -14,6 +14,7 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
+import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.WorkflowStateRecord
@@ -26,6 +27,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalProgressEvent
@@ -37,6 +39,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import java.lang.reflect.Proxy
 import java.nio.file.Path
 import java.time.Instant
 import java.time.ZoneOffset
@@ -152,7 +155,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       ),
     )
     val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
+      database = FakeDatabaseSessionFactory(workflows, reviewsRepository = emptyReviewClaimsRepository()),
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
     )
 
@@ -175,6 +178,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
+      reviewRunId = "rvw-test-1",
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       goalReviewWorkflowRecord(
@@ -186,7 +190,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       ),
     )
     val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
+      database = FakeDatabaseSessionFactory(workflows, reviewsRepository = emptyReviewClaimsRepository()),
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
     )
 
@@ -920,6 +924,25 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       phaseId = "implement",
       phaseAttempt = 1,
     )
+}
+
+private fun emptyReviewClaimsRepository(): ReviewRepository {
+  return Proxy.newProxyInstance(
+    ReviewRepository::class.java.classLoader,
+    arrayOf(ReviewRepository::class.java),
+  ) { _, method, _ ->
+    when (method.name) {
+      "fetchReviewPassClaims" -> ReviewPassClaimSnapshot(emptyList())
+      "fetchFindingVerdicts" -> emptyList<Any>()
+      else -> when {
+        method.returnType == Void.TYPE -> null
+        List::class.java.isAssignableFrom(method.returnType) -> emptyList<Any>()
+        Map::class.java.isAssignableFrom(method.returnType) -> emptyMap<Any, Any>()
+        method.returnType == java.lang.Boolean.TYPE -> false
+        else -> null
+      }
+    }
+  } as ReviewRepository
 }
 
 private object DeadProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
