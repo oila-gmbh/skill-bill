@@ -439,8 +439,16 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
 
   private val RECONCILIATION_EVIDENCE_KEYS = governedKeysOf("reconciliation_evidence")
   private val REPOSITORY_CHECKPOINT_KEYS = governedKeysOf("repositoryCheckpoint")
-  private val PLAN_TASK_KEYS = governedKeysOf("plan_task")
-  private val TASK_COMMITMENT_KEYS = governedKeysOf("task_commitment")
+  private val PLAN_TASK_KEYS = setOf(
+    "task_id",
+    "depends_on",
+    "description",
+    "criterion_refs",
+    "target_paths_or_symbols",
+    "test_obligations",
+    "constraints",
+  )
+  private val TASK_COMMITMENT_KEYS = setOf("task_id", "criterion_refs", "test_obligations", "constraints")
   private val TEST_EXECUTION_KEYS = governedKeysOf("test_execution")
   private val DEVIATION_KEYS = governedKeysOf("deviation")
 
@@ -507,16 +515,6 @@ enum class FeatureTaskRuntimeProjectionCanonicalizationTransform(val wireValue: 
  * appear here and the prune retains them.
  */
 internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set<String>> = mapOf(
-  "executable_plan" to setOf(
-    "projection_kind",
-    "contract_version",
-    "mode",
-    "tasks",
-    "validation_strategy",
-    "decomposition_subtask_count",
-    "decomposition_manifest_ref",
-  ),
-  "plan_commitment" to setOf("projection_kind", "contract_version", "task_commitments"),
   "implementation_receipt" to setOf(
     "projection_kind",
     "contract_version",
@@ -537,16 +535,6 @@ internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set
   ),
   "reconciliation_evidence" to setOf("reconciled", "evidence"),
   "repositoryCheckpoint" to setOf("fingerprint", "base_ref", "head_ref", "working_tree_owned_paths"),
-  "plan_task" to setOf(
-    "task_id",
-    "depends_on",
-    "description",
-    "criterion_refs",
-    "target_paths_or_symbols",
-    "test_obligations",
-    "constraints",
-  ),
-  "task_commitment" to setOf("task_id", "criterion_refs", "test_obligations", "constraints"),
   "test_execution" to setOf("name", "outcome"),
   "deviation" to setOf("ref", "note"),
 )

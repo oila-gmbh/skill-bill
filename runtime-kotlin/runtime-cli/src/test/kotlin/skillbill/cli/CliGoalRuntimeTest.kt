@@ -2064,10 +2064,7 @@ private fun planningProjectionOutputs(phaseId: String): String? = when (phaseId)
   "preplan" ->
     """{"value":"Fixture preplan prose for downstream plan."}"""
   "plan" ->
-    """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{"task_id":"task-1",""" +
-      """"description":"Fixture task.","criterion_refs":["AC-001"],""" +
-      """"target_paths_or_symbols":["src/Foo.kt"],"test_obligations":["Focused test."]}],""" +
-      """"validation_strategy":["Focused runtime tests."]}"""
+    """{"value":"Fixture plan prose for downstream implement and audit."}"""
   else -> null
 }
 

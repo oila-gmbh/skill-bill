@@ -45,20 +45,7 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      Walk boundary_memory headings for relevance; weave context into value rather than listing " +
       "selected_boundary_headings."
 
-  private val PLAN: String =
-    "\n    - Upstream preplan is prose (value, optional prompt), not a bounded digest. Required " +
-      "produced_outputs shape: emit these fields DIRECTLY on produced_outputs. Every\n" +
-      "      task_id MUST match ^[a-z][a-z0-9-]*\$ (lowercase kebab; \"T1\" is REJECTED — use \"task-1\") and\n" +
-      "      criterion_refs use the AC-### form:\n" +
-      "      ```json\n" +
-      "      { \"projection_kind\": \"executable_plan\",\n" +
-      "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
-      "        \"mode\": \"direct\",\n" +
-      "        \"tasks\": [ { \"task_id\": \"task-1\", \"depends_on\": [], \"description\": \"<imperative task>\",\n" +
-      "          \"criterion_refs\": [\"AC-001\"], \"target_paths_or_symbols\": [\"path/or/Symbol\"],\n" +
-      "          \"test_obligations\": [\"<test to add or run>\"], \"constraints\": [] } ],\n" +
-      "        \"validation_strategy\": [\"<how the plan is validated>\"] }\n" +
-      "      ```"
+  private const val PLAN: String = PREPLAN
 
   private val IMPLEMENT: String =
     "\n    - Required produced_outputs shape: emit the implementation_receipt fields DIRECTLY on\n" +
@@ -66,15 +53,15 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      report inside produced_outputs as well. EVERY key below is a member of produced_outputs:\n" +
       "      the output envelope is closed, so a key placed beside produced_outputs instead of in it\n" +
       "      is rejected as an unknown property and the whole receipt is discarded.\n" +
-      "      completed_task_ids reuse the plan's task_ids; changed_paths are repository-relative; every\n" +
-      "      deviations entry is an OBJECT { \"ref\", \"note\" }, never a free-text string:\n" +
+      "      changed_paths are repository-relative; every deviations entry is an OBJECT { \"ref\", \"note\" },\n" +
+      "      never a free-text string:\n" +
       "      ```json\n" +
       "      { \"projection_kind\": \"implementation_receipt\",\n" +
       "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
       "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
       "        \"tests_added\": [], \"tests_updated\": [],\n" +
       "        \"tests_executed\": [],\n" +
-      "        \"deviations\": [ { \"ref\": \"task-1\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
+      "        \"deviations\": [ { \"ref\": \"AC-001\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
       "        \"unresolved_items\": [],\n" +
       "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
       "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" } }\n" +
@@ -89,8 +76,6 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      payloads.\n" +
       "      Two rules decide whether a 'completed' receipt advances, so satisfy them here rather than\n" +
       "      learning them from a rejection:\n" +
-      "      - completed_task_ids must close EVERY task id the delivered plan declared. Closing fewer\n" +
-      "        does not advance; report 'blocked' or 'failed' instead of narrowing the obligation.\n" +
       "      - unresolved_items must be EMPTY on a 'completed' receipt: it means work this phase leaves\n" +
       "        open, and completion plus an open item cannot both be true. It is NOT a notes field —\n" +
       "        anything you merely want the next phase to know goes in deviations or the summary, and\n" +

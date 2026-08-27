@@ -35,7 +35,7 @@ class RealValidatorPhaseAdvanceIntegrationTest {
         "conforming $phaseId must advance on its first launch under the real validator, not retry",
       )
     }
-    // audit consumes the plan_commitment and implementation_receipt the producer gate accepted; it runs
+    // audit consumes plan prose and the implementation_receipt the producer gate accepted; it runs
     // once and clears, proving the launch-seam parse accepts the same envelopes.
     assertEquals(1, order.count { it == "audit" }, "audit must consume the accepted projections and settle once")
   }

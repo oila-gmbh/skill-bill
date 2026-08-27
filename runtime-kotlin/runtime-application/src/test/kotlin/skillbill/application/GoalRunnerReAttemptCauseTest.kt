@@ -14,15 +14,7 @@ class GoalRunnerReAttemptCauseTest {
   )
 
   @Test
-  fun `regenerate_plan loop on a reconciled resumable stop classifies as regeneration`() {
-    assertEquals(
-      "regeneration",
-      runner().reAttemptCauseFor(GoalRunnerStopReason.RECONCILED_RESUMABLE, mapOf("regenerate_plan" to 2)),
-    )
-  }
-
-  @Test
-  fun `regenerate_implement loop is also recognized as regeneration`() {
+  fun `regenerate_implement loop is recognized as regeneration`() {
     assertEquals(
       "regeneration",
       runner().reAttemptCauseFor(GoalRunnerStopReason.RECONCILED_RESUMABLE, mapOf("regenerate_implement" to 1)),

@@ -328,9 +328,9 @@ internal fun goalContinuationDirective(phaseId: String, suppressDecomposition: B
   return """
     ## Goal-continuation planning constraint
     This run is already executing one governed decomposed subtask. Do not propose or emit a new
-    decomposition package in the plan phase. Produce an implementable single-subtask plan for the
-    current spec; `produced_outputs.mode` must not be "decompose".
-    Never include installer, uninstall, or install-sync commands in the plan: do not plan to run
+    decomposition package in the plan phase. Produce implementable planning prose for the current spec;
+    never emit produced_outputs.decomposition_package. Never include installer, uninstall, or
+    install-sync commands in the plan: do not plan to run
     `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any
     equivalent install refresh inside a goal-continuation child. The plan phase defines how future
     acceptance work will be implemented and validated; it does not require that work to have already
@@ -350,17 +350,13 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "directive when non-blank. Do not forward the complete preplan envelope, a generic summary, " +
     "or progress diagnostics.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
-    "Produce an ordered implementation plan that satisfies every acceptance criterion, using " +
-    "the upstream preplan prose as planning context. Do not modify repository files during " +
-    "this phase. Emit a schema-valid produced_outputs object carrying the bounded executable plan: " +
-    "projection_kind \"executable_plan\", contract_version " +
-    "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\", mode (direct or decompose), " +
-    "stable ordered tasks " +
-    "(task_id, depends_on, description, criterion_refs, target_paths_or_symbols, test_obligations, " +
-    "constraints), and validation_strategy. Exclude planning narration, presentation summary, and " +
-    "generic producer notes; decomposition detail stays private to the preparation boundary.",
+    "Produce planning prose that satisfies every acceptance criterion, using the upstream preplan " +
+    "prose as planning context. Do not modify repository files during this phase. Emit produced_outputs " +
+    "with a non-blank value string carrying your planning prose for downstream implement and audit; " +
+    "optional prompt may add a short directive when non-blank. Do not forward the complete plan " +
+    "envelope, a generic summary, or progress diagnostics.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
-    "Reconcile the repository to the intended state the upstream plan output describes: make the " +
+    "Reconcile the repository to the intended state the upstream plan prose describes: make the " +
     "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
     "idempotency contract below. Emit produced_outputs carrying the bounded implementation receipt " +
     "(projection_kind \"implementation_receipt\", contract_version " +

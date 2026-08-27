@@ -24,11 +24,12 @@ class FeatureTaskRuntimeRepairReceiptTest {
 
   @Test
   fun `salvageCompactReceiptSymbol keeps Type when the member is a spaced display name`() {
+    val spacedDisplayName =
+      "AgentRunServiceRuntimeComponentTest.runtime component exposes agent run " +
+        "service with filesystem launcher binding"
     assertEquals(
       "AgentRunServiceRuntimeComponentTest",
-      salvageCompactReceiptSymbol(
-        "AgentRunServiceRuntimeComponentTest.runtime component exposes agent run service with filesystem launcher binding",
-      ),
+      salvageCompactReceiptSymbol(spacedDisplayName),
     )
     assertEquals(null, salvageCompactReceiptSymbol("Type.member"))
     assertEquals(null, salvageCompactReceiptSymbol("runtime-kotlin/src/Type.kt"))
@@ -39,8 +40,7 @@ class FeatureTaskRuntimeRepairReceiptTest {
       ),
       FeatureTaskRuntimeRepairConstruct.fromArtifactMap(
         mapOf(
-          "symbol" to
-            "AgentRunServiceRuntimeComponentTest.runtime component exposes agent run service with filesystem launcher binding",
+          "symbol" to spacedDisplayName,
           "file" to "AgentRunServiceRuntimeComponentTest.kt",
         ),
         "repair_receipt.entries[0].constructs[0]",

@@ -101,8 +101,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
 
-    // `implement` receives plan as the bounded executable-plan projection, not a coarse receipt.
-    assertTrue(briefing.briefingText.contains("Fixture task."))
+    assertTrue(briefing.briefingText.contains("Fixture plan prose for downstream implement and audit."))
     assertFalse(briefing.hasUpstreamReceipt("review"))
     assertFalse(briefing.briefingText.contains("undeclared"))
   }
@@ -281,9 +280,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   private fun phaseOutput(phaseId: String, payload: String) =
     FeatureTaskRuntimePhaseOutput(phaseId = phaseId, iteration = 1, payload = payload)
 
-  // `plan` feeds implement's bounded executable-plan projection, so its recorded output is a full
-  // envelope carrying the declared projection body.
-  private fun planProjectionOutput(): String = """{"contract_version":"0.2","phase_id":"plan","status":"completed",""" +
+  private fun planProjectionOutput(): String = """{"contract_version":"0.4","phase_id":"plan","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":""" +
-    PlanningProjectionFixtures.EXECUTABLE_PLAN + "}"
+    PlanningProjectionFixtures.PLAN_PROSE + "}"
 }

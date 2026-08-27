@@ -17,7 +17,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
   private val validJson =
     """{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
-      """"produced_outputs":{"tasks":["task-1"]}}"""
+      """"produced_outputs":{"value":"Plan prose."}}"""
 
   @Test
   fun `valid JSON is accepted unchanged and is not rewritten`() {
@@ -117,14 +117,14 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
       |
       |```json
       |{"contract_version":"0.4","phase_id":"plan","status":"completed",
-      |"produced_outputs":{"tasks":["draft"]}}
+      |"produced_outputs":{"value":"Draft plan prose."}}
       |```
       |
       |Corrected final answer:
       |
       |```json
       |{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",
-      |"produced_outputs":{"tasks":["task-1"]}}
+      |"produced_outputs":{"value":"Plan prose."}}
       |```
     """.trimMargin()
 
@@ -138,7 +138,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     assertEquals("Plan output.", envelope["summary"])
     @Suppress("UNCHECKED_CAST")
     val produced = envelope["produced_outputs"] as Map<String, Any?>
-    assertEquals(listOf("task-1"), produced["tasks"], "the draft must not win")
+    assertEquals("Plan prose.", produced["value"], "the draft must not win")
   }
 
   @Test
@@ -148,7 +148,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
       |
       |```json
       |{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",
-      |"produced_outputs":{"tasks":["task-1"]}}
+      |"produced_outputs":{"value":"Plan prose."}}
       |```
     """.trimMargin()
 
@@ -217,7 +217,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   fun `one missing nested delimiter is inserted before the existing outer closer`() {
     val validNestedJson =
       """{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
-        """"produced_outputs":{"tasks":[{"id":"task-1"}]}}"""
+        """"produced_outputs":{"value":"Plan prose.","notes":[{"id":"task-1"}]}}"""
     val malformed = validNestedJson.replace("[{\"id\":\"task-1\"}]}}", "[{\"id\":\"task-1\"}}}")
 
     val result = adapter.validatePhaseOutput(malformed, "plan")
@@ -231,7 +231,8 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     assertEquals(sha256(validNestedJson), repaired.evidence.repairedDigest)
     @Suppress("UNCHECKED_CAST")
     val producedOutputs = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
-    assertEquals(listOf(mapOf("id" to "task-1")), producedOutputs["tasks"])
+    assertEquals("Plan prose.", producedOutputs["value"])
+    assertEquals(listOf(mapOf("id" to "task-1")), producedOutputs["notes"])
   }
 
   @Test
@@ -285,7 +286,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   fun `structural characters inside JSON strings remain unchanged`() {
     val payload =
       """{"contract_version":"0.4","phase_id":"plan","status":"completed",""" +
-        """"summary":"literal } ] and escaped \"quote\"","produced_outputs":{"tasks":["task-1"]}}"""
+        """"summary":"literal } ] and escaped \"quote\"","produced_outputs":{"value":"Plan prose."}}"""
 
     val result = adapter.validatePhaseOutput(payload, "plan")
 
@@ -309,7 +310,8 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   fun `duplicate object keys merge contents and concatenate arrays`() {
     val payload =
       """{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
-        """"produced_outputs":{"tasks":["task-1"]},"produced_outputs":{"notes":["n-1"],"tasks":["task-2"]}}"""
+        """"produced_outputs":{"value":"Plan prose A.","notes":["n-0"]},""" +
+        """"produced_outputs":{"notes":["n-1"],"value":"Plan prose B."}}"""
 
     val result = adapter.validatePhaseOutput(payload, "plan")
 
@@ -317,8 +319,8 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
     @Suppress("UNCHECKED_CAST")
     val producedOutputs = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
-    assertEquals(listOf("task-1", "task-2"), producedOutputs["tasks"])
-    assertEquals(listOf("n-1"), producedOutputs["notes"])
+    assertEquals("Plan prose A.", producedOutputs["value"])
+    assertEquals(listOf("n-0", "n-1"), producedOutputs["notes"])
   }
 
   @Test
@@ -361,7 +363,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   fun `conservative YAML flow repair preserves quoted scalar content`() {
     val malformed =
       "{\"contract_version\": \"0.4\", phase_id: \"plan\", status: \"completed\", " +
-        "summary: \"brace } in a scalar\", produced_outputs: {tasks: [\"task-1\"]}"
+        "summary: \"brace } in a scalar\", produced_outputs: {value: \"Plan prose.\"}"
     val repairedText = "$malformed}"
 
     val result = adapter.validatePhaseOutput(malformed, "plan")
@@ -530,10 +532,13 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     )
     @Suppress("UNCHECKED_CAST")
     val produced = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+
     @Suppress("UNCHECKED_CAST")
     val receipt = produced["repair_receipt"] as Map<String, Any?>
+
     @Suppress("UNCHECKED_CAST")
     val entries = receipt["entries"] as List<Map<String, Any?>>
+
     @Suppress("UNCHECKED_CAST")
     val constructs = entries.single()["constructs"] as List<Map<String, Any?>>
     assertEquals("AgentRunServiceRuntimeComponentTest", constructs.single()["symbol"])

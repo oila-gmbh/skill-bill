@@ -28,7 +28,7 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
         workflowId = "wfl-1",
         issueKey = "SKILL-142",
         subtaskId = 1,
-        loopId = "regenerate_plan",
+        loopId = "regenerate_implement",
         edgeIteration = 2,
         progress = null,
       ),
@@ -60,7 +60,7 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
     val outcomes = RecordingOutcomeStore()
     outcomes.ledgerSequenceWatermarks =
       skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks(
-        backwardEdgeCounts = mapOf("1:regenerate_plan" to 3),
+        backwardEdgeCounts = mapOf("1:regenerate_implement" to 3),
       )
     val recorder = recorder(outcomes)
 
@@ -69,7 +69,7 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
         workflowId = "wfl-1",
         issueKey = "SKILL-142",
         subtaskId = 1,
-        loopId = "regenerate_plan",
+        loopId = "regenerate_implement",
         edgeIteration = 2,
         progress = null,
       ),

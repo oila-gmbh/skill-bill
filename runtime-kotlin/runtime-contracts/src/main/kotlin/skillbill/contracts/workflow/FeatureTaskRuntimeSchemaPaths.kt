@@ -130,10 +130,10 @@ object FeatureTaskRuntimeProjectionMeasurementSchemaPaths {
 /**
  * Runtime-side mirror of the planning-projections schema's `contract_version`;
  * `FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest` fails the build if they diverge.
- * Pins the four concrete bounded projections (preplanning digest, executable plan, plan commitment,
- * implementation receipt) that replace the coarse whole-receipt projection on the plan/implement/audit edges.
+ * Pins the implementation receipt bounded projection that replaces the coarse whole-receipt
+ * projection on the implement/audit edge. Plan and preplan prose live in the phase-output schema.
  */
-const val FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION: String = "0.2"
 
 object FeatureTaskRuntimePlanningProjectionsSchemaPaths {
   const val REPO_RELATIVE_PATH: String =

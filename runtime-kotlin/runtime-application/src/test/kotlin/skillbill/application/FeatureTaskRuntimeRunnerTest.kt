@@ -452,7 +452,10 @@ class FeatureTaskRuntimeRunnerTest {
     }
     // plan and implement receive bounded planning projections rather than coarse upstream receipts.
     assertContains(briefings.getValue("plan").briefingText, "Fixture preplan prose for downstream plan.")
-    assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
+    assertContains(
+      briefings.getValue("implement").briefingText,
+      "Fixture plan prose for downstream implement and audit.",
+    )
     assertEquals(listOf("current_unit_of_work"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "current_unit_of_work")
     assertPrKeepsSelfReadBranchDiff(briefings.getValue("pr"))
@@ -690,8 +693,7 @@ class FeatureTaskRuntimeRunnerTest {
 
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
     val auditBriefing = requireNotNull(briefings["audit"]) { "audit briefing must be persisted" }
-    // audit receives the bounded plan commitment and implementation receipt, not the complete envelopes.
-    assertContains(auditBriefing.briefingText, "task_commitments")
+    assertContains(auditBriefing.briefingText, "Fixture plan prose for downstream implement and audit.")
     assertContains(auditBriefing.briefingText, "changed_paths")
     assertFalse(auditBriefing.briefingText.contains("Phase produced a validated output."))
     // Audit runs before review, so it no longer carries any review output.
@@ -1623,7 +1625,10 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     }
     // plan and implement receive bounded planning projections rather than coarse upstream receipts.
     assertContains(briefings.getValue("plan").briefingText, "Fixture preplan prose for downstream plan.")
-    assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
+    assertContains(
+      briefings.getValue("implement").briefingText,
+      "Fixture plan prose for downstream implement and audit.",
+    )
     assertContains(briefings.getValue("review").briefingText, "clearance_status: satisfied")
     assertFalse(briefings.getValue("review").briefingText.contains(validJsonOutput("implement")))
     assertEquals(listOf("diff"), briefings.getValue("review").derivedContextKeys)
@@ -5318,7 +5323,7 @@ private val VALID_VERIFY_FINDINGS_OUTPUT = verifyFindingsOutput()
 // preplan, plan, and implement feed the bounded planning projections, so their seeded outputs are
 // full envelopes carrying the declared projection body rather than bare produced_outputs fragments.
 private val PREPLAN_OUTPUT = seededProjectionEnvelope("preplan", PlanningProjectionFixtures.PREPLAN_DIGEST)
-private val PLAN_OUTPUT = seededProjectionEnvelope("plan", PlanningProjectionFixtures.EXECUTABLE_PLAN)
+private val PLAN_OUTPUT = seededProjectionEnvelope("plan", PlanningProjectionFixtures.PLAN_PROSE)
 internal val IMPLEMENT_OUTPUT =
   seededProjectionEnvelope("implement", PlanningProjectionFixtures.IMPLEMENTATION_RECEIPT)
 
@@ -6451,37 +6456,39 @@ private val DECOMPOSE_PLAN_OUTPUT: String = """
     "status": "completed",
     "summary": "Plan needs ordered subtasks.",
     "produced_outputs": {
-      "mode": "decompose",
-      "reason": "Plan needs ordered subtasks.",
-      "feature_name": "runtime decomposition parity",
-      "parent_spec_overview": "Split the runtime work into ordered subtasks.",
-      "validation_strategy": "bill-code-check",
-      "base_branch": "main",
-      "feature_branch": "feat/SKILL-65-runtime-decomposition-parity",
-      "subtasks": [
-        {
-          "id": 1,
-          "name": "domain contracts",
-          "scope": "Add typed plan outcome detection.",
-          "acceptance_criteria": ["Detect decompose mode."],
-          "non_goals": [],
-          "dependency_notes": "First subtask.",
-          "validation_strategy": "unit tests",
-          "next_path": "Work subtask 2 next.",
-          "depends_on": []
-        },
-        {
-          "id": 2,
-          "name": "runtime stop",
-          "scope": "Stop after writing decomposition.",
-          "acceptance_criteria": ["Do not advance to implement."],
-          "non_goals": [],
-          "dependency_notes": "Depends on subtask 1.",
-          "validation_strategy": "unit tests",
-          "next_path": "Return to the parent workflow.",
-          "depends_on": [1]
-        }
-      ]
+      "decomposition_package": {
+        "mode": "decompose",
+        "reason": "Plan needs ordered subtasks.",
+        "feature_name": "runtime decomposition parity",
+        "parent_spec_overview": "Split the runtime work into ordered subtasks.",
+        "validation_strategy": "bill-code-check",
+        "base_branch": "main",
+        "feature_branch": "feat/SKILL-65-runtime-decomposition-parity",
+        "subtasks": [
+          {
+            "id": 1,
+            "name": "domain contracts",
+            "scope": "Add typed plan outcome detection.",
+            "acceptance_criteria": ["Detect decompose mode."],
+            "non_goals": [],
+            "dependency_notes": "First subtask.",
+            "validation_strategy": "unit tests",
+            "next_path": "Work subtask 2 next.",
+            "depends_on": []
+          },
+          {
+            "id": 2,
+            "name": "runtime stop",
+            "scope": "Stop after writing decomposition.",
+            "acceptance_criteria": ["Do not advance to implement."],
+            "non_goals": [],
+            "dependency_notes": "Depends on subtask 1.",
+            "validation_strategy": "unit tests",
+            "next_path": "Return to the parent workflow.",
+            "depends_on": [1]
+          }
+        ]
+      }
     }
   }
 """.trimIndent()
@@ -6496,36 +6503,38 @@ private val MALFORMED_DECOMPOSE_PLAN_OUTPUT: String = """
     "status": "completed",
     "summary": "Plan needs ordered subtasks.",
     "produced_outputs": {
-      "mode": "decompose",
-      "reason": "Plan needs ordered subtasks.",
-      "feature_name": "runtime decomposition parity",
-      "parent_spec_overview": "Split the runtime work into ordered subtasks.",
-      "validation_strategy": "bill-code-check",
-      "base_branch": "main",
-      "feature_branch": "feat/SKILL-65-runtime-decomposition-parity",
-      "subtasks": [
-        {
-          "id": 1,
-          "name": "domain contracts",
-          "scope": "Add typed plan outcome detection.",
-          "acceptance_criteria": ["Detect decompose mode."],
-          "non_goals": [],
-          "dependency_notes": "First subtask.",
-          "validation_strategy": "unit tests",
-          "next_path": "Work subtask 2 next.",
-          "depends_on": []
-        },
-        {
-          "id": 2,
-          "scope": "Stop after writing decomposition.",
-          "acceptance_criteria": ["Do not advance to implement."],
-          "non_goals": [],
-          "dependency_notes": "Depends on subtask 1.",
-          "validation_strategy": "unit tests",
-          "next_path": "Return to the parent workflow.",
-          "depends_on": [1]
-        }
-      ]
+      "decomposition_package": {
+        "mode": "decompose",
+        "reason": "Plan needs ordered subtasks.",
+        "feature_name": "runtime decomposition parity",
+        "parent_spec_overview": "Split the runtime work into ordered subtasks.",
+        "validation_strategy": "bill-code-check",
+        "base_branch": "main",
+        "feature_branch": "feat/SKILL-65-runtime-decomposition-parity",
+        "subtasks": [
+          {
+            "id": 1,
+            "name": "domain contracts",
+            "scope": "Add typed plan outcome detection.",
+            "acceptance_criteria": ["Detect decompose mode."],
+            "non_goals": [],
+            "dependency_notes": "First subtask.",
+            "validation_strategy": "unit tests",
+            "next_path": "Work subtask 2 next.",
+            "depends_on": []
+          },
+          {
+            "id": 2,
+            "scope": "Stop after writing decomposition.",
+            "acceptance_criteria": ["Do not advance to implement."],
+            "non_goals": [],
+            "dependency_notes": "Depends on subtask 1.",
+            "validation_strategy": "unit tests",
+            "next_path": "Return to the parent workflow.",
+            "depends_on": [1]
+          }
+        ]
+      }
     }
   }
 """.trimIndent()
@@ -6542,37 +6551,39 @@ private val WRITER_INVALID_DECOMPOSE_PLAN_OUTPUT: String = """
     "status": "completed",
     "summary": "Plan needs ordered subtasks.",
     "produced_outputs": {
-      "mode": "decompose",
-      "reason": "Plan needs ordered subtasks.",
-      "feature_name": "runtime decomposition parity",
-      "parent_spec_overview": "Split the runtime work into ordered subtasks.",
-      "validation_strategy": "bill-code-check",
-      "base_branch": "main",
-      "feature_branch": "feat/SKILL-65-runtime-decomposition-parity",
-      "subtasks": [
-        {
-          "id": 2,
-          "name": "runtime stop",
-          "scope": "Stop after writing decomposition.",
-          "acceptance_criteria": ["Do not advance to implement."],
-          "non_goals": [],
-          "dependency_notes": "Listed first but ids descend.",
-          "validation_strategy": "unit tests",
-          "next_path": "Return to the parent workflow.",
-          "depends_on": []
-        },
-        {
-          "id": 1,
-          "name": "domain contracts",
-          "scope": "Add typed plan outcome detection.",
-          "acceptance_criteria": ["Detect decompose mode."],
-          "non_goals": [],
-          "dependency_notes": "Listed second; out of ascending order.",
-          "validation_strategy": "unit tests",
-          "next_path": "Work subtask 2 next.",
-          "depends_on": []
-        }
-      ]
+      "decomposition_package": {
+        "mode": "decompose",
+        "reason": "Plan needs ordered subtasks.",
+        "feature_name": "runtime decomposition parity",
+        "parent_spec_overview": "Split the runtime work into ordered subtasks.",
+        "validation_strategy": "bill-code-check",
+        "base_branch": "main",
+        "feature_branch": "feat/SKILL-65-runtime-decomposition-parity",
+        "subtasks": [
+          {
+            "id": 2,
+            "name": "runtime stop",
+            "scope": "Stop after writing decomposition.",
+            "acceptance_criteria": ["Do not advance to implement."],
+            "non_goals": [],
+            "dependency_notes": "Listed first but ids descend.",
+            "validation_strategy": "unit tests",
+            "next_path": "Return to the parent workflow.",
+            "depends_on": []
+          },
+          {
+            "id": 1,
+            "name": "domain contracts",
+            "scope": "Add typed plan outcome detection.",
+            "acceptance_criteria": ["Detect decompose mode."],
+            "non_goals": [],
+            "dependency_notes": "Listed second; out of ascending order.",
+            "validation_strategy": "unit tests",
+            "next_path": "Work subtask 2 next.",
+            "depends_on": []
+          }
+        ]
+      }
     }
   }
 """.trimIndent()

@@ -12,22 +12,44 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeImplementationCompletionGateTest {
   @Test
-  fun `a receipt closing every plan task passes`() {
-    assertNull(reasonFor(claim(completedTaskIds = listOf("task-1", "task-2", "task-3"))))
+  fun `a receipt with no unresolved items passes outside the audit repair loop`() {
+    assertNull(reasonFor(claim(completedTaskIds = listOf("task-1"))))
+    assertNull(
+      featureTaskRuntimeIncompleteWorkGateReason(
+        phaseId = "implement",
+        outputMap = mapOf(
+          "status" to "completed",
+          "produced_outputs" to mapOf(
+            "completed_task_ids" to listOf("task-1"),
+          ),
+        ),
+        obligations = obligations(),
+      ),
+    )
   }
 
   @Test
-  fun `a missing task blocks and the reason names that exact task id`() {
-    val reason = reasonFor(claim(completedTaskIds = listOf("task-1", "task-3")))
-
-    assertNotNull(reason)
-    assertTrue(reason.contains("task-2"), "Block must name the missing id; got: $reason")
-    assertTrue(!reason.contains("task-1"), "Block must not accuse closed obligations; got: $reason")
+  fun `missing plan task ids do not block outside the audit repair loop`() {
+    assertNull(
+      featureTaskRuntimeIncompleteWorkGateReason(
+        phaseId = "implement",
+        outputMap = mapOf(
+          "status" to "completed",
+          "produced_outputs" to mapOf(
+            "completed_task_ids" to listOf("task-1"),
+          ),
+        ),
+        obligations = obligations(),
+      ),
+    )
   }
 
   @Test
   fun `open obligations are reported in the plan's declared order`() {
-    val open = featureTaskRuntimeOpenObligations(obligations(), claim(completedTaskIds = listOf("task-2")))
+    val open = featureTaskRuntimeOpenObligations(
+      plannedTaskObligations(),
+      claim(completedTaskIds = listOf("task-2")),
+    )
 
     assertEquals(listOf("task-1", "task-3"), open)
   }
@@ -43,23 +65,34 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
   }
 
   @Test
-  fun `a deviation against an unclosed obligation blocks`() {
-    val reason = reasonFor(
-      claim(
-        completedTaskIds = listOf("task-1", "task-3"),
-        deviations = listOf(FeatureTaskRuntimeReceiptDeviation("task-2", "deferred the seam change")),
+  fun `under the audit repair loop a missing repair item blocks and the reason names that exact id`() {
+    val auditObligations = FeatureTaskRuntimeImplementationObligations(
+      plannedTaskIds = emptyList(),
+      carriedRepairItemIds = listOf("gap-1", "gap-2"),
+      loopId = FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID,
+    )
+    val reason = featureTaskRuntimeIncompleteWorkGateReason(
+      phaseId = "implement",
+      outputMap = mapOf(
+        "status" to "completed",
+        "produced_outputs" to mapOf(
+          "completed_task_ids" to listOf("gap-1"),
+        ),
       ),
+      obligations = auditObligations,
     )
 
     assertNotNull(reason)
-    assertTrue(reason.contains("task-2"), "Block must name the deviating obligation; got: $reason")
+    assertTrue(reason.contains("gap-2"), "Block must name the missing repair item; got: $reason")
   }
 
   @Test
   fun `an informational deviation against closed work passes`() {
     assertNull(
-      reasonFor(
-        claim(
+      featureTaskRuntimeImplementationCompletionReason(
+        phaseId = "implement",
+        obligations = plannedTaskObligations(),
+        claim = claim(
           completedTaskIds = listOf("task-1", "task-2", "task-3"),
           deviations = listOf(FeatureTaskRuntimeReceiptDeviation("task-2", "used a sibling file")),
         ),
@@ -70,8 +103,10 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
   @Test
   fun `a deviation naming something outside the obligation set never blocks`() {
     assertNull(
-      reasonFor(
-        claim(
+      featureTaskRuntimeImplementationCompletionReason(
+        phaseId = "implement",
+        obligations = plannedTaskObligations(),
+        claim = claim(
           completedTaskIds = listOf("task-1", "task-2", "task-3"),
           deviations = listOf(FeatureTaskRuntimeReceiptDeviation("ac-004", "narrowed the telemetry surface")),
         ),
@@ -107,20 +142,22 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
   }
 
   @Test
-  fun `under a plan regeneration the receipt is judged against the current plan generation only`() {
-    val regenerated = FeatureTaskRuntimeImplementationObligations(
-      plannedTaskIds = listOf("task-1", "task-2"),
-      carriedRepairItemIds = emptyList(),
-      loopId = FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID,
-    )
-
+  fun `planned task ids from upstream plan prose are not enforced at implement completion`() {
     assertNull(
-      featureTaskRuntimeImplementationCompletionReason(
+      featureTaskRuntimeIncompleteWorkGateReason(
         phaseId = "implement",
-        obligations = regenerated,
-        claim = claim(completedTaskIds = listOf("task-1", "task-2")),
+        outputMap = mapOf(
+          "status" to "completed",
+          "produced_outputs" to mapOf(
+            "completed_task_ids" to emptyList<String>(),
+          ),
+        ),
+        obligations = FeatureTaskRuntimeImplementationObligations(
+          plannedTaskIds = emptyList(),
+          carriedRepairItemIds = emptyList(),
+          loopId = FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID,
+        ),
       ),
-      "A task id from a superseded plan generation must not be charged as missing.",
     )
   }
 
@@ -257,9 +294,9 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
     )
 
     assertEquals(
-      listOf("task-3"),
+      emptyList(),
       parsed.actionableDeviations(obligations().requiredIds).map { it.ref },
-      "A blank note must not erase the unclosed obligation its ref names.",
+      "Without enforced plan task ids, deviations are not actionable at the completion gate.",
     )
     assertTrue(SCHEMA_COMPACT_SUMMARY.matches(parsed.deviations.single().note))
   }
@@ -297,17 +334,24 @@ class FeatureTaskRuntimeImplementationCompletionGateTest {
     )
 
     assertEquals(
-      listOf("task-3"),
+      emptyList(),
       parsed.actionableDeviations(obligations().requiredIds).map { it.ref },
-      "A routine deviation note carrying a backtick must not erase the open-work signal.",
+      "Without enforced plan task ids, deviations are not actionable at the completion gate.",
     )
   }
 
   private fun reasonFor(claim: FeatureTaskRuntimeImplementationClaim): String? =
     featureTaskRuntimeImplementationCompletionReason("implement", obligations(), claim)
 
+  private fun plannedTaskObligations(): FeatureTaskRuntimeImplementationObligations =
+    FeatureTaskRuntimeImplementationObligations(
+      plannedTaskIds = listOf("task-1", "task-2", "task-3"),
+      carriedRepairItemIds = emptyList(),
+      loopId = null,
+    )
+
   private fun obligations(): FeatureTaskRuntimeImplementationObligations = FeatureTaskRuntimeImplementationObligations(
-    plannedTaskIds = listOf("task-1", "task-2", "task-3"),
+    plannedTaskIds = emptyList(),
     carriedRepairItemIds = emptyList(),
     loopId = null,
   )

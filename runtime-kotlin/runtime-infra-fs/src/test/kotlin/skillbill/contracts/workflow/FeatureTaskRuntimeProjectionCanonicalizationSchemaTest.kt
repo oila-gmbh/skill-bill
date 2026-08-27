@@ -5,7 +5,7 @@ package skillbill.contracts.workflow
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import kotlin.test.Test
@@ -13,162 +13,68 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 
-/**
- * SKILL-140 subtask 2: canonicalization proven against the ENFORCED Draft 2020-12 schema (the real
- * infra-fs adapter, not the Noop stand-in), so acceptance and rejection reflect the contract callers
- * actually face. Canonical trivia is absorbed before validation; structural violations and the
- * anti-paste patterns reject exactly as before, with unchanged error typing.
- */
 class FeatureTaskRuntimeProjectionCanonicalizationSchemaTest {
   private val validator = FeatureTaskRuntimePlanningProjectionValidatorAdapter()
 
-  // --- AC-001: canonical ids accepted; the parsed projection carries the canonical ids ----------
-
   @Test
-  fun `a plan whose task id and matching depends_on are uppercase canonicalizes both and advances`() {
-    val plan = assertIs<FeatureTaskRuntimeExecutablePlan>(
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-          """{"task_id":"T1","description":"first","criterion_refs":["AC-001"],"test_obligations":["parity"]},""" +
-          """{"task_id":"Task_2","depends_on":["T1"],"description":"second","criterion_refs":["AC-002"],""" +
-          """"test_obligations":["parity"]}],"validation_strategy":["focused gradle"]}""",
+  fun `an unknown key on a closed receipt object is absorbed and the projection advances`() {
+    val receipt = assertIs<FeatureTaskRuntimeImplementationReceipt>(
+      parseReceipt(
+        """{"projection_kind":"implementation_receipt","contract_version":"0.2",""" +
+          """"completed_task_ids":["task-1"],"changed_paths":["src/Foo.kt"],""" +
+          """"tests_executed":[{"name":"FooTest.kt","outcome":"passed"}],""" +
+          """"reconciliation_evidence":{"reconciled":true,"evidence":"ok"},""" +
+          """"bogus":1}""",
       ),
     )
 
-    assertEquals(listOf("t1", "task-2"), plan.tasks.map { it.taskId })
-    assertEquals(listOf("t1"), plan.tasks[1].dependsOn, "the reference must canonicalize to the declared id")
+    assertEquals(listOf("task-1"), receipt.completedTaskIds)
   }
-
-  // --- AC-002: compact-summary normalization vs. the authoritative anti-paste patterns ----------
-
-  @Test
-  fun `a description with backticks and tabs is normalized and accepted`() {
-    val plan = parsePlan(
-      """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-        """{"task_id":"task-1","description":"call\t`fn()`\tnow","criterion_refs":["AC-001"],""" +
-        """"test_obligations":["parity"]}],"validation_strategy":["focused gradle"]}""",
-    ) as FeatureTaskRuntimeExecutablePlan
-
-    assertEquals("call fn() now", plan.tasks.single().description)
-  }
-
-  @Test
-  fun `a description that is a pasted JSON body still rejects on the anti-paste pattern`() {
-    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-          """{"task_id":"task-1","description":"{\"phase_id\": \"plan\", \"status\": \"completed\"}",""" +
-          """"criterion_refs":["AC-001"],"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
-      )
-    }
-  }
-
-  @Test
-  fun `a description that is a diff hunk still rejects on the anti-paste pattern`() {
-    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-          """{"task_id":"task-1","description":"diff --git a/x b/x","criterion_refs":["AC-001"],""" +
-          """"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
-      )
-    }
-  }
-
-  @Test
-  fun `a diff paste whose marker is not at line-start still rejects after canonicalization`() {
-    // The anti-paste diff markers are `^`-anchored; collapsing the interior line break to a space would
-    // slide `diff --git` off line-start where the pattern misses it. The break is preserved, so the
-    // no-line-break guard rejects the whole multi-line body.
-    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-          """{"task_id":"task-1","description":"changes:\ndiff --git a/x b/x","criterion_refs":["AC-001"],""" +
-          """"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
-      )
-    }
-  }
-
-  @Test
-  fun `a description that is a multi-line JSON-array body still rejects after canonicalization`() {
-    // A pasted JSON array of strings matches none of the single-line anti-paste markers, so only its
-    // line breaks keep it out; collapsing them would flatten it into an accepted single line.
-    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-          """{"task_id":"task-1","description":"[\n\"alpha\",\n\"beta\"\n]","criterion_refs":["AC-001"],""" +
-          """"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
-      )
-    }
-  }
-
-  // --- AC-003: structural violations reject as before, with unchanged typing --------------------
 
   @Test
   fun `a missing required field rejects`() {
     assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-          """{"task_id":"task-1","description":"a","criterion_refs":["AC-001"]}],"validation_strategy":["v"]}""",
+      parseReceipt(
+        """{"projection_kind":"implementation_receipt","contract_version":"0.2",""" +
+          """"completed_task_ids":["task-1"],"changed_paths":["src/Foo.kt"],""" +
+          """"tests_executed":[{"name":"FooTest.kt","outcome":"passed"}]}""",
       )
     }
   }
 
   @Test
-  fun `an unknown key on a closed object is absorbed and the projection advances`() {
-    val plan = assertIs<FeatureTaskRuntimeExecutablePlan>(
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-          """{"task_id":"task-1","description":"a","criterion_refs":["AC-001"],"test_obligations":["parity"],""" +
-          """"bogus_nested":1}],"validation_strategy":["v"],"bogus":1}""",
-      ),
-    )
-
-    assertEquals("task-1", plan.tasks.single().taskId)
+  fun `a deviation note that is a pasted JSON body still rejects on the anti-paste pattern`() {
+    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
+      parseReceipt(
+        """{"projection_kind":"implementation_receipt","contract_version":"0.2",""" +
+          """"completed_task_ids":["task-1"],"changed_paths":["src/Foo.kt"],""" +
+          """"tests_executed":[{"name":"FooTest.kt","outcome":"passed"}],""" +
+          """"deviations":[{"ref":"AC-001","note":"{\"phase_id\": \"plan\"}"}],""" +
+          """"reconciliation_evidence":{"reconciled":true,"evidence":"ok"}}""",
+      )
+    }
   }
 
   @Test
   fun `a budget overflow rejects`() {
-    val tasks = (1..FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT + 1).joinToString(",") {
-      """{"task_id":"task-$it","description":"a","criterion_refs":["AC-001"],"test_obligations":["parity"]}"""
+    val deviations = (1..FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT + 1).joinToString(",") {
+      """{"ref":"AC-$it","note":"note $it"}"""
     }
     assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[$tasks],""" +
-          """"validation_strategy":["v"]}""",
+      parseReceipt(
+        """{"projection_kind":"implementation_receipt","contract_version":"0.2",""" +
+          """"completed_task_ids":["task-1"],"changed_paths":["src/Foo.kt"],""" +
+          """"tests_executed":[{"name":"FooTest.kt","outcome":"passed"}],""" +
+          """"deviations":[$deviations],""" +
+          """"reconciliation_evidence":{"reconciled":true,"evidence":"ok"}}""",
       )
     }
   }
 
-  @Test
-  fun `a dependency cycle rejects after canonicalization`() {
-    // The cycle is expressed through pre-canonical ids; canonicalization rewrites them referentially, so
-    // the acyclicity check still sees — and rejects — the cycle.
-    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-          """{"task_id":"T1","depends_on":["Task_2"],"description":"a","criterion_refs":["AC-001"],""" +
-          """"test_obligations":["parity"]},""" +
-          """{"task_id":"Task_2","depends_on":["T1"],"description":"b","criterion_refs":["AC-002"],""" +
-          """"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
-      )
-    }
-  }
-
-  @Test
-  fun `an id that canonicalizes to empty rejects at the schema gate`() {
-    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parsePlan(
-        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
-          """{"task_id":"!!!","description":"a","criterion_refs":["AC-001"],"test_obligations":["parity"]}],""" +
-          """"validation_strategy":["v"]}""",
-      )
-    }
-  }
-
-  private fun parsePlan(producedOutputs: String) = featureTaskRuntimePlanningProjectionFromEnvelope(
+  private fun parseReceipt(producedOutputs: String) = featureTaskRuntimePlanningProjectionFromEnvelope(
     envelope = envelope(producedOutputs),
-    producingPhaseId = "plan",
-    expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
+    producingPhaseId = "implement",
+    expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
     schemaValidator = validator,
   )
 

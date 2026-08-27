@@ -1,11 +1,12 @@
 # Feature-task-runtime planning-projections schema (canonical source of truth).
 #
-# This file describes the three concrete, bounded projections that replace the coarse whole-receipt
-# projection for the plan->implement and plan+implement->audit handoff edges:
+# This file describes the concrete bounded projection that replaces the coarse whole-receipt
+# projection for the implement->audit handoff edge:
 #
-# - executable_plan      : what `implement` receives from `plan` (AC-005)
-# - plan_commitment      : the bounded task/criterion obligation `audit` receives from `plan` (AC-011)
 # - implementation_receipt: the bounded producer claim `audit` receives from `implement` (AC-008/009)
+#
+# Plan and preplan prose live in feature-task-runtime-phase-output-schema.yaml and are delivered
+# through phase-scoped handoff projections, not through this schema.
 #
 # The generic handoff envelope (feature-task-runtime-handoff-envelope-schema.yaml) is the wire
 # container; each concrete projection names its contract id/version there. This schema is the
@@ -16,7 +17,7 @@
 #
 # Why this exists:
 #
-# - AC-006/AC-009/AC-011: the projection excludes planning narration, presentation summary, generic
+# - AC-006/AC-009: the projection excludes planning narration, presentation summary, generic
 #   producer summary, progress diagnostics, and arbitrary plan output fields. Strict per-variant
 #   shape is what keeps the delivered projection bounded rather than the whole producing output.
 #
@@ -24,10 +25,9 @@
 #
 # - This file defines the SHAPE of each variant: required fields, enums, the pinned contract version,
 #   and strict additionalProperties:false so an undeclared wire field fails loudly.
-# - Task-dependency acyclicity, changed-path normalization/uniqueness/count limits beyond what JSON
-#   Schema expresses, decomposition-data-forbidden-under-direct, and the checkpoint policy are
-#   cross-field rules enforced in FeatureTaskRuntimePlanningProjectionModels.kt and documented under
-#   x-coherence-checks.
+# - changed-path normalization/uniqueness/count limits beyond what JSON Schema expresses, and the
+#   checkpoint policy are cross-field rules enforced in FeatureTaskRuntimePlanningProjectionModels.kt
+#   and documented under x-coherence-checks.
 #
 # Versioning rule:
 #
@@ -38,26 +38,16 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://skill-bill.dev/contracts/feature-task-runtime-planning-projections-schema.yaml"
 title: "Feature-task-runtime planning projections"
-description: "Strict oneOf over the three concrete bounded projections for the plan/implement/audit edges."
+description: "Strict oneOf over the concrete bounded implementation receipt for the implement/audit edge."
 type: object
 oneOf:
-  - $ref: "#/$defs/executable_plan"
-  - $ref: "#/$defs/plan_commitment"
   - $ref: "#/$defs/implementation_receipt"
 
 x-coherence-checks:
   - id: discriminator-uniqueness
     description: >-
-      Each variant carries a unique projection_kind. The Kotlin ProjectionKind enum mirrors these
-      three values; an unknown or missing kind is a malformed-projection rejection.
-  - id: decomposition-data-only-under-decompose
-    description: >-
-      decomposition_* fields are accepted only when executable_plan.mode is "decompose". A DIRECT
-      plan carrying decomposition data is rejected by FeatureTaskRuntimeExecutablePlan construction.
-  - id: task-dependency-acyclicity
-    description: >-
-      executable_plan.tasks.depends_on must be acyclic and reference declared task ids; enforced by
-      FeatureTaskRuntimeExecutablePlan, mirroring FeatureTaskRuntimeAuditRepairPlan's dependency check.
+      The variant carries projection_kind implementation_receipt. The Kotlin ProjectionKind enum mirrors
+      this value; an unknown or missing kind is a malformed-projection rejection.
   - id: changed-path-normalization
     description: >-
       implementation_receipt.changed_paths are normalized repository-relative paths: no absolute
@@ -81,14 +71,12 @@ x-coherence-checks:
 $defs:
   contractVersion:
     type: string
-    const: "0.1"
+    const: "0.2"
   nonBlank:
     type: string
     minLength: 1
     maxLength: 4096
     pattern: ".*\\S.*"
-  # A compact one-line summary that may name symbols, paths, or commands but must never carry a
-  # pasted payload: no line breaks, no code fences, no JSON/diff/patch markers, no role-prompt headers.
   compactSummary:
     allOf:
       - { $ref: "#/$defs/nonBlank" }
@@ -98,22 +86,6 @@ $defs:
     type: array
     maxItems: 128
     items: { $ref: "#/$defs/nonBlank" }
-  # A string list the Kotlin model requires to be non-empty (requireStringList / .ifEmpty{throw}).
-  # Kept as a separate $def so the empty-allowed `strings` uses stay empty-allowed; only the fields
-  # the model rejects when empty carry minItems:1, so a schema-valid projection can never pass the
-  # infra-fs gate and then throw in fromMap.
-  nonEmptyStrings:
-    allOf:
-      - { $ref: "#/$defs/strings" }
-      - { minItems: 1 }
-  # An open-work entry may arrive as a bare line or as the same {ref, note} pair `deviations` carries,
-  # because both name work that is not closed and an agent authoring one receipt cannot know which seam
-  # will read it. Accepting both is what stops the two readers of this field from disagreeing: the
-  # terminal path's claim parser deliberately RENDERS a non-string open-work entry rather than dropping
-  # it (dropping one would delete the signal that holds an unfinished receipt back), so a schema that
-  # rejected the same entry on the completed path made one shape legal on one path and fatal on the
-  # other. The receipt model renders an object entry to the same "ref: note" line the deviations
-  # projection uses, so every downstream consumer still sees a bounded string list.
   openWorkItems:
     type: array
     maxItems: 128
@@ -121,28 +93,11 @@ $defs:
       oneOf:
         - { $ref: "#/$defs/nonBlank" }
         - { $ref: "#/$defs/deviation" }
-  # Repository-relative path: no leading slash, no backslash, no `..` segment. Mirrors
-  # review-context-schema.yaml's `path` $def so changed-path normalization is identical everywhere.
   repoPath:
     type: string
     minLength: 1
     maxLength: 1024
     pattern: "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
-  criterionRef:
-    type: string
-    pattern: "^AC-[0-9]{3}$"
-  # Both uses (plan_task, task_commitment) are rejected by the model when empty (.ifEmpty{throw}),
-  # so the non-empty bound lives on the shared $def rather than per field.
-  criterionRefs:
-    type: array
-    minItems: 1
-    maxItems: 128
-    items: { $ref: "#/$defs/criterionRef" }
-  taskId:
-    type: string
-    pattern: "^[a-z][a-z0-9-]*$"
-    minLength: 1
-    maxLength: 128
   repositoryCheckpoint:
     type: object
     additionalProperties: false
@@ -155,75 +110,6 @@ $defs:
         type: array
         maxItems: 512
         items: { $ref: "#/$defs/repoPath" }
-
-  executable_plan:
-    type: object
-    additionalProperties: false
-    required:
-      - projection_kind
-      - contract_version
-      - mode
-      - tasks
-      - validation_strategy
-    properties:
-      projection_kind: { const: "executable_plan" }
-      contract_version: { $ref: "#/$defs/contractVersion" }
-      mode: { enum: [direct, decompose] }
-      tasks:
-        type: array
-        minItems: 1
-        maxItems: 128
-        items: { $ref: "#/$defs/plan_task" }
-      validation_strategy: { $ref: "#/$defs/nonEmptyStrings" }
-      decomposition_subtask_count: { type: integer, minimum: 1 }
-      decomposition_manifest_ref: { $ref: "#/$defs/nonBlank" }
-
-  plan_task:
-    type: object
-    additionalProperties: false
-    # depends_on, target_paths_or_symbols and constraints are legitimately empty on a single-task or
-    # unconstrained plan, so they are optional here and default to empty in the Kotlin model.
-    required: [task_id, description, criterion_refs, test_obligations]
-    properties:
-      task_id: { $ref: "#/$defs/taskId" }
-      depends_on:
-        type: array
-        maxItems: 128
-        items: { $ref: "#/$defs/taskId" }
-      description: { $ref: "#/$defs/compactSummary" }
-      criterion_refs: { $ref: "#/$defs/criterionRefs" }
-      target_paths_or_symbols: { $ref: "#/$defs/strings" }
-      test_obligations: { $ref: "#/$defs/nonEmptyStrings" }
-      constraints: { $ref: "#/$defs/strings" }
-
-  plan_commitment:
-    type: object
-    additionalProperties: false
-    required:
-      - projection_kind
-      - contract_version
-      - task_commitments
-    description: >-
-      Bounded subset of executable_plan forwarded to audit: task/criterion/test obligations only.
-      Carries no description, target paths, narration, presentation summary, or validation strategy.
-    properties:
-      projection_kind: { const: "plan_commitment" }
-      contract_version: { $ref: "#/$defs/contractVersion" }
-      task_commitments:
-        type: array
-        minItems: 1
-        maxItems: 128
-        items: { $ref: "#/$defs/task_commitment" }
-
-  task_commitment:
-    type: object
-    additionalProperties: false
-    required: [task_id, criterion_refs, test_obligations]
-    properties:
-      task_id: { $ref: "#/$defs/taskId" }
-      criterion_refs: { $ref: "#/$defs/criterionRefs" }
-      test_obligations: { $ref: "#/$defs/nonEmptyStrings" }
-      constraints: { $ref: "#/$defs/strings" }
 
   implementation_receipt:
     type: object
@@ -241,7 +127,11 @@ $defs:
       completed_task_ids:
         type: array
         maxItems: 128
-        items: { $ref: "#/$defs/taskId" }
+        items:
+          type: string
+          pattern: "^[a-z][a-z0-9-]*$"
+          minLength: 1
+          maxLength: 128
       changed_paths:
         type: array
         uniqueItems: true
@@ -266,10 +156,6 @@ $defs:
       unresolved_items: { $ref: "#/$defs/openWorkItems" }
       reconciliation_evidence: { $ref: "#/$defs/reconciliation_evidence" }
       repository_checkpoint: { $ref: "#/$defs/repositoryCheckpoint" }
-      # Governed co-residents of a mutating phase's produced_outputs, owned by the phase-output and
-      # audit-repair-plan contracts. They are named here only so additionalProperties:false does not
-      # reject an output that those contracts require; their shape stays with their owning schema and
-      # they are not part of the projection this variant delivers.
       reconciled_state: { type: object }
       repair_item_results: { type: array }
       deferred_repair_item_ids:

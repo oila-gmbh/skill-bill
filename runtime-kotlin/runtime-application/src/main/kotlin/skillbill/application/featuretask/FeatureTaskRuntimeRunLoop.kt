@@ -98,10 +98,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
@@ -131,7 +129,6 @@ import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
-import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.taskruntime.model.upsertRepairReceipt
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage
@@ -5110,10 +5107,8 @@ internal class FeatureTaskRuntimeRunLoop(
    */
   private fun implementationObligations(run: PhaseRun): FeatureTaskRuntimeImplementationObligations {
     val loopId = run.reentry?.loopId
-    val delivered = recorder.loadDeliveredProjections(run.request.workflowId, run.request.dbPathOverride)
-      .orEmpty().values
     return FeatureTaskRuntimeImplementationObligations(
-      plannedTaskIds = featureTaskRuntimePlannedTaskIdsFrom(delivered, run.phaseId),
+      plannedTaskIds = featureTaskRuntimePlannedTaskIdsFrom(),
       carriedRepairItemIds = featureTaskRuntimeCarriedRepairItemIds(emptyList()),
       loopId = loopId,
       edgeIteration = run.reentry?.edgeIteration,
@@ -5158,7 +5153,6 @@ internal class FeatureTaskRuntimeRunLoop(
     run.phaseId,
     outputMap,
     planningProjectionValidator,
-    allowDecompositionPackage = true,
   )?.let { "producer-projection" to it }
     ?: immediateConsumerProjectionGateReason(
       run,
@@ -6581,7 +6575,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return FeatureTaskRuntimePriorGapMemory(
       round = round,
       priorUnmetCriteria = boundPriorGapNotes(priorUnmetCriteria),
-      lastImplementClaims = boundPriorGapNotes(lastImplementClaims(state)),
+      lastImplementClaims = boundPriorGapNotes(lastImplementClaims()),
       stickyIds = boundPriorGapNotes(stickyIds),
     )
   }
@@ -6614,30 +6608,7 @@ internal class FeatureTaskRuntimeRunLoop(
    * The criterion refs the most recent completed implement receipt claimed to address, joined through
    * the plan output's task-to-criterion mapping. Empty when either output is absent or does not parse.
    */
-  @Suppress("ReturnCount")
-  private fun lastImplementClaims(state: FeatureTaskRuntimeRunState): List<String> {
-    val def = FeatureTaskRuntimePhaseWorkflowDefinition
-    val implement = state.outputFor(def.PHASE_IMPLEMENT) ?: return emptyList()
-    val receipt = runCatching {
-      featureTaskRuntimePlanningProjectionFromEnvelope(
-        envelope = outputEnvelopeOf(implement) ?: return@runCatching null,
-        producingPhaseId = def.PHASE_IMPLEMENT,
-        expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
-        schemaValidator = planningProjectionValidator,
-      )
-    }.getOrNull() as? FeatureTaskRuntimeImplementationReceipt ?: return emptyList()
-    val plan = state.outputFor(def.PHASE_PLAN) ?: return emptyList()
-    val planProjection = runCatching {
-      featureTaskRuntimePlanningProjectionFromEnvelope(
-        envelope = outputEnvelopeOf(plan) ?: return@runCatching null,
-        producingPhaseId = def.PHASE_PLAN,
-        expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
-        schemaValidator = planningProjectionValidator,
-      )
-    }.getOrNull() as? FeatureTaskRuntimeExecutablePlan ?: return emptyList()
-    val refsByTask = planProjection.tasks.associate { it.taskId to it.criterionRefs }
-    return receipt.completedTaskIds.flatMap { refsByTask[it].orEmpty() }.distinct()
-  }
+  private fun lastImplementClaims(): List<String> = emptyList()
 
   private fun outputEnvelopeOf(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
     output.normalizedOutput?.envelope?.takeIf { it.isNotEmpty() }

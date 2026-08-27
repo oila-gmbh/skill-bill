@@ -277,7 +277,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
       val requiredChecks = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
         validationRequestFields(depth).getValue("required_checks").value,
       ).items
-      assertEquals(listOf("Focused runtime tests.", "Focused unit test."), requiredChecks)
+      assertEquals(emptyList(), requiredChecks)
     }
   }
 
@@ -680,7 +680,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   @Test
   fun `preplan prose handoff rejects whitespace-only value`() {
     val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
-    val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.preplanProseDeclaration(consumer)
+    val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(consumer)
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimeHandoffProjectionValidator.validate(
         inputs(
@@ -828,11 +828,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     val plan = FeatureTaskRuntimePhaseOutput(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       iteration = 1,
-      payload = """{"produced_outputs":{"projection_kind":"executable_plan","contract_version":"0.1",""" +
-        """"mode":"direct","tasks":[{"task_id":"task-1","description":"Fixture.",""" +
-        """"criterion_refs":["AC-001"],"target_paths_or_symbols":["src/Foo.kt"],""" +
-        """"test_obligations":["Focused unit test."]}],""" +
-        """"validation_strategy":["Focused runtime tests."]}}""",
+      payload = """{"produced_outputs":{"value":"Fixture plan prose for downstream implement and audit."}}""",
     )
     val implementation = FeatureTaskRuntimePhaseOutput(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,

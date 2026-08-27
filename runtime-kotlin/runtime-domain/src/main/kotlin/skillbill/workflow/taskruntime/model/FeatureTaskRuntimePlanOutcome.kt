@@ -56,8 +56,7 @@ data class FeatureTaskRuntimeDecomposeSubtask(
 @OpenBoundaryMap("Feature-task-runtime decomposition-package detection on the schema-validated phase-output wire map")
 fun featureTaskRuntimeIsDecompositionPackage(phaseOutput: Map<String, Any?>): Boolean {
   val producedOutputs = phaseOutput.stringAnyMap("produced_outputs") ?: return false
-  if (producedOutputs["projection_kind"] != null) return false
-  val packageMap = producedOutputs.stringAnyMap("decomposition_package") ?: producedOutputs
+  val packageMap = producedOutputs.stringAnyMap("decomposition_package") ?: return false
   return packageMap["mode"]?.toString() == DECOMPOSE_MODE
 }
 
@@ -66,19 +65,18 @@ fun featureTaskRuntimeDecomposePlanOutcomeOrNull(
   phaseOutput: Map<String, Any?>,
   specSource: SpecSource,
 ): FeatureTaskRuntimeDecomposePlanOutcome? {
-  val producedOutputs = phaseOutput.stringAnyMap("produced_outputs")
-  val packageMap = producedOutputs?.stringAnyMap("decomposition_package") ?: producedOutputs
-  return packageMap?.takeIf { it["mode"]?.toString() == DECOMPOSE_MODE }?.let { decomposePackage ->
-    val summary = phaseOutput["summary"]?.toString().orEmpty()
-    FeatureTaskRuntimeDecomposePlanOutcome(
-      reason = decomposePackage.firstString("reason", "decomposition_reason").ifBlank { summary },
-      featureName = decomposePackage.firstString("feature_name", "name").ifBlank { "feature" },
-      parentSpecOverview = decomposePackage.firstString("parent_spec_overview", "overview").ifBlank { summary },
-      validationStrategy = decomposePackage.firstString("validation_strategy").ifBlank { "bill-code-check" },
-      baseBranch = decomposePackage.firstString("base_branch").ifBlank { "main" },
-      featureBranch = decomposePackage.firstString("feature_branch"),
-      specSource = specSource,
-      subtasks = decomposePackage.requireSubtasks(),
-    )
-  }
+  val producedOutputs = phaseOutput.stringAnyMap("produced_outputs") ?: return null
+  val packageMap = producedOutputs.stringAnyMap("decomposition_package") ?: return null
+  if (packageMap["mode"]?.toString() != DECOMPOSE_MODE) return null
+  val summary = phaseOutput["summary"]?.toString().orEmpty()
+  return FeatureTaskRuntimeDecomposePlanOutcome(
+    reason = packageMap.firstString("reason", "decomposition_reason").ifBlank { summary },
+    featureName = packageMap.firstString("feature_name", "name").ifBlank { "feature" },
+    parentSpecOverview = packageMap.firstString("parent_spec_overview", "overview").ifBlank { summary },
+    validationStrategy = packageMap.firstString("validation_strategy").ifBlank { "bill-code-check" },
+    baseBranch = packageMap.firstString("base_branch").ifBlank { "main" },
+    featureBranch = packageMap.firstString("feature_branch"),
+    specSource = specSource,
+    subtasks = packageMap.requireSubtasks(),
+  )
 }

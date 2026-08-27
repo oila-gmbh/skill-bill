@@ -35,8 +35,8 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidDecompositionManifestSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
-import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
@@ -86,6 +86,7 @@ import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
@@ -3031,16 +3032,18 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
   @Test
   fun `hydrating a projection-invalid stored plan loud-fails before any child artifact is written`() {
-    // AC-004: the hydrator runs the shared producer gate, so an import carrying the SKILL-141 escape
-    // shape is refused here rather than deferred to implement's launch seam. The digest matches, so the
-    // rejection can only come from the projection gate.
-    val harness = hydrationHarness(variant = "projection_invalid")
+    // AC-004: the hydrator runs the phase-output schema gate, so an import missing plan value is
+    // refused here rather than deferred to implement's launch seam.
+    val harness = hydrationHarness(
+      variant = "projection_invalid",
+      phaseOutputValidator = realFeatureTaskRuntimePhaseOutputValidator,
+    )
 
-    val error = assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       harness.store.saveNewChildWorkflow(harness.state, harness.setup)
     }
 
-    assertContains(error.reason, "test_obligations")
+    assertContains(error.reason, "value")
     assertNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID))
     assertNull(harness.workflows.executionIdentity(CHILD_ID))
   }
@@ -3384,7 +3387,11 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     )
   }
 
-  private fun hydrationHarness(twoSubtasks: Boolean = false, variant: String = "valid"): HydrationHarness {
+  private fun hydrationHarness(
+    twoSubtasks: Boolean = false,
+    variant: String = "valid",
+    phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
+  ): HydrationHarness {
     val workflows = InMemoryWorkflowStates()
     val manifest = hydrationManifest(twoSubtasks)
     workflows.saveFeatureTaskRuntimeWorkflow(
@@ -3403,20 +3410,21 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         "corrupt" -> it.copy(planPayload = it.planPayload + "corrupt")
         "conflict" -> it.copy(provenance = it.provenance.copy(parentSpecHash = "f".repeat(64)))
         "projection_invalid" -> it.copy(
-          planPayload = EMPTY_TEST_OBLIGATIONS_PLAN_PAYLOAD,
-          payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(EMPTY_TEST_OBLIGATIONS_PLAN_PAYLOAD),
+          planPayload = EMPTY_VALUE_PLAN_PAYLOAD,
+          payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(EMPTY_VALUE_PLAN_PAYLOAD),
         )
         else -> it
       }
     }
     if (twoSubtasks) preparations.plans[2] = planCheckpoint(2)
-    return HydrationHarness(workflows, preparations, manifest)
+    return HydrationHarness(workflows, preparations, manifest, phaseOutputValidator)
   }
 
   private data class HydrationHarness(
     val workflows: InMemoryWorkflowStates,
     val preparations: RecordingPlanningPreparations,
     val manifest: DecompositionManifest,
+    val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
   ) {
     val state = GoalRunnerManifestState("goal-parent", "/fake/metrics.db", manifest)
 
@@ -3435,7 +3443,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
+      phaseOutputValidator = phaseOutputValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
       clock = java.time.Clock.fixed(java.time.Instant.parse(instant), java.time.ZoneOffset.UTC),
     )
@@ -3449,7 +3457,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
+      phaseOutputValidator = phaseOutputValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
     )
 
@@ -3484,18 +3492,16 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     // projection gate, so a placeholder produced_outputs would be rejected before any child artifact.
     val PREPLAN_PAYLOAD = """
       {
-        "contract_version":"0.2","phase_id":"preplan","status":"completed","summary":"shared",
+        "contract_version":"0.4","phase_id":"preplan","status":"completed","summary":"shared",
         "produced_outputs":{"value":"shared preplan prose for hydration"}
       }
     """.trimIndent()
 
-    // The SKILL-141 escape shape: a settled plan whose only task carries no test obligations.
-    val EMPTY_TEST_OBLIGATIONS_PLAN_PAYLOAD = """
+    // A settled plan whose produced_outputs omits the required non-blank value.
+    val EMPTY_VALUE_PLAN_PAYLOAD = """
       {
-        "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"no obligations",
-        "produced_outputs":{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
-        "tasks":[{"task_id":"task-1","description":"no obligations","criterion_refs":["AC-001"],
-        "test_obligations":[]}],"validation_strategy":["focused gradle"]}
+        "contract_version":"0.4","phase_id":"plan","status":"completed","summary":"no value",
+        "produced_outputs":{"prompt":"optional only"}
       }
     """.trimIndent()
     val PLAN_ONE_PAYLOAD = planPayload("owned-plan-one")
@@ -3503,10 +3509,8 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
     fun planPayload(description: String): String = """
       {
-        "contract_version":"0.2","phase_id":"plan","status":"completed","summary":"$description",
-        "produced_outputs":{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
-        "tasks":[{"task_id":"task-1","description":"$description","criterion_refs":["AC-001"],
-        "test_obligations":["parity"]}],"validation_strategy":["focused gradle"]}
+        "contract_version":"0.4","phase_id":"plan","status":"completed","summary":"$description",
+        "produced_outputs":{"value":"$description prose for downstream implement."}
       }
     """.trimIndent()
 

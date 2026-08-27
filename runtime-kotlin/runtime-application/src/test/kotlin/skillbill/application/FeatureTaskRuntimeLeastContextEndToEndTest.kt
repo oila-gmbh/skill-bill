@@ -115,7 +115,7 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
       )
       val requiredNames = declaredProjection.declaredFieldNames.filterNot { name ->
         declaredProjection.projectionContractId ==
-          FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PREPLAN_PROSE &&
+          FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE &&
           name == "directive"
       }
       assertTrue(

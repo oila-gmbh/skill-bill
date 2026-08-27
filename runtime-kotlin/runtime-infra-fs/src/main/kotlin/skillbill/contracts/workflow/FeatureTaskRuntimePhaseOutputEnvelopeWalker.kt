@@ -213,24 +213,6 @@ internal object PhaseOutputExpectedShape {
     return root to changed
   }
 
-  private fun salvageRepairReceiptSymbols(produced: ObjectNode): Boolean {
-    val receipt = produced.get("repair_receipt") as? ObjectNode ?: return false
-    val entries = receipt.get("entries") as? ArrayNode ?: return false
-    var changed = false
-    for (entryNode in entries) {
-      val constructs = (entryNode as? ObjectNode)?.get("constructs") as? ArrayNode ?: continue
-      for (constructNode in constructs) {
-        val construct = constructNode as? ObjectNode ?: continue
-        val symbolNode = construct.get("symbol") ?: continue
-        if (!symbolNode.isTextual) continue
-        val salvaged = salvageCompactReceiptSymbol(symbolNode.asText()) ?: continue
-        construct.put("symbol", salvaged)
-        changed = true
-      }
-    }
-    return changed
-  }
-
   /**
    * Moves a key the producer put beside `produced_outputs` into it.
    *
@@ -331,4 +313,31 @@ internal object PhaseOutputExpectedShape {
       )
     return StructuralRepairDecisions.accepted(repairedText, aligned, evidence)
   }
+}
+
+private fun salvageRepairReceiptSymbols(produced: ObjectNode): Boolean {
+  val entries = (produced.get("repair_receipt") as? ObjectNode)?.get("entries") as? ArrayNode
+    ?: return false
+  var changed = false
+  for (entryNode in entries) {
+    val constructs = (entryNode as? ObjectNode)?.get("constructs") as? ArrayNode ?: continue
+    if (salvageConstructSymbols(constructs)) changed = true
+  }
+  return changed
+}
+
+private fun salvageConstructSymbols(constructs: ArrayNode): Boolean {
+  var changed = false
+  for (constructNode in constructs) {
+    val construct = constructNode as? ObjectNode ?: continue
+    if (salvageConstructSymbol(construct)) changed = true
+  }
+  return changed
+}
+
+private fun salvageConstructSymbol(construct: ObjectNode): Boolean {
+  val symbolNode = construct.get("symbol")?.takeIf { it.isTextual } ?: return false
+  val salvaged = salvageCompactReceiptSymbol(symbolNode.asText()) ?: return false
+  construct.put("symbol", salvaged)
+  return true
 }

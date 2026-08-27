@@ -37,17 +37,14 @@ class GoalPlanningPreparationValidatorTest {
   }
 
   @Test
-  fun `a plan payload whose tasks carry empty test_obligations is rejected at write time`() {
-    // The SKILL-141 escape observed on wftr-20260724-184042-578i: `plan` settled completed with
-    // tasks[].test_obligations empty, which only the consumer's launch seam would have caught.
+  fun `a plan payload missing value is rejected at write time`() {
     val record = validRecord(parentGoalWorkflowId = "goal-1", subtaskId = 1).copy(
-      planPayload = payloadJson(phaseId = "plan", producedOutputsJson = planProjectionJson(testObligations = "[]")),
+      planPayload = payloadJson(phaseId = "plan", producedOutputsJson = """{"prompt":"optional only"}"""),
     )
 
-    val error = assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { validator.validate(record) }
-    assertEquals("plan_payload", error.fieldPath)
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> { validator.validate(record) }
     assertTrue(
-      error.reason.contains("test_obligations"),
+      error.reason.contains("value"),
       "the rejection must name the offending field so the fix loop can act on it: ${error.reason}",
     )
   }
@@ -165,15 +162,11 @@ class GoalPlanningPreparationValidatorTest {
   """.trimIndent().replace("\n", "")
 
   private fun defaultProjectionJson(phaseId: String): String =
-    if (phaseId == "preplan") preplanProjectionJson else planProjectionJson()
+    if (phaseId == "preplan") preplanProjectionJson else planProjectionJson
 
   private val preplanProjectionJson =
     """{"value":"Producer may omit test obligations in prose."}"""
 
-  private fun planProjectionJson(testObligations: String = """["parity"]"""): String = """
-    {"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",
-    "tasks":[{"task_id":"task-1","description":"add the producer gate","criterion_refs":["AC-001"],
-    "test_obligations":$testObligations}],
-    "validation_strategy":["focused gradle"]}
-  """.trimIndent().replace("\n", "")
+  private val planProjectionJson =
+    """{"value":"Producer may omit test obligations in prose."}"""
 }

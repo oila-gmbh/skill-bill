@@ -69,7 +69,7 @@ class UnboundedRemediationLoopRegressionTest {
   @Test
   fun `every record-regeneration edge keeps its finite cap and blocking exhaustion`() {
     val regenerationEdges = transitions.backwardEdges.filter { def.isRegenerationLoopId(it.loopId) }
-    assertEquals(2, regenerationEdges.size)
+    assertEquals(1, regenerationEdges.size)
     assertEquals(2, def.MAX_RECORD_REGENERATION_ATTEMPTS)
     regenerationEdges.forEach { edge ->
       assertEquals(
@@ -101,11 +101,11 @@ class UnboundedRemediationLoopRegressionTest {
   @Test
   fun `an exhausted regeneration edge still blocks durably`() {
     val transition = transition(
-      def.PHASE_IMPLEMENT,
+      def.PHASE_AUDIT,
       FeatureTaskRuntimeVerdict.RECORD_REJECTED,
       def.MAX_RECORD_REGENERATION_ATTEMPTS,
     )
     val blocked = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(transition)
-    assertEquals(def.PLAN_REGENERATION_LOOP_ID, blocked.loopId)
+    assertEquals(def.IMPLEMENT_REGENERATION_LOOP_ID, blocked.loopId)
   }
 }
