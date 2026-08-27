@@ -180,22 +180,7 @@ internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<
       """.trimIndent()
     "implement" ->
       """{
-      "projection_kind":"implementation_receipt",
-      "contract_version":"0.2",
-      "completed_task_ids":["task-1"],
-      "changed_paths":["src/Foo.kt"],
-      "tests_executed":[{"name":"FooTest","outcome":"passed"}],
-      "reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},
-      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
-      "reconciled_state":{"reconciled":true},
-      "deferred_repair_item_ids":[],
-      "repair_item_results":[{
-        "repair_item_id":"ac-002-gap-1-item-1",
-        "outcome":"fixed",
-        "changed_paths_or_symbols":["src/Foo.kt"],
-        "executed_verification":["Focused test passed."],
-        "result_evidence":{"observation":"fix_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}
-      }]
+      "value":"{\"projection_kind\":\"implementation_receipt\",\"contract_version\":\"0.2\",\"completed_task_ids\":[\"task-1\"],\"changed_paths\":[\"src/Foo.kt\"],\"tests_executed\":[],\"reconciliation_evidence\":{\"reconciled\":true,\"evidence\":\"Fixture tree at target state.\"},\"reconciled_state\":{\"reconciled\":true}}"
     }
       """.trimIndent()
     "implement_fix" ->

@@ -1,6 +1,5 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -8,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class UnboundedRemediationLoopRegressionTest {
   private val def = FeatureTaskRuntimePhaseWorkflowDefinition
@@ -67,45 +67,8 @@ class UnboundedRemediationLoopRegressionTest {
   }
 
   @Test
-  fun `every record-regeneration edge keeps its finite cap and blocking exhaustion`() {
-    val regenerationEdges = transitions.backwardEdges.filter { def.isRegenerationLoopId(it.loopId) }
-    assertEquals(1, regenerationEdges.size)
-    assertEquals(2, def.MAX_RECORD_REGENERATION_ATTEMPTS)
-    regenerationEdges.forEach { edge ->
-      assertEquals(
-        def.MAX_RECORD_REGENERATION_ATTEMPTS,
-        edge.perEdgeCap,
-        "'${edge.loopId}' must keep its bounded regeneration cap.",
-      )
-      assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.BLOCK, edge.capExhaustionBehavior)
-    }
-  }
-
-  @Test
-  fun `every regeneration edge keeps its cap and gains no threshold warning`() {
-    transitions.backwardEdges
-      .filter { def.isRegenerationLoopId(it.loopId) }
-      .forEach { edge ->
-        assertEquals(
-          def.MAX_RECORD_REGENERATION_ATTEMPTS,
-          edge.perEdgeCap,
-          "'${edge.loopId}' must keep its finite cap.",
-        )
-        assertNull(
-          edge.warnAfterIterations,
-          "'${edge.loopId}' is capped, so a threshold warning would be misleading.",
-        )
-      }
-  }
-
-  @Test
-  fun `an exhausted regeneration edge still blocks durably`() {
-    val transition = transition(
-      def.PHASE_AUDIT,
-      FeatureTaskRuntimeVerdict.RECORD_REJECTED,
-      def.MAX_RECORD_REGENERATION_ATTEMPTS,
-    )
-    val blocked = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(transition)
-    assertEquals(def.IMPLEMENT_REGENERATION_LOOP_ID, blocked.loopId)
+  fun `no backward edge is a record-regeneration loop after implement prose migration`() {
+    assertEquals(emptySet(), def.REGENERATION_LOOP_IDS)
+    assertTrue(transitions.backwardEdges.none { def.isRegenerationLoopId(it.loopId) })
   }
 }

@@ -44,22 +44,20 @@ internal object PlanningProjectionFixtures {
     """{"value":"Fixture plan prose for downstream implement and audit."}"""
 
   const val IMPLEMENTATION_RECEIPT: String =
-    """{"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
-      """"changed_paths":["src/Foo.kt"],""" +
-      """"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
-      """"reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},""" +
-      """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true}}"""
+    """{"value":"{\"projection_kind\":\"implementation_receipt\",\"contract_version\":\"0.2\",""" +
+      """\"completed_task_ids\":[\"task-1\"],\"changed_paths\":[\"src/Foo.kt\"],""" +
+      """\"tests_executed\":[{\"name\":\"FooTest\",\"outcome\":\"passed\"}],""" +
+      """\"reconciliation_evidence\":{\"reconciled\":true,\"evidence\":\"Fixture tree at target state.\"},""" +
+      """\"repository_checkpoint\":{\"fingerprint\":\"fixture-checkpoint-1\"},""" +
+      """\"reconciled_state\":{\"reconciled\":true}}"}"""
 
-  /**
-   * The receipt's declared fields as a trailing-comma fragment, for implement fixtures that build their
-   * own `produced_outputs` body (repair-item results, unresolvable repair) and must also satisfy the
-   * bounded implementation-receipt projection audit consumes.
-   */
   const val RECEIPT_FIELDS: String =
-    """"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
-      """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
-      """"reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},""" +
-      """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"""
+    """"value":"{\"projection_kind\":\"implementation_receipt\",\"contract_version\":\"0.2\",""" +
+      """\"completed_task_ids\":[\"task-1\"],\"changed_paths\":[\"src/Foo.kt\"],""" +
+      """\"tests_executed\":[{\"name\":\"FooTest\",\"outcome\":\"passed\"}],""" +
+      """\"reconciliation_evidence\":{\"reconciled\":true,\"evidence\":\"Fixture tree at target state.\"},""" +
+      """\"repository_checkpoint\":{\"fingerprint\":\"fixture-checkpoint-1\"},""" +
+      """\"reconciled_state\":{\"reconciled\":true}}","""
 
   /** The projection body for [phaseId], or null when that phase feeds no planning projection edge. */
   fun producedOutputsOrNull(phaseId: String): String? = when (phaseId) {

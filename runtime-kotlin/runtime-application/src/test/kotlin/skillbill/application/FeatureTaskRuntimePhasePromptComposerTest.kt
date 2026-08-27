@@ -2,8 +2,6 @@
 
 package skillbill.application
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
@@ -25,12 +23,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
-import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
@@ -61,7 +55,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(prompt, "non-blank value")
     assertContains(prompt, "produced_outputs", false, "preplan warns about produced_outputs shape")
-    assertFalse(prompt.contains("projection_kind \"preplanning_digest\""))
+    assertContains(prompt, "\"projection_kind\": \"preplanning_digest\"", false, "preplan teaches stuffed digest JSON")
     assertFalse(prompt.contains("bill-code-review mode:"), "review execution mode must not reach preplan")
     assertFalse(prompt.contains("Review execution mode"), "review execution directive must not reach preplan")
     assertFalse(
@@ -94,7 +88,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(prompt, "\"value\":", false, "the copyable shape example must name value prose")
     assertContains(prompt, "prompt", false, "plan may optionally carry prompt prose")
-    assertFalse(prompt.contains("projection_kind \"executable_plan\""))
+    assertContains(prompt, "Inner object to stuff into value", false, "plan teaches stuffed executable_plan JSON")
+    assertContains(prompt, "\"projection_kind\": \"executable_plan\"", false, "plan inner example names executable_plan")
   }
 
   @Test
@@ -104,7 +99,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
     )
 
-    assertContains(prompt, "projection_kind \"implementation_receipt\"")
+    assertContains(prompt, "Inner object to stuff into value", false, "implement teaches stuffed receipt JSON")
     assertContains(prompt, "completed_task_ids")
     assertContains(prompt, "changed_paths")
     assertContains(prompt, "tests_executed")
@@ -115,7 +110,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       prompt,
       "\"projection_kind\": \"implementation_receipt\"",
       false,
-      "implement shows the flat receipt shape",
+      "implement shows the stuffed receipt inner shape",
     )
     assertContains(
       prompt,
@@ -125,15 +120,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
     assertContains(
       prompt,
-      "\"deviations\": [ { \"ref\": \"AC-001\", \"note\"",
+      "deviations entries are objects { \"ref\", \"note\" }",
       false,
       "implement shows the deviation object item shape",
-    )
-    assertContains(
-      prompt,
-      "never a free-text string",
-      false,
-      "implement warns against string deviations",
     )
   }
 
@@ -537,21 +526,24 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val commitPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("commit_push"))
     val prPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("pr"))
 
-    assertContains(preplanPrompt, "scaled pre-planning prose")
+    assertContains(preplanPrompt, "scaled pre-planning digest")
     assertContains(preplanPrompt, "full preplan covering boundaries")
     assertContains(preplanPrompt, "Do not modify repository files during this phase.")
     assertContains(preplanPrompt, "non-blank value")
     assertContains(planPrompt, "Do not modify repository files during this phase.")
-    assertContains(planPrompt, "upstream preplan prose")
+    assertContains(planPrompt, "upstream preplan value")
     assertContains(implementPrompt, "Reconcile the repository to the intended state")
     assertTrue(
       !implementPrompt.contains("Do not modify repository files during this phase."),
       "implement must not carry the plan directive",
     )
-    // The mutating-phase idempotency directive + reconciliation-report output requirement are emitted
-    // only for mutating phases; non-mutating phases must not carry them.
     assertContains(implementPrompt, "Mutating-phase idempotency contract")
-    assertContains(implementPrompt, "reconciliation report")
+    assertContains(implementPrompt, "implementation_receipt JSON")
+    assertContains(implementPrompt, "Inner object to stuff into value")
+    assertTrue(
+      !implementPrompt.contains("reconciliation report missing or \"reconciled\" not true fails the schema gate"),
+      "implement must not keep the sibling reconciled_state schema-gate prompt",
+    )
     assertTrue(
       !planPrompt.contains("Mutating-phase idempotency contract"),
       "non-mutating plan phase must not carry the idempotency directive",
@@ -1119,10 +1111,14 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "AUDIT-GAP REMEDIATION")
     assertContains(prompt, "AC-004")
     assertContains(prompt, "AC-005")
-    assertContains(prompt, "ordinary implementation receipt")
+    assertContains(prompt, "implementation_receipt JSON stuffed inside value")
     assertTrue(
       !prompt.contains("repair_item_results"),
       "the remediation round owes no per-item results",
+    )
+    assertTrue(
+      !prompt.contains("openObligationIds") && !prompt.contains("Still open"),
+      "remediation must not enumerate openObligationIds",
     )
   }
 
@@ -1206,15 +1202,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `preplan plan and implement embed a produced_outputs example that satisfies the projection gate`() {
-    // Anti-drift: the shape example each phase carries must itself parse as the bounded planning
-    // projection its downstream launch seam demands. If the example ever drifts from the schema, the
-    // guidance would teach the agent to emit output the gate rejects — the exact failure this fixes.
-    projectionExampleCases().forEach { (phaseId, kind, briefing) ->
+  fun `preplan plan and implement embed a produced_outputs example with a non-blank value`() {
+    projectionExampleCases().forEach { (phaseId, briefing) ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefing)
-      // The output contract mentions a ```json fence in prose, so take the LAST fenced block — the
-      // shape example this addendum appends — not the first.
-      val exampleJson = prompt.substringAfterLast("```json").substringBefore("```")
+      val exampleJson = prompt.substringAfter("Required produced_outputs shape")
+        .substringAfter("```json")
+        .substringBefore("```")
       val produced = requireNotNull(
         JsonSupport.anyToStringAnyMap(
           JsonSupport.jsonElementToValue(
@@ -1222,69 +1215,29 @@ class FeatureTaskRuntimePhasePromptComposerTest {
           ),
         ),
       ) { "the $phaseId example is not a JSON object" }
-      // Throws InvalidFeatureTaskRuntimePlanningProjectionSchemaError if the embedded example is not
-      // the flat, correctly-typed projection the seam parses (kind, contract_version, rollout object, etc.).
-      // The REAL validator, not the Noop: the canonical Draft 2020-12 schema is the layer that rejects a
-      // drifted example in production, so validating against the Noop here asserted nothing about the
-      // constraint that actually fires. Everything else in this file may keep the Noop — planning-projection
-      // enforcement really is incidental there — which is what the allow-list entry in
-      // PlanningProjectionNoopValidatorGuardTest describes.
-      featureTaskRuntimePlanningProjectionFromEnvelope(
-        envelope = mapOf("produced_outputs" to produced),
-        producingPhaseId = phaseId,
-        expectedKind = kind,
-        schemaValidator = realPlanningProjectionValidator,
-      )
+      val value = produced["value"]?.toString()?.trim().orEmpty()
+      assertTrue(value.isNotBlank(), "the $phaseId example must carry a non-blank value string")
     }
   }
 
   @Test
-  fun `every collection field a variant declares is populated in its prompt example`() {
-    // Validity is not the property this guard needs; SUFFICIENCY is. An empty array satisfies both
-    // `array<string>` and `array<object>`, so an example that leaves a collection at [] pins no element
-    // type and the neighbouring populated field becomes the only shape signal the agent has. That is how
-    // an object-shaped `unresolved_items` was authored next to an object-shaped `deviations` and burned a
-    // whole fix loop. A field may be exempt only for a reason that makes an empty example CORRECT.
-    //
-    // Scope: TOP-LEVEL variant properties. A collection nested inside an object entry (executable_plan's
-    // tasks[].depends_on, say) is not walked, so its element type is still pinned only by a populated
-    // sibling. Extending the walk is the next step if a nested field ever drifts.
-    val exemptions = mapOf(
-      "implementation_receipt.tests_executed" to
-        "Must be [] in implement: the phase contract forbids running tests here and validate owns outcomes.",
-      "implementation_receipt.unresolved_items" to
-        "Must be [] on a 'completed' receipt: the completion gate refuses a receipt that claims completion " +
-        "while carrying open work, so a populated example would teach output the gate rejects.",
-      "implementation_receipt.deferred_repair_item_ids" to
-        "Deferring a carried repair item is the exception, so [] is the correct default to show; the id " +
-        "strings are pinned by the populated repair_item_results[].repair_item_id in the same example.",
-      "implementation_receipt.tests_added" to "Repo-path strings, pinned by the populated `changed_paths` sibling.",
-      "implementation_receipt.tests_updated" to "Repo-path strings, pinned by the populated `changed_paths` sibling.",
+  fun `plan prompt inner example populates representative collection fields`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phasePlan))
+    val innerExampleJson = prompt.substringAfter("Inner object to stuff into value:")
+      .substringAfter("```json")
+      .substringBefore("```")
+    val example = requireNotNull(JsonSupport.parseObjectOrNull(innerExampleJson)) {
+      "no inner JSON example in the plan prompt"
+    }.let { requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))) }
+
+    assertTrue(
+      (example["tasks"] as? List<*>)?.isNotEmpty() == true,
+      "plan inner example must show a representative task entry",
     )
-
-    val schema = planningProjectionsSchema()
-    projectionExampleCases().forEach { (phaseId, kind, briefing) ->
-      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefing)
-      val exampleJson = prompt.substringAfterLast("```json").substringBefore("```")
-      val example = requireNotNull(JsonSupport.parseObjectOrNull(exampleJson)) {
-        "no JSON example in the $phaseId prompt"
-      }.let { requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))) }
-
-      declaredCollectionProperties(schema, kind.wireValue).forEach { property ->
-        val key = "${kind.wireValue}.$property"
-        if (key in exemptions) return@forEach
-        // Absence is not the hazard a visible `[]` is: a field the example omits teaches nothing, while
-        // an empty one looks like guidance and pins no element type. Optional co-residents another
-        // contract owns (repair_item_results and friends) are correctly absent from the base example.
-        val value = example[property] ?: return@forEach
-        assertTrue(
-          value is List<*> && value.isNotEmpty(),
-          "$phaseId prompt example shows '$property' as an empty list, so it pins no element type for " +
-            "that field. Populate it with a representative entry, or add \"$key\" to exemptions with the " +
-            "reason an empty example is correct there.",
-        )
-      }
-    }
+    assertTrue(
+      (example["validation_strategy"] as? List<*>)?.isNotEmpty() == true,
+      "plan inner example must show a non-empty validation_strategy entry",
+    )
   }
 
   // SKILL-150 subtask 1: a semantically incomplete receipt and a schema-invalid one are different
@@ -1297,20 +1250,20 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
         phaseId = "implement",
         segmentNumber = 2,
-        completedTaskIds = listOf("task-1"),
-        openObligationIds = listOf("task-2"),
-        obligationNoun = "plan task",
-        changedPaths = listOf("src/Foo.kt"),
-        deviations = emptyList(),
-        unresolvedItems = emptyList(),
-        reconciliationEvidence = null,
-        repositoryCheckpoint = null,
+        priorValueSegments = listOf("segment one prose"),
+        latestPrompt = "optional directive",
         failureDisposition = null,
       ),
     )
 
     assertContains(prompt, "segment 2")
-    assertContains(prompt, "task-2")
+    assertContains(prompt, "Prior stuffed value segments")
+    assertContains(prompt, "segment one prose")
+    assertContains(prompt, "optional directive")
+    assertTrue(
+      !prompt.contains("openObligationIds") && !prompt.contains("Still open"),
+      "continuation prompts carry stuffed value history, not openObligationIds",
+    )
     assertTrue(
       !prompt.contains("REJECTED by the schema gate"),
       "an honest partial receipt is not a schema failure",
@@ -1425,14 +1378,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   private fun implementationContinuation() = FeatureTaskRuntimeImplementationContinuation(
     phaseId = "implement",
     segmentNumber = 2,
-    completedTaskIds = listOf("task-1"),
-    openObligationIds = listOf("task-2"),
-    obligationNoun = "plan task",
-    changedPaths = emptyList(),
-    deviations = emptyList(),
-    unresolvedItems = emptyList(),
-    reconciliationEvidence = null,
-    repositoryCheckpoint = null,
+    priorValueSegments = listOf("segment one prose"),
+    latestPrompt = "optional directive",
     failureDisposition = null,
   )
 
@@ -1570,53 +1517,15 @@ private fun projectionEnvelope(phaseId: String, producedOutputs: String): String
   """{"contract_version":"0.4","phase_id":"$phaseId","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
 
-// The last case is the audit_gap re-entry: it used to REPLACE implement's example with a repair-only
-// object under its own "Required produced_outputs shape" heading, so the phase emitted exactly that,
-// lost projection_kind, and burned its whole fix loop against the receipt gate.
-private fun planningProjectionsSchema(): JsonNode {
-  val relative = "orchestration/contracts/feature-task-runtime-planning-projections-schema.yaml"
-  var current: Path? = Path.of("").toAbsolutePath().normalize()
-  while (current != null) {
-    val candidate = current.resolve(relative)
-    if (Files.isRegularFile(candidate)) return YAMLMapper().readTree(candidate.toFile())
-    current = current.parent
-  }
-  error("Could not locate '$relative' from ${Path.of("").toAbsolutePath().normalize()}")
-}
-
-/**
- * Top-level property names the named variant declares as arrays, following one level of `$ref` so a
- * property written as `{ $ref: "#/$defs/strings" }` is recognised as the collection it resolves to.
- */
-private fun declaredCollectionProperties(schema: JsonNode, variant: String): List<String> {
-  val defs = schema.path("\$defs")
-  val properties = defs.path(variant).path("properties")
-  check(!properties.isMissingNode) { "schema \$defs has no variant named '$variant'" }
-  return properties.properties()
-    .filter { (_, node) -> isArrayNode(defs, node) }
-    .map { (name, _) -> name }
-}
-
-private fun isArrayNode(defs: JsonNode, node: JsonNode): Boolean {
-  if (node.path("type").asText() == "array") return true
-  val ref = node.path("\$ref").asText().takeIf { it.startsWith("#/\$defs/") } ?: return false
-  val target = defs.path(ref.removePrefix("#/\$defs/"))
-  if (target.path("type").asText() == "array") return true
-  // `nonEmptyStrings` and friends compose through allOf rather than declaring `type` directly.
-  return target.path("allOf").any { isArrayNode(defs, it) }
-}
-
 private fun projectionExampleCases() = listOf(
-  Triple(implementPhase, receiptKind, briefingFor(implementPhase)),
-  Triple(
-    implementPhase,
-    receiptKind,
-    briefingFor(implementPhase).copy(unresolvedAuditGapIds = listOf("AC-004")),
-  ),
+  Pair(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN, briefingFor(phasePreplan)),
+  Pair(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, briefingFor(phasePlan)),
+  Pair(implementPhase, briefingFor(implementPhase)),
 )
 
+private val phasePreplan = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
+private val phasePlan = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
 private val implementPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
-private val receiptKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
 
 private fun briefingFor(
   phaseId: String,

@@ -133,7 +133,7 @@ object FeatureTaskRuntimeProjectionMeasurementSchemaPaths {
  * Pins the implementation receipt bounded projection that replaces the coarse whole-receipt
  * projection on the implement/audit edge. Plan and preplan prose live in the phase-output schema.
  */
-const val FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION: String = "0.2"
+const val FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION: String = "0.3"
 
 object FeatureTaskRuntimePlanningProjectionsSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
@@ -167,7 +167,7 @@ object FeatureTaskRuntimeQuarantineSchemaPaths {
  * Pins the durable append-only implementation-attempt history the semantic continuation projection is
  * reconstructed from on both retry and crash resume.
  */
-const val FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION: String = "0.2"
 
 object FeatureTaskRuntimeImplementationAttemptSchemaPaths {
   const val REPO_RELATIVE_PATH: String =

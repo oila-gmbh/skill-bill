@@ -17,6 +17,14 @@ class FeatureTaskRuntimeImplementationAttemptSchemaValidatorTest {
   }
 
   @Test
+  fun `accepts optional prompt on a stuffed value segment`() {
+    FeatureTaskRuntimeImplementationAttemptSchemaValidator.validate(
+      record(attempt() + mapOf("prompt" to "optional directive")),
+      SOURCE,
+    )
+  }
+
+  @Test
   fun `rejects an unknown top-level property`() {
     assertFailsWith<InvalidFeatureTaskRuntimeImplementationAttemptSchemaError> {
       FeatureTaskRuntimeImplementationAttemptSchemaValidator.validate(
@@ -30,17 +38,22 @@ class FeatureTaskRuntimeImplementationAttemptSchemaValidatorTest {
   fun `rejects a wrong contract version`() {
     assertFailsWith<InvalidFeatureTaskRuntimeImplementationAttemptSchemaError> {
       FeatureTaskRuntimeImplementationAttemptSchemaValidator.validate(
-        record(attempt()) + mapOf("contract_version" to "0.2"),
+        record(attempt()) + mapOf("contract_version" to "0.1"),
         SOURCE,
       )
     }
   }
 
   @Test
-  fun `rejects a malformed task id`() {
+  fun `rejects legacy receipt fields on an attempt entry`() {
     assertFailsWith<InvalidFeatureTaskRuntimeImplementationAttemptSchemaError> {
       FeatureTaskRuntimeImplementationAttemptSchemaValidator.validate(
-        record(attempt(completedTaskIds = listOf("Task_1"))),
+        record(
+          attempt() + mapOf(
+            "completed_task_ids" to listOf("task-1"),
+            "changed_paths" to listOf("src/Foo.kt"),
+          ),
+        ),
         SOURCE,
       )
     }
@@ -57,10 +70,10 @@ class FeatureTaskRuntimeImplementationAttemptSchemaValidatorTest {
   }
 
   @Test
-  fun `rejects a deviation missing its ref`() {
+  fun `rejects a blank stuffed value`() {
     assertFailsWith<InvalidFeatureTaskRuntimeImplementationAttemptSchemaError> {
       FeatureTaskRuntimeImplementationAttemptSchemaValidator.validate(
-        record(attempt() + mapOf("deviations" to listOf(mapOf("note" to "renamed the file")))),
+        record(attempt() + mapOf("value" to "   ")),
         SOURCE,
       )
     }
@@ -92,7 +105,6 @@ class FeatureTaskRuntimeImplementationAttemptSchemaValidatorTest {
 
   private fun attempt(
     status: String = "incomplete",
-    completedTaskIds: List<String> = listOf("task-1"),
   ): Map<String, Any?> = mapOf(
     "sequence_number" to 1,
     "phase_id" to "implement",
@@ -100,8 +112,7 @@ class FeatureTaskRuntimeImplementationAttemptSchemaValidatorTest {
     "agent_id" to "claude",
     "status" to status,
     "recorded_at" to "2026-08-04T10:00:00Z",
-    "completed_task_ids" to completedTaskIds,
-    "changed_paths" to listOf("runtime-kotlin/runtime-application/src/main/kotlin/Sample.kt"),
+    "value" to """{"projection_kind":"implementation_receipt","completed_task_ids":["task-1"]}""",
   )
 
   private companion object {

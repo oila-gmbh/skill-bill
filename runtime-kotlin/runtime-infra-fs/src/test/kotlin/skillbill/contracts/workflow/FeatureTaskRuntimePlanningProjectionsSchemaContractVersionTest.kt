@@ -37,15 +37,29 @@ class FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest {
   }
 
   @Test
-  fun `schema declares oneOf over the implementation receipt projection`() {
+  fun `schema rejects every payload via empty oneOf`() {
     val oneOf = classpathSchema().path("oneOf")
 
-    assertTrue(oneOf.isArray && oneOf.size() == 1, "Schema must declare exactly one oneOf variant; found: $oneOf")
-    assertEquals(
-      "#/\$defs/implementation_receipt",
-      oneOf[0].path("\$ref").asText(),
-      "Schema oneOf must reference implementation_receipt.",
-    )
+    assertTrue(oneOf.isArray && oneOf.isEmpty, "Schema must declare an empty oneOf reject-all root; found: $oneOf")
+  }
+
+  @Test
+  fun `legacy implementation_receipt payload fails the reject-all root`() {
+    val validator = FeatureTaskRuntimePlanningProjectionSchemaValidator
+    val error = runCatching {
+      validator.validate(
+        mapOf(
+          "projection_kind" to "implementation_receipt",
+          "contract_version" to "0.2",
+          "completed_task_ids" to listOf("task-1"),
+          "changed_paths" to listOf("path/X.kt"),
+          "tests_executed" to emptyList<Any>(),
+          "reconciliation_evidence" to mapOf("reconciled" to true, "evidence" to "ok"),
+        ),
+        "fixture#produced_outputs",
+      )
+    }.exceptionOrNull()
+    assertNotNull(error, "legacy implementation_receipt must fail the quarantined schema")
   }
 
   private fun classpathSchema(): JsonNode {

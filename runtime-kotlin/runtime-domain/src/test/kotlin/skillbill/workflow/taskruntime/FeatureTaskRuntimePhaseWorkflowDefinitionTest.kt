@@ -189,23 +189,11 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
-  fun `the two record-regeneration edges keep their caps and cap-exhaustion behavior`() {
+  fun `record regeneration loops are empty after implement prose migration`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
-    val expected = mapOf(
-      def.IMPLEMENT_REGENERATION_LOOP_ID to (def.PHASE_AUDIT to def.PHASE_IMPLEMENT),
-    )
 
-    assertEquals(setOf("regenerate_implement"), def.REGENERATION_LOOP_IDS)
-    assertEquals(2, def.MAX_RECORD_REGENERATION_ATTEMPTS)
-    expected.forEach { (loopId, endpoints) ->
-      val edge = def.transitions.backwardEdges.single { it.loopId == loopId }
-      assertEquals(endpoints.first, edge.fromPhaseId)
-      assertEquals(endpoints.second, edge.destinationPhaseId)
-      assertEquals(def.MAX_RECORD_REGENERATION_ATTEMPTS, edge.perEdgeCap)
-      assertEquals(FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK, edge.capScope)
-      assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.BLOCK, edge.capExhaustionBehavior)
-      assertEquals(FeatureTaskRuntimeVerdict.RECORD_REJECTED, edge.triggeringVerdict)
-    }
+    assertEquals(emptySet(), def.REGENERATION_LOOP_IDS)
+    assertTrue(def.transitions.backwardEdges.none { def.isRegenerationLoopId(it.loopId) })
   }
 
   @Test
@@ -589,10 +577,19 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(
       listOf(
         FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
-        FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
         FeatureTaskRuntimePlanningProjectionContract.SHARED_REVIEW_EVIDENCE_ID,
       ),
       audit.projectionDeclarations.map { it.projectionContractId },
+    )
+    assertEquals(
+      listOf("plan_prose", "implement_prose"),
+      audit.projectionDeclarations
+        .filter {
+          it.projectionContractId ==
+            FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE
+        }
+        .map { it.projectionName },
     )
     assertEquals(
       listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE),

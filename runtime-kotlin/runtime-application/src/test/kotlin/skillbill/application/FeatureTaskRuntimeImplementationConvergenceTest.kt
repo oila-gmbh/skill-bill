@@ -84,6 +84,10 @@ internal fun planProseOutput(): String = """
 internal fun partialImplementOutput(closedTaskCount: Int = 1): String {
   val closed = (1..closedTaskCount).joinToString(",") { "\"task-$it\"" }
   val paths = (1..closedTaskCount).joinToString(",") { "\"src/Foo$it.kt\"" }
+  val stuffed =
+    """{"projection_kind":"implementation_receipt","contract_version":"0.2",""" +
+      """"completed_task_ids":[$closed],"changed_paths":[$paths],""" +
+      """"tests_executed":[],"reconciliation_evidence":{"reconciled":true,"evidence":"Segment tree at target state."}}"""
   return """
   {
     "contract_version": "0.4",
@@ -91,18 +95,15 @@ internal fun partialImplementOutput(closedTaskCount: Int = 1): String {
     "status": "completed",
     "summary": "Implementation segment produced a validated output.",
     "produced_outputs": {
-      "projection_kind":"implementation_receipt",
-      "contract_version":"0.2",
-      "completed_task_ids":[$closed],
-      "changed_paths":[$paths],
-      "tests_executed":[],
-      "reconciliation_evidence":{"reconciled":true,"evidence":"Segment tree at target state."},
-      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
+      "value": ${stuffed.quoteJsonString()},
       "reconciled_state":{"reconciled":true}
     }
   }
   """.trimIndent()
 }
+
+private fun String.quoteJsonString(): String =
+  "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 private fun unresolvedImplementOutput(): String = """
   {

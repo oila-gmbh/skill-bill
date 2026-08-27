@@ -83,7 +83,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
@@ -594,14 +593,11 @@ class FeatureTaskRuntimePhaseRecorder(
   ): Map<String, Any?> {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(request.phaseId)) return emptyMap()
     val envelope = request.normalizedOutput?.envelope ?: return emptyMap()
-    val carriesReceipt = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])
-      ?.get("projection_kind") == FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue
-    if (!carriesReceipt) return emptyMap()
+    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]) ?: return emptyMap()
+    val value = produced["value"]?.toString()?.trim().orEmpty()
+    if (value.isBlank()) return emptyMap()
+    val prompt = produced["prompt"]?.toString()?.trim()?.takeIf(String::isNotBlank)
     val existing = implementationAttemptsFrom(artifacts)
-    val claim = featureTaskRuntimeImplementationClaimFrom(
-      envelope,
-      FeatureTaskRuntimeImplementationObligations(emptyList(), emptyList(), request.loopId),
-    )
     val appended = featureTaskRuntimeAppendImplementationAttempt(
       existing = existing,
       entry = FeatureTaskRuntimeImplementationAttempt(
@@ -611,15 +607,11 @@ class FeatureTaskRuntimePhaseRecorder(
         agentId = request.resolvedAgentId,
         status = attemptStatus,
         recordedAt = Instant.now().toString(),
-        completedTaskIds = claim.completedTaskIds.distinct(),
-        changedPaths = claim.changedPaths.distinct(),
+        value = value,
         loopId = request.loopId,
         edgeIteration = request.edgeIteration,
         failureDisposition = request.failureDisposition,
-        deviations = claim.deviations,
-        unresolvedItems = claim.unresolvedItems,
-        reconciliationEvidence = claim.reconciliationEvidence,
-        repositoryCheckpoint = claim.repositoryCheckpoint,
+        prompt = prompt,
       ),
     )
     val wire = featureTaskRuntimeImplementationAttemptRecordToWire(appended)

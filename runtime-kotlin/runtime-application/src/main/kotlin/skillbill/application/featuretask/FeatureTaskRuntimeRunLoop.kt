@@ -108,7 +108,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
@@ -3228,7 +3227,7 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
   ): PhaseOutcome {
     val validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT
-    val changedPaths = validationChangedPaths(state)
+    val changedPaths = validationChangedPaths(run)
     val checkpoint = gitOperations.repositoryFingerprint(run.request.repoRoot).value
       .takeIf(String::isNotBlank)
       ?: return PhaseOutcome.blocked(
@@ -3289,7 +3288,7 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
   ): PhaseOutcome {
-    val changedPaths = validationChangedPaths(state)
+    val changedPaths = validationChangedPaths(run)
     val checkpoint = gitOperations.repositoryFingerprint(run.request.repoRoot).value
       .takeIf(String::isNotBlank)
       ?: return PhaseOutcome.blocked(
@@ -3520,34 +3519,24 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  private fun validationChangedPaths(state: FeatureTaskRuntimeRunState): List<String> {
-    val implement = state.outputs().lastOrNull {
-      it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
-    } ?: return emptyList()
-    val envelope = JsonSupport.parseObjectOrNull(implement.payload)?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: return emptyList()
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
-    val receipt = JsonSupport.anyToStringAnyMap(produced["implementation_receipt"])
-      ?: produced
-    return (receipt["changed_paths"] as? List<*>)?.filterIsInstance<String>().orEmpty()
-  }
+  private fun validationChangedPaths(run: PhaseRun): List<String> =
+    resolveRepositoryCheckpoint(run)?.workingTreeOwnedPaths.orEmpty().distinct().sorted()
 
-  private fun packCollectAllCommand(run: PhaseRun, state: FeatureTaskRuntimeRunState): String? {
+  private fun packCollectAllCommand(run: PhaseRun): String? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
       return null
     }
-    return when (val resolution = phaseGates.validationGateResolver.resolve(validationChangedPaths(state))) {
+    return when (val resolution = phaseGates.validationGateResolver.resolve(validationChangedPaths(run))) {
       is ValidationGateResolution.Declared -> resolution.declaration.collectAllFullGateCommand.joinToString(" ")
       else -> null
     }
   }
 
-  private fun packBuildCommand(run: PhaseRun, state: FeatureTaskRuntimeRunState): String? {
+  private fun packBuildCommand(run: PhaseRun): String? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
       return null
     }
-    return when (val resolution = phaseGates.validationGateResolver.resolve(validationChangedPaths(state))) {
+    return when (val resolution = phaseGates.validationGateResolver.resolve(validationChangedPaths(run))) {
       is ValidationGateResolution.Declared -> resolution.declaration.buildCommand?.joinToString(" ")
       else -> null
     }
@@ -5033,35 +5022,10 @@ internal class FeatureTaskRuntimeRunLoop(
    */
   // Each return is one runtime-owned stamping outcome the caller must distinguish: nothing to stamp,
   // a degradation attestation, or a persisted checkpoint. Collapsing them would hide which happened.
-  @Suppress("ReturnCount")
   private fun stampRuntimeOwnedImplementationCheckpoint(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-  ): NormalizedFeatureTaskRuntimePhaseOutput {
-    if (
-      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT ||
-      normalizedOutput.envelope["status"] != STATUS_COMPLETED
-    ) {
-      return normalizedOutput
-    }
-    val produced = JsonSupport.anyToStringAnyMap(normalizedOutput.envelope["produced_outputs"])?.toMutableMap()
-      ?: return normalizedOutput
-    if (produced["projection_kind"] != FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue) {
-      return normalizedOutput
-    }
-    val authoritative = authoritativeImplementationRepositoryCheckpoint(run)
-    if (authoritative == null) {
-      produced.remove("repository_checkpoint")
-    } else {
-      produced["repository_checkpoint"] = authoritative.toEnvelopeMap()
-    }
-    val envelope = normalizedOutput.envelope.toMutableMap()
-    envelope["produced_outputs"] = produced
-    return outputValidator.validatePhaseOutput(
-      JsonSupport.mapToJsonString(envelope),
-      sourceLabel = run.phaseId,
-    ).requireAcceptedOutput(run.phaseId).normalizedOutput
-  }
+  ): NormalizedFeatureTaskRuntimePhaseOutput = normalizedOutput
 
   private fun authoritativeImplementationRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? =
     buildRepositoryCheckpoint(run)
@@ -5131,7 +5095,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val attempts = recorder.loadImplementationAttempts(run.request.workflowId, run.request.dbPathOverride)
       ?: return null
     return featureTaskRuntimeImplementationContinuationFrom(run.phaseId, attempts, implementationObligations(run))
-      ?.takeIf { it.openObligationIds.isNotEmpty() || it.unresolvedItems.isNotEmpty() }
+      ?.takeIf { it.priorValueSegments.isNotEmpty() }
   }
 
   /**
@@ -6126,8 +6090,8 @@ internal class FeatureTaskRuntimeRunLoop(
       implementationContinuation = implementationContinuationFor(run),
       validationGateFindings = run.validationGateFindings,
       agentRunValidateFallback = run.agentRunValidateFallback,
-      packCollectAllCommand = packCollectAllCommand(run, state),
-      packBuildCommand = packBuildCommand(run, state),
+      packCollectAllCommand = packCollectAllCommand(run),
+      packBuildCommand = packBuildCommand(run),
     ) + verifyFindingsSpecIntentSection(run)
     return PreparedLaunch(briefing, prompt)
   }

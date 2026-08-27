@@ -54,9 +54,7 @@ object FeatureTaskRuntimePlanningProjectionSchemaValidator {
   private fun compile(document: JsonNode): JsonSchema = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     .getSchema(ObjectMapper().writeValueAsString(document), LOCALE_STABLE_SCHEMA_CONFIG)
 
-  private val PROJECTION_VARIANT_DEFS: Set<String> = setOf(
-    "implementation_receipt",
-  )
+  private val PROJECTION_VARIANT_DEFS: Set<String> = emptySet()
 
   private fun formatReason(errors: Set<ValidationMessage>): String = errors.sortedBy { instanceLocationOf(it) }
     .take(MAX_REPORTED_VIOLATIONS)

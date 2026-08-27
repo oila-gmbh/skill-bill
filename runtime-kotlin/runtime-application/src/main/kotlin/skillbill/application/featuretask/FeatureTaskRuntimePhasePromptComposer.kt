@@ -463,9 +463,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  // Phase-specific addendum to the produced_outputs bullet. Mutating phases (implement, implement_fix)
-  // must prove they reconciled the tree to target rather than silently skipping work, so the runtime can
-  // verify the idempotency contract rather than assume it. Verifying phases (review, audit) gate on a
+  // Phase-specific addendum to the produced_outputs bullet. Implement emits stuffed receipt prose in
+  // value; implement_fix still proves reconciliation with reconciled_state so the runtime can verify
+  // the idempotency contract rather than assume it. Verifying phases (review, audit) gate on a
   // machine-readable signal, not prose: naming the exact field the gate keys on is what prevents a
   // thorough agent from delivering its verdict as a prose Markdown table the gate cannot read (and then
   // blocking after a blind retry loop). The two phase sets are disjoint, so at most one branch is ever
@@ -546,15 +546,22 @@ object FeatureTaskRuntimePhasePromptComposer {
         "implement-ready fix plan in the note after the criterion ref. Follow that plan completely " +
         "in this one invocation: execute the planned production change, respect its blast radius, " +
         "and check surrounding callers/contracts so the repair does not open a new gap or regress " +
-        "a neighboring criterion. Do not invent a narrower substitute plan. Then report the ordinary " +
-        "implementation receipt. There are no repair-item identifiers to echo and no per-item " +
-        "evidence to record: the next audit re-reads the tree and decides every criterion again. If " +
-        "a criterion is genuinely unimplementable, leave through a blocked envelope naming it and why."
+        "a neighboring criterion. Do not invent a narrower substitute plan. Then emit a non-blank " +
+        "value string carrying the updated implementation_receipt JSON stuffed inside value. There " +
+        "are no repair-item identifiers to echo and no per-item evidence to record: the next audit " +
+        "re-reads the tree and decides every criterion again. If a criterion is genuinely " +
+        "unimplementable, leave through a blocked envelope naming it and why."
     }
-    return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
-      "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
-      "      changed files are at their intended target state. A status of \"completed\" with the\n" +
-      "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." +
+    val reconciliationRequirement =
+      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) {
+        ""
+      } else {
+        "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
+          "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
+          "      changed files are at their intended target state. A status of \"completed\" with the\n" +
+          "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly."
+      }
+    return reconciliationRequirement +
       FeatureTaskRuntimePhaseProjectionShapes.exampleFor(
         phaseId,
         agentRunValidateFallback,
