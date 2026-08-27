@@ -30,7 +30,6 @@ internal const val CURSOR_AGENTS_KIND: String = "cursor-agents"
 internal fun agentPaths(home: Path? = null, environment: Map<String, String> = System.getenv()): Map<String, Path> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
   return mapOf(
-    "copilot" to resolvedHome.resolve(".copilot/skills"),
     "claude" to claudeConfigRoot(resolvedHome, environment).resolve("skills"),
     "junie" to resolvedHome.resolve(".junie/skills"),
     "cursor" to resolvedHome.resolve(".cursor/skills"),
@@ -161,7 +160,6 @@ private fun agentIsPresent(
     return true
   }
   val roots = when (agent) {
-    "copilot" -> listOf(home.resolve(".copilot"))
     "claude" -> claudeConfigRoots(home, environment)
     "junie" -> listOf(home.resolve(".junie"))
     "cursor" -> listOf(home.resolve(".cursor"))

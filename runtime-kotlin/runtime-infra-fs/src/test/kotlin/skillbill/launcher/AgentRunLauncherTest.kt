@@ -37,7 +37,6 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -71,22 +70,6 @@ class AgentRunLauncherTest {
     val captured = runner.requests.single()
     assertEquals("junie", captured.command.first())
     assertEquals(PHASE_PROMPT, captured.command.last())
-  }
-
-  @Test
-  fun `supported agent without headless path returns unsupported outcome`() {
-    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner(), ALL_EXECUTABLES_AVAILABLE)
-
-    val outcome = launcher.launch(
-      AgentRunLaunchRequest(
-        agentId = "copilot",
-        skillRunRequest = skillRunRequest(),
-      ),
-    )
-
-    assertIs<UnsupportedAgentRunLaunch>(outcome)
-    assertEquals(InstallAgent.COPILOT, outcome.agent)
-    assertContains(outcome.reason, "does not have a supported headless")
   }
 
   @Test

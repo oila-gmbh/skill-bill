@@ -12,7 +12,7 @@ package skillbill.contracts.install
  * every payload the runtime produces validates clean against the
  * canonical schema.
  */
-const val INSTALL_PLAN_CONTRACT_VERSION: String = "0.2"
+const val INSTALL_PLAN_CONTRACT_VERSION: String = "0.3"
 
 /**
  * SKILL-48 Subtask 2b: single source of truth for where the canonical

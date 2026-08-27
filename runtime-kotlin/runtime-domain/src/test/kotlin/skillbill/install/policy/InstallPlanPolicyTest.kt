@@ -453,7 +453,6 @@ class InstallPlanPolicyTest {
   private fun defaultAgentTargets(): List<InstallAgentDefaultTarget> = listOf(
     InstallAgentDefaultTarget(InstallAgent.CLAUDE, path("/home/.claude/skills")),
     InstallAgentDefaultTarget(InstallAgent.CODEX, path("/home/.codex/skills")),
-    InstallAgentDefaultTarget(InstallAgent.COPILOT, path("/home/.copilot/skills")),
     InstallAgentDefaultTarget(InstallAgent.JUNIE, path("/home/.junie/skills")),
     InstallAgentDefaultTarget(InstallAgent.CURSOR, path("/home/.cursor/skills")),
   )

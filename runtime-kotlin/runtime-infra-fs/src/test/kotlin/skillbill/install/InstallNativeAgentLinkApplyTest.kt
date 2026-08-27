@@ -483,7 +483,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
-  fun `selected all-agent apply distinguishes Copilot skill and MCP handling from native providers`() {
+  fun `selected all-agent apply links skills and native agents for every supported agent`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".claude"))
     Files.createDirectories(fixture.home.resolve(".codex"))
@@ -512,9 +512,9 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
       assertTrue(skill.links.all { link -> link.status == InstallAgentLinkStatus.CREATED })
       assertTrue(
         Files.isSymbolicLink(
-          fixture.home.resolve("agent-skill-targets/copilot/${skill.skillName}"),
+          fixture.home.resolve("agent-skill-targets/claude/${skill.skillName}"),
         ),
-        "Copilot should receive the skill link surface",
+        "Claude should receive the skill link surface",
       )
     }
     assertEquals(
@@ -529,8 +529,6 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
         .map { native -> native.provider }
         .toSet(),
     )
-    assertFalse(result.nativeAgents.any { native -> native.agent == InstallAgent.COPILOT })
-    assertFalse(Files.exists(fixture.home.resolve(".copilot/agents"), LinkOption.NOFOLLOW_LINKS))
     assertSourceUnchanged(fixture.repoRoot, sourceBefore)
   }
 

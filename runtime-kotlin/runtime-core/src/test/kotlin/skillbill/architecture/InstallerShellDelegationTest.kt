@@ -91,10 +91,6 @@ class InstallerShellDelegationTest {
         ExpectedApply(run, agentMode = "manual", platformMode = "none", telemetry = "off", mcp = "register"),
       ) + listOf(
         "--agent",
-        "copilot",
-        "--agent-target",
-        "copilot=${run.home.resolve("agent-targets/copilot")}",
-        "--agent",
         "claude",
         "--agent",
         "codex",
@@ -119,7 +115,7 @@ class InstallerShellDelegationTest {
     // SKILL-76 AC-1/AC-3: copy_in_authored_source copies skills/, platform-packs/, agent-addons/,
     // and the WHOLE orchestration/ tree into $HOME/.skill-bill as REAL files BEFORE skill linking.
     // After a successful install, deleting the clone must leave the copied source resolvable.
-    val run = runInstallerShell(input = "1\ncopilot\nbase only\noff\nskip\n")
+    val run = runInstallerShell(input = "1\nclaude\nbase only\noff\nskip\n")
 
     assertCopyInPopulatedRealFiles(run)
     // The repoint args already point at the copy (asserted elsewhere). Now prove AC-3:
@@ -323,7 +319,7 @@ class InstallerShellDelegationTest {
   fun `from-source keeps gradle skip-build install behavior`() {
     // --from-source with the SKILL_BILL_SKIP_RUNTIME_DISTRIBUTION_BUILD escape hatch
     // must still route through the durable copy path, never the prebuilt fetch.
-    val run = runInstallerShell(input = "1\ncopilot\nbase only\noff\nskip\n", fromSource = true)
+    val run = runInstallerShell(input = "1\nclaude\nbase only\noff\nskip\n", fromSource = true)
 
     assertContains(run.output, "Installing runtime from source (--from-source)")
     assertFalse(run.output.contains("verified checksum:"), "from-source must not verify release checksums")
@@ -611,7 +607,7 @@ class InstallerShellDelegationTest {
     val process = builder.start()
     // The full flow prompts for agent/platform/telemetry; feed a stable
     // base-only single-agent selection.
-    val input = "1\ncopilot\nbase only\noff\n"
+    val input = "1\nclaude\nbase only\noff\n"
     process.outputStream.bufferedWriter().use { writer -> writer.write(input) }
     val output = process.inputStream.bufferedReader().readText()
     val exitCode = process.waitFor()

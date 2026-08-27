@@ -534,7 +534,6 @@ class CliRuntimeTest {
   @Test
   fun `detect-agents CLI reports all supported detected agent flows`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-install-detect-all")
-    Files.createDirectories(tempDir.resolve(".copilot"))
     Files.createDirectories(tempDir.resolve(".claude"))
     Files.createDirectories(tempDir.resolve(".codex"))
     Files.createDirectories(tempDir.resolve(".junie"))
@@ -548,7 +547,6 @@ class CliRuntimeTest {
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(
       """
-      copilot	${tempDir.resolve(".copilot/skills")}
       claude	${tempDir.resolve(".claude/skills")}
       codex	${tempDir.resolve(".codex/skills")}
       codex	${tempDir.resolve(".agents/skills")}

@@ -52,7 +52,6 @@ $defs:
   agentId:
     type: string
     enum:
-      - copilot
       - claude
       - codex
       - junie
@@ -262,9 +261,9 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "0.2"
+    const: "0.3"
     description: >
-      Pinned to `INSTALL_PLAN_CONTRACT_VERSION` (currently "0.2"). The
+      Pinned to `INSTALL_PLAN_CONTRACT_VERSION` (currently "0.3"). The
       parity test `InstallPlanSchemaContractVersionTest` keeps the two
       in lockstep.
   agents:
