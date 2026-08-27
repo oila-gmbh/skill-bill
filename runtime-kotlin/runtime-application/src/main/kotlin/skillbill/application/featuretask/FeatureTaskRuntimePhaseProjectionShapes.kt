@@ -103,6 +103,8 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      named by finding_id (aliases finding_ref, id, ref accepted). Coverage matches on\n" +
       "      finding_id alone; label and text are optional decoration.\n" +
       "      constructs are Type or Type.member with an optional file basename, never a bare path;\n" +
+      "      symbol is an identifier only — no spaces and no Kotlin backtick / JUnit display names\n" +
+      "      (use ClassName or ClassName.camelCaseMember; put prose in intent);\n" +
       "      intent is one line with no diff hunk, source body, or line number. A finding that needed\n" +
       "      no edit still needs its no_edit_required entry, and a finding you attempted and could not\n" +
       "      close needs outcome attempted_unresolved with unresolved_reason and the constructs you\n" +

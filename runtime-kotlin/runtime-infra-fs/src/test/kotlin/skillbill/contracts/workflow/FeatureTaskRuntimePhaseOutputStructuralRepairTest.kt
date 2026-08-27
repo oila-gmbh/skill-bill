@@ -509,6 +509,37 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   }
 
   @Test
+  fun `a spaced Kotlin display-name construct symbol is salvaged to Type before schema`() {
+    val spaced =
+      "AgentRunServiceRuntimeComponentTest.runtime component exposes agent run service " +
+        "with filesystem launcher binding"
+    val envelope =
+      """{"contract_version":"0.4","phase_id":"implement_fix","status":"completed","summary":"fix",""" +
+        """"produced_outputs":{"reconciled_state":{"reconciled":true,"evidence":"tree at target"},""" +
+        """"repair_receipt":{"contract_version":"0.2","entries":[{"finding_id":"F-002","severity":"minor",""" +
+        """"outcome":"addressed","constructs":[{"symbol":"$spaced",""" +
+        """"file":"AgentRunServiceRuntimeComponentTest.kt"}],""" +
+        """"intent":"Match junie spawnFailed facts after copilot removal"}]}}}"""
+
+    val result = adapter.validatePhaseOutput(envelope, "implement_fix")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.RESTORE_EXPECTED_SHAPE,
+      repaired.evidence.operation,
+    )
+    @Suppress("UNCHECKED_CAST")
+    val produced = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+    @Suppress("UNCHECKED_CAST")
+    val receipt = produced["repair_receipt"] as Map<String, Any?>
+    @Suppress("UNCHECKED_CAST")
+    val entries = receipt["entries"] as List<Map<String, Any?>>
+    @Suppress("UNCHECKED_CAST")
+    val constructs = entries.single()["constructs"] as List<Map<String, Any?>>
+    assertEquals("AgentRunServiceRuntimeComponentTest", constructs.single()["symbol"])
+  }
+
+  @Test
   fun `unsupported block YAML is rejected without guessed structural edits`() {
     // SKILL-187 AC-005: block indentation is outside conservative flow repair; never invent closers.
     val blockYaml =

@@ -99,8 +99,9 @@ data class FeatureTaskRuntimeRepairConstruct(
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeRepairConstruct {
       raw.requireOnlyReviewStateKeys(setOf("symbol", "file"), path)
       return anchoredToDecodePath(path) {
+        val rawSymbol = raw.requireReviewStateString("symbol", path)
         FeatureTaskRuntimeRepairConstruct(
-          symbol = raw.requireReviewStateString("symbol", path),
+          symbol = salvageCompactReceiptSymbol(rawSymbol) ?: rawSymbol,
           file = raw.optionalReviewStateString("file", path),
         )
       }

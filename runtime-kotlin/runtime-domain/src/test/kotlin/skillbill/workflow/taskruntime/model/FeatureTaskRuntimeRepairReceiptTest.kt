@@ -23,6 +23,32 @@ class FeatureTaskRuntimeRepairReceiptTest {
   }
 
   @Test
+  fun `salvageCompactReceiptSymbol keeps Type when the member is a spaced display name`() {
+    assertEquals(
+      "AgentRunServiceRuntimeComponentTest",
+      salvageCompactReceiptSymbol(
+        "AgentRunServiceRuntimeComponentTest.runtime component exposes agent run service with filesystem launcher binding",
+      ),
+    )
+    assertEquals(null, salvageCompactReceiptSymbol("Type.member"))
+    assertEquals(null, salvageCompactReceiptSymbol("runtime-kotlin/src/Type.kt"))
+    assertEquals(
+      FeatureTaskRuntimeRepairConstruct(
+        symbol = "AgentRunServiceRuntimeComponentTest",
+        file = "AgentRunServiceRuntimeComponentTest.kt",
+      ),
+      FeatureTaskRuntimeRepairConstruct.fromArtifactMap(
+        mapOf(
+          "symbol" to
+            "AgentRunServiceRuntimeComponentTest.runtime component exposes agent run service with filesystem launcher binding",
+          "file" to "AgentRunServiceRuntimeComponentTest.kt",
+        ),
+        "repair_receipt.entries[0].constructs[0]",
+      ),
+    )
+  }
+
+  @Test
   fun `construct identity normalizes case to one stable key`() {
     val first = FeatureTaskRuntimeRepairConstruct(symbol = "Type.member", file = "Type.kt")
     val second = FeatureTaskRuntimeRepairConstruct(symbol = "TYPE.MEMBER", file = "TYPE.kt")

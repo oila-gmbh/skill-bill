@@ -4,6 +4,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import java.nio.charset.StandardCharsets
 
 private val COMPACT_SYMBOL = Regex("^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$")
+private val COMPACT_IDENTIFIER = Regex("^[A-Za-z_][A-Za-z0-9_$-]*$")
 private val FILE_BASENAME = Regex("^[A-Za-z0-9_.-]+$")
 private val IDENTITY_WHITESPACE = Regex("\\s+")
 private val LINE_NUMBER = Regex(
@@ -29,6 +30,23 @@ internal fun requireReceiptSymbol(value: String, field: String) {
   if (value.contains('/') || value.contains('\\') || !COMPACT_SYMBOL.matches(value)) {
     receiptError(field, "must be a compact symbol (Type or Type.member), never a repository path.")
   }
+}
+
+fun salvageCompactReceiptSymbol(raw: String): String? {
+  val trimmed = raw.trim()
+  if (COMPACT_SYMBOL.matches(trimmed)) return null
+  if (trimmed.contains('/') || trimmed.contains('\\')) return null
+  val typePart = trimmed.substringBefore('.')
+  if (!COMPACT_IDENTIFIER.matches(typePart)) return null
+  if (!trimmed.contains('.')) return null
+  val afterDot = trimmed.substringAfter('.')
+  if (afterDot.isEmpty()) return null
+  if (afterDot.any(Char::isWhitespace)) {
+    return typePart.takeIf(COMPACT_SYMBOL::matches)
+  }
+  val memberToken = COMPACT_IDENTIFIER.find(afterDot)?.value ?: return typePart.takeIf(COMPACT_SYMBOL::matches)
+  val candidate = "$typePart.$memberToken"
+  return candidate.takeIf(COMPACT_SYMBOL::matches)
 }
 
 internal fun requireReceiptFileBasename(value: String, field: String) {

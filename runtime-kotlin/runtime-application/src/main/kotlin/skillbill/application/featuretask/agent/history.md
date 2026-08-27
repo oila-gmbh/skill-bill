@@ -1,5 +1,13 @@
 # featuretask runtime boundary history
 
+## [2026-08-27] Salvage spaced repair-receipt construct symbols
+Areas: runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, runtime-application/featuretask, orchestration/contracts
+- Shape alignment coerces `Type.<spaced display name>` construct symbols down to `Type` before the phase-output schema gate; decode applies the same salvage.
+- implement_fix prompts and the schema description forbid spaces and Kotlin backtick / JUnit display names in `symbol`.
+- Pattern: keep the compact-symbol regex; salvage the predictable Kotlin test-name near-miss instead of burning the one-shot output-gate budget. reusable
+Feature flag: N/A
+Acceptance criteria: n/a (main hotfix)
+
 ## [2026-08-27] SKILL-211 — Prose-centric preplan phase I/O
 Areas: runtime-application/{featuretask,goalrunner,workflow}, runtime-domain/{agent/model,workflow/taskruntime}, runtime-infra-fs/contracts/workflow, orchestration/contracts
 - Preplan `produced_outputs` is now prose `PhaseOutput` (`value`, optional `prompt`); the planning-projections digest schema gate and `regenerate_preplan` consumer edge are gone.

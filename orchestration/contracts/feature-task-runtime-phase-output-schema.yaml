@@ -90,7 +90,9 @@ $defs:
     properties:
       symbol:
         description: >-
-          Compact symbol reference: Type or Type.member. Never a repository path.
+          Compact symbol reference: Type or Type.member. Identifier characters
+          only — no spaces, no Kotlin backtick or JUnit display names. Never a
+          repository path.
         type: string
         minLength: 1
         maxLength: 256

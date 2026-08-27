@@ -4,6 +4,25 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-27] Salvage spaced repair-receipt symbols; keep the compact regex
+
+Context: SKILL-210 blocked twice on implement_fix when the agent put a Kotlin
+backtick test display name into `constructs[].symbol`. The code fix was already
+in the tree; the one-shot output-gate budget died on the receipt field.
+
+Decision: Keep the compact `Type` / `Type.member` pattern. Before schema
+validation, shape alignment coerces `Type.<text with whitespace>` down to
+`Type`. Prompt and schema description forbid spaces and backtick / JUnit
+display names; put that prose in `intent`.
+
+Reason: Agents read Kotlin test members literally. Salvaging the Type prefix
+preserves a usable construct without loosening identity. Relaunching under
+cap=1 does not recover this near-miss.
+
+Alternatives considered: Allow spaces in the regex (rejected: breaks compact
+symbol identity). Rely on prompt-only guidance (rejected: same miss twice on
+SKILL-210). Second agent salvage launch (rejected: output-gate cap policy).
+
 ## [2026-08-27] Validate format repair is project-wide spotlessApply
 
 Context: SKILL-211 blocked on validate after three repair turns with one Spotless

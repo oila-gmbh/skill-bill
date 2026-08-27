@@ -393,7 +393,9 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "entry needs an explicit outcome (addressed; no_edit_required with no_edit_reason; or " +
     "attempted_unresolved with unresolved_reason when you tried and the finding is still open), " +
     "symbol-granularity closing constructs (Type or Type.member, optional file basename — never a bare " +
-    "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +
+    "path; symbol is identifier-only with no spaces and no Kotlin backtick / JUnit display names — use " +
+    "ClassName or ClassName.camelCaseMember and put prose in intent), and a bounded one-line repair " +
+    "intent. A legitimately unedited finding still needs its " +
     "no_edit_required entry, and a finding you could not close needs its attempted_unresolved entry, " +
     "which buys it one more attempt before it goes to an operator. Leaving a *carried* finding out is " +
     "never an outcome: the round is sent back for it. A refuted finding is the one exception, because " +

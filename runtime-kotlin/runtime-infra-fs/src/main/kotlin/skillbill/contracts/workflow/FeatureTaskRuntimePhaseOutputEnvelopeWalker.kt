@@ -2,11 +2,13 @@ package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
+import skillbill.workflow.taskruntime.model.salvageCompactReceiptSymbol
 
 internal object FeatureTaskRuntimePhaseOutputEnvelopeWalker {
   /**
@@ -207,7 +209,26 @@ internal object PhaseOutputExpectedShape {
       }
     }
     if (demoteStrayRootFields(root, produced)) changed = true
+    if (salvageRepairReceiptSymbols(produced)) changed = true
     return root to changed
+  }
+
+  private fun salvageRepairReceiptSymbols(produced: ObjectNode): Boolean {
+    val receipt = produced.get("repair_receipt") as? ObjectNode ?: return false
+    val entries = receipt.get("entries") as? ArrayNode ?: return false
+    var changed = false
+    for (entryNode in entries) {
+      val constructs = (entryNode as? ObjectNode)?.get("constructs") as? ArrayNode ?: continue
+      for (constructNode in constructs) {
+        val construct = constructNode as? ObjectNode ?: continue
+        val symbolNode = construct.get("symbol") ?: continue
+        if (!symbolNode.isTextual) continue
+        val salvaged = salvageCompactReceiptSymbol(symbolNode.asText()) ?: continue
+        construct.put("symbol", salvaged)
+        changed = true
+      }
+    }
+    return changed
   }
 
   /**
