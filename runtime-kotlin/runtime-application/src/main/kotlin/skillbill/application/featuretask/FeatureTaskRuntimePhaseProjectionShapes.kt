@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_ENTRIES
@@ -9,16 +8,6 @@ import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES
 
-/**
- * The preplan, plan, and implement phases each emit a bounded planning projection that the NEXT
- * phase's launch seam parses with additionalProperties:false against
- * feature-task-runtime-planning-projections-schema.yaml. Naming the fields in prose (as the phase
- * directive does) is not enough to hit the shape: the projection lives DIRECTLY on produced_outputs
- * (never nested under a projection_kind-named key), rollout and each deviations entry are OBJECTS,
- * and task_id is lowercase-kebab. An agent left to infer the shape emits a nested wrapper, a prose
- * rollout string, a free-text deviation, or "T1" and is rejected at the seam. Each example mirrors
- * PlanningProjectionFixtures so the guidance and the gate cannot drift.
- */
 internal object FeatureTaskRuntimePhaseProjectionShapes {
   fun exampleFor(phaseId: String, agentRunValidateFallback: Boolean = false): String = when (phaseId) {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> PREPLAN
@@ -35,53 +24,69 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
     else -> ""
   }
 
-  private const val PREPLAN: String =
-    "\n    - Required produced_outputs shape: emit a non-blank value string carrying your planning prose.\n" +
-      "      Optional prompt may add a short directive when non-blank. Extra keys are allowed.\n" +
+  private fun prosePhaseOutputShape(innerJsonExample: String, trailingNotes: String): String =
+    "\n    - Required produced_outputs shape: non-blank value string, optional prompt. Put the JSON " +
+      "object below INSIDE value as a JSON string; do not emit those fields as sibling keys on " +
+      "produced_outputs. The runtime does not validate the inner shape; the next phase reads value " +
+      "as structured prose and interprets it. Extra keys beside value are allowed.\n" +
       "      ```json\n" +
-      "      { \"value\": \"<dense planning prose for the plan phase>\",\n" +
-      "        \"prompt\": \"<optional short directive>\" }\n" +
+      "      { \"value\": \"<JSON string: inner object below>\", \"prompt\": \"<optional directive>\" }\n" +
       "      ```\n" +
-      "      Walk boundary_memory headings for relevance; weave context into value rather than listing " +
-      "selected_boundary_headings."
-
-  private const val PLAN: String = PREPLAN
-
-  private val IMPLEMENT: String =
-    "\n    - Required produced_outputs shape: emit the implementation_receipt fields DIRECTLY on\n" +
-      "      produced_outputs (the bounded claim audit consumes them), and put the reconciled_state\n" +
-      "      report inside produced_outputs as well. EVERY key below is a member of produced_outputs:\n" +
-      "      the output envelope is closed, so a key placed beside produced_outputs instead of in it\n" +
-      "      is rejected as an unknown property and the whole receipt is discarded.\n" +
-      "      changed_paths are repository-relative; every deviations entry is an OBJECT { \"ref\", \"note\" },\n" +
-      "      never a free-text string:\n" +
+      "      Inner object to stuff into value:\n" +
       "      ```json\n" +
+      innerJsonExample +
+      "      ```\n" +
+      trailingNotes
+
+  private val PREPLAN: String = prosePhaseOutputShape(
+    innerJsonExample =
+      "      { \"projection_kind\": \"preplanning_digest\",\n" +
+        "        \"contract_version\": \"0.2\",\n" +
+        "        \"affected_boundaries\": [\"<module or boundary touched>\"], \"patterns_and_decisions\": [],\n" +
+        "        \"risks\": [\"<concrete risk>\"],\n" +
+        "        \"rollout\": { \"flag_required\": false, \"flag_pattern\": \"none\",\n" +
+        "          \"notes\": \"<rollout note, or N/A>\" },\n" +
+        "        \"validation_strategy\": [\"<how the change is validated>\"],\n" +
+        "        \"unresolved_questions\": [], \"evidence_refs\": [],\n" +
+        "        \"selected_boundary_headings\": [\"<heading_id copied verbatim from the boundary catalog>\"] }\n",
+    trailingNotes =
+      "      flag_pattern is one of none, simple_conditional, di_switch, legacy. Walk boundary_memory " +
+        "headings for relevance; weave context into the stuffed object rather than listing headings only " +
+        "outside value.",
+  )
+
+  private val PLAN: String = prosePhaseOutputShape(
+    innerJsonExample =
+      "      { \"projection_kind\": \"executable_plan\",\n" +
+        "        \"contract_version\": \"0.2\",\n" +
+        "        \"mode\": \"direct\",\n" +
+        "        \"tasks\": [ { \"task_id\": \"task-1\", \"depends_on\": [], \"description\": \"<imperative task>\",\n" +
+        "          \"criterion_refs\": [\"AC-001\"], \"target_paths_or_symbols\": [\"path/or/Symbol\"],\n" +
+        "          \"test_obligations\": [\"<test to add or run>\"], \"constraints\": [] } ],\n" +
+        "        \"validation_strategy\": [\"<how the plan is validated>\"] }\n",
+    trailingNotes =
+      "      Upstream preplan value is structured prose carrying the digest JSON; read and interpret it. " +
+        "task_id MUST match ^[a-z][a-z0-9-]*\$ (lowercase kebab; \"T1\" is wrong — use \"task-1\"); " +
+        "criterion_refs use the AC-### form.",
+  )
+
+  private val IMPLEMENT: String = prosePhaseOutputShape(
+    innerJsonExample =
       "      { \"projection_kind\": \"implementation_receipt\",\n" +
-      "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
-      "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
-      "        \"tests_added\": [], \"tests_updated\": [],\n" +
-      "        \"tests_executed\": [],\n" +
-      "        \"deviations\": [ { \"ref\": \"AC-001\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
-      "        \"unresolved_items\": [],\n" +
-      "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
-      "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" } }\n" +
-      "      ```\n" +
-      "      repository_checkpoint is runtime-owned: omit it entirely. Never compute, concatenate, or\n" +
-      "      guess a fingerprint; invented values are discarded and the runtime stamps the authoritative\n" +
-      "      digest before the receipt is accepted.\n" +
-      "      Compilation and test execution belong exclusively to the validate phase. Do NOT build,\n" +
-      "      compile, or run tests here: write the tests the plan obligates and leave them unexecuted.\n" +
-      "      tests_executed stays [] in this phase; validate runs them and owns their outcomes.\n" +
-      "      deviations may be []; each note is a single line without backticks or pasted JSON/diff\n" +
-      "      payloads.\n" +
-      "      Two rules decide whether a 'completed' receipt advances, so satisfy them here rather than\n" +
-      "      learning them from a rejection:\n" +
-      "      - unresolved_items must be EMPTY on a 'completed' receipt: it means work this phase leaves\n" +
-      "        open, and completion plus an open item cannot both be true. It is NOT a notes field —\n" +
-      "        anything you merely want the next phase to know goes in deviations or the summary, and\n" +
-      "        work the phase contract assigns elsewhere (a build or test run, which belongs to\n" +
-      "        validate) is not open work at all. Populate it only under a 'blocked' or 'failed'\n" +
-      "        envelope, as a plain line or the same { \"ref\", \"note\" } pair deviations uses."
+        "        \"contract_version\": \"0.2\",\n" +
+        "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
+        "        \"tests_added\": [], \"tests_updated\": [],\n" +
+        "        \"tests_executed\": [],\n" +
+        "        \"deviations\": [ { \"ref\": \"AC-001\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
+        "        \"unresolved_items\": [],\n" +
+        "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
+        "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" } }\n",
+    trailingNotes =
+      "      Upstream plan value is structured prose carrying the executable_plan JSON; read and interpret it. " +
+        "repository_checkpoint is runtime-owned: omit it entirely. Never invent a fingerprint. " +
+        "Compilation and test execution belong exclusively to the validate phase; tests_executed stays []. " +
+        "changed_paths are repository-relative; deviations entries are objects { \"ref\", \"note\" }.",
+  )
 
   private val IMPLEMENT_FIX: String =
     "\n    - Required produced_outputs.repair_receipt shape. Emit one entry per carried finding,\n" +

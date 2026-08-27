@@ -3,7 +3,6 @@
 package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -151,55 +150,30 @@ private val TEST_VALUE_DISCIPLINE_PHASES: Set<String> = setOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
 )
 
-/**
- * Emitted when a prior segment of THIS implementation left obligations open.
- *
- * Deliberately not the schema-correction directive: that one tells the agent its output was rejected
- * and to re-emit it, which is the wrong instruction and the wrong mental model for work that was
- * accepted as far as it went. This one says continue, and hands over the complete bounded prior
- * receipt so the next segment knows exactly what is already closed and must not be redone.
- *
- * Composed from the durable projection rather than declared as an upstream projection on an implement
- * self-edge: a self-edge required input would fail the first attempt, which has no prior receipt by
- * construction.
- */
 internal fun implementationContinuationDirective(
   phaseId: String,
   continuation: FeatureTaskRuntimeImplementationContinuation?,
 ): String {
   if (continuation == null || continuation.phaseId != phaseId) return ""
-  val closed = continuation.completedTaskIds.takeIf { it.isNotEmpty() }?.joinToString() ?: "none"
-  val paths = continuation.changedPaths.takeIf { it.isNotEmpty() }?.joinToString() ?: "none recorded"
-  val deviations = continuation.deviations.takeIf { it.isNotEmpty() }
-    ?.joinToString("; ") { "${it.ref}: ${it.note}" } ?: "none"
-  val unresolved = continuation.unresolvedItems.takeIf { it.isNotEmpty() }?.joinToString("; ") ?: "none"
-  val reconciliation = continuation.reconciliationEvidence
-    ?.let { "reconciled=${it.reconciled}; ${it.evidence}" } ?: "not reported"
-  val checkpoint = continuation.repositoryCheckpoint?.fingerprint ?: "not reported"
+  val segments = continuation.priorValueSegments.withIndex().joinToString("\n\n") { (index, value) ->
+    "Segment ${index + 1} value:\n$value"
+  }
+  val prompt = continuation.latestPrompt?.let { "Latest optional prompt: $it" } ?: "No optional prompt recorded."
   val disposition = continuation.failureDisposition ?: "none"
   return """
     ## Continue this implementation — segment ${continuation.segmentNumber}
     A prior segment of this same implementation ran and did real work. It was NOT rejected and its
-    output was NOT malformed: it simply did not close every ${continuation.obligationNoun} yet.
-    Continue from where it stopped. Do not restart the implementation, do not redo closed work, and do
+    output was NOT malformed: continue from where it stopped. Do not restart the implementation and do
     not re-apply changes already present — the mutating-phase idempotency contract still governs.
 
-    Still open (${continuation.obligationNoun}s you must close in this segment): ${
-    continuation.openObligationIds.joinToString()
-  }
+    Prior stuffed value segments:
+    $segments
 
-    Prior receipt:
-    - completed ${continuation.obligationNoun} ids: $closed
-    - changed paths: $paths
-    - deviations: $deviations
-    - unresolved items: $unresolved
-    - reconciliation evidence: $reconciliation
-    - repository checkpoint: $checkpoint
-    - failure disposition: $disposition
+    $prompt
+    Failure disposition from the latest segment: $disposition
 
-    Your receipt for this segment must list every ${continuation.obligationNoun} that is closed once
-    you are done — the ones above plus the ones you close now. Reporting `completed` while any listed
-    obligation is still open will not advance the run.
+    Emit a new non-blank value string carrying your updated implementation_receipt JSON stuffed inside
+    value.
   """.trimIndent()
 }
 
@@ -328,8 +302,9 @@ internal fun goalContinuationDirective(phaseId: String, suppressDecomposition: B
   return """
     ## Goal-continuation planning constraint
     This run is already executing one governed decomposed subtask. Do not propose or emit a new
-    decomposition package in the plan phase. Produce implementable planning prose for the current spec;
-    never emit produced_outputs.decomposition_package. Never include installer, uninstall, or
+    decomposition package in the plan phase. Produce implementable planning value for the current spec
+    (executable_plan JSON stuffed inside value); never emit produced_outputs.decomposition_package.
+    Never include installer, uninstall, or
     install-sync commands in the plan: do not plan to run
     `./install.sh`, `./uninstall.sh`, `skill-bill install`, `skill-bill install apply`, or any
     equivalent install refresh inside a goal-continuation child. The plan phase defines how future
@@ -344,36 +319,30 @@ internal fun goalContinuationDirective(phaseId: String, suppressDecomposition: B
 // Validate Task-line specialization lives in FeatureTaskRuntimePhasePromptValidateDirectives.
 internal val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
-    "Produce the scaled pre-planning prose for the resolved feature size. Do not modify " +
+    "Produce the scaled pre-planning digest for the resolved feature size. Do not modify " +
     "repository files during this phase. Emit produced_outputs with a non-blank value string " +
-    "carrying your planning prose for the downstream plan phase; optional prompt may add a short " +
-    "directive when non-blank. Do not forward the complete preplan envelope, a generic summary, " +
-    "or progress diagnostics.",
+    "carrying the preplanning_digest JSON (same fields as before, stuffed inside value); optional " +
+    "prompt may add a short directive when non-blank. Do not forward the complete preplan envelope, " +
+    "a generic summary, or progress diagnostics.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
-    "Produce planning prose that satisfies every acceptance criterion, using the upstream preplan " +
-    "prose as planning context. Do not modify repository files during this phase. Emit produced_outputs " +
-    "with a non-blank value string carrying your planning prose for downstream implement and audit; " +
+    "Produce an ordered implementation plan that satisfies every acceptance criterion, using the " +
+    "upstream preplan value as planning context (structured prose: interpret the stuffed digest " +
+    "JSON). Do not modify repository files during this phase. Emit produced_outputs with a non-blank " +
+    "value string carrying the executable_plan JSON (same fields as before, stuffed inside value); " +
     "optional prompt may add a short directive when non-blank. Do not forward the complete plan " +
     "envelope, a generic summary, or progress diagnostics.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
-    "Reconcile the repository to the intended state the upstream plan prose describes: make the " +
-    "changes it specifies, treating any already-applied change as a no-op. See the mutating-phase " +
-    "idempotency contract below. Emit produced_outputs carrying the bounded implementation receipt " +
-    "(projection_kind \"implementation_receipt\", contract_version " +
-    "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\": completed_task_ids, " +
-    "normalized changed_paths, " +
-    "tests_added, tests_updated, deviations, unresolved_items, " +
-    "and reconciliation_evidence). repository_checkpoint is runtime-owned: omit it and never invent a\n" +
-    "      fingerprint. Every receipt field is a bounded summary, not a transcript: a segment that " +
-    "applied no edits reports that it applied none, names what already satisfied the work, and " +
-    "stops — the audit re-reads the tree " +
-    "itself, so proving convergence path by path here only risks overflowing the field. When the " +
-    "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
-    "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
-    "settled implementation. Under the audit-gap loop, follow each listed gap's implement-ready fix " +
-    "plan in this one invocation and report the ordinary implementation receipt; the next audit " +
-    "re-reads the tree and decides every criterion again. Repair evidence is read-only repository " +
-    "facts: do not run builds or tests here.",
+    "Reconcile the repository to the intended state the upstream plan value describes: read and " +
+    "interpret the stuffed executable_plan JSON, make the changes it specifies, treating any " +
+    "already-applied change as a no-op. See the mutating-phase idempotency contract below. Emit " +
+    "produced_outputs with a non-blank value string carrying the implementation_receipt JSON (same " +
+    "fields as before, stuffed inside value): completed_task_ids, normalized changed_paths, " +
+    "tests_added, tests_updated, deviations, unresolved_items, reconciliation_evidence, and " +
+    "reconciled_state. repository_checkpoint is runtime-owned: omit it and never invent a " +
+    "fingerprint. Every receipt field is a bounded summary, not a transcript. When the briefing " +
+    "carries audit_gaps, reuse its immutable initial preplan and plan outputs and change only what " +
+    "the latest listed gaps require. Repair evidence is read-only repository facts: do not run " +
+    "builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
     "Address every finding verify_findings carried on the CURRENT working tree as " +
     "incremental reconciliation. Every carried finding — Blocker, Major, Minor, and Nit — is in " +
@@ -420,8 +389,9 @@ internal val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Answer one question: is every acceptance criterion in the briefing implemented in the repository? " +
     "Read the tree itself at the resolved checkpoint — the diff over its base_ref/head_ref plus its " +
-    "scoped_owned_paths. The upstream implementation receipt is a producer CLAIM, not evidence: never " +
-    "mark a criterion satisfied because the receipt lists a completed task id, a changed path, or " +
+    "scoped_owned_paths. The upstream implement value is structured prose (former implementation_receipt " +
+    "JSON stuffed inside value): read and interpret it as a producer CLAIM, not evidence. Never mark a " +
+    "criterion satisfied because that string lists a completed task id, a changed path, or " +
     "reconciliation_evidence claiming reconciled. A claim the tree contradicts is itself unmet. " +
     "Report the answer as verdict plus produced_outputs.gaps: verdict satisfied with an " +
     "empty array when every criterion is implemented, or verdict gaps_found with one entry per unmet " +
