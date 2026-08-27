@@ -311,9 +311,14 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun auditGapCriteriaForResume(): List<String> {
     val fromAudit = state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
     if (fromAudit.isNotEmpty()) return fromAudit
-    return recorder.loadPhaseBriefings(request.workflowId, request.dbPathOverride)
+    val fromBriefing = recorder.loadPhaseBriefings(request.workflowId, request.dbPathOverride)
       ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
       ?.unresolvedAuditGapIds
+      .orEmpty()
+    if (fromBriefing.isNotEmpty()) return fromBriefing
+    return recorder.loadAuditGapProgress(request.workflowId, request.dbPathOverride)
+      ?.criterionRefs
+      ?.sorted()
       .orEmpty()
   }
 
@@ -677,8 +682,8 @@ internal class FeatureTaskRuntimeRunLoop(
   /**
    * Resume seam for a run parked on an audit-gap pause with an unconsumed retry_fix: settles the
    * paused audit phase from its preserved output (mirroring [carriedForwardGoalReviewSettlement]) so
-   * the transition seam can take the audit_gap edge. Returns null when no retry is pending, letting
-   * the normal phase path run.
+   * the transition seam can take the audit_gap edge. Returns null when no retry is pending or the
+   * grant is stale after a satisfied audit already advanced, letting the normal phase path run.
    */
   private fun settleCarriedForwardAuditGapAudit(): PhaseSettlement? = runCatching {
     recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
@@ -687,26 +692,58 @@ internal class FeatureTaskRuntimeRunLoop(
       if (pause == null || pause.operatorDecision != AUDIT_GAP_PAUSE_DECISION_RETRY_FIX || pause.grantConsumed) {
         null
       } else {
-        settleCarriedForwardAudit()
+        settleCarriedForwardAudit(pause)
       }
     },
     onFailure = { error -> blockCarriedForwardAudit(error.message.orEmpty()) },
   )
 
-  private fun settleCarriedForwardAudit(): PhaseSettlement {
+  private fun settleCarriedForwardAudit(pause: FeatureTaskRuntimeAuditGapPause): PhaseSettlement {
     val auditPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+    val unmetFromAudit = state.unmetAuditCriteria(auditPhaseId)
+    if (
+      unmetFromAudit.isEmpty() &&
+      state.isComplete(auditPhaseId) &&
+      state.verdictFor(auditPhaseId) == FeatureTaskRuntimeVerdict.SATISFIED
+    ) {
+      consumeAuditGapRetryGrant(pause)
+      return PhaseSettlement.completed(auditPhaseId, FeatureTaskRuntimeVerdict.SATISFIED)
+    }
     val outputArtifact = state.recordFor(auditPhaseId)?.outputArtifact
       ?: return blockCarriedForwardAudit("missing")
     return runCatching {
       val acceptedOutput = outputValidator
         .validatePhaseOutput(outputArtifact, auditPhaseId)
         .requireAcceptedOutput(auditPhaseId)
-      recordCarriedForwardAudit(acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence)
-    }.fold(
-      onSuccess = {
+      val acceptedUnmet = FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(
+        acceptedOutput.normalizedOutput.envelope,
+      )
+      val derivedVerdict = FeatureTaskRuntimeOutputVerification.verdictFor(
+        auditPhaseId,
+        acceptedOutput.normalizedOutput.envelope,
+      )
+      if (acceptedUnmet.isEmpty()) {
+        if (!state.isComplete(auditPhaseId)) {
+          recordCarriedForwardAudit(acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence)
+        }
+        consumeAuditGapRetryGrant(pause)
+        PhaseSettlement.completed(auditPhaseId, derivedVerdict)
+      } else {
+        recordCarriedForwardAudit(acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence)
+        consumeAuditGapRetryGrant(pause)
         PhaseSettlement.completed(auditPhaseId, FeatureTaskRuntimeVerdict.GAPS_FOUND)
-      },
+      }
+    }.fold(
+      onSuccess = { it },
       onFailure = { error -> blockCarriedForwardAudit(error.message.orEmpty()) },
+    )
+  }
+
+  private fun consumeAuditGapRetryGrant(pause: FeatureTaskRuntimeAuditGapPause) {
+    recorder.persistAuditGapPause(
+      request.workflowId,
+      pause.copy(grantConsumed = true, operatorDecision = null),
+      request.dbPathOverride,
     )
   }
 
@@ -833,7 +870,7 @@ internal class FeatureTaskRuntimeRunLoop(
         !authoritativeAuditRepairPlanMatches(phaseId) -> {
         blockAt(
           phaseId,
-          "The accepted audit repair plan was not durably readable and identical before the audit_gap edge.",
+          "Audit-gap edge requires unmet acceptance criteria on the settled audit; none were readable.",
         )
         null
       }
@@ -850,8 +887,8 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  // An audit reports unmet criteria and nothing durable is accepted from it, so there is no plan
-  // identity for a resumed re-entry to match: the criteria on the audit record are the whole authority.
+  // Gaps on the settled audit are the authority for taking audit_gap. A stale retry_fix grant must
+  // not force the edge when the durable audit is already satisfied with an empty gaps array.
   private fun authoritativeAuditRepairPlanMatches(auditPhaseId: String): Boolean =
     state.unmetAuditCriteria(auditPhaseId).isNotEmpty()
 
@@ -5380,6 +5417,12 @@ internal class FeatureTaskRuntimeRunLoop(
         ),
         request.dbPathOverride,
       )
+    } else {
+      recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)?.let { pause ->
+        if (!pause.grantConsumed || pause.operatorDecision != null) {
+          consumeAuditGapRetryGrant(pause)
+        }
+      }
     }
     if (!decision.blocked) return null
     return FeatureTaskRuntimeAuditGapPause(

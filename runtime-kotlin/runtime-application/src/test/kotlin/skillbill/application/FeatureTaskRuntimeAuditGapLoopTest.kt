@@ -526,6 +526,43 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
+  fun `stale retry_fix after a satisfied audit does not re-force audit_gap`() {
+    val harness = runnerHarness(
+      launcher = auditGapLauncher(convergeOnAudit = 99),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    val pause = assertNotNull(harness.recorder.loadAuditGapPause(WORKFLOW_ID))
+    harness.recorder.persistAuditGapPause(
+      WORKFLOW_ID,
+      pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_RETRY_FIX),
+    )
+    harness.seedPhase("audit", "completed", 2, INVOKED_AGENT, auditSatisfiedOutput())
+    val edgesBefore = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .count { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
+
+    val report = harness.runner.run(harness.request())
+
+    assertTrue(
+      report !is FeatureTaskRuntimeRunReport.Blocked ||
+        !report.blockedReason.contains("unmet acceptance criteria") &&
+        !report.blockedReason.contains("durably readable"),
+      "stale retry_fix over a satisfied audit must not block on empty audit-gap criteria: $report",
+    )
+    val edgesAfter = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .count { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
+    assertEquals(edgesBefore, edgesAfter, "satisfied audit must not mint another audit_gap edge")
+    val consumed = assertNotNull(harness.recorder.loadAuditGapPause(WORKFLOW_ID))
+    assertEquals(true, consumed.grantConsumed)
+    assertEquals(null, consumed.operatorDecision)
+  }
+
+  @Test
   fun `resume with no decision re-pauses without relaunching implement`() {
     val harness = runnerHarness(
       launcher = auditGapLauncher(convergeOnAudit = 99),
