@@ -142,7 +142,7 @@ class RealValidatorReceiptFixLoopConvergenceTest {
 private fun receiptEnvelope(reconciliationEvidence: String): String =
   """{"contract_version":"0.2","phase_id":"implement","status":"completed",""" +
     """"summary":"Implement output.","produced_outputs":{""" +
-    """"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
+    """"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
     """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
     """"reconciliation_evidence":$reconciliationEvidence,""" +
     """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},""" +

@@ -34,18 +34,24 @@ internal fun requireReceiptSymbol(value: String, field: String) {
 
 fun salvageCompactReceiptSymbol(raw: String): String? {
   val trimmed = raw.trim()
-  if (COMPACT_SYMBOL.matches(trimmed)) return null
-  if (trimmed.contains('/') || trimmed.contains('\\')) return null
-  val typePart = trimmed.substringBefore('.')
-  if (!COMPACT_IDENTIFIER.matches(typePart)) return null
-  if (!trimmed.contains('.')) return null
-  val afterDot = trimmed.substringAfter('.')
-  if (afterDot.isEmpty()) return null
-  if (afterDot.any(Char::isWhitespace)) {
-    return typePart.takeIf(COMPACT_SYMBOL::matches)
+  if (COMPACT_SYMBOL.matches(trimmed) || trimmed.contains('/') || trimmed.contains('\\')) {
+    return null
   }
-  val memberToken = COMPACT_IDENTIFIER.find(afterDot)?.value ?: return typePart.takeIf(COMPACT_SYMBOL::matches)
-  val candidate = "$typePart.$memberToken"
+  val typePart = trimmed.substringBefore('.')
+  if (!COMPACT_IDENTIFIER.matches(typePart) || !trimmed.contains('.')) {
+    return null
+  }
+  val afterDot = trimmed.substringAfter('.')
+  if (afterDot.isEmpty()) {
+    return null
+  }
+  val candidate = when {
+    afterDot.any(Char::isWhitespace) -> typePart
+    else -> {
+      val memberToken = COMPACT_IDENTIFIER.find(afterDot)?.value
+      if (memberToken != null) "$typePart.$memberToken" else typePart
+    }
+  }
   return candidate.takeIf(COMPACT_SYMBOL::matches)
 }
 

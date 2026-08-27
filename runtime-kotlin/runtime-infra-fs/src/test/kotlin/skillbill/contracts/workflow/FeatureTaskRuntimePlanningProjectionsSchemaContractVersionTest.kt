@@ -37,19 +37,14 @@ class FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest {
   }
 
   @Test
-  fun `schema declares oneOf over the three concrete projection kinds`() {
+  fun `schema declares oneOf over the implementation receipt projection`() {
     val oneOf = classpathSchema().path("oneOf")
 
-    assertTrue(oneOf.isArray && oneOf.size() == 3, "Schema must declare exactly three oneOf variants; found: $oneOf")
-    val refs = oneOf.map { it.path("\$ref").asText() }
+    assertTrue(oneOf.isArray && oneOf.size() == 1, "Schema must declare exactly one oneOf variant; found: $oneOf")
     assertEquals(
-      listOf(
-        "#/\$defs/executable_plan",
-        "#/\$defs/plan_commitment",
-        "#/\$defs/implementation_receipt",
-      ),
-      refs,
-      "Schema oneOf variants must reference the three concrete projection kinds in order.",
+      "#/\$defs/implementation_receipt",
+      oneOf[0].path("\$ref").asText(),
+      "Schema oneOf must reference implementation_receipt.",
     )
   }
 

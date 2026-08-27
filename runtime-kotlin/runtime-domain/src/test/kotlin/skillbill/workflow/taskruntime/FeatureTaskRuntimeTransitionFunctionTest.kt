@@ -648,7 +648,6 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   fun `RECORD_REJECTED below cap re-enters the producer on its regeneration loop`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val cases = listOf(
-      Triple(def.PHASE_IMPLEMENT, def.PHASE_PLAN, def.PLAN_REGENERATION_LOOP_ID),
       Triple(def.PHASE_AUDIT, def.PHASE_IMPLEMENT, def.IMPLEMENT_REGENERATION_LOOP_ID),
     )
     cases.forEach { (consumer, producer, loopId) ->
@@ -666,12 +665,12 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val block = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(
       shippedTransition(
-        def.PHASE_IMPLEMENT,
+        def.PHASE_AUDIT,
         FeatureTaskRuntimeVerdict.RECORD_REJECTED,
         edgeIterationCount = def.MAX_RECORD_REGENERATION_ATTEMPTS,
       ),
     )
-    assertEquals(def.PLAN_REGENERATION_LOOP_ID, block.loopId)
+    assertEquals(def.IMPLEMENT_REGENERATION_LOOP_ID, block.loopId)
     assertEquals(def.MAX_RECORD_REGENERATION_ATTEMPTS, block.edgeIteration)
     assertEquals(FeatureTaskRuntimeVerdict.RECORD_REJECTED, block.unresolvedVerdict)
   }

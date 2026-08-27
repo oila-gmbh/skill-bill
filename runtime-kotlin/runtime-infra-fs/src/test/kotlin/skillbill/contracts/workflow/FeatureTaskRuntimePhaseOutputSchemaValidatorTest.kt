@@ -20,7 +20,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     status: "completed"
     summary: "Produced an ordered implementation plan."
     produced_outputs:
-      tasks: ["task-1", "task-2"]
+      value: "Ordered implementation plan prose."
     """.trimIndent()
 
   @Test
@@ -32,7 +32,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `adapter repair result is followed by the existing phase schema path`() {
     val malformed =
       """{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"ok",""" +
-        """"produced_outputs":{"tasks":["task-1"]}}]"""
+        """"produced_outputs":{"value":"Plan prose."}}]"""
 
     val normalized = FeatureTaskRuntimePhaseOutputValidatorAdapter().normalizePhaseOutput(malformed, "plan")
 
@@ -95,7 +95,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       phase_id: "plan"
       status: "completed"
       produced_outputs:
-        tasks: ["task-1"]
+        value: "Plan prose."
       """.trimIndent()
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(missingSummary, "plan")
@@ -111,7 +111,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       status: "completed"
       summary: "ok"
       produced_outputs:
-        tasks: ["task-1"]
+        value: "Plan prose."
       rogue_field: "nope"
       """.trimIndent()
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
@@ -160,7 +160,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       status: "completed"
       summary: "ok"
       produced_outputs:
-        tasks: ["task-1"]
+        value: "Plan prose."
         owner: "agent"
       """.trimIndent()
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(populated, "plan")
@@ -306,7 +306,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `raw json object passes validation`() {
     val rawJson =
       """{"contract_version":"0.4","phase_id":"plan","status":"completed",""" +
-        """"summary":"ok","produced_outputs":{"tasks":["task-1"]}}"""
+        """"summary":"ok","produced_outputs":{"value":"Plan prose."}}"""
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(rawJson, "plan")
   }
 
@@ -318,7 +318,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
 
       ```json
       {"contract_version":"0.4","phase_id":"plan","status":"completed",
-       "summary":"ok","produced_outputs":{"tasks":["task-1"]}}
+       "summary":"ok","produced_outputs":{"value":"Plan prose."}}
       ```
 
       Done.
@@ -335,7 +335,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """
       I planned the work as follows:
       {"contract_version":"0.4","phase_id":"plan","status":"completed",
-       "summary":"ok","produced_outputs":{"tasks":["task-1"]}}
+       "summary":"ok","produced_outputs":{"value":"Plan prose."}}
       Let me know if you need anything else.
       """.trimIndent()
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(withProse, "plan")
@@ -348,12 +348,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       For reference the shape is:
       ```json
       {"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"example",
-       "produced_outputs":{"tasks":["example-task"]}}
+       "produced_outputs":{"value":"Example plan prose."}}
       ```
       Here is the real output:
       ```json
       {"contract_version":"0.4","phase_id":"plan","status":"completed",
-       "summary":"real","produced_outputs":{"tasks":["task-1"]}}
+       "summary":"real","produced_outputs":{"value":"Plan prose."}}
       ```
       """.trimIndent()
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
@@ -406,7 +406,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     val withTrailingBrace =
       """
       {"contract_version":"0.4","phase_id":"plan","status":"completed",
-       "summary":"ok","produced_outputs":{"tasks":["task-1"]}}
+       "summary":"ok","produced_outputs":{"value":"Plan prose."}}
       Note: the template placeholder } above is intentional.
       """.trimIndent()
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(withTrailingBrace, "plan")
@@ -416,7 +416,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   fun `a brace inside a string value does not split the object`() {
     val braceInString =
       """{"contract_version":"0.4","phase_id":"plan","status":"completed",""" +
-        """"summary":"handles a literal } brace in a value","produced_outputs":{"tasks":["task-1"]}}"""
+        """"summary":"handles a literal } brace in a value","produced_outputs":{"value":"Plan prose."}}"""
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(braceInString, "plan")
   }
 
@@ -484,11 +484,11 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """
       ```json
       {"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"ok",
-       "produced_outputs":{"tasks":["task-1"],"notes":["note-1"]}}
+       "produced_outputs":{"value":"Plan prose.","notes":["note-1"]}}
       ```
       Restating the same envelope with the fields in a different order:
       ```json
-      {"produced_outputs":{"notes":["note-1"],"tasks":["task-1"]},"summary":"ok",
+      {"produced_outputs":{"notes":["note-1"],"value":"Plan prose."},"summary":"ok",
        "status":"completed","phase_id":"plan","contract_version":"0.4"}
       ```
       """.trimIndent()
@@ -502,11 +502,11 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """
       ```json
       {"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"ok",
-       "produced_outputs":{"tasks":["task-1","task-2"]}}
+       "produced_outputs":{"value":"Plan prose A."}}
       ```
       ```json
       {"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"ok",
-       "produced_outputs":{"tasks":["task-2","task-1"]}}
+       "produced_outputs":{"value":"Plan prose B."}}
       ```
       """.trimIndent()
 

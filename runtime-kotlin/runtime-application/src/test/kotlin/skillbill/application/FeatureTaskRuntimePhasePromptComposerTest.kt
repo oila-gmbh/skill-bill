@@ -86,21 +86,15 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `plan prompt names exactly the executable-plan required fields`() {
+  fun `plan prompt names exactly the phase prose required fields`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN),
     )
 
-    assertContains(prompt, "projection_kind \"executable_plan\"")
-    assertContains(prompt, "mode")
-    assertContains(prompt, "task_id")
-    assertContains(prompt, "depends_on")
-    assertContains(prompt, "criterion_refs")
-    assertContains(prompt, "test_obligations")
-    assertContains(prompt, "validation_strategy")
-    assertContains(prompt, "^[a-z][a-z0-9-]*", false, "plan shows the task_id pattern")
-    assertContains(prompt, "\"task_id\": \"task-1\"", false, "plan shows a lowercase-kebab task_id example")
+    assertContains(prompt, "\"value\":", false, "the copyable shape example must name value prose")
+    assertContains(prompt, "prompt", false, "plan may optionally carry prompt prose")
+    assertFalse(prompt.contains("projection_kind \"executable_plan\""))
   }
 
   @Test
@@ -131,7 +125,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
     assertContains(
       prompt,
-      "\"deviations\": [ { \"ref\": \"task-1\", \"note\"",
+      "\"deviations\": [ { \"ref\": \"AC-001\", \"note\"",
       false,
       "implement shows the deviation object item shape",
     )
@@ -695,7 +689,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(prompt, "### from: plan")
     // implement receives the bounded executable-plan projection, not plan's complete envelope.
-    assertContains(prompt, "Fixture task.")
+    assertContains(prompt, "Fixture plan prose for downstream implement and audit.")
     assertTrue(!prompt.contains("Phase produced a validated output."))
   }
 
@@ -717,7 +711,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     assertContains(prompt, "Goal-continuation planning constraint")
-    assertContains(prompt, "Never include installer, uninstall, or install-sync commands in the plan")
+    assertContains(prompt, "Never include installer, uninstall, or")
+    assertContains(prompt, "install-sync commands in the plan")
     assertContains(prompt, "`./install.sh`")
     assertContains(prompt, "it does not require that work to have already")
     assertContains(prompt, "Never block planning merely because a later implementation or validation action")
@@ -1569,7 +1564,7 @@ private const val SPEC_REFERENCE = ".feature-specs/SKILL-66/spec.md"
 // preplan, plan, and implement feed bounded planning projections, so their seeded outputs are full
 // envelopes carrying the declared projection body rather than bare produced_outputs fragments.
 private val PREPLAN_OUTPUT = projectionEnvelope("preplan", PlanningProjectionFixtures.PREPLAN_DIGEST)
-private val PLAN_OUTPUT = projectionEnvelope("plan", PlanningProjectionFixtures.EXECUTABLE_PLAN)
+private val PLAN_OUTPUT = projectionEnvelope("plan", PlanningProjectionFixtures.PLAN_PROSE)
 
 private fun projectionEnvelope(phaseId: String, producedOutputs: String): String =
   """{"contract_version":"0.4","phase_id":"$phaseId","status":"completed",""" +
@@ -1612,7 +1607,6 @@ private fun isArrayNode(defs: JsonNode, node: JsonNode): Boolean {
 }
 
 private fun projectionExampleCases() = listOf(
-  Triple(planPhase, FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN, briefingFor(planPhase)),
   Triple(implementPhase, receiptKind, briefingFor(implementPhase)),
   Triple(
     implementPhase,
@@ -1621,7 +1615,6 @@ private fun projectionExampleCases() = listOf(
   ),
 )
 
-private val planPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
 private val implementPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
 private val receiptKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
 

@@ -9,15 +9,15 @@ import kotlin.test.assertEquals
 
 class FeatureTaskRuntimeProjectionCanonicalizationSchemaRepoTest {
   @Test
-  fun `the schema literal task cap equals the Kotlin projection list cap`() {
+  fun `the schema literal completed_task_ids cap equals the Kotlin projection list cap`() {
     val schema = Yaml().load<Map<String, Any?>>(
       Files.readString(
         repoRootFromTest().resolve("orchestration/contracts/feature-task-runtime-planning-projections-schema.yaml"),
       ),
     )
-    val plan = (schema["\$defs"] as Map<*, *>)["executable_plan"] as Map<*, *>
-    val tasks = (plan["properties"] as Map<*, *>)["tasks"] as Map<*, *>
-    val maxItems = (tasks["maxItems"] as? Number)?.toInt()
+    val receipt = (schema["\$defs"] as Map<*, *>)["implementation_receipt"] as Map<*, *>
+    val completedTaskIds = (receipt["properties"] as Map<*, *>)["completed_task_ids"] as Map<*, *>
+    val maxItems = (completedTaskIds["maxItems"] as? Number)?.toInt()
 
     assertEquals(FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT, maxItems)
   }

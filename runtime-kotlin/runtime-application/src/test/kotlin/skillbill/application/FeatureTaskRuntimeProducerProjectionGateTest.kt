@@ -29,34 +29,6 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimeProducerProjectionGateTest {
 
   @Test
-  fun `a plan output missing projection_kind blocks plan and never reaches implement`() {
-    val outcome = runRejectedProducer("plan", PLAN_MISSING_PROJECTION_KIND)
-
-    assertEquals(1, outcome.launchCount("plan"), "a one-attempt budget leaves no relaunch")
-    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
-    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "executable_plan", "projection_kind is missing")
-    assertTrue(!outcome.launched("implement"), "a rejected producer must not reach its consumer")
-  }
-
-  @Test
-  fun `a plan output on the wrong contract version blocks plan`() {
-    val outcome = runRejectedProducer("plan", PLAN_WRONG_CONTRACT_VERSION)
-
-    assertEquals(1, outcome.launchCount("plan"))
-    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
-    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "contract_version")
-  }
-
-  @Test
-  fun `a plan output with an undeclared dependency reference blocks plan`() {
-    val outcome = runRejectedProducer("plan", PLAN_UNDECLARED_DEPENDENCY)
-
-    assertEquals(1, outcome.launchCount("plan"))
-    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
-    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "undeclared task")
-  }
-
-  @Test
   fun `a preplan output missing value blocks preplan and never reaches plan`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -79,6 +51,16 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   }
 
   @Test
+  fun `an implement receipt whose deviations are free-text strings blocks implement (RDN-29)`() {
+    val outcome = runRejectedProducer("implement", IMPLEMENT_DEVIATIONS_AS_STRINGS)
+
+    assertEquals(1, outcome.launchCount("implement"))
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "implementation_receipt", "deviations")
+    assertTrue(!outcome.launched("audit"))
+  }
+
+  @Test
   fun `leftover digest keys plus value complete preplan without producer-projection re-entry`() {
     val envelope = JsonSupport.anyToStringAnyMap(
       JsonSupport.jsonElementToValue(JsonSupport.parseObjectOrNull(PREPLAN_LEFTOVER_DIGEST_KEYS)!!),
@@ -90,16 +72,6 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
         planningProjectionValidator = realPlanningProjectionValidator,
       ),
     )
-  }
-
-  @Test
-  fun `an implement receipt whose deviations are free-text strings blocks implement (RDN-29)`() {
-    val outcome = runRejectedProducer("implement", IMPLEMENT_DEVIATIONS_AS_STRINGS)
-
-    assertEquals(1, outcome.launchCount("implement"))
-    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
-    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "implementation_receipt", "deviations")
-    assertTrue(!outcome.launched("audit"))
   }
 
   @Test
@@ -194,9 +166,9 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
   @Test
   fun `the private diagnostic carries the violated constraint the blocked reason withholds`() {
-    val outcome = runRejectedProducer("plan", PLAN_MISSING_PROJECTION_KIND)
+    val outcome = runRejectedProducer("implement", IMPLEMENT_DEVIATIONS_AS_STRINGS)
 
-    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "projection_kind is missing")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "deviations")
     assertTrue(
       !outcome.blocked.blockedReason.contains("projection_kind is missing"),
       "the operator surface points at the diagnostic instead of embedding the constraint",
@@ -206,11 +178,11 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   @Test
   fun `an oversized projection failure text is bounded by the existing schema-gate detail truncation`() {
     val longReason = "x".repeat(5_000)
-    var preplanAttempts = 0
+    var implementAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "preplan") preplanAttempts += 1
+        if (phaseId == "implement") implementAttempts += 1
         facts(validJsonOutput(phaseId))
       },
       agentAssignment = phasePerAgentAssignment(),
@@ -218,10 +190,13 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
         planningProjectionValidator = OversizedReasonPlanningProjectionValidator(longReason),
       ),
     )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertEquals(1, preplanAttempts)
+    assertEquals(1, implementAttempts)
+    assertEquals("implement", blocked.lastIncompletePhase)
     assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
     assertTrue(
       !blocked.blockedReason.contains("x".repeat(1_000)),
@@ -276,7 +251,7 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") PLAN_WITH_UNDECLARED_TOP_LEVEL_KEY else validJsonOutput(phaseId))
+        facts(if (phaseId == "implement") IMPLEMENT_WITH_UNDECLARED_TOP_LEVEL_KEY else validJsonOutput(phaseId))
       },
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
@@ -285,8 +260,8 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     harness.runner.run(harness.request())
 
     val launched = harness.launchedPromptPhaseOrder()
-    assertEquals(1, launched.count { it == "plan" }, "an absorbed extra key must not cost a fix-loop attempt")
-    assertTrue(launched.contains("implement"), "the absorbed plan must advance to its consumer")
+    assertEquals(1, launched.count { it == "implement" }, "an absorbed extra key must not cost a fix-loop attempt")
+    assertTrue(launched.contains("audit"), "the absorbed receipt must advance to its consumer")
     harness.launcher.requests.forEach { request ->
       assertNoRawResponseSpan(requireNotNull(request.skillRunRequest.promptOverride), "private body")
     }
@@ -294,14 +269,14 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
   @Test
   fun `a missing required field on a closed projection object names the required property`() {
-    val reason = realValidatorRejectionReason("plan", PLAN_TASK_MISSING_TEST_OBLIGATIONS)
+    val reason = realValidatorRejectionReason("implement", IMPLEMENT_MISSING_RECONCILIATION)
 
-    assertDiagnosticNamesConstraint(reason, "required property 'test_obligations' not found")
+    assertDiagnosticNamesConstraint(reason, "required property 'reconciliation_evidence' not found")
   }
 
   @Test
   fun `a wrong-typed field on a closed projection object names the found and expected types`() {
-    val reason = realValidatorRejectionReason("plan", PLAN_TASKS_AS_STRING)
+    val reason = realValidatorRejectionReason("implement", IMPLEMENT_CHANGED_PATHS_AS_STRING)
 
     assertDiagnosticNamesConstraint(reason, "string found, array expected")
   }
@@ -406,24 +381,28 @@ private fun terminalProducerOutput(phaseId: String, status: String): String {
     """"free_form":"not a projection"$reconciled}}"""
 }
 
-private val PLAN_MISSING_PROJECTION_KIND: String = envelope(
-  "plan",
-  """{"contract_version":"0.1","mode":"direct","tasks":[{"task_id":"task-1","description":"t",""" +
-    """"criterion_refs":["AC-001"],"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
+private val IMPLEMENT_WITH_UNDECLARED_TOP_LEVEL_KEY: String = envelope(
+  "implement",
+  """{"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
+    """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
+    """"reconciliation_evidence":{"reconciled":true,"evidence":"Tree at target."},""" +
+    """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true},""" +
+    """"smuggled_narration":"private body"}""",
 )
 
-private val PLAN_WRONG_CONTRACT_VERSION: String = envelope(
-  "plan",
-  """{"projection_kind":"executable_plan","contract_version":"0.0","mode":"direct",""" +
-    """"tasks":[{"task_id":"task-1","description":"t","criterion_refs":["AC-001"],""" +
-    """"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
+private val IMPLEMENT_MISSING_RECONCILIATION: String = envelope(
+  "implement",
+  """{"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
+    """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
+    """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true}}""",
 )
 
-private val PLAN_UNDECLARED_DEPENDENCY: String = envelope(
-  "plan",
-  """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
-    """"tasks":[{"task_id":"task-1","depends_on":["task-ghost"],"description":"t",""" +
-    """"criterion_refs":["AC-001"],"test_obligations":["parity"]}],"validation_strategy":["v"]}""",
+private val IMPLEMENT_CHANGED_PATHS_AS_STRING: String = envelope(
+  "implement",
+  """{"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
+    """"changed_paths":"src/Foo.kt","tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
+    """"reconciliation_evidence":{"reconciled":true,"evidence":"Tree at target."},""" +
+    """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true}}""",
 )
 
 private val PREPLAN_MISSING_VALUE: String = envelope(
@@ -446,7 +425,7 @@ private val IMPLEMENT_DECOMPOSE_SHAPED: String = envelope(
 
 private val IMPLEMENT_INVENTED_CHECKPOINT: String = envelope(
   "implement",
-  """{"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
+  """{"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
     """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
     """"reconciliation_evidence":{"reconciled":true,"evidence":"Tree at target."},""" +
     """"repository_checkpoint":{"fingerprint":"tracked_diff=deadbeef;new_service=deadbeef;status=deadbeef"},""" +
@@ -455,7 +434,7 @@ private val IMPLEMENT_INVENTED_CHECKPOINT: String = envelope(
 
 private val IMPLEMENT_DEVIATIONS_AS_STRINGS: String = envelope(
   "implement",
-  """{"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
+  """{"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
     """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
     """"deviations":["free-text deviation instead of a ref and note object"],""" +
     """"reconciliation_evidence":{"reconciled":true,"evidence":"Tree at target."},""" +
@@ -473,31 +452,11 @@ private val VALIDATION_CHECKPOINT_AS_STRING: String = envelope(
 // SKILL-152 AC-009 fixtures: one per closed-object rejection class, each otherwise conforming so the
 // asserted constraint is the only violation the schema reports.
 
-private val PLAN_WITH_UNDECLARED_TOP_LEVEL_KEY: String = envelope(
-  "plan",
-  """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
-    """"tasks":[{"task_id":"task-1","description":"t","criterion_refs":["AC-001"],""" +
-    """"test_obligations":["parity"]}],"validation_strategy":["v"],"smuggled_narration":"private body"}""",
-)
-
-private val PLAN_TASK_MISSING_TEST_OBLIGATIONS: String = envelope(
-  "plan",
-  """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
-    """"tasks":[{"task_id":"task-1","description":"t","criterion_refs":["AC-001"]}],""" +
-    """"validation_strategy":["v"]}""",
-)
-
-private val PLAN_TASKS_AS_STRING: String = envelope(
-  "plan",
-  """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
-    """"tasks":"task-1 does the work","validation_strategy":["v"]}""",
-)
-
 // reconciled_state stays true so the separate mutating-phase reconciliation gate passes and the receipt
 // actually reaches the projection gate, where `reconciled` is const:true and rejects.
 private val RECEIPT_ASSERTING_UNRECONCILED: String = envelope(
   "implement",
-  """{"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
+  """{"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
     """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
     """"reconciliation_evidence":{"reconciled":false,"evidence":"Work is unfinished."},""" +
     """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true}}""",

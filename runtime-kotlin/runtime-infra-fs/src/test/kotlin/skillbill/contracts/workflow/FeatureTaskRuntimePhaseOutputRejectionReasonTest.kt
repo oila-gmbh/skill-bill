@@ -16,7 +16,7 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
     val offendingValue = "totally-done-trust-me"
     val envelope =
       """{"contract_version":"0.4","phase_id":"plan","status":"$offendingValue",""" +
-        """"summary":"Plan output.","produced_outputs":{"tasks":["task-1"]}}"""
+        """"summary":"Plan output.","produced_outputs":{"value":"Plan prose."}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "plan")
@@ -41,7 +41,7 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
     // Two violations at once, so the multi-violation join is covered in both renderings.
     val envelope =
       """{"contract_version":"9.9","phase_id":"plan","status":"nope",""" +
-        """"summary":"Plan output.","produced_outputs":{"tasks":["task-1"]}}"""
+        """"summary":"Plan output.","produced_outputs":{"value":"Plan prose."}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "plan")
@@ -60,7 +60,7 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
   fun `a phase_id mismatch names the expected phase without echoing the produced one`() {
     val envelope =
       """{"contract_version":"0.4","phase_id":"implement-but-lying","status":"completed",""" +
-        """"summary":"Plan output.","produced_outputs":{"tasks":["task-1"]}}"""
+        """"summary":"Plan output.","produced_outputs":{"value":"Plan prose."}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "plan")

@@ -1865,17 +1865,17 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `a plan child that first emits empty test_obligations relaunches once and checkpoints only the valid plan`() {
-    // The SKILL-141 escape, at the goal-side producer: `plan` completed with tasks[].test_obligations
-    // empty. The gate rejects it producer-side and the phase re-enters its own bounded fix loop, so the
-    // remediation prompt — not the consumer — carries the validation detail.
+  fun `a plan child that first omits value relaunches once and checkpoints only the valid plan`() {
     var planAttempts = 0
-    val harness = sweepHarness(planningProjectionValidator = realPlanningProjectionValidator) { phase, _, _ ->
+    val harness = sweepHarness(
+      outputValidator = realFeatureTaskRuntimePhaseOutputValidator,
+      planningProjectionValidator = realPlanningProjectionValidator,
+    ) { phase, _, _ ->
       if (phase != "plan") {
         validPhaseOutcome(phase)
       } else {
         planAttempts += 1
-        if (planAttempts == 1) launchFacts(stdout = emptyTestObligationsPlanPayload()) else validPhaseOutcome(phase)
+        if (planAttempts == 1) launchFacts(stdout = missingValuePlanPayload()) else validPhaseOutcome(phase)
       }
     }
 
@@ -1885,13 +1885,13 @@ class GoalPlanningSweepTest {
     assertEquals(2, planAttempts, "the invalid plan must relaunch exactly once before the valid one settles")
     val retryPrompt = harness.launcher.requests.last().skillRunRequest.promptOverride.orEmpty()
     assertTrue(
-      retryPrompt.contains("test_obligations"),
-      "the relaunch prompt must carry the projection validation detail as priorSchemaFailure",
+      retryPrompt.contains("value"),
+      "the relaunch prompt must carry the phase-output validation detail as priorSchemaFailure",
     )
     val record = assertNotNull(harness.recordFor(1))
     assertFalse(
-      record.planPayload.contains(""""test_obligations":[]"""),
-      "only the projection-valid plan may be checkpointed",
+      record.planPayload.contains(""""prompt":"optional only""""),
+      "only the phase-output-valid plan may be checkpointed",
     )
   }
 
@@ -1900,6 +1900,7 @@ class GoalPlanningSweepTest {
     val attempts = mutableListOf<String>()
     var launchCount = 0
     val harness = sweepHarness(
+      outputValidator = realFeatureTaskRuntimePhaseOutputValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
       planningAttemptRecorder = GoalPlanningAttemptRecorder { record ->
         if (record.eventKind == GoalProgressEventKind.OPERATION_COMPLETED) {
@@ -1909,7 +1910,7 @@ class GoalPlanningSweepTest {
     ) { phase, _, _ ->
       launchCount += 1
       if (phase == "plan" && launchCount == 2) {
-        launchFacts(stdout = emptyTestObligationsPlanPayload())
+        launchFacts(stdout = missingValuePlanPayload())
       } else {
         validPhaseOutcome(phase)
       }
@@ -2063,12 +2064,10 @@ class GoalPlanningSweepTest {
   }
 }
 
-private fun emptyTestObligationsPlanPayload(): String =
+private fun missingValuePlanPayload(): String =
   """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"plan",""" +
     """"status":"completed","summary":"s","produced_outputs":""" +
-    """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{""" +
-    """"task_id":"task-1","description":"Fixture task.","criterion_refs":["AC-001"],""" +
-    """"test_obligations":[]}],"validation_strategy":["Focused runtime tests."]}}"""
+    """{"prompt":"optional only"}}"""
 
 private const val RAW_REPAIRED_PREPLAN = "raw preplan repaired before enrichment"
 

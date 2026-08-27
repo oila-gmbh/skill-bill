@@ -2025,7 +2025,7 @@ private class RecordingPhaseLauncher(
         "audit" -> "gaps: []"
         "verify_findings" -> "finding_dispositions: []"
         "preplan" -> PREPLAN_DIGEST_OUTPUTS
-        "plan" -> EXECUTABLE_PLAN_OUTPUTS
+        "plan" -> PLAN_PROSE_OUTPUTS
         "implement" -> IMPLEMENTATION_RECEIPT_OUTPUTS
         "validate" -> VALIDATION_RESULT_OUTPUTS
         "write_history" -> HISTORY_RESULT_OUTPUTS
@@ -2054,14 +2054,11 @@ private class RecordingPhaseLauncher(
     private const val PREPLAN_DIGEST_OUTPUTS: String =
       """{value: "Fixture preplan prose for downstream plan."}"""
 
-    private const val EXECUTABLE_PLAN_OUTPUTS: String =
-      """{projection_kind: "executable_plan", contract_version: "0.1", mode: "direct", tasks: [{task_id: "task-1", """ +
-        """description: "Fixture task.", criterion_refs: ["AC-001"], """ +
-        """target_paths_or_symbols: ["src/Foo.kt"], test_obligations: ["Focused test."]}], """ +
-        """validation_strategy: ["Focused runtime tests."]}"""
+    private const val PLAN_PROSE_OUTPUTS: String =
+      """{value: "Fixture plan prose for downstream implement and audit."}"""
 
     private const val IMPLEMENTATION_RECEIPT_OUTPUTS: String =
-      """{projection_kind: "implementation_receipt", contract_version: "0.1", completed_task_ids: ["task-1"], """ +
+      """{projection_kind: "implementation_receipt", contract_version: "0.2", completed_task_ids: ["task-1"], """ +
         """changed_paths: ["src/Foo.kt"], tests_executed: [{name: "FooTest", outcome: "passed"}], """ +
         """reconciliation_evidence: {reconciled: true, evidence: "Fixture tree at target state."}, """ +
         """repository_checkpoint: {fingerprint: "fixture-checkpoint-1"}, """ +
@@ -2092,37 +2089,40 @@ private class RecordingPhaseLauncher(
         "status": "completed",
         "summary": "Plan needs ordered subtasks.",
         "produced_outputs": {
-          "mode": "decompose",
-          "reason": "Plan needs ordered subtasks.",
-          "feature_name": "runtime cli decomposition",
-          "parent_spec_overview": "Split the CLI runtime work into ordered subtasks.",
-          "validation_strategy": "bill-code-check",
-          "base_branch": "main",
-          "feature_branch": "feat/SKILL-650-runtime-cli-decomposition",
-          "subtasks": [
-            {
-              "id": 1,
-              "name": "first",
-              "scope": "First subtask.",
-              "acceptance_criteria": ["First criterion."],
-              "non_goals": [],
-              "dependency_notes": "First.",
-              "validation_strategy": "unit tests",
-              "next_path": "Work subtask 2.",
-              "depends_on": []
-            },
-            {
-              "id": 2,
-              "name": "second",
-              "scope": "Second subtask.",
-              "acceptance_criteria": ["Second criterion."],
-              "non_goals": [],
-              "dependency_notes": "Depends on first.",
-              "validation_strategy": "unit tests",
-              "next_path": "Finish.",
-              "depends_on": [1]
-            }
-          ]
+          "value": "Decompose into ordered subtasks.",
+          "decomposition_package": {
+            "mode": "decompose",
+            "reason": "Plan needs ordered subtasks.",
+            "feature_name": "runtime cli decomposition",
+            "parent_spec_overview": "Split the CLI runtime work into ordered subtasks.",
+            "validation_strategy": "bill-code-check",
+            "base_branch": "main",
+            "feature_branch": "feat/SKILL-650-runtime-cli-decomposition",
+            "subtasks": [
+              {
+                "id": 1,
+                "name": "first",
+                "scope": "First subtask.",
+                "acceptance_criteria": ["First criterion."],
+                "non_goals": [],
+                "dependency_notes": "First.",
+                "validation_strategy": "unit tests",
+                "next_path": "Work subtask 2.",
+                "depends_on": []
+              },
+              {
+                "id": 2,
+                "name": "second",
+                "scope": "Second subtask.",
+                "acceptance_criteria": ["Second criterion."],
+                "non_goals": [],
+                "dependency_notes": "Depends on first.",
+                "validation_strategy": "unit tests",
+                "next_path": "Finish.",
+                "depends_on": [1]
+              }
+            ]
+          }
         }
       }
     """.trimIndent()

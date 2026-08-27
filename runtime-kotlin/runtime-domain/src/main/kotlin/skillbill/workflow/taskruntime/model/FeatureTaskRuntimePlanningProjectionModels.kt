@@ -8,22 +8,6 @@ import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
-/**
- * Typed models for the three concrete bounded planning projections (executable plan, plan commitment,
- * implementation receipt). Each is closed and immutable, parses the producing phase's
- * schema-validated `produced_outputs`, and renders the exact field set a consumer projection delivers —
- * never the producing phase's complete envelope, narration, presentation summary, progress diagnostics,
- * or raw source.
- *
- * Field-name constants ([DECLARED_FIELD_NAMES]) are the single source a handoff declaration references, so
- * the delivered projection shape and the declared shape cannot drift.
- */
-
-/**
- * Closed family of the three bounded planning projections.
- * so a consumer narrows with an exhaustive `when` and a producer/declaration kind mismatch surfaces as
- * a typed rejection instead of a raw `ClassCastException` at the launch seam.
- */
 sealed interface FeatureTaskRuntimePlanningProjection {
   val projectionKind: FeatureTaskRuntimeProjectionKind
 
@@ -31,8 +15,6 @@ sealed interface FeatureTaskRuntimePlanningProjection {
 }
 
 enum class FeatureTaskRuntimeProjectionKind(val wireValue: String) {
-  EXECUTABLE_PLAN("executable_plan"),
-  PLAN_COMMITMENT("plan_commitment"),
   IMPLEMENTATION_RECEIPT("implementation_receipt"),
   ;
 
@@ -46,225 +28,26 @@ enum class FeatureTaskRuntimeProjectionKind(val wireValue: String) {
 }
 
 object FeatureTaskRuntimePlanningProjectionContract {
-  const val EXECUTABLE_PLAN_ID: String = "feature_task_runtime.executable_plan"
-  const val PLAN_COMMITMENT_ID: String = "feature_task_runtime.plan_commitment"
   const val IMPLEMENTATION_RECEIPT_ID: String = "feature_task_runtime.implementation_receipt"
   const val SHARED_REVIEW_EVIDENCE_ID: String = "feature_task_runtime.shared_review_evidence"
   val VERSION: String = FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 
-  /**
-   * The projection kind [phaseId] must emit when it completes, or null when the phase feeds no planning
-   * projection edge. Routing only: every field, type, budget, and cross-field rule stays inside
-   * [featureTaskRuntimePlanningProjectionFromEnvelope], so the producer gate, the launch-seam parse, and
-   * the parity test between them read one source and cannot diverge on what a phase owes.
-   *
-   * [FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT] is absent by construction: audit's commitment is
-   * derived from the executable plan through [FeatureTaskRuntimeExecutablePlan.toPlanCommitment], never
-   * produced by a phase, so gating a phase against it would demand a shape no producer emits.
-   */
   fun producedProjectionKindFor(phaseId: String): FeatureTaskRuntimeProjectionKind? = when (phaseId) {
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT ->
       FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
     else -> null
   }
 }
 
-// Repository-relative path: no leading slash, no backslash, no `..` segment. Mirrors the schema `repoPath`
-// $def and review-context-schema.yaml's `path` $def so normalization is identical everywhere.
 private val REPO_PATH_PATTERN = Regex("^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$")
 private val TASK_ID_PATTERN = Regex("^[a-z][a-z0-9-]*$")
 private const val REPO_PATH_MAX_LENGTH: Int = 1024
 private const val TEXT_MAX_LENGTH: Int = 4096
 
-/**
- * Entry cap for an ordinary projection list. The schema carries the same number as `maxItems` and
- * [FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION] sums these caps, so a schema-valid
- * projection can never overflow the item budget it is delivered under.
- */
 const val FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT: Int = 128
 
-/** changed_paths is the one list sized for a large feature's file inventory rather than a summary. */
 const val FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT: Int = 512
 
-enum class FeatureTaskRuntimePlanMode(val wireValue: String) {
-  DIRECT("direct"),
-  DECOMPOSE("decompose"),
-  ;
-
-  companion object {
-    fun fromWire(value: String): FeatureTaskRuntimePlanMode = entries.firstOrNull { it.wireValue == value }
-      ?: throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-        sourceLabel = "<mode>",
-        reason = "unknown executable_plan mode '$value'; expected direct or decompose.",
-      )
-  }
-}
-
-/**
- * The executable plan `implement` receives from `plan` (AC-005). Carries stable ordered task ids,
- * dependencies (validated acyclic), descriptions, criterion refs, target paths/symbols, test
- * obligations, constraints, and validation strategy. Excludes planning narration, presentation summary,
- * and generic producer summary. Decomposition data is forbidden under DIRECT (AC-015): a DECOMPOSE plan
- * stays private to the preparation/goal boundary and never reaches implementation.
- */
-data class FeatureTaskRuntimeExecutablePlan(
-  val mode: FeatureTaskRuntimePlanMode,
-  val tasks: List<FeatureTaskRuntimePlanTask>,
-  val validationStrategy: List<String>,
-  val decompositionSubtaskCount: Int? = null,
-  val decompositionManifestRef: String? = null,
-) : FeatureTaskRuntimePlanningProjection {
-  override val projectionKind: FeatureTaskRuntimeProjectionKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
-
-  init {
-    require(tasks.isNotEmpty()) { "FeatureTaskRuntimeExecutablePlan.tasks must contain at least one task." }
-    requireListSize(tasks.size, "tasks")
-    val ids = tasks.map { it.taskId }
-    require(ids.distinct().size == ids.size) {
-      "FeatureTaskRuntimeExecutablePlan task ids must be unique, duplicated ${ids.duplicates()}."
-    }
-    requireAcyclicTasks(tasks)
-    requireNonBlankStrings(validationStrategy, "validation_strategy")
-    require(mode == FeatureTaskRuntimePlanMode.DIRECT || decompositionSubtaskCount != null) {
-      "FeatureTaskRuntimeExecutablePlan: decomposition_subtask_count is required under DECOMPOSE mode."
-    }
-  }
-
-  override fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
-    field(FIELD_MODE, FeatureTaskRuntimeHandoffProjectionValue.Text(mode.wireValue)),
-    field(FIELD_TASKS, FeatureTaskRuntimeHandoffProjectionValue.TextList(tasks.map { it.toBriefingLine() })),
-    field(FIELD_VALIDATION_STRATEGY, FeatureTaskRuntimeHandoffProjectionValue.TextList(validationStrategy)),
-  )
-
-  /** The bounded commitment forwarded to audit: task/criterion/test obligations only (AC-011). */
-  fun toPlanCommitment(): FeatureTaskRuntimePlanCommitment = FeatureTaskRuntimePlanCommitment(
-    taskCommitments = tasks.map { task ->
-      FeatureTaskRuntimeTaskCommitment(
-        taskId = task.taskId,
-        criterionRefs = task.criterionRefs,
-        testObligations = task.testObligations,
-        constraints = task.constraints,
-      )
-    },
-  )
-
-  companion object {
-    val DECLARED_FIELD_NAMES: List<String> = listOf(FIELD_MODE, FIELD_TASKS, FIELD_VALIDATION_STRATEGY)
-    const val FIELD_MODE: String = "mode"
-    const val FIELD_TASKS: String = "tasks"
-    const val FIELD_VALIDATION_STRATEGY: String = "validation_strategy"
-  }
-}
-
-data class FeatureTaskRuntimePlanTask(
-  val taskId: String,
-  val dependsOn: List<String> = emptyList(),
-  val description: String,
-  val criterionRefs: List<String>,
-  val targetPathsOrSymbols: List<String> = emptyList(),
-  val testObligations: List<String>,
-  val constraints: List<String> = emptyList(),
-) {
-  init {
-    require(TASK_ID_PATTERN.matches(taskId)) {
-      "FeatureTaskRuntimePlanTask.taskId must match ${TASK_ID_PATTERN.pattern}, was '$taskId'."
-    }
-    require(description.isNotBlank()) { "FeatureTaskRuntimePlanTask.description must be non-blank." }
-    require(description.length <= TEXT_MAX_LENGTH) {
-      "FeatureTaskRuntimePlanTask.description exceeds $TEXT_MAX_LENGTH chars."
-    }
-    requireNonBlankStrings(criterionRefs, "criterion_refs")
-    criterionRefs.forEach { requireCriterionRef(it) }
-    requireNonBlankStrings(testObligations, "test_obligations")
-    requireNonBlankStrings(constraints, "constraints")
-    requireNonBlankStrings(targetPathsOrSymbols, "target_paths_or_symbols")
-    requireListSize(dependsOn.size, "depends_on")
-    dependsOn.forEach { dependency ->
-      require(TASK_ID_PATTERN.matches(dependency)) {
-        "FeatureTaskRuntimePlanTask.dependsOn entry '$dependency' must match ${TASK_ID_PATTERN.pattern}."
-      }
-    }
-  }
-
-  fun toBriefingLine(): String = buildString {
-    append(taskId)
-    if (dependsOn.isNotEmpty()) append(" [depends: ${dependsOn.joinToString(",")}]")
-    append(" ${criterionRefs.joinToString(",")}: $description")
-    if (targetPathsOrSymbols.isNotEmpty()) append(" | targets: ${targetPathsOrSymbols.joinToString(", ")}")
-    append(" | tests: ${testObligations.joinToString("; ")}")
-    if (constraints.isNotEmpty()) append(" | constraints: ${constraints.joinToString("; ")}")
-  }
-
-  companion object {
-    /**
-     * Recovers the task id from a line [toBriefingLine] produced. The id is always the leading token
-     * and matches [TASK_ID_PATTERN], which admits neither spaces nor brackets, so this is exact
-     * rather than a best-effort parse — it is what lets the completion gate read the authoritative
-     * planned task ids back out of the DELIVERED executable-plan projection instead of trusting the
-     * implementing agent's own envelope. A line that does not start with a well-formed id yields
-     * null so the caller can loud-fail rather than invent an obligation.
-     */
-    fun taskIdFromBriefingLine(line: String): String? = line.substringBefore(' ').takeIf(TASK_ID_PATTERN::matches)
-  }
-}
-
-/**
- * Bounded subset of the executable plan delivered to `audit` (AC-011): task/criterion/test obligations
- * only. No description, target paths, narration, presentation summary, or validation strategy.
- */
-data class FeatureTaskRuntimePlanCommitment(
-  val taskCommitments: List<FeatureTaskRuntimeTaskCommitment>,
-) : FeatureTaskRuntimePlanningProjection {
-  override val projectionKind: FeatureTaskRuntimeProjectionKind = FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT
-
-  init {
-    require(taskCommitments.isNotEmpty()) { "FeatureTaskRuntimePlanCommitment.taskCommitments must be non-empty." }
-    requireListSize(taskCommitments.size, "task_commitments")
-    val ids = taskCommitments.map { it.taskId }
-    require(ids.distinct().size == ids.size) {
-      "FeatureTaskRuntimePlanCommitment task ids must be unique, duplicated ${ids.duplicates()}."
-    }
-  }
-
-  override fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
-    field(
-      FIELD_TASK_COMMITMENTS,
-      FeatureTaskRuntimeHandoffProjectionValue.TextList(taskCommitments.map { it.toBriefingLine() }),
-    ),
-  )
-
-  companion object {
-    val DECLARED_FIELD_NAMES: List<String> = listOf(FIELD_TASK_COMMITMENTS)
-    const val FIELD_TASK_COMMITMENTS: String = "task_commitments"
-  }
-}
-
-data class FeatureTaskRuntimeTaskCommitment(
-  val taskId: String,
-  val criterionRefs: List<String>,
-  val testObligations: List<String>,
-  val constraints: List<String> = emptyList(),
-) {
-  init {
-    require(TASK_ID_PATTERN.matches(taskId)) {
-      "FeatureTaskRuntimeTaskCommitment.taskId must match ${TASK_ID_PATTERN.pattern}, was '$taskId'."
-    }
-    requireNonBlankStrings(criterionRefs, "criterion_refs")
-    criterionRefs.forEach { requireCriterionRef(it) }
-    requireNonBlankStrings(testObligations, "test_obligations")
-    requireNonBlankStrings(constraints, "constraints")
-  }
-
-  fun toBriefingLine(): String = "$taskId ${criterionRefs.joinToString(",")}: ${testObligations.size} obligation(s)"
-}
-
-/**
- * The producer claim `audit` receives from `implement` (AC-008/009). A receipt is a CLAIM, not proof:
- * audit regenerates or reads the exact repository diff/state for the checkpoint and compares (AC-010).
- * Changed paths are normalized, unique, and count-bounded; tests_executed (name+outcome) are distinct
- * from the tests_added/tests_updated identifier lists.
- */
 data class FeatureTaskRuntimeImplementationReceipt(
   val completedTaskIds: List<String>,
   val changedPaths: List<String>,
@@ -353,17 +136,6 @@ data class FeatureTaskRuntimeImplementationReceipt(
   }
 }
 
-/**
- * Renders one open-work entry to the bounded line every consumer of `unresolved_items` reads.
- *
- * A bare string passes through; the `{ ref, note }` pair renders to the same "ref: note" line the
- * deviations projection emits, so the two shapes an agent may author converge on one representation
- * before anything downstream sees them. Returns null only for a value that carries no readable text.
- *
- * This is the ONE rendering rule: the receipt's `fromMap` and the terminal path's claim parser both
- * call it, so a shape legal on one path can never be fatal on the other — the asymmetry that made an
- * object-valued entry pass the blocked path and exhaust the fix loop on the completed one.
- */
 fun featureTaskRuntimeRenderOpenWorkItem(value: Any?): String? = when (value) {
   null -> null
   is String -> value.trim().takeIf(String::isNotBlank)
@@ -374,9 +146,6 @@ fun featureTaskRuntimeRenderOpenWorkItem(value: Any?): String? = when (value) {
       ref.isNotBlank() && note.isNotBlank() -> "$ref: $note"
       ref.isNotBlank() -> ref
       note.isNotBlank() -> note
-      // Never null for a populated object: an entry the schema would refuse is still an open-work
-      // signal on the terminal path, and dropping it there would hand a 'completed' status the escape
-      // the completion gate exists to close. The schema refuses it on the completed path instead.
       else -> value.toString().trim().takeIf(String::isNotBlank)
     }
   }
@@ -458,12 +227,6 @@ private fun requireRepoPath(value: String, field: String) {
   }
 }
 
-private fun requireCriterionRef(value: String) {
-  require(value.matches(Regex("^AC-[0-9]{3}$"))) {
-    "criterion_ref '$value' must match AC-###."
-  }
-}
-
 private fun requireChangedPaths(paths: List<String>) {
   requireListSize(paths.size, "changed_paths", FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT)
   val duplicates = paths.groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
@@ -471,51 +234,9 @@ private fun requireChangedPaths(paths: List<String>) {
   paths.forEach { requireRepoPath(it, "changed_paths entry") }
 }
 
-private fun requireAcyclicTasks(tasks: List<FeatureTaskRuntimePlanTask>) {
-  val byId = tasks.associateBy { it.taskId }
-  val visiting = mutableSetOf<String>()
-  val visited = mutableSetOf<String>()
-  fun visit(id: String) {
-    if (id in visited) return
-    val task = byId[id] ?: throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-      sourceLabel = "<tasks.depends_on>",
-      reason = "task '$id' is referenced as a dependency but is not declared.",
-    )
-    require(visiting.add(id)) { "Plan task dependencies must be acyclic (cycle at '$id')." }
-    task.dependsOn.forEach { dependency ->
-      if (dependency !in byId) {
-        throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-          sourceLabel = "<tasks.depends_on>",
-          reason = "task '$id' depends on undeclared task '$dependency'.",
-        )
-      }
-      visit(dependency)
-    }
-    visiting.remove(id)
-    visited.add(id)
-  }
-  byId.keys.forEach(::visit)
-}
-
 private fun List<String>.duplicates(): List<String> =
   groupingBy { it }.eachCount().filterValues { it > 1 }.keys.sorted()
 
-/**
- * Parses a producing phase's `produced_outputs` into the typed planning projection the consumer's
- * declaration asked for. The whole producing envelope may be passed; only `produced_outputs` is read.
- *
- * Four gates run before any field is read, in order: the producer's `projection_kind` must be the
- * [expectedKind] the consuming declaration names (so a kind/contract mismatch is a typed rejection,
- * not a cast failure downstream), `contract_version` must equal the pinned schema version, the
- * canonical Draft 2020-12 schema must accept the payload through [schemaValidator] (this is what
- * enforces `additionalProperties:false`, the anti-paste patterns, and `uniqueItems` at runtime), and
- * only then do the typed cross-field rules run.
- *
- * Every failure — including a `require` inside a model's `init` — leaves this function as
- * [InvalidFeatureTaskRuntimePlanningProjectionSchemaError], so callers have exactly one exception type
- * to handle and a legacy free-form payload loud-fails rather than aborting the driver with an
- * unhandled [IllegalArgumentException].
- */
 @OpenBoundaryMap("Feature-task-runtime planning projection parse from the schema-validated phase-output wire map")
 fun featureTaskRuntimePlanningProjectionFromEnvelope(
   envelope: Map<String, Any?>,
@@ -526,35 +247,12 @@ fun featureTaskRuntimePlanningProjectionFromEnvelope(
   featureTaskRuntimePlanningProjectionParseFromEnvelope(envelope, producingPhaseId, expectedKind, schemaValidator)
     .projection
 
-/**
- * The projection plus the bounded canonicalizations applied to reach it. The one-value overload above
- * stays source-compatible for callers that only need the projection; this overload exposes the typed
- * diagnostics for later telemetry pickup without duplicating the parse.
- */
 internal data class FeatureTaskRuntimePlanningProjectionParse(
   val projection: FeatureTaskRuntimePlanningProjection,
   val canonicalizations: List<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
 )
 
-/**
- * Parses a producing phase's `produced_outputs` into the typed planning projection the consumer's
- * declaration asked for, returning the applied canonicalizations alongside it. The whole producing
- * envelope may be passed; only `produced_outputs` is read.
- *
- * Gates run in order before any field is read: the producer's `projection_kind` must be the
- * [expectedKind] the consuming declaration names, `contract_version` must equal the pinned schema
- * version, the payload is then canonicalized (id casing/separators, compact-summary line-break/backtick
- * trivia, nonBlank trims) so the fix loop is spent on structure not spelling, the canonical map is
- * validated against the canonical Draft 2020-12 schema through [schemaValidator], and only then do the
- * typed cross-field rules run on that same canonical map. Canonicalization lives here alone, so the
- * producer gate and the launch-seam parse observe identical behavior.
- *
- * Every failure — including a `require` inside a model's `init` — leaves this function as
- * [InvalidFeatureTaskRuntimePlanningProjectionSchemaError], so callers have exactly one exception type
- * to handle and a legacy free-form payload loud-fails rather than aborting the driver with an
- * unhandled [IllegalArgumentException].
- */
-@Suppress("ThrowsCount") // one rejection per gate; collapsing them would blur the operator diagnosis
+@Suppress("ThrowsCount")
 internal fun featureTaskRuntimePlanningProjectionParseFromEnvelope(
   envelope: Map<String, Any?>,
   producingPhaseId: String,
@@ -586,8 +284,6 @@ internal fun featureTaskRuntimePlanningProjectionParseFromEnvelope(
   schemaValidator.validatePlanningProjection(canonical, sourceLabel)
   return try {
     val projection = when (expectedKind) {
-      FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN -> FeatureTaskRuntimeExecutablePlan.fromMap(canonical)
-      FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT -> FeatureTaskRuntimePlanCommitment.fromMap(canonical)
       FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT ->
         FeatureTaskRuntimeImplementationReceipt.fromMap(canonical)
     }
@@ -601,8 +297,6 @@ internal fun featureTaskRuntimePlanningProjectionParseFromEnvelope(
   }
 }
 
-// A bump must loud-fail a legacy durable record rather than reinterpret its fields under new
-// semantics, so an absent or mismatched version is a rejection, never a default.
 private fun requirePinnedContractVersion(produced: Map<String, Any?>, sourceLabel: String) {
   val version = produced["contract_version"]?.toString()
   if (version != FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION) {
@@ -614,65 +308,7 @@ private fun requirePinnedContractVersion(produced: Map<String, Any?>, sourceLabe
   }
 }
 
-@Suppress("ThrowsCount") // one malformed-field rejection per required field; collapsing would blur the diagnosis
-private fun FeatureTaskRuntimeExecutablePlan.Companion.fromMap(
-  map: Map<String, Any?>,
-): FeatureTaskRuntimeExecutablePlan {
-  val mode = FeatureTaskRuntimePlanMode.fromWire(map["mode"]?.toString().orEmpty())
-  val rawTasks = map["tasks"] as? List<*>
-    ?: throw malformed("tasks", "must be a list")
-  val tasks = rawTasks.mapIndexed { index, raw ->
-    val taskMap = (raw as? Map<*, *>)?.entries?.filter { it.key is String }
-      ?.associate { it.key as String to it.value }
-      ?: throw malformed("tasks[$index]", "must be an object")
-    FeatureTaskRuntimePlanTask(
-      taskId = taskMap.requireString("task_id", "tasks[$index].task_id"),
-      dependsOn = taskMap.optionalStringList("depends_on"),
-      description = taskMap.requireString("description", "tasks[$index].description"),
-      criterionRefs = taskMap.optionalStringList("criterion_refs").ifEmpty {
-        throw malformed("tasks[$index].criterion_refs", "must contain at least one AC-### ref")
-      },
-      targetPathsOrSymbols = taskMap.optionalStringList("target_paths_or_symbols"),
-      testObligations = taskMap.optionalStringList("test_obligations").ifEmpty {
-        throw malformed("tasks[$index].test_obligations", "must contain at least one entry")
-      },
-      constraints = taskMap.optionalStringList("constraints"),
-    )
-  }
-  return FeatureTaskRuntimeExecutablePlan(
-    mode = mode,
-    tasks = tasks,
-    validationStrategy = map.requireStringList("validation_strategy"),
-    decompositionSubtaskCount = (map["decomposition_subtask_count"] as? Number)?.toInt(),
-    decompositionManifestRef = map["decomposition_manifest_ref"]?.toString()?.takeIf(String::isNotBlank),
-  )
-}
-
-@Suppress("ThrowsCount") // one malformed-field rejection per required field; collapsing would blur the diagnosis
-private fun FeatureTaskRuntimePlanCommitment.Companion.fromMap(
-  map: Map<String, Any?>,
-): FeatureTaskRuntimePlanCommitment {
-  val rawCommitments = map["task_commitments"] as? List<*>
-    ?: throw malformed("task_commitments", "must be a list")
-  val commitments = rawCommitments.mapIndexed { index, raw ->
-    val commitmentMap = (raw as? Map<*, *>)?.entries?.filter { it.key is String }
-      ?.associate { it.key as String to it.value }
-      ?: throw malformed("task_commitments[$index]", "must be an object")
-    FeatureTaskRuntimeTaskCommitment(
-      taskId = commitmentMap.requireString("task_id", "task_commitments[$index].task_id"),
-      criterionRefs = commitmentMap.optionalStringList("criterion_refs").ifEmpty {
-        throw malformed("task_commitments[$index].criterion_refs", "must contain at least one AC-### ref")
-      },
-      testObligations = commitmentMap.optionalStringList("test_obligations").ifEmpty {
-        throw malformed("task_commitments[$index].test_obligations", "must contain at least one entry")
-      },
-      constraints = commitmentMap.optionalStringList("constraints"),
-    )
-  }
-  return FeatureTaskRuntimePlanCommitment(taskCommitments = commitments)
-}
-
-@Suppress("ThrowsCount") // one malformed-field rejection per required field; collapsing would blur the diagnosis
+@Suppress("ThrowsCount")
 private fun FeatureTaskRuntimeImplementationReceipt.Companion.fromMap(
   map: Map<String, Any?>,
 ): FeatureTaskRuntimeImplementationReceipt {
@@ -726,20 +362,6 @@ private fun FeatureTaskRuntimeImplementationReceipt.Companion.fromMap(
   )
 }
 
-/**
- * The phase-neutral shared review evidence artifact, delivered as a reference rather than as content.
- *
- * Deliberately not a [FeatureTaskRuntimePlanningProjection]: that family is parsed from a producing
- * phase's schema-validated `produced_outputs`, and no phase produces this. It is derived by the runtime
- * from the repository at a checkpoint, so it has no producer envelope to parse and no
- * [FeatureTaskRuntimeProjectionKind] a phase could be gated against.
- *
- * Every field is a locator or a bounded index; no field can hold diff text. [fileHunkIndex] carries one
- * entry per changed file recording that file's hunk count rather than the hunks themselves, so the
- * delivered projection's serialized size tracks the number of changed files and stays independent of how
- * large the diff those files contain actually is. A consumer that needs the bytes dereferences
- * [storePath]; nothing pushes them through the prompt.
- */
 data class FeatureTaskRuntimeSharedReviewEvidenceReference(
   val storePath: String,
   val checkpointFingerprint: String,
@@ -762,10 +384,6 @@ data class FeatureTaskRuntimeSharedReviewEvidenceReference(
     }
   }
 
-  /**
-   * Renders exactly the allowlisted fields. A null [baseRef] or [headRef] is omitted rather than
-   * delivered blank, because a blank ref would read as a resolved ref that happens to be empty.
-   */
   fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOfNotNull(
     FeatureTaskRuntimeHandoffProjectionField(
       name = FIELD_STORE_PATH,
@@ -800,7 +418,6 @@ data class FeatureTaskRuntimeSharedReviewEvidenceReference(
     const val FIELD_HEAD_REF: String = "head_ref"
     const val FIELD_FILE_HUNK_INDEX: String = "file_hunk_index"
 
-    /** The closed allowlist. A field outside it is undeclared, not a silently accepted extension. */
     val DECLARED_FIELD_NAMES: List<String> = listOf(
       FIELD_STORE_PATH,
       FIELD_CHECKPOINT_FINGERPRINT,
@@ -809,11 +426,6 @@ data class FeatureTaskRuntimeSharedReviewEvidenceReference(
       FIELD_FILE_HUNK_INDEX,
     )
 
-    /**
-     * Binds the reference to the subtask-1 artifact shape. Files past
-     * [FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT] are replaced by a single explicit omission entry
-     * rather than dropped, so a truncated index never reads as a complete one.
-     */
     fun of(
       storePath: String,
       artifact: FeatureTaskRuntimeSharedEvidenceArtifact,
@@ -844,9 +456,6 @@ private fun malformed(field: String, reason: String): Nothing =
     sourceLabel = "<$field>",
     reason = reason,
   )
-
-private fun Map<String, Any?>.requireStringList(key: String): List<String> =
-  optionalStringList(key).ifEmpty { throw malformed(key, "must contain at least one non-blank string") }
 
 private fun Map<String, Any?>.requireString(key: String, label: String): String =
   firstString(key).ifBlank { throw malformed(label, "must be a non-blank string") }

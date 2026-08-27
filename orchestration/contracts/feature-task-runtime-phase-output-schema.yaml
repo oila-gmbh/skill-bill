@@ -323,6 +323,18 @@ $defs:
         minItems: 1
         maxItems: 50
         items: { $ref: "#/$defs/repairPlanEntry" }
+  phaseProseProducedOutputs:
+    type: object
+    required: [value]
+    properties:
+      value:
+        type: string
+        minLength: 1
+        pattern: ".*\\S.*"
+      prompt:
+        type: string
+        minLength: 1
+        pattern: ".*\\S.*"
 required:
   - contract_version
   - phase_id
@@ -538,14 +550,15 @@ allOf:
     then:
       properties:
         produced_outputs:
-          type: object
-          required: [value]
-          properties:
-            value:
-              type: string
-              minLength: 1
-              pattern: ".*\\S.*"
-            prompt:
-              type: string
-              minLength: 1
-              pattern: ".*\\S.*"
+          allOf:
+            - { $ref: "#/$defs/phaseProseProducedOutputs" }
+  - if:
+      properties:
+        phase_id: { const: plan }
+        status: { const: completed }
+      required: [phase_id, status]
+    then:
+      properties:
+        produced_outputs:
+          allOf:
+            - { $ref: "#/$defs/phaseProseProducedOutputs" }

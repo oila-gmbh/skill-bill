@@ -48,8 +48,8 @@ class FeatureTaskRuntimeProjectionRejectionTest {
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         facts(
-          if (phaseId == "plan") {
-            planOutput(OVERSIZED_PLAN_ITEMS, entry = OVERSIZED_ENTRY)
+          if (phaseId == "implement") {
+            oversizeImplementationReceipt(OVERSIZED_RECEIPT_ITEMS, entry = OVERSIZED_ENTRY)
           } else {
             validJsonOutput(phaseId)
           },
@@ -57,16 +57,18 @@ class FeatureTaskRuntimeProjectionRejectionTest {
       },
       agentAssignment = phasePerAgentAssignment(),
     )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
 
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("implement", blocked.lastIncompletePhase)
+    assertEquals("audit", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "handoff projection")
     assertContains(blocked.blockedReason, "budget")
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "implement" })
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "audit" })
 
-    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
     assertEquals("blocked", record.status)
     assertEquals("needs_user_action", record.failureDisposition?.wireValue)
     assertTrue(requireNotNull(record.blockedReason).isNotBlank())
@@ -99,10 +101,6 @@ class FeatureTaskRuntimeProjectionRejectionTest {
 
   @Test
   fun `a legacy free-form upstream record quarantines and regenerates the producer instead of blocking`() {
-    // SKILL-140 (AC-001, AC-002): a durable plan record predating the bounded projection (no
-    // projection_kind) is no longer a first-occurrence durable block. The launch seam quarantines it as
-    // private evidence and re-enters the plan phase; a subsequently valid plan advances the run with no
-    // operator action. Out-of-band row surgery is the corruption fallback, not the primary recovery.
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
@@ -110,36 +108,34 @@ class FeatureTaskRuntimeProjectionRejectionTest {
       agentAssignment = phasePerAgentAssignment(),
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
-    val legacyPlan =
-      """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Legacy plan.",""" +
-        """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}"""
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
+    val legacyImplementation =
+      """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
+        """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}"""
     harness.seedPhase(
-      "plan",
+      "implement",
       "completed",
       1,
-      phaseAgent("plan"),
-      legacyPlan,
+      phaseAgent("implement"),
+      legacyImplementation,
     )
-    harness.retainExactProducerEvidence("plan", legacyPlan)
+    harness.retainExactProducerEvidence("implement", legacyImplementation)
 
     val report = harness.runner.run(harness.request())
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    // The plan phase regenerated, and the consumer advanced past it under the valid regenerated record.
-    assertTrue(harness.launchedPromptPhaseOrder().any { it == "plan" }, "the plan phase must regenerate")
+    assertTrue(harness.launchedPromptPhaseOrder().any { it == "implement" }, "the implement phase must regenerate")
     assertTrue(
-      harness.launchedPromptPhaseOrder().any { it == "implement" },
+      harness.launchedPromptPhaseOrder().any { it == "audit" },
       "the consumer advances after the producer regenerates a valid record",
     )
-    // The rejected record survives as private quarantine evidence attributed to its producing phase.
     val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
-    val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "plan" })
-    assertEquals("implement", entry.consumingPhaseId)
+    val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "implement" })
+    assertEquals("audit", entry.consumingPhaseId)
     assertTrue(entry.diagnosticIdentity?.startsWith("rod_") == true)
     assertEquals(false, entry.diagnosticDegraded)
     assertTrue("diagnostic_degraded" !in entry.toArtifactMap())
     assertTrue(Regex("[0-9a-f]{64}").matches(entry.rejectedRecordSha256))
-    // Evidence is never delivered to any agent prompt.
     assertTrue(
       harness.launcher.requests.none {
         requireNotNull(it.skillRunRequest.promptOverride).contains("free-form legacy body")
@@ -318,21 +314,22 @@ class FeatureTaskRuntimeProjectionRejectionTest {
       agentAssignment = phasePerAgentAssignment(),
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
-    val legacyPlan =
-      """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Legacy plan.",""" +
-        """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}"""
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
+    val legacyImplement =
+      """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
+        """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}"""
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), legacyImplement)
 
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("implement", blocked.lastIncompletePhase)
+    assertEquals("audit", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "no retained evidence exists for attempt")
     assertTrue("unavailable" !in blocked.blockedReason)
-    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
     assertEquals("needs_user_action", record.failureDisposition?.wireValue)
     assertTrue(
-      harness.launchedPromptPhaseOrder().none { it == "implement" },
+      harness.launchedPromptPhaseOrder().none { it == "audit" },
       "the consumer phase never launched",
     )
   }
@@ -346,24 +343,25 @@ class FeatureTaskRuntimeProjectionRejectionTest {
       agentAssignment = phasePerAgentAssignment(),
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
-    val legacyPlan =
-      """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Legacy plan.",""" +
-        """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}"""
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
-    harness.retainExactProducerEvidence("plan", legacyPlan)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
+    val legacyImplement =
+      """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
+        """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}"""
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), legacyImplement)
+    harness.retainExactProducerEvidence("implement", legacyImplement)
     harness.io.database.producerOutputReadError =
-      skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict("plan-evidence")
+      skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict("implement-evidence")
 
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("implement", blocked.lastIncompletePhase)
+    assertEquals("audit", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "diagnostic store refused it (conflict)")
     assertTrue("free-form legacy body" !in blocked.blockedReason)
-    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
     assertEquals("needs_user_action", record.failureDisposition?.wireValue)
     assertTrue(
-      harness.launchedPromptPhaseOrder().none { it == "implement" },
+      harness.launchedPromptPhaseOrder().none { it == "audit" },
       "the consumer phase never launched",
     )
   }
@@ -383,7 +381,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
         "summary": "Implementation receipt.",
         "produced_outputs": {
           "projection_kind": "implementation_receipt",
-          "contract_version": "0.1",
+          "contract_version": "0.2",
           "completed_task_ids": ["task-1"],
           "changed_paths": [${quoted(changedPaths)}],
           "tests_added": [${quoted(tests)}],
@@ -402,22 +400,26 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     """{"contract_version":"0.2","phase_id":"preplan","status":"completed","summary":"Prose.",""" +
       """"produced_outputs":{"value":"$value"}}"""
 
-  private fun planOutput(totalItems: Int, entry: String): String {
-    val tasks = (1..totalItems).joinToString(",") { index ->
-      """{"task_id":"task-$index","description":"$entry","criterion_refs":["AC-001"],"test_obligations":["parity"]}"""
+  private fun oversizeImplementationReceipt(totalItems: Int, entry: String): String {
+    val deviations = (1..totalItems).joinToString(",") { index ->
+      """{"ref":"task-$index","note":"$entry"}"""
     }
     return """
       {
         "contract_version": "0.2",
-        "phase_id": "plan",
+        "phase_id": "implement",
         "status": "completed",
-        "summary": "Executable plan.",
+        "summary": "Implementation receipt.",
         "produced_outputs": {
-          "projection_kind": "executable_plan",
-          "contract_version": "0.1",
-          "mode": "direct",
-          "tasks": [$tasks],
-          "validation_strategy": ["focused gradle"]
+          "projection_kind": "implementation_receipt",
+          "contract_version": "0.2",
+          "completed_task_ids": ["task-1"],
+          "changed_paths": ["src/Foo.kt"],
+          "tests_executed": [{"name":"FooTest.kt","outcome":"passed"}],
+          "deviations": [$deviations],
+          "reconciliation_evidence": {"reconciled": true, "evidence": "Tree at target state."},
+          "repository_checkpoint": {"fingerprint": "fixture-checkpoint-1"},
+          "reconciled_state": {"reconciled": true}
         }
       }
     """.trimIndent()
@@ -441,7 +443,7 @@ private fun RunnerHarness.retainExactProducerEvidence(phaseId: String, output: S
   )
 }
 
-private const val OVERSIZED_PLAN_ITEMS: Int = 64
+private const val OVERSIZED_RECEIPT_ITEMS: Int = 64
 private val OVERSIZED_ENTRY = "d".repeat(3_500)
 
 // Comfortably past the 64-item cap that used to reject this receipt, and within every current cap.

@@ -7,7 +7,6 @@ import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDispositionVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
@@ -428,7 +427,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
 
   private fun optionalDeclaredField(declaration: PhaseHandoffProjectionDeclaration, fieldName: String): Boolean =
     declaration.projectionContractId ==
-      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PREPLAN_PROSE &&
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE &&
       fieldName == "directive"
 
   private fun enforceCompactReferences(
@@ -520,11 +519,9 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   const val CEREMONY_SCALING_FIELD: String = "ceremony_scaling"
   const val ADDON_CONTENT_FIELD: String = "addon_content"
 
-  private val SUPPORTED_PROJECTION_CONTRACT_VERSIONS: Set<String> = setOf("0.1")
+  private val SUPPORTED_PROJECTION_CONTRACT_VERSIONS: Set<String> = setOf("0.1", "0.2")
 
   private val PLANNING_PROJECTION_CONTRACT_IDS: Set<String> = setOf(
-    FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID,
-    FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
     FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID,
   )
 
@@ -545,7 +542,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PREPLAN_PROSE,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
   )
 
   /**
@@ -619,15 +616,15 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       "deviations" to (produced["deviations"] as? List<*>).orEmpty().filterIsInstance<String>(),
       "repository_checkpoint" to checkpointFingerprint(inputs),
     )
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PREPLAN_PROSE ->
-      preplanProseProjectionValues(inputs, declaration, produced)
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE ->
+      phaseProseProjectionValues(inputs, declaration, produced)
     else -> finalizationProjectionValues(inputs, declaration)
   }.filterValues { it != null }
 
   private fun checkpointFingerprint(inputs: FeatureTaskRuntimeHandoffProjectionInputs): Map<String, String>? =
     inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) }
 
-  private fun preplanProseProjectionValues(
+  private fun phaseProseProjectionValues(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
     produced: Map<String, Any?>,
@@ -637,7 +634,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         inputs,
         declaration,
         FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
-        "produced_outputs.value is required for preplan prose handoff.",
+        "produced_outputs.value is required for phase prose handoff.",
       )
     val valueText = value.toString()
     if (valueText.isBlank()) {
@@ -645,7 +642,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         inputs,
         declaration,
         FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
-        "produced_outputs.value must contain non-blank prose for preplan handoff.",
+        "produced_outputs.value must contain non-blank prose for phase handoff.",
       )
     }
     val fields = linkedMapOf<String, Any?>("value" to valueText)
@@ -901,14 +898,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   ): List<FeatureTaskRuntimeHandoffProjectionField>? {
     val contractId = declaration.projectionContractId
     if (contractId !in PLANNING_PROJECTION_CONTRACT_IDS) return null
-    // A plan_commitment is derived from the plan's executable_plan output, so the kind the PRODUCER
-    // must emit is not always the kind this edge delivers.
-    val expectedKind = when (contractId) {
-      FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID,
-      FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
-      -> FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
-      else -> FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
-    }
+    val expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
     val projection = try {
       featureTaskRuntimePlanningProjectionFromEnvelope(
         envelope = phaseOutputEnvelope(output, producingPhaseId),
@@ -924,13 +914,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         cause = error,
       )
     }
-    // Exhaustive narrowing on the parsed type: no cast, so a shape the declaration did not ask for is
-    // a typed rejection rather than a ClassCastException on an already-completed producing phase.
-    return when {
-      contractId == FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID &&
-        projection is FeatureTaskRuntimeExecutablePlan -> projection.toPlanCommitment().toProjectionFields()
-      else -> projection.toProjectionFields()
-    }
+    return projection.toProjectionFields()
   }
 
   private fun phaseOutputEnvelope(output: FeatureTaskRuntimePhaseOutput, producingPhaseId: String): Map<String, Any?> {

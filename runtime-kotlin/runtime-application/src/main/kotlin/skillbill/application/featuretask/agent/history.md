@@ -1,5 +1,15 @@
 # featuretask runtime boundary history
 
+## [2026-08-27] SKILL-212 — Prose-centric plan phase I/O
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, runtime-cli, runtime-core
+- Generalized SKILL-211 preplan prose into phase-neutral `feature_task_runtime.phase_prose` (`value`, optional `prompt`); preplan and plan `$ref` one `$defs` shape.
+- Dropped gated `executable_plan` / `plan_commitment`, `regenerate_plan`, and plan-task-id closure on implement; audit and audit-gap consume the same prose kit.
+- Decompose stop requires `produced_outputs.decomposition_package`; leftover `mode: decompose` beside `value` is a plan handoff.
+- Pattern: one declaration helper + decoder for every prose planning edge; later matrix rows reuse `phase_prose` without a new contract. reusable
+- Limitation: implement receipt and later phases stay off `PhaseOutput`; plan prose is not parsed for task ids.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-27] Salvage spaced repair-receipt construct symbols
 Areas: runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, runtime-application/featuretask, orchestration/contracts
 - Shape alignment coerces `Type.<spaced display name>` construct symbols down to `Type` before the phase-output schema gate; decode applies the same salvage.

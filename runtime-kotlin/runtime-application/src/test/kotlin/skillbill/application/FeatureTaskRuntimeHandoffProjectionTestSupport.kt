@@ -40,14 +40,11 @@ internal object PlanningProjectionFixtures {
   const val PREPLAN_DIGEST: String =
     """{"value":"Fixture preplan prose for downstream plan."}"""
 
-  const val EXECUTABLE_PLAN: String =
-    """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[{"task_id":"task-1",""" +
-      """"description":"Fixture task.","criterion_refs":["AC-001"],""" +
-      """"target_paths_or_symbols":["src/Foo.kt"],"test_obligations":["Focused test."]}],""" +
-      """"validation_strategy":["Focused runtime tests."]}"""
+  const val PLAN_PROSE: String =
+    """{"value":"Fixture plan prose for downstream implement and audit."}"""
 
   const val IMPLEMENTATION_RECEIPT: String =
-    """{"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
+    """{"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
       """"changed_paths":["src/Foo.kt"],""" +
       """"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
       """"reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},""" +
@@ -59,7 +56,7 @@ internal object PlanningProjectionFixtures {
    * bounded implementation-receipt projection audit consumes.
    */
   const val RECEIPT_FIELDS: String =
-    """"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
+    """"projection_kind":"implementation_receipt","contract_version":"0.2","completed_task_ids":["task-1"],""" +
       """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
       """"reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},""" +
       """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"""
@@ -67,7 +64,7 @@ internal object PlanningProjectionFixtures {
   /** The projection body for [phaseId], or null when that phase feeds no planning projection edge. */
   fun producedOutputsOrNull(phaseId: String): String? = when (phaseId) {
     "preplan" -> PREPLAN_DIGEST
-    "plan" -> EXECUTABLE_PLAN
+    "plan" -> PLAN_PROSE
     "implement" -> IMPLEMENTATION_RECEIPT
     else -> null
   }
