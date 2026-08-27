@@ -43,27 +43,16 @@ internal object PlanningProjectionFixtures {
   const val PLAN_PROSE: String =
     """{"value":"Fixture plan prose for downstream implement and audit."}"""
 
-  const val IMPLEMENTATION_RECEIPT: String =
-    """{"value":"{\"projection_kind\":\"implementation_receipt\",\"contract_version\":\"0.2\",""" +
-      """\"completed_task_ids\":[\"task-1\"],\"changed_paths\":[\"src/Foo.kt\"],""" +
-      """\"tests_executed\":[{\"name\":\"FooTest\",\"outcome\":\"passed\"}],""" +
-      """\"reconciliation_evidence\":{\"reconciled\":true,\"evidence\":\"Fixture tree at target state.\"},""" +
-      """\"repository_checkpoint\":{\"fingerprint\":\"fixture-checkpoint-1\"},""" +
-      """\"reconciled_state\":{\"reconciled\":true}}"}"""
+  const val IMPLEMENT_PROSE: String =
+    """{"value":"Fixture implement prose for downstream audit."}"""
 
-  const val RECEIPT_FIELDS: String =
-    """"value":"{\"projection_kind\":\"implementation_receipt\",\"contract_version\":\"0.2\",""" +
-      """\"completed_task_ids\":[\"task-1\"],\"changed_paths\":[\"src/Foo.kt\"],""" +
-      """\"tests_executed\":[{\"name\":\"FooTest\",\"outcome\":\"passed\"}],""" +
-      """\"reconciliation_evidence\":{\"reconciled\":true,\"evidence\":\"Fixture tree at target state.\"},""" +
-      """\"repository_checkpoint\":{\"fingerprint\":\"fixture-checkpoint-1\"},""" +
-      """\"reconciled_state\":{\"reconciled\":true}}","""
+  const val IMPLEMENT_PROSE_FIELDS: String =
+    """"value":"Fixture implement prose for downstream audit.","""
 
-  /** The projection body for [phaseId], or null when that phase feeds no planning projection edge. */
   fun producedOutputsOrNull(phaseId: String): String? = when (phaseId) {
     "preplan" -> PREPLAN_DIGEST
     "plan" -> PLAN_PROSE
-    "implement" -> IMPLEMENTATION_RECEIPT
+    "implement" -> IMPLEMENT_PROSE
     else -> null
   }
 }

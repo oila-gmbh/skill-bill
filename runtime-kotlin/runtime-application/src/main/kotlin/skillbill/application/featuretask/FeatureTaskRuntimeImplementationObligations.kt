@@ -10,22 +10,6 @@ internal data class FeatureTaskRuntimeImplementationObligations(
   val edgeIteration: Int? = null,
 )
 
-internal data class FeatureTaskRuntimeImplementationClaim(
-  val value: String,
-  val prompt: String? = null,
-)
-
-internal fun featureTaskRuntimeImplementationCompletionReason(
-  phaseId: String,
-  obligations: FeatureTaskRuntimeImplementationObligations,
-  claim: FeatureTaskRuntimeImplementationClaim,
-): String? = null
-
-internal fun featureTaskRuntimeOpenObligations(
-  obligations: FeatureTaskRuntimeImplementationObligations,
-  claim: FeatureTaskRuntimeImplementationClaim,
-): List<String> = emptyList()
-
 internal fun featureTaskRuntimeImplementationContinuationFrom(
   phaseId: String,
   attempts: List<FeatureTaskRuntimeImplementationAttempt>,
@@ -45,16 +29,3 @@ internal fun featureTaskRuntimeImplementationContinuationFrom(
     failureDisposition = latest.failureDisposition?.wireValue,
   )
 }
-
-internal fun featureTaskRuntimePlannedTaskIdsFrom(): List<String> = emptyList()
-
-internal fun featureTaskRuntimeCarriedRepairItemIds(briefingRepairItemIds: List<String>): List<String> =
-  briefingRepairItemIds.distinct()
-
-internal fun featureTaskRuntimeClosedRepairItemIds(outputMap: Map<String, Any?>): List<String> = emptyList()
-
-internal fun featureTaskRuntimeIncompleteWorkGateReason(
-  phaseId: String,
-  outputMap: Map<String, Any?>,
-  obligations: FeatureTaskRuntimeImplementationObligations,
-): String? = null

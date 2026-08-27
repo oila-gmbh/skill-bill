@@ -94,12 +94,11 @@ class FeatureTaskRuntimeImplementationContinuationTest {
     assertEquals("", implementationContinuationDirective("implement", null))
   }
 
-  private fun obligations(): FeatureTaskRuntimeImplementationObligations =
-    FeatureTaskRuntimeImplementationObligations(
-      plannedTaskIds = listOf("task-1", "task-2", "task-3"),
-      carriedRepairItemIds = emptyList(),
-      loopId = null,
-    )
+  private fun obligations(): FeatureTaskRuntimeImplementationObligations = FeatureTaskRuntimeImplementationObligations(
+    plannedTaskIds = listOf("task-1", "task-2", "task-3"),
+    carriedRepairItemIds = emptyList(),
+    loopId = null,
+  )
 
   private fun attempt(sequenceNumber: Int, value: String): FeatureTaskRuntimeImplementationAttempt =
     FeatureTaskRuntimeImplementationAttempt(

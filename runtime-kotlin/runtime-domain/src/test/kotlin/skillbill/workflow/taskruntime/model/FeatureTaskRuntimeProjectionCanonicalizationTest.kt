@@ -404,33 +404,22 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
   }
 
   @Test
-  fun `a declared co-resident survives while an undeclared top-level key is discarded`() {
-    // The co-residents another contract requires on the same output are declared properties of the
-    // variant, so the top-level prune retains them; only a key no variant declares goes.
+  fun `a retired projection kind prunes nothing after reject-all quarantine`() {
     val produced = mapOf(
       "projection_kind" to "implementation_receipt",
       "contract_version" to "0.1",
       "reconciled_state" to mapOf("reconciled" to true),
-      "repair_item_results" to listOf(mapOf("repair_item_id" to "ac-001-gap-1-item-1")),
-      "deferred_repair_item_ids" to listOf("ac-001-gap-1-item-2"),
-      "unresolvable_repair" to mapOf("reason" to "blocked"),
       "narration" to "how the work went",
     )
 
     val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
 
-    assertEquals(produced.keys - "narration", result.canonical.keys)
-    assertEquals(
-      listOf("implementation_receipt.narration"),
-      result.diagnostics
-        .filter { it.transforms == listOf(Transform.UNKNOWN_KEY_DISCARDED) }
-        .map { it.fieldPath },
-    )
+    assertEquals(produced.keys, result.canonical.keys)
+    assertTrue(result.diagnostics.none { it.transforms.contains(Transform.UNKNOWN_KEY_DISCARDED) })
   }
 
   @Test
   fun `an unrecognized projection kind prunes nothing`() {
-    // Guessing a variant for an unknown kind could delete a declared field; the schema's oneOf rejects it.
     val produced = mapOf("projection_kind" to "something_else", "narration" to "kept")
 
     val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)

@@ -1563,29 +1563,18 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun settleCompletedImplementationOutput(
     run: PhaseRun,
     outputMap: Map<String, Any?>,
-    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     reject: (String, String) -> AttemptResult,
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
-  ): AttemptResult? {
-    incompleteImplementationReason(run, outputMap)?.let { reason ->
-      return AttemptResult.incompleteWork(
-        operatorReason = reason,
-        continuationReason = reason,
-        fileManifest = fileManifest,
-        normalizedOutput = normalizedOutput,
-      )
-    }
-    return settleAndPersistImplementFixRepairReceipt(
-      run,
-      outputMap,
-      reject,
-      iteration,
-      observability,
-      fileManifest,
-    )
-  }
+  ): AttemptResult? = settleAndPersistImplementFixRepairReceipt(
+    run,
+    outputMap,
+    reject,
+    iteration,
+    observability,
+    fileManifest,
+  )
 
   private fun blockRemediationBaseSha(precedingPhaseId: String, error: String): Boolean {
     blockAt(
@@ -3959,7 +3948,9 @@ internal class FeatureTaskRuntimeRunLoop(
       attemptCount = attemptCount.coerceAtLeast(1),
       resolvedAgentId = run.resolvedAgent.resolvedAgentId,
       finished = false,
-      outputArtifact = normalizedOutput?.canonicalJson ?: outputArtifact,
+      outputArtifact = normalizedOutput?.canonicalJson
+        ?: outputArtifact
+        ?: state.outputFor(run.phaseId)?.payload,
       rejectedOutput = rejectedOutput,
       normalizedOutput = normalizedOutput,
       repairEvidence = repairEvidence,
@@ -4015,6 +4006,7 @@ internal class FeatureTaskRuntimeRunLoop(
         attemptCount = attempt,
         resolvedAgentId = run.resolvedAgent.resolvedAgentId,
         finished = false,
+        outputArtifact = state.outputFor(run.phaseId)?.payload,
         blockedReason = reason,
         failureDisposition = FeatureTaskRuntimeFailureDisposition.RETRYABLE,
         fileManifestBefore = fileManifest?.before.orEmpty(),
@@ -4402,7 +4394,7 @@ internal class FeatureTaskRuntimeRunLoop(
       iteration,
       STATUS_RUNNING,
       finished = false,
-      outputArtifact = null,
+      outputArtifact = state.outputFor(run.phaseId)?.payload,
       launched = launchedModelDirective(run),
     )
     val launch = launchAndCapture(run, state, priorCorrection, phaseTokenAccumulator)
@@ -4664,10 +4656,7 @@ internal class FeatureTaskRuntimeRunLoop(
     // Absent-gate validate: agents are told not to invent gate_run_count/gate_runs, but the
     // validation_receipt consumer projection requires them. Attest measured-absent counts here so
     // the first completed attempt satisfies write_history without burning a fix-loop retry.
-    val attested = stampRuntimeOwnedImplementationCheckpoint(
-      run,
-      attestAbsentGateValidationReceipt(run, normalizedOutput),
-    )
+    val attested = attestAbsentGateValidationReceipt(run, normalizedOutput)
     val outputMap = attested.envelope
     val capture = ValidatedOutputCapture(
       run = run,
@@ -4746,7 +4735,6 @@ internal class FeatureTaskRuntimeRunLoop(
     settleCompletedImplementationOutput(
       run,
       outputMap,
-      attested,
       ::reject,
       iteration,
       observability,
@@ -5015,26 +5003,6 @@ internal class FeatureTaskRuntimeRunLoop(
       .requireAcceptedOutput(phaseId)
       .normalizedOutput
 
-  /**
-   * Packs without `validation_gate` fall back to agent-run validate. That path must never publish
-   * agent-authored gate measurements: overwrite (or supply) `gate_run_count`/`gate_runs` with the
-   * degradation attestation before consumer projection and persist.
-   */
-  // Each return is one runtime-owned stamping outcome the caller must distinguish: nothing to stamp,
-  // a degradation attestation, or a persisted checkpoint. Collapsing them would hide which happened.
-  private fun stampRuntimeOwnedImplementationCheckpoint(
-    run: PhaseRun,
-    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-  ): NormalizedFeatureTaskRuntimePhaseOutput = normalizedOutput
-
-  private fun authoritativeImplementationRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? =
-    buildRepositoryCheckpoint(run)
-      ?: gitOperations.repositoryFingerprint(run.request.repoRoot)
-        .takeIf { it.ok }
-        ?.value
-        ?.takeIf(String::isNotBlank)
-        ?.let { fingerprint -> FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = fingerprint) }
-
   private fun attestAbsentGateValidationReceipt(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
@@ -5061,35 +5029,14 @@ internal class FeatureTaskRuntimeRunLoop(
     ).requireAcceptedOutput(run.phaseId).normalizedOutput
   }
 
-  /**
-   * The obligations this implement launch owes, read from durable runtime-owned records only.
-   *
-   * Planned task ids come from the delivered executable-plan projection; the audit-repair loop's
-   * carried items come from the durable launch briefing. Neither is taken from the implementing
-   * agent's own envelope, which is the point: an agent that could name its obligations could satisfy
-   * them by naming fewer.
-   */
-  private fun implementationObligations(run: PhaseRun): FeatureTaskRuntimeImplementationObligations {
-    val loopId = run.reentry?.loopId
-    return FeatureTaskRuntimeImplementationObligations(
-      plannedTaskIds = featureTaskRuntimePlannedTaskIdsFrom(),
-      carriedRepairItemIds = featureTaskRuntimeCarriedRepairItemIds(emptyList()),
-      loopId = loopId,
+  private fun implementationObligations(run: PhaseRun): FeatureTaskRuntimeImplementationObligations =
+    FeatureTaskRuntimeImplementationObligations(
+      plannedTaskIds = emptyList(),
+      carriedRepairItemIds = emptyList(),
+      loopId = run.reentry?.loopId,
       edgeIteration = run.reentry?.edgeIteration,
     )
-  }
 
-  private fun incompleteImplementationReason(run: PhaseRun, outputMap: Map<String, Any?>): String? {
-    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId)) return null
-    return featureTaskRuntimeIncompleteWorkGateReason(run.phaseId, outputMap, implementationObligations(run))
-  }
-
-  /**
-   * The bounded prior receipt the next continuation segment is given, rebuilt from durable records at
-   * the launch seam. Both an in-process retry and a fresh-process resume pass through here, so both
-   * derive an identical projection from identical durable state; neither depends on the in-memory
-   * prompt thread or on the put()-replaced phase-records artifact.
-   */
   private fun implementationContinuationFor(run: PhaseRun): FeatureTaskRuntimeImplementationContinuation? {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(run.phaseId)) return null
     val attempts = recorder.loadImplementationAttempts(run.request.workflowId, run.request.dbPathOverride)

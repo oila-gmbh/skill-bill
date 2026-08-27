@@ -45,7 +45,7 @@ class FeatureTaskRuntimeDeliveredProjectionRecordTest {
     val first = deliveredProjection()
     val envelope = first.envelope.copy(
       projections = first.envelope.projections + first.envelope.projections.single().copy(
-        projectionName = "implementation_receipt",
+        projectionName = "implement_prose",
         sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput("implement"),
         producerIteration = FeatureTaskRuntimeProducerIteration("implement", 3),
       ),

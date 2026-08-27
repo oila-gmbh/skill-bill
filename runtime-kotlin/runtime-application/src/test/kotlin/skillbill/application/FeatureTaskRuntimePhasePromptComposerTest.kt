@@ -89,7 +89,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "\"value\":", false, "the copyable shape example must name value prose")
     assertContains(prompt, "prompt", false, "plan may optionally carry prompt prose")
     assertContains(prompt, "Inner object to stuff into value", false, "plan teaches stuffed executable_plan JSON")
-    assertContains(prompt, "\"projection_kind\": \"executable_plan\"", false, "plan inner example names executable_plan")
+    assertContains(
+      prompt,
+      "\"projection_kind\": \"executable_plan\"",
+      false,
+      "plan inner example names executable_plan",
+    )
   }
 
   @Test

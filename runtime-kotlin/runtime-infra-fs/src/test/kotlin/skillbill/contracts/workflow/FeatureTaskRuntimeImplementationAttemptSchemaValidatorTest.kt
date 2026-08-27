@@ -103,9 +103,7 @@ class FeatureTaskRuntimeImplementationAttemptSchemaValidatorTest {
     "attempts" to attempts.toList(),
   )
 
-  private fun attempt(
-    status: String = "incomplete",
-  ): Map<String, Any?> = mapOf(
+  private fun attempt(status: String = "incomplete"): Map<String, Any?> = mapOf(
     "sequence_number" to 1,
     "phase_id" to "implement",
     "attempt_number" to 1,

@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeQuarantineRegenerateTest {
   private val legacyImplement =
-    """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy implement.",""" +
+    """{"contract_version":"0.4","phase_id":"implement","status":"completed","summary":"Legacy implement.",""" +
       """"produced_outputs":{"changed_paths":["src/Foo.kt"],"narration":"free-form legacy body",""" +
       """"reconciled_state":{"reconciled":true,"evidence":"legacy"}}}"""
 
@@ -25,14 +25,14 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
     harness.recorder.invalidateQuarantinedProducerRecord(
       WORKFLOW_ID,
       "implement",
-      "regenerate_implement",
+      "review_fix",
       edgeIteration = 1,
     )
 
     val implement = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
     assertEquals("running", implement.status, "the settled completion is cleared so the producer relaunches")
     assertEquals(
-      "regenerate_implement",
+      "review_fix",
       implement.loopId,
       "the loop id is stamped durably, seeding the resume watermark before the ledger write",
     )
@@ -42,7 +42,7 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
   }
 
   @Test
-  fun `a rejected record whose producer the pipeline dropped blocks durably with an actionable reason`() {
+  fun `a rejected record whose producer the pipeline dropped blocks durably with a value-required reason`() {
     val surviving = listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
@@ -68,7 +68,7 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "absent from this run's resolved pipeline")
+    assertContains(blocked.blockedReason, "produced_outputs.value is required")
     assertTrue(
       harness.launchedPromptPhaseOrder().none { it == "implement" },
       "a dropped producer is never re-entered",

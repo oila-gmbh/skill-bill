@@ -13,9 +13,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import kotlin.test.Test
 import kotlin.test.assertContains
-import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
+import kotlin.test.assertFalse
 
 class FeatureTaskRuntimePlanningProjectionEdgeTest {
   @Test
@@ -25,7 +24,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         producer = phasePreplan,
         consumer = phasePlan,
         prose = "Dense preplan prose for downstream plan.",
-        includePrompt = false,
+        options = ProseEdgeOptions(includePrompt = false),
       ),
       expectedInBriefing = listOf("Dense preplan prose for downstream plan."),
       mustNotContain = listOf("optional directive", "complete_envelope_secret"),
@@ -39,7 +38,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         producer = phasePlan,
         consumer = phaseImplement,
         prose = "Dense plan prose for downstream implement.",
-        undeclaredFields = true,
+        options = ProseEdgeOptions(undeclaredFields = true),
       ),
       expectedInBriefing = listOf("Dense plan prose for downstream implement."),
       mustNotContain = listOf("complete_plan_envelope_secret"),
@@ -53,7 +52,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         producer = phaseImplement,
         consumer = phaseAudit,
         prose = "Dense implement prose for downstream audit.",
-        includePrompt = true,
+        options = ProseEdgeOptions(includePrompt = true),
       ),
       expectedInBriefing = listOf("Dense implement prose for downstream audit.", "optional directive"),
       mustNotContain = listOf("complete_implement_envelope_secret"),
@@ -63,7 +62,8 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   @Test
   fun `stuffed JSON in value advances the implement to audit edge`() {
     val stuffed =
-      """{"projection_kind":"implementation_receipt","completed_task_ids":["task-01"],"changed_paths":["runtime-domain/model/X.kt"]}"""
+      """{"projection_kind":"implementation_receipt","completed_task_ids":["task-01"],""" +
+        """"changed_paths":["runtime-domain/model/X.kt"]}"""
     assertProseHandoffAdvances(
       edge = proseEdge(
         producer = phaseImplement,
@@ -82,7 +82,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         producer = phaseImplement,
         consumer = phaseAudit,
         prose = "Implement prose with legacy keys beside value.",
-        legacyKeys = true,
+        options = ProseEdgeOptions(legacyKeys = true),
       ),
       expectedInBriefing = listOf("Implement prose with legacy keys beside value."),
       mustNotContain = listOf("complete_implement_envelope_secret"),
@@ -127,7 +127,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       producer = phasePreplan,
       consumer = phasePlan,
       prose = "",
-      omitValue = true,
+      options = ProseEdgeOptions(omitValue = true),
     )
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       assemble(edge.consumer, listOf(edge.declaration), listOf(phaseOutput(edge.producer, edge.payload)))
@@ -216,14 +216,18 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     val payload: String,
   )
 
+  private data class ProseEdgeOptions(
+    val includePrompt: Boolean = true,
+    val undeclaredFields: Boolean = false,
+    val legacyKeys: Boolean = false,
+    val omitValue: Boolean = false,
+  )
+
   private fun proseEdge(
     producer: String,
     consumer: String,
     prose: String,
-    includePrompt: Boolean = true,
-    undeclaredFields: Boolean = false,
-    legacyKeys: Boolean = false,
-    omitValue: Boolean = false,
+    options: ProseEdgeOptions = ProseEdgeOptions(),
   ): ProseHandoffEdge {
     val declaration = when (consumer) {
       phasePlan -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(phasePlan)
@@ -237,10 +241,10 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       declaration = declaration,
       payload = prosePayload(
         prose = prose,
-        includePrompt = includePrompt,
-        undeclaredFields = undeclaredFields,
-        legacyKeys = legacyKeys,
-        omitValue = omitValue,
+        includePrompt = options.includePrompt,
+        undeclaredFields = options.undeclaredFields,
+        legacyKeys = options.legacyKeys,
+        omitValue = options.omitValue,
       ),
     )
   }

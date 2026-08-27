@@ -5,9 +5,8 @@ package skillbill.application
 // every fixture with a stable identifier. Runner, goal-runner, and projection suites resolve these
 // top-level functions by package, so the move needs no import changes.
 
-// An implement output that completes WITHOUT the reconciliation report, so the runtime's
-// mutating-phase reconciliation gate must reject it (silent skip fails the gate loudly). This is a
-// NEGATIVE fixture: it is deliberately invalid and is excluded from the parity corpus by design.
+// An implement output that completes WITHOUT a reconciliation report. Implement no longer owes
+// mutating-reconciliation; value is required, legacy sibling keys are tolerated (AC-003/AC-013).
 internal const val REVIEW_FIX_BLOCKER_FINDING_ID = "F-001"
 
 internal var harnessPendingVerifyFindingIds: List<String> = emptyList()
@@ -59,7 +58,10 @@ internal val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
     "phase_id": "implement",
     "status": "completed",
     "summary": "Phase produced a validated output.",
-    "produced_outputs": {"changed_files": ["src/Foo.kt"]}
+    "produced_outputs": {
+      "value": "Implement prose without a reconciliation report.",
+      "changed_files": ["src/Foo.kt"]
+    }
   }
 """.trimIndent()
 
@@ -167,7 +169,6 @@ internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<
       commitSha = null,
       changedPaths = commitPushChangedPaths ?: listOf("src/Foo.kt"),
     )
-    // preplan owns PhaseOutput prose; plan and implement feed bounded planning projections.
     "preplan" ->
       """{
       "value":"Fixture preplan prose for downstream plan."
@@ -180,7 +181,7 @@ internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<
       """.trimIndent()
     "implement" ->
       """{
-      "value":"{\"projection_kind\":\"implementation_receipt\",\"contract_version\":\"0.2\",\"completed_task_ids\":[\"task-1\"],\"changed_paths\":[\"src/Foo.kt\"],\"tests_executed\":[],\"reconciliation_evidence\":{\"reconciled\":true,\"evidence\":\"Fixture tree at target state.\"},\"reconciled_state\":{\"reconciled\":true}}"
+      "value":"Fixture implement prose for downstream audit."
     }
       """.trimIndent()
     "implement_fix" ->
@@ -214,21 +215,19 @@ internal data class PhaseOutputFixture(
   val producedOutputs: String,
 )
 
-// plan owns PhaseOutput prose; implement feeds bounded planning projections.
-internal val PLANNING_PROJECTION_FIXTURES: List<PhaseOutputFixture> =
-  listOf("implement").map { phaseId ->
-    PhaseOutputFixture(
-      id = "validProducedOutputs:$phaseId",
-      phaseId = phaseId,
-      producedOutputs = validProducedOutputs(phaseId),
-    )
-  }
+internal val PLANNING_PROJECTION_FIXTURES: List<PhaseOutputFixture> = emptyList()
 
-// Explicit, named exemptions (AC-002): these phases carry no planning-projection obligation, so their
-// produced_outputs are not validated against the planning-projections schema.
-// - preplan / plan: agent-authored PhaseOutput prose; producedProjectionKindFor is null.
 internal val PLANNING_PROJECTION_EXEMPT_PHASES: Set<String> =
-  setOf("preplan", "plan", "review", "audit", "verify_findings", "implement_fix", "commit_push")
+  setOf(
+    "preplan",
+    "plan",
+    "implement",
+    "review",
+    "audit",
+    "verify_findings",
+    "implement_fix",
+    "commit_push",
+  )
 
 /**
  * SKILL-187 subtask 3: synthetic audit envelopes for repair-context conformance. Sentinels only —

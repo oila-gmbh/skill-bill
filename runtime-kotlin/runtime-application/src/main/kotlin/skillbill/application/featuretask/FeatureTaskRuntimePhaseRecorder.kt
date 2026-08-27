@@ -575,27 +575,16 @@ class FeatureTaskRuntimePhaseRecorder(
     }
   }
 
-  /**
-   * The durable implementation-attempt append for one phase write, as an artifact patch to be merged
-   * into the SAME `persistPatch` call that advances the workflow row.
-   *
-   * Returning a patch rather than performing a second write is the point: a crash between the receipt
-   * landing and the workflow advancing is then not a reachable state, so resume always finds exactly
-   * one resumable attempt with no lost obligations. Every appended record is validated against the
-   * canonical schema before it is handed back, so a malformed attempt is rejected before any write.
-   *
-   * Empty for every non-mutating phase and for any write that carries no implementation receipt.
-   */
   private fun implementationAttemptPatch(
     artifacts: Map<String, Any?>,
     request: FeatureTaskRuntimePhaseStateRequest,
     attemptStatus: FeatureTaskRuntimeImplementationAttemptStatus,
   ): Map<String, Any?> {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(request.phaseId)) return emptyMap()
-    val envelope = request.normalizedOutput?.envelope ?: return emptyMap()
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]) ?: return emptyMap()
-    val value = produced["value"]?.toString()?.trim().orEmpty()
-    if (value.isBlank()) return emptyMap()
+    val produced = request.normalizedOutput?.envelope
+      ?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]) }
+    val value = produced?.get("value")?.toString()?.trim().orEmpty()
+    if (produced == null || value.isBlank()) return emptyMap()
     val prompt = produced["prompt"]?.toString()?.trim()?.takeIf(String::isNotBlank)
     val existing = implementationAttemptsFrom(artifacts)
     val appended = featureTaskRuntimeAppendImplementationAttempt(

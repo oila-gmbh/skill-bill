@@ -40,52 +40,52 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
 
   private val PREPLAN: String = prosePhaseOutputShape(
     innerJsonExample =
-      "      { \"projection_kind\": \"preplanning_digest\",\n" +
-        "        \"contract_version\": \"0.2\",\n" +
-        "        \"affected_boundaries\": [\"<module or boundary touched>\"], \"patterns_and_decisions\": [],\n" +
-        "        \"risks\": [\"<concrete risk>\"],\n" +
-        "        \"rollout\": { \"flag_required\": false, \"flag_pattern\": \"none\",\n" +
-        "          \"notes\": \"<rollout note, or N/A>\" },\n" +
-        "        \"validation_strategy\": [\"<how the change is validated>\"],\n" +
-        "        \"unresolved_questions\": [], \"evidence_refs\": [],\n" +
-        "        \"selected_boundary_headings\": [\"<heading_id copied verbatim from the boundary catalog>\"] }\n",
+    "      { \"projection_kind\": \"preplanning_digest\",\n" +
+      "        \"contract_version\": \"0.2\",\n" +
+      "        \"affected_boundaries\": [\"<module or boundary touched>\"], \"patterns_and_decisions\": [],\n" +
+      "        \"risks\": [\"<concrete risk>\"],\n" +
+      "        \"rollout\": { \"flag_required\": false, \"flag_pattern\": \"none\",\n" +
+      "          \"notes\": \"<rollout note, or N/A>\" },\n" +
+      "        \"validation_strategy\": [\"<how the change is validated>\"],\n" +
+      "        \"unresolved_questions\": [], \"evidence_refs\": [],\n" +
+      "        \"selected_boundary_headings\": [\"<heading_id copied verbatim from the boundary catalog>\"] }\n",
     trailingNotes =
-      "      flag_pattern is one of none, simple_conditional, di_switch, legacy. Walk boundary_memory " +
-        "headings for relevance; weave context into the stuffed object rather than listing headings only " +
-        "outside value.",
+    "      flag_pattern is one of none, simple_conditional, di_switch, legacy. Walk boundary_memory " +
+      "headings for relevance; weave context into the stuffed object rather than listing headings only " +
+      "outside value.",
   )
 
   private val PLAN: String = prosePhaseOutputShape(
     innerJsonExample =
-      "      { \"projection_kind\": \"executable_plan\",\n" +
-        "        \"contract_version\": \"0.2\",\n" +
-        "        \"mode\": \"direct\",\n" +
-        "        \"tasks\": [ { \"task_id\": \"task-1\", \"depends_on\": [], \"description\": \"<imperative task>\",\n" +
-        "          \"criterion_refs\": [\"AC-001\"], \"target_paths_or_symbols\": [\"path/or/Symbol\"],\n" +
-        "          \"test_obligations\": [\"<test to add or run>\"], \"constraints\": [] } ],\n" +
-        "        \"validation_strategy\": [\"<how the plan is validated>\"] }\n",
+    "      { \"projection_kind\": \"executable_plan\",\n" +
+      "        \"contract_version\": \"0.2\",\n" +
+      "        \"mode\": \"direct\",\n" +
+      "        \"tasks\": [ { \"task_id\": \"task-1\", \"depends_on\": [], \"description\": \"<imperative task>\",\n" +
+      "          \"criterion_refs\": [\"AC-001\"], \"target_paths_or_symbols\": [\"path/or/Symbol\"],\n" +
+      "          \"test_obligations\": [\"<test to add or run>\"], \"constraints\": [] } ],\n" +
+      "        \"validation_strategy\": [\"<how the plan is validated>\"] }\n",
     trailingNotes =
-      "      Upstream preplan value is structured prose carrying the digest JSON; read and interpret it. " +
-        "task_id MUST match ^[a-z][a-z0-9-]*\$ (lowercase kebab; \"T1\" is wrong — use \"task-1\"); " +
-        "criterion_refs use the AC-### form.",
+    "      Upstream preplan value is structured prose carrying the digest JSON; read and interpret it. " +
+      "task_id MUST match ^[a-z][a-z0-9-]*\$ (lowercase kebab; \"T1\" is wrong — use \"task-1\"); " +
+      "criterion_refs use the AC-### form.",
   )
 
   private val IMPLEMENT: String = prosePhaseOutputShape(
     innerJsonExample =
-      "      { \"projection_kind\": \"implementation_receipt\",\n" +
-        "        \"contract_version\": \"0.2\",\n" +
-        "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
-        "        \"tests_added\": [], \"tests_updated\": [],\n" +
-        "        \"tests_executed\": [],\n" +
-        "        \"deviations\": [ { \"ref\": \"AC-001\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
-        "        \"unresolved_items\": [],\n" +
-        "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
-        "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" } }\n",
+    "      { \"projection_kind\": \"implementation_receipt\",\n" +
+      "        \"contract_version\": \"0.2\",\n" +
+      "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
+      "        \"tests_added\": [], \"tests_updated\": [],\n" +
+      "        \"tests_executed\": [],\n" +
+      "        \"deviations\": [ { \"ref\": \"AC-001\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
+      "        \"unresolved_items\": [],\n" +
+      "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
+      "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" } }\n",
     trailingNotes =
-      "      Upstream plan value is structured prose carrying the executable_plan JSON; read and interpret it. " +
-        "repository_checkpoint is runtime-owned: omit it entirely. Never invent a fingerprint. " +
-        "Compilation and test execution belong exclusively to the validate phase; tests_executed stays []. " +
-        "changed_paths are repository-relative; deviations entries are objects { \"ref\", \"note\" }.",
+    "      Upstream plan value is structured prose carrying the executable_plan JSON; read and interpret it. " +
+      "repository_checkpoint is runtime-owned: omit it entirely. Never invent a fingerprint. " +
+      "Compilation and test execution belong exclusively to the validate phase; tests_executed stays []. " +
+      "changed_paths are repository-relative; deviations entries are objects { \"ref\", \"note\" }.",
   )
 
   private val IMPLEMENT_FIX: String =

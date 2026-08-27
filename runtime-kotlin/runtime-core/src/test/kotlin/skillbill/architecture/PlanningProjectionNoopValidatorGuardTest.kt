@@ -33,10 +33,6 @@ class PlanningProjectionNoopValidatorGuardTest {
       "enforcement (covered by the RealValidator* integration suites).",
     "GoalPlanningSweepTest.kt" to
       "Goal-planning sweep behavior; planning-projection enforcement is incidental to the sweep.",
-    "FeatureTaskRuntimePlanningProjectionEdgeTest.kt" to
-      "Deliberately contrasts the Noop stand-in against the real validator at the parse seam.",
-    "FeatureTaskRuntimePlanningProjectionModelsTest.kt" to
-      "Asserts the typed Kotlin projection-model rules in isolation, where the Noop is the point.",
   )
 
   @Test

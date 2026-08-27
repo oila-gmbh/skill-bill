@@ -3,7 +3,6 @@ package skillbill.workflow.taskruntime
 import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
-import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
@@ -16,7 +15,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
@@ -234,18 +232,17 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     field: FeatureTaskRuntimeHandoffProjectionField,
     resolvedFingerprint: String,
     carriedFingerprint: String?,
-  ): FeatureTaskRuntimeHandoffProjectionField =
-    if (field.name == REPOSITORY_CHECKPOINT_FIELD) {
-      field.copy(
-        value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
-          kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
-          value = resolvedFingerprint +
-            (carriedFingerprint?.let { CHECKPOINT_PRODUCER_CLAIM_SEPARATOR + it }.orEmpty()),
-        ),
-      )
-    } else {
-      field
-    }
+  ): FeatureTaskRuntimeHandoffProjectionField = if (field.name == REPOSITORY_CHECKPOINT_FIELD) {
+    field.copy(
+      value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+        kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
+        value = resolvedFingerprint +
+          (carriedFingerprint?.let { CHECKPOINT_PRODUCER_CLAIM_SEPARATOR + it }.orEmpty()),
+      ),
+    )
+  } else {
+    field
+  }
 
   // Re-projecting an already-substituted field must keep the producer's original claim rather than
   // promote the runtime fingerprint written over it, so an appended claim wins over the whole value.
