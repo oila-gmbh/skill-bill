@@ -545,7 +545,7 @@ build_legacy_skill_names
 
 info "Removing Skill Bill installs from supported agent paths."
 
-remove_from_agent_dir "copilot" "$HOME/.copilot/skills"
+remove_from_agent_dir "historical (.copilot/skills)" "$HOME/.copilot/skills"
 # Clean skill links from every Claude config root the runtime discovers (default ~/.claude, named
 # ~/.claude-<name> profiles, and CLAUDE_CONFIG_DIR), not just one pinned root, so multi-profile
 # installs are fully removed.
@@ -682,7 +682,7 @@ info "Removing Cursor subagent markdown installs."
 remove_cursor_agent_mds
 
 info "Removing MCP server registrations."
-for agent in claude copilot codex "$legacy_commands_agent" junie; do
+for agent in claude codex "$legacy_commands_agent" junie cursor; do
   if mcp_output="$(run_runtime_cli install unregister-mcp "$agent" 2>/dev/null)"; then
     ok "  removed skill-bill MCP server ($agent)"
     while IFS= read -r profile_path; do

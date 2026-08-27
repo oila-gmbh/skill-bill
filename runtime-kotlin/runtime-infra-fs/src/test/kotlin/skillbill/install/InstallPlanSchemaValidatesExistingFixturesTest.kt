@@ -90,7 +90,6 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
   @Test
   fun `detection derived plan validates against the canonical schema`() {
     val fixture = setupFixture()
-    Files.createDirectories(fixture.home.resolve(".copilot"))
     Files.createDirectories(fixture.home.resolve(".claude"))
     Files.createDirectories(fixture.home.resolve(".codex"))
     Files.createDirectories(fixture.home.resolve(".junie"))

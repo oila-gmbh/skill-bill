@@ -739,13 +739,6 @@ private fun mcpCases(): List<McpCase> = listOf(
     expectedKey = "theme",
     expectedValue = "dark",
   ),
-  mcpJsonCase(
-    agent = "copilot",
-    relativeConfigPath = ".copilot/mcp-config.json",
-    seed = "{\n  \"enabled\": true,\n  \"mcpServers\": {\"other\": {\"command\": \"other\"}}\n}\n",
-    expectedKey = "enabled",
-    expectedValue = true,
-  ),
   junieMcpCase(),
   McpCase(
     agent = "codex",

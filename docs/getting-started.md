@@ -75,7 +75,7 @@ registration, replacement cleanup, and structured failure reporting.
 
 Installer prompts cover:
 
-- agent selection: manual or detected `copilot`, `claude`, `codex`,
+- agent selection: manual or detected `claude`, `codex`,
   `cursor`, and `junie`
 - platform packs: all packs, selected packs, or base skills only; selected
   packs are discovered from `platform-packs/` manifests
@@ -110,7 +110,6 @@ Supported install targets:
 
 | Agent                                      | Install path                              |
 |--------------------------------------------|-------------------------------------------|
-| GitHub Copilot                             | `~/.copilot/skills/`                      |
 | Claude Code                                | `~/.claude/skills/`                       |
 | Claude Code (native subagent markdown)     | `~/.claude/agents/`                       |
 | OpenAI Codex (skills)                      | `~/.codex/skills/`, `~/.codex-<name>/skills/`, or `~/.agents/skills/` |

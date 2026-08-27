@@ -3,6 +3,7 @@ package skillbill.install.model
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -11,10 +12,8 @@ class AgentLauncherCliTest {
   private val everythingInstalled: (String) -> Boolean = { true }
 
   @Test
-  fun `every runtime-capable agent declares a launcher CLI`() {
-    val runtimeAgents = InstallAgent.entries - InstallAgent.COPILOT
-
-    assertEquals(runtimeAgents.toSet(), AGENT_LAUNCHER_CLIS.keys)
+  fun `every install agent declares a launcher CLI`() {
+    assertEquals(InstallAgent.entries.toSet(), AGENT_LAUNCHER_CLIS.keys)
   }
 
   @Test
@@ -38,8 +37,14 @@ class AgentLauncherCliTest {
     assertNull(unavailableAgentLauncherReason(null, nothingInstalled))
     assertNull(unavailableAgentLauncherReason("", nothingInstalled))
     assertNull(unavailableAgentLauncherReason("not-an-agent", nothingInstalled))
-    // copilot has no runtime launch path, so availability is not its gate to answer.
-    assertNull(unavailableAgentLauncherReason("copilot", nothingInstalled))
+  }
+
+  @Test
+  fun `copilot is not a supported install agent`() {
+    val error = assertFailsWith<IllegalArgumentException> {
+      InstallAgent.fromId("copilot")
+    }
+    assertContains(error.message.orEmpty(), "Unknown agent 'copilot'")
   }
 
   @Test

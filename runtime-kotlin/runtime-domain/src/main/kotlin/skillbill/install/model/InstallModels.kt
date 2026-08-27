@@ -10,7 +10,6 @@ data class AgentTarget(
 enum class InstallAgent(
   val id: String,
 ) {
-  COPILOT("copilot"),
   CLAUDE("claude"),
   CODEX("codex"),
   JUNIE("junie"),

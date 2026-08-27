@@ -5,12 +5,14 @@ import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.install.model.InstallAgent
 import skillbill.model.RuntimeContext
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class AgentRunServiceRuntimeComponentTest {
   @Test
@@ -26,16 +28,19 @@ class AgentRunServiceRuntimeComponentTest {
 
     val result = service.launch(
       AgentRunStartRequest(
-        invokedAgentId = "copilot",
+        invokedAgentId = "junie",
         skillRunRequest = SkillRunRequest(
           issueKey = "SKILL-56",
           repoRoot = tempDir,
           subtaskId = 2,
+          promptOverride = "Phase: validate",
         ),
       ),
     )
 
-    assertEquals(InstallAgent.COPILOT, result.resolution.effectiveAgent)
-    assertIs<UnsupportedAgentRunLaunch>(result.launchOutcome)
+    assertEquals(InstallAgent.JUNIE, result.resolution.effectiveAgent)
+    val facts = assertIs<AgentRunLaunchFacts>(result.launchOutcome)
+    assertTrue(facts.spawnFailed)
+    assertContains(facts.stderr, "'junie' is not on PATH")
   }
 }

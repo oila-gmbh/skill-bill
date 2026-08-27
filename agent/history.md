@@ -1,3 +1,11 @@
+## [2026-08-27] SKILL-210-remove-copilot-support
+Areas: runtime-kotlin/install, install.sh, uninstall.sh, docs, orchestration/review-delegation
+- Removed GitHub Copilot as a supported Skill Bill install agent; `InstallAgent` and install-plan schema 0.3 now list only `claude`, `codex`, `junie`, and `cursor`.
+- Install detection, planning, apply, MCP registration, and installer UX no longer reference `copilot` or `~/.copilot`; uninstall still sweeps `~/.copilot/skills` as a historical cleanup path only.
+- Copilot had been an install-only harness with no runtime launch path; removal leaves a clean re-entry point for future native Copilot integration.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-18] Install reconcile: upstream always wins
 Areas: install.sh, runtime-kotlin/runtime-cli (update command)
 - Reconcile no longer preserves local edits. `install.sh` lost `--prefer-upstream`, `PREFER_UPSTREAM`, the y/n conflict prompt, the no-TTY conflict abort, the `SKILL_BILL_RECONCILE_CONFLICT_CHOICE` test seam, `--accept-conflicts`, `RECONCILE_CONFLICT_PATHS` and the summary block that reported overwritten conflicts. `skill-bill update` lost its `--prefer-upstream` passthrough.

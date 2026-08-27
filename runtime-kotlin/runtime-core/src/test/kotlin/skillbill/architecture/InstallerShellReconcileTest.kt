@@ -27,7 +27,7 @@ class InstallerShellReconcileTest {
 
   @Test
   fun `reinstall with no upstream-local change is idempotent and commits the apply`() {
-    val run = runInstallerShellRaw(input = "1\ncopilot\nbase only\noff\nskip\n")
+    val run = runInstallerShellRaw(input = "1\nclaude\nbase only\noff\nskip\n")
 
     assertEquals(0, run.exitCode, run.output)
     assertLiveSourcePopulated(run.home)
@@ -39,7 +39,7 @@ class InstallerShellReconcileTest {
 
   @Test
   fun `reinstall replaces a user-edited live skill with the current upstream bytes`() {
-    val first = runInstallerShellRaw(input = "1\ncopilot\nbase only\noff\nskip\n")
+    val first = runInstallerShellRaw(input = "1\nclaude\nbase only\noff\nskip\n")
     assertEquals(0, first.exitCode, first.output)
     val liveSkill = first.home.resolve(".skill-bill/skills/bill-sample/content.md")
     assertTrue(Files.isRegularFile(liveSkill), "first install must materialize the live skill")
@@ -47,7 +47,7 @@ class InstallerShellReconcileTest {
 
     val newUpstreamBody = "---\nname: bill-sample\ndescription: Sample skill.\n---\n\nUPSTREAM ADOPT BODY.\n"
     val second = runInstallerShellRaw(
-      input = "1\ncopilot\nbase only\noff\nskip\n",
+      input = "1\nclaude\nbase only\noff\nskip\n",
       reuse = first,
       scenario = ReconcileScenario(
         mutateUpstream = { repoRoot ->
@@ -67,13 +67,13 @@ class InstallerShellReconcileTest {
 
   @Test
   fun `reinstall replaces a user-edited agent addon`() {
-    val first = runInstallerShellRaw(input = "1\ncopilot\nbase only\noff\nskip\n")
+    val first = runInstallerShellRaw(input = "1\nclaude\nbase only\noff\nskip\n")
     assertEquals(0, first.exitCode, first.output)
     val liveAddon = first.home.resolve(".skill-bill/agent-addons/review-helper/content.md")
     val upstreamBytes = Files.readString(liveAddon)
     Files.writeString(liveAddon, "USER AGENT ADDON EDIT\n")
 
-    val second = runInstallerShellRaw(input = "1\ncopilot\nbase only\noff\nskip\n", reuse = first)
+    val second = runInstallerShellRaw(input = "1\nclaude\nbase only\noff\nskip\n", reuse = first)
 
     assertEquals(0, second.exitCode, second.output)
     assertEquals(upstreamBytes, Files.readString(liveAddon))
@@ -81,12 +81,12 @@ class InstallerShellReconcileTest {
 
   @Test
   fun `shell reinstall is idempotent with a byte-identical baseline`() {
-    val first = runInstallerShellRaw(input = "1\ncopilot\nbase only\noff\nskip\n")
+    val first = runInstallerShellRaw(input = "1\nclaude\nbase only\noff\nskip\n")
     assertEquals(0, first.exitCode, first.output)
     val baseline = first.home.resolve(".skill-bill/baseline-manifest.json")
     val baselineAfterFirst = Files.readAllBytes(baseline)
 
-    val second = runInstallerShellRaw(input = "1\ncopilot\nbase only\noff\nskip\n", reuse = first)
+    val second = runInstallerShellRaw(input = "1\nclaude\nbase only\noff\nskip\n", reuse = first)
 
     assertEquals(0, second.exitCode, second.output)
     assertTrue(
@@ -97,7 +97,7 @@ class InstallerShellReconcileTest {
 
   @Test
   fun `reinstall without the clone present still resolves the copied source`() {
-    val run = runInstallerShellRaw(input = "1\ncopilot\nbase only\noff\nskip\n")
+    val run = runInstallerShellRaw(input = "1\nclaude\nbase only\noff\nskip\n")
     assertEquals(0, run.exitCode, run.output)
 
     Files.walk(run.repoRoot).use { stream ->
@@ -113,7 +113,7 @@ class InstallerShellReconcileTest {
   @Test
   fun `reconcile failure retries once with clean copied source reset`() {
     val run = runInstallerShellRaw(
-      input = "1\ncopilot\nbase only\noff\nskip\n",
+      input = "1\nclaude\nbase only\noff\nskip\n",
       scenario = ReconcileScenario(reconcileFailOnce = true),
     )
 

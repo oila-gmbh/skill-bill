@@ -111,7 +111,6 @@ class InstallPlanContractCoverageTest {
   @Test
   fun `detection derived agent selection covers all supported agents without source mutation`() {
     val fixture = setupPlanFixture()
-    Files.createDirectories(fixture.home.resolve(".copilot"))
     Files.createDirectories(fixture.home.resolve(".claude"))
     Files.createDirectories(fixture.home.resolve(".codex"))
     Files.createDirectories(fixture.home.resolve(".junie"))
@@ -126,7 +125,6 @@ class InstallPlanContractCoverageTest {
 
     assertEquals(
       listOf(
-        InstallAgent.COPILOT,
         InstallAgent.CLAUDE,
         InstallAgent.CODEX,
         InstallAgent.CODEX,
@@ -137,7 +135,6 @@ class InstallPlanContractCoverageTest {
     )
     assertEquals(
       listOf(
-        InstallAgent.COPILOT,
         InstallAgent.CLAUDE,
         InstallAgent.CODEX,
         InstallAgent.CODEX,
@@ -148,7 +145,6 @@ class InstallPlanContractCoverageTest {
     )
     assertEquals(
       listOf(
-        fixture.home.resolve(".copilot/skills"),
         fixture.home.resolve(".claude/skills"),
         fixture.home.resolve(".codex/skills"),
         fixture.home.resolve(".agents/skills"),

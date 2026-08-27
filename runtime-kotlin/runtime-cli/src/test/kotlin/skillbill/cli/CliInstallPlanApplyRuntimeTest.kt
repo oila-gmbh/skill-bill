@@ -62,7 +62,6 @@ class CliInstallPlanApplyRuntimeTest {
     val agentsByName = payload.agents().associateBy { agent -> agent["agent"] as String }
     assertEquals(supportedAgents, agentsByName.keys)
     assertTrue(payload.agents().all { agent -> agent["source"] == "manual" })
-    assertEquals(fixture.home.resolve(".copilot/skills").toString(), agentsByName.getValue("copilot")["path"])
     assertEquals(fixture.home.resolve(".claude/skills").toString(), agentsByName.getValue("claude")["path"])
     assertEquals(fixture.home.resolve(".agents/skills").toString(), agentsByName.getValue("codex")["path"])
     assertEquals(fixture.home.resolve(".junie/skills").toString(), agentsByName.getValue("junie")["path"])
@@ -504,8 +503,6 @@ class CliInstallPlanApplyRuntimeTest {
     "--agent-mode",
     "manual",
     "--agent",
-    "copilot",
-    "--agent",
     "claude",
     "--agent",
     "codex",
@@ -695,7 +692,7 @@ class CliInstallPlanApplyRuntimeTest {
   )
 }
 
-private val supportedAgents = setOf("copilot", "claude", "codex", "junie", "cursor")
+private val supportedAgents = setOf("claude", "codex", "junie", "cursor")
 
 private fun installPlanApplyFixture(): InstallPlanApplyFixture {
   val home = Files.createTempDirectory("skillbill-cli-install-plan-apply-home")
@@ -953,7 +950,6 @@ private fun cliNativeAgents(slug: String): String = """
 """.trimIndent()
 
 private fun createDetectedAgentHomes(home: Path) {
-  Files.createDirectories(home.resolve(".copilot"))
   Files.createDirectories(home.resolve(".claude"))
   Files.createDirectories(home.resolve(".codex"))
   Files.createDirectories(home.resolve(".junie"))
@@ -1002,7 +998,7 @@ private fun singleCodexPlanGoldenPayload(fixture: InstallPlanApplyFixture): Map<
   val paths = SingleCodexGoldenPaths(fixture)
   return mapOf(
     "status" to "planned",
-    "contract_version" to "0.2",
+    "contract_version" to "0.3",
     "agents" to listOf(codexAgentGoldenPayload(paths)),
     "platform_packs" to emptyList<Map<String, Any?>>(),
     "selected_platforms" to emptyList<String>(),

@@ -24,7 +24,6 @@ object McpRegistrationOperations {
       InstallAgent.CODEX -> codexFanOut(agent, resolvedHome, environment) { perProfilePath ->
         McpTomlConfig.register(agent, perProfilePath, command)
       }
-      InstallAgent.COPILOT -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
       InstallAgent.JUNIE -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
       InstallAgent.CURSOR -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
     }
@@ -43,7 +42,6 @@ object McpRegistrationOperations {
       InstallAgent.CODEX -> codexFanOut(agent, resolvedHome, environment) { perProfilePath ->
         McpTomlConfig.unregister(agent, perProfilePath)
       }
-      InstallAgent.COPILOT -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
       InstallAgent.JUNIE -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
       InstallAgent.CURSOR -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
     }
@@ -52,7 +50,6 @@ object McpRegistrationOperations {
   fun configFormatFor(agent: InstallAgent): McpConfigFormat = when (agent) {
     InstallAgent.CODEX -> McpConfigFormat.TOML
     InstallAgent.CLAUDE,
-    InstallAgent.COPILOT,
     InstallAgent.JUNIE,
     InstallAgent.CURSOR,
     -> McpConfigFormat.JSON
@@ -60,7 +57,6 @@ object McpRegistrationOperations {
 
   fun configPathFor(agent: InstallAgent, home: Path): Path = when (agent) {
     InstallAgent.CLAUDE -> home.resolve(".claude.json")
-    InstallAgent.COPILOT -> home.resolve(".copilot/mcp-config.json")
     InstallAgent.CODEX -> home.resolve(".codex/config.toml")
     InstallAgent.JUNIE -> home.resolve(".junie/mcp/mcp.json")
     InstallAgent.CURSOR -> home.resolve(".cursor/mcp.json")
