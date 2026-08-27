@@ -4,6 +4,26 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-27] Validate format repair is project-wide spotlessApply
+
+Context: SKILL-211 blocked on validate after three repair turns with one Spotless
+finding in `:runtime-domain`. The repair agent ran `:runtime-application:spotlessApply`,
+reported clean, and left the domain violation open. The gate had surfaced the failure
+as `unparseable_gate_failure` with a stdout dump naming the correct module.
+
+Decision: validate Task and findings preamble require `./gradlew spotlessApply` once
+at the Gradle project root for Spotless/format findings, and forbid `:module:spotlessApply`.
+Targeted `test` / `compileKotlin` / `detekt` / `ktlintCheck` stay allowed.
+
+Reason: Project-wide apply is fast and removes module-picking from an opaque gate dump.
+Matching the repair Task and findings preamble keeps the authoritative and projected
+text aligned (same pattern as the collect-all forbid).
+
+Alternatives considered: Runtime-owned auto-apply inside the validation gate coordinator
+(rejected for this hotfix: prompt contract is the cheaper fix and matches existing
+repair ownership). Keep module-scoped apply and improve finding parsing (rejected: still
+depends on the agent reading the right module from a noisy dump).
+
 ## [2026-08-26] Runtime git commit waits for the target repo's hooks
 
 Context: Atlas `commit_push` died at the runtime's 30s git timeout while `.githooks/pre-commit` ran `./gradlew ktfmtFormat` against a cold Gradle daemon. The implementation work was already on disk.

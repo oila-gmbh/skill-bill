@@ -671,9 +671,8 @@ object FeatureTaskRuntimePhasePromptComposer {
         "A prior gate run parsed these items. They are the full open set for this repair turn — fix " +
           "every one in this session (shared root causes may collapse several into one change). Do not " +
           "run `skill-bill validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, " +
-          "or the pack collect_all_full_gate_command. Targeted `test`, `compileKotlin`, `detekt`, and " +
-          "`ktlintCheck` are allowed while repairing when they are part of the routed pack checker. Do " +
-          "not spawn delegated subagents.",
+          "or the pack collect_all_full_gate_command. $VALIDATE_REPAIR_ALLOWED_TASKS" +
+          "Do not spawn delegated subagents.",
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> Pair(
         "## Runtime build gate findings",

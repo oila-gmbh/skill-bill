@@ -15,14 +15,20 @@ private const val VALIDATE_REPAIR_FORBIDDEN_EXTRAS: String =
     "`./gradlew check`, `check " + "--" + "continue`, or the pack collect_all_full_gate_command. Those are not " +
     "this repair turn. "
 
+internal const val VALIDATE_REPAIR_ALLOWED_TASKS: String =
+  "For Spotless or format findings, run `./gradlew spotlessApply` once at the Gradle project root " +
+    "(project-wide — never `:module:spotlessApply`). It is fast. You may also run targeted `test`, " +
+    "`compileKotlin`, `detekt`, and `ktlintCheck` while repairing when those tasks are part of the " +
+    "routed pack checker. "
+
 internal fun validateRepairPhaseTask(): String =
   "You are the only validate repair agent for this step — do not spawn delegated subagents. The runtime " +
     "already ran the pack collect-all gate and listed the open findings in this briefing. The runtime may " +
     "give you up to three repair turns against whatever remains; each turn is another session of this same " +
     "agent. Fix every listed finding in this same session (shared root causes may collapse several into one " +
     "change). $VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
-    "You may run targeted `test`, `compileKotlin`, `detekt`, and `ktlintCheck` while repairing when those " +
-    "tasks are part of the routed pack checker. Do not re-run the full gate or bill-code-check to rediscover " +
+    VALIDATE_REPAIR_ALLOWED_TASKS +
+    "Do not re-run the full gate or bill-code-check to rediscover " +
     "or confirm findings — after you stop, the runtime re-runs the pack gate and mints the receipt. Never " +
     "silence findings with annotations, baselines, disabled rules, weakened configuration, or skipped " +
     "tests; fix root causes instead. Return prose only; do not emit validation_result, gate_run_count, or " +
@@ -49,8 +55,8 @@ internal fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared:
     "of this same agent. $collectAllLine Read that output, and fix every finding in this same session. " +
     VALIDATE_PHASE_FORBIDDEN_EXTRAS +
     "Do not rerun the full gate, bill-code-check, or a cache-bypassing full check after each individual " +
-    "finding; you may run targeted `test`, `compileKotlin`, `detekt`, and `ktlintCheck` while repairing " +
-    "when those tasks are part of the routed pack checker. When the set looks clean, run bill-code-check " +
+    "finding; " + VALIDATE_REPAIR_ALLOWED_TASKS +
+    "When the set looks clean, run bill-code-check " +
     "once to confirm (same pack collect-all). Findings that share one root cause are one fix, not several. " +
     "Validation findings are repair work, not a reason to block the phase. Fix findings at their root " +
     "cause; never silence them with annotations, baselines, disabled rules, weakened configuration, or " +

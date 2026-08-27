@@ -1,5 +1,13 @@
 # featuretask runtime boundary history
 
+## [2026-08-27] Validate repair uses project-wide spotlessApply
+Areas: runtime-application/featuretask
+- Validate Task and findings preamble tell the agent to run `./gradlew spotlessApply` once at the Gradle root for format findings, never `:module:spotlessApply`.
+- Module-scoped apply left open Spotless violations in other modules after three repair turns (SKILL-211).
+- Pattern: format repair is cheap project-wide; do not trust the agent to pick the failing module from an unparseable gate dump. reusable
+Feature flag: N/A
+Acceptance criteria: n/a (main hotfix)
+
 ## [2026-08-25] Goal execution liveness falls back to the parent lease
 Areas: runtime-application/goalrunner
 - When a child workflow exists but its worker lease is missing or expired, status reads the parent goal execution lease before reporting idle.
