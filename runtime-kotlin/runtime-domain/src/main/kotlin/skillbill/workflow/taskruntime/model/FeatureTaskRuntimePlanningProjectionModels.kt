@@ -9,8 +9,8 @@ import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 /**
- * Typed models for the four concrete bounded planning projections (preplanning digest, executable plan,
- * plan commitment, implementation receipt). Each is closed and immutable, parses the producing phase's
+ * Typed models for the three concrete bounded planning projections (executable plan, plan commitment,
+ * implementation receipt). Each is closed and immutable, parses the producing phase's
  * schema-validated `produced_outputs`, and renders the exact field set a consumer projection delivers —
  * never the producing phase's complete envelope, narration, presentation summary, progress diagnostics,
  * or raw source.
@@ -20,7 +20,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
  */
 
 /**
- * Closed family of the four bounded planning projections. Parsing returns this type rather than `Any`,
+ * Closed family of the three bounded planning projections.
  * so a consumer narrows with an exhaustive `when` and a producer/declaration kind mismatch surfaces as
  * a typed rejection instead of a raw `ClassCastException` at the launch seam.
  */
@@ -31,7 +31,6 @@ sealed interface FeatureTaskRuntimePlanningProjection {
 }
 
 enum class FeatureTaskRuntimeProjectionKind(val wireValue: String) {
-  PREPLANNING_DIGEST("preplanning_digest"),
   EXECUTABLE_PLAN("executable_plan"),
   PLAN_COMMITMENT("plan_commitment"),
   IMPLEMENTATION_RECEIPT("implementation_receipt"),
@@ -47,7 +46,6 @@ enum class FeatureTaskRuntimeProjectionKind(val wireValue: String) {
 }
 
 object FeatureTaskRuntimePlanningProjectionContract {
-  const val PREPLANNING_DIGEST_ID: String = "feature_task_runtime.preplanning_digest"
   const val EXECUTABLE_PLAN_ID: String = "feature_task_runtime.executable_plan"
   const val PLAN_COMMITMENT_ID: String = "feature_task_runtime.plan_commitment"
   const val IMPLEMENTATION_RECEIPT_ID: String = "feature_task_runtime.implementation_receipt"
@@ -65,7 +63,6 @@ object FeatureTaskRuntimePlanningProjectionContract {
    * produced by a phase, so gating a phase against it would demand a shape no producer emits.
    */
   fun producedProjectionKindFor(phaseId: String): FeatureTaskRuntimeProjectionKind? = when (phaseId) {
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT ->
       FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
@@ -89,110 +86,6 @@ const val FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT: Int = 128
 
 /** changed_paths is the one list sized for a large feature's file inventory rather than a summary. */
 const val FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT: Int = 512
-
-/**
- * SKILL-174: the boundary-memory heading ids a preplan may select for body resolution. The schema
- * repeats this number as `maxItems` on preplanning_digest.selected_boundary_headings.
- */
-const val FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT: Int = 64
-
-/**
- * The bounded digest `plan` receives from `preplan` (AC-003). Excludes the complete preplan envelope,
- * its summary, derived notes, and any progress diagnostics.
- */
-data class FeatureTaskRuntimePrePlanningDigest(
-  val affectedBoundaries: List<String>,
-  val patternsAndDecisions: List<String> = emptyList(),
-  val risks: List<String>,
-  val rollout: FeatureTaskRuntimeRolloutDecision,
-  val validationStrategy: List<String>,
-  val unresolvedQuestions: List<String> = emptyList(),
-  val evidenceRefs: List<String> = emptyList(),
-  val selectedBoundaryHeadings: List<String> = emptyList(),
-) : FeatureTaskRuntimePlanningProjection {
-  override val projectionKind: FeatureTaskRuntimeProjectionKind =
-    FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST
-
-  init {
-    requireNonBlankStrings(affectedBoundaries, "affected_boundaries")
-    requireNonBlankStrings(risks, "risks")
-    requireNonBlankStrings(validationStrategy, "validation_strategy")
-    requireNonBlankStrings(patternsAndDecisions, "patterns_and_decisions")
-    requireNonBlankStrings(unresolvedQuestions, "unresolved_questions")
-    requireNonBlankStrings(evidenceRefs, "evidence_refs")
-    requireNonBlankStrings(selectedBoundaryHeadings, "selected_boundary_headings")
-    require(selectedBoundaryHeadings.size <= FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT) {
-      "selected_boundary_headings exceeds $FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT entries."
-    }
-  }
-
-  override fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
-    field(FIELD_AFFECTED_BOUNDARIES, FeatureTaskRuntimeHandoffProjectionValue.TextList(affectedBoundaries)),
-    field(FIELD_PATTERNS_AND_DECISIONS, FeatureTaskRuntimeHandoffProjectionValue.TextList(patternsAndDecisions)),
-    field(FIELD_RISKS, FeatureTaskRuntimeHandoffProjectionValue.TextList(risks)),
-    field(FIELD_ROLLOUT, FeatureTaskRuntimeHandoffProjectionValue.Text(rollout.toBriefingLine())),
-    field(FIELD_VALIDATION_STRATEGY, FeatureTaskRuntimeHandoffProjectionValue.TextList(validationStrategy)),
-    field(FIELD_UNRESOLVED_QUESTIONS, FeatureTaskRuntimeHandoffProjectionValue.TextList(unresolvedQuestions)),
-    field(FIELD_EVIDENCE_REFS, FeatureTaskRuntimeHandoffProjectionValue.TextList(evidenceRefs)),
-    field(
-      FIELD_SELECTED_BOUNDARY_HEADINGS,
-      FeatureTaskRuntimeHandoffProjectionValue.TextList(selectedBoundaryHeadings),
-    ),
-  )
-
-  companion object {
-    val DECLARED_FIELD_NAMES: List<String> = listOf(
-      FIELD_AFFECTED_BOUNDARIES,
-      FIELD_PATTERNS_AND_DECISIONS,
-      FIELD_RISKS,
-      FIELD_ROLLOUT,
-      FIELD_VALIDATION_STRATEGY,
-      FIELD_UNRESOLVED_QUESTIONS,
-      FIELD_EVIDENCE_REFS,
-      FIELD_SELECTED_BOUNDARY_HEADINGS,
-    )
-
-    const val FIELD_AFFECTED_BOUNDARIES: String = "affected_boundaries"
-    const val FIELD_PATTERNS_AND_DECISIONS: String = "patterns_and_decisions"
-    const val FIELD_RISKS: String = "risks"
-    const val FIELD_ROLLOUT: String = "rollout"
-    const val FIELD_VALIDATION_STRATEGY: String = "validation_strategy"
-    const val FIELD_UNRESOLVED_QUESTIONS: String = "unresolved_questions"
-    const val FIELD_EVIDENCE_REFS: String = "evidence_refs"
-    const val FIELD_SELECTED_BOUNDARY_HEADINGS: String = "selected_boundary_headings"
-  }
-}
-
-data class FeatureTaskRuntimeRolloutDecision(
-  val flagRequired: Boolean,
-  val flagPattern: FeatureTaskRuntimeFlagPattern = FeatureTaskRuntimeFlagPattern.NONE,
-  val notes: String,
-) {
-  init {
-    require(notes.isNotBlank()) { "FeatureTaskRuntimeRolloutDecision.notes must be non-blank." }
-    require(
-      notes.length <= TEXT_MAX_LENGTH,
-    ) { "FeatureTaskRuntimeRolloutDecision.notes exceeds $TEXT_MAX_LENGTH chars." }
-  }
-
-  fun toBriefingLine(): String = "flag_required=$flagRequired; flag_pattern=${flagPattern.wireValue}; notes=$notes"
-}
-
-enum class FeatureTaskRuntimeFlagPattern(val wireValue: String) {
-  NONE("none"),
-  SIMPLE_CONDITIONAL("simple_conditional"),
-  DI_SWITCH("di_switch"),
-  LEGACY("legacy"),
-  ;
-
-  companion object {
-    fun fromWire(value: String): FeatureTaskRuntimeFlagPattern = entries.firstOrNull { it.wireValue == value }
-      ?: throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
-        sourceLabel = "<rollout.flag_pattern>",
-        reason = "unknown flag_pattern '$value'.",
-      )
-  }
-}
 
 enum class FeatureTaskRuntimePlanMode(val wireValue: String) {
   DIRECT("direct"),
@@ -693,7 +586,6 @@ internal fun featureTaskRuntimePlanningProjectionParseFromEnvelope(
   schemaValidator.validatePlanningProjection(canonical, sourceLabel)
   return try {
     val projection = when (expectedKind) {
-      FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST -> FeatureTaskRuntimePrePlanningDigest.fromMap(canonical)
       FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN -> FeatureTaskRuntimeExecutablePlan.fromMap(canonical)
       FeatureTaskRuntimeProjectionKind.PLAN_COMMITMENT -> FeatureTaskRuntimePlanCommitment.fromMap(canonical)
       FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT ->
@@ -720,30 +612,6 @@ private fun requirePinnedContractVersion(produced: Map<String, Any?>, sourceLabe
         "'$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION', was ${version?.let { "'$it'" } ?: "absent"}.",
     )
   }
-}
-
-@Suppress("ThrowsCount") // one malformed-field rejection per required field; collapsing would blur the diagnosis
-private fun FeatureTaskRuntimePrePlanningDigest.Companion.fromMap(
-  map: Map<String, Any?>,
-): FeatureTaskRuntimePrePlanningDigest {
-  val rolloutMap = map.stringAnyMap("rollout")
-    ?: throw malformed("rollout", "must be an object")
-  return FeatureTaskRuntimePrePlanningDigest(
-    affectedBoundaries = map.requireStringList("affected_boundaries"),
-    patternsAndDecisions = map.optionalStringList("patterns_and_decisions"),
-    risks = map.requireStringList("risks"),
-    rollout = FeatureTaskRuntimeRolloutDecision(
-      flagRequired = (rolloutMap["flag_required"] as? Boolean)
-        ?: throw malformed("rollout.flag_required", "must be a boolean"),
-      flagPattern = rolloutMap["flag_pattern"]?.toString()?.let(FeatureTaskRuntimeFlagPattern::fromWire)
-        ?: FeatureTaskRuntimeFlagPattern.NONE,
-      notes = rolloutMap.firstString("notes"),
-    ),
-    validationStrategy = map.requireStringList("validation_strategy"),
-    unresolvedQuestions = map.optionalStringList("unresolved_questions"),
-    evidenceRefs = map.optionalStringList("evidence_refs"),
-    selectedBoundaryHeadings = map.optionalStringList("selected_boundary_headings"),
-  )
 }
 
 @Suppress("ThrowsCount") // one malformed-field rejection per required field; collapsing would blur the diagnosis

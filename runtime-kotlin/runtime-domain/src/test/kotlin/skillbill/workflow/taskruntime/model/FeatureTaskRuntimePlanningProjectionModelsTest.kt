@@ -249,10 +249,10 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
   }
 
   @Test
-  fun `the producing-phase mapping names the three producer kinds and nothing else`() {
-    assertEquals(
-      FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST,
+  fun `the producing-phase mapping names the two producer kinds and nothing else`() {
+    assertNull(
       FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor("preplan"),
+      "preplan delivers prose on the phase-output envelope, not a bounded planning projection",
     )
     assertEquals(
       FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,

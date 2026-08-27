@@ -61,9 +61,9 @@ internal object GoalPlanningContextPromptFormatter {
     } else {
       append(
         "\nboundary_memory is a heading catalog: heading text and stable heading_id only, no entry bodies. " +
-          "Walk the headings, stop once they are no longer relevant to this goal's scope, and return the " +
-          "heading_id values you judge relevant in produced_outputs.selected_boundary_headings. Only those " +
-          "entries' bodies will be delivered to the plan phase.",
+          "Walk the headings, stop once they are no longer relevant to this goal's scope, and weave the " +
+          "relevant context into produced_outputs.value as prose for the plan phase. Recommended headings " +
+          "may guide your prose; selected_boundary_headings is not required.",
       )
     }
   }

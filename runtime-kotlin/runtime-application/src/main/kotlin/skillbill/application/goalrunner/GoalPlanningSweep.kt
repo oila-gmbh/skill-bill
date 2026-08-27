@@ -32,7 +32,6 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.goalrunner.GoalPlanningBoundaryBodyResolver
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -112,7 +111,6 @@ class DefaultGoalPlanningSweep(
   private val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
   private val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
   private val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
-  private val boundaryBodyResolver: GoalPlanningBoundaryBodyResolver,
   private val refreshLiveness: GoalPlanningRefreshLiveness = GoalPlanningRefreshLiveness.IDLE,
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
@@ -193,12 +191,7 @@ class DefaultGoalPlanningSweep(
         )
       }
     val subtasksById = activeSubtasks.associateBy(DecompositionSubtask::id)
-    // The preplan payload is immutable for this prepare(), so every subtask's plan prompt resolves
-    // the same bodies. Resolving inside producePlan re-read and re-parsed every referenced boundary
-    // file once per subtask for a provably identical result.
-    val resolvedBodies = resolvedBoundaryBodies(shared, sharedCheckpoint.preplanPayload)
-    // Pace only between consecutive plan launches in this prepare() call — never before the first
-    // (including the first plan after resume) and never after the last.
+    val resolvedBodies = GoalPlanningResolvedBoundaryBodies()
     var plansLaunchedThisPrepare = 0
     while (true) {
       val recovery = runCatching {
@@ -415,9 +408,11 @@ class DefaultGoalPlanningSweep(
     val refreshShared = shared.copy(planningPacket = freshPlanningPacket(shared, state))
     val produced = produceSharedPreplanCheckpoint(refreshShared, request, currentProvenance)
       .getOrElse { throw it }
-    val savedHeadings = selectedBoundaryHeadingIds(existing.preplanPayload).toSet()
-    val newHeadings = selectedBoundaryHeadingIds(produced.preplanPayload).toSet()
-    if (savedHeadings == newHeadings) {
+    val savedValueHash = preplanProseValueHash(existing.preplanPayload)
+    val newValueHash = preplanProseValueHash(produced.preplanPayload)
+    val savedPromptHash = preplanProsePromptHash(existing.preplanPayload)
+    val newPromptHash = preplanProsePromptHash(produced.preplanPayload)
+    if (savedValueHash == newValueHash && savedPromptHash == newPromptHash) {
       checkpoint.sharedPreplanRefresh.advanceSharedPreplanProvenance(
         identity = existing.identity,
         expectedPayloadSha256 = existing.payloadSha256,
@@ -1127,26 +1122,6 @@ class DefaultGoalPlanningSweep(
     )
   }
 
-  /**
-   * Reads the heading ids the settled preplan selected and resolves exactly those bodies. A missing,
-   * legacy, or malformed selection degrades to catalog-only rather than falling back to a full-file
-   * dump. Resolution failures are not caught here: the resolver already reports unreadable files as
-   * unresolved ids, so anything that escapes it is a contract or wiring fault that must surface
-   * instead of being laundered into a silently body-less plan phase on every resume.
-   */
-  private fun resolvedBoundaryBodies(
-    shared: GoalPlanningSharedContext,
-    preplanPayload: String,
-  ): GoalPlanningResolvedBoundaryBodies {
-    val selected = selectedBoundaryHeadingIds(preplanPayload)
-    if (selected.isEmpty()) return GoalPlanningResolvedBoundaryBodies()
-    return boundaryBodyResolver.resolve(
-      shared.repoRoot,
-      selected,
-      GoalPlanningSharedContextPacket.catalogHeadingIds(shared.planningPacket),
-    )
-  }
-
   private fun gatherSharedContext(
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
@@ -1470,17 +1445,32 @@ internal fun classifyGoalPlanningProvenanceRecoverability(
   }
 }
 
-internal fun selectedBoundaryHeadingIds(preplanPayload: String): List<String> = runCatching {
+internal fun preplanProseValue(preplanPayload: String): String = runCatching {
   JsonSupport.parseObjectOrNull(preplanPayload)
     ?.let(JsonSupport::jsonElementToValue)
     ?.let(JsonSupport::anyToStringAnyMap)
     ?.get("produced_outputs")
     ?.let(JsonSupport::anyToStringAnyMap)
-    ?.get(SELECTED_BOUNDARY_HEADINGS_FIELD)
-    ?.let { value -> (value as? List<*>)?.mapNotNull { id -> (id as? String)?.takeIf(String::isNotBlank) } }
-}.getOrNull().orEmpty()
+    ?.get("value")
+    ?.toString()
+    .orEmpty()
+}.getOrDefault("")
 
-private const val SELECTED_BOUNDARY_HEADINGS_FIELD: String = "selected_boundary_headings"
+internal fun preplanProsePrompt(preplanPayload: String): String? = runCatching {
+  JsonSupport.parseObjectOrNull(preplanPayload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("produced_outputs")
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("prompt")
+    ?.toString()
+    ?.takeIf(String::isNotBlank)
+}.getOrNull()
+
+internal fun preplanProseValueHash(preplanPayload: String): String = sha256HexUtf8(preplanProseValue(preplanPayload))
+
+internal fun preplanProsePromptHash(preplanPayload: String): String =
+  sha256HexUtf8(preplanProsePrompt(preplanPayload).orEmpty())
 
 /**
  * Durable evidence seam for a planning attempt the run rejected without any output to gate. Kept

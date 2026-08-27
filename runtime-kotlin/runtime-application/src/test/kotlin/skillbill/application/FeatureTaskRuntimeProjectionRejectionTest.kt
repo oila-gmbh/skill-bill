@@ -4,7 +4,6 @@ import skillbill.application.featuretask.RejectedOutputDiagnosticService
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.ports.persistence.ProducerOutputEvidence
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import java.time.Instant
@@ -20,12 +19,13 @@ import kotlin.test.assertTrue
  */
 class FeatureTaskRuntimeProjectionRejectionTest {
   @Test
-  fun `a preplan digest at the largest deliverable size is delivered to plan, not rejected`() {
+  fun `preplan prose value is delivered to plan`() {
+    val prose = "Dense fixture preplan prose for plan."
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         facts(
-          if (phaseId == "preplan") preplanOutput(LARGEST_DELIVERABLE_DIGEST_ITEMS) else validJsonOutput(phaseId),
+          if (phaseId == "preplan") preplanEnvelope(prose) else validJsonOutput(phaseId),
         )
       },
       agentAssignment = phasePerAgentAssignment(),
@@ -39,25 +39,17 @@ class FeatureTaskRuntimeProjectionRejectionTest {
         .map { requireNotNull(it.skillRunRequest.promptOverride) }
         .firstOrNull { phaseIdFromPrompt(it) == "plan" },
     )
-    // Delivered whole, not truncated: every bounded digest entry reaches the consumer verbatim.
-    assertContains(planPrompt, RISK_ENTRY)
-    assertEquals(
-      LARGEST_DELIVERABLE_DIGEST_ITEMS,
-      planPrompt.split(RISK_ENTRY).size - 1,
-      "every digest entry must be delivered, none dropped by truncation",
-    )
+    assertContains(planPrompt, prose)
   }
 
   @Test
   fun `a projection that overflows its budget blocks the phase durably instead of aborting the run`() {
-    // Item count is bounded by the model caps the budget sums, so the byte dimension is the one an
-    // overflowing payload actually trips: far fewer entries than the item cap, each far longer.
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         facts(
-          if (phaseId == "preplan") {
-            preplanOutput(OVERSIZED_DIGEST_ITEMS, entry = OVERSIZED_ENTRY)
+          if (phaseId == "plan") {
+            planOutput(OVERSIZED_PLAN_ITEMS, entry = OVERSIZED_ENTRY)
           } else {
             validJsonOutput(phaseId)
           },
@@ -69,14 +61,12 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("plan", blocked.lastIncompletePhase)
+    assertEquals("implement", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "handoff projection")
     assertContains(blocked.blockedReason, "budget")
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "plan" })
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "implement" })
 
-    // The rejection is ledgered: a resume sees a blocked row with an operator-facing disposition
-    // rather than a row left running by a driver that died mid-phase.
-    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
     assertEquals("blocked", record.status)
     assertEquals("needs_user_action", record.failureDisposition?.wireValue)
     assertTrue(requireNotNull(record.blockedReason).isNotBlank())
@@ -408,33 +398,26 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     """.trimIndent()
   }
 
-  private fun preplanEnvelope(): String =
-    """{"contract_version":"0.2","phase_id":"preplan","status":"completed","summary":"Digest.",""" +
-      """"produced_outputs":${PlanningProjectionFixtures.PREPLAN_DIGEST}}"""
+  private fun preplanEnvelope(value: String = "Fixture preplan prose."): String =
+    """{"contract_version":"0.2","phase_id":"preplan","status":"completed","summary":"Prose.",""" +
+      """"produced_outputs":{"value":"$value"}}"""
 
-  // The digest carries the declared preplanning_digest projection shape. Size is driven by repeating
-  // bounded `risks` entries rather than one giant string, because each projection field is itself
-  // length-capped — the budget is what a whole digest may weigh, not what one field may.
-  // Builds a digest carrying exactly [totalItems] length-capped entries, spread across the digest's
-  // list fields so no single field is unrealistically deep.
-  private fun preplanOutput(totalItems: Int, entry: String = RISK_ENTRY): String {
-    val fields = DIGEST_LIST_FIELDS.mapIndexed { index, name ->
-      val count = totalItems / DIGEST_LIST_FIELDS.size +
-        if (index < totalItems % DIGEST_LIST_FIELDS.size) 1 else 0
-      val entries = List(count) { "\"$entry\"" }.joinToString(",")
-      "\"$name\": [$entries]"
-    }.joinToString(",\n          ")
+  private fun planOutput(totalItems: Int, entry: String): String {
+    val tasks = (1..totalItems).joinToString(",") { index ->
+      """{"task_id":"task-$index","description":"$entry","criterion_refs":["AC-001"],"test_obligations":["parity"]}"""
+    }
     return """
       {
         "contract_version": "0.2",
-        "phase_id": "preplan",
+        "phase_id": "plan",
         "status": "completed",
-        "summary": "Preplanning digest.",
+        "summary": "Executable plan.",
         "produced_outputs": {
-          "projection_kind": "preplanning_digest",
+          "projection_kind": "executable_plan",
           "contract_version": "0.1",
-          $fields,
-          "rollout": {"flag_required": false, "flag_pattern": "none", "notes": "No flag needed."}
+          "mode": "direct",
+          "tasks": [$tasks],
+          "validation_strategy": ["focused gradle"]
         }
       }
     """.trimIndent()
@@ -458,28 +441,8 @@ private fun RunnerHarness.retainExactProducerEvidence(phaseId: String, output: S
   )
 }
 
-private val DIGEST_LIST_FIELDS = listOf(
-  "affected_boundaries",
-  "risks",
-  "validation_strategy",
-  "patterns_and_decisions",
-  "unresolved_questions",
-  "evidence_refs",
-)
-
-// The widest digest the model itself admits: every list field filled to its own entry cap. The item
-// budget sums those caps, so this is deliverable by construction — a schema-valid projection can never
-// be rejected for item count, and only a genuinely oversized payload trips the byte dimension.
-private val LARGEST_DELIVERABLE_DIGEST_ITEMS =
-  DIGEST_LIST_FIELDS.size * FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
-
-// One bounded digest entry. Short enough that a digest filled to every list cap still fits the byte
-// budget, which is what makes the item dimension provably unreachable for a schema-valid digest.
-private val RISK_ENTRY = "d".repeat(200)
-
-// Well under the item caps, but heavy enough that the digest exceeds its byte budget.
-private val OVERSIZED_ENTRY = "d".repeat(1_000)
-private const val OVERSIZED_DIGEST_ITEMS: Int = 240
+private const val OVERSIZED_PLAN_ITEMS: Int = 64
+private val OVERSIZED_ENTRY = "d".repeat(3_500)
 
 // Comfortably past the 64-item cap that used to reject this receipt, and within every current cap.
 private const val WIDE_RECEIPT_CHANGED_PATHS: Int = 120

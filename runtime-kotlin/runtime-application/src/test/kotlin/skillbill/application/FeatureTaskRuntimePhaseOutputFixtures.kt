@@ -167,16 +167,10 @@ internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<
       commitSha = null,
       changedPaths = commitPushChangedPaths ?: listOf("src/Foo.kt"),
     )
-    // preplan and plan feed the bounded planning projections on the preplan->plan and plan->implement
-    // (and plan->audit commitment) edges, so their fixture payloads carry the declared projection shape.
+    // preplan owns PhaseOutput prose; plan and implement feed bounded planning projections.
     "preplan" ->
       """{
-      "projection_kind":"preplanning_digest",
-      "contract_version":"0.1",
-      "affected_boundaries":["runtime-application"],
-      "risks":["Fixture risk."],
-      "rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},
-      "validation_strategy":["Focused runtime tests."]
+      "value":"Fixture preplan prose for downstream plan."
     }
       """.trimIndent()
     "plan" ->
@@ -245,11 +239,12 @@ internal data class PhaseOutputFixture(
   val producedOutputs: String,
 )
 
-// The producing phases own a bounded planning projection, so their produced_outputs must validate
+// plan and implement own a bounded planning projection, so their produced_outputs must validate
 // against the canonical planning-projections schema. `implement_fix` re-enters the implement phase and
-// reuses the same implementation_receipt projection, so it is validated too.
+// reuses the same implementation_receipt projection, so it is validated too. preplan owns PhaseOutput
+// prose (`value` / optional `prompt`) and no longer feeds a planning-projection edge.
 internal val PLANNING_PROJECTION_FIXTURES: List<PhaseOutputFixture> =
-  listOf("preplan", "plan", "implement").map { phaseId ->
+  listOf("plan", "implement").map { phaseId ->
     PhaseOutputFixture(
       id = "validProducedOutputs:$phaseId",
       phaseId = phaseId,
@@ -259,10 +254,11 @@ internal val PLANNING_PROJECTION_FIXTURES: List<PhaseOutputFixture> =
 
 // Explicit, named exemptions (AC-002): these phases carry no planning-projection obligation, so their
 // produced_outputs are not validated against the planning-projections schema.
+// - preplan: agent-authored PhaseOutput prose; producedProjectionKindFor("preplan") is null.
 // - review / audit: emit verification signals (findings / gaps), not a bounded projection.
 // - commit_push: emits a commit_push_result, owned by the phase-output contract, not this schema.
 internal val PLANNING_PROJECTION_EXEMPT_PHASES: Set<String> =
-  setOf("review", "audit", "verify_findings", "implement_fix", "commit_push")
+  setOf("preplan", "review", "audit", "verify_findings", "implement_fix", "commit_push")
 
 /**
  * SKILL-187 subtask 3: synthetic audit envelopes for repair-context conformance. Sentinels only —

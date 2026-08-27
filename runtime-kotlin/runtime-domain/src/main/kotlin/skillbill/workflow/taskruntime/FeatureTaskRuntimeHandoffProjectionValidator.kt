@@ -415,7 +415,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       }
     }
     declaration.declaredFieldNames.forEach { declaredName ->
-      if (declaredName !in seen && declaration.required) {
+      if (declaredName !in seen && declaration.required && !optionalDeclaredField(declaration, declaredName)) {
         reject(
           inputs,
           declaration,
@@ -425,6 +425,11 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       }
     }
   }
+
+  private fun optionalDeclaredField(declaration: PhaseHandoffProjectionDeclaration, fieldName: String): Boolean =
+    declaration.projectionContractId ==
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PREPLAN_PROSE &&
+      fieldName == "directive"
 
   private fun enforceCompactReferences(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
@@ -518,7 +523,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   private val SUPPORTED_PROJECTION_CONTRACT_VERSIONS: Set<String> = setOf("0.1")
 
   private val PLANNING_PROJECTION_CONTRACT_IDS: Set<String> = setOf(
-    FeatureTaskRuntimePlanningProjectionContract.PREPLANNING_DIGEST_ID,
     FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID,
     FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
     FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID,
@@ -541,6 +545,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PREPLAN_PROSE,
   )
 
   /**
@@ -588,36 +593,68 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         .ceremonyScaling(inputs.runInvariants.featureSize)
         .reviewScope
         .wireValue,
-      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      "repository_checkpoint" to checkpointFingerprint(inputs),
       "verdict" to auditClearanceStatus(produced),
     )
-    // The whole audit-remediation handoff: which acceptance criteria are unmet, and the checkpoint the
-    // round starts from. The implement round plans the work itself, so there is nothing else to carry.
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST -> mapOf(
       "unmet_criteria" to inputs.unmetCriterionRefs,
-      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      "repository_checkpoint" to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
       "unresolved_blocker_findings" to verifiedFindingsProjection(produced),
-      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      "repository_checkpoint" to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT -> mapOf(
       "findings" to reviewFindingsForVerificationProjection(produced),
-      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      "repository_checkpoint" to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_DISPOSITIONS -> mapOf(
       "finding_dispositions" to produced["finding_dispositions"],
-      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      "repository_checkpoint" to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT -> mapOf(
       "changed_paths" to inputs.resolvedCheckpoint?.workingTreeOwnedPaths.orEmpty(),
       "tests_added" to (produced["tests_added"] as? List<*>).orEmpty().filterIsInstance<String>(),
       "tests_updated" to (produced["tests_updated"] as? List<*>).orEmpty().filterIsInstance<String>(),
       "deviations" to (produced["deviations"] as? List<*>).orEmpty().filterIsInstance<String>(),
-      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+      "repository_checkpoint" to checkpointFingerprint(inputs),
     )
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PREPLAN_PROSE ->
+      preplanProseProjectionValues(inputs, declaration, produced)
     else -> finalizationProjectionValues(inputs, declaration)
   }.filterValues { it != null }
+
+  private fun checkpointFingerprint(inputs: FeatureTaskRuntimeHandoffProjectionInputs): Map<String, String>? =
+    inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) }
+
+  private fun preplanProseProjectionValues(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+    produced: Map<String, Any?>,
+  ): Map<String, Any?> {
+    val value = resolveDeclaredPhaseField(produced, "value")
+      ?: reject(
+        inputs,
+        declaration,
+        FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+        "produced_outputs.value is required for preplan prose handoff.",
+      )
+    val valueText = value.toString()
+    if (valueText.isBlank()) {
+      reject(
+        inputs,
+        declaration,
+        FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+        "produced_outputs.value must contain non-blank prose for preplan handoff.",
+      )
+    }
+    val fields = linkedMapOf<String, Any?>("value" to valueText)
+    resolveDeclaredPhaseField(produced, "prompt")
+      ?.toString()
+      ?.takeIf(String::isNotBlank)
+      ?.let { fields["directive"] = it }
+    return fields
+  }
 
   private fun auditClearanceStatus(produced: Map<String, Any?>): String? {
     val gaps = produced["gaps"] as? List<*>
@@ -867,8 +904,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     // A plan_commitment is derived from the plan's executable_plan output, so the kind the PRODUCER
     // must emit is not always the kind this edge delivers.
     val expectedKind = when (contractId) {
-      FeatureTaskRuntimePlanningProjectionContract.PREPLANNING_DIGEST_ID ->
-        FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST
       FeatureTaskRuntimePlanningProjectionContract.EXECUTABLE_PLAN_ID,
       FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
       -> FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN

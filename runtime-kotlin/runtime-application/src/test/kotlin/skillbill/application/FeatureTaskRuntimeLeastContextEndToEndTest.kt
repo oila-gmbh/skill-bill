@@ -107,10 +107,20 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
         actual.projectionContractId to actual.projectionContractVersion,
         "${actual.projectionName} changed contract identity",
       )
-      assertEquals(
-        declaredProjection.declaredFieldNames,
-        actual.fields.map { it.name },
-        "${actual.projectionName} changed its required-field shape",
+      val deliveredNames = actual.fields.map { it.name }
+      assertTrue(
+        deliveredNames.all { it in declaredProjection.declaredFieldNames },
+        "${actual.projectionName} delivered undeclared fields: " +
+          "${deliveredNames - declaredProjection.declaredFieldNames.toSet()}",
+      )
+      val requiredNames = declaredProjection.declaredFieldNames.filterNot { name ->
+        declaredProjection.projectionContractId ==
+          FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PREPLAN_PROSE &&
+          name == "directive"
+      }
+      assertTrue(
+        requiredNames.all { it in deliveredNames },
+        "${actual.projectionName} missing required fields: ${requiredNames - deliveredNames.toSet()}",
       )
     }
     assertEquals(declaration.derivedContextKeys, briefing.derivedContextKeys)

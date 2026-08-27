@@ -10,21 +10,6 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
   @Test
-  fun `a valid preplanning digest validates`() {
-    FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
-      payload = linkedMapOf<String, Any?>(
-        "projection_kind" to "preplanning_digest",
-        "contract_version" to FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
-        "affected_boundaries" to listOf("runtime-domain/model"),
-        "risks" to listOf("producer may omit digest fields"),
-        "rollout" to linkedMapOf("flag_required" to false, "notes" to "no flag needed"),
-        "validation_strategy" to listOf("snapshot projection tests"),
-      ),
-      sourceLabel = "preplan#1",
-    )
-  }
-
-  @Test
   fun `a valid executable plan validates`() {
     FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
       payload = linkedMapOf<String, Any?>(
@@ -132,18 +117,24 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
     val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
       FeatureTaskRuntimePlanningProjectionValidatorAdapter().validatePlanningProjection(
         producedOutputs = linkedMapOf<String, Any?>(
-          "projection_kind" to "preplanning_digest",
+          "projection_kind" to "executable_plan",
           "contract_version" to FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
-          "affected_boundaries" to listOf("runtime-domain/model"),
-          "risks" to listOf("producer may omit digest fields"),
-          "rollout" to linkedMapOf("flag_required" to false, "notes" to "no flag needed"),
-          "validation_strategy" to listOf("snapshot projection tests"),
+          "mode" to "direct",
+          "tasks" to listOf(
+            linkedMapOf(
+              "task_id" to "task-01",
+              "description" to "add contract",
+              "criterion_refs" to listOf("AC-005"),
+              "test_obligations" to listOf("parity"),
+            ),
+          ),
+          "validation_strategy" to listOf("focused gradle"),
           "progress_diagnostics" to "smuggled whole-envelope field",
         ),
-        sourceLabel = "preplan#produced_outputs",
+        sourceLabel = "plan#produced_outputs",
       )
     }
-    assertEquals("preplan#produced_outputs", error.sourceLabel)
+    assertEquals("plan#produced_outputs", error.sourceLabel)
     assertTrue(
       error.reason.contains("progress_diagnostics"),
       "the adapter must surface the canonical schema's additionalProperties violation: ${error.reason}",
@@ -209,26 +200,31 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
 
   @Test
   fun `empty required string lists the model rejects are rejected by the schema`() {
-    // F-002: affected_boundaries / risks / validation_strategy (requireStringList) and criterion_refs /
-    // test_obligations (.ifEmpty{throw}) are all schema-required-non-empty now, matching the model, so a
-    // schema-valid projection can never pass this gate and then throw in fromMap.
-    fun rejectsEmpty(mutate: (LinkedHashMap<String, Any?>) -> Unit): Boolean {
-      val digest = linkedMapOf<String, Any?>(
-        "projection_kind" to "preplanning_digest",
-        "contract_version" to FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
-        "affected_boundaries" to listOf("runtime-domain/model"),
-        "risks" to listOf("producer may omit digest fields"),
-        "rollout" to linkedMapOf("flag_required" to false, "notes" to "no flag needed"),
-        "validation_strategy" to listOf("snapshot projection tests"),
+    fun task(mutate: (LinkedHashMap<String, Any?>) -> Unit = {}): LinkedHashMap<String, Any?> {
+      val t = linkedMapOf<String, Any?>(
+        "task_id" to "task-01",
+        "description" to "add contract",
+        "criterion_refs" to listOf("AC-005"),
+        "test_obligations" to listOf("parity"),
       )
-      mutate(digest)
-      return runCatching {
-        FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(payload = digest, sourceLabel = "preplan#1")
-      }.exceptionOrNull() is InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+      mutate(t)
+      return t
     }
-    assertTrue(rejectsEmpty { it["affected_boundaries"] = emptyList<String>() }, "empty affected_boundaries")
-    assertTrue(rejectsEmpty { it["risks"] = emptyList<String>() }, "empty risks")
-    assertTrue(rejectsEmpty { it["validation_strategy"] = emptyList<String>() }, "empty validation_strategy")
+    fun rejects(tasks: List<Any>): Boolean = runCatching {
+      FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
+        payload = linkedMapOf<String, Any?>(
+          "projection_kind" to "executable_plan",
+          "contract_version" to FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
+          "mode" to "direct",
+          "tasks" to tasks,
+          "validation_strategy" to listOf("focused gradle"),
+        ),
+        sourceLabel = "plan#1",
+      )
+    }.exceptionOrNull() is InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+    assertTrue(rejects(emptyList()), "empty tasks")
+    assertTrue(rejects(listOf(task { it["criterion_refs"] = emptyList<String>() })), "empty criterion_refs")
+    assertTrue(rejects(listOf(task { it["test_obligations"] = emptyList<String>() })), "empty test_obligations")
   }
 
   @Test

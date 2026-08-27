@@ -30,7 +30,6 @@ class GoalPlanningPreparationValidator(
     failure?.let { throw InvalidGoalPlanningPreparationSchemaError(sourceLabel = label, fieldPath = "", reason = it) }
     requireCompleted(preplan, PREPLAN_PHASE_ID, label)
     requireCompleted(plan, PLAN_PHASE_ID, label)
-    requireValidProjection(preplan, PREPLAN_PHASE_ID, label)
     requireValidProjection(plan, PLAN_PHASE_ID, label)
     return record.copy(
       preplanPayload = skillbill.contracts.JsonSupport.mapToJsonString(preplan),

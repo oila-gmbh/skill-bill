@@ -4,9 +4,8 @@ package skillbill.contracts.workflow
 
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrePlanningDigest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import kotlin.test.Test
@@ -107,70 +106,35 @@ class FeatureTaskRuntimeProjectionCanonicalizationSchemaTest {
   @Test
   fun `a missing required field rejects`() {
     assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parseDigest(
-        """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
-          """"rollout":{"flag_required":false,"notes":"n"},"validation_strategy":["v"]}""",
+      parsePlan(
+        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
+          """{"task_id":"task-1","description":"a","criterion_refs":["AC-001"]}],"validation_strategy":["v"]}""",
       )
     }
   }
 
-  // AC-005: an undeclared key on a fully-enumerated closed object — including a top-level variant — is
-  // discarded during canonicalization, so it never reaches the strict schema and never costs an attempt.
   @Test
   fun `an unknown key on a closed object is absorbed and the projection advances`() {
-    val digest = assertIs<FeatureTaskRuntimePrePlanningDigest>(
-      parseDigest(
-        """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
-          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n","bogus_nested":1},""" +
-          """"validation_strategy":["v"],"bogus":1}""",
+    val plan = assertIs<FeatureTaskRuntimeExecutablePlan>(
+      parsePlan(
+        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[""" +
+          """{"task_id":"task-1","description":"a","criterion_refs":["AC-001"],"test_obligations":["parity"],""" +
+          """"bogus_nested":1}],"validation_strategy":["v"],"bogus":1}""",
       ),
     )
 
-    assertEquals(listOf("b"), digest.affectedBoundaries)
-    assertEquals(listOf("r"), digest.risks)
-    assertEquals("n", digest.rollout.notes)
-  }
-
-  // SKILL-174: selected_boundary_headings is additive and optional, so the contract version stays 0.1.
-  @Test
-  fun `a digest with selected boundary headings round-trips and one without still validates`() {
-    val withSelection = assertIs<FeatureTaskRuntimePrePlanningDigest>(
-      parseDigest(
-        """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
-          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n"},"validation_strategy":["v"],""" +
-          """"selected_boundary_headings":["modules/a/agent/history.md#0-abc123abc123"]}""",
-      ),
-    )
-    assertEquals(listOf("modules/a/agent/history.md#0-abc123abc123"), withSelection.selectedBoundaryHeadings)
-
-    val without = assertIs<FeatureTaskRuntimePrePlanningDigest>(
-      parseDigest(
-        """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
-          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n"},"validation_strategy":["v"]}""",
-      ),
-    )
-    assertEquals(emptyList(), without.selectedBoundaryHeadings)
-  }
-
-  @Test
-  fun `a selected boundary heading list beyond its declared cap rejects`() {
-    val ids = (0..FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT).joinToString(",") { "\"h$it\"" }
-    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parseDigest(
-        """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
-          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n"},"validation_strategy":["v"],""" +
-          """"selected_boundary_headings":[$ids]}""",
-      )
-    }
+    assertEquals("task-1", plan.tasks.single().taskId)
   }
 
   @Test
   fun `a budget overflow rejects`() {
-    val boundaries = (1..129).joinToString(",") { "\"b$it\"" }
+    val tasks = (1..FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT + 1).joinToString(",") {
+      """{"task_id":"task-$it","description":"a","criterion_refs":["AC-001"],"test_obligations":["parity"]}"""
+    }
     assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      parseDigest(
-        """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":[$boundaries],""" +
-          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n"},"validation_strategy":["v"]}""",
+      parsePlan(
+        """{"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct","tasks":[$tasks],""" +
+          """"validation_strategy":["v"]}""",
       )
     }
   }
@@ -205,13 +169,6 @@ class FeatureTaskRuntimeProjectionCanonicalizationSchemaTest {
     envelope = envelope(producedOutputs),
     producingPhaseId = "plan",
     expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
-    schemaValidator = validator,
-  )
-
-  private fun parseDigest(producedOutputs: String) = featureTaskRuntimePlanningProjectionFromEnvelope(
-    envelope = envelope(producedOutputs),
-    producingPhaseId = "preplan",
-    expectedKind = FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST,
     schemaValidator = validator,
   )
 

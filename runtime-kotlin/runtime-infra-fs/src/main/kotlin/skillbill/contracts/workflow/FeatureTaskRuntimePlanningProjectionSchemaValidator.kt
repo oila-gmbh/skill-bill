@@ -16,8 +16,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Draft 2020-12 validator for the four concrete planning projections (preplanning digest, executable
- * plan, plan commitment, implementation receipt). Validates the structured payload a projection parses
+ * Draft 2020-12 validator for the three concrete planning projections (executable plan, plan
+ * commitment, implementation receipt).
  * and forwards; any violation fails with [InvalidFeatureTaskRuntimePlanningProjectionSchemaError], the
  * message carrying schema locations, never projection bodies.
  */
@@ -56,7 +56,6 @@ object FeatureTaskRuntimePlanningProjectionSchemaValidator {
     .getSchema(ObjectMapper().writeValueAsString(document), LOCALE_STABLE_SCHEMA_CONFIG)
 
   private val PROJECTION_VARIANT_DEFS: Set<String> = setOf(
-    "preplanning_digest",
     "executable_plan",
     "plan_commitment",
     "implementation_receipt",

@@ -9,16 +9,15 @@ import kotlin.test.assertFailsWith
 import kotlin.test.fail
 
 /**
- * SKILL-140 Subtask 3 (AC-002): every canned producing-phase fixture is validated against the
+ * SKILL-140 Subtask 3 (AC-002): every canned planning-projection fixture is validated against the
  * canonical planning-projections schema with the real infra-fs validator, so fixture drift fails the
  * build instead of hiding behind the Noop stand-in used by most runner suites. The two mutation-check
  * tests below permanently encode the manual mutation check the plan describes: an undeclared key and a
  * task_id pattern violation each fail with a message naming the fixture and the violation.
  *
- * Scope: the planning-projections schema governs the preplan/plan/implement produced_outputs bodies.
- * The review, audit, and commit_push fixtures own no planning projection (see
- * [PLANNING_PROJECTION_EXEMPT_PHASES]) and are enumerated as explicit, justified exemptions rather
- * than silently skipped.
+ * Scope: the planning-projections schema governs the plan/implement produced_outputs bodies.
+ * preplan owns PhaseOutput prose and is named in [PLANNING_PROJECTION_EXEMPT_PHASES] with review,
+ * audit, and commit_push rather than silently skipped.
  */
 class PhaseOutputFixtureParityTest {
 
@@ -38,12 +37,12 @@ class PhaseOutputFixtureParityTest {
     // No fixture is silently skipped: the union of validated and exempt phases is the closed corpus.
     val validated = PLANNING_PROJECTION_FIXTURES.map { it.phaseId }.toSet()
     assertEquals(
-      setOf("preplan", "plan", "implement"),
+      setOf("plan", "implement"),
       validated,
       "the producing-phase corpus drifted from the fixtures the planning-projections schema governs",
     )
     assertEquals(
-      setOf("review", "audit", "verify_findings", "implement_fix", "commit_push"),
+      setOf("preplan", "review", "audit", "verify_findings", "implement_fix", "commit_push"),
       PLANNING_PROJECTION_EXEMPT_PHASES,
       "the exemption list drifted; every non-producing phase must be named and justified, never skipped",
     )

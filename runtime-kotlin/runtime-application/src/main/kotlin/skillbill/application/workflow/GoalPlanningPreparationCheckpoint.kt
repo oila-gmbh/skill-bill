@@ -297,7 +297,6 @@ internal class GoalPlanningPreparationProjectionGate(
   fun validateSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
     val (label, envelope) = sharedPreplanEnvelope(checkpoint)
     envelope.requirePrepared(label)
-    requireValidPlanningProjection(envelope, "preplan", label, planningProjectionValidator)
   }
 
   fun validateSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
@@ -315,8 +314,8 @@ internal class GoalPlanningPreparationProjectionGate(
    * block every existing goal on the first contract bump with no path that can repair the record.
    */
   fun sharedPreplanRejection(checkpoint: SharedGoalPreplanCheckpoint): String? = planningRecordRejection {
-    val (_, envelope) = sharedPreplanEnvelope(checkpoint)
-    producerProjectionGateReason("preplan", envelope, planningProjectionValidator)
+    sharedPreplanEnvelope(checkpoint)
+    null
   }
 
   /** Null when the stored subtask plan satisfies the projection gate; the bounded reason otherwise. */

@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-08-27] SKILL-211 — Prose-centric preplan phase I/O
+Areas: runtime-application/{featuretask,goalrunner,workflow}, runtime-domain/{agent/model,workflow/taskruntime}, runtime-infra-fs/contracts/workflow, orchestration/contracts
+- Preplan `produced_outputs` is now prose `PhaseOutput` (`value`, optional `prompt`); the planning-projections digest schema gate and `regenerate_preplan` consumer edge are gone.
+- Plan briefings carry `value`/`prompt` text; goal-sweep `_goal_planning_shared_context` still round-trips; stale shared-preplan refresh hashes prose fields instead of selected headings.
+- Pattern: first planning edge uses an ungated prose handoff while later phases keep bounded projection contracts. reusable
+- Limitation: plan `executable_plan` and later edges are unchanged; heading bodies are not auto-resolved from preplan prose.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-27] Validate repair uses project-wide spotlessApply
 Areas: runtime-application/featuretask
 - Validate Task and findings preamble tell the agent to run `./gradlew spotlessApply` once at the Gradle root for format findings, never `:module:spotlessApply`.

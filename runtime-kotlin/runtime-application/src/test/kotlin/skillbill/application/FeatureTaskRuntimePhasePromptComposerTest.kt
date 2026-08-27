@@ -59,9 +59,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN),
     )
 
-    assertContains(prompt, "projection_kind \"preplanning_digest\"")
-    assertContains(prompt, "emit these fields DIRECTLY on produced_outputs", false, "preplan warns against nesting")
-    assertContains(prompt, "\"rollout\": { \"flag_required\": false", false, "preplan shows rollout as an object")
+    assertContains(prompt, "non-blank value")
+    assertContains(prompt, "produced_outputs", false, "preplan warns about produced_outputs shape")
+    assertFalse(prompt.contains("projection_kind \"preplanning_digest\""))
     assertFalse(prompt.contains("bill-code-review mode:"), "review execution mode must not reach preplan")
     assertFalse(prompt.contains("Review execution mode"), "review execution directive must not reach preplan")
     assertFalse(
@@ -73,21 +73,16 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `preplan shape example itself declares selected_boundary_headings`() {
+  fun `preplan shape example declares value prose`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN),
     )
 
-    val shapeExample = prompt.substringAfter("emit these fields DIRECTLY on produced_outputs")
+    val shapeExample = prompt.substringAfter("Required produced_outputs shape")
       .substringAfter("```json")
       .substringBefore("```")
-    assertContains(
-      shapeExample,
-      "\"selected_boundary_headings\": [",
-      false,
-      "the copyable shape example must name selected_boundary_headings, not only trailing prose",
-    )
+    assertContains(shapeExample, "\"value\":", false, "the copyable shape example must name value prose")
   }
 
   @Test
@@ -546,12 +541,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val commitPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("commit_push"))
     val prPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("pr"))
 
-    assertContains(preplanPrompt, "scaled pre-planning digest")
+    assertContains(preplanPrompt, "scaled pre-planning prose")
     assertContains(preplanPrompt, "full preplan covering boundaries")
     assertContains(preplanPrompt, "Do not modify repository files during this phase.")
-    assertContains(preplanPrompt, "schema-valid produced_outputs")
+    assertContains(preplanPrompt, "non-blank value")
     assertContains(planPrompt, "Do not modify repository files during this phase.")
-    assertContains(planPrompt, "upstream preplan digest")
+    assertContains(planPrompt, "upstream preplan prose")
     assertContains(implementPrompt, "Reconcile the repository to the intended state")
     assertTrue(
       !implementPrompt.contains("Do not modify repository files during this phase."),
@@ -1263,13 +1258,6 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       "implementation_receipt.unresolved_items" to
         "Must be [] on a 'completed' receipt: the completion gate refuses a receipt that claims completion " +
         "while carrying open work, so a populated example would teach output the gate rejects.",
-      "preplanning_digest.patterns_and_decisions" to
-        "Optional narrative list with no element shape to pin: items are plain strings like the populated " +
-        "`risks` and `validation_strategy` siblings in the same example.",
-      "preplanning_digest.unresolved_questions" to
-        "Optional plain-string list, shape already pinned by the populated `risks` sibling.",
-      "preplanning_digest.evidence_refs" to
-        "Optional plain-string list, shape already pinned by the populated `risks` sibling.",
       "implementation_receipt.deferred_repair_item_ids" to
         "Deferring a carried repair item is the exception, so [] is the correct default to show; the id " +
         "strings are pinned by the populated repair_item_results[].repair_item_id in the same example.",
@@ -1622,7 +1610,6 @@ private fun isArrayNode(defs: JsonNode, node: JsonNode): Boolean {
 }
 
 private fun projectionExampleCases() = listOf(
-  Triple(preplanPhase, FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST, briefingFor(preplanPhase)),
   Triple(planPhase, FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN, briefingFor(planPhase)),
   Triple(implementPhase, receiptKind, briefingFor(implementPhase)),
   Triple(
@@ -1632,7 +1619,6 @@ private fun projectionExampleCases() = listOf(
   ),
 )
 
-private val preplanPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
 private val planPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
 private val implementPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
 private val receiptKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT

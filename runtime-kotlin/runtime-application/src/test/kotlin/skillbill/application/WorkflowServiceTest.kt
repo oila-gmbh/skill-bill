@@ -2961,7 +2961,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
     assertEquals(first, resumed, "duplicate resume must be a byte-identical no-op")
     assertEquals("implement", resumed.currentStepId)
-    assertContains(resumed.artifactsJson, "shared-preplan")
+    assertContains(resumed.artifactsJson, "shared preplan prose for hydration")
     assertContains(resumed.artifactsJson, "owned-plan-one")
     assertEquals(2, Regex("goal-planning-import").findAll(resumed.artifactsJson).count())
     assertEquals(2, Regex("\\\"action\\\":\\\"complete\\\"").findAll(resumed.artifactsJson).count())
@@ -3009,8 +3009,8 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
     val first = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow(CHILD_ID)).artifactsJson
     val second = requireNotNull(harness.workflows.getFeatureTaskRuntimeWorkflow("wfl-child-2")).artifactsJson
-    assertContains(first, "shared-preplan")
-    assertContains(second, "shared-preplan")
+    assertContains(first, "shared preplan prose for hydration")
+    assertContains(second, "shared preplan prose for hydration")
     assertContains(first, "owned-plan-one")
     assertFalse(first.contains("owned-plan-two"))
     assertContains(second, "owned-plan-two")
@@ -3485,10 +3485,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val PREPLAN_PAYLOAD = """
       {
         "contract_version":"0.2","phase_id":"preplan","status":"completed","summary":"shared",
-        "produced_outputs":{"projection_kind":"preplanning_digest","contract_version":"0.1",
-        "affected_boundaries":["runtime-application/goalrunner"],"risks":["hydration drift"],
-        "rollout":{"flag_required":false,"notes":"no flag needed"},
-        "validation_strategy":["focused gradle"],"evidence_refs":["shared-preplan"]}
+        "produced_outputs":{"value":"shared preplan prose for hydration"}
       }
     """.trimIndent()
 
