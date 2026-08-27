@@ -37,7 +37,7 @@ class ReviewSpecAdjudicationRunner(
     budget: ReviewContextBudgetPolicy,
     brokerId: String,
     repoRoot: Path,
-    timeout: Duration,
+    timeout: Duration?,
     modelOverride: String? = null,
     promptSuffix: String = "",
   ): ReviewSpecAdjudicationOutcome {
@@ -146,7 +146,7 @@ class ReviewSpecAdjudicationRunner(
 
   private data class AdjudicationLaunchEnv(
     val repoRoot: Path,
-    val timeout: Duration,
+    val timeout: Duration?,
     val modelOverride: String?,
     val promptSuffix: String,
   )

@@ -324,6 +324,7 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(1, launcher.requests.size)
     launcher.requests.forEach { request ->
       assertNotNull(request.skillRunRequest.reviewEvidenceBroker)
+      assertEquals(null, request.skillRunRequest.timeout)
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "do not launch specialists")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "governed generic rubric")

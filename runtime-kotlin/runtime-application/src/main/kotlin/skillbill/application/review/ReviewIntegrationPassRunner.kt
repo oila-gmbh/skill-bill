@@ -38,7 +38,7 @@ class ReviewIntegrationPassRunner(
     budget: ReviewContextBudgetPolicy,
     brokerId: String,
     repoRoot: Path,
-    timeout: Duration,
+    timeout: Duration?,
     modelOverride: String? = null,
     promptSuffix: String = "",
   ): ReviewIntegrationPassOutcome {

@@ -482,7 +482,7 @@ class ParallelCodeReviewRunner(
       budget = initial.budget,
       brokerId = initial.agent1Id,
       repoRoot = initial.request.repoRoot,
-      timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+      timeout = initial.request.timeout,
       promptSuffix = initial.request.selectedAgentAddonsSection,
     )
     recordIntegrationBoundary(initial.request.reviewRunId, outcome)
@@ -615,7 +615,7 @@ class ParallelCodeReviewRunner(
       budget = initial.budget,
       brokerId = initial.agent1Id,
       repoRoot = initial.request.repoRoot,
-      timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+      timeout = initial.request.timeout,
       promptSuffix = initial.request.selectedAgentAddonsSection,
     )
     return persistClaimVerificationOutcome(reviewRunId, claims, existing, outcome)
@@ -754,7 +754,7 @@ class ParallelCodeReviewRunner(
       budget = initial.budget,
       brokerId = initial.agent1Id,
       repoRoot = initial.request.repoRoot,
-      timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+      timeout = initial.request.timeout,
       promptSuffix = initial.request.selectedAgentAddonsSection,
     )
     return persistAdjudication(reviewRunId, outcome)
@@ -1363,7 +1363,7 @@ class ParallelCodeReviewRunner(
           skillRunRequest = SkillRunRequest(
             issueKey = "code-review",
             repoRoot = request.repoRoot,
-            timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+            timeout = request.timeout,
             promptOverride = request.withSelectedAgentAddons(launch.prompt),
             modelOverride = modelOverride,
             conversationIsolation = ConversationIsolation.NONE,
@@ -1907,9 +1907,6 @@ class ParallelCodeReviewRunner(
   }
 
   private companion object {
-    const val DEFAULT_TIMEOUT_MINUTES = 30L
-    const val TIMEOUT_BUFFER_SECONDS = 30L
-    const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     const val REGISTER_ABSENCE_EXCERPT_MAX_LENGTH = 800
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
