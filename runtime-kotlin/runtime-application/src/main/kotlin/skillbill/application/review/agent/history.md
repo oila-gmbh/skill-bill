@@ -1,5 +1,17 @@
 # Review Boundary History
 
+## [2026-08-28] SKILL-218 subtask 1 — Cursor delegated parent fan-out
+Areas: application/review, runtime-ports/review, infra-fs, runtime-core/di, orchestration/review-delegation
+- Cursor delegated parent prompt now names every selected native specialist with one `/name` line in a single parallel-launch instruction.
+- Before that parent starts, staging copies each selected specialist from the managed native-agent inventory cache into `{reviewLaunchDirectory}/.cursor/agents/`.
+- Claude delegated prompts stay free of Cursor `/name` syntax and keep Agent/Task when reviewFanOut is true; Codex launch is unchanged; Cursor inline does not fan out or stage unused-lane agents.
+- Missing, dangling, or undeclared selected specialists still fail MissingInstalledNativeAgentError before the parent starts; the run does not fall back to inline.
+- PLAYBOOK Cursor section now describes this runtime launch: named `/name` plus project agents in the isolated evidence-endpoint workspace. No live CLI canary.
+- Pattern: ReviewLaunchAgentStagingPort plus FileSystemReviewLaunchAgentStaging injected into ParallelCodeReviewRunner; staging and prompt fan-out are Cursor+DELEGATED only. reusable
+- Known limit: this does not prove a live `agent --print` parent can spawn the named lanes; sibling AgentRun fan-out is the follow-up if that still fails.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-24] SKILL-207 subtask 2 — claim verification as phase call and skill alignment
 Areas: runtime-application/review, runtime-application/review/model, skills/bill-code-review, skills/bill-code-review-inline
 - Claim verification now receives review prose through the `input` + `requestedAction` phase envelope; optional parsed findings enrich per-claim checks instead of gating launch.

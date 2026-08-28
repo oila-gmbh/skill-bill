@@ -103,6 +103,7 @@ import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewAttribution
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
+import skillbill.infrastructure.fs.FileSystemReviewLaunchAgentStaging
 import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
 import skillbill.infrastructure.fs.FileSystemReviewRubricResolver
 import skillbill.infrastructure.fs.FileSystemReviewSnapshotGateway
@@ -183,6 +184,7 @@ import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewInputSource
+import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.review.ReviewLaunchIsolationResolver
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
@@ -470,6 +472,12 @@ abstract class RuntimeComponent(
     callbacks: OptionalCallbacks,
     adapter: FileSystemReviewNativeAgentPreflight,
   ): ReviewNativeAgentPreflightPort = callbacks.reviewNativeAgentPreflight ?: adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun reviewLaunchAgentStagingPort(
+    adapter: FileSystemReviewLaunchAgentStaging,
+  ): ReviewLaunchAgentStagingPort = adapter
 
   @Provides
   @JvmSynthetic

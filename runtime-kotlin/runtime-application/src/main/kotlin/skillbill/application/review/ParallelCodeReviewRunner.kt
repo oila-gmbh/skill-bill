@@ -45,6 +45,7 @@ import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
@@ -53,6 +54,7 @@ import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
@@ -123,7 +125,6 @@ import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.time.Duration.Companion.minutes
 
 @Inject
 @Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
@@ -148,6 +149,7 @@ class ParallelCodeReviewRunner(
   private val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
   private val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
+  private val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort = ReviewLaunchAgentStagingPort.NONE,
   private val registerParse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
@@ -1331,7 +1333,7 @@ class ParallelCodeReviewRunner(
     val launch = InlineParentLaunch(
       agentId = agentId,
       selected = selected,
-      prompt = parentPrompt(selected, routedManifests, resolvedMode),
+      prompt = parentPrompt(selected, routedManifests, resolvedMode, agentId),
       bundleState = aggregateBundleCompletion(bundleStates),
     )
     return when (val bound = bindGovernedEvidence(selected, request.repoRoot)) {
@@ -1355,6 +1357,18 @@ class ParallelCodeReviewRunner(
     modelOverride: String?,
     resolvedMode: ResolvedReviewExecutionMode,
   ): ParallelReviewLaneOutcome {
+    if (launch.agentId == "cursor" && resolvedMode == ResolvedReviewExecutionMode.DELEGATED) {
+      reviewLaunchAgentStaging.stage(
+        ReviewLaunchAgentStagingRequest(
+          agentId = launch.agentId,
+          reviewLaunchDirectory = bound.endpoint.descriptor.mcpConfigPath.parent,
+          logicalWorkerNames = launch.selected
+            .filter { it.workerKind == ReviewWorkerKind.PROVIDER_NATIVE }
+            .mapNotNull { it.logicalWorkerName }
+            .distinct(),
+        ),
+      )
+    }
     val outcome = bound.endpoint.use {
       parentReviewLauncher.launch(
         GoalRunnerSubtaskLaunchRequest(
@@ -1525,6 +1539,26 @@ class ParallelCodeReviewRunner(
     SoftRegisterAdmission(emptyList(), null, 0)
   }
 
+  private fun StringBuilder.appendCursorDelegatedFanOut(
+    selected: List<ReviewSpecialistLaunchRequest>,
+    resolvedMode: ResolvedReviewExecutionMode,
+    agentId: String,
+  ) {
+    if (agentId != "cursor" || resolvedMode != ResolvedReviewExecutionMode.DELEGATED) return
+    val nativeLanes = selected
+      .filter { it.workerKind == ReviewWorkerKind.PROVIDER_NATIVE }
+      .mapNotNull { it.logicalWorkerName }
+      .distinct()
+    if (nativeLanes.isEmpty()) return
+    appendLine()
+    appendLine(
+      "Launch these specialist lanes in parallel in one instruction: " +
+        nativeLanes.joinToString(", ") +
+        ". Invoke each lane with one /name line:",
+    )
+    nativeLanes.forEach { logicalName -> appendLine("/$logicalName") }
+  }
+
   private fun modeFraming(resolvedMode: ResolvedReviewExecutionMode): String = buildString {
     if (resolvedMode == ResolvedReviewExecutionMode.INLINE) {
       appendLine("Run exactly one bill-code-review mode:inline review prompt in this context.")
@@ -1551,10 +1585,12 @@ class ParallelCodeReviewRunner(
     selected: List<ReviewSpecialistLaunchRequest>,
     routedManifests: List<PlatformManifest>,
     resolvedMode: ResolvedReviewExecutionMode,
+    agentId: String,
   ): String {
     val inline = resolvedMode == ResolvedReviewExecutionMode.INLINE
     return buildString {
       append(modeFraming(resolvedMode))
+      appendCursorDelegatedFanOut(selected, resolvedMode, agentId)
       appendLine("Detected stack: ${routedManifests.joinToString("+") { it.slug }.ifBlank { "generic" }}")
       val rubricLabel = selected.joinToString { launch ->
         val decision = launch.assignment.laneDecision

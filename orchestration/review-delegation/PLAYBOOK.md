@@ -112,6 +112,7 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Launch each lane by naming its installed Cursor subagent (user-scope or project-scope agents install; project scope wins on a name conflict), via `/name` or an explicit "use the `<name>` subagent" instruction. Do not compose a rubric inline.
 - Launch one subagent per routed stack-specific review skill or selected specialist review pass.
 - Request all selected lanes in a single instruction that names every selected lane so they launch in parallel, not one-at-a-time.
+- When `skill-bill` runtime-launches a delegated Cursor parent, the runner appends one `/name` line per selected specialist in a single parallel-launch instruction and copies each installed specialist agent file into `{reviewLaunchDirectory}/.cursor/agents/` before `agent --print` starts. `reviewLaunchDirectory` is the isolated evidence-endpoint directory already used as `--workspace` (the parent of `.cursor/mcp.json`).
 - Do not override the delegated-specialist model; Cursor subagent frontmatter defaults to `model: inherit`.
 - The installed native agent's embedded governed rubric is authoritative. Do not tell the worker to read a sibling rubric sidecar.
 - Tell each delegated worker to return only its structured findings. Parent-owned telemetry (`import_review` and `triage_findings`) and metadata are not part of the worker projection.
