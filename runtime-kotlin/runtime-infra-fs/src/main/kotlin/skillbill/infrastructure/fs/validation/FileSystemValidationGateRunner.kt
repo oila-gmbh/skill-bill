@@ -122,14 +122,20 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
   private fun parseArtifactFindings(
     request: ValidationGateRunRequest,
     artifactFloor: Instant,
-  ): List<ValidationGateFinding> =
-    when (request.declaration.findings.format) {
-      ValidationGateFindingsFormat.JUNIT_XML ->
-        request.declaration.findings.artifactGlobs
-          .flatMap { glob -> expandGlob(request.repoRoot, glob) }
-          .filter { producedByThisRun(it, artifactFloor) }
-          .flatMap(::parseJUnitXmlFile)
-          .distinctBy { findingIdentity(it) }
+  ): List<ValidationGateFinding> = when (request.declaration.findings.format) {
+    ValidationGateFindingsFormat.JUNIT_XML ->
+      request.declaration.findings.artifactGlobs
+        .flatMap { glob -> expandGlob(request.repoRoot, glob) }
+        .filter { producedByThisRun(it, artifactFloor) }
+        .flatMap { path -> parseArtifactFile(request.repoRoot, path) }
+        .distinctBy { findingIdentity(it) }
+  }
+
+  private fun parseArtifactFile(repoRoot: Path, path: Path): List<ValidationGateFinding> =
+    if (path.toString().replace('\\', '/').contains("/reports/detekt/")) {
+      parseDetektXmlFile(repoRoot, path)
+    } else {
+      parseJUnitXmlFile(path)
     }
 
   private fun parseCompilerDiagnostics(
@@ -137,8 +143,39 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     stdout: String,
   ): List<ValidationGateFinding> = when (request.declaration.findings.compilerDiagnostics.format) {
     ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT ->
-      parseGradleKotlinCompilerStdout(request.repoRoot, stdout)
+      parseGradleKotlinCompilerStdout(request.repoRoot, stdout) +
+        parseGradleQualityToolStdout(request.repoRoot, stdout)
   }
+
+  private fun parseDetektXmlFile(repoRoot: Path, path: Path): List<ValidationGateFinding> = runCatching {
+    val document = DOCUMENT_BUILDER.parse(path.toFile())
+    val repo = repoRoot.toAbsolutePath().normalize()
+    val files = document.getElementsByTagName("file")
+    buildList {
+      for (fileIndex in 0 until files.length) {
+        val fileElement = files.item(fileIndex) as Element
+        val rawFileName = fileElement.getAttribute("name").trim()
+        if (rawFileName.isEmpty()) continue
+        val relativeFile = repoRelativeQualityPath(repo, rawFileName)
+        val module = relativeFile.substringBefore('/').ifBlank { "<detekt>" }
+        val errors = fileElement.getElementsByTagName("error")
+        for (errorIndex in 0 until errors.length) {
+          val error = errors.item(errorIndex) as Element
+          val line = error.getAttribute("line").trim()
+          val rule = error.getAttribute("source").substringAfterLast('.').ifBlank { "detekt" }
+          val message = error.getAttribute("message").ifBlank { error.textContent?.trim().orEmpty() }
+          add(
+            ValidationGateFinding(
+              module = module,
+              ruleOrTestId = rule,
+              message = message,
+              location = listOf(relativeFile, line).filter(String::isNotBlank).joinToString(":").ifBlank { null },
+            ),
+          )
+        }
+      }
+    }
+  }.getOrDefault(emptyList())
 
   private fun parseJUnitXmlFile(path: Path): List<ValidationGateFinding> = runCatching {
     val document = DOCUMENT_BUILDER.parse(path.toFile())
@@ -176,9 +213,16 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     private const val COMPILER_LOCATION_LINE_GROUP = 2
     private const val COMPILER_LOCATION_COLUMN_GROUP = 3
     private const val COMPILER_LOCATION_MESSAGE_GROUP = 4
+    private const val QUALITY_TOOL_PATH_GROUP = 1
+    private const val QUALITY_TOOL_LINE_GROUP = 2
+    private const val QUALITY_TOOL_COLUMN_GROUP = 3
+    private const val QUALITY_TOOL_MESSAGE_GROUP = 4
+    private const val QUALITY_TOOL_RULE_GROUP = 5
     private val GRADLE_EXECUTED_PATTERN = Regex("""(\d+)\s+executed""", RegexOption.IGNORE_CASE)
     private val COMPILER_E_LINE = Regex("""^e:\s+(.*)$""")
     private val COMPILER_LOCATION = Regex("""^(?:file://)?(.+):(\d+):(\d+)\s+(.*)$""")
+    private val QUALITY_TOOL_LINE =
+      Regex("""^(?:file://)?(.+\.kt):(\d+):(\d+):\s+(.+?)\s+\[([A-Za-z0-9]+)]\s*$""")
     private val GRADLE_TASK_PREFIX = Regex("""^>\s*Task\s+:\S+\s+""")
     private val DOCUMENT_BUILDER = DocumentBuilderFactory.newInstance().apply {
       isNamespaceAware = false
@@ -188,6 +232,26 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
 
     private fun findingIdentity(finding: ValidationGateFinding): String =
       "${finding.module}|${finding.ruleOrTestId}|${finding.message}|${finding.location}"
+
+    internal fun parseGradleQualityToolStdout(repoRoot: Path, stdout: String): List<ValidationGateFinding> {
+      val repo = repoRoot.toAbsolutePath().normalize()
+      return stdout.lineSequence().mapNotNull { line ->
+        val match = QUALITY_TOOL_LINE.matchEntire(line.trim()) ?: return@mapNotNull null
+        val rawPath = match.groupValues[QUALITY_TOOL_PATH_GROUP].removePrefix("file://")
+        val lineNo = match.groupValues[QUALITY_TOOL_LINE_GROUP]
+        val column = match.groupValues[QUALITY_TOOL_COLUMN_GROUP]
+        val message = match.groupValues[QUALITY_TOOL_MESSAGE_GROUP].trim()
+        val rule = match.groupValues[QUALITY_TOOL_RULE_GROUP].trim()
+        val relative = repoRelativeQualityPath(repo, rawPath)
+        val module = relative.substringBefore('/').ifBlank { "<quality>" }
+        ValidationGateFinding(
+          module = module,
+          ruleOrTestId = rule,
+          message = message,
+          location = "$relative:$lineNo:$column",
+        )
+      }.toList()
+    }
 
     internal fun parseGradleKotlinCompilerStdout(repoRoot: Path, stdout: String): List<ValidationGateFinding> {
       val repo = repoRoot.toAbsolutePath().normalize()
@@ -223,6 +287,12 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
           location = "$relative:$lineNo:$column",
         )
       }.toList()
+    }
+
+    private fun repoRelativeQualityPath(repo: Path, rawPath: String): String {
+      val diagnosticPath = Path.of(rawPath.removePrefix("file://"))
+      val canonicalRepo = canonicalizeExisting(repo)
+      return repoRelativeCompilerPath(repo, canonicalRepo, diagnosticPath, rawPath)
     }
 
     private fun repoRelativeCompilerPath(

@@ -1158,6 +1158,84 @@ class IdeStatusServiceTest {
   }
 
   @Test
+  fun `live goal snapshot includes current subtask active duration when recorded`() {
+    val fixture = gitRepoFixture("ide-status-subtask-active-duration-live")
+    val identity = goalRepositoryIdentity(fixture)
+    val asOf = Instant.parse("2026-08-06T11:59:00Z")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token",
+      hostIdentity = "test-host",
+      bootIdentity = "boot-id",
+      pid = 4321,
+      processBirthToken = "birth-token",
+      heartbeatAt = asOf.toString(),
+      expiresAt = observedAt.plusSeconds(30).toString(),
+    )
+    val service = service(
+      goalOnlyDatabase(),
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "")
+          .copy(
+            controlState = GoalRunnerControlState(
+              repositoryIdentity = identity,
+              executionLease = lease,
+              activeDurationMs = 120_000,
+              activeDurationAsOf = asOf.toString(),
+              currentSubtaskId = 2,
+              subtaskActiveDurationMs = 45_000,
+              subtaskActiveDurationAsOf = asOf.toString(),
+            ),
+          ),
+        lease = lease,
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
+    assertEquals(45_000L, result.snapshot.currentSubtask?.activeDurationMs)
+    assertEquals(asOf, result.snapshot.currentSubtask?.activeDurationAsOf)
+    val nested = nestedWireMap(result.snapshot.toStatusWireMap(), "current_subtask")
+    assertEquals(45_000L, nested["active_duration_ms"])
+    assertEquals(asOf.toString(), nested["active_duration_as_of"])
+  }
+
+  @Test
+  fun `goal with no recorded subtask execution omits nested active duration`() {
+    val wire = goalWireMapUnderControls(
+      "ide-status-subtask-active-duration-unrecorded",
+      GoalRunnerControlState(currentSubtaskId = 2),
+    ) { result ->
+      assertEquals("2", result.snapshot.currentSubtask?.id)
+    }
+
+    val nested = nestedWireMap(wire, "current_subtask")
+    assertFalse(nested.containsKey("active_duration_ms"))
+    assertFalse(nested.containsKey("active_duration_as_of"))
+  }
+
+  @Test
+  fun `a stale subtask anchor from a dead runner is withheld while the accumulated total still ships`() {
+    val wire = goalWireMapUnderControls(
+      "ide-status-subtask-active-duration-stale-anchor",
+      GoalRunnerControlState(
+        currentSubtaskId = 2,
+        subtaskActiveDurationMs = 50_000,
+        subtaskActiveDurationAsOf = "2026-08-06T09:00:00Z",
+      ),
+    ) { result ->
+      assertEquals("2", result.snapshot.currentSubtask?.id)
+      assertEquals(50_000L, result.snapshot.currentSubtask?.activeDurationMs)
+      assertNull(result.snapshot.currentSubtask?.activeDurationAsOf)
+    }
+
+    val nested = nestedWireMap(wire, "current_subtask")
+    assertEquals(50_000L, nested["active_duration_ms"])
+    assertFalse(nested.containsKey("active_duration_as_of"))
+  }
+
+  @Test
   fun `non-goal families never carry pause signals`() {
     val fixture = gitRepoFixture("ide-status-pause-non-goal")
     val identity = goalRepositoryIdentity(fixture)
@@ -1196,6 +1274,16 @@ class IdeStatusServiceTest {
 
     assertSnapshot(result)
     return result.snapshot.toStatusWireMap()
+  }
+
+  private fun nestedWireMap(wire: Map<String, Any?>, key: String): Map<String, Any?> {
+    val value = wire[key]
+    require(value is Map<*, *>) { "expected nested map at '$key'" }
+    return buildMap {
+      for ((nestedKey, nestedValue) in value) {
+        if (nestedKey is String) put(nestedKey, nestedValue)
+      }
+    }
   }
 
   private fun goalOnlyDatabase(goalState: String = "running"): TrackingDatabase = TrackingDatabase(
@@ -1270,6 +1358,7 @@ class IdeStatusServiceTest {
         manifestStore = manifestStore,
         outcomeStore = outcomeStore,
         phaseRecorder = phaseRecorder,
+        clock = clock,
         runtimeStatusService = runtimeStatusService,
       ),
       featureTaskRuntimeStatusService = runtimeStatusService,

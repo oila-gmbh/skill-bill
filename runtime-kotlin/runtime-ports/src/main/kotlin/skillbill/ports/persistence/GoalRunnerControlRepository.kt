@@ -41,11 +41,13 @@ interface GoalRunnerControlRepository {
   ): Boolean {
     val state = controlState(parentWorkflowId)
     if (state.executionLease?.ownerToken != expectedOwnerToken) return false
-    // A new run starts the active clock at this instant. The gap since the previous run ended was
-    // downtime and is never folded in, however long the goal sat blocked or unattended.
     persistControlState(
       parentWorkflowId,
-      state.copy(executionLease = lease, activeDurationAsOf = lease.heartbeatAt),
+      state.copy(
+        executionLease = lease,
+        activeDurationAsOf = lease.heartbeatAt,
+        subtaskActiveDurationAsOf = lease.heartbeatAt.takeIf { state.currentSubtaskId != null },
+      ),
     )
     return true
   }
@@ -66,7 +68,7 @@ interface GoalRunnerControlRepository {
     // an unbounded tail is exactly what this accumulator exists to keep out. It is under one interval.
     persistControlState(
       parentWorkflowId,
-      state.copy(executionLease = null, activeDurationAsOf = null),
+      state.copy(executionLease = null, activeDurationAsOf = null, subtaskActiveDurationAsOf = null),
     )
     return true
   }
@@ -84,12 +86,27 @@ interface GoalRunnerControlRepository {
  * only re-anchors the marker.
  */
 private fun GoalRunnerControlState.advancedBy(heartbeatAt: String): GoalRunnerControlState {
-  val previous = activeDurationAsOf ?: return copy(activeDurationAsOf = heartbeatAt)
+  val goal = advanceAccumulator(activeDurationMs, activeDurationAsOf, heartbeatAt)
+  val subtask = if (currentSubtaskId != null) {
+    advanceAccumulator(subtaskActiveDurationMs, subtaskActiveDurationAsOf, heartbeatAt)
+  } else {
+    subtaskActiveDurationMs to subtaskActiveDurationAsOf
+  }
+  return copy(
+    activeDurationMs = goal.first,
+    activeDurationAsOf = goal.second,
+    subtaskActiveDurationMs = subtask.first,
+    subtaskActiveDurationAsOf = subtask.second,
+  )
+}
+
+private fun advanceAccumulator(accumulatedMs: Long, asOf: String?, heartbeatAt: String): Pair<Long, String?> {
+  val previous = asOf ?: return accumulatedMs to heartbeatAt
   val elapsedMs = runCatching {
     java.time.Duration.between(java.time.Instant.parse(previous), java.time.Instant.parse(heartbeatAt)).toMillis()
-  }.getOrNull() ?: return copy(activeDurationAsOf = heartbeatAt)
+  }.getOrNull() ?: return accumulatedMs to heartbeatAt
   val counted = elapsedMs.coerceIn(0, GOAL_ACTIVE_HEARTBEAT_GAP_LIMIT_MS)
-  return copy(activeDurationMs = activeDurationMs + counted, activeDurationAsOf = heartbeatAt)
+  return accumulatedMs + counted to heartbeatAt
 }
 
 object EmptyGoalRunnerControlRepository : GoalRunnerControlRepository

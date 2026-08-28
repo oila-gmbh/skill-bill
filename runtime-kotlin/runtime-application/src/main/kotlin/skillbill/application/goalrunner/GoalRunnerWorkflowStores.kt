@@ -871,6 +871,7 @@ class WorkflowGoalRunnerManifestStore(
       updated.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
     )
     val refreshed = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
+    reconcileControlStateForManifest(unitOfWork, refreshed.workflowId, decompositionManifestValidator)
     return SavedManifestProjection(
       state = GoalRunnerManifestState(
         parentWorkflowId = refreshed.workflowId,
@@ -986,6 +987,20 @@ class WorkflowGoalRunnerManifestStore(
     )
 }
 
+private fun reconcileControlStateForManifest(
+  unitOfWork: UnitOfWork,
+  parentWorkflowId: String,
+  validator: DecompositionManifestValidator,
+) {
+  val parent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId) ?: return
+  val manifest = parent.decompositionRuntime(validator) ?: return
+  val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
+  val reconciled = existing.reconciledForCurrentSubtask(manifest.currentSubtaskIntent.subtaskId)
+  if (reconciled != existing) {
+    unitOfWork.goalRunnerControls.persistControlState(parentWorkflowId, reconciled)
+  }
+}
+
 private class GoalRunnerControlCoordinator(
   private val database: DatabaseSessionFactory,
   private val decompositionManifestValidator: DecompositionManifestValidator,
@@ -1004,6 +1019,7 @@ private class GoalRunnerControlCoordinator(
     expectedOwnerToken: String?,
     dbPathOverride: String?,
   ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
+    reconcileControlStateForManifest(unitOfWork, parentWorkflowId, decompositionManifestValidator)
     unitOfWork.goalRunnerControls.acquireExecutionLease(parentWorkflowId, lease, expectedOwnerToken)
   }
 
@@ -1012,6 +1028,7 @@ private class GoalRunnerControlCoordinator(
     lease: GoalRunnerExecutionLease,
     dbPathOverride: String?,
   ): Boolean = database.transaction(dbPathOverride) { unitOfWork ->
+    reconcileControlStateForManifest(unitOfWork, parentWorkflowId, decompositionManifestValidator)
     unitOfWork.goalRunnerControls.heartbeatExecutionLease(parentWorkflowId, lease)
   }
 

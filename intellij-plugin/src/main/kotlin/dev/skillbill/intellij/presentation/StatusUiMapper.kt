@@ -54,7 +54,15 @@ object StatusUiMapper {
                         outcome.startedAt,
                         now,
                     ),
-                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, now),
+                    subtaskElapsed = subtaskElapsed(
+                        outcome.subtaskActiveDurationMs,
+                        outcome.subtaskActiveDurationAsOf,
+                        outcome.subtaskStartedAt,
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        now,
+                    ),
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
                     issueKey = outcome.issueKey,
@@ -75,6 +83,8 @@ object StatusUiMapper {
                     problemSummary = problemSummaryWith(null, outcome.diagnostic),
                     activeDurationMs = outcome.activeDurationMs,
                     activeDurationAsOf = outcome.activeDurationAsOf,
+                    subtaskActiveDurationMs = outcome.subtaskActiveDurationMs,
+                    subtaskActiveDurationAsOf = outcome.subtaskActiveDurationAsOf,
                 )
 
             is SkillBillStatusOutcome.Paused ->
@@ -87,7 +97,15 @@ object StatusUiMapper {
                         outcome.startedAt,
                         settledAt(outcome.updatedAt, now),
                     ),
-                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
+                    subtaskElapsed = subtaskElapsed(
+                        outcome.subtaskActiveDurationMs,
+                        outcome.subtaskActiveDurationAsOf,
+                        outcome.subtaskStartedAt,
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        settledAt(outcome.updatedAt, now),
+                    ),
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
                     issueKey = outcome.issueKey,
@@ -119,7 +137,15 @@ object StatusUiMapper {
                         outcome.startedAt,
                         settledAt(outcome.updatedAt, now),
                     ),
-                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
+                    subtaskElapsed = subtaskElapsed(
+                        outcome.subtaskActiveDurationMs,
+                        outcome.subtaskActiveDurationAsOf,
+                        outcome.subtaskStartedAt,
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        settledAt(outcome.updatedAt, now),
+                    ),
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
                     issueKey = outcome.issueKey,
@@ -155,7 +181,15 @@ object StatusUiMapper {
                         outcome.startedAt,
                         settledAt(outcome.updatedAt, now),
                     ),
-                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
+                    subtaskElapsed = subtaskElapsed(
+                        outcome.subtaskActiveDurationMs,
+                        outcome.subtaskActiveDurationAsOf,
+                        outcome.subtaskStartedAt,
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        settledAt(outcome.updatedAt, now),
+                    ),
                     issueKey = outcome.issueKey,
                     workflowId = null,
                     stepLabel = outcome.currentStepLabel,
@@ -178,7 +212,15 @@ object StatusUiMapper {
                         outcome.startedAt,
                         settledAt(outcome.updatedAt, now),
                     ),
-                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
+                    subtaskElapsed = subtaskElapsed(
+                        outcome.subtaskActiveDurationMs,
+                        outcome.subtaskActiveDurationAsOf,
+                        outcome.subtaskStartedAt,
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        settledAt(outcome.updatedAt, now),
+                    ),
                     issueKey = outcome.issueKey,
                     workflowId = null,
                     stepLabel = outcome.currentStepLabel,
@@ -268,6 +310,24 @@ object StatusUiMapper {
         return Duration.ofMillis(accumulatedMs + tailMillis)
     }
 
+    fun subtaskElapsed(
+        subtaskAccumulatedMs: Long?,
+        subtaskAsOf: Instant?,
+        subtaskStartedAt: Instant?,
+        goalAccumulatedMs: Long?,
+        goalAsOf: Instant?,
+        goalStartedAt: Instant?,
+        now: Instant,
+    ): Duration? {
+        val goalElapsed = activeElapsed(goalAccumulatedMs, goalAsOf, goalStartedAt, now)
+        val raw = if (subtaskAccumulatedMs != null) {
+            activeElapsed(subtaskAccumulatedMs, subtaskAsOf, subtaskStartedAt, now)
+        } else {
+            elapsed(subtaskStartedAt, now)
+        } ?: return null
+        return goalElapsed?.let { goal -> if (raw > goal) goal else raw } ?: raw
+    }
+
     /**
      * Re-anchors elapsed clocks from retained start timestamps without a new poll.
      *
@@ -284,7 +344,15 @@ object StatusUiMapper {
                     state.startedAt,
                     now,
                 ),
-                subtaskElapsed = elapsed(state.subtaskStartedAt, now),
+                subtaskElapsed = subtaskElapsed(
+                    state.subtaskActiveDurationMs,
+                    state.subtaskActiveDurationAsOf,
+                    state.subtaskStartedAt,
+                    state.activeDurationMs,
+                    state.activeDurationAsOf,
+                    state.startedAt,
+                    now,
+                ),
             )
             else -> state
         }

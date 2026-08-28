@@ -1,3 +1,14 @@
+## [2026-08-28] SKILL-215 subtask 1 — Execution clocks for goal and current subtask
+Areas: runtime-application/{goalrunner,work,model}, runtime-domain/goalrunner/model, runtime-infra-sqlite, runtime-ports/persistence, orchestration/contracts, intellij-plugin/{domain,presentation}
+- Goal-runner control state now keeps a current-subtask execution total beside `activeDurationMs`. Heartbeats fold both through the same gap cap; lease reacquire after downtime does not count the gap on either clock.
+- Changing current subtask id resets only the subtask total; resume of the same id continues it. `clearControlState` retains both totals.
+- `work status` JSON projects the subtask total onto `current_subtask.active_duration_ms` / `active_duration_as_of` with the same live-lease omit rules as the goal fields. `IDE_STATUS_CONTRACT_VERSION` stays `0.1`.
+- Plugin `StatusUiMapper` derives subtask elapsed from that accumulator the same way `activeElapsed` derives the goal clock, falling back to wall clock when the field is absent, and caps subtask elapsed at goal elapsed when both exist. Frozen states still do not tick.
+- Pattern: sibling accumulator on the same heartbeat fold plus live-anchor omit; additive optional wire field without a contract bump. reusable
+- Limitation: standalone feature-task-runtime and feature-verify families still have no accumulators; CLI `goal status` prose is unchanged.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-21] Soft-admit optional register lines for claim verification
 Areas: runtime-application/review, runtime-application/featuretask, skills/bill-code-review-inline
 - Parent stdout stays free-form prose plus `verdict:`; missing or imperfect register lines never fail the lane.

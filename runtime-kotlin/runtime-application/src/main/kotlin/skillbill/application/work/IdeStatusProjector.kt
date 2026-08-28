@@ -150,24 +150,6 @@ class IdeStatusProjector(
   }
 
   /**
-   * Zero accumulated time with no live anchor is not an observation that the goal did no work — it
-   * is a goal the runtime never watched execute, including every goal that predates the accumulator.
-   * Emitting the zero would have a consumer render "0s" as fact; omitting it lets the consumer fall
-   * back to its own clock.
-   */
-  private fun GoalRunnerStatusProjection.recordedActiveDurationMs(): Long? =
-    activeDurationMs.takeIf { it > 0 || liveActiveDurationAnchor() != null }
-
-  /**
-   * The anchor is a licence to add `now - anchor`, so it is published only while the lease is
-   * genuinely live. A killed runner never reaches `releaseExecutionLease`, leaving a stale anchor
-   * behind; honouring it would grow an unbounded tail and restore the inflated clock this exists to
-   * remove. UNKNOWN is a lease-read failure and is not evidence of a live lease.
-   */
-  private fun GoalRunnerStatusProjection.liveActiveDurationAnchor(): Instant? =
-    parseInstantOrNull(activeDurationAsOf).takeIf { executionLiveness == ExecutionLiveness.LIVE }
-
-  /**
    * Every subtask settled with no live worker lease means a parent row stuck after
    * finalization died — `running`, `blocked`, or `failed` are all stale against that
    * settled truth. A genuinely blocked goal still has `blockedCount > 0` and is not
@@ -378,7 +360,6 @@ private fun goalCurrentSubtask(
 ): IdeStatusCurrentSubtask? = projection?.currentSubtaskId?.takeIf { it > 0 }?.let { subtaskId ->
   IdeStatusCurrentSubtask(
     id = subtaskId.toString(),
-    // Durable child WorkItem/workflow started_at only; never synthesize from updated_at.
     startedAt = projection.currentChildWorkflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
       context.unitOfWork.workList.list(limit = null)
         .firstOrNull { it.workflowId == workflowId }
@@ -387,6 +368,8 @@ private fun goalCurrentSubtask(
           context.unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.startedAt,
         )
     },
+    activeDurationMs = projection.recordedSubtaskActiveDurationMs(),
+    activeDurationAsOf = projection.liveSubtaskActiveDurationAnchor(),
   )
 }
 

@@ -422,6 +422,20 @@ class IdeStatusJsonMapperTest {
     }
 
     @Test
+    fun `nested subtask active duration parses when present and stays absent when omitted`() {
+        val withDuration = goalPayload(null).dropLast(1) +
+            ",\"current_subtask\":{\"id\":\"2\",\"started_at\":\"2026-08-06T10:05:00Z\"," +
+            "\"active_duration_ms\":45000,\"active_duration_as_of\":\"2026-08-06T10:10:00Z\"}}"
+        val parsed = IdeStatusJsonMapper.map(withDuration, now, 0) as SkillBillStatusOutcome.Active
+        assertEquals(45_000L, parsed.subtaskActiveDurationMs)
+        assertEquals(java.time.Instant.parse("2026-08-06T10:10:00Z"), parsed.subtaskActiveDurationAsOf)
+
+        val without = IdeStatusJsonMapper.map(goalPayload(null), now, 0) as SkillBillStatusOutcome.Active
+        assertNull(without.subtaskActiveDurationMs)
+        assertNull(without.subtaskActiveDurationAsOf)
+    }
+
+    @Test
     fun `active duration parses when present and stays absent when omitted`() {
         val withDuration = goalPayload(null).dropLast(1) +
             ",\"active_duration_ms\":1380000,\"active_duration_as_of\":\"2026-08-06T09:59:00Z\"}"

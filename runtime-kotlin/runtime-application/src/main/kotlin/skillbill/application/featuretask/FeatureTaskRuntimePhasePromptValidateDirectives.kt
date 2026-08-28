@@ -15,11 +15,25 @@ private const val VALIDATE_REPAIR_FORBIDDEN_EXTRAS: String =
     "`./gradlew check`, `check " + "--" + "continue`, or the pack collect_all_full_gate_command. Those are not " +
     "this repair turn. "
 
+internal const val VALIDATE_REPAIR_SPOTLESS_PREFLIGHT: String =
+  "First action every repair turn: run `./gradlew spotlessApply` once at the Gradle project root " +
+    "(project-wide — never `:module:spotlessApply`) before any other edit or check. It is fast and clears " +
+    "format findings that may be hidden inside bundled gate output. "
+
+internal const val VALIDATE_REPAIR_CHECKLIST: String =
+  "Before editing, copy the open findings below into a numbered free-form checklist (file, rule, " +
+    "one-line fix intent). Work the checklist in order. After each item — or a batch that shares one root " +
+    "cause — run only the narrowest allowed proof (spotlessApply already ran once at turn start; then " +
+    "targeted `:module:detekt`, `ktlintCheck`, `compileKotlin`, or `test` as appropriate). Do not start the " +
+    "next checklist item until the current one passes its targeted check. Detekt threshold hits " +
+    "(TooManyFunctions, CyclomaticComplexMethod, LongMethod) need structural refactors — extract helpers or " +
+    "move code to a sibling file; do not add @Suppress. "
+
 internal const val VALIDATE_REPAIR_ALLOWED_TASKS: String =
-  "For Spotless or format findings, run `./gradlew spotlessApply` once at the Gradle project root " +
-    "(project-wide — never `:module:spotlessApply`). It is fast. You may also run targeted `test`, " +
-    "`compileKotlin`, `detekt`, and `ktlintCheck` while repairing when those tasks are part of the " +
-    "routed pack checker. "
+  VALIDATE_REPAIR_SPOTLESS_PREFLIGHT +
+    VALIDATE_REPAIR_CHECKLIST +
+    "You may also run targeted `test`, `compileKotlin`, `detekt`, and `ktlintCheck` while repairing when " +
+    "those tasks are part of the routed pack checker. "
 
 internal fun validateRepairPhaseTask(): String =
   "You are the only validate repair agent for this step — do not spawn delegated subagents. The runtime " +

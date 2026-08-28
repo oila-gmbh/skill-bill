@@ -312,6 +312,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "`compileKotlin`")
       assertContains(prompt, "`./gradlew spotlessApply`")
       assertContains(prompt, "never `:module:spotlessApply`")
+      assertContains(prompt, "First action every repair turn")
+      assertContains(prompt, "numbered free-form checklist")
+      assertContains(prompt, "Do not start the next checklist item")
       assertContains(
         prompt,
         "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
@@ -374,6 +377,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "Do not spawn delegated subagents")
       assertContains(prompt, "`./gradlew spotlessApply`")
       assertContains(prompt, "never `:module:spotlessApply`")
+      assertContains(prompt, "First action every repair turn")
+      assertContains(prompt, "numbered free-form checklist")
+      assertContains(prompt, "Do not start the next checklist item")
       assertContains(prompt, "Gate repair — prose only, no phase-output schema")
       assertContains(prompt, "blast radius")
       assertFalse(prompt.contains("Required final output (validated schema gate)"))

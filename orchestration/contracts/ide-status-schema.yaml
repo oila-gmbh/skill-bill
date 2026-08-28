@@ -101,6 +101,21 @@ properties:
         description: >
           Durable current-subtask start instant. Omitted when the subtask scope
           does not exist or legacy state cannot provide it.
+      active_duration_ms:
+        type: integer
+        minimum: 0
+        description: >
+          Time the current subtask spent actually executing, accumulated from lease
+          heartbeats. Not wall clock since started_at: pause, block, and unattended
+          gaps are excluded. Omitted when no execution was recorded for this subtask.
+          Consumers add now - active_duration_as_of while that field is present.
+      active_duration_as_of:
+        type: string
+        minLength: 1
+        description: >
+          Instant active_duration_ms is current as of. Present only while a lease is
+          live so a reader can tick the live tail without double counting. Absent means
+          the accumulated value is final.
   current_model:
     type: object
     additionalProperties: false

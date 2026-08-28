@@ -35,6 +35,7 @@ data class CachedDisplaySnapshot(
      * not cached: a cache fallback is never live, so the value it restores is final.
      */
     val activeDurationMs: Long? = null,
+    val subtaskActiveDurationMs: Long? = null,
 ) {
     init {
         require(summary.isNotBlank()) { "summary must not be blank" }
@@ -63,6 +64,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                     subtaskStartedAt = subtaskStartedAt,
                     updatedAt = updatedAt,
                     activeDurationMs = activeDurationMs,
+                    subtaskActiveDurationMs = subtaskActiveDurationMs,
                 ),
                 observedAt = observedAt,
             )
@@ -82,6 +84,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                     subtaskStartedAt = subtaskStartedAt,
                     updatedAt = updatedAt,
                     activeDurationMs = activeDurationMs,
+                    subtaskActiveDurationMs = subtaskActiveDurationMs,
                 ),
                 observedAt = observedAt,
             )
@@ -104,6 +107,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                         subtaskStartedAt = subtaskStartedAt,
                         updatedAt = updatedAt,
                         activeDurationMs = activeDurationMs,
+                        subtaskActiveDurationMs = subtaskActiveDurationMs,
                     ),
                     observedAt = observedAt,
                 )
@@ -122,6 +126,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                     subtaskStartedAt = subtaskStartedAt,
                     updatedAt = updatedAt,
                     activeDurationMs = activeDurationMs,
+                    subtaskActiveDurationMs = subtaskActiveDurationMs,
                 ),
                 observedAt = observedAt,
             )
@@ -139,6 +144,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                     subtaskStartedAt = subtaskStartedAt,
                     updatedAt = updatedAt,
                     activeDurationMs = activeDurationMs,
+                    subtaskActiveDurationMs = subtaskActiveDurationMs,
                 ),
                 observedAt = observedAt,
             )
@@ -179,6 +185,7 @@ fun LastKnownDisplayCache.toStaleOutcome(): SkillBillStatusOutcome.Stale =
         subtaskStartedAt = display.subtaskStartedAt,
         updatedAt = display.updatedAt,
         activeDurationMs = display.activeDurationMs,
+        subtaskActiveDurationMs = display.subtaskActiveDurationMs,
         fromCache = true,
         diagnostic = StatusDiagnostic(reasonCode = "cache_fallback"),
     )

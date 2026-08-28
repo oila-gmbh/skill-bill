@@ -1,3 +1,12 @@
+## [2026-08-28] SKILL-215 subtask 1 — Subtask elapsed from execution total
+Areas: intellij-plugin/{domain,infrastructure/cli,presentation,prefs}
+- Feature-goal snapshots now carry optional `current_subtask.active_duration_ms` / `active_duration_as_of` through mapper, outcomes, UI state, and last-known cache.
+- `StatusUiMapper.subtaskElapsed` uses that total (plus live tail while `asOf` is present) instead of `elapsed(subtaskStartedAt, now)` when the field is present. Older CLIs that omit it keep the wall-clock fallback.
+- Whenever both clocks exist, subtask elapsed is capped at goal elapsed so a pause gap cannot invert them. `withElapsed` still ticks only `Active` (including `pause_requested`); paused, blocked, failed, and terminal stay frozen.
+- Pattern: reuse `activeElapsed` for any sibling execution total; cap the child clock at the parent when both are present. reusable
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-12] SKILL-184 current-phase execution status wording (subtask 2)
 
 Areas: intellij-plugin/{domain,infrastructure/cli,presentation,ui}
