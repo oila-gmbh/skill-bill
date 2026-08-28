@@ -38,10 +38,12 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ResolvedReviewRubric
+import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
@@ -570,6 +572,147 @@ class ParallelCodeReviewRunnerTest {
     assertContains(result.lane1.failureReason.orEmpty(), "review_context_budget_exceeded")
     assertEquals("review_context_budget_exceeded", result.lane1.budgetOutcome?.type)
     assertTrue(result.mergeResult.findings.isEmpty())
+  }
+}
+
+class ParallelCodeReviewCursorDelegatedLaunchTest {
+  @Test
+  fun `cursor delegated parent names specialists and stages project agents before launch`() {
+    val endpointRoot = Files.createTempDirectory("cursor-delegated-endpoint")
+    val launcher = ParallelSubtaskLauncher()
+    val runner = cursorDelegatedRunner(launcher, endpointRoot)
+
+    runner.run(
+      baseRequest(agent1Id = "cursor", scope = ParallelReviewScope.STAGED)
+        .copy(codeReviewMode = CodeReviewExecutionMode.DELEGATED),
+    )
+
+    val request = launcher.requests.single()
+    val prompt = request.skillRunRequest.promptOverride.orEmpty()
+    assertTrue(request.skillRunRequest.reviewFanOut)
+    assertContains(prompt, "/bill-kotlin-code-review-architecture")
+    assertContains(prompt, "/bill-kotlin-code-review-testing")
+    assertTrue(
+      prompt.contains("bill-kotlin-code-review-architecture") &&
+        prompt.contains("bill-kotlin-code-review-testing") &&
+        prompt.contains("one instruction"),
+    )
+    val agentsDir = endpointRoot.resolve(".cursor/agents")
+    assertTrue(Files.isRegularFile(agentsDir.resolve("bill-kotlin-code-review-architecture.md")))
+    assertTrue(Files.isRegularFile(agentsDir.resolve("bill-kotlin-code-review-testing.md")))
+  }
+
+  @Test
+  fun `claude delegated parent prompt has no cursor slash-name invocation lines`() {
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+      diffResolver = RecordingDiffResolver(default = diffFor("src/FooTest.kt")),
+      rubricResolver = ReviewRubricResolver {
+        ResolvedReviewRubric(
+          "bill-kotlin-code-review",
+          "parent routing rubric",
+          specialists = listOf(
+            ResolvedReviewRubric(
+              "bill-kotlin-code-review-architecture",
+              "architecture specialist rubric",
+              area = "architecture",
+            ),
+            ResolvedReviewRubric(
+              "bill-kotlin-code-review-testing",
+              "testing specialist rubric",
+              area = "testing",
+            ),
+          ),
+        )
+      },
+    )
+
+    runner.run(
+      baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED)
+        .copy(codeReviewMode = CodeReviewExecutionMode.DELEGATED),
+    )
+
+    launcher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertFalse(Regex("/bill-").containsMatchIn(prompt))
+      assertTrue(request.skillRunRequest.reviewFanOut)
+    }
+  }
+
+  @Test
+  fun `cursor inline parent does not fan out specialists or stage unused lane agents`() {
+    val endpointRoot = Files.createTempDirectory("cursor-inline-endpoint")
+    val stagedRequests = mutableListOf<ReviewLaunchAgentStagingRequest>()
+    val launcher = ParallelSubtaskLauncher()
+    val runner = createRunner(
+      launcher,
+      RunnerFixtureConfig(
+        evidenceEndpointRoot = endpointRoot,
+        catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+        diffResolver = RecordingDiffResolver(default = diffFor("src/FooTest.kt")),
+        rubricResolver = ReviewRubricResolver {
+          ResolvedReviewRubric(
+            "bill-kotlin-code-review",
+            "parent routing rubric",
+            specialists = listOf(
+              ResolvedReviewRubric(
+                "bill-kotlin-code-review-architecture",
+                "architecture specialist rubric",
+                area = "architecture",
+              ),
+              ResolvedReviewRubric(
+                "bill-kotlin-code-review-testing",
+                "testing specialist rubric",
+                area = "testing",
+              ),
+            ),
+          )
+        },
+        reviewLaunchAgentStaging = ReviewLaunchAgentStagingPort { stagedRequests += it },
+      ),
+    )
+
+    runner.run(
+      baseRequest(agent1Id = "cursor", scope = ParallelReviewScope.STAGED)
+        .copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    val request = launcher.requests.single()
+    assertEquals("bill-code-review-inline", request.skillRunRequest.nativeReviewWorkerName)
+    assertFalse(request.skillRunRequest.reviewFanOut)
+    val prompt = request.skillRunRequest.promptOverride.orEmpty()
+    assertFalse(Regex("/bill-kotlin-code-review-").containsMatchIn(prompt))
+    assertTrue(stagedRequests.isEmpty(), "inline review must not call reviewLaunchAgentStaging.stage")
+  }
+
+  @Test
+  fun `cursor delegated missing selected specialist fails before parent launch`() {
+    val launcher = ParallelSubtaskLauncher()
+    val runner = cursorDelegatedRunner(
+      launcher,
+      Files.createTempDirectory("cursor-missing-endpoint"),
+      nativeAgentPreflight = ReviewNativeAgentPreflightPort {
+        throw MissingInstalledNativeAgentError(
+          "bill-kotlin-code-review-testing",
+          "cursor",
+          "/missing",
+          "managed inventory entry is missing",
+          "skill-bill install apply",
+        )
+      },
+    )
+
+    val error = assertFailsWith<MissingInstalledNativeAgentError> {
+      runner.run(
+        baseRequest(agent1Id = "cursor", scope = ParallelReviewScope.STAGED)
+          .copy(codeReviewMode = CodeReviewExecutionMode.DELEGATED),
+      )
+    }
+
+    assertTrue(launcher.requests.isEmpty())
+    assertContains(error.logicalName, "bill-kotlin-code-review-testing")
   }
 }
 
@@ -1210,6 +1353,8 @@ internal data class RunnerFixtureConfig(
   val database: RecordingReviewDatabase = RecordingReviewDatabase(),
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
+  val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort = ReviewLaunchAgentStagingPort.NONE,
+  val evidenceEndpointRoot: Path? = null,
   val registerParse: (String) -> skillbill.review.model.ParallelReviewParseResult =
     skillbill.review.ParallelReviewFindingParser::parse,
 ) {
@@ -1233,8 +1378,9 @@ internal fun runner(
   ),
 )
 
-internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
-  ParallelCodeReviewRunner(
+internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner {
+  val endpointRoot = config.evidenceEndpointRoot ?: Files.createTempDirectory("endpoint")
+  return ParallelCodeReviewRunner(
     parentReviewLauncher = launcher,
     diffResolver = config.diffResolver,
     repoLocalConfig = object : RepoLocalConfigPort {
@@ -1259,12 +1405,12 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
       ),
     ),
     nativeAgentPreflight = config.nativeAgentPreflight,
+    reviewLaunchAgentStaging = config.reviewLaunchAgentStaging,
     reviewEvidenceBrokerFactory = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
-    governedEvidenceEndpointBinder = skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder(
-      java.nio.file.Files.createTempDirectory("endpoint"),
-    ),
+    governedEvidenceEndpointBinder = skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder(endpointRoot),
     registerParse = config.registerParse,
   )
+}
 
 internal class RecordingReviewDatabase : DatabaseSessionFactory {
   val laneWrites = mutableListOf<Pair<String, List<ReviewRunLane>>>()
@@ -1623,6 +1769,45 @@ private fun fallbackManifest(): PlatformManifest = platformManifest("generic", l
     content = emptyList(),
   ),
   fallbackCapabilities = setOf("code-review"),
+)
+
+private fun cursorDelegatedRunner(
+  launcher: GoalRunnerSubtaskLauncher,
+  endpointRoot: Path,
+  nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
+): ParallelCodeReviewRunner = createRunner(
+  launcher,
+  RunnerFixtureConfig(
+    evidenceEndpointRoot = endpointRoot,
+    catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+    diffResolver = RecordingDiffResolver(default = diffFor("src/FooTest.kt")),
+    rubricResolver = ReviewRubricResolver {
+      ResolvedReviewRubric(
+        "bill-kotlin-code-review",
+        "parent routing rubric",
+        specialists = listOf(
+          ResolvedReviewRubric(
+            "bill-kotlin-code-review-architecture",
+            "architecture specialist rubric",
+            area = "architecture",
+          ),
+          ResolvedReviewRubric(
+            "bill-kotlin-code-review-testing",
+            "testing specialist rubric",
+            area = "testing",
+          ),
+        ),
+      )
+    },
+    nativeAgentPreflight = nativeAgentPreflight,
+    reviewLaunchAgentStaging = ReviewLaunchAgentStagingPort { request ->
+      val agentsDir = request.reviewLaunchDirectory.resolve(".cursor/agents")
+      Files.createDirectories(agentsDir)
+      request.logicalWorkerNames.forEach { name ->
+        Files.writeString(agentsDir.resolve("$name.md"), "staged $name")
+      }
+    },
+  ),
 )
 
 internal fun diffFor(path: String): String = "+++ b/$path"
