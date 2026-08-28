@@ -44,7 +44,7 @@ private fun resolvedTierInfo(inputs: ReviewExecutionDirectiveInputs): String =
   if (inputs.resolvedReviewTier != null && inputs.reviewDecidingRule != null) {
     """
     ## Resolved review mode
-    AUTO resolved to ${inputs.resolvedReviewTier.wireValue} by rule "${inputs.reviewDecidingRule}". An explicit INLINE or DELEGATED always overrides AUTO.
+    AUTO resolved to ${inputs.resolvedReviewTier.wireValue} by rule "${inputs.reviewDecidingRule}". An explicit INLINE always overrides AUTO.
     """.trimIndent()
   } else {
     ""

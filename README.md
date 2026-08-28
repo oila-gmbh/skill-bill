@@ -109,7 +109,7 @@ Maintained packs share one exemption-free substance gate: every effective specia
 /bill-code-review mode:delegated
 ```
 
-Omit `mode:` to use inline review, the default single-prompt light tier; `mode:delegated` is the experimental full-depth specialist subagent fan-out, reached only by that explicit selection. `mode:auto` resolves to `inline` everywhere. Feature workflows use a separate caller-facing spelling—`/bill-feature <issue-key> code-review:auto|inline|delegated`—and translate it to the standalone review mode internally.
+Omit `mode:` to use inline review, the default single-prompt light tier; `mode:delegated` is the experimental full-depth specialist subagent fan-out, reached only by that explicit selection on `/bill-code-review`. `mode:auto` resolves to `inline` everywhere. Feature and goal workflows review inline (`/bill-feature <issue-key> code-review:auto|inline`); delegated review is a standalone launch.
 
 **Full skill catalog:**
 

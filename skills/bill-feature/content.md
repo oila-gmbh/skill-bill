@@ -37,7 +37,7 @@ If the issue key is missing, stop and ask for it. Do not invent one.
 
 ## Token Forwarding
 
-Accept at most one `code-review:auto|inline|delegated`, and zero or more ordered `agent-addon:<slug>`
+Accept at most one `code-review:auto|inline`, and zero or more ordered `agent-addon:<slug>`
 arguments. Forward supplied values as flags without resolving a catalogue or
 constructing JSON. Omitted values remain omitted.
 

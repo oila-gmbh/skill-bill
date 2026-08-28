@@ -2196,7 +2196,10 @@ internal class FeatureTaskRuntimeRunLoop(
       return
     }
     goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
-      state.copy(resolvedTier = resolution.resolvedTier, decidingRule = resolution.decidingRule)
+      state.copy(
+        resolvedTier = skillbill.application.review.RuntimeOwnedReviewMode.execute(resolution.resolvedTier),
+        decidingRule = resolution.decidingRule,
+      )
     }
   }
 
@@ -2914,7 +2917,7 @@ internal class FeatureTaskRuntimeRunLoop(
       launch = RuntimeOwnedReviewLaunch(
         iteration = iteration,
         passNumber = passNumber,
-        resolvedTier = resolution.resolvedTier,
+        resolvedTier = skillbill.application.review.RuntimeOwnedReviewMode.execute(resolution.resolvedTier),
         reviewRunId = reviewRunId,
         checkpoint = checkpoint,
       ),
@@ -5996,16 +5999,19 @@ internal class FeatureTaskRuntimeRunLoop(
     val depthResolution = passNumber?.let { pass ->
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(run.request.runInvariants.codeReviewMode, pass)
     }
+    val executedTier = skillbill.application.review.RuntimeOwnedReviewMode.execute(
+      depthResolution?.resolvedTier ?: run.request.runInvariants.codeReviewMode,
+    )
     depthResolution?.let { resolution -> persistResolvedReviewTier(run, resolution) }
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       issueKey = run.request.issueKey,
       briefing = briefing,
       suppressDecomposition = isGoalContinuationRun(run.request),
-      codeReviewMode = depthResolution?.resolvedTier ?: run.request.runInvariants.codeReviewMode,
+      codeReviewMode = executedTier,
       reviewPassNumber = passNumber,
       goalSubtaskReviewInput = run.goalReviewInput,
       baselineUntrackedPaths = resolvedBranchRecord?.baselineUntrackedPaths.orEmpty(),
-      resolvedReviewTier = depthResolution?.resolvedTier,
+      resolvedReviewTier = depthResolution?.let { executedTier },
       reviewDecidingRule = depthResolution?.decidingRule,
       repairLedger = handoff.repairLedger,
       priorReviewContext = null,

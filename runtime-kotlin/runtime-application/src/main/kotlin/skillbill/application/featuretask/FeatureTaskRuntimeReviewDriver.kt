@@ -7,6 +7,7 @@ import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
 import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
@@ -73,14 +74,16 @@ internal object FeatureTaskRuntimeReviewDriverMapper {
     pass: FeatureTaskRuntimeReviewDriverPass,
     workspace: FeatureTaskRuntimeReviewDriverWorkspace,
   ): ParallelCodeReviewRequest {
-    val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pass.pinnedMode, pass.passNumber)
+    val executed = RuntimeOwnedReviewMode.execute(
+      FeatureTaskRuntimeReviewPassSequence.resolveForPass(pass.pinnedMode, pass.passNumber).resolvedTier,
+    )
     return ParallelCodeReviewRequest(
       agent1Id = agents.agent1Id,
       scope = ParallelReviewScope.UNSTAGED,
       repoRoot = workspace.repoRoot,
       timeout = workspace.timeout,
-      codeReviewMode = resolution.resolvedTier,
-      resolvedTier = resolution.resolvedTier,
+      codeReviewMode = executed,
+      resolvedTier = executed,
       suppliedDiff = input.reviewText,
       reviewRunId = pass.reviewRunId,
       baseRevision = input.reviewBaseSha,

@@ -1377,6 +1377,7 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
   fun `feature-task runtime rejects malformed and unknown review modes before workflow opening`() {
     listOf(
       listOf("--code-review-mode", "unknown"),
+      listOf("--code-review-mode", "delegated"),
       listOf("--code-review-mode="),
     ).forEach { modeArgs ->
       val fixture = runtimeFixture()
@@ -1407,7 +1408,6 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
       "omitted" to emptyList(),
       "auto" to listOf("--code-review-mode", "auto"),
       "inline" to listOf("--code-review-mode", "inline"),
-      "delegated" to listOf("--code-review-mode", "delegated"),
     ).forEach { (expectedMode, modeArgs) ->
       val fixture = runtimeFixture()
       val launcher = RecordingPhaseLauncher()

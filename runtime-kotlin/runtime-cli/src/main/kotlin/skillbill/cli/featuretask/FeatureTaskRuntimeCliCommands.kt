@@ -41,6 +41,7 @@ import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
@@ -149,10 +150,9 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   ).multiple()
   protected val codeReviewModes by option(
     "--code-review-mode",
-    help = "Review execution mode: inline (default, one review subagent per pass), auto " +
-      "(also resolves inline on every pass), or delegated (experimental specialist " +
-      "fan-out, explicit only). Supply at most once; a resumed workflow remains " +
-      "pinned to its original mode.",
+    help = "Review execution mode for this run: inline (default, one review subagent per " +
+      "pass) or auto (also resolves inline). Supply at most once; a resumed workflow " +
+      "remains pinned to its original mode.",
   ).multiple()
   protected val operatorDecisions by option(
     "--operator-decision",
@@ -398,13 +398,13 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
   }
 
-  private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode = (
-    CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
-      ?: throw UsageError(
-        "Unknown code-review execution mode '$raw'. Allowed: " +
-          "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
-      )
-    )
+  private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode = try {
+    RuntimeOwnedReviewMode.parse(raw)
+  } catch (error: IllegalArgumentException) {
+    throw UsageError(error.message ?: "Unknown code-review execution mode.").also { usage ->
+      runCatching { usage.initCause(error) }
+    }
+  }
 
   private fun goalContinuationMissingFields(): List<String> = buildList {
     if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")

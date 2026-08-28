@@ -43,7 +43,7 @@ import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.model.GoalRunnerStopStatus
 import skillbill.application.model.GoalRunnerStopVerbResult
-import skillbill.application.review.RequestedReviewMode
+import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.system.RuntimeProvenanceService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.cli.core.CliRunState
@@ -129,8 +129,7 @@ class GoalRunCommand(
   private val codeReviewMode by option(
     "--code-review-mode",
     help = "Review execution mode for every child: inline (default, one review subagent per " +
-      "pass), auto (also resolves inline on every pass), or delegated (experimental " +
-      "specialist fan-out, explicit only).",
+      "pass) or auto (also resolves inline).",
   )
   private val agentAddonSelectionJson by option(
     "--agent-addon-selection-json",
@@ -302,7 +301,7 @@ class GoalPreflightCommand(
   )
   private val codeReviewMode by option(
     "--code-review-mode",
-    help = "Review mode: inline (default), auto, or delegated (experimental).",
+    help = "Review mode: inline (default) or auto.",
   )
   private val agentAddonSlugs by option(
     "--agent-addon",
@@ -320,7 +319,7 @@ class GoalPreflightCommand(
         repoRoot = root,
         invokedAgentId = invokedAgentId,
         agentOverrideId = agentOverride,
-        requestedReviewMode = codeReviewMode?.let(RequestedReviewMode::parse),
+        requestedReviewMode = parseCodeReviewMode(codeReviewMode),
         requestedAgentAddonSlugs = agentAddonSlugs,
         dbPathOverride = state.dbOverride,
         userHome = state.userHome,
@@ -332,7 +331,15 @@ class GoalPreflightCommand(
   }
 }
 
-private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.let(RequestedReviewMode::parse)
+private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.let { value ->
+  try {
+    RuntimeOwnedReviewMode.parse(value)
+  } catch (error: IllegalArgumentException) {
+    throw UsageError(error.message ?: "Unknown code-review execution mode.").also { usage ->
+      runCatching { usage.initCause(error) }
+    }
+  }
+}
 
 private fun GoalPreflightResult.toGoalPreflightCliMap(): Map<String, Any?> = linkedMapOf(
   "verdict" to verdict,

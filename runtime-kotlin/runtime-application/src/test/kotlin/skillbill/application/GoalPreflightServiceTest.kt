@@ -64,14 +64,14 @@ class GoalPreflightServiceTest {
     val result = service.preflight(
       request(
         root = root,
-        reviewMode = CodeReviewExecutionMode.DELEGATED,
+        reviewMode = CodeReviewExecutionMode.INLINE,
         agentOverride = "claude",
         addons = listOf("first-addon", "second-addon"),
       ),
     )
 
     val gate = requireNotNull(result.gateBlock)
-    assertEquals("delegated (experimental)", gate.reviewMode)
+    assertEquals("inline", gate.reviewMode)
     assertEquals("claude", gate.childAgent)
     assertEquals("claude", gate.childAgentOverride)
     assertEquals(listOf("first-addon", "second-addon"), gate.agentAddons.map { it.slug })

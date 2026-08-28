@@ -34,9 +34,8 @@ review. Report the requested mode and the resolved depth in the normal review
 metadata.
 
 `inline` is the default depth. `delegated` is the experimental full-depth tier and
-runs only on an explicit `mode:delegated`, or an explicit `code-review:delegated`
-selection carried down from a governed feature caller. Neither an omitted argument
-nor `mode:auto` ever reaches it.
+runs only on an explicit `mode:delegated` from this skill. Goal and feature-task
+runs never select it. Neither an omitted argument nor `mode:auto` ever reaches it.
 Choose it when a change genuinely warrants per-area depth, not by default.
 
 `delegated` always runs the normal routed delegated path
@@ -53,7 +52,7 @@ same delta once per area. Never present it as equivalent to a delegated result.
 `auto` resolves to `inline` everywhere: a subtask's first review pass, a standalone
 review with no pass number, and every follow-up or remediation pass. Preserve and
 report the applicable named auto rule for telemetry. `auto` never reaches the
-experimental delegated tier — only an explicit `mode:delegated` does.
+experimental delegated tier — only an explicit `mode:delegated` on this skill does.
 
 Depth is the only thing the light tier lowers. The severity vocabulary, evidence
 and observable-consequence requirements, F-XXX register guidance, and telemetry
@@ -94,10 +93,13 @@ runtime driver once and present what it returns:
 ```bash
 skill-bill code-review \
   [<commit>] \
-  --execution-mode <resolved-mode> \
+  --execution-mode inline \
   [--scope <caller-scope>] \
   --repo-root <repo-root>
 ```
+
+When the caller supplied an explicit `mode:delegated`, pass `--execution-mode delegated`
+instead. Omission and `mode:auto` always pass `--execution-mode inline`.
 
 Pass `--diff-file` with paired `--base-revision` and
 `--head-revision` when the caller already materialized an exact diff. Pass

@@ -78,6 +78,8 @@ class FeatureFamilyRenderingIntegrationTest {
     ).forEach { removedSidecar ->
       assertFalse(Files.exists(staged.stagingDir.resolve(removedSidecar)), removedSidecar)
     }
+    assertContains(feature, "code-review:auto|inline")
+    assertFalse(feature.contains("code-review:auto|inline|delegated"))
     assertContains(stagedReview.renderedSkillFile.readText(), "mode:auto|inline|delegated")
     assertFalse(stagedReview.renderedSkillFile.readText().contains("execution-mode:auto|inline|delegated"))
     assertTrue(sourceFilesBefore.all { (path, bytes) -> bytes.contentEquals(Files.readAllBytes(path)) })

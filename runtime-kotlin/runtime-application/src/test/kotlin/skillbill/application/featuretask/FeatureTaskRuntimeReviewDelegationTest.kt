@@ -47,8 +47,8 @@ class FeatureTaskRuntimeReviewDelegationTest {
     assertEquals(input.reviewBaseSha, request.baseRevision)
     assertEquals(input.currentHeadSha, request.headRevision)
     assertTrue(request.scope != ParallelReviewScope.BRANCH)
-    assertEquals(CodeReviewExecutionMode.DELEGATED, request.codeReviewMode)
-    assertEquals(CodeReviewExecutionMode.DELEGATED, request.resolvedTier)
+    assertEquals(CodeReviewExecutionMode.INLINE, request.codeReviewMode)
+    assertEquals(CodeReviewExecutionMode.INLINE, request.resolvedTier)
     assertEquals(Path.of("spec.md"), request.specPath)
   }
 
