@@ -80,6 +80,14 @@ class FeatureTaskRuntimeImplementationAttemptSchemaValidatorTest {
   }
 
   @Test
+  fun `accepts a stuffed value longer than 4096 characters`() {
+    FeatureTaskRuntimeImplementationAttemptSchemaValidator.validate(
+      record(attempt() + mapOf("value" to "x".repeat(4097))),
+      SOURCE,
+    )
+  }
+
+  @Test
   fun `rejects a missing required attempt field`() {
     assertFailsWith<InvalidFeatureTaskRuntimeImplementationAttemptSchemaError> {
       FeatureTaskRuntimeImplementationAttemptSchemaValidator.validate(
