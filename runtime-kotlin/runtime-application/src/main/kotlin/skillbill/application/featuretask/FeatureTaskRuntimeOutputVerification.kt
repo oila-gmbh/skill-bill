@@ -20,7 +20,7 @@ internal object FeatureTaskRuntimeOutputVerification {
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> reviewVerdict(outputObject, wireVerdict)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
-        findingVerificationVerdict(outputObject, wireVerdict)
+        findingVerificationVerdict(wireVerdict)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditVerdict(wireVerdict)
       else -> wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
     }
@@ -49,13 +49,10 @@ internal object FeatureTaskRuntimeOutputVerification {
     ?.takeIf(String::isNotBlank)
 }
 
-private fun findingVerificationVerdict(
-  outputObject: Map<String, Any?>?,
-  wireVerdict: FeatureTaskRuntimeVerdict?,
-): FeatureTaskRuntimeVerdict {
-  val derived = findingVerificationVerdictFrom(outputObject)?.verdict
-  return derived ?: wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
-}
+private fun findingVerificationVerdict(wireVerdict: FeatureTaskRuntimeVerdict?): FeatureTaskRuntimeVerdict =
+  requireNotNull(wireVerdict) {
+    "verify_findings phase output is missing verdict."
+  }
 
 private fun findingVerificationVerdictFrom(
   outputObject: Map<String, Any?>?,

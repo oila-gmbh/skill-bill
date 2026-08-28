@@ -143,123 +143,48 @@ data class FeatureTaskRuntimeRepairDisturbedRemedy(
 }
 
 data class FeatureTaskRuntimeRepairReceiptEntry(
-  val severity: String,
   val outcome: FeatureTaskRuntimeRepairOutcome,
-  val constructs: List<FeatureTaskRuntimeRepairConstruct>,
-  val intent: String,
   val findingId: String,
-  val label: String = "",
-  val text: String = "",
   val noEditReason: String? = null,
   val unresolvedReason: String? = null,
 ) {
   init {
-    if (severity !in setOf("blocker", "major", "minor", "nit")) {
-      receiptError("severity", "must be one of blocker, major, minor, nit.")
-    }
     requireReceiptIdentityText(findingId, "finding_id", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES)
-    if (label.isNotEmpty()) {
-      requireReceiptSanitizedText(label, "label", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES)
-    }
-    if (text.isNotEmpty()) {
-      requireReceiptSanitizedText(text, "text", REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES)
-    }
-    requireReceiptSanitizedText(intent, "intent", REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES)
-    if (constructs.size > REPAIR_RECEIPT_MAX_CONSTRUCTS_PER_ENTRY) {
-      receiptError(
-        "constructs",
-        "allows at most $REPAIR_RECEIPT_MAX_CONSTRUCTS_PER_ENTRY constructs per entry.",
-      )
-    }
-    when (outcome) {
-      FeatureTaskRuntimeRepairOutcome.ADDRESSED -> {
-        if (constructs.isEmpty()) {
-          receiptError("constructs", "an addressed entry must name at least one closing construct.")
-        }
-        if (noEditReason != null) {
-          receiptError("no_edit_reason", "must be absent when outcome is addressed.")
-        }
-        if (unresolvedReason != null) {
-          receiptError("unresolved_reason", "must be absent when outcome is addressed.")
-        }
-      }
-      FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED -> {
-        val reason = noEditReason
-          ?: receiptError("no_edit_reason", "must be present when outcome is no_edit_required.")
-        requireReceiptSanitizedText(reason, "no_edit_reason", REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES)
-        if (unresolvedReason != null) {
-          receiptError("unresolved_reason", "must be absent when outcome is no_edit_required.")
-        }
-      }
-      FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED -> {
-        if (constructs.isEmpty()) {
-          receiptError("constructs", "an attempted_unresolved entry must name the constructs it touched.")
-        }
-        if (noEditReason != null) {
-          receiptError("no_edit_reason", "must be absent when outcome is attempted_unresolved.")
-        }
-        val reason = unresolvedReason
-          ?: receiptError("unresolved_reason", "must be present when outcome is attempted_unresolved.")
-        requireReceiptSanitizedText(reason, "unresolved_reason", REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES)
-      }
-    }
   }
 
   fun findingIdentity(): String = normalizeIdentityPart(findingId)
 
   @OpenBoundaryMap("Repair receipt entry at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-    "finding_id" to findingId,
-    "severity" to severity,
-    "outcome" to outcome.wireValue,
-    "constructs" to constructs.map(FeatureTaskRuntimeRepairConstruct::toArtifactMap),
-    "intent" to intent,
-  ).apply {
-    if (label.isNotEmpty()) put("label", label)
-    if (text.isNotEmpty()) put("text", text)
+  fun toArtifactMap(): Map<String, Any?> = buildMap {
+    put("finding_id", findingId)
+    put("outcome", outcome.wireValue)
     noEditReason?.let { put("no_edit_reason", it) }
     unresolvedReason?.let { put("unresolved_reason", it) }
   }
 
   companion object {
     @OpenBoundaryMap("Repair receipt entry decode from the durable workflow-artifact map")
-    fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeRepairReceiptEntry {
-      raw.requireOnlyReviewStateKeys(
-        setOf(
-          "severity",
-          "label",
-          "text",
-          "outcome",
-          "constructs",
-          "intent",
-          "finding_id",
-          "finding_ref",
-          "id",
-          "ref",
-          "no_edit_reason",
-          "unresolved_reason",
+    fun fromArtifactMap(
+      raw: Map<String, Any?>,
+      path: String,
+      observations: FeatureTaskRuntimeRepairReceiptDecodeObservations? = null,
+    ): FeatureTaskRuntimeRepairReceiptEntry = anchoredToDecodePath(path) {
+      FeatureTaskRuntimeRepairReceiptEntry(
+        outcome = FeatureTaskRuntimeRepairOutcome.fromWire(raw.requireReviewStateString("outcome", path)),
+        findingId = requireFindingRefAlias(raw, path),
+        noEditReason = forwardOptionalReceiptReason(
+          raw.optionalReviewStateString("no_edit_reason", path),
+          "$path.no_edit_reason",
+          REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES,
+          observations,
         ),
-        path,
+        unresolvedReason = forwardOptionalReceiptReason(
+          raw.optionalReviewStateString("unresolved_reason", path),
+          "$path.unresolved_reason",
+          REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES,
+          observations,
+        ),
       )
-      val constructs = raw.requireReviewStateList("constructs", path).mapIndexed { index, value ->
-        FeatureTaskRuntimeRepairConstruct.fromArtifactMap(
-          value.asReviewStateMap("$path.constructs[$index]"),
-          "$path.constructs[$index]",
-        )
-      }
-      return anchoredToDecodePath(path) {
-        FeatureTaskRuntimeRepairReceiptEntry(
-          severity = raw.requireReviewStateString("severity", path),
-          label = raw.optionalReviewStateString("label", path).orEmpty(),
-          text = raw.optionalReviewStateString("text", path).orEmpty(),
-          outcome = FeatureTaskRuntimeRepairOutcome.fromWire(raw.requireReviewStateString("outcome", path)),
-          constructs = constructs,
-          intent = raw.requireReviewStateString("intent", path),
-          findingId = requireFindingRefAlias(raw, path),
-          noEditReason = raw.optionalReviewStateString("no_edit_reason", path),
-          unresolvedReason = raw.optionalReviewStateString("unresolved_reason", path),
-        )
-      }
     }
   }
 }
@@ -301,7 +226,11 @@ data class FeatureTaskRuntimeRepairReceipt(
 
   companion object {
     @OpenBoundaryMap("Repair receipt decode from the durable workflow-artifact map")
-    fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeRepairReceipt {
+    fun fromArtifactMap(
+      raw: Map<String, Any?>,
+      path: String,
+      observations: FeatureTaskRuntimeRepairReceiptDecodeObservations? = null,
+    ): FeatureTaskRuntimeRepairReceipt {
       raw.requireOnlyReviewStateKeys(
         setOf("contract_version", "round_number", "pre_fix_checkpoint_sha", "entries", "disturbed_remedies"),
         path,
@@ -316,6 +245,7 @@ data class FeatureTaskRuntimeRepairReceipt(
         FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(
           value.asReviewStateMap("$path.entries[$index]"),
           "$path.entries[$index]",
+          observations,
         )
       }
       return anchoredToDecodePath(path) {
@@ -335,11 +265,16 @@ data class FeatureTaskRuntimeRepairReceipt(
      * entries and still has to run.
      */
     @OpenBoundaryMap("Repair receipt entry-shape check from the durable workflow-artifact map")
-    fun validateEntries(raw: Map<String, Any?>, path: String) {
+    fun validateEntries(
+      raw: Map<String, Any?>,
+      path: String,
+      observations: FeatureTaskRuntimeRepairReceiptDecodeObservations? = null,
+    ) {
       raw.requireReviewStateList("entries", path).forEachIndexed { index, value ->
         FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(
           value.asReviewStateMap("$path.entries[$index]"),
           "$path.entries[$index]",
+          observations,
         )
       }
     }
@@ -347,7 +282,6 @@ data class FeatureTaskRuntimeRepairReceipt(
 }
 
 private val ACCEPTED_REPAIR_RECEIPT_CONTRACT_VERSIONS: Set<String> = setOf(
-  "0.1",
   FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION,
 )
 

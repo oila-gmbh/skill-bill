@@ -4,24 +4,12 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
-## [2026-08-27] Salvage spaced repair-receipt symbols; keep the compact regex
-
-Context: SKILL-210 blocked twice on implement_fix when the agent put a Kotlin
-backtick test display name into `constructs[].symbol`. The code fix was already
-in the tree; the one-shot output-gate budget died on the receipt field.
-
-Decision: Keep the compact `Type` / `Type.member` pattern. Before schema
-validation, shape alignment coerces `Type.<text with whitespace>` down to
-`Type`. Prompt and schema description forbid spaces and backtick / JUnit
-display names; put that prose in `intent`.
-
-Reason: Agents read Kotlin test members literally. Salvaging the Type prefix
-preserves a usable construct without loosening identity. Relaunching under
-cap=1 does not recover this near-miss.
-
-Alternatives considered: Allow spaces in the regex (rejected: breaks compact
-symbol identity). Rely on prompt-only guidance (rejected: same miss twice on
-SKILL-210). Second agent salvage launch (rejected: output-gate cap policy).
+## [2026-08-28] Census I/O for verify and implement_fix, not phase_prose
+Context: SKILL-211 through SKILL-214 moved agent-to-agent phases onto `phase_prose`. Verify and implement_fix still decide from structure. An omitted id is silent loss.
+Decision: Keep `finding_dispositions` and `repair_receipt` as an id-enum census. Gate coverage and routing on those enums. Ignore former fat fields instead of rejecting them. Drop the compact-symbol regex rather than salvaging near-misses.
+Reason: The runtime already owns the finding set. Stuffing `value` would make Kotlin re-parse prose for ids it has. Grammar-cop near-misses were discarding tree-resident work.
+Alternatives considered: Adopt `phase_prose` by momentum (rejected: next reader is the runtime). Keep fat fields and salvage compact-symbol near-misses (rejected: SKILL-210 showed salvage does not stop the grammar cop).
+Revisit when: a remaining finalization receipt is proven to be grammar rather than measurement.
 
 ## [2026-08-27] Validate format repair is project-wide spotlessApply
 

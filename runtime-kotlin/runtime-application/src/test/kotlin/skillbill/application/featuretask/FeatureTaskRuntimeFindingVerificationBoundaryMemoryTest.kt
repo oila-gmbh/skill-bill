@@ -6,7 +6,6 @@ import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDispositionVerdict
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 import java.nio.file.Files
 import kotlin.test.Test
@@ -107,9 +106,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
         findingId = "F-001",
         disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
         reason = "Matches intent",
-        severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-        location = "Foo.kt",
-        message = "example",
         selectedBoundaryHeadings = listOf(
           FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
             headingId = headingId,
@@ -207,9 +203,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
           findingId = "F-001",
           disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
           reason = "Matches intent",
-          severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-          location = "Main.kt",
-          message = "example",
           selectedBoundaryHeadings = selected,
         ),
       ),
@@ -236,9 +229,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       findingId = "F-002",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
-      severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-      location = "Foo.kt",
-      message = "example",
     )
 
     val reason = memory.validateDispositionBoundaryContext(sections, listOf(disposition))
@@ -268,9 +258,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
-      severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-      location = "Foo.kt",
-      message = "example",
       boundaryContextUnavailable = true,
     )
 
@@ -299,9 +286,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
-      severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-      location = "Foo.kt",
-      message = "example",
       selectedBoundaryHeadings = listOf(
         FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
           headingId = catalogEntry.headingId,
@@ -346,9 +330,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
-      severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-      location = "Foo.kt",
-      message = "example",
       selectedBoundaryHeadings = listOf(
         FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
           headingId = catalogEntry.headingId,
@@ -382,9 +363,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
-      severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-      location = "Foo.kt",
-      message = "example",
       selectedBoundaryHeadings = listOf(
         FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
           headingId = "runtime-kotlin/agent/history.md#def",
@@ -424,9 +402,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
-      severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-      location = "Foo.kt",
-      message = "example",
       selectedBoundaryHeadings = listOf(
         FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
           headingId = catalogEntry.headingId,
@@ -472,9 +447,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
         findingId = "F-001",
         disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
         reason = "Matches intent",
-        severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-        location = "Foo.kt",
-        message = "example",
         selectedBoundaryHeadings = listOf(
           FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
             headingId = catalogByFindingId.getValue("F-001").headingId,
@@ -486,9 +458,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
         findingId = "F-002",
         disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
         reason = "Matches intent",
-        severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
-        location = "Bar.kt",
-        message = "example",
         selectedBoundaryHeadings = listOf(
           FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
             headingId = catalogByFindingId.getValue("F-002").headingId,

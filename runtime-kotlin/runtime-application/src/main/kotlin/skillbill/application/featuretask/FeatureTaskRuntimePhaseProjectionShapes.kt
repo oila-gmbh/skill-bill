@@ -3,10 +3,6 @@ package skillbill.application.featuretask
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_ENTRIES
-import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES
-import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES
-import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES
 
 internal object FeatureTaskRuntimePhaseProjectionShapes {
   fun exampleFor(phaseId: String, agentRunValidateFallback: Boolean = false): String = when (phaseId) {
@@ -89,30 +85,17 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
   )
 
   private val IMPLEMENT_FIX: String =
-    "\n    - Required produced_outputs.repair_receipt shape. Emit one entry per carried finding,\n" +
-      "      named by finding_id (aliases finding_ref, id, ref accepted). Coverage matches on\n" +
-      "      finding_id alone; label and text are optional decoration.\n" +
-      "      constructs are Type or Type.member with an optional file basename, never a bare path;\n" +
-      "      symbol is an identifier only — no spaces and no Kotlin backtick / JUnit display names\n" +
-      "      (use ClassName or ClassName.camelCaseMember; put prose in intent);\n" +
-      "      intent is one line with no diff hunk, source body, or line number. A finding that needed\n" +
-      "      no edit still needs its no_edit_required entry, and a finding you attempted and could not\n" +
-      "      close needs outcome attempted_unresolved with unresolved_reason and the constructs you\n" +
-      "      touched. HARD SIZE LIMITS, enforced by the schema: at most $REPAIR_RECEIPT_MAX_ENTRIES\n" +
-      "      entries; intent at most $REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES characters;\n" +
-      "      no_edit_reason at most $REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES characters;\n" +
-      "      unresolved_reason at most $REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES characters.\n" +
-      "      Count the characters before you emit and compress to fit: one bounded sentence per field,\n" +
-      "      naming the decision rather than arguing it. An over-length field is rejected on content\n" +
-      "      that was otherwise correct. The round number and the pre-fix checkpoint sha are runtime-owned:\n" +
-      "      omit them, never guess them from a briefing hash:\n" +
+    "\n    - Required produced_outputs.repair_receipt shape: contract_version " +
+      "\"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\" and one entry per carried finding " +
+      "with finding_id (aliases finding_ref, id, ref accepted) and outcome (addressed, " +
+      "no_edit_required, or attempted_unresolved). Coverage matches on finding_id and outcome alone.\n" +
+      "      Recommended optional fields per entry: constructs, intent, severity, label, text, " +
+      "no_edit_reason, and unresolved_reason. The round number and pre-fix checkpoint sha are " +
+      "runtime-owned: omit them, never guess them from a briefing hash:\n" +
       "      ```json\n" +
       "      { \"repair_receipt\": {\n" +
       "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\",\n" +
-      "          \"entries\": [ { \"finding_id\": \"F-001\", \"severity\": \"blocker\",\n" +
-      "            \"outcome\": \"addressed\",\n" +
-      "            \"constructs\": [ { \"symbol\": \"Type.member\", \"file\": \"Type.kt\" } ],\n" +
-      "            \"intent\": \"<one-line repair intent>\" } ] } }\n" +
+      "          \"entries\": [ { \"finding_id\": \"F-001\", \"outcome\": \"addressed\" } ] } }\n" +
       "      ```\n" +
       "      Compilation and test execution belong exclusively to the validate phase. Do NOT build,\n" +
       "      compile, run tests, or invoke `./gradlew check` / the pack collect-all gate here."

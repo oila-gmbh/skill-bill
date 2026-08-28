@@ -1,5 +1,16 @@
 # featuretask runtime boundary history
 
+## [2026-08-28] SKILL-216 subtask 1 — Slim verify and fix to an id-enum census
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, runtime-contracts, runtime-infra-sqlite
+- Slimmed `verify_findings` dispositions to required `finding_id` + `disposition`. Extra keys, including the former fat fields, are ignored. Envelope `verdict` is the sole routing signal. Kotlin no longer derives it from the census or falls back to ADVANCE.
+- Slimmed `implement_fix` repair-receipt entries to required `finding_id` + `outcome` (nested contract 0.3). Dropped construct-symbol, intent, and reason-pattern gates. Coverage still keys on ids. Unresolved-twice still blocks.
+- Rejected ledger rows copy identity from the review finding. Optional census `reason` persists or truncates. A missing reason does not retry. Body delivery still runs when headings are selected.
+- Envelope contract 0.6 and nested receipt 0.3. Pre-bump records loud-fail and regenerate in-band. sqlite CHECK rebuilds accept 0.6.
+- Pattern: where the runtime already owns the set, gate a census of ids and enums, not grammar. reusable
+- Limitation: neither phase `$ref`s `phase_prose`. Finalization receipts stay measurement versus grammar, not converted onto prose by default.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-08-28] Validate repair parses detekt and uses checklist repair
 Areas: runtime-infra-fs/validation, runtime-application/featuretask, platform-packs/kotlin, platform-packs/kmp
 - Validation gate COLLECT_ALL now unions detekt XML under `build/reports/detekt`, detekt/spotless stdout lines, compiler diagnostics, and JUnit artifacts so repair turns get discrete findings instead of one `unparseable_gate_failure` blob.

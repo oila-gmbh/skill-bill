@@ -62,7 +62,7 @@ class FeatureTaskRuntimeRepairReceiptTest {
   @Test
   fun `an entry set over its named collection budget throws and never returns a shortened receipt`() {
     val over = List(REPAIR_RECEIPT_MAX_ENTRIES + 1) { index ->
-      addressedEntry(label = "Type$index")
+      addressedEntry(findingId = "F-${index.toString().padStart(3, '0')}")
     }
     val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
       FeatureTaskRuntimeRepairReceipt(
@@ -73,59 +73,31 @@ class FeatureTaskRuntimeRepairReceiptTest {
     }
     assertEquals("entries", error.fieldPath)
     assertTrue(error.payloadFreeReason.contains("$REPAIR_RECEIPT_MAX_ENTRIES"))
-    assertTrue(!error.payloadFreeReason.contains("Type0"))
   }
 
   @Test
-  fun `an intent over its named UTF-8 byte budget throws and never returns a shortened receipt`() {
-    val oversized = "x".repeat(REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES + 1)
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(intent = oversized)
-    }
-    assertEquals("intent", error.fieldPath)
-    assertTrue(error.payloadFreeReason.contains("$REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES"))
-    assertTrue(!error.reason.contains(oversized))
-  }
-
-  @Test
-  fun `intent label or text carrying a line number, source body, or diff hunk marker is rejected`() {
-    listOf("fixed Type.kt:12", "fixed at line: 12", "fixed at #12").forEach { value ->
-      assertSanitizedTextRejected(value, "line number") { addressedEntry(intent = it) }
-    }
-    assertSanitizedTextRejected("Type.kt:12", "line number") { addressedEntry(label = it) }
-    val diffHunk = "@@ -1,4 +1,6 @@ fun leaked()"
-    assertSanitizedTextRejected(diffHunk, "diff hunk") { addressedEntry(text = it) }
-    assertSanitizedTextRejected(diffHunk, "diff hunk") { addressedEntry(intent = it) }
-    listOf(
-      "return foo()",
-      "return value",
-      "return value + 1",
-      "return this.value",
-      " return value",
-      "return 42",
-      "return (value)",
-      "return@scope value",
-      "val result = value",
-    ).forEach { value ->
-      assertSanitizedTextRejected(value, "source body") { addressedEntry(intent = it) }
-    }
-    assertSanitizedTextRejected("return foo()", "source body") { addressedEntry(text = it) }
-    assertSanitizedTextRejected("{\"finding\": \"leaked\"}", "serialized payload") { addressedEntry(intent = it) }
-    addressedEntry(intent = "close Type.member() at the sanitizer")
-    addressedEntry(intent = "already present; no tree change required")
-    addressedEntry(text = "SOURCE_BODY misses statements such as return value and val result = value")
-    addressedEntry(intent = "delete the { emptyList() } source-literal scrape")
-    addressedEntry(text = "assert Ready against a malformed packs root")
-    addressedEntry(intent = "route Type.member -> Other.member instead of scraping the source")
-  }
-
-  @Test
-  fun `receipt contract version is the pinned 0_2 constant`() {
-    assertEquals("0.2", FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION)
+  fun `receipt contract version is the pinned 0_3 constant`() {
+    assertEquals("0.3", FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION)
     assertEquals(
       FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION,
       validReceipt().contractVersion,
     )
+  }
+
+  @Test
+  fun `legacy 0_2 repair receipt contract version loud-fails`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      FeatureTaskRuntimeRepairReceipt.fromArtifactMap(
+        mapOf(
+          "contract_version" to "0.2",
+          "round_number" to 1,
+          "pre_fix_checkpoint_sha" to sha,
+          "entries" to listOf(mapOf("finding_id" to "F-001", "outcome" to "addressed")),
+        ),
+        "repair_receipt",
+      )
+    }
+    assertEquals("repair_receipt.contract_version", error.fieldPath)
   }
 
   @Test
@@ -137,7 +109,7 @@ class FeatureTaskRuntimeRepairReceiptTest {
   }
 
   @Test
-  fun `coverage keys on finding_id so a briefing-faithful receipt is not rejected for reducer label text`() {
+  fun `coverage keys on finding_id only`() {
     val carried = listOf(
       GoalSubtaskReviewCompactFinding(
         severity = "blocker",
@@ -152,29 +124,20 @@ class FeatureTaskRuntimeRepairReceiptTest {
         findingId = "F-002",
       ),
     )
-    val briefingFaithful = FeatureTaskRuntimeRepairReceipt(
+    val receipt = FeatureTaskRuntimeRepairReceipt(
       roundNumber = 1,
       preFixCheckpointSha = sha,
       entries = listOf(
-        addressedEntry(
-          label = "TypeKt",
-          text = "resolve the finding at the reported location",
-          findingId = "F-001",
-        ),
+        addressedEntry(findingId = "F-001"),
         FeatureTaskRuntimeRepairReceiptEntry(
-          severity = "major",
-          label = "OtherKt",
-          text = "already present on the tree",
           outcome = FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED,
-          constructs = emptyList(),
-          intent = "no tree change required",
           findingId = "F-002",
           noEditReason = "construct already matched the finding",
         ),
       ),
     )
-    assertTrue(briefingFaithful.coversCarriedFindings(carried))
-    val omittedSecond = briefingFaithful.copy(entries = briefingFaithful.entries.take(1))
+    assertTrue(receipt.coversCarriedFindings(carried))
+    val omittedSecond = receipt.copy(entries = receipt.entries.take(1))
     assertTrue(!omittedSecond.coversCarriedFindings(carried))
   }
 
@@ -188,16 +151,15 @@ class FeatureTaskRuntimeRepairReceiptTest {
         findingId = "F-003",
       ),
     )
-    val map = mapOf(
-      "severity" to "nit",
-      "label" to "SomeClass",
-      "text" to "short",
-      "finding_ref" to "F-003",
-      "outcome" to "addressed",
-      "constructs" to listOf(mapOf("symbol" to "SomeClass")),
-      "intent" to "close the storm finding by ref",
+    val entry = FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(
+      mapOf(
+        "finding_ref" to "F-003",
+        "outcome" to "addressed",
+        "constructs" to listOf(mapOf("symbol" to "SomeClass")),
+        "intent" to "ignored decoration",
+      ),
+      "repair_receipt.entries[0]",
     )
-    val entry = FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(map, "repair_receipt.entries[0]")
     assertEquals("F-003", entry.findingId)
     val receipt = FeatureTaskRuntimeRepairReceipt(
       roundNumber = 1,
@@ -208,59 +170,41 @@ class FeatureTaskRuntimeRepairReceiptTest {
   }
 
   @Test
-  fun `coverage ignores wrong label and text when finding_id matches`() {
-    val carried = listOf(
-      GoalSubtaskReviewCompactFinding(
-        severity = "major",
-        label = "Review",
-        text = "description=Merge semantics preserve across phase completion",
-        findingId = "F-001",
+  fun `census-only entry decodes finding_id and outcome and ignores decoration`() {
+    val entry = FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(
+      mapOf(
+        "finding_id" to "F-001",
+        "outcome" to "addressed",
+        "severity" to "blocker",
+        "constructs" to listOf(mapOf("symbol" to "Type.member")),
+        "intent" to "ignored decoration",
       ),
+      "repair_receipt.entries[0]",
     )
-    val receipt = FeatureTaskRuntimeRepairReceipt(
-      roundNumber = 1,
-      preFixCheckpointSha = sha,
-      entries = listOf(
-        addressedEntry(
-          label = "PhaseRecorder",
-          text = "clear signature fields on finished writes",
-          findingId = "F-001",
-        ),
-      ),
-    )
-    assertTrue(receipt.coversCarriedFindings(carried))
+    assertEquals("F-001", entry.findingId)
+    assertEquals(FeatureTaskRuntimeRepairOutcome.ADDRESSED, entry.outcome)
   }
 
   @Test
-  fun `an attempted_unresolved entry must carry a reason and the constructs it touched`() {
-    val unresolved = FeatureTaskRuntimeRepairReceiptEntry(
-      severity = "major",
-      label = "Policy",
-      text = "the gate still admits an empty set",
-      outcome = FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED,
-      constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
-      intent = "reject an empty disposition set at the gate",
-      findingId = "F-010",
-      unresolvedReason = "the gate cannot reach the review pass ids it would compare",
+  fun `optional unresolved_reason forwards after truncation with observability record`() {
+    val observations = FeatureTaskRuntimeRepairReceiptDecodeObservations()
+    val oversized = "x".repeat(REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES + 1)
+    val entry = FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(
+      mapOf(
+        "finding_id" to "F-010",
+        "outcome" to "attempted_unresolved",
+        "unresolved_reason" to oversized,
+      ),
+      "repair_receipt.entries[0]",
+      observations,
     )
-    assertEquals(
-      unresolved,
-      FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(unresolved.toArtifactMap(), "repair_receipt.entries[0]"),
-    )
-
-    val reasonless = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      unresolved.copy(unresolvedReason = null)
-    }
-    assertTrue(reasonless.payloadFreeReason.contains("must be present when outcome is attempted_unresolved"))
-
-    val constructless = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      unresolved.copy(constructs = emptyList())
-    }
-    assertTrue(constructless.payloadFreeReason.contains("must name the constructs it touched"))
+    assertTrue(observations.truncationRecords.isNotEmpty())
+    val unresolvedBytes = entry.unresolvedReason.orEmpty().encodeToByteArray().size
+    assertTrue(unresolvedBytes <= REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES)
   }
 
   @Test
-  fun `an unresolved entry keeps the finding accounted for and separable from a closed one`() {
+  fun `an attempted_unresolved entry keeps the finding accounted for and separable from a closed one`() {
     val carried = listOf(
       GoalSubtaskReviewCompactFinding("blocker", "TypeKt", "closed this round", "F-001"),
       GoalSubtaskReviewCompactFinding("major", "Policy", "still open", "F-002"),
@@ -269,14 +213,9 @@ class FeatureTaskRuntimeRepairReceiptTest {
       roundNumber = 1,
       preFixCheckpointSha = sha,
       entries = listOf(
-        addressedEntry(label = "TypeKt", text = "closed this round", findingId = "F-001"),
+        addressedEntry(findingId = "F-001"),
         FeatureTaskRuntimeRepairReceiptEntry(
-          severity = "major",
-          label = "Policy",
-          text = "still open",
           outcome = FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED,
-          constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
-          intent = "reject an empty disposition set at the gate",
           findingId = "F-002",
           unresolvedReason = "the gate cannot reach the review pass ids it would compare",
         ),
@@ -307,28 +246,8 @@ class FeatureTaskRuntimeRepairReceiptTest {
     entries = listOf(addressedEntry()),
   )
 
-  private fun assertSanitizedTextRejected(
-    value: String,
-    expectedReason: String,
-    buildEntry: (String) -> FeatureTaskRuntimeRepairReceiptEntry,
-  ) {
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> { buildEntry(value) }
-    assertTrue(error.payloadFreeReason.contains(expectedReason))
-    assertTrue(!error.payloadFreeReason.contains(value))
-  }
-
-  private fun addressedEntry(
-    label: String = "Type",
-    intent: String = "close the finding at Type.member",
-    text: String = "unsafe mutation at the seam",
-    findingId: String = "F-001",
-  ) = FeatureTaskRuntimeRepairReceiptEntry(
-    severity = "blocker",
-    label = label,
-    text = text,
+  private fun addressedEntry(findingId: String = "F-001") = FeatureTaskRuntimeRepairReceiptEntry(
     outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-    constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
-    intent = intent,
     findingId = findingId,
   )
 }

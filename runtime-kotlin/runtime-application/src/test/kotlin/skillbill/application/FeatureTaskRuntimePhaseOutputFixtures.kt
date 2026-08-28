@@ -34,15 +34,13 @@ internal fun verifyFindingsOutputForFindingIds(vararg findingIds: String): Strin
 
 internal fun verifyFindingsOutput(verifiedFindingIds: List<String> = harnessPendingVerifyFindingIds): String {
   val dispositions = verifiedFindingIds.joinToString(",") { findingId ->
-    """{"finding_id":"$findingId","disposition":"verified","reason":"Matches spec intent AC-002.",""" +
-      """"severity":"blocker","location":"Foo.kt:1","message":"Foo.kt leaks a connection in the error path",""" +
-      """"boundary_context_unavailable":true}"""
+    """{"finding_id":"$findingId","disposition":"verified","boundary_context_unavailable":true}"""
   }
   val verdict = if (verifiedFindingIds.isEmpty()) "no_findings_verified" else "findings_verified"
   val dispositionsJson = if (dispositions.isEmpty()) "[]" else "[$dispositions]"
   return """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "verify_findings",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -54,7 +52,7 @@ internal fun verifyFindingsOutput(verifiedFindingIds: List<String> = harnessPend
 
 internal val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "implement",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -70,7 +68,7 @@ internal val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
 // its consumer parses, and the producer gate rejects it otherwise (SKILL-140 Subtask 1).
 internal fun verdictPlanOutput(verdict: String): String = """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "plan",
     "status": "completed",
     "summary": "Plan produced a validated output.",
@@ -85,7 +83,7 @@ internal fun verdictPlanOutput(verdict: String): String = """
 // records must use this rather than the pre-finalisation agent payload.
 internal val FINALISED_COMMIT_PUSH_OUTPUT: String = """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "commit_push",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -122,7 +120,7 @@ internal fun validJsonOutput(phaseId: String, commitPushChangedPaths: List<Strin
   if (phaseId == "audit") {
     return """
     {
-      "contract_version": "0.5",
+      "contract_version": "0.6",
       "phase_id": "audit",
       "status": "completed",
       "summary": "Phase produced a validated output.",
@@ -133,7 +131,7 @@ internal fun validJsonOutput(phaseId: String, commitPushChangedPaths: List<Strin
   }
   return """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "$phaseId",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -187,15 +185,10 @@ internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<
     "implement_fix" ->
       """{
       "repair_receipt": {
-        "contract_version": "0.1",
+        "contract_version": "0.3",
         "entries": [{
           "finding_id": "F-001",
-          "severity": "blocker",
-          "label": "Foo",
-          "text": "Foo.kt leaks a connection in the error path",
-          "outcome": "addressed",
-          "constructs": [{"symbol": "Foo.member", "file": "Foo.kt"}],
-          "intent": "close the finding at Foo.member"
+          "outcome": "addressed"
         }]
       },
       "reconciled_state": {"reconciled": true, "evidence": "Fixture tree at target state."}
@@ -242,27 +235,27 @@ internal object Skill187SyntheticAuditResponses {
   private const val AUDIT_VALUE_SATISFIED: String = """{\"gaps\":[],\"non_blocking_findings\":[]}"""
 
   fun nestedVerdictMissingDelimiter(): String =
-    """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"$NESTED_VERDICT_SENTINEL",""" +
+    """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"$NESTED_VERDICT_SENTINEL",""" +
       """"produced_outputs":{"value":"$AUDIT_VALUE_SATISFIED","verdict":"satisfied"}"""
 
   fun nestedVerdictComplete(): String = nestedVerdictMissingDelimiter() + "}"
 
   fun nestedVerdictConservativeYaml(): String =
-    "{contract_version: \"0.5\", phase_id: \"audit\", status: \"completed\", " +
+    "{contract_version: \"0.6\", phase_id: \"audit\", status: \"completed\", " +
       "summary: \"$YAML_NESTED_SENTINEL\", produced_outputs: {value: \"$AUDIT_VALUE_SATISFIED\", " +
       "verdict: \"satisfied\"}}"
 
   fun invalidCriterionShape(): String =
-    """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"$OBSERVATION_SENTINEL",""" +
+    """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"$OBSERVATION_SENTINEL",""" +
       """"verdict":"gaps_found","produced_outputs":{"value":"{\"gaps\":[{\"criterion\":\"AC-001\",""" +
       """\"note\":\"the behavior is absent\",\"severity\":\"blocker\"}]}"}}"""
 
   fun correctedSatisfied(): String =
-    """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"criteria met",""" +
+    """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"criteria met",""" +
       """"verdict":"satisfied","produced_outputs":{"value":"$AUDIT_VALUE_SATISFIED"}}"""
 
   fun unsupportedBlockYaml(): String = """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "audit"
       status: "completed"
       summary: "$UNSUPPORTED_YAML_SENTINEL"

@@ -605,9 +605,9 @@ private const val CLEAN_REVIEW_OUTPUT = """{"contract_version":"0.1","produced_o
 // stops early and leaves a response-derived suffix in Violated constraint outside the authorized
 // repair section.
 private const val UNDECIDABLE_AUDIT_OUTPUT =
-  """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",""" +
+  """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"audit",""" +
     """"verdict":"x' and no y","produced_outputs":{"value":"{\"gaps\":[]}"}}"""
 
 private const val SYNONYM_SATISFIED_AUDIT_OUTPUT =
-  """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"criteria met",""" +
+  """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"criteria met",""" +
     """"verdict":"satisfied","produced_outputs":{"value":"{\"gaps\":[],\"non_blocking_findings\":[]}"}}"""

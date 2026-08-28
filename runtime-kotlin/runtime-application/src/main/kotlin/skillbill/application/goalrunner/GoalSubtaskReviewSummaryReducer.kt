@@ -20,6 +20,7 @@ import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
+import skillbill.text.Utf8Text
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -58,6 +59,7 @@ internal data class UnaddressedFindingLedgerScope(
 @Suppress("TooManyFunctions") // one reduction pipeline; each step is a named redaction stage
 internal object GoalSubtaskReviewSummaryReducer {
   private const val MAX_TEXT_LENGTH: Int = 180
+  internal const val REJECTED_VERIFICATION_REASON_MAX_UTF8_BYTES: Int = 280
   private val pathLikeToken = Regex("(?:[A-Za-z]:)?(?:[/\\\\][^\\s:|]+)+|(?:[A-Za-z0-9_.-]+[/\\\\])+[A-Za-z0-9_.-]+")
   private val hunk = Regex("@@[^@]+@@")
   private val lineLocation = Regex(
@@ -248,6 +250,7 @@ internal object GoalSubtaskReviewSummaryReducer {
     reviewOutput: Map<String, Any?>,
     scope: UnaddressedFindingLedgerScope,
     recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+    truncationRecords: MutableList<String>? = null,
   ): List<UnaddressedFinding> {
     val reviewRunId = reviewRunIdOf(reviewOutput)
     val reviewById = structuredFindings(reviewOutput, recordedVerdicts).associateBy { it.findingId.orEmpty() }
@@ -260,16 +263,20 @@ internal object GoalSubtaskReviewSummaryReducer {
       val disposition = (map["disposition"] as? String)?.trim()?.lowercase()
       if (disposition != UNADDRESSED_FINDING_REJECTED_DISPOSITION) return@mapIndexedNotNull null
       val findingId = (map["finding_id"] as? String)?.takeIf(String::isNotBlank) ?: return@mapIndexedNotNull null
-      val reason = (map["reason"] as? String)?.takeIf(String::isNotBlank) ?: return@mapIndexedNotNull null
       val reviewFinding = reviewById[findingId]
       val existingOrdinal = reviewFinding?.let {
         structuredFindings(reviewOutput, recordedVerdicts).indexOfFirst { candidate ->
           candidate.findingId == findingId
         }.takeIf { it >= 0 }?.plus(1)
       }
-      val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
-        ?: reviewFinding?.severity
-        ?: UNADDRESSED_FINDING_DEFAULT_SEVERITY
+      val verificationReason = (map["reason"] as? String)?.takeIf(String::isNotBlank)?.let { rawReason ->
+        val truncated = Utf8Text.truncateToUtf8Bytes(rawReason, REJECTED_VERIFICATION_REASON_MAX_UTF8_BYTES)
+        if (Utf8Text.utf8Size(truncated) < Utf8Text.utf8Size(rawReason)) {
+          truncationRecords?.add(rejectedVerificationReasonTruncationRecord(findingId))
+        }
+        truncated
+      }
+      val severity = reviewFinding?.severity ?: UNADDRESSED_FINDING_DEFAULT_SEVERITY
       UnaddressedFinding(
         issueKey = scope.issueKey,
         subtaskId = scope.subtaskId,
@@ -280,8 +287,8 @@ internal object GoalSubtaskReviewSummaryReducer {
         issueCategory = normalizedUnaddressedFindingCategory(
           reviewFinding?.issueCategory ?: UNADDRESSED_FINDING_DEFAULT_CATEGORY,
         ),
-        location = (map["location"] as? String)?.takeIf(String::isNotBlank) ?: reviewFinding?.location ?: "<unknown>",
-        summary = (map["message"] as? String)?.takeIf(String::isNotBlank) ?: reviewFinding?.message ?: reason,
+        location = reviewFinding?.location ?: "<unknown>",
+        summary = reviewFinding?.message ?: "<unknown>",
         reviewRunId = reviewRunId,
         findingId = findingId,
         claimVerdict = reviewFinding?.claimVerdict,
@@ -289,10 +296,16 @@ internal object GoalSubtaskReviewSummaryReducer {
         citations = reviewFinding?.citations.orEmpty(),
         severityAdjustment = reviewFinding?.severityAdjustment,
         verificationDisposition = UNADDRESSED_FINDING_REJECTED_DISPOSITION,
-        verificationReason = reason,
+        verificationReason = verificationReason,
       )
     }
   }
+
+  internal fun rejectedVerificationReasonTruncationRecord(findingId: String): String =
+    "seam=GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings " +
+      "value_used='verification_reason for $findingId truncated to $REJECTED_VERIFICATION_REASON_MAX_UTF8_BYTES " +
+      "UTF-8 bytes' value_expected='verification_reason within $REJECTED_VERIFICATION_REASON_MAX_UTF8_BYTES " +
+      "UTF-8 bytes' cause=agent census reason exceeded the ledger column byte cap"
 
   /**
    * Derives one accepted/rejected/carried outcome per finding the run produced, entirely from loop

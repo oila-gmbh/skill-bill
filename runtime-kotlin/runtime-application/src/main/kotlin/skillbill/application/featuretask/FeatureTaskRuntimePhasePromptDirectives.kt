@@ -11,8 +11,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairCo
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
-import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES
-import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES
 
 // Phase-scoped prompt directives and the per-phase task directive table, split out of
 // FeatureTaskRuntimePhasePromptComposer so the composer object stays within its size budget.
@@ -349,26 +347,16 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "refuted is not carried at all: do not fix it and do not file an entry for it. Do not re-apply " +
     "the plan from scratch or expand scope beyond the carried findings. Treat any fix already present " +
     "as a no-op. See the mutating-phase idempotency contract below. Emit " +
-    "produced_outputs.repair_receipt " +
-    "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\" and exactly one " +
-    "entry per carried finding named by finding_id (the briefing's finding_id values; aliases " +
-    "finding_ref, id, and ref are accepted). Coverage matches on finding_id alone — do not restate " +
-    "severity, label, or sanitized text as identity; label and text are optional decoration. Each " +
-    "entry needs an explicit outcome (addressed; no_edit_required with no_edit_reason; or " +
-    "attempted_unresolved with unresolved_reason when you tried and the finding is still open), " +
-    "symbol-granularity closing constructs (Type or Type.member, optional file basename — never a bare " +
-    "path; symbol is identifier-only with no spaces and no Kotlin backtick / JUnit display names — use " +
-    "ClassName or ClassName.camelCaseMember and put prose in intent), and a bounded one-line repair " +
-    "intent. A legitimately unedited finding still needs its " +
-    "no_edit_required entry, and a finding you could not close needs its attempted_unresolved entry, " +
-    "which buys it one more attempt before it goes to an operator. Leaving a *carried* finding out is " +
-    "never an outcome: the round is sent back for it. A refuted finding is the one exception, because " +
-    "it was never carried. Fit every field inside its limit rather than " +
-    "writing to length and hoping: no_edit_reason and unresolved_reason are capped at " +
-    "$REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES and " +
-    "$REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES characters. State the decision in one sentence " +
-    "and stop; do not restate the contract, cite acceptance criteria, or argue the case. A field over " +
-    "its cap is rejected even when what it says is right.",
+    "produced_outputs.repair_receipt with contract_version " +
+    "\"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\" and exactly one entry per carried " +
+    "finding with finding_id (aliases finding_ref, id, and ref are accepted) and outcome " +
+    "(addressed, no_edit_required, or attempted_unresolved). Coverage matches on finding_id and " +
+    "outcome alone. Optional decoration — constructs, intent, severity, label, text, " +
+    "no_edit_reason, and unresolved_reason — may accompany each entry but does not gate settlement. " +
+    "A legitimately unedited finding still needs its no_edit_required entry, and a finding you " +
+    "could not close needs its attempted_unresolved entry, which buys it one more attempt before it " +
+    "goes to an operator. Leaving a *carried* finding out is never an outcome: the round is sent " +
+    "back for it. A refuted finding is the one exception, because it was never carried.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
     "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase. " +
@@ -378,13 +366,13 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "projection and the scoped boundary-memory catalog in the briefing. Each finding receives a " +
     "titles-only heading catalog for boundaries that own its paths; select relevant heading_id " +
     "values in selected_boundary_headings and set boundary_context_unavailable when no eligible " +
-    "boundary owns the finding paths. Emit exactly one disposition per finding — verified or " +
-    "rejected — each with a bounded reason derived from that intent projection and selected " +
-    "boundary titles. Do not edit the worktree. Settle once: verdict findings_verified when at " +
-    "least one finding is verified, otherwise no_findings_verified. Emit " +
+    "boundary owns the finding paths. Emit envelope verdict findings_verified or " +
+    "no_findings_verified and " +
     "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
-    "with finding_id, disposition, reason, severity, location, message, optional " +
-    "selected_boundary_headings, and boundary_context_unavailable per entry.",
+    "with exactly one {finding_id, disposition} entry per review finding (verified or rejected). " +
+    "Optional decoration — reason, severity, location, message, selected_boundary_headings, and " +
+    "boundary_context_unavailable — may support the disposition but does not gate settlement. Do " +
+    "not edit the worktree.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Answer one question: is every acceptance criterion in the briefing implemented in the repository? " +
     "Read the tree itself at the resolved checkpoint — the diff over its base_ref/head_ref plus its " +

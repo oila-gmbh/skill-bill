@@ -48,7 +48,7 @@ class FeatureTaskRuntimeFindingVerificationDurableDecodeTest {
   }
 
   @Test
-  fun `invalid severity in durable finding verification checkpoint loud-fails with named error`() {
+  fun `extra census severity in durable finding verification checkpoint is ignored`() {
     val repository = InMemoryRuntimeWorkflowRepository()
     val workflowId = "wftr-finding-verification-severity"
     seedWorkflow(
@@ -58,11 +58,8 @@ class FeatureTaskRuntimeFindingVerificationDurableDecodeTest {
     )
 
     val recorder = recorderFor(repository)
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeFindingVerificationRecordError> {
-      recorder.loadFindingVerificationCheckpoint(workflowId)
-    }
-    assertContains(error.reason, "severity")
-    assertContains(error.reason, "catastrophic")
+    val checkpoint = assertNotNull(recorder.loadFindingVerificationCheckpoint(workflowId))
+    assertEquals("F-001", checkpoint.single().findingId)
   }
 
   @Test
@@ -122,20 +119,14 @@ private fun verificationCheckpointArtifactsJson(
       [{
         "finding_id":"F-001",
         "disposition":"verified",
-        "reason":"Matches spec intent.",
-        "severity":"major",
-        "location":"Example.kt",
-        "message":"Missing verify_findings wiring"
+        "reason":"Matches spec intent."
       }]
     """.trimIndent()
     retiredDispositionField -> """
       [{
         "finding_id":"F-001",
         "verdict":"verified",
-        "reason":"Matches spec intent.",
-        "severity":"major",
-        "location":"Example.kt",
-        "message":"Missing verify_findings wiring"
+        "reason":"Matches spec intent."
       }]
     """.trimIndent()
     invalidSeverity -> """
@@ -143,9 +134,7 @@ private fun verificationCheckpointArtifactsJson(
         "finding_id":"F-001",
         "disposition":"verified",
         "reason":"Matches spec intent.",
-        "severity":"catastrophic",
-        "location":"Example.kt",
-        "message":"Missing verify_findings wiring"
+        "severity":"catastrophic"
       }]
     """.trimIndent()
     else -> "[]"

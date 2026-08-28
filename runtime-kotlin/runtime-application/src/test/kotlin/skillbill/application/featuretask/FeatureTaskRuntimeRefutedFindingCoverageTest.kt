@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
@@ -128,12 +127,7 @@ class FeatureTaskRuntimeRefutedFindingCoverageTest {
     preFixCheckpointSha = sha,
     entries = findings.map { finding ->
       FeatureTaskRuntimeRepairReceiptEntry(
-        severity = finding.severity,
-        label = finding.label,
-        text = finding.text,
         outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
-        intent = "close the finding at Type.member",
         findingId = requireNotNull(finding.findingId),
       )
     },

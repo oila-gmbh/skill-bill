@@ -4,14 +4,14 @@ package skillbill.contracts.workflow
  * Runtime-side mirror of the schema's `contract_version`; a parity test fails
  * the build if they diverge. Bump both sites together.
  */
-const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.5"
+const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.6"
 
 /**
  * Version of the `implement_fix` repair-receipt payload nested under
  * `produced_outputs.repair_receipt`. Independent from the envelope
  * [FEATURE_TASK_RUNTIME_CONTRACT_VERSION]: adding the receipt does not bump 0.3.
  */
-const val FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION: String = "0.2"
+const val FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION: String = "0.3"
 
 const val FEATURE_TASK_RUNTIME_REPAIR_LEDGER_CONTRACT_VERSION: String = "0.1"
 

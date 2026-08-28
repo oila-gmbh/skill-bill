@@ -333,9 +333,7 @@ object FeatureTaskRuntimePhasePromptComposer {
           "reported>\""
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
         "\"${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS}\": [ " +
-          "{ \"finding_id\": \"F-001\", \"disposition\": \"verified\", " +
-          "\"reason\": \"<bounded reason against spec intent>\", \"severity\": \"major\", " +
-          "\"location\": \"<location>\", \"message\": \"<finding message>\" } ]"
+          "{ \"finding_id\": \"F-001\", \"disposition\": \"verified\" } ]"
       else -> "\"result\": \"<concrete output for downstream phases>\""
     }
 
@@ -507,25 +505,16 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      pair that review recorded. Omit it ONLY if the review genuinely reported no run id; never\n" +
           "      invent, reuse an older, or guess one." + commitFocusedAccountingAddendum()
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
-        "\n    - This is a VERIFYING phase: set top-level \"$verdict\" to \"findings_verified\" or " +
-          "\"no_findings_verified\" and emit exactly one " +
+        "\n    - This is a VERIFYING phase: emit top-level \"$verdict\" as \"findings_verified\" or " +
+          "\"no_findings_verified\" and exactly one " +
           "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
-          "array with one entry per review finding. Recommended fields per entry: finding_id, disposition " +
-          "(verified or rejected), reason, severity, location, message, optional " +
+          "entry per review finding with required census fields finding_id and disposition (verified " +
+          "or rejected). Recommended optional fields per entry: reason, severity, location, message, " +
           "selected_boundary_headings (heading_id and source_path), and boundary_context_unavailable " +
-          "when no eligible boundary owns the finding paths. Boundary memory is optional supporting " +
-          "evidence only: the disposition still settles from spec intent when headings are omitted or " +
-          "invalid. When you cite boundary memory, copy heading_id and source_path verbatim from that " +
-          "finding's boundary_catalog only — never invent hashes or reuse another finding's catalog. " +
-          "The runtime reads dispositions leniently and does not block on reason length, extra keys, " +
-          "invalid boundary selections, or other schema polish; decidable verification signals still " +
-          "gate advancement. Do not edit the worktree.\n" +
-          "      Example: {\"finding_id\":\"F-001\",\"disposition\":\"verified\"," +
-          "\"reason\":\"Matches spec intent AC-002.\",\"severity\":\"major\"," +
-          "\"location\":\"FeatureTaskRuntimePhaseWorkflowDefinition.kt\"," +
-          "\"message\":\"Missing verify_findings wiring\"," +
-          "\"selected_boundary_headings\":[{\"heading_id\":\"runtime-kotlin/agent/history.md#abc\"," +
-          "\"source_path\":\"runtime-kotlin/agent/history.md\"}]}."
+          "when no eligible boundary owns the finding paths. When you cite boundary memory, copy " +
+          "heading_id and source_path verbatim from that finding's boundary_catalog only — never " +
+          "invent hashes or reuse another finding's catalog. Do not edit the worktree.\n" +
+          "      Required example: {\"finding_id\":\"F-001\",\"disposition\":\"verified\"}."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
         verdict = verdict,
         briefing = briefing,

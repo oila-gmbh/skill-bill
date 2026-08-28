@@ -45,7 +45,7 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
             assertTrue(prompt.contains("selected body sentence"), "second pass includes selected body")
             assertFalse(prompt.contains("REJECTED by the schema gate"), "continuation is not a schema rejection")
           }
-          facts(verifyFindingsSelectingBoundary(findingPath, headingId, sourcePath))
+          facts(verifyFindingsSelectingBoundary(headingId, sourcePath))
         } else {
           facts(validJsonOutput(phaseId))
         }
@@ -72,6 +72,42 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
       .mapNotNull { FeatureTaskRuntimeContinuationKind.fromLedgerDetail(it.blockedReason) }
     assertContains(bodyDeliveryContinuations, FeatureTaskRuntimeContinuationKind.VERIFICATION_BODY_DELIVERY)
   }
+
+  @Test
+  fun `census-only verify_findings without selected_boundary_headings settles without body-delivery continue`() {
+    val findingPath = "runtime-kotlin/runtime-application/src/Foo.kt"
+    var verifyLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "verify_findings") {
+          verifyLaunches += 1
+          facts(verifyFindingsCensusOnlyOutput(listOf(REVIEW_FIX_BLOCKER_FINDING_ID)))
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
+      runtimeConfig = RuntimeHarnessConfig(repoRoot = Files.createTempDirectory("skillbill-verify-census-only")),
+    )
+    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
+    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
+    harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, INVOKED_AGENT, auditSatisfiedOutput())
+    harness.seedReviewPhase("completed", 1, reviewFindingWithLocation(findingPath), 1)
+    harnessPendingVerifyFindingIds = listOf(REVIEW_FIX_BLOCKER_FINDING_ID)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(1, verifyLaunches, "census-only verify must settle in one launch")
+    val bodyDeliveryContinuations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION }
+      .mapNotNull { FeatureTaskRuntimeContinuationKind.fromLedgerDetail(it.blockedReason) }
+    assertFalse(
+      bodyDeliveryContinuations.contains(FeatureTaskRuntimeContinuationKind.VERIFICATION_BODY_DELIVERY),
+      "census-only verify must not trigger body-delivery continue",
+    )
+  }
 }
 
 private fun reviewFindingWithLocation(locationPath: String): String = """
@@ -92,9 +128,9 @@ private fun reviewFindingWithLocation(locationPath: String): String = """
   }
 """.trimIndent()
 
-private fun verifyFindingsSelectingBoundary(locationPath: String, headingId: String, sourcePath: String): String = """
+private fun verifyFindingsSelectingBoundary(headingId: String, sourcePath: String): String = """
   {
-    "contract_version": "0.4",
+    "contract_version": "0.6",
     "phase_id": "verify_findings",
     "status": "completed",
     "summary": "Verified the finding against scoped boundary memory.",
@@ -103,10 +139,6 @@ private fun verifyFindingsSelectingBoundary(locationPath: String, headingId: Str
       "finding_dispositions": [{
         "finding_id": "$REVIEW_FIX_BLOCKER_FINDING_ID",
         "disposition": "verified",
-        "reason": "Matches spec intent AC-002.",
-        "severity": "blocker",
-        "location": "$locationPath:1",
-        "message": "$REVIEW_BLOCKER_MESSAGE",
         "selected_boundary_headings": [{
           "heading_id": "$headingId",
           "source_path": "$sourcePath"
@@ -115,3 +147,19 @@ private fun verifyFindingsSelectingBoundary(locationPath: String, headingId: Str
     }
   }
 """.trimIndent()
+
+private fun verifyFindingsCensusOnlyOutput(verifiedFindingIds: List<String>): String {
+  val dispositions = verifiedFindingIds.joinToString(",") { findingId ->
+    """{"finding_id":"$findingId","disposition":"verified","boundary_context_unavailable":true}"""
+  }
+  return """
+  {
+    "contract_version": "0.6",
+    "phase_id": "verify_findings",
+    "status": "completed",
+    "summary": "Verified the finding without boundary heading selection.",
+    "verdict": "findings_verified",
+    "produced_outputs": {"finding_dispositions": [$dispositions]}
+  }
+  """.trimIndent()
+}

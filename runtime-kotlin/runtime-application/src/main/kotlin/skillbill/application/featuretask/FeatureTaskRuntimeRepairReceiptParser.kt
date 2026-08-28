@@ -4,6 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptDecodeObservations
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.coversCarriedFindings
@@ -13,13 +14,17 @@ internal fun featureTaskRuntimeParseRepairReceiptOrNull(
   producedOutputs: Map<String, Any?>,
   remediationBaseSha: String,
   roundNumber: Int,
+  recordTruncation: (String) -> Unit = {},
 ): FeatureTaskRuntimeRepairReceipt? {
   val raw = producedOutputs["repair_receipt"] ?: return null
   val map = requireRepairReceiptMap(raw) +
     ("pre_fix_checkpoint_sha" to remediationBaseSha) +
     ("round_number" to roundNumber)
+  val observations = FeatureTaskRuntimeRepairReceiptDecodeObservations()
   return try {
-    FeatureTaskRuntimeRepairReceipt.fromArtifactMap(map, "repair_receipt")
+    FeatureTaskRuntimeRepairReceipt.fromArtifactMap(map, "repair_receipt", observations).also {
+      observations.truncationRecords.forEach(recordTruncation)
+    }
   } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
     throw error
   } catch (error: InvalidGoalSubtaskReviewStateSchemaError) {
@@ -70,8 +75,14 @@ internal fun featureTaskRuntimeParseRepairReceipt(
   producedOutputs: Map<String, Any?>,
   remediationBaseSha: String,
   roundNumber: Int,
+  recordTruncation: (String) -> Unit = {},
 ): FeatureTaskRuntimeRepairReceiptParse = try {
-  featureTaskRuntimeParseRepairReceiptOrNull(producedOutputs, remediationBaseSha, roundNumber)
+  featureTaskRuntimeParseRepairReceiptOrNull(
+    producedOutputs,
+    remediationBaseSha,
+    roundNumber,
+    recordTruncation,
+  )
     ?.let(::FeatureTaskRuntimeRepairReceiptValid)
     ?: FeatureTaskRuntimeRepairReceiptMissing
 } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {

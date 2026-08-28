@@ -90,6 +90,7 @@ class DatabaseMigrationsTest {
         31 to "add-review-run-pass-claims",
         32 to "allow-goal-planning-phase-output-0-4",
         33 to "allow-goal-planning-phase-output-0-5",
+        34 to "allow-goal-planning-phase-output-0-6",
       ),
       migrationDefinitions,
     )

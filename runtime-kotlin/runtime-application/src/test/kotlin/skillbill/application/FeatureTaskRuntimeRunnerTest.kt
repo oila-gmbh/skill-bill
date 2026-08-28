@@ -5313,7 +5313,7 @@ private fun kotlinPackWithValidationGate(): skillbill.scaffold.model.PlatformMan
 private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.3","produced_outputs":{"findings":[]}}"""
 
 private const val VALID_AUDIT_OUTPUT =
-  """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"Audit satisfied.",""" +
+  """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"Audit satisfied.",""" +
     """"verdict":"satisfied","produced_outputs":{"value":"{\"gaps\":[],\"non_blocking_findings\":[]}"}}"""
 
 private val VALID_VERIFY_FINDINGS_OUTPUT = verifyFindingsOutput()

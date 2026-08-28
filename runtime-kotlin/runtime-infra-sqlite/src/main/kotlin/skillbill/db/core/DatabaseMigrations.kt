@@ -481,6 +481,11 @@ internal object DatabaseMigrations {
         name = "allow-goal-planning-phase-output-0-5",
         operation = ::rebuildGoalPlanningPlansForPhaseOutputV05,
       ),
+      DatabaseMigration(
+        version = 34,
+        name = "allow-goal-planning-phase-output-0-6",
+        operation = ::rebuildGoalPlanningPlansForPhaseOutputV06,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

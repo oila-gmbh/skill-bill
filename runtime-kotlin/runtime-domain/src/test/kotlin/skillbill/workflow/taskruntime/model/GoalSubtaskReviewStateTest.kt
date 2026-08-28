@@ -385,12 +385,7 @@ class GoalSubtaskReviewStateTest {
       preFixCheckpointSha = "e".repeat(40),
       entries = listOf(
         FeatureTaskRuntimeRepairReceiptEntry(
-          severity = "blocker",
-          label = "Repository",
-          text = "Unsafe mutation",
           outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-          constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Repository.commit")),
-          intent = "close the mutation at Repository.commit",
           findingId = "F-001",
         ),
       ),
@@ -415,12 +410,7 @@ class GoalSubtaskReviewStateTest {
       preFixCheckpointSha = "e".repeat(40),
       entries = listOf(
         FeatureTaskRuntimeRepairReceiptEntry(
-          severity = "blocker",
-          label = "Repository",
-          text = "Unsafe mutation",
           outcome = FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED,
-          constructs = emptyList(),
-          intent = "already closed on the tree",
           findingId = "F-001",
           noEditReason = "construct already matched the finding",
         ),
@@ -429,12 +419,7 @@ class GoalSubtaskReviewStateTest {
     val replacement = first.copy(
       entries = listOf(
         FeatureTaskRuntimeRepairReceiptEntry(
-          severity = "blocker",
-          label = "Repository",
-          text = "Unsafe mutation",
           outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-          constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Repository.commit")),
-          intent = "close the mutation at Repository.commit",
           findingId = "F-001",
         ),
       ),

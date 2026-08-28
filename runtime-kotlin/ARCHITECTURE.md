@@ -199,6 +199,7 @@ runtime-ports
   normalization, sync orchestration, config mutation rules, lifecycle telemetry
   records, and port-backed runtime surfaces owned by `runtime-application` and
   `runtime-domain`.
+- `skillbill.text`: UTF-8 truncation and size helpers owned by `runtime-domain`.
 - `skillbill.infrastructure.fs`: filesystem gateways for repo validation,
   install, scaffold, native-agent, launcher, telemetry config, git workflow,
   review input loading, decomposition-manifest file storage, and skill-remove
@@ -625,6 +626,7 @@ skillbill.review
 skillbill.scaffold
 skillbill.skillremove
 skillbill.telemetry
+skillbill.text
 skillbill.workflow
 skillbill.workflow.implement
 skillbill.workflow.verify

@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   private val wellFormed =
     """
-    contract_version: "0.5"
+    contract_version: "0.6"
     phase_id: "plan"
     status: "completed"
     summary: "Produced an ordered implementation plan."
@@ -31,7 +31,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   @Test
   fun `adapter repair result is followed by the existing phase schema path`() {
     val malformed =
-      """{"contract_version":"0.5","phase_id":"plan","status":"completed","summary":"ok",""" +
+      """{"contract_version":"0.6","phase_id":"plan","status":"completed","summary":"ok",""" +
         """"produced_outputs":{"value":"Plan prose."}}]"""
 
     val normalized = FeatureTaskRuntimePhaseOutputValidatorAdapter().normalizePhaseOutput(malformed, "plan")
@@ -64,7 +64,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `audit output carrying legacy sibling keys still validates`() {
     val legacy =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "audit"
       status: "completed"
       summary: "One criterion remains unmet."
@@ -92,7 +92,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `output missing a required field fails validation`() {
     val missingSummary =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "plan"
       status: "completed"
       produced_outputs:
@@ -107,7 +107,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `output with an unknown extra field fails validation`() {
     val extraField =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "plan"
       status: "completed"
       summary: "ok"
@@ -122,7 +122,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
 
   @Test
   fun `output with the wrong contract version fails validation`() {
-    val wrongVersion = wellFormed.replace("\"0.5\"", "\"9.9\"")
+    val wrongVersion = wellFormed.replace("\"0.6\"", "\"9.9\"")
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(wrongVersion, "plan")
     }
@@ -141,7 +141,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `output with an empty produced_outputs object fails validation`() {
     val emptyProducedOutputs =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "plan"
       status: "completed"
       summary: "ok"
@@ -156,7 +156,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `output with a non-empty produced_outputs object passes validation`() {
     val populated =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "plan"
       status: "completed"
       summary: "ok"
@@ -177,7 +177,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `review output carrying a top-level verdict and findings passes validation`() {
     val reviewWithVerdict =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "review"
       status: "completed"
       summary: "Reviewed the change and requested fixes."
@@ -191,10 +191,65 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `census-only verify_findings with verdict validates and ignores extra disposition and produced_outputs keys`() {
+    val verifyFindings =
+      """
+      contract_version: "0.6"
+      phase_id: "verify_findings"
+      status: "completed"
+      summary: "Verified findings."
+      verdict: "findings_verified"
+      produced_outputs:
+        finding_dispositions:
+          - finding_id: "F-001"
+            disposition: "verified"
+            reason: "ignored"
+            severity: "major"
+            location: "ignored"
+            message: "ignored"
+        legacy_sibling: "ignored"
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(verifyFindings, "verify_findings")
+  }
+
+  @Test
+  fun `completed verify_findings missing envelope verdict fails validation`() {
+    val missingVerdict =
+      """{"contract_version":"0.6","phase_id":"verify_findings","status":"completed",""" +
+        """"summary":"verify","produced_outputs":{"finding_dispositions":""" +
+        """[{"finding_id":"F-001","disposition":"verified"}]}}"""
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(missingVerdict, "verify_findings")
+    }
+  }
+
+  @Test
+  fun `completed verify_findings with off-vocabulary envelope verdict fails validation`() {
+    val badVerdict =
+      """{"contract_version":"0.6","phase_id":"verify_findings","status":"completed",""" +
+        """"summary":"verify","verdict":"mostly_verified",""" +
+        """"produced_outputs":{"finding_dispositions":[{"finding_id":"F-001","disposition":"verified"}]}}"""
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(badVerdict, "verify_findings")
+    }
+  }
+
+  @Test
+  fun `pre-0_6 verify_findings envelope fails validation`() {
+    val legacy =
+      """{"contract_version":"0.5","phase_id":"verify_findings","status":"completed",""" +
+        """"summary":"verify","verdict":"findings_verified",""" +
+        """"produced_outputs":{"finding_dispositions":[{"finding_id":"F-001","disposition":"verified"}]}}"""
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(legacy, "verify_findings")
+    }
+  }
+
+  @Test
   fun `verify_findings disposition accepts boundary provenance and unavailable flag`() {
     val verifyFindings =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "verify_findings"
       status: "completed"
       summary: "Verified findings against spec intent."
@@ -203,20 +258,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
         finding_dispositions:
           - finding_id: "F-001"
             disposition: "verified"
-            reason: "Matches spec intent AC-002."
-            severity: "major"
-            location: "FeatureTaskRuntimePhaseWorkflowDefinition.kt"
-            message: "Missing verify_findings wiring"
             boundary_context_unavailable: false
             selected_boundary_headings:
               - heading_id: "runtime-kotlin/agent/history.md#abc"
                 source_path: "runtime-kotlin/agent/history.md"
           - finding_id: "F-002"
             disposition: "verified"
-            reason: "Intent-only path with no eligible boundary."
-            severity: "minor"
-            location: "Foo.kt"
-            message: "Out-of-tree reference"
             boundary_context_unavailable: true
       """.trimIndent()
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(verifyFindings, "verify_findings")
@@ -226,7 +273,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   fun `verify_findings disposition rejects boundary selections when context is unavailable`() {
     val verifyFindings =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "verify_findings"
       status: "completed"
       summary: "Verified findings against spec intent."
@@ -306,7 +353,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   @Test
   fun `raw json object passes validation`() {
     val rawJson =
-      """{"contract_version":"0.5","phase_id":"plan","status":"completed",""" +
+      """{"contract_version":"0.6","phase_id":"plan","status":"completed",""" +
         """"summary":"ok","produced_outputs":{"value":"Plan prose."}}"""
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(rawJson, "plan")
   }
@@ -318,7 +365,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       Here is the plan output.
 
       ```json
-      {"contract_version":"0.5","phase_id":"plan","status":"completed",
+      {"contract_version":"0.6","phase_id":"plan","status":"completed",
        "summary":"ok","produced_outputs":{"value":"Plan prose."}}
       ```
 
@@ -335,7 +382,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     val withProse =
       """
       I planned the work as follows:
-      {"contract_version":"0.5","phase_id":"plan","status":"completed",
+      {"contract_version":"0.6","phase_id":"plan","status":"completed",
        "summary":"ok","produced_outputs":{"value":"Plan prose."}}
       Let me know if you need anything else.
       """.trimIndent()
@@ -348,12 +395,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """
       For reference the shape is:
       ```json
-      {"contract_version":"0.5","phase_id":"plan","status":"completed","summary":"example",
+      {"contract_version":"0.6","phase_id":"plan","status":"completed","summary":"example",
        "produced_outputs":{"value":"Example plan prose."}}
       ```
       Here is the real output:
       ```json
-      {"contract_version":"0.5","phase_id":"plan","status":"completed",
+      {"contract_version":"0.6","phase_id":"plan","status":"completed",
        "summary":"real","produced_outputs":{"value":"Plan prose."}}
       ```
       """.trimIndent()
@@ -368,10 +415,10 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     val twoObjects =
       """
       For reference the shape is:
-      {"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"example",
+      {"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"example",
        "verdict":"satisfied","produced_outputs":{"value":"{\"gaps\":[]}"}}
       Here is the real output:
-      {"contract_version":"0.5","phase_id":"audit","status":"completed",
+      {"contract_version":"0.6","phase_id":"audit","status":"completed",
        "summary":"every criterion met","verdict":"satisfied","produced_outputs":{"value":"{\"gaps\":[]}"}}
       """.trimIndent()
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
@@ -383,7 +430,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   @Test
   fun `completed audit missing envelope verdict fails validation`() {
     val missingVerdict =
-      """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"audit",""" +
         """"produced_outputs":{"value":"{\"gaps\":[]}"}}"""
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(missingVerdict, "audit")
@@ -393,7 +440,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   @Test
   fun `completed audit with off-vocabulary envelope verdict fails validation`() {
     val badVerdict =
-      """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"audit",""" +
         """"verdict":"mostly_satisfied","produced_outputs":{"value":"{\"gaps\":[]}"}}"""
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(badVerdict, "audit")
@@ -403,7 +450,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   @Test
   fun `completed audit with blank value fails validation`() {
     val blankValue =
-      """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"audit",""" +
         """"verdict":"satisfied","produced_outputs":{"value":"   "}}"""
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(blankValue, "audit")
@@ -422,7 +469,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     )
     malformedCases.forEach { suffix ->
       val envelope =
-        """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",$suffix}"""
+        """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"audit",$suffix}"""
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "audit")
     }
   }
@@ -430,12 +477,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   @Test
   fun `audit envelope verdict is not cross-checked against inner value shape`() {
     val gapsFoundEmptyInner =
-      """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"audit",""" +
         """"verdict":"gaps_found","produced_outputs":{"value":"{\"gaps\":[]}"}}"""
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(gapsFoundEmptyInner, "audit")
 
     val satisfiedGapLookingInner =
-      """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"audit",""" +
         """"verdict":"satisfied","produced_outputs":{"value":"AC-001: still missing wiring"}}"""
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(satisfiedGapLookingInner, "audit")
   }
@@ -456,7 +503,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     // parses as neither; the balanced-object scan isolates the genuine object.
     val withTrailingBrace =
       """
-      {"contract_version":"0.5","phase_id":"plan","status":"completed",
+      {"contract_version":"0.6","phase_id":"plan","status":"completed",
        "summary":"ok","produced_outputs":{"value":"Plan prose."}}
       Note: the template placeholder } above is intentional.
       """.trimIndent()
@@ -466,7 +513,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   @Test
   fun `a brace inside a string value does not split the object`() {
     val braceInString =
-      """{"contract_version":"0.5","phase_id":"plan","status":"completed",""" +
+      """{"contract_version":"0.6","phase_id":"plan","status":"completed",""" +
         """"summary":"handles a literal } brace in a value","produced_outputs":{"value":"Plan prose."}}"""
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(braceInString, "plan")
   }
@@ -489,12 +536,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """
       Earlier draft of the audit result:
       ```json
-      {"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"draft",
+      {"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"draft",
        "verdict":"satisfied","produced_outputs":{"value":"{\"gaps\":[]}"}}
       ```
       Corrected final answer:
       ```json
-      {"contract_version":"0.5","phase_id":"audit","status":"completed",
+      {"contract_version":"0.6","phase_id":"audit","status":"completed",
       "verdict":"gaps_found","produced_outputs":{"value":"{\"gaps\":[{\"criterion\":\"AC-128\",\"note\":\"Integration behavior is missing.\"}]}"}}
       ```
       """.trimIndent()
@@ -512,12 +559,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """
       Discarded draft, missing its summary:
       ```json
-      {"contract_version":"0.5","phase_id":"audit","status":"completed",
+      {"contract_version":"0.6","phase_id":"audit","status":"completed",
        "verdict":"satisfied","produced_outputs":{"value":"{\"gaps\":[]}"}}
       ```
       Corrected final answer:
       ```json
-      {"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"one gap remains",
+      {"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"one gap remains",
        "verdict":"gaps_found","produced_outputs":{"value":"{\"gaps\":[{\"criterion\":\"AC-128\",\"note\":\"Rejected lanes are omitted from the aggregate.\"}]}"}}
       ```
       """.trimIndent()
@@ -532,13 +579,13 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     val reordered =
       """
       ```json
-      {"contract_version":"0.5","phase_id":"plan","status":"completed","summary":"ok",
+      {"contract_version":"0.6","phase_id":"plan","status":"completed","summary":"ok",
        "produced_outputs":{"value":"Plan prose.","notes":["note-1"]}}
       ```
       Restating the same envelope with the fields in a different order:
       ```json
       {"produced_outputs":{"notes":["note-1"],"value":"Plan prose."},"summary":"ok",
-       "status":"completed","phase_id":"plan","contract_version":"0.5"}
+       "status":"completed","phase_id":"plan","contract_version":"0.6"}
       ```
       """.trimIndent()
 
@@ -550,11 +597,11 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     val reordered =
       """
       ```json
-      {"contract_version":"0.5","phase_id":"plan","status":"completed","summary":"ok",
+      {"contract_version":"0.6","phase_id":"plan","status":"completed","summary":"ok",
        "produced_outputs":{"value":"Plan prose A."}}
       ```
       ```json
-      {"contract_version":"0.5","phase_id":"plan","status":"completed","summary":"ok",
+      {"contract_version":"0.6","phase_id":"plan","status":"completed","summary":"ok",
        "produced_outputs":{"value":"Plan prose B."}}
       ```
       """.trimIndent()
@@ -583,7 +630,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   fun `audit nested verdict under produced_outputs fails with a payload-free root verdict constraint`() {
     // SKILL-187 AC-002: syntax is fine; the required top-level verdict is missing when nested only.
     val nested =
-      """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"SKILL187-NESTED",""" +
+      """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"SKILL187-NESTED",""" +
         """"produced_outputs":{"value":"{\"gaps\":[]}","verdict":"satisfied"}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
@@ -600,7 +647,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     val innerValue = """{\"gaps\":[{\"criterion\":\"AC-001\",\"note\":\"the behavior is absent\",""" +
       """\"severity\":\"blocker\"}]}"""
     val body =
-      """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"lenient-gap",""" +
+      """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"lenient-gap",""" +
         """"verdict":"gaps_found","produced_outputs":{"value":"$innerValue"}}"""
     val lenient = FeatureTaskRuntimePhaseOutputSchemaValidator.normalizeAuditPhaseOutputLenient(body, "audit")
 
@@ -612,7 +659,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   fun `lenient verify_findings normalization accepts disposition fields the strict schema would reject`() {
     val longReason = "x".repeat(400)
     val body =
-      """{"contract_version":"0.5","phase_id":"verify_findings","status":"completed",""" +
+      """{"contract_version":"0.6","phase_id":"verify_findings","status":"completed",""" +
         """"summary":"lenient disposition","verdict":"findings_verified",""" +
         """"produced_outputs":{"finding_dispositions":[{"finding_id":"F-001",""" +
         """"disposition":"verified","reason":"$longReason","severity":"major",""" +
@@ -635,14 +682,23 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   }
 
   @Test
-  fun `completed implement_fix with a path-only construct is rejected`() {
-    val pathOnly = validRepairReceiptJson().replace(
-      """"symbol":"Type.member","file":"Type.kt"""",
-      """"symbol":"runtime-kotlin/src/Type.kt"""",
+  fun `census-only implement_fix with repair_receipt 0_3 validates and ignores extra constructs and intent`() {
+    val receipt =
+      """{"contract_version":"0.3","entries":[{"finding_id":"F-001","outcome":"addressed",""" +
+        """"constructs":[{"symbol":"Type.member"}],"intent":"ignored decoration"}]}"""
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
+      implementFixEnvelope(receipt),
+      "implement_fix",
     )
+  }
+
+  @Test
+  fun `pre-0_3 repair receipt fails validation`() {
+    val legacyReceipt =
+      """{"contract_version":"0.2","entries":[{"finding_id":"F-001","outcome":"addressed"}]}"""
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
-        implementFixEnvelope(pathOnly),
+        implementFixEnvelope(legacyReceipt),
         "implement_fix",
       )
     }
@@ -651,7 +707,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   @Test
   fun `completed implement_fix omitting the repair receipt is rejected`() {
     val envelope =
-      """{"contract_version":"0.5","phase_id":"implement_fix","status":"completed","summary":"fix",""" +
+      """{"contract_version":"0.6","phase_id":"implement_fix","status":"completed","summary":"fix",""" +
         """"produced_outputs":{"reconciled_state":{"reconciled":true,"evidence":"tree at target"}}}"""
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "implement_fix")
@@ -661,21 +717,19 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   @Test
   fun `blocked implement_fix without a repair receipt still validates`() {
     val envelope =
-      """{"contract_version":"0.5","phase_id":"implement_fix","status":"blocked","summary":"blocked",""" +
+      """{"contract_version":"0.6","phase_id":"implement_fix","status":"blocked","summary":"blocked",""" +
         """"failure_disposition":"needs_user_action","produced_outputs":{"reason":"operator pause"}}"""
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "implement_fix")
   }
 
   private fun implementFixEnvelope(receiptJson: String): String =
-    """{"contract_version":"0.5","phase_id":"implement_fix","status":"completed","summary":"fix",""" +
+    """{"contract_version":"0.6","phase_id":"implement_fix","status":"completed","summary":"fix",""" +
       """"produced_outputs":{"reconciled_state":{"reconciled":true,"evidence":"tree at target"},""" +
       """"repair_receipt":$receiptJson}}"""
 
   private fun validRepairReceiptJson(): String =
-    """{"contract_version":"0.2","round_number":1,"pre_fix_checkpoint_sha":"${"a".repeat(40)}",""" +
-      """"entries":[{"severity":"blocker","label":"Type","text":"unsafe mutation at the seam",""" +
-      """"finding_id":"F-001","outcome":"addressed","constructs":[{"symbol":"Type.member","file":"Type.kt"}],""" +
-      """"intent":"close the finding at Type.member"}]}"""
+    """{"contract_version":"0.3","round_number":1,"pre_fix_checkpoint_sha":"${"a".repeat(40)}",""" +
+      """"entries":[{"finding_id":"F-001","outcome":"addressed"}]}"""
 
   @Test
   fun `completed build phase output validates nested build_receipt through production schema gate`() {
@@ -708,7 +762,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   fun `completed preplan with non-blank value passes validation`() {
     val preplan =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "preplan"
       status: "completed"
       summary: "Preplan prose ready for plan."
@@ -722,7 +776,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   fun `completed preplan with blank value fails validation`() {
     val preplan =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "preplan"
       status: "completed"
       summary: "Preplan missing prose."
@@ -738,7 +792,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   fun `completed preplan with whitespace-only value fails validation`() {
     val preplan =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "preplan"
       status: "completed"
       summary: "Preplan whitespace-only prose."
@@ -754,7 +808,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   fun `completed preplan missing value fails validation`() {
     val preplan =
       """
-      contract_version: "0.5"
+      contract_version: "0.6"
       phase_id: "preplan"
       status: "completed"
       summary: "Preplan missing value."
@@ -767,7 +821,7 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   }
 
   private fun buildPhaseEnvelope(buildReceipt: String): String =
-    """{"contract_version":"0.5","phase_id":"build","status":"completed",""" +
+    """{"contract_version":"0.6","phase_id":"build","status":"completed",""" +
       """"summary":"Build satisfied by runtime-owned gate execution.",""" +
       """"verdict":"satisfied","produced_outputs":{"build_receipt":$buildReceipt}}"""
 }

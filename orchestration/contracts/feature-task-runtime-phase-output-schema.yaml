@@ -56,46 +56,13 @@ $defs:
       - needs_user_action
       - process_failure
       - invalid_output
-  repairConstruct:
-    type: object
-    additionalProperties: false
-    required: [symbol]
-    properties:
-      symbol:
-        description: >-
-          Compact symbol reference: Type or Type.member. Identifier characters
-          only — no spaces, no Kotlin backtick or JUnit display names. Never a
-          repository path.
-        type: string
-        minLength: 1
-        maxLength: 256
-        pattern: "^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$"
-      file:
-        description: "Optional file basename used only when the compact symbol is ambiguous."
-        type: string
-        minLength: 1
-        maxLength: 128
-        pattern: "^[A-Za-z0-9_.-]+$"
   repairReceiptEntry:
     type: object
-    additionalProperties: false
     description: >-
       One carried finding's repair outcome. Identity is finding_id (canonical). Parsing accepts
-      finding_ref, id, and ref as aliases; label and text are optional decoration and never gate
-      coverage.
-    required: [severity, outcome, constructs, intent]
+      finding_ref, id, and ref as aliases.
+    required: [outcome]
     properties:
-      severity:
-        type: string
-        enum: [blocker, major, minor, nit]
-      label:
-        type: string
-        minLength: 1
-        maxLength: 256
-      text:
-        type: string
-        minLength: 1
-        maxLength: 256
       finding_id:
         type: string
         minLength: 1
@@ -126,60 +93,12 @@ $defs:
           it blocks for an operator carrying the reason instead of being lost silently.
         type: string
         enum: [addressed, no_edit_required, attempted_unresolved]
-      constructs:
-        type: array
-        maxItems: 16
-        items: { $ref: "#/$defs/repairConstruct" }
-      intent:
-        type: string
-        minLength: 1
-        maxLength: 356
-        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
-      no_edit_reason:
-        type: string
-        minLength: 1
-        maxLength: 356
-        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
-      unresolved_reason:
-        description: >-
-          Why the attempt did not close the finding, on an attempted_unresolved entry. Read by an
-          operator, so it names what was tried and what still fails.
-        type: string
-        minLength: 1
-        maxLength: 356
-        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
     allOf:
       - anyOf:
           - required: [finding_id]
           - required: [finding_ref]
           - required: [id]
           - required: [ref]
-      - if:
-          properties:
-            outcome: { const: addressed }
-          required: [outcome]
-        then:
-          properties:
-            constructs: { minItems: 1 }
-          allOf:
-            - not: { required: [no_edit_reason] }
-            - not: { required: [unresolved_reason] }
-      - if:
-          properties:
-            outcome: { const: no_edit_required }
-          required: [outcome]
-        then:
-          required: [no_edit_reason]
-          not: { required: [unresolved_reason] }
-      - if:
-          properties:
-            outcome: { const: attempted_unresolved }
-          required: [outcome]
-        then:
-          required: [unresolved_reason]
-          properties:
-            constructs: { minItems: 1 }
-          not: { required: [no_edit_reason] }
   verificationBoundaryHeadingProvenance:
     type: object
     additionalProperties: false
@@ -222,7 +141,7 @@ $defs:
     properties:
       contract_version:
         type: string
-        const: "0.2"
+        const: "0.3"
       round_number:
         description: >-
           Runtime-authored. Accepted when a producer still emits it and then overwritten with the
@@ -317,7 +236,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.5"
+    const: "0.6"
   phase_id:
     type: string
     minLength: 1
@@ -428,22 +347,17 @@ allOf:
               type: array
               maxItems: 100
               items:
+                type: object
+                required: [finding_id, disposition]
+                properties:
+                  finding_id: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                  disposition: { enum: [verified, rejected] }
+                  boundary_context_unavailable: { type: boolean }
+                  selected_boundary_headings:
+                    type: array
+                    maxItems: 12
+                    items: { $ref: "#/$defs/verificationBoundaryHeadingProvenance" }
                 allOf:
-                  - type: object
-                    additionalProperties: false
-                    required: [finding_id, disposition, reason, severity, location, message]
-                    properties:
-                      finding_id: { type: string, minLength: 1, pattern: ".*\\S.*" }
-                      disposition: { enum: [verified, rejected] }
-                      reason: { type: string, minLength: 1, maxLength: 280 }
-                      severity: { enum: [blocker, major, minor, nit] }
-                      location: { type: string, minLength: 1, maxLength: 180 }
-                      message: { type: string, minLength: 1, maxLength: 280 }
-                      boundary_context_unavailable: { type: boolean }
-                      selected_boundary_headings:
-                        type: array
-                        maxItems: 12
-                        items: { $ref: "#/$defs/verificationBoundaryHeadingProvenance" }
                   - if:
                       properties:
                         boundary_context_unavailable: { const: true }
