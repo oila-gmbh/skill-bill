@@ -102,6 +102,7 @@ validation_gate:
     format: junit_xml
     artifact_globs:
       - "runtime-kotlin/**/build/test-results/**/*.xml"
+      - "runtime-kotlin/**/build/reports/detekt/*.xml"
     compiler_diagnostics:
       format: gradle_kotlin_compiler_stdout
     executed_work:

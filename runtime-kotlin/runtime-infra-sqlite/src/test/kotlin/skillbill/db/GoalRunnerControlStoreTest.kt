@@ -336,4 +336,91 @@ class GoalRunnerControlStoreTest {
       assertEquals(15_000, store.controlState("parent-reacquire").activeDurationMs)
     }
   }
+
+  @Test
+  fun `heartbeat increments goal and subtask active duration equally`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-subtask-dual").resolve("metrics.db")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token-123456",
+      hostIdentity = "host",
+      bootIdentity = "boot",
+      pid = 42,
+      processBirthToken = "birth",
+      heartbeatAt = "2026-08-07T18:22:00Z",
+      expiresAt = "2026-08-07T18:22:30Z",
+    )
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      store.persistControlState("parent-dual", GoalRunnerControlState(currentSubtaskId = 1))
+      assertTrue(store.acquireExecutionLease("parent-dual", lease))
+      assertTrue(store.heartbeatExecutionLease("parent-dual", lease.copy(heartbeatAt = "2026-08-07T18:22:10Z")))
+      val state = store.controlState("parent-dual")
+      assertEquals(10_000, state.activeDurationMs)
+      assertEquals(state.activeDurationMs, state.subtaskActiveDurationMs)
+    }
+  }
+
+  @Test
+  fun `clearing control state preserves both goal and subtask accumulated clocks`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-clear-subtask-clock").resolve("metrics.db")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token-123456",
+      hostIdentity = "host",
+      bootIdentity = "boot",
+      pid = 42,
+      processBirthToken = "birth",
+      heartbeatAt = "2026-08-02T10:00:00Z",
+      expiresAt = "2026-08-02T10:00:30Z",
+    )
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      store.persistControlState(
+        "parent-clear-subtask",
+        GoalRunnerControlState(currentSubtaskId = 1),
+      )
+      assertTrue(store.acquireExecutionLease("parent-clear-subtask", lease))
+      assertTrue(
+        store.heartbeatExecutionLease("parent-clear-subtask", lease.copy(heartbeatAt = "2026-08-02T10:00:10Z")),
+      )
+      store.persistControlState(
+        "parent-clear-subtask",
+        store.controlState("parent-clear-subtask").copy(
+          pauseRequested = true,
+          paused = true,
+          pauseReason = "operator_request",
+          pausedAt = "2026-08-02T10:00:10Z",
+        ),
+      )
+
+      store.clearControlState("parent-clear-subtask")
+
+      val cleared = store.controlState("parent-clear-subtask")
+      assertEquals(10_000, cleared.activeDurationMs)
+      assertEquals(10_000, cleared.subtaskActiveDurationMs)
+      assertEquals("2026-08-02T10:00:10Z", cleared.activeDurationAsOf)
+      assertEquals("2026-08-02T10:00:10Z", cleared.subtaskActiveDurationAsOf)
+    }
+  }
+
+  @Test
+  fun `switching current subtask id zeros only the subtask accumulator`() {
+    val state = GoalRunnerControlState(
+      currentSubtaskId = 1,
+      subtaskActiveDurationMs = 30_000,
+      subtaskActiveDurationAsOf = "2026-08-02T10:00:10Z",
+      activeDurationMs = 60_000,
+      activeDurationAsOf = "2026-08-02T10:00:10Z",
+    )
+
+    val switched = state.reconciledForCurrentSubtask(2)
+    assertEquals(2, switched.currentSubtaskId)
+    assertEquals(0, switched.subtaskActiveDurationMs)
+    assertEquals(null, switched.subtaskActiveDurationAsOf)
+    assertEquals(60_000, switched.activeDurationMs)
+    assertEquals(state, state.reconciledForCurrentSubtask(1))
+  }
 }

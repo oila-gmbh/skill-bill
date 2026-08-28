@@ -84,6 +84,51 @@ class IdeStatusSchemaValidatorTest {
   }
 
   @Test
+  fun `goal snapshot with optional subtask active duration fields passes`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-148",
+        "workflow_id" to "goal-1",
+        "workflow_family" to "feature-goal",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 3),
+        "started_at" to "2026-08-06T10:00:00Z",
+        "current_subtask" to linkedMapOf(
+          "id" to "1",
+          "started_at" to "2026-08-06T10:05:00Z",
+          "active_duration_ms" to 45_000,
+          "active_duration_as_of" to "2026-08-06T10:10:00Z",
+        ),
+        "updated_at" to "2026-08-06T10:10:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-148 is active on implement.",
+      ),
+      "test-subtask-active-duration",
+    )
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-148",
+        "workflow_id" to "goal-1",
+        "workflow_family" to "feature-goal",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 3),
+        "started_at" to "2026-08-06T10:00:00Z",
+        "current_subtask" to linkedMapOf("id" to "1", "started_at" to "2026-08-06T10:05:00Z"),
+        "updated_at" to "2026-08-06T10:10:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-148 is active on implement.",
+      ),
+      "test-subtask-without-active-duration",
+    )
+  }
+
+  @Test
   fun `goal snapshot with a fully populated planning object passes`() {
     IdeStatusSchemaValidator.validate(
       goalSnapshotWithPlanning(

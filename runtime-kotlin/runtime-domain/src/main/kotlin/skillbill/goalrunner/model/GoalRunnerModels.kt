@@ -274,14 +274,20 @@ data class GoalRunnerControlState(
   // Time this goal spent actually executing, which is not the wall clock since it was opened: a goal
   // sits blocked, paused, or simply unattended between runs, and those gaps are not work.
   val activeDurationMs: Long = 0,
-  // The instant activeDurationMs is current as of, set while a lease is live. A reader adds
-  // now - activeDurationAsOf to get the live total; the next heartbeat folds that same tail in.
   val activeDurationAsOf: String? = null,
+  val currentSubtaskId: Int? = null,
+  val subtaskActiveDurationMs: Long = 0,
+  val subtaskActiveDurationAsOf: String? = null,
 ) {
   init {
     stopAfterSubtaskId?.let { require(it > 0) { "stopAfterSubtaskId must be positive when provided." } }
     require(activeDurationMs >= 0) { "activeDurationMs must not be negative." }
     activeDurationAsOf?.let { require(it.isNotBlank()) { "activeDurationAsOf must not be blank when provided." } }
+    currentSubtaskId?.let { require(it > 0) { "currentSubtaskId must be positive when provided." } }
+    require(subtaskActiveDurationMs >= 0) { "subtaskActiveDurationMs must not be negative." }
+    subtaskActiveDurationAsOf?.let {
+      require(it.isNotBlank()) { "subtaskActiveDurationAsOf must not be blank when provided." }
+    }
     require(!pauseConsumed || pauseRequested) {
       "pauseConsumed cannot be true when pauseRequested is false."
     }
@@ -295,6 +301,16 @@ data class GoalRunnerControlState(
     repositoryIdentity?.let {
       require(it.isNotBlank()) { "repositoryIdentity must not be blank when provided." }
     }
+  }
+
+  fun reconciledForCurrentSubtask(manifestSubtaskId: Int): GoalRunnerControlState {
+    if (manifestSubtaskId <= 0) return this
+    if (currentSubtaskId == manifestSubtaskId) return this
+    return copy(
+      currentSubtaskId = manifestSubtaskId,
+      subtaskActiveDurationMs = 0,
+      subtaskActiveDurationAsOf = null,
+    )
   }
 
   fun requiresPauseBoundary(manifest: DecompositionManifest): Boolean = pauseRequested || paused || (
@@ -408,6 +424,8 @@ data class GoalRunnerStatusProjection(
   val stopAfterSubtaskId: Int? = null,
   val activeDurationMs: Long = 0,
   val activeDurationAsOf: String? = null,
+  val subtaskActiveDurationMs: Long = 0,
+  val subtaskActiveDurationAsOf: String? = null,
 )
 
 /**
@@ -451,6 +469,8 @@ data class GoalRunnerStatusProjectionExtras(
   val stopAfterSubtaskId: Int? = null,
   val activeDurationMs: Long = 0,
   val activeDurationAsOf: String? = null,
+  val subtaskActiveDurationMs: Long = 0,
+  val subtaskActiveDurationAsOf: String? = null,
 )
 
 object GoalRunnerStatusProjector {
@@ -512,6 +532,8 @@ object GoalRunnerStatusProjector {
       stopAfterSubtaskId = extras.stopAfterSubtaskId,
       activeDurationMs = extras.activeDurationMs,
       activeDurationAsOf = extras.activeDurationAsOf,
+      subtaskActiveDurationMs = extras.subtaskActiveDurationMs,
+      subtaskActiveDurationAsOf = extras.subtaskActiveDurationAsOf,
     )
   }
 

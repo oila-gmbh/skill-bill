@@ -109,6 +109,8 @@ object IdeStatusJsonMapper {
         val subtask = root.getAsJsonObjectOrNull("current_subtask")
         val subtaskId = subtask?.getAsString("id")
         val subtaskStartedAt = subtask?.getAsInstant("started_at")
+        val subtaskActiveDurationMs = subtask?.getAsNonNegativeLong(ACTIVE_DURATION_MS_WIRE_KEY)
+        val subtaskActiveDurationAsOf = subtask?.getAsInstant(ACTIVE_DURATION_AS_OF_WIRE_KEY)
         val updatedAt = root.getAsInstant("updated_at")
         val planning = root.parsePlanning()
         val currentModel = root.parseCurrentModel()
@@ -171,6 +173,8 @@ object IdeStatusJsonMapper {
                 planning = planning,
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
+                subtaskActiveDurationMs = subtaskActiveDurationMs,
+                subtaskActiveDurationAsOf = subtaskActiveDurationAsOf,
                 currentModel = currentModel,
                 currentPhaseExecution = currentPhaseExecution,
             )
@@ -201,6 +205,8 @@ object IdeStatusJsonMapper {
                         pausedAt = pausedAt,
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
+                        subtaskActiveDurationMs = subtaskActiveDurationMs,
+                        subtaskActiveDurationAsOf = subtaskActiveDurationAsOf,
                         currentModel = currentModel,
                         currentPhaseExecution = currentPhaseExecution,
                         pauseReason = pauseReason,
@@ -226,6 +232,8 @@ object IdeStatusJsonMapper {
                         pausedAt = pausedAt,
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
+                        subtaskActiveDurationMs = subtaskActiveDurationMs,
+                        subtaskActiveDurationAsOf = subtaskActiveDurationAsOf,
                         currentModel = currentModel,
                         currentPhaseExecution = currentPhaseExecution,
                     )
@@ -246,6 +254,8 @@ object IdeStatusJsonMapper {
                 stale = isStale,
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
+                subtaskActiveDurationMs = subtaskActiveDurationMs,
+                subtaskActiveDurationAsOf = subtaskActiveDurationAsOf,
                 currentModel = currentModel,
                 currentPhaseExecution = currentPhaseExecution,
             )
@@ -264,6 +274,8 @@ object IdeStatusJsonMapper {
                 stale = isStale,
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
+                subtaskActiveDurationMs = subtaskActiveDurationMs,
+                subtaskActiveDurationAsOf = subtaskActiveDurationAsOf,
                 currentModel = currentModel,
                 currentPhaseExecution = currentPhaseExecution,
             )

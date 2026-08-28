@@ -75,6 +75,7 @@ class SkillBillProjectDisplayCache : PersistentStateComponent<SkillBillProjectDi
         var updatedAt: String? = null,
         var observedAt: String? = null,
         var activeDurationMs: Long? = null,
+        var subtaskActiveDurationMs: Long? = null,
     )
 
     private var state = State()
@@ -103,6 +104,7 @@ class SkillBillProjectDisplayCache : PersistentStateComponent<SkillBillProjectDi
                 subtaskStartedAt = state.subtaskStartedAt?.let { runCatching { Instant.parse(it) }.getOrNull() },
                 updatedAt = state.updatedAt?.let { runCatching { Instant.parse(it) }.getOrNull() },
                 activeDurationMs = state.activeDurationMs?.takeIf { it >= 0L },
+                subtaskActiveDurationMs = state.subtaskActiveDurationMs?.takeIf { it >= 0L },
             ),
             observedAt = observedAt,
         )
@@ -131,6 +133,7 @@ class SkillBillProjectDisplayCache : PersistentStateComponent<SkillBillProjectDi
             updatedAt = sanitized.display.updatedAt?.toString(),
             observedAt = sanitized.observedAt.toString(),
             activeDurationMs = sanitized.display.activeDurationMs,
+            subtaskActiveDurationMs = sanitized.display.subtaskActiveDurationMs,
         )
     }
 }

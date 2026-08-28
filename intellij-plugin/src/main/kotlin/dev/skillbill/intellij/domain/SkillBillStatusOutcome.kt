@@ -39,8 +39,9 @@ sealed class SkillBillStatusOutcome {
         override val diagnostic: StatusDiagnostic? = null,
         /** See [Active.activeDurationMs]. Final for a finished run. */
         val activeDurationMs: Long? = null,
-        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
         val activeDurationAsOf: Instant? = null,
+        val subtaskActiveDurationMs: Long? = null,
+        val subtaskActiveDurationAsOf: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     data class Active(
@@ -74,8 +75,9 @@ sealed class SkillBillStatusOutcome {
          * unattended gaps. Null when the snapshot carried none, which is not zero work.
          */
         val activeDurationMs: Long? = null,
-        /** Instant [activeDurationMs] is current as of; present only while a lease is live. */
         val activeDurationAsOf: Instant? = null,
+        val subtaskActiveDurationMs: Long? = null,
+        val subtaskActiveDurationAsOf: Instant? = null,
         /** Model the current phase launched with; null when the snapshot carried none. */
         val currentModel: CurrentPhaseModel? = null,
         /** See [CurrentPhaseExecution]; null when the snapshot carried none or it was unusable. */
@@ -109,11 +111,10 @@ sealed class SkillBillStatusOutcome {
         val pausedAt: Instant? = null,
         /** See [Active.activeDurationMs]. A paused goal accumulates none while it waits. */
         val activeDurationMs: Long? = null,
-        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
         val activeDurationAsOf: Instant? = null,
-        /** See [Active.currentModel]. */
+        val subtaskActiveDurationMs: Long? = null,
+        val subtaskActiveDurationAsOf: Instant? = null,
         val currentModel: CurrentPhaseModel? = null,
-        /** See [Active.currentPhaseExecution]. */
         val currentPhaseExecution: CurrentPhaseExecution? = null,
         val pauseReason: PauseReason? = null,
     ) : SkillBillStatusOutcome()
@@ -136,11 +137,10 @@ sealed class SkillBillStatusOutcome {
         val planning: GoalPlanningInfo? = null,
         /** See [Active.activeDurationMs]. */
         val activeDurationMs: Long? = null,
-        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
         val activeDurationAsOf: Instant? = null,
-        /** See [Active.currentModel]. */
+        val subtaskActiveDurationMs: Long? = null,
+        val subtaskActiveDurationAsOf: Instant? = null,
         val currentModel: CurrentPhaseModel? = null,
-        /** See [Active.currentPhaseExecution]. */
         val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusOutcome()
 
@@ -160,11 +160,10 @@ sealed class SkillBillStatusOutcome {
         override val diagnostic: StatusDiagnostic? = null,
         /** See [Active.activeDurationMs]. A blocked goal accumulates none while it waits. */
         val activeDurationMs: Long? = null,
-        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
         val activeDurationAsOf: Instant? = null,
-        /** See [Active.currentModel]. */
+        val subtaskActiveDurationMs: Long? = null,
+        val subtaskActiveDurationAsOf: Instant? = null,
         val currentModel: CurrentPhaseModel? = null,
-        /** See [Active.currentPhaseExecution]. */
         val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusOutcome()
 
@@ -184,11 +183,10 @@ sealed class SkillBillStatusOutcome {
         override val diagnostic: StatusDiagnostic? = null,
         /** See [Active.activeDurationMs]. Final for a run that stopped failing. */
         val activeDurationMs: Long? = null,
-        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
         val activeDurationAsOf: Instant? = null,
-        /** See [Active.currentModel]. */
+        val subtaskActiveDurationMs: Long? = null,
+        val subtaskActiveDurationAsOf: Instant? = null,
         val currentModel: CurrentPhaseModel? = null,
-        /** See [Active.currentPhaseExecution]. */
         val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusOutcome()
 

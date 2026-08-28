@@ -116,6 +116,8 @@ data class IdeStatusProgress(
 data class IdeStatusCurrentSubtask(
   val id: String,
   val startedAt: Instant? = null,
+  val activeDurationMs: Long? = null,
+  val activeDurationAsOf: Instant? = null,
 )
 
 /**
@@ -290,15 +292,7 @@ data class IdeStatusSnapshot(
       )
     }
     startedAt?.let { put("started_at", it.toString()) }
-    currentSubtask?.let { subtask ->
-      put(
-        "current_subtask",
-        buildMap {
-          put("id", subtask.id)
-          subtask.startedAt?.let { put("started_at", it.toString()) }
-        },
-      )
-    }
+    putCurrentSubtask()
     putCurrentModel()
     planning?.let { put("planning", planningWireMap(it)) }
     putCurrentPhaseExecution()
@@ -309,16 +303,20 @@ data class IdeStatusSnapshot(
     put("updated_at", updatedAt.toString())
     put("freshness", freshness.wireValue)
     put("summary", summary)
-    problem?.let { problem ->
-      put(
-        "problem",
-        buildMap {
-          put("code", problem.code.wireValue)
-          put("message", problem.message)
-          problem.details?.takeIf { it.isNotEmpty() }?.let { put("details", it) }
-        },
-      )
-    }
+    putProblem()
+  }
+
+  private fun MutableMap<String, Any?>.putCurrentSubtask() {
+    val subtask = currentSubtask ?: return
+    put(
+      "current_subtask",
+      buildMap {
+        put("id", subtask.id)
+        subtask.startedAt?.let { put("started_at", it.toString()) }
+        subtask.activeDurationMs?.let { put("active_duration_ms", it) }
+        subtask.activeDurationAsOf?.let { put("active_duration_as_of", it.toString()) }
+      },
+    )
   }
 
   /**
@@ -369,6 +367,18 @@ data class IdeStatusSnapshot(
   private fun MutableMap<String, Any?>.putActiveDuration() {
     activeDurationMs?.let { put("active_duration_ms", it) }
     activeDurationAsOf?.let { put("active_duration_as_of", it.toString()) }
+  }
+
+  private fun MutableMap<String, Any?>.putProblem() {
+    val reported = problem ?: return
+    put(
+      "problem",
+      buildMap {
+        put("code", reported.code.wireValue)
+        put("message", reported.message)
+        reported.details?.takeIf { it.isNotEmpty() }?.let { put("details", it) }
+      },
+    )
   }
 
   private fun planningWireMap(planning: IdeStatusPlanning): Map<String, Any?> = buildMap {

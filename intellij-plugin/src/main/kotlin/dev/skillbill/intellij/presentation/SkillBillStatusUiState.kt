@@ -114,6 +114,8 @@ sealed class SkillBillStatusUiState {
         /** Retained so the 1s ticker re-anchors the active clock without a new poll. */
         val activeDurationMs: Long? = null,
         val activeDurationAsOf: Instant? = null,
+        val subtaskActiveDurationMs: Long? = null,
+        val subtaskActiveDurationAsOf: Instant? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String =
             buildString {

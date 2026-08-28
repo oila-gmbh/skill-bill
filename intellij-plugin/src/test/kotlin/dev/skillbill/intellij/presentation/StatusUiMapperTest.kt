@@ -590,6 +590,102 @@ class StatusUiMapperTest {
         updatedAt = now,
     )
 
+    @Test
+    fun `subtask uses accumulator across pause gap while started_at would overcount`() {
+        val openedAt = Instant.parse("2026-08-07T18:22:00Z")
+        val subtaskOpenedAt = Instant.parse("2026-08-07T19:00:00Z")
+        val observedAt = Instant.parse("2026-08-08T06:31:00Z")
+        val ui = StatusUiMapper.map(
+            active(startedAt = openedAt, subtaskStartedAt = subtaskOpenedAt).copy(
+                activeDurationMs = Duration.ofMinutes(23).toMillis(),
+                activeDurationAsOf = observedAt,
+                subtaskActiveDurationMs = Duration.ofMinutes(20).toMillis(),
+                subtaskActiveDurationAsOf = observedAt,
+            ),
+            observedAt,
+        ) as SkillBillStatusUiState.Active
+
+        assertEquals(Duration.ofMinutes(23), ui.goalElapsed)
+        assertEquals(Duration.ofMinutes(20), ui.subtaskElapsed)
+        assertTrue(ui.subtaskElapsed!! < StatusUiMapper.elapsed(subtaskOpenedAt, observedAt)!!)
+    }
+
+    @Test
+    fun `resume continues from frozen totals without adding downtime gap`() {
+        val asOf = Instant.parse("2026-08-08T06:31:00Z")
+        val resumedAt = asOf.plus(Duration.ofMinutes(5))
+        val ui = StatusUiMapper.map(
+            active().copy(
+                activeDurationMs = Duration.ofMinutes(23).toMillis(),
+                activeDurationAsOf = asOf,
+                subtaskActiveDurationMs = Duration.ofMinutes(20).toMillis(),
+                subtaskActiveDurationAsOf = asOf,
+            ),
+            resumedAt,
+        ) as SkillBillStatusUiState.Active
+
+        assertEquals(Duration.ofMinutes(28), ui.goalElapsed)
+        assertEquals(Duration.ofMinutes(25), ui.subtaskElapsed)
+    }
+
+    @Test
+    fun `subtask elapsed never exceeds goal elapsed`() {
+        val asOf = Instant.parse("2026-08-08T06:31:00Z")
+        val ui = StatusUiMapper.map(
+            active().copy(
+                activeDurationMs = Duration.ofMinutes(23).toMillis(),
+                activeDurationAsOf = asOf,
+                subtaskActiveDurationMs = Duration.ofMinutes(30).toMillis(),
+                subtaskActiveDurationAsOf = asOf,
+            ),
+            asOf,
+        ) as SkillBillStatusUiState.Active
+
+        assertEquals(Duration.ofMinutes(23), ui.goalElapsed)
+        assertEquals(Duration.ofMinutes(23), ui.subtaskElapsed)
+    }
+
+    @Test
+    fun `withElapsed does not advance Paused or Blocked`() {
+        val lastUpdate = Instant.parse("2026-08-06T10:30:00Z")
+        val paused = StatusUiMapper.map(
+            paused(updatedAt = lastUpdate).copy(
+                activeDurationMs = Duration.ofMinutes(10).toMillis(),
+                subtaskActiveDurationMs = Duration.ofMinutes(8).toMillis(),
+            ),
+            lastUpdate,
+        )
+        assertEquals(paused, StatusUiMapper.withElapsed(paused, lastUpdate.plusSeconds(3_600)))
+
+        val blocked = StatusUiMapper.map(
+            blockedOutcome().copy(
+                activeDurationMs = Duration.ofMinutes(10).toMillis(),
+                subtaskActiveDurationMs = Duration.ofMinutes(8).toMillis(),
+            ),
+            lastUpdate,
+        )
+        assertEquals(blocked, StatusUiMapper.withElapsed(blocked, lastUpdate.plusSeconds(3_600)))
+    }
+
+    @Test
+    fun `Active with pauseRequested still ticks on withElapsed`() {
+        val asOf = Instant.parse("2026-08-08T06:31:00Z")
+        val active = StatusUiMapper.map(
+            active().copy(
+                pauseRequested = true,
+                activeDurationMs = Duration.ofMinutes(5).toMillis(),
+                activeDurationAsOf = asOf,
+                subtaskActiveDurationMs = Duration.ofMinutes(4).toMillis(),
+                subtaskActiveDurationAsOf = asOf,
+            ),
+            asOf,
+        ) as SkillBillStatusUiState.Active
+
+        val ticked = StatusUiMapper.withElapsed(active, asOf.plusSeconds(10)) as SkillBillStatusUiState.Active
+        assertEquals(Duration.ofMinutes(5).plusSeconds(10), ticked.goalElapsed)
+        assertEquals(Duration.ofMinutes(4).plusSeconds(10), ticked.subtaskElapsed)
+    }
+
     private fun paused(updatedAt: Instant) = SkillBillStatusOutcome.Paused(
         observedAt = now,
         summary = "paused",

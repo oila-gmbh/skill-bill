@@ -135,33 +135,13 @@ class GoalRunnerStatusService(
     val ledgerSummary = runCatching {
       attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey, request.dbPathOverride)
     }.getOrNull()
-    val planningBlock = currentSubtask?.takeIf { subtask ->
-      subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
-    }
     return GoalRunnerStatusProjectionExtras(
       executionLiveness = resolveExecutionLiveness(
         parentWorkflowId = loadedState.parentWorkflowId,
         currentSubtask = currentSubtask,
         dbPathOverride = request.dbPathOverride,
       ),
-      planning = manifestStore.planningStatus(
-        loadedState.parentWorkflowId,
-        manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
-        planningBlock?.id,
-        planningBlock?.blockedReason,
-        request.dbPathOverride,
-      )?.let { snapshot ->
-        planningStatusReasonCoherence.align(
-          GoalPlanningStatusAlignRequest(
-            snapshot = snapshot,
-            parentWorkflowId = loadedState.parentWorkflowId,
-            issueKey = manifest.issueKey,
-            manifest = manifest,
-            repoRoot = request.repoRoot ?: Path.of("").toAbsolutePath().normalize(),
-            dbPathOverride = request.dbPathOverride,
-          ),
-        )
-      },
+      planning = alignedPlanningStatus(loadedState, request, manifest, currentSubtask),
       currentStepOverride = derivedCurrentStep ?: progress?.currentStepId,
       currentWorkflowStatus = progress?.workflowStatus,
       latestLivenessSignal = progress?.latestLivenessSignal,
@@ -182,7 +162,37 @@ class GoalRunnerStatusService(
       stopAfterSubtaskId = loadedState.controlState.stopAfterSubtaskId,
       activeDurationMs = loadedState.controlState.activeDurationMs,
       activeDurationAsOf = loadedState.controlState.activeDurationAsOf,
+      subtaskActiveDurationMs = loadedState.controlState.subtaskActiveDurationMs,
+      subtaskActiveDurationAsOf = loadedState.controlState.subtaskActiveDurationAsOf,
     )
+  }
+
+  private fun alignedPlanningStatus(
+    loadedState: GoalRunnerManifestState,
+    request: GoalRunnerStatusRequest,
+    manifest: DecompositionManifest,
+    currentSubtask: DecompositionSubtask?,
+  ) = currentSubtask?.takeIf { subtask ->
+    subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
+  }.let { planningBlock ->
+    manifestStore.planningStatus(
+      loadedState.parentWorkflowId,
+      manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
+      planningBlock?.id,
+      planningBlock?.blockedReason,
+      request.dbPathOverride,
+    )?.let { snapshot ->
+      planningStatusReasonCoherence.align(
+        GoalPlanningStatusAlignRequest(
+          snapshot = snapshot,
+          parentWorkflowId = loadedState.parentWorkflowId,
+          issueKey = manifest.issueKey,
+          manifest = manifest,
+          repoRoot = request.repoRoot ?: Path.of("").toAbsolutePath().normalize(),
+          dbPathOverride = request.dbPathOverride,
+        ),
+      )
+    }
   }
 
   private fun reconcileStatusManifest(

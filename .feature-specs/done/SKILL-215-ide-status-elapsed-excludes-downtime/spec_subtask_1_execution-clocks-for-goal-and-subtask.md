@@ -1,6 +1,6 @@
 # SKILL-215 · Subtask 1 — Execution clocks for goal and current subtask
 
-Parent spec: `.feature-specs/SKILL-215-ide-status-elapsed-excludes-downtime/spec.md`
+Parent spec: `spec.md`
 
 ## Scope
 

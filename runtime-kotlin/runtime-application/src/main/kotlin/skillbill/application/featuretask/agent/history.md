@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-08-28] Validate repair parses detekt and uses checklist repair
+Areas: runtime-infra-fs/validation, runtime-application/featuretask, platform-packs/kotlin, platform-packs/kmp
+- Validation gate COLLECT_ALL now unions detekt XML under `build/reports/detekt`, detekt/spotless stdout lines, compiler diagnostics, and JUnit artifacts so repair turns get discrete findings instead of one `unparseable_gate_failure` blob.
+- Kotlin and KMP packs declare the detekt report glob on `validation_gate.findings.artifact_globs`.
+- Validate repair prompts require unconditional project-wide `./gradlew spotlessApply` at turn start, a numbered checklist worked one item at a time with targeted detekt/ktlint/compile/test proof, and explicit detekt-threshold refactor guidance (no @Suppress).
+- Pattern: cheap format preflight plus discrete findings plus checklist repair before the three-turn cap. reusable
+Feature flag: N/A
+Acceptance criteria: n/a (main hotfix)
+
 ## [2026-08-28] SKILL-214 — Prose-centric audit phase I/O
 Areas: runtime-application/featuretask, runtime-application/model, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, runtime-contracts, runtime-infra-sqlite
 - Extended `phase_prose` to audit: preplan, plan, implement, and audit share one `value`/`prompt` shell; former `gaps` / `non_blocking_findings` JSON is stuffed inside `value`.

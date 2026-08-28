@@ -101,14 +101,95 @@ class FileSystemValidationGateRunnerTest {
         request(
           repo,
           argv = listOf("sh", script.toString()),
-          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
-          terminalVerifying = true,
-          withExecutedWorkSignal = true,
+          GateParseOptions(
+            parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+            terminalVerifying = true,
+            withExecutedWorkSignal = true,
+          ),
         ),
       )
       assertEquals(ValidationGateRunOutcome.PASSED, result.outcome)
       assertEquals(0, result.executedWorkUnits)
       assertEquals(emptyList(), result.findings)
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `COLLECT_ALL parses detekt XML reports into discrete findings`() {
+    val repo = Files.createTempDirectory("gate-detekt-xml")
+    try {
+      val detektReport = repo.resolve("runtime-kotlin/runtime-application/build/reports/detekt/detekt.xml")
+      Files.createDirectories(detektReport.parent)
+      Files.writeString(
+        detektReport,
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <checkstyle version="4.3">
+        <file name="runtime-application/src/main/kotlin/skillbill/example/Foo.kt">
+        	<error line="12" column="1" severity="warning" message="Too many functions" source="detekt.TooManyFunctions" />
+        </file>
+        </checkstyle>
+        """.trimIndent(),
+      )
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        printf '%s\n' 'FAILURE: Build failed with an exception.'
+        exit 1
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          GateParseOptions(
+            parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+            artifactGlobs = listOf(
+              "**/build/test-results/**/*.xml",
+              "runtime-kotlin/**/build/reports/detekt/*.xml",
+            ),
+          ),
+        ),
+      )
+      val finding = result.findings.single { it.ruleOrTestId == "TooManyFunctions" }
+      assertEquals("runtime-application", finding.module)
+      assertEquals("runtime-application/src/main/kotlin/skillbill/example/Foo.kt:12", finding.location)
+      assertTrue(result.findings.none { it.ruleOrTestId == "unparseable_gate_failure" })
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `COLLECT_ALL parses detekt and spotless stdout lines into discrete findings`() {
+    val repo = Files.createTempDirectory("gate-quality-stdout")
+    try {
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        ROOT=$(pwd)
+        printf '%s\n' "${'$'}ROOT/runtime-kotlin/runtime-application/src/main/kotlin/Foo.kt:12:1: Too many functions [TooManyFunctions]"
+        printf '%s\n' "${'$'}ROOT/runtime-kotlin/runtime-infra-sqlite/src/test/kotlin/Bar.kt:386:1: Line too long [MaxLineLength]"
+        exit 1
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+        ),
+      )
+      assertEquals(2, result.findings.size)
+      assertEquals("TooManyFunctions", result.findings.single { it.ruleOrTestId == "TooManyFunctions" }.ruleOrTestId)
+      assertEquals("MaxLineLength", result.findings.single { it.ruleOrTestId == "MaxLineLength" }.ruleOrTestId)
+      assertTrue(result.findings.none { it.ruleOrTestId == "unparseable_gate_failure" })
     } finally {
       repo.toFile().deleteRecursively()
     }
@@ -321,31 +402,39 @@ class FileSystemValidationGateRunnerTest {
     repo: Path,
     argv: List<String>,
     parseMode: ValidationGateFindingParseMode,
-    terminalVerifying: Boolean = false,
-    withExecutedWorkSignal: Boolean = false,
-  ): ValidationGateRunRequest = ValidationGateRunRequest(
-    repoRoot = repo,
-    argv = argv,
-    cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
-    declaration = ValidationGateDeclaration(
-      fullGateCommand = listOf("sh", "gate.sh"),
-      cacheBypassingFullGateCommand = listOf("sh", "gate.sh", "--rerun-tasks"),
-      collectAllFullGateCommand = listOf("sh", "gate.sh", "--continue"),
-      cacheBypassingCollectAllFullGateCommand = listOf("sh", "gate.sh", "--continue", "--rerun-tasks"),
-      findings = ValidationGateFindingsLocator(
-        format = ValidationGateFindingsFormat.JUNIT_XML,
-        artifactGlobs = listOf("**/build/test-results/**/*.xml"),
-        compilerDiagnostics = ValidationGateCompilerDiagnosticsLocator(
-          ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT,
+  ): ValidationGateRunRequest = request(repo, argv, GateParseOptions(parseMode = parseMode))
+
+  private fun request(repo: Path, argv: List<String>, options: GateParseOptions): ValidationGateRunRequest =
+    ValidationGateRunRequest(
+      repoRoot = repo,
+      argv = argv,
+      cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
+      declaration = ValidationGateDeclaration(
+        fullGateCommand = listOf("sh", "gate.sh"),
+        cacheBypassingFullGateCommand = listOf("sh", "gate.sh", "--rerun-tasks"),
+        collectAllFullGateCommand = listOf("sh", "gate.sh", "--continue"),
+        cacheBypassingCollectAllFullGateCommand = listOf("sh", "gate.sh", "--continue", "--rerun-tasks"),
+        findings = ValidationGateFindingsLocator(
+          format = ValidationGateFindingsFormat.JUNIT_XML,
+          artifactGlobs = options.artifactGlobs,
+          compilerDiagnostics = ValidationGateCompilerDiagnosticsLocator(
+            ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT,
+          ),
+          executedWork = if (options.withExecutedWorkSignal) {
+            ValidationGateExecutedWorkSignal(ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY)
+          } else {
+            null
+          },
         ),
-        executedWork = if (withExecutedWorkSignal) {
-          ValidationGateExecutedWorkSignal(ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY)
-        } else {
-          null
-        },
       ),
-    ),
-    terminalVerifying = terminalVerifying,
-    findingParseMode = parseMode,
-  )
+      terminalVerifying = options.terminalVerifying,
+      findingParseMode = options.parseMode,
+    )
 }
+
+private data class GateParseOptions(
+  val parseMode: ValidationGateFindingParseMode,
+  val terminalVerifying: Boolean = false,
+  val withExecutedWorkSignal: Boolean = false,
+  val artifactGlobs: List<String> = listOf("**/build/test-results/**/*.xml"),
+)

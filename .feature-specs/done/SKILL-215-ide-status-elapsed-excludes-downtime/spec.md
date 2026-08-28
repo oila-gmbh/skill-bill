@@ -116,7 +116,7 @@ never greater than goal elapsed.
 - `IdeStatusProjector.goalCurrentSubtask` — child WorkItem / workflow `startedAt` only.
 - `GoalRunnerControlRepository.advancedBy` / `acquireExecutionLease` — goal accumulator
   already skips downtime on reacquire.
-- `orchestration/contracts/ide-status-schema.yaml` — `active_duration_ms` is goal-level;
+- `../../../orchestration/contracts/ide-status-schema.yaml` — `active_duration_ms` is goal-level;
   `current_subtask` has `id` and `started_at` only.
 
 ## Subtask Decomposition

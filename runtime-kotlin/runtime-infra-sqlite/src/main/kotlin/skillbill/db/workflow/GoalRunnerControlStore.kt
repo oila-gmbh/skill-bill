@@ -44,6 +44,9 @@ internal class GoalRunnerControlStore(
       executionLease = existing.executionLease,
       activeDurationMs = existing.activeDurationMs,
       activeDurationAsOf = existing.activeDurationAsOf,
+      currentSubtaskId = existing.currentSubtaskId,
+      subtaskActiveDurationMs = existing.subtaskActiveDurationMs,
+      subtaskActiveDurationAsOf = existing.subtaskActiveDurationAsOf,
     )
     if (retained != GoalRunnerControlState()) {
       persistControlState(parentWorkflowId, retained)
@@ -182,6 +185,9 @@ private fun GoalRunnerControlState.toArtifactMap(): Map<String, Any?> = mapOf(
   "execution_lease" to executionLease?.toArtifactMap(),
   "active_duration_ms" to activeDurationMs,
   "active_duration_as_of" to activeDurationAsOf,
+  "current_subtask_id" to currentSubtaskId,
+  "subtask_active_duration_ms" to subtaskActiveDurationMs,
+  "subtask_active_duration_as_of" to subtaskActiveDurationAsOf,
 )
 
 /**
@@ -205,6 +211,9 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
     "execution_lease",
     "active_duration_ms",
     "active_duration_as_of",
+    "current_subtask_id",
+    "subtask_active_duration_ms",
+    "subtask_active_duration_as_of",
   )
   state.keys.forEach { key ->
     require(key in allowedKeys) { "Goal runner control state has unsupported field '$key'." }
@@ -221,6 +230,9 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
     executionLease = state["execution_lease"]?.let(::decodeExecutionLease),
     activeDurationMs = state.nonNegativeLongOrDefault("active_duration_ms"),
     activeDurationAsOf = state.nullableString("active_duration_as_of"),
+    currentSubtaskId = state["current_subtask_id"].toPositiveIntOrNull("current_subtask_id"),
+    subtaskActiveDurationMs = state.nonNegativeLongOrDefault("subtask_active_duration_ms"),
+    subtaskActiveDurationAsOf = state.nullableString("subtask_active_duration_as_of"),
   )
 }
 
