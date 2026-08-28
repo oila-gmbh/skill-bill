@@ -208,6 +208,71 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   }
 
   @Test
+  fun `plan to validate delivers only plan prose fields`() {
+    assertProseHandoffAdvances(
+      edge = proseEdge(
+        producer = phasePlan,
+        consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        prose = "Dense plan prose for downstream validate.",
+      ),
+      expectedInBriefing = listOf("Dense plan prose for downstream validate."),
+      mustNotContain = listOf("complete_plan_envelope_secret"),
+    )
+  }
+
+  @Test
+  fun `plan to build delivers only plan prose fields`() {
+    assertProseHandoffAdvances(
+      edge = proseEdge(
+        producer = phasePlan,
+        consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+        prose = "Dense plan prose for downstream build.",
+      ),
+      expectedInBriefing = listOf("Dense plan prose for downstream build."),
+      mustNotContain = listOf("complete_plan_envelope_secret"),
+    )
+  }
+
+  @Test
+  fun `implement to write_history delivers only implement prose fields`() {
+    assertProseHandoffAdvances(
+      edge = proseEdge(
+        producer = phaseImplement,
+        consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+        prose = "Dense implement prose for downstream write_history.",
+      ),
+      expectedInBriefing = listOf("Dense implement prose for downstream write_history."),
+      mustNotContain = listOf("complete_implement_envelope_secret"),
+    )
+  }
+
+  @Test
+  fun `implement to commit_push delivers only implement prose fields`() {
+    assertProseHandoffAdvances(
+      edge = proseEdge(
+        producer = phaseImplement,
+        consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+        prose = "Dense implement prose for downstream commit_push.",
+      ),
+      expectedInBriefing = listOf("Dense implement prose for downstream commit_push."),
+      mustNotContain = listOf("complete_implement_envelope_secret"),
+    )
+  }
+
+  @Test
+  fun `implement to pr delivers only implement prose fields`() {
+    assertProseHandoffAdvances(
+      edge = proseEdge(
+        producer = phaseImplement,
+        consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
+        prose = "Dense implement prose for downstream pr.",
+      ),
+      expectedInBriefing = listOf("Dense implement prose for downstream pr."),
+      mustNotContain = listOf("complete_implement_envelope_secret"),
+    )
+  }
+
+  @Test
   fun `pr keeps the self-read branch-diff instruction on its own derived-context key`() {
     val briefing = assemble(
       consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
@@ -256,6 +321,13 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         else -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(phaseImplement, producer)
       }
       phaseAudit -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(phaseAudit, phaseImplement)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+      -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(consumer, phasePlan)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
+      -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(consumer, phaseImplement)
       else -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(consumer, producer)
     }
     return ProseHandoffEdge(

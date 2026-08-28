@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-08-28] SKILL-217 subtask 1 — Retarget finalization consumers onto phase_prose
+Areas: runtime-domain/workflow/taskruntime, runtime-application/featuretask (tests)
+- Validate, build, write_history, commit_push, and pr take producer words through `phaseProseDeclaration` (`feature_task_runtime.phase_prose`). A value-only implement still launches those consumers; briefings carry `value` and optional `prompt`.
+- `finalizationProjectionContext` no longer reads implement `changed_paths` / `completed_task_ids` / `tests_*` / `deviations` or plan `validation_strategy` / `tasks`. Path inventory is checkpoint `workingTreeOwnedPaths` only. Kotlin does not parse `value`.
+- Dropped `pr_request` fields `completed_task_ids`, `tests_added`, `tests_updated`, `deviations`; dropped `commit_request.required_exclusions` and `validation_request.required_checks` / `validation_strategy`. No new handoff contract id.
+- Pattern: reuse `phase_prose` for agent-facing words; keep measurement (paths, checkpoints) runtime-owned. reusable
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-28] SKILL-216 subtask 1 — Slim verify and fix to an id-enum census
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, runtime-contracts, runtime-infra-sqlite
 - Slimmed `verify_findings` dispositions to required `finding_id` + `disposition`. Extra keys, including the former fat fields, are ignored. Envelope `verdict` is the sole routing signal. Kotlin no longer derives it from the census or falls back to ADVANCE.

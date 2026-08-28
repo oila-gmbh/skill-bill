@@ -686,9 +686,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     val context = finalizationProjectionContext(inputs)
     return when (declaration.projectionContractId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST -> mapOf(
-        "validation_strategy" to (context.plan["validation_strategy"] ?: emptyList<String>()),
         "changed_paths" to context.changedPaths,
-        "required_checks" to context.requiredChecks,
         "repository_checkpoint" to context.checkpoint,
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES -> mapOf(
@@ -701,7 +699,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST -> mapOf(
         "path_inventory" to context.changedPaths,
         "required_inclusions" to context.changedPaths,
-        "required_exclusions" to context.excludedClaims,
         "branch_identity" to context.branch,
         "gate_attestations" to listOf("audit", "review", "validate", "write_history"),
         "repository_checkpoint" to context.checkpoint,
@@ -716,37 +713,17 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
   ): FinalizationProjectionContext {
     val outputs = inputs.resolvedUpstream.outputsByPhaseId
-    val plan = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN]?.let {
-      planningProducedOutputs(it)
-    }.orEmpty()
-    val implementation = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT]?.let {
-      planningProducedOutputs(it)
-    }.orEmpty()
     val validation = outputs[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE]?.let {
       genericProducedOutputs(it)
     }.orEmpty()
     val checkpoint = inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) }
-    val claimedChangedPaths = (implementation["changed_paths"] as? List<*>).orEmpty()
-      .filterIsInstance<String>()
-      .distinct()
     val changedPaths = inputs.resolvedCheckpoint?.workingTreeOwnedPaths.orEmpty()
       .distinct()
       .sorted()
-    val excludedClaims = claimedChangedPaths.filterNot { it in changedPaths }.sorted()
-    val requiredChecks = (
-      (plan["validation_strategy"] as? List<*>).orEmpty() +
-        (plan["tasks"] as? List<*>).orEmpty().flatMap { task ->
-          JsonSupport.anyToStringAnyMap(task)?.get("test_obligations") as? List<*> ?: emptyList<Any?>()
-        }
-      ).filterIsInstance<String>().distinct()
     return FinalizationProjectionContext(
-      plan = plan,
-      implementation = implementation,
       validation = validation,
       checkpoint = checkpoint,
       changedPaths = changedPaths,
-      excludedClaims = excludedClaims,
-      requiredChecks = requiredChecks,
       branch = inputs.branchIdentity ?: "unknown",
       base = inputs.baseBranch,
       checkpointFingerprint = inputs.resolvedCheckpoint?.fingerprint,
@@ -754,11 +731,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   }
 
   private fun prRequestProjection(context: FinalizationProjectionContext): Map<String, Any?> = mapOf(
-    "completed_task_ids" to (context.implementation["completed_task_ids"] ?: emptyList<String>()),
     "changed_paths" to context.changedPaths,
-    "tests_added" to (context.implementation["tests_added"] ?: emptyList<String>()),
-    "tests_updated" to (context.implementation["tests_updated"] ?: emptyList<String>()),
-    "deviations" to (context.implementation["deviations"] ?: emptyList<String>()),
     "validation_summary" to (
       context.validation["validation_result"]
         ?: context.validation["validation_summary"]
@@ -770,20 +743,13 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   )
 
   private data class FinalizationProjectionContext(
-    val plan: Map<String, Any?>,
-    val implementation: Map<String, Any?>,
     val validation: Map<String, Any?>,
     val checkpoint: Map<String, String>?,
     val changedPaths: List<String>,
-    val excludedClaims: List<String>,
-    val requiredChecks: List<String>,
     val branch: String,
     val base: String,
     val checkpointFingerprint: String?,
   )
-
-  private fun planningProducedOutputs(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?> =
-    genericProducedOutputs(output)
 
   private fun genericProducedOutputs(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?> {
     val envelope = output.normalizedOutput?.envelope

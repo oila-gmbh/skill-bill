@@ -113,14 +113,14 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     )
     assertEquals(
       listOf(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
       ),
       dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD),
     )
     assertEquals(
       listOf(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
       ),
       dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
@@ -294,25 +294,30 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
       ),
       def.PHASE_VALIDATE to setOf(
-        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
+        def.PHASE_PLAN to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
+        def.PHASE_PLAN to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
         def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
       ),
       def.PHASE_BUILD to setOf(
-        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
+        def.PHASE_PLAN to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
+        def.PHASE_PLAN to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
         def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
       ),
       def.PHASE_WRITE_HISTORY to setOf(
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
         def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES,
         def.PHASE_VALIDATE to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
         def.PHASE_BUILD to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
       ),
       def.PHASE_COMMIT_PUSH to setOf(
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
         def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
         def.PHASE_VALIDATE to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
         def.PHASE_BUILD to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
         def.PHASE_WRITE_HISTORY to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.HISTORY_RECEIPT,
       ),
       def.PHASE_PR to setOf(
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
         def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
         def.PHASE_COMMIT_PUSH to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
       ),
@@ -434,14 +439,13 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       fields(def.PHASE_REVIEW, "audit_clearance"),
     )
     assertEquals(
-      listOf("validation_strategy", "changed_paths", "required_checks", "repository_checkpoint"),
+      listOf("changed_paths", "repository_checkpoint"),
       fields(def.PHASE_VALIDATE, "validation_request"),
     )
     assertEquals(
       listOf(
         "path_inventory",
         "required_inclusions",
-        "required_exclusions",
         "branch_identity",
         "gate_attestations",
         "repository_checkpoint",
@@ -450,25 +454,50 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     )
     assertEquals(
       listOf(
-        "completed_task_ids",
         "changed_paths",
-        "tests_added",
-        "tests_updated",
-        "deviations",
         "validation_summary",
         "base_branch",
         "diff_reference",
       ),
       fields(def.PHASE_PR, "pr_request"),
     )
+    val prRequestFields = fields(def.PHASE_PR, "pr_request")
+    assertTrue("completed_task_ids" !in prRequestFields)
+    assertTrue("tests_added" !in prRequestFields)
+    assertTrue("tests_updated" !in prRequestFields)
+    assertTrue("deviations" !in prRequestFields)
+    val commitRequestFields = fields(def.PHASE_COMMIT_PUSH, "commit_request")
+    assertTrue("required_exclusions" !in commitRequestFields)
+    listOf(
+      def.PHASE_VALIDATE,
+      def.PHASE_BUILD,
+      def.PHASE_WRITE_HISTORY,
+      def.PHASE_COMMIT_PUSH,
+      def.PHASE_PR,
+    ).forEach { consumer ->
+      val prose = def.phaseDeclarations.getValue(consumer).projectionDeclarations.filter {
+        it.projectionContractId == FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE
+      }
+      assertTrue(prose.isNotEmpty(), "$consumer must declare phase_prose")
+      prose.forEach { declaration ->
+        assertEquals(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
+          declaration.projectionContractId,
+        )
+      }
+    }
   }
 
   @Test
   fun `runtime projectors privately combine only the producers needed by finalization consumers`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     assertEquals(
-      setOf(def.PHASE_PLAN, def.PHASE_IMPLEMENT, def.PHASE_AUDIT),
+      setOf(def.PHASE_PLAN, def.PHASE_AUDIT),
       def.runtimeProjectorProducerPhaseIds(def.PHASE_VALIDATE),
+    )
+    assertEquals(
+      setOf(def.PHASE_PLAN, def.PHASE_AUDIT),
+      def.runtimeProjectorProducerPhaseIds(def.PHASE_BUILD),
     )
     assertEquals(
       setOf(def.PHASE_IMPLEMENT, def.PHASE_VALIDATE, def.PHASE_BUILD),
