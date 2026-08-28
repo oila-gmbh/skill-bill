@@ -508,6 +508,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "Scaling changes scope and verbosity only", false, "gate integrity for $phaseId")
       assertContains(prompt, SPEC_REFERENCE, false, "spec reference for $phaseId")
       assertContains(prompt, "Required final output", false, "output contract for $phaseId")
+      assertContains(
+        prompt,
+        "Do not read orchestration/contracts",
+        false,
+        "installed-runtime authority for $phaseId",
+      )
       assertContains(prompt, "\"phase_id\": must be \"$phaseId\"", false, "pinned phase id for $phaseId")
       assertContains(
         prompt,

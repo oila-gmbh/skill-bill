@@ -81,6 +81,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         briefing.priorGapMemory,
         validationGateFindings != null,
       ),
+      installedRuntimeAuthorityDirective(),
       ceremonyDirective(briefing),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       nonValidatePhaseValidationOwnershipDirective(briefing.phaseId),
@@ -401,6 +402,16 @@ object FeatureTaskRuntimePhasePromptComposer {
     }
   }
 
+  private fun installedRuntimeAuthorityDirective(): String = """
+    ## Installed runtime is the contract source
+    This briefing was composed by the installed Skill Bill runtime that will validate your output.
+    Use the contract_version, envelope fields, skills, packs, and commands it names.
+    Do not read orchestration/contracts, Kotlin contract constants, test fixtures, or skills/ in
+    this workspace to override them. When this repository is skill-bill, those files are the change
+    under work, not the validator. If you must inspect a schema, inspect the installed runtime copy,
+    never this checkout.
+  """.trimIndent()
+
   private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
@@ -441,7 +452,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     End your response with exactly one JSON object as the last thing you emit. Prefer a raw
     object with nothing after it; a single ```json fenced block is also accepted. The runtime
     extracts that object and blocks the run if it does not validate against the phase-output
-    contract:
+    contract. Copy these field values from this briefing; do not look them up in this checkout:
     - "contract_version": must be exactly "$FEATURE_TASK_RUNTIME_CONTRACT_VERSION"
     - "phase_id": must be "$phaseId"
     - "status": one of "completed", "blocked", "failed"
