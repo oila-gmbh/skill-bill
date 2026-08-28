@@ -46,6 +46,7 @@ object RuntimeModuleCatalog {
       "skillbill.goalplanning",
       "skillbill.goalrunner",
       "skillbill.skillremove",
+      "skillbill.text",
       "skillbill.workflow",
     )
 }

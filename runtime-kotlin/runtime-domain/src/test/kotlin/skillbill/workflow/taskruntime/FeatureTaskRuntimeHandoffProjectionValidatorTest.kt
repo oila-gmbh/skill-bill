@@ -145,18 +145,23 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
         declarations = listOf(declaration),
         resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
           mapOf(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+              1,
+              """{"produced_outputs":{"findings":[""" +
+                """{"finding_id":"F-001","severity":"blocker","location":"A.kt:1","message":"fix"},""" +
+                """{"finding_id":"F-002","severity":"major","location":"B.kt:1","message":"later"},""" +
+                """{"finding_id":"F-003","severity":"minor","location":"C.kt:1","message":"polish"},""" +
+                """{"finding_id":"F-004","severity":"nit","location":"D.kt:1","message":"typo"}]}}""",
+            ),
             FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to FeatureTaskRuntimePhaseOutput(
               FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
               1,
               """{"produced_outputs":{"finding_dispositions":[""" +
-                """{"finding_id":"F-001","disposition":"verified","reason":"Matches spec.",""" +
-                """"severity":"blocker","location":"A.kt:1","message":"fix"},""" +
-                """{"finding_id":"F-002","disposition":"verified","reason":"Matches spec.",""" +
-                """"severity":"major","location":"B.kt:1","message":"later"},""" +
-                """{"finding_id":"F-003","disposition":"verified","reason":"Matches spec.",""" +
-                """"severity":"minor","location":"C.kt:1","message":"polish"},""" +
-                """{"finding_id":"F-004","disposition":"verified","reason":"Matches spec.",""" +
-                """"severity":"nit","location":"D.kt:1","message":"typo"}]}}""",
+                """{"finding_id":"F-001","disposition":"verified"},""" +
+                """{"finding_id":"F-002","disposition":"verified"},""" +
+                """{"finding_id":"F-003","disposition":"verified"},""" +
+                """{"finding_id":"F-004","disposition":"verified"}]}}""",
             ),
           ),
         ),

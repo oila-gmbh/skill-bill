@@ -21,10 +21,7 @@ enum class FeatureTaskRuntimeFindingVerificationDispositionVerdict(val wireValue
 data class FeatureTaskRuntimeFindingVerificationDisposition(
   val findingId: String,
   val disposition: FeatureTaskRuntimeFindingVerificationDispositionVerdict,
-  val reason: String,
-  val severity: FeatureTaskRuntimeReviewSeverity,
-  val location: String,
-  val message: String,
+  val reason: String? = null,
   val selectedBoundaryHeadings: List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance> = emptyList(),
   val boundaryContextUnavailable: Boolean = false,
 ) {
@@ -34,31 +31,13 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
         "finding verification disposition finding_id must be non-blank.",
       )
     }
-    if (reason.isBlank()) {
-      throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
-        "finding verification disposition reason must be non-blank.",
-      )
-    }
-    if (location.isBlank()) {
-      throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
-        "finding verification disposition location must be non-blank.",
-      )
-    }
-    if (message.isBlank()) {
-      throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
-        "finding verification disposition message must be non-blank.",
-      )
-    }
   }
 
   @OpenBoundaryMap("Finding verification disposition at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = buildMap {
     put("finding_id", findingId)
     put("disposition", disposition.wireValue)
-    put("reason", reason)
-    put("severity", severity.wireValue)
-    put("location", location)
-    put("message", message)
+    reason?.let { put("reason", it) }
     if (selectedBoundaryHeadings.isNotEmpty()) {
       put("selected_boundary_headings", selectedBoundaryHeadings.map { it.toArtifactMap() })
     }
@@ -72,16 +51,7 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
       val disposition = (raw["disposition"] as? String)
         ?.let(FeatureTaskRuntimeFindingVerificationDispositionVerdict::fromWire)
         ?: invalid(path, "disposition")
-      val reason = (raw["reason"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "reason")
-      val severityWire =
-        (raw["severity"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "severity")
-      val severity = FeatureTaskRuntimeReviewSeverity.entries
-        .firstOrNull { it.wireValue == severityWire.trim().lowercase() }
-        ?: throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
-          "$path.severity must be blocker, major, minor, or nit, was '$severityWire'.",
-        )
-      val location = (raw["location"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "location")
-      val message = (raw["message"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "message")
+      val reason = (raw["reason"] as? String)?.trim()?.takeIf(String::isNotBlank)
       val selectedBoundaryHeadings = FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.parseList(
         raw["selected_boundary_headings"],
         "$path.selected_boundary_headings",
@@ -91,9 +61,6 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
         findingId = findingId,
         disposition = disposition,
         reason = reason,
-        severity = severity,
-        location = location,
-        message = message,
         selectedBoundaryHeadings = selectedBoundaryHeadings,
         boundaryContextUnavailable = boundaryContextUnavailable,
       )
@@ -120,15 +87,6 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
 data class FeatureTaskRuntimeFindingVerificationVerdict(
   val dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
 ) {
-  val verdict: FeatureTaskRuntimeVerdict
-    get() = if (
-      dispositions.any { it.disposition == FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED }
-    ) {
-      FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED
-    } else {
-      FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED
-    }
-
   val verifiedDispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>
     get() = dispositions.filter { it.disposition == FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED }
 

@@ -1478,7 +1478,14 @@ internal class FeatureTaskRuntimeRunLoop(
     val produced = completedImplementFixProducedOutputs(run, outputMap) ?: return RepairReceiptSettlement.None
     val reviewState = goalReviewStateOrNull() ?: return repairReceiptShapeSettlement(produced)
     val anchor = repairReceiptAnchor(reviewState) ?: return repairReceiptShapeSettlement(produced)
-    return when (val parsed = featureTaskRuntimeParseRepairReceipt(produced, anchor.baseSha, anchor.roundNumber)) {
+    return when (
+      val parsed = featureTaskRuntimeParseRepairReceipt(
+        produced,
+        anchor.baseSha,
+        anchor.roundNumber,
+        recordTruncation = { record -> runCatching { diagnostics.warning(record) } },
+      )
+    ) {
       FeatureTaskRuntimeRepairReceiptMissing -> RepairReceiptSettlement.None
       is FeatureTaskRuntimeRepairReceiptRejected -> RepairReceiptSettlement.rejected(parsed.rejectionDetail)
       is FeatureTaskRuntimeRepairReceiptValid -> settledRepairReceipt(parsed.receipt, reviewState)
@@ -5683,6 +5690,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val reviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
     val passNumber = reviewState?.completedPassCount?.takeIf { it > 0 } ?: 1
     val recordedVerdicts = recorder.recordedFindingVerdicts(reviewOutput, run.request.dbPathOverride)
+    val truncationRecords = mutableListOf<String>()
     val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
       verifyOutput = verifyOutput,
       reviewOutput = reviewOutput,
@@ -5693,7 +5701,11 @@ internal class FeatureTaskRuntimeRunLoop(
         reviewPassNumber = passNumber,
       ),
       recordedVerdicts = recordedVerdicts,
+      truncationRecords = truncationRecords,
     )
+    truncationRecords.forEach { record ->
+      runCatching { diagnostics.warning(record) }
+    }
     if (rejected.isEmpty()) return
     recorder.appendRejectedVerificationFindings(
       workflowId = run.request.workflowId,

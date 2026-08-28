@@ -288,11 +288,11 @@ private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordResolv
   val refutedDisregard = existing?.status == FeatureTaskRuntimeRepairLedgerStatus.DISREGARDED
   this[identity] = FeatureTaskRuntimeRepairLedgerEntry(
     findingIdentity = identity,
-    severity = finding?.severity ?: entry.severity,
-    label = finding?.label ?: entry.label,
+    severity = finding?.severity ?: "blocker",
+    label = finding?.label ?: entry.findingId,
     findingId = entry.findingId,
-    intent = entry.intent,
-    constructs = entry.constructs,
+    intent = "",
+    constructs = emptyList(),
     status = FeatureTaskRuntimeRepairLedgerStatus.RESOLVED,
     originRound = existing?.originRound ?: round,
     statusRound = round,
@@ -311,10 +311,10 @@ private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordDisreg
   val finding = carried.resolve(entry)
   this[identity] = FeatureTaskRuntimeRepairLedgerEntry(
     findingIdentity = identity,
-    severity = finding?.severity ?: entry.severity,
-    label = finding?.label ?: entry.label,
+    severity = finding?.severity ?: "blocker",
+    label = finding?.label ?: entry.findingId,
     findingId = entry.findingId,
-    intent = entry.intent,
+    intent = "",
     constructs = emptyList(),
     status = FeatureTaskRuntimeRepairLedgerStatus.DISREGARDED,
     originRound = round,

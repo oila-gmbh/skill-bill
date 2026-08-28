@@ -483,6 +483,10 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       def.runtimeProjectorProducerPhaseIds(def.PHASE_PR),
     )
     assertTrue(def.runtimeProjectorProducerPhaseIds(def.PHASE_REVIEW).isEmpty())
+    assertEquals(
+      setOf(def.PHASE_REVIEW),
+      def.runtimeProjectorProducerPhaseIds(def.PHASE_IMPLEMENT_FIX),
+    )
   }
 
   @Test

@@ -132,19 +132,21 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `implement_fix prompt carries the repair receipt shape and the unchanged scope prohibition`() {
+  fun `implement_fix prompt carries the repair receipt census shape and the unchanged scope prohibition`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
     )
 
     assertContains(prompt, "\"repair_receipt\": {")
-    assertContains(prompt, "\"contract_version\": \"0.2\"")
-    assertContains(prompt, "\"symbol\": \"Type.member\"")
-    assertContains(prompt, "no spaces and no Kotlin backtick")
-    assertContains(prompt, "ClassName.camelCaseMember")
+    assertContains(prompt, "\"contract_version\": \"0.3\"")
+    assertContains(prompt, "\"finding_id\": \"F-001\", \"outcome\": \"addressed\"")
     assertContains(prompt, "finding_id")
-    assertContains(prompt, "Coverage matches on finding_id alone")
+    assertContains(prompt, "Coverage matches on finding_id and outcome alone")
+    assertContains(prompt, "Recommended optional fields")
+    assertFalse(prompt.contains("HARD SIZE LIMITS enforced by the schema"))
+    assertFalse(prompt.contains("no Kotlin backtick"))
+    assertFalse(prompt.contains("over-length field is rejected"))
     assertFalse(
       prompt.contains("pre_fix_checkpoint_sha"),
       "The remediation base sha is runtime-owned and absent from the briefing, so asking for it can " +
@@ -153,7 +155,23 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "specialist narratives and raw review output are not")
     assertContains(prompt, "Do not re-apply the plan from scratch")
     assertContains(prompt, "repair_receipt")
-    assertContains(prompt, "\"symbol\": \"Type.member\"")
+  }
+
+  @Test
+  fun `verify_findings prompt carries the disposition census shape and envelope verdict`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS),
+    )
+
+    assertContains(prompt, "VERIFYING phase")
+    assertContains(prompt, "\"findings_verified\" or \"no_findings_verified\"")
+    assertContains(prompt, "Required example: {\"finding_id\":\"F-001\",\"disposition\":\"verified\"}")
+    assertContains(prompt, "Recommended optional fields")
+    assertFalse(prompt.contains("at least one finding is verified"))
+    assertFalse(prompt.contains("HARD SIZE LIMITS enforced by the schema"))
+    assertFalse(prompt.contains("no Kotlin backtick"))
+    assertFalse(prompt.contains("over-length field is rejected"))
   }
 
   @Test
@@ -1118,7 +1136,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   fun `audit remediation names the audit prose it must implement in this invocation`() {
     val auditOutput = """
     {
-      "contract_version": "0.5",
+      "contract_version": "0.6",
       "phase_id": "audit",
       "status": "completed",
       "summary": "Audit found gaps.",
@@ -1528,7 +1546,7 @@ private val PREPLAN_OUTPUT = projectionEnvelope("preplan", PlanningProjectionFix
 private val PLAN_OUTPUT = projectionEnvelope("plan", PlanningProjectionFixtures.PLAN_PROSE)
 
 private fun projectionEnvelope(phaseId: String, producedOutputs: String): String =
-  """{"contract_version":"0.5","phase_id":"$phaseId","status":"completed",""" +
+  """{"contract_version":"0.6","phase_id":"$phaseId","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
 
 private fun projectionExampleCases() = listOf(

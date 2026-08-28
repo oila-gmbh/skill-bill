@@ -116,17 +116,10 @@ internal object GoalPlanningRepositoryScope {
     return BoundaryFileRead(bytes.decodeToString(), cut = bytes.size >= cap)
   }
 
-  /** Truncates on a code-point boundary so a cap named in bytes is honoured in bytes. */
-  fun truncateToUtf8Bytes(text: String, maxBytes: Int): String {
-    if (text.length <= maxBytes / MAX_UTF8_BYTES_PER_CHAR) return text
-    val encoded = text.encodeToByteArray()
-    if (encoded.size <= maxBytes) return text
-    var end = maxBytes
-    while (end > 0 && (encoded[end].toInt() and CONTINUATION_MASK) == CONTINUATION_MARKER) end -= 1
-    return encoded.decodeToString(0, end)
-  }
+  fun truncateToUtf8Bytes(text: String, maxBytes: Int): String =
+    skillbill.text.Utf8Text.truncateToUtf8Bytes(text, maxBytes)
 
-  fun utf8Size(text: String): Int = text.encodeToByteArray().size
+  fun utf8Size(text: String): Int = skillbill.text.Utf8Text.utf8Size(text)
 
   /** Null distinguishes an unlistable directory from a genuinely empty one. */
   private fun sortedChildDirectories(directory: Path): List<Path>? = runCatching {
@@ -140,7 +133,4 @@ internal object GoalPlanningRepositoryScope {
   private fun Path.toRealPathOrNull(): Path? = runCatching { toRealPath() }.getOrNull()
 
   private const val MAX_VISITED_DIRECTORIES = 16_384
-  private const val MAX_UTF8_BYTES_PER_CHAR = 3
-  private const val CONTINUATION_MASK = 0xC0
-  private const val CONTINUATION_MARKER = 0x80
 }

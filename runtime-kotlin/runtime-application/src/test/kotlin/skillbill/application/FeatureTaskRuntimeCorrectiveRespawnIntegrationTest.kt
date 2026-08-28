@@ -6,6 +6,7 @@ import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -166,7 +167,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   @Test
   fun `delimiter repair then expected-shape restore accepts nested verdict without a relaunch`() {
     val malformed = completedPhaseBody(
-      "0.5",
+      FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
       "audit",
       "SKILL187-DELIMITER",
       """{"value":"{\"gaps\":[]}","verdict":"satisfied"}""",

@@ -279,7 +279,7 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
-  fun `rejected verification findings land in the ledger with reason and severity`() {
+  fun `rejected verification findings land in the ledger from review identity with optional reason`() {
     val reviewOutput = mapOf(
       "produced_outputs" to mapOf(
         "findings" to listOf(
@@ -299,23 +299,104 @@ class GoalSubtaskReviewSummaryReducerTest {
             "finding_id" to "F-001",
             "disposition" to "rejected",
             "reason" to "False positive against spec intent.",
-            "severity" to "minor",
-            "location" to "Example.kt",
-            "message" to "Prefer clearer name",
+            "severity" to "blocker",
+            "location" to "Other.kt",
+            "message" to "Census message must not win",
           ),
         ),
       ),
     )
     val scope = UnaddressedFindingLedgerScope("SKILL-202", 2, "wf-verify", 1)
+    val truncationRecords = mutableListOf<String>()
     val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
       verifyOutput = verifyOutput,
       reviewOutput = reviewOutput,
       scope = scope,
+      truncationRecords = truncationRecords,
     )
     assertEquals(1, rejected.size)
     assertEquals("rejected", rejected.single().verificationDisposition)
     assertEquals("False positive against spec intent.", rejected.single().verificationReason)
     assertEquals("minor", rejected.single().severity)
+    assertEquals("Example.kt", rejected.single().location)
+    assertEquals("Prefer clearer name", rejected.single().summary)
+    assertTrue(truncationRecords.isEmpty())
+  }
+
+  @Test
+  fun `rejected verification findings without census reason still land in the ledger`() {
+    val reviewOutput = mapOf(
+      "produced_outputs" to mapOf(
+        "findings" to listOf(
+          mapOf(
+            "finding_id" to "F-001",
+            "severity" to "minor",
+            "message" to "Prefer clearer name",
+            "location" to "Example.kt",
+          ),
+        ),
+      ),
+    )
+    val verifyOutput = mapOf(
+      "produced_outputs" to mapOf(
+        FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS to listOf(
+          mapOf(
+            "finding_id" to "F-001",
+            "disposition" to "rejected",
+          ),
+        ),
+      ),
+    )
+    val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
+      verifyOutput = verifyOutput,
+      reviewOutput = reviewOutput,
+      scope = UnaddressedFindingLedgerScope("SKILL-216", 2, "wf-verify", 1),
+    )
+    assertEquals(1, rejected.size)
+    assertNull(rejected.single().verificationReason)
+    assertEquals("minor", rejected.single().severity)
+  }
+
+  @Test
+  fun `rejected verification findings truncate over-long optional reason and record observability`() {
+    val reviewOutput = mapOf(
+      "produced_outputs" to mapOf(
+        "findings" to listOf(
+          mapOf(
+            "finding_id" to "F-001",
+            "severity" to "minor",
+            "message" to "Prefer clearer name",
+            "location" to "Example.kt",
+          ),
+        ),
+      ),
+    )
+    val overLongReason = "x".repeat(GoalSubtaskReviewSummaryReducer.REJECTED_VERIFICATION_REASON_MAX_UTF8_BYTES + 1)
+    val verifyOutput = mapOf(
+      "produced_outputs" to mapOf(
+        FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS to listOf(
+          mapOf(
+            "finding_id" to "F-001",
+            "disposition" to "rejected",
+            "reason" to overLongReason,
+          ),
+        ),
+      ),
+    )
+    val truncationRecords = mutableListOf<String>()
+    val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
+      verifyOutput = verifyOutput,
+      reviewOutput = reviewOutput,
+      scope = UnaddressedFindingLedgerScope("SKILL-216", 2, "wf-verify", 1),
+      truncationRecords = truncationRecords,
+    )
+    assertEquals(1, rejected.size)
+    assertEquals(
+      GoalSubtaskReviewSummaryReducer.REJECTED_VERIFICATION_REASON_MAX_UTF8_BYTES,
+      skillbill.text.Utf8Text.utf8Size(requireNotNull(rejected.single().verificationReason)),
+    )
+    assertEquals(1, truncationRecords.size)
+    assertTrue(truncationRecords.single().contains("F-001"))
   }
 
   @Test

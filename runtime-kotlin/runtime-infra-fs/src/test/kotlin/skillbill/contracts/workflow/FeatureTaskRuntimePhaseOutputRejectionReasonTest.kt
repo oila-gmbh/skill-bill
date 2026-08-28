@@ -9,14 +9,13 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 
-/** SKILL-152 AC-001 / AC-003: the dual value-bearing and payload-free rejection reason variants. */
 class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
   @Test
   fun `a schema violation reports the offending value privately and withholds it from the payload-free reason`() {
     val offendingValue = "totally-done-trust-me"
     val envelope =
-      """{"contract_version":"0.5","phase_id":"plan","status":"$offendingValue",""" +
-        """"summary":"Plan output.","produced_outputs":{"value":"Plan prose."}}"""
+      """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"plan",""" +
+        """"status":"$offendingValue","summary":"Plan output.","produced_outputs":{"value":"Plan prose."}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "plan")
@@ -59,7 +58,8 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
   @Test
   fun `a phase_id mismatch names the expected phase without echoing the produced one`() {
     val envelope =
-      """{"contract_version":"0.5","phase_id":"implement-but-lying","status":"completed",""" +
+      """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION",""" +
+        """"phase_id":"implement-but-lying","status":"completed",""" +
         """"summary":"Plan output.","produced_outputs":{"value":"Plan prose."}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
@@ -99,7 +99,8 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
   fun `a whitespace-only audit value is rejected without leaking the value`() {
     val offendingValue = "   "
     val envelope =
-      """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",""" +
+      """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"audit",""" +
+        """"status":"completed","summary":"audit",""" +
         """"verdict":"gaps_found","produced_outputs":{"value":"$offendingValue"}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {

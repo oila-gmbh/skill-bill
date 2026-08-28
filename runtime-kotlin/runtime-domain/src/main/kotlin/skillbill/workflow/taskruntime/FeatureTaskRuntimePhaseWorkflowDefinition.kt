@@ -569,6 +569,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * [PHASE_PROJECTION_MATRIX].
    */
   fun runtimeProjectorProducerPhaseIds(consumerPhaseId: String): Set<String> = when (consumerPhaseId) {
+    PHASE_IMPLEMENT_FIX -> setOf(PHASE_REVIEW)
     PHASE_VALIDATE -> setOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
     PHASE_BUILD -> setOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
     PHASE_WRITE_HISTORY -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_BUILD)

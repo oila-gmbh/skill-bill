@@ -634,7 +634,7 @@ internal const val AUDIT_GAP_MESSAGE = "AC-2 acceptance criterion is not yet imp
 
 internal fun auditGapsOutput(): String = """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "audit",
     "status": "completed",
     "summary": "Audit found unmet acceptance criteria.",
@@ -647,7 +647,7 @@ internal fun auditGapsOutput(): String = """
 
 internal fun auditGapsWithoutCanonicalRefsOutput(): String = """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "audit",
     "status": "completed",
     "summary": "Audit found unmet acceptance criteria.",
@@ -660,7 +660,7 @@ internal fun auditGapsWithoutCanonicalRefsOutput(): String = """
 
 internal fun auditTwoGapsOutput(): String = """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "audit",
     "status": "completed",
     "summary": "Audit found unmet acceptance criteria.",
@@ -673,7 +673,7 @@ internal fun auditTwoGapsOutput(): String = """
 
 internal fun auditSatisfiedOutput(): String = """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "audit",
     "status": "completed",
     "summary": "Every acceptance criterion is met.",
@@ -690,7 +690,7 @@ internal fun auditCriteriaOutput(vararg criteria: String): String {
   }
   return """
   {
-    "contract_version": "0.5",
+    "contract_version": "0.6",
     "phase_id": "audit",
     "status": "completed",
     "summary": "Audit found unmet acceptance criteria.",

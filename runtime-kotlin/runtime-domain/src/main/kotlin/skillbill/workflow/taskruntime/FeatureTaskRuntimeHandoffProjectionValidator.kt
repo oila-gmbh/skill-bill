@@ -565,7 +565,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       "verdict" to auditClearanceStatus(envelope),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
-      "unresolved_blocker_findings" to verifiedFindingsProjection(produced),
+      "unresolved_blocker_findings" to verifiedFindingsProjection(inputs, produced),
       "repository_checkpoint" to checkpointFingerprint(inputs),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT -> mapOf(
@@ -623,22 +623,41 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   private fun auditClearanceStatus(envelope: Map<String, Any?>): String? =
     (envelope["verdict"] as? String)?.takeIf(String::isNotBlank)
 
-  private fun verifiedFindingsProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
-    FeatureTaskRuntimeFindingVerificationDisposition.parseList(
+  private fun verifiedFindingsProjection(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    produced: Map<String, Any?>,
+  ): List<Map<String, Any?>> {
+    val reviewProduced = inputs.resolvedUpstream.outputsByPhaseId[
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+    ]?.let(::genericProducedOutputs).orEmpty()
+    val reviewFindingsById = reviewFindingsForVerificationProjection(reviewProduced)
+      .associateBy { it["finding_id"]?.toString().orEmpty() }
+    return FeatureTaskRuntimeFindingVerificationDisposition.parseList(
       produced["finding_dispositions"],
       "produced_outputs.finding_dispositions",
     )
       .filter { it.disposition == FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED }
       .map { disposition ->
+        val review = reviewFindingsById[disposition.findingId]
+        val severity = (review?.get("severity") as? String)
+          ?.trim()
+          ?.lowercase()
+          ?.takeIf(String::isNotBlank)
+          ?: "blocker"
         mapOf(
           "finding_id" to disposition.findingId,
-          "severity" to disposition.severity.wireValue,
-          "location" to disposition.location,
-          "expected_outcome" to disposition.message,
+          "severity" to severity,
+          "location" to (review?.get("location") ?: "repository"),
+          "expected_outcome" to (
+            review?.get("message")?.toString()?.takeIf(String::isNotBlank)
+              ?: disposition.reason
+              ?: "Verified finding."
+            ),
           "criterion_refs" to emptyList<String>(),
           "task_refs" to emptyList<String>(),
         )
       }
+  }
 
   private fun reviewFindingsForVerificationProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
     (produced["findings"] as? List<*>).orEmpty()

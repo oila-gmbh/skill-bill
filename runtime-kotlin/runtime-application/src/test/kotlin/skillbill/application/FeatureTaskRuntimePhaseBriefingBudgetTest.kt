@@ -64,8 +64,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     val recordedOutputs = listOf(
       phaseOutput(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
-        """{"produced_outputs":{"finding_dispositions":[{"finding_id":"F-1","disposition":"verified",""" +
-          """"reason":"Matches spec intent.","severity":"blocker","location":"x","message":"fix"}]}}""",
+        """{"produced_outputs":{"finding_dispositions":[{"finding_id":"F-1","disposition":"verified"}]}}""",
       ),
     )
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
@@ -271,9 +270,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     phaseOutput(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
       """{"produced_outputs":{"finding_dispositions":[{"finding_id":"F-1","disposition":"verified",""" +
-        """"reason":"Matches spec intent.","severity":"blocker","location":"x","message":"${"r".repeat(
-          bodyBytes,
-        )}"}]}}""",
+        """"reason":"${"r".repeat(bodyBytes)}"}]}}""",
     ),
   )
 
