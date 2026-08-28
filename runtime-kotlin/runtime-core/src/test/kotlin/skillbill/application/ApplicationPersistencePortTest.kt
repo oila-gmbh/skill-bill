@@ -1227,7 +1227,7 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database, FakeWorkflowGitOperations())
     val workflowId = createDecompositionWorkflow(service, parentSpec, subtaskSpec)
 
-    // requiredArtifactsByStep[validate]=[implement,audit]; seed completed phase records so canResume
+    // requiredArtifactsByStep[validate]=[plan,audit]; seed completed phase records so canResume
     // is true. assessment.spec_path remains decomposition metadata only
     // (DecompositionManifestRuntimeState), never a resume-gate satisfier.
     service.update(
@@ -1240,7 +1240,7 @@ class ApplicationPersistencePortTest {
         artifactsPatch =
         mapOf(
           "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
-          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "audit"),
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("plan", "audit"),
           "blocked_reason" to "Validation paused.",
         ),
       ),
@@ -1625,7 +1625,7 @@ class ApplicationPersistencePortTest {
     val first = service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, "SKILL-51", dbOverride = null)
       as WorkflowContinueResult.DecompositionStandard
     val subtaskWorkflowId = first.view.resume.snapshot.workflowId
-    // requiredArtifactsByStep[validate]=[implement,audit] via FeatureTaskRuntimeRequiredArtifactPresenceResolver.
+    // requiredArtifactsByStep[validate]=[plan,audit] via FeatureTaskRuntimeRequiredArtifactPresenceResolver.
     service.update(
       WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
@@ -1634,7 +1634,7 @@ class ApplicationPersistencePortTest {
         currentStepId = "validate",
         stepUpdates = listOf(mapOf("step_id" to "validate", "status" to "running", "attempt_count" to 1)),
         artifactsPatch = mapOf(
-          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "audit"),
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("plan", "audit"),
           "validation_result" to mapOf("passed" to false),
         ),
       ),
@@ -2581,7 +2581,7 @@ private fun createDecompositionWorkflow(
 }
 
 private fun markDecompositionSubtaskBlocked(service: WorkflowService, workflowId: String, subtaskSpec: Path) {
-  // requiredArtifactsByStep[validate]=[implement,audit]. assessment.spec_path is decomposition
+  // requiredArtifactsByStep[validate]=[plan,audit]. assessment.spec_path is decomposition
   // metadata (DecompositionManifestRuntimeState), not a resume-gate satisfier.
   service.update(
     WorkflowFamilyKind.TASK_RUNTIME,
@@ -2593,7 +2593,7 @@ private fun markDecompositionSubtaskBlocked(service: WorkflowService, workflowId
       artifactsPatch =
       mapOf(
         "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
-        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "audit"),
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("plan", "audit"),
         "validation_result" to mapOf("passed" to false),
         "blocked_reason" to "Validation failed.",
       ),

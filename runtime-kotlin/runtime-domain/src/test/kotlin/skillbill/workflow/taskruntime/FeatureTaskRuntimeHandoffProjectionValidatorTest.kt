@@ -6,7 +6,6 @@ import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
@@ -31,6 +30,14 @@ import kotlin.test.assertTrue
 
 private const val CONSUMER = "implement"
 private const val PRODUCER = "plan"
+private const val VALIDATION_PHASE_PAYLOAD =
+  """{"produced_outputs":{"validation_result":{"validation_status":"passed","checks":[],""" +
+    """"repository_checkpoint":{"fingerprint":"tree-1"},"gate_run_count":1,"gate_runs":[]}}}"""
+private const val HISTORY_PHASE_PAYLOAD =
+  """{"produced_outputs":{"history_result":{"changed_paths":["src/Foo.kt"],"decisions_recorded":[]}}}"""
+private const val COMMIT_PUSH_PHASE_PAYLOAD =
+  """{"produced_outputs":{"commit_push_result":{"commit_sha":"abc","branch":"feat",""" +
+    """"base_branch":"main","pushed":true}}}"""
 
 @Suppress("LargeClass") // single suite over one validator; splitting would scatter projection-contract cases
 class FeatureTaskRuntimeHandoffProjectionValidatorTest {
@@ -220,70 +227,224 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `finalization inventory reconciles receipt claims to runtime owned paths`() {
-    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH
-    val declaration = declaration(
-      consumerPhaseId = consumer,
-      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-      ),
-      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
-      declaredFieldNames = listOf(
-        "path_inventory",
-        "required_inclusions",
-        "required_exclusions",
-        "branch_identity",
-        "gate_attestations",
-        "repository_checkpoint",
-      ),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-    )
+  fun `value-only implement and plan launch all five finalization consumers without missing-key failures`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
-      fingerprint = "current-tree",
-      baseRef = "base",
-      headRef = "head",
+      fingerprint = "tree-1",
+      workingTreeOwnedPaths = listOf("src/Foo.kt"),
+    )
+    val upstream = valueOnlyFinalizationUpstream()
+    listOf(
+      def.PHASE_VALIDATE,
+      def.PHASE_BUILD,
+      def.PHASE_WRITE_HISTORY,
+      def.PHASE_COMMIT_PUSH,
+      def.PHASE_PR,
+    ).forEach { consumer ->
+      assertValueOnlyConsumerLaunches(consumer, upstream, checkpoint)
+    }
+  }
+
+  @Test
+  fun `validate and build briefings carry plan value verbatim and optional directive`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val planProse = """{"projection_kind":"executable_plan","contract_version":"0.2"}"""
+    val plan = FeatureTaskRuntimePhaseOutput(
+      def.PHASE_PLAN,
+      1,
+      """{"produced_outputs":{"value":${planProse.quoteJson()},"prompt":"plan directive"}}""",
+    )
+    val audit = FeatureTaskRuntimePhaseOutput(def.PHASE_AUDIT, 1, """{"verdict":"satisfied","produced_outputs":{}}""")
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("tree-1", workingTreeOwnedPaths = listOf("src/A.kt"))
+    listOf(def.PHASE_VALIDATE, def.PHASE_BUILD).forEach { consumer ->
+      val declarations = def.phaseDeclaration(consumer, FeatureTaskRuntimeFeatureSize.MEDIUM).projectionDeclarations
+      val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          consumerPhaseId = consumer,
+          declarations = declarations,
+          resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+            mapOf(def.PHASE_PLAN to plan, def.PHASE_AUDIT to audit),
+          ),
+          resolvedCheckpoint = checkpoint,
+        ),
+      )
+      val prose = envelope.projections.single {
+        it.projectionContractId == FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE
+      }
+      val value = assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(
+        prose.fields.single { it.name == "value" }.value,
+      )
+      assertEquals(planProse, value.text)
+      val directive = assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(
+        prose.fields.single { it.name == "directive" }.value,
+      )
+      assertEquals("plan directive", directive.text)
+    }
+  }
+
+  @Test
+  fun `write_history commit_push and pr briefings carry implement value verbatim`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val implementProse = """{"projection_kind":"implementation_receipt","contract_version":"0.2"}"""
+    val implement = FeatureTaskRuntimePhaseOutput(
+      def.PHASE_IMPLEMENT,
+      1,
+      """{"produced_outputs":{"value":${implementProse.quoteJson()},"prompt":"implement directive"}}""",
+    )
+    val validate = FeatureTaskRuntimePhaseOutput(def.PHASE_VALIDATE, 1, VALIDATION_PHASE_PAYLOAD)
+    val writeHistory = FeatureTaskRuntimePhaseOutput(def.PHASE_WRITE_HISTORY, 1, HISTORY_PHASE_PAYLOAD)
+    val commitPush = FeatureTaskRuntimePhaseOutput(def.PHASE_COMMIT_PUSH, 1, COMMIT_PUSH_PHASE_PAYLOAD)
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("tree-1", workingTreeOwnedPaths = listOf("src/A.kt"))
+    listOf(def.PHASE_WRITE_HISTORY, def.PHASE_COMMIT_PUSH, def.PHASE_PR).forEach { consumer ->
+      val declarations = def.phaseDeclarationForQualityGate(
+        consumer,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+      ).projectionDeclarations
+      val upstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+        buildMap {
+          put(def.PHASE_IMPLEMENT, implement)
+          put(def.PHASE_VALIDATE, validate)
+          if (consumer == def.PHASE_COMMIT_PUSH || consumer == def.PHASE_PR) {
+            put(def.PHASE_WRITE_HISTORY, writeHistory)
+          }
+          if (consumer == def.PHASE_PR) {
+            put(def.PHASE_COMMIT_PUSH, commitPush)
+          }
+        },
+      )
+      val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          consumerPhaseId = consumer,
+          declarations = declarations,
+          resolvedUpstream = upstream,
+          resolvedCheckpoint = checkpoint,
+        ),
+      )
+      val prose = envelope.projections.single {
+        it.projectionContractId == FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE
+      }
+      val value = assertIs<FeatureTaskRuntimeHandoffProjectionValue.Text>(
+        prose.fields.single { it.name == "value" }.value,
+      )
+      assertEquals(implementProse, value.text)
+    }
+  }
+
+  @Test
+  fun `changed_paths on finalization consumers come from checkpoint not receipt claims`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val plan = FeatureTaskRuntimePhaseOutput(
+      def.PHASE_PLAN,
+      1,
+      """{"produced_outputs":{"value":"plan prose","changed_paths":["src/ClaimOnly.kt"]}}""",
+    )
+    val implement = FeatureTaskRuntimePhaseOutput(
+      def.PHASE_IMPLEMENT,
+      1,
+      """{"produced_outputs":{"value":"implement prose","changed_paths":["src/ClaimOnly.kt"]}}""",
+    )
+    val audit = FeatureTaskRuntimePhaseOutput(def.PHASE_AUDIT, 1, """{"verdict":"satisfied","produced_outputs":{}}""")
+    val validate = FeatureTaskRuntimePhaseOutput(def.PHASE_VALIDATE, 1, VALIDATION_PHASE_PAYLOAD)
+    val writeHistory = FeatureTaskRuntimePhaseOutput(def.PHASE_WRITE_HISTORY, 1, HISTORY_PHASE_PAYLOAD)
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = "tree-1",
       workingTreeOwnedPaths = listOf("src/Owned.kt", "src/OwnedTest.kt"),
     )
-    val implementation = FeatureTaskRuntimePhaseOutput(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-      iteration = 1,
-      payload = """{"produced_outputs":{"changed_paths":["src/Owned.kt","src/ClaimOnly.kt"]}}""",
-    )
+    val expectedPaths = listOf("src/Owned.kt", "src/OwnedTest.kt")
 
-    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+    fun changedPathsFrom(consumer: String): List<String> {
+      val gateSelection = if (consumer == def.PHASE_BUILD) {
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+      } else {
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
+      }
+      val declarations = def.phaseDeclarationForQualityGate(
+        consumer,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+        gateSelection,
+      ).projectionDeclarations
+      val upstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+        buildMap {
+          put(def.PHASE_PLAN, plan)
+          put(def.PHASE_IMPLEMENT, implement)
+          put(def.PHASE_AUDIT, audit)
+          if (consumer != def.PHASE_VALIDATE && consumer != def.PHASE_BUILD) {
+            put(def.PHASE_VALIDATE, validate)
+          }
+          if (consumer == def.PHASE_COMMIT_PUSH) {
+            put(def.PHASE_WRITE_HISTORY, writeHistory)
+          }
+        },
+      )
+      val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          consumerPhaseId = consumer,
+          declarations = declarations,
+          resolvedUpstream = upstream,
+          resolvedCheckpoint = checkpoint,
+        ),
+      )
+      val projection = envelope.projections.first {
+        it.projectionName == "validation_request" ||
+          it.projectionName == "boundary_candidates" ||
+          it.projectionName == "commit_request"
+      }
+      val fieldName = when (projection.projectionName) {
+        "commit_request" -> "path_inventory"
+        else -> "changed_paths"
+      }
+      return assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+        projection.fields.single { it.name == fieldName }.value,
+      ).items
+    }
+
+    assertEquals(expectedPaths, changedPathsFrom(def.PHASE_VALIDATE))
+    assertEquals(expectedPaths, changedPathsFrom(def.PHASE_BUILD))
+    assertEquals(expectedPaths, changedPathsFrom(def.PHASE_WRITE_HISTORY))
+    assertEquals(expectedPaths, changedPathsFrom(def.PHASE_COMMIT_PUSH))
+  }
+
+  @Test
+  fun `stuffed value JSON in implement and plan does not leak into typed finalization projection fields`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val stuffedPlan = """{"validation_strategy":["./gradlew check"],"tasks":[{"test_obligations":["t1"]}]}"""
+    val stuffedImplement =
+      """{"completed_task_ids":["task-x"],"tests_added":["t.kt"],"tests_updated":[],"deviations":["d"]}"""
+    val plan = FeatureTaskRuntimePhaseOutput(
+      def.PHASE_PLAN,
+      1,
+      """{"produced_outputs":{"value":${stuffedPlan.quoteJson()}}}""",
+    )
+    val implement = FeatureTaskRuntimePhaseOutput(
+      def.PHASE_IMPLEMENT,
+      1,
+      """{"produced_outputs":{"value":${stuffedImplement.quoteJson()}}}""",
+    )
+    val audit = FeatureTaskRuntimePhaseOutput(def.PHASE_AUDIT, 1, """{"verdict":"satisfied","produced_outputs":{}}""")
+    val validate = FeatureTaskRuntimePhaseOutput(def.PHASE_VALIDATE, 1, VALIDATION_PHASE_PAYLOAD)
+    val commitPush = FeatureTaskRuntimePhaseOutput(def.PHASE_COMMIT_PUSH, 1, COMMIT_PUSH_PHASE_PAYLOAD)
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("tree-1", workingTreeOwnedPaths = listOf("src/Real.kt"))
+
+    val validateEnvelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       inputs(
-        consumerPhaseId = consumer,
-        declarations = listOf(declaration),
+        consumerPhaseId = def.PHASE_VALIDATE,
+        declarations = def.phaseDeclaration(def.PHASE_VALIDATE, FeatureTaskRuntimeFeatureSize.MEDIUM)
+          .projectionDeclarations,
         resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
-          mapOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to implementation),
+          mapOf(def.PHASE_PLAN to plan, def.PHASE_AUDIT to audit),
         ),
         resolvedCheckpoint = checkpoint,
       ),
     )
+    val validationRequest = validateEnvelope.projections.single { it.projectionName == "validation_request" }
+    assertEquals(
+      listOf("changed_paths", "repository_checkpoint"),
+      validationRequest.fields.map { it.name },
+    )
+    assertTrue(validationRequest.fields.none { it.name == "validation_strategy" || it.name == "required_checks" })
 
-    val fields = envelope.projections.single().fields.associateBy { it.name }
-    assertEquals(
-      listOf("src/Owned.kt", "src/OwnedTest.kt"),
-      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("path_inventory").value).items,
-    )
-    assertEquals(
-      listOf("src/Owned.kt", "src/OwnedTest.kt"),
-      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("required_inclusions").value).items,
-    )
-    assertEquals(
-      listOf("src/ClaimOnly.kt"),
-      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("required_exclusions").value).items,
-    )
-  }
-
-  @Test
-  fun `full and default validation_request required_checks merge strategy and test obligations`() {
-    ValidationDepth.entries.forEach { depth ->
-      val requiredChecks = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
-        validationRequestFields(depth).getValue("required_checks").value,
-      ).items
-      assertEquals(emptyList(), requiredChecks)
-    }
+    assertPrRequestOmitsStuffedImplementFields(implement, validate, commitPush, checkpoint)
   }
 
   @Test
@@ -741,6 +902,105 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.UNDECLARED_FIELD, error.failureKind)
   }
 
+  private fun valueOnlyFinalizationUpstream(): FeatureTaskRuntimeResolvedUpstreamOutputs {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val planProse = """{"projection_kind":"executable_plan","tasks":[]}"""
+    val implementProse = """{"projection_kind":"implementation_receipt","completed_task_ids":["task-1"]}"""
+    return FeatureTaskRuntimeResolvedUpstreamOutputs(
+      mapOf(
+        def.PHASE_PLAN to FeatureTaskRuntimePhaseOutput(
+          def.PHASE_PLAN,
+          1,
+          """{"produced_outputs":{"value":${planProse.quoteJson()}}}""",
+        ),
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseOutput(
+          def.PHASE_IMPLEMENT,
+          1,
+          """{"produced_outputs":{"value":${implementProse.quoteJson()}}}""",
+        ),
+        def.PHASE_AUDIT to FeatureTaskRuntimePhaseOutput(
+          def.PHASE_AUDIT,
+          1,
+          """{"verdict":"satisfied","produced_outputs":{}}""",
+        ),
+        def.PHASE_VALIDATE to FeatureTaskRuntimePhaseOutput(
+          def.PHASE_VALIDATE,
+          1,
+          VALIDATION_PHASE_PAYLOAD,
+        ),
+        def.PHASE_WRITE_HISTORY to FeatureTaskRuntimePhaseOutput(
+          def.PHASE_WRITE_HISTORY,
+          1,
+          HISTORY_PHASE_PAYLOAD,
+        ),
+        def.PHASE_COMMIT_PUSH to FeatureTaskRuntimePhaseOutput(
+          def.PHASE_COMMIT_PUSH,
+          1,
+          COMMIT_PUSH_PHASE_PAYLOAD,
+        ),
+      ),
+    )
+  }
+
+  private fun assertValueOnlyConsumerLaunches(
+    consumer: String,
+    upstream: FeatureTaskRuntimeResolvedUpstreamOutputs,
+    checkpoint: FeatureTaskRuntimeRepositoryCheckpoint,
+  ) {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val gateSelection = if (consumer == def.PHASE_BUILD) {
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+    } else {
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
+    }
+    val declarations = if (consumer == def.PHASE_VALIDATE || consumer == def.PHASE_BUILD) {
+      def.phaseDeclaration(consumer, FeatureTaskRuntimeFeatureSize.MEDIUM).projectionDeclarations
+    } else {
+      def.phaseDeclarationForQualityGate(
+        consumer,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+        gateSelection,
+      ).projectionDeclarations
+    }
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = consumer,
+        declarations = declarations,
+        resolvedUpstream = upstream,
+        resolvedCheckpoint = checkpoint,
+      ),
+    )
+    assertTrue(envelope.projections.isNotEmpty(), "$consumer must launch with value-only upstream outputs")
+  }
+
+  private fun assertPrRequestOmitsStuffedImplementFields(
+    implement: FeatureTaskRuntimePhaseOutput,
+    validate: FeatureTaskRuntimePhaseOutput,
+    commitPush: FeatureTaskRuntimePhaseOutput,
+    checkpoint: FeatureTaskRuntimeRepositoryCheckpoint,
+  ) {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val prEnvelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = def.PHASE_PR,
+        declarations = def.phaseDeclaration(def.PHASE_PR, FeatureTaskRuntimeFeatureSize.MEDIUM).projectionDeclarations,
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            def.PHASE_IMPLEMENT to implement,
+            def.PHASE_VALIDATE to validate,
+            def.PHASE_COMMIT_PUSH to commitPush,
+          ),
+        ),
+        resolvedCheckpoint = checkpoint,
+      ),
+    )
+    val prRequest = prEnvelope.projections.single { it.projectionName == "pr_request" }
+    val stuffedFieldNames = setOf("completed_task_ids", "tests_added", "tests_updated", "deviations")
+    assertTrue(prRequest.fields.none { it.name in stuffedFieldNames })
+  }
+
+  private fun String.quoteJson(): String = "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
   @Suppress("LongParameterList") // mirrors the declaration record under test; each field is varied by a case
   private fun declaration(
     consumerPhaseId: String = CONSUMER,
@@ -808,54 +1068,4 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     qualityGateSelection = qualityGateSelection,
     priorGapMemory = priorGapMemory,
   )
-
-  private fun validationRequestFields(
-    validationDepth: ValidationDepth,
-  ): Map<String, FeatureTaskRuntimeHandoffProjectionField> {
-    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE
-    val declaration = declaration(
-      consumerPhaseId = consumer,
-      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-      ),
-      projectionName = "validation_request",
-      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
-      declaredFieldNames = listOf(
-        "validation_strategy",
-        "changed_paths",
-        "required_checks",
-        "repository_checkpoint",
-      ),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-    )
-    val plan = FeatureTaskRuntimePhaseOutput(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-      iteration = 1,
-      payload = """{"produced_outputs":{"value":"Fixture plan prose for downstream implement and audit."}}""",
-    )
-    val implementation = FeatureTaskRuntimePhaseOutput(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-      iteration = 1,
-      payload = """{"produced_outputs":{"changed_paths":["src/Foo.kt"]}}""",
-    )
-    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
-      fingerprint = "validate-tree",
-      workingTreeOwnedPaths = listOf("src/Foo.kt"),
-    )
-    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
-      inputs(
-        consumerPhaseId = consumer,
-        declarations = listOf(declaration),
-        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
-          mapOf(
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to plan,
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to implementation,
-          ),
-        ),
-        resolvedCheckpoint = checkpoint,
-        validationDepth = validationDepth,
-      ),
-    )
-    return envelope.projections.single().fields.associateBy { it.name }
-  }
 }

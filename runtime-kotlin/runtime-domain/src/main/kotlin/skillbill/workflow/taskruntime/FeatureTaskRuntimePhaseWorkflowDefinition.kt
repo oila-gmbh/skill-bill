@@ -159,8 +159,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_REVIEW to listOf(PHASE_AUDIT),
       PHASE_VERIFY_FINDINGS to listOf(PHASE_REVIEW),
       PHASE_IMPLEMENT_FIX to listOf(PHASE_VERIFY_FINDINGS),
-      PHASE_BUILD to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
-      PHASE_VALIDATE to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
+      PHASE_BUILD to listOf(PHASE_PLAN, PHASE_AUDIT),
+      PHASE_VALIDATE to listOf(PHASE_PLAN, PHASE_AUDIT),
       PHASE_WRITE_HISTORY to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE),
       PHASE_COMMIT_PUSH to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_WRITE_HISTORY),
       PHASE_PR to listOf(PHASE_IMPLEMENT, PHASE_COMMIT_PUSH),
@@ -183,8 +183,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_VERIFY_FINDINGS to
         "Resume finding verification from the latest review output and in-flight dispositions " +
         "without re-running review.",
-      PHASE_BUILD to "Resume compile/build proof from the latest implement and audit outputs.",
-      PHASE_VALIDATE to "Resume quality validation from the latest implement and audit outputs.",
+      PHASE_BUILD to "Resume compile/build proof from the latest plan and audit outputs.",
+      PHASE_VALIDATE to "Resume quality validation from the latest plan and audit outputs.",
       PHASE_WRITE_HISTORY to
         "Resume boundary history writing from the latest implement and settled build or validate output.",
       PHASE_COMMIT_PUSH to
@@ -398,15 +398,14 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       sharedReviewEvidenceDeclaration(PHASE_REVIEW),
     ),
     PHASE_VALIDATE to listOf(
+      phaseProseDeclaration(PHASE_VALIDATE, PHASE_PLAN),
       phaseProjection(
         PHASE_VALIDATE,
-        PHASE_IMPLEMENT,
+        PHASE_PLAN,
         "validation_request",
         PhaseProjectionContract.VALIDATION_REQUEST,
         listOf(
-          "validation_strategy",
           "changed_paths",
-          "required_checks",
           "repository_checkpoint",
         ),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
@@ -421,15 +420,14 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       ),
     ),
     PHASE_BUILD to listOf(
+      phaseProseDeclaration(PHASE_BUILD, PHASE_PLAN),
       phaseProjection(
         PHASE_BUILD,
-        PHASE_IMPLEMENT,
+        PHASE_PLAN,
         "validation_request",
         PhaseProjectionContract.VALIDATION_REQUEST,
         listOf(
-          "validation_strategy",
           "changed_paths",
-          "required_checks",
           "repository_checkpoint",
         ),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
@@ -444,6 +442,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       ),
     ),
     PHASE_WRITE_HISTORY to listOf(
+      phaseProseDeclaration(PHASE_WRITE_HISTORY, PHASE_IMPLEMENT),
       phaseProjection(
         PHASE_WRITE_HISTORY,
         PHASE_IMPLEMENT,
@@ -483,6 +482,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       ),
     ),
     PHASE_COMMIT_PUSH to listOf(
+      phaseProseDeclaration(PHASE_COMMIT_PUSH, PHASE_IMPLEMENT),
       phaseProjection(
         PHASE_COMMIT_PUSH,
         PHASE_IMPLEMENT,
@@ -491,7 +491,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         listOf(
           "path_inventory",
           "required_inclusions",
-          "required_exclusions",
           "branch_identity",
           "gate_attestations",
           "repository_checkpoint",
@@ -536,17 +535,14 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       ),
     ),
     PHASE_PR to listOf(
+      phaseProseDeclaration(PHASE_PR, PHASE_IMPLEMENT),
       phaseProjection(
         PHASE_PR,
         PHASE_IMPLEMENT,
         "pr_request",
         PhaseProjectionContract.PR_REQUEST,
         listOf(
-          "completed_task_ids",
           "changed_paths",
-          "tests_added",
-          "tests_updated",
-          "deviations",
           "validation_summary",
           "base_branch",
           "diff_reference",
@@ -570,8 +566,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    */
   fun runtimeProjectorProducerPhaseIds(consumerPhaseId: String): Set<String> = when (consumerPhaseId) {
     PHASE_IMPLEMENT_FIX -> setOf(PHASE_REVIEW)
-    PHASE_VALIDATE -> setOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
-    PHASE_BUILD -> setOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
+    PHASE_VALIDATE -> setOf(PHASE_PLAN, PHASE_AUDIT)
+    PHASE_BUILD -> setOf(PHASE_PLAN, PHASE_AUDIT)
     PHASE_WRITE_HISTORY -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_BUILD)
     PHASE_COMMIT_PUSH -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_BUILD, PHASE_WRITE_HISTORY)
     PHASE_PR -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_COMMIT_PUSH)
