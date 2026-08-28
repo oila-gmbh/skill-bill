@@ -38,24 +38,23 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
   """.trimIndent()
 }
 
-/**
- * Emitted only for an `audit_gap` implement re-entry that carries prior-gap memory. It turns the
- * delivered prior_gap_memory projection into an instruction: prioritize the sticky criterion ids while
- * still closing every listed gap in this one invocation, treat the memory as authoritative context, and
- * never narrow scope to only the sticky items. Empty for a forward implement (no memory) and for every
- * other phase, so first-pass briefings render neither the memory block nor this directive (AC-002).
- */
 internal fun priorGapMemoryRemediationDirective(phaseId: String, memory: FeatureTaskRuntimePriorGapMemory?): String {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT || memory == null) {
     return ""
   }
-  val sticky = memory.stickyIds.takeIf { it.isNotEmpty() }?.joinToString() ?: "none yet (only one audit so far)"
+  val priorRounds = if (memory.priorAuditValues.isEmpty()) {
+    "none yet (first remediation round)"
+  } else {
+    "${memory.priorAuditValues.size} prior audit value string(s) in prior_gap_memory"
+  }
   return """
-    ## Prior-gap memory — sticky criteria take priority
+    ## Prior-gap memory — re-justify recurrence against prior audit prose
     The prior_gap_memory projection above records the earlier audit_gap round. Treat it as authoritative
-    context for this round, not optional color. Prioritize the sticky criterion ids ($sticky) while still
-    closing every entry in the audit_gaps list in this one invocation. Never narrow scope to only the
-    sticky items: each currently listed gap must close here.
+    context for this round, not optional color. Compare the current audit value against
+    prior_audit_values ($priorRounds): when a gap repeats a criterion already named in an earlier audit
+    value string, your remediation must explicitly address why the prior fix did not close it. Still
+    close every gap named in the current audit value in this one invocation; never narrow scope to
+    only recurring items.
   """.trimIndent()
 }
 
@@ -340,9 +339,9 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "tests_added, tests_updated, deviations, unresolved_items, reconciliation_evidence, and " +
     "reconciled_state. repository_checkpoint is runtime-owned: omit it and never invent a " +
     "fingerprint. Every receipt field is a bounded summary, not a transcript. When the briefing " +
-    "carries audit_gaps, reuse its immutable initial preplan and plan outputs and change only what " +
-    "the latest listed gaps require. Repair evidence is read-only repository facts: do not run " +
-    "builds or tests here.",
+    "carries audit prose from the latest audit value, reuse its immutable initial preplan and plan " +
+    "outputs and change only what that audit value requires. Repair evidence is read-only repository " +
+    "facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
     "Address every finding verify_findings carried on the CURRENT working tree as " +
     "incremental reconciliation. Every carried finding — Blocker, Major, Minor, and Nit — is in " +
@@ -393,22 +392,24 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "JSON stuffed inside value): read and interpret it as a producer CLAIM, not evidence. Never mark a " +
     "criterion satisfied because that string lists a completed task id, a changed path, or " +
     "reconciliation_evidence claiming reconciled. A claim the tree contradicts is itself unmet. " +
-    "Report the answer as verdict plus produced_outputs.gaps: verdict satisfied with an " +
-    "empty array when every criterion is implemented, or verdict gaps_found with one entry per unmet " +
-    "criterion. Every unmet entry must carry its criterion ref and one dense note that both names " +
-    "what is missing and hands implement a complete fix plan for that gap. Before you emit a gap, " +
-    "plan the repair carefully: name the minimal production change that closes the criterion; " +
-    "inspect blast radius across callers, DI/bindings, sibling phases, contracts, and fixtures that " +
-    "share the touched surface; confirm the plan does not regress neighboring criteria or break " +
-    "other functionality; and confirm the plan is complete enough that one implement round can close " +
-    "the gap without inventing follow-up work or opening a new gap. Prefer a slightly broader correct " +
-    "plan over a narrow patch that leaves a sibling hole for the next audit. Do not emit a separate " +
-    "repair-plan object, per-item identifiers, or verification bookkeeping — the note is the plan. " +
+    "Report the answer as envelope verdict plus produced_outputs.value: verdict satisfied when every " +
+    "criterion is implemented, or verdict gaps_found when one or more remain unmet. Stuff the gap " +
+    "report inside value as structured prose (for example a JSON object with gaps and " +
+    "non_blocking_findings arrays); the runtime does not cross-check that inner shape against the " +
+    "verdict. Every unmet gap must name its criterion ref and one dense note that both diagnoses what " +
+    "is missing and hands implement a complete fix plan. Before you emit a gap, plan the repair " +
+    "carefully: name the minimal production change that closes the criterion; inspect blast radius " +
+    "across callers, DI/bindings, sibling phases, contracts, and fixtures that share the touched " +
+    "surface; confirm the plan does not regress neighboring criteria or break other functionality; " +
+    "and confirm the plan is complete enough that one implement round can close the gap without " +
+    "inventing follow-up work or opening a new gap. Prefer a slightly broader correct plan over a " +
+    "narrow patch that leaves a sibling hole for the next audit. Do not emit a separate repair-plan " +
+    "object, per-item identifiers, or verification bookkeeping — the note inside value is the plan. " +
     "A later audit re-checks every criterion from scratch, so you never need to account for what an " +
-    "earlier audit said. Judge production behavior and production implementation only: test " +
-    "adequacy, coverage, fixtures, and assertions are never unmet criteria. All evidence is " +
-    "read-only repository facts: never run a build, a test, or any other command as audit evidence; " +
-    "validation owns test execution and failures.",
+    "earlier audit said unless this briefing carries prior_gap_memory. Judge production behavior and " +
+    "production implementation only: test adequacy, coverage, fixtures, and assertions are never " +
+    "unmet criteria. All evidence is read-only repository facts: never run a build, a test, or any " +
+    "other command as audit evidence; validation owns test execution and failures.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to RUNTIME_OWNED_VALIDATE_PHASE_TASK,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
     "Invoke bill-boundary-history inline and apply its write/skip rules for the implemented " +
@@ -440,8 +441,9 @@ private const val AUDIT_NO_EARLIER_AUDIT_SENTENCE: String =
 
 private const val AUDIT_STICKY_REJUSTIFICATION_SENTENCE: String =
   "A later audit re-checks every criterion from scratch. When this briefing carries prior-gap memory, " +
-    "treat that memory as authoritative context: repeating a sticky criterion id requires you to " +
-    "explicitly re-justify it — name what the prior implement claimed and why the tree still fails it."
+    "treat prior_audit_values as authoritative context: repeating a criterion already named in an " +
+    "earlier audit value string requires explicit re-justification — name what the prior implement " +
+    "claimed and why the tree still fails it."
 
 /**
  * The audit phase task directive, memory-aware. A first or forward audit (no memory) returns the

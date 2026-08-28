@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import kotlin.test.Test
@@ -56,6 +57,20 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       ),
       expectedInBriefing = listOf("Dense implement prose for downstream audit.", "optional directive"),
       mustNotContain = listOf("complete_implement_envelope_secret"),
+    )
+  }
+
+  @Test
+  fun `audit to implement delivers audit prose and optional directive`() {
+    assertProseHandoffAdvances(
+      edge = proseEdge(
+        producer = phaseAudit,
+        consumer = phaseImplement,
+        prose = AUDIT_GAP_MESSAGE,
+        options = ProseEdgeOptions(includePrompt = true),
+      ),
+      expectedInBriefing = listOf(AUDIT_GAP_MESSAGE, "optional directive"),
+      mustNotContain = listOf("complete_audit_envelope_secret"),
     )
   }
 
@@ -231,7 +246,15 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   ): ProseHandoffEdge {
     val declaration = when (consumer) {
       phasePlan -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(phasePlan)
-      phaseImplement -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(phaseImplement, phasePlan)
+      phaseImplement -> when (producer) {
+        phasePlan -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(phaseImplement, phasePlan)
+        phaseAudit -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(
+          phaseImplement,
+          phaseAudit,
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        )
+        else -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(phaseImplement, producer)
+      }
       phaseAudit -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(phaseAudit, phaseImplement)
       else -> FeatureTaskRuntimePhaseWorkflowDefinition.phaseProseDeclaration(consumer, producer)
     }

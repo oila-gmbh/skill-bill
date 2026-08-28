@@ -15,6 +15,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
@@ -325,7 +326,7 @@ object FeatureTaskRuntimePhasePromptComposer {
 
   private fun producedOutputsSkeletonEntry(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
     when (briefing.phaseId) {
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsSkeleton(briefing)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsSkeleton()
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": [], " +
           "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID}\": \"<the Review run ID this pass " +
@@ -338,20 +339,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       else -> "\"result\": \"<concrete output for downstream phases>\""
     }
 
-  private fun auditProducedOutputsSkeleton(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
-    val gaps = "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}\": []"
-    val nonBlocking =
-      "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}\": []"
-    if (briefing.unresolvedAuditGapIds.isEmpty()) return "$gaps, $nonBlocking"
-    val dispositions = briefing.unresolvedAuditGapIds.joinToString(",") { id ->
-      "{\"gap_id\":\"$id\",\"status\":\"resolved\",\"evidence\":{" +
-        "\"observation\":\"resolution_verified\",\"artifact_ref\":\"Type.kt:Type.member\"," +
-        "\"check_ref\":\"AC-001\"}}"
-    }
-    return "$gaps, $nonBlocking, \"carried_gap_dispositions\": [$dispositions], " +
-      "\"blast_radius_inspection\": {\"inspected_paths\":[\"Type.kt\"],\"newly_introduced_gap_ids\":[]," +
-      "\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"Type.kt\"," +
-      "\"check_ref\":\"AC-001\"}}"
+  private fun auditProducedOutputsSkeleton(): String {
+    val innerGaps = "\"gaps\":[],\"non_blocking_findings\":[]"
+    return "\"value\": \"{$innerGaps}\""
   }
 
   // The forward phase order as prose, derived from the single topology source so the briefing can
@@ -549,19 +539,16 @@ object FeatureTaskRuntimePhasePromptComposer {
     agentRunValidateFallback: Boolean,
   ): String {
     val phaseId = briefing.phaseId
-    val remediation = if (briefing.unresolvedAuditGapIds.isEmpty()) {
+    val remediation = if (!briefing.handoffEnvelope.projections.any { it.projectionName == "audit_prose" }) {
       ""
     } else {
-      "\n    - This is AUDIT-GAP REMEDIATION for these acceptance criteria: " +
-        briefing.unresolvedAuditGapIds.joinToString() + ". Each listed gap already carries its " +
-        "implement-ready fix plan in the note after the criterion ref. Follow that plan completely " +
-        "in this one invocation: execute the planned production change, respect its blast radius, " +
-        "and check surrounding callers/contracts so the repair does not open a new gap or regress " +
-        "a neighboring criterion. Do not invent a narrower substitute plan. Then emit a non-blank " +
-        "value string carrying the updated implementation_receipt JSON stuffed inside value. There " +
-        "are no repair-item identifiers to echo and no per-item evidence to record: the next audit " +
-        "re-reads the tree and decides every criterion again. If a criterion is genuinely " +
-        "unimplementable, leave through a blocked envelope naming it and why."
+      "\n    - This is AUDIT-GAP REMEDIATION: read the audit_prose value from the briefing as structured " +
+        "prose (gap report stuffed inside value). Follow every gap named there completely in this one " +
+        "invocation: execute the planned production change, respect blast radius, and check surrounding " +
+        "callers/contracts so the repair does not open a new gap or regress a neighboring criterion. Do " +
+        "not invent a narrower substitute plan. Then emit a non-blank value string carrying the updated " +
+        "implementation_receipt JSON stuffed inside value. If a criterion is genuinely unimplementable, " +
+        "leave through a blocked envelope naming it and why."
     }
     val reconciliationRequirement =
       if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) {
@@ -610,24 +597,27 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      REJECTED: omitting verdict; any other string; nesting verdict only inside produced_outputs.\n" +
       "      ACCEPTED root: {\"contract_version\":\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\"," +
       "\"phase_id\":\"audit\",\"status\":\"completed\",\"verdict\":\"satisfied\"," +
-      "\"summary\":\"<one sentence>\",\"produced_outputs\":{\"gaps\":[]}}.\n" +
-      "      Emit exactly one shallow produced_outputs.gaps array. Use [] for satisfied. For\n" +
-      "      gaps_found, one entry per unmet criterion: {\"criterion\":\"AC-003\",\"note\":\"...\"}.\n" +
-      "      Recommended wire shape uses those two fields — free-form note prose; no required keywords\n" +
-      "      or sections. The runtime does not block on note length, extra gap keys, or other schema\n" +
-      "      polish; it reads gaps leniently and gates only on decidable verification signals.\n" +
+      "\"summary\":\"<one sentence>\"," +
+      "\"produced_outputs\":{\"value\":\"{\\\"gaps\\\":[],\\\"non_blocking_findings\\\":[]}\"}}.\n" +
+      "      Emit a non-blank produced_outputs.value string. For satisfied, value may affirm every " +
+      "criterion is met (for example {\"gaps\":[],\"non_blocking_findings\":[]}). For gaps_found, " +
+      "stuff one entry per unmet criterion inside value, for example " +
+      "{\"gaps\":[{\"criterion\":\"AC-003\",\"note\":\"...\"}],\"non_blocking_findings\":[]}.\n" +
+      "      Recommended inner shape uses criterion plus note — free-form note prose; no required " +
+      "keywords or sections. The runtime does not block on note length, extra keys, or other inner " +
+      "schema polish; it reads only the envelope verdict to decide advance versus audit_gap re-entry.\n" +
       "      criterion is AC-###. note is one dense line of at most " +
       "$FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS characters. Prefer notes that both name what is\n" +
       "      missing and give implement enough of a fix plan to close the gap carefully: the intended\n" +
       "      production change, blast radius on callers/DI/sibling phases/contracts, and how to avoid\n" +
       "      regressing neighbors or opening a new gap. Prefer a complete correct plan over a narrow\n" +
       "      patch. Never a diff hunk, a source body, or a line number.\n" +
-      "      produced_outputs carries nothing else about the audit: no unmet_criteria, no\n" +
-      "      audit_repair_plan, no carried_gap_dispositions, no blast_radius_inspection, no gap or\n" +
-      "      repair-item identifiers — put planning guidance in the note only.\n" +
+      "      Legacy sibling keys beside value (gaps, unmet_criteria, audit_repair_plan, and similar) " +
+      "are ignored; put planning guidance in value only.\n" +
       auditNoEarlierAuditLine(briefing) +
-      "      Minor and nit entries go only in produced_outputs.non_blocking_findings and they\n" +
-      "      NEVER trigger gaps_found: severity (minor or nit) is required, acceptance_criterion_ref and\n" +
+      "      Minor and nit findings belong only inside value under non_blocking_findings and they\n" +
+      "      NEVER trigger gaps_found by themselves: severity (minor or nit) is required, " +
+      "acceptance_criterion_ref and\n" +
       "      message are expected. Example: {\"acceptance_criterion_ref\":\"AC-004\",\n" +
       "       \"message\":\"Naming could be clearer\",\"severity\":\"nit\"}.\n" +
       "      TEST EXCLUSION: missing tests, weak tests, incomplete test coverage, unrealistic fixtures,\n" +
@@ -646,37 +636,31 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      earlier audit to account for and nothing to carry forward except the notes you emit now.\n"
     } else {
       "      Every audit re-checks every listed criterion from scratch against the tree; when this\n" +
-        "      briefing carries prior-gap memory, the earlier audit's claims are context you must\n" +
-        "      account for, and a repeated sticky criterion id needs an explicit re-justification (below).\n"
+        "      briefing carries prior-gap memory, earlier audit value strings in prior_audit_values are\n" +
+        "      context you must account for, and a repeated criterion needs an explicit re-justification (below).\n"
     }
 
-  // The unmet criteria a previous audit named are the round's focus, but never its boundary: a
-  // criterion an earlier audit passed can regress under a later repair, and only a full re-check
-  // catches that. Naming the carried refs orients the round without narrowing what it must decide.
-  // When prior-gap memory is present, the round also renders the memory (prior refs+notes, the last
-  // implement claims, sticky ids) and requires explicit re-justification for any repeated sticky id.
   private fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
     val memoryBlock = briefing.priorGapMemory?.let { memory ->
-      val claims = memory.lastImplementClaims.takeIf { it.isNotEmpty() }?.joinToString() ?: "none"
-      val sticky = memory.stickyIds.takeIf { it.isNotEmpty() }?.joinToString() ?: "none"
       buildString {
-        append("\n      Prior-gap memory (round ${memory.round}): the audit that fired this edge reported:\n")
-        memory.priorUnmetCriteria.forEach { note -> append("        - $note\n") }
-        append("      The subsequent implement receipt claimed: $claims.\n")
-        append("      Sticky ids (unmet in the last two audits): $sticky.\n")
-        append("      Repeating any sticky criterion id requires explicit re-justification: name what\n")
-        append("      the prior implement claimed and why the tree still fails it. The blanket 'no earlier\n")
-        append("      audit' note above does not apply to a memory-carrying audit.\n")
+        append("\n      Prior-gap memory (round ${memory.round}): prior audit value strings:\n")
+        memory.priorAuditValues.forEach { value -> append("        - $value\n") }
+        append("      When a gap repeats a criterion already named in a prior audit value, require explicit\n")
+        append("      re-justification: name what the prior implement claimed and why the tree still fails it.\n")
       }
     }.orEmpty()
-    val scopeBlock = if (briefing.unresolvedAuditGapIds.isEmpty()) {
+    val auditProse = briefing.handoffEnvelope.projections
+      .firstOrNull { it.projectionName == "audit_prose" }
+      ?.fields
+      ?.firstOrNull { it.name == "value" }
+      ?.value
+      ?.let { (it as? FeatureTaskRuntimeHandoffProjectionValue.Text)?.text }
+    val scopeBlock = if (auditProse.isNullOrBlank()) {
       ""
     } else {
-      "\n      The previous audit reported these criteria unmet: " +
-        "${briefing.unresolvedAuditGapIds.joinToString()}. Start there, then still decide every listed\n" +
-        "      criterion from the tree: a repair can regress a criterion an earlier audit passed, and a\n" +
-        "      narrow patch can open a new sibling gap. When you emit gaps_found again, prefer notes\n" +
-        "      that still hand implement a careful fix plan, not only a fresh diagnosis."
+      "\n      The previous audit value reported gaps in structured prose. Start there, then still decide " +
+        "every listed criterion from the tree: a repair can regress a criterion an earlier audit passed, " +
+        "and a narrow patch can open a new sibling gap."
     }
     return memoryBlock + scopeBlock
   }

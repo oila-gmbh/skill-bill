@@ -131,7 +131,6 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
 
   private companion object {
     val LENIENT_VERIFYING_PHASE_OUTPUT_SCHEMA: Set<String> = setOf(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
     )
   }

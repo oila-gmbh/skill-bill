@@ -375,12 +375,12 @@ private fun RunnerHarness.goalChildObservation(
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
       .mapNotNull { it.edgeIteration },
     remediationHandoffs = launcher.requests.mapNotNull { it.skillRunRequest.promptOverride }
-      .filter { it.contains("Phase: implement") && it.contains("audit_gaps:") }
+      .filter { it.contains("Phase: implement") && it.contains("AUDIT-GAP REMEDIATION") }
       .map { prompt ->
         prompt
           .replace(Regex("for issue SKILL-\\d+\\."), "for issue <issue>.")
-          .substringAfter("audit_repair_plan:\n")
-          .substringBefore("audit_remediation_execution_rules:")
+          .substringAfter("### from: audit\n")
+          .substringBefore("### from:")
           .trim()
       },
     reviewComposition = launcher.requests.mapNotNull { it.skillRunRequest.promptOverride }

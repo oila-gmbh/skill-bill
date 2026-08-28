@@ -729,8 +729,6 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
    * never reaches a filesystem to find one.
    */
   val sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
-  /** The unmet acceptance criteria an audit-gap implementation re-entry is scoped to. */
-  val unmetCriterionRefs: List<String> = emptyList(),
   /**
    * The runtime-derived bounded prior-gap memory for an `audit_gap` remediation round, or null when
    * none is derivable (forward launches and in-flight runs that predate the projection). Null omits

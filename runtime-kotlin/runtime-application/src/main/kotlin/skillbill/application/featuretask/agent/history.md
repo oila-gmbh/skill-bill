@@ -1,12 +1,24 @@
 # featuretask runtime boundary history
 
+## [2026-08-28] SKILL-214 — Prose-centric audit phase I/O
+Areas: runtime-application/featuretask, runtime-application/model, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, runtime-contracts, runtime-infra-sqlite
+- Extended `phase_prose` to audit: preplan, plan, implement, and audit share one `value`/`prompt` shell; former `gaps` / `non_blocking_findings` JSON is stuffed inside `value`.
+- Envelope `verdict` (`satisfied` | `gaps_found`) stays required and schema-gated; it is the sole routing signal for review entry, `audit_gap`, and `audit_clearance`. Kotlin no longer re-checks it.
+- Dropped gap-array parse, criterion-ref scrape, sticky ids, `auditVerificationSignal`, and dead `FeatureTaskRuntimeStrictWireMapping.kt`. Extra keys beside `value` are ignored.
+- Prior-gap memory is `round` plus prior audit `value` strings; implement gap re-entry reads audit `value` verbatim. Recurrence re-justification is agent-side.
+- Phase-output contract bump to 0.5 rebuilds sqlite `goal_subtask_plans` / `goal_shared_preplans` so the CHECK accepts `0.5`. reusable
+- Pattern: one prose kit through audit; keep only the envelope field the runtime routes on. reusable
+- Limitation: `verify_findings` and `implement_fix` stay on coverage-gated payloads; runtime does not parse audit `value`.
+Feature flag: N/A
+Acceptance criteria: 15/15 implemented
+
 ## [2026-08-27] SKILL-213 — Prose-centric implement phase I/O
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, runtime-cli, runtime-core
 - Extended `phase_prose` to implement: preplan, plan, and implement share one `value`/`prompt` shell; former receipt JSON is stuffed inside `value`.
 - Dropped gated `implementation_receipt`, `regenerate_implement`, receipt-shaped completion gates, and mutating-reconciliation for implement; audit consumes raw implement `value`.
 - Finalization paths (validate, write_history, commit) take changed paths from repository checkpoint inventory, not receipt fields.
 - Pattern: one prose kit through implement → audit; attempt persistence and continuation rebuild from stuffed `value` segments. reusable
-- Limitation: audit gaps and later phases stay on their own contracts; runtime does not parse `value` at prose handoffs.
+- Limitation (superseded by SKILL-214 for audit): later phases stay on their own contracts; runtime does not parse `value` at prose handoffs.
 Feature flag: N/A
 Acceptance criteria: 14/14 implemented
 

@@ -16,7 +16,7 @@ required:
   - briefing_text
 properties:
   contract_version:
-    const: "0.1"
+    const: "0.2"
   phase_id:
     type: string
     minLength: 1
@@ -44,12 +44,19 @@ properties:
   driving_verdict:
     type: string
     minLength: 1
-  unresolved_audit_gap_ids:
-    description: >-
-      The acceptance criteria the previous audit reported unmet, carried into an audit_gap
-      implementation re-entry. Criterion refs only: there are no gap or repair-item identities.
-    type: array
-    items: { type: string }
+  prior_gap_memory:
+    type: object
+    additionalProperties: false
+    required: [round, prior_audit_values]
+    properties:
+      round:
+        type: integer
+        minimum: 1
+      prior_audit_values:
+        type: array
+        items:
+          type: string
+          minLength: 1
   durably_closed_criterion_refs:
     type: array
     items: { type: string }

@@ -153,7 +153,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     resolvedCheckpoint = handoff.repositoryCheckpoint,
     sharedReviewEvidence = sharedReviewEvidence,
     expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
-    unmetCriterionRefs = handoff.reentryGapCriteria,
     priorGapMemory = handoff.priorGapMemory,
     repairLedger = handoff.repairLedger,
     recordedFindingVerdicts = handoff.recordedFindingVerdicts,
@@ -236,23 +235,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     handoff.drivingVerdict?.let { verdict -> appendLine("driving_verdict: ${verdict.wireValue}") }
     appendLine()
     appendAllowlistedRunInvariants(handoff)
-    appendLine()
-    // Only rendered on an audit_gap re-entry; a forward launch and a review_fix re-entry both carry
-    // no gap criteria, so their briefings stay byte-for-byte identical.
-    if (handoff.reentryGapCriteria.isNotEmpty()) {
-      appendLine("audit_gaps:")
-      handoff.reentryGapCriteria.forEach { gap -> appendLine("  - $gap") }
-    }
-    if (handoff.reentryGapCriteria.isNotEmpty()) {
-      appendLine("audit_remediation_rules:")
-      appendLine("  - Use the immutable initial preplan and plan; do not regenerate general planning.")
-      appendLine("  - Each audit_gaps entry already includes the audit's fix plan after the criterion ref.")
-      appendLine("  - Follow that plan completely; do not invent a narrower substitute.")
-      appendLine("  - Respect blast radius: check callers, DI/bindings, sibling phases, and shared contracts.")
-      appendLine("  - Close every listed criterion without opening a new gap or regressing neighbors.")
-      appendLine("  - Builds and tests stay deferred to validate.")
-      appendLine("  - If a criterion is genuinely unimplementable, block and say which one and why.")
-    }
     appendLine()
     appendLine("## Upstream projections (layer 2, declared and validated)")
     appendProjections(envelope)
