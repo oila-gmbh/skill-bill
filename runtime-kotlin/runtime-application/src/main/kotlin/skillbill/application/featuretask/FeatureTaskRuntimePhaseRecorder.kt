@@ -83,7 +83,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
@@ -576,32 +575,18 @@ class FeatureTaskRuntimePhaseRecorder(
     }
   }
 
-  /**
-   * The durable implementation-attempt append for one phase write, as an artifact patch to be merged
-   * into the SAME `persistPatch` call that advances the workflow row.
-   *
-   * Returning a patch rather than performing a second write is the point: a crash between the receipt
-   * landing and the workflow advancing is then not a reachable state, so resume always finds exactly
-   * one resumable attempt with no lost obligations. Every appended record is validated against the
-   * canonical schema before it is handed back, so a malformed attempt is rejected before any write.
-   *
-   * Empty for every non-mutating phase and for any write that carries no implementation receipt.
-   */
   private fun implementationAttemptPatch(
     artifacts: Map<String, Any?>,
     request: FeatureTaskRuntimePhaseStateRequest,
     attemptStatus: FeatureTaskRuntimeImplementationAttemptStatus,
   ): Map<String, Any?> {
     if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(request.phaseId)) return emptyMap()
-    val envelope = request.normalizedOutput?.envelope ?: return emptyMap()
-    val carriesReceipt = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])
-      ?.get("projection_kind") == FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue
-    if (!carriesReceipt) return emptyMap()
+    val produced = request.normalizedOutput?.envelope
+      ?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]) }
+    val value = produced?.get("value")?.toString()?.trim().orEmpty()
+    if (produced == null || value.isBlank()) return emptyMap()
+    val prompt = produced["prompt"]?.toString()?.trim()?.takeIf(String::isNotBlank)
     val existing = implementationAttemptsFrom(artifacts)
-    val claim = featureTaskRuntimeImplementationClaimFrom(
-      envelope,
-      FeatureTaskRuntimeImplementationObligations(emptyList(), emptyList(), request.loopId),
-    )
     val appended = featureTaskRuntimeAppendImplementationAttempt(
       existing = existing,
       entry = FeatureTaskRuntimeImplementationAttempt(
@@ -611,15 +596,11 @@ class FeatureTaskRuntimePhaseRecorder(
         agentId = request.resolvedAgentId,
         status = attemptStatus,
         recordedAt = Instant.now().toString(),
-        completedTaskIds = claim.completedTaskIds.distinct(),
-        changedPaths = claim.changedPaths.distinct(),
+        value = value,
         loopId = request.loopId,
         edgeIteration = request.edgeIteration,
         failureDisposition = request.failureDisposition,
-        deviations = claim.deviations,
-        unresolvedItems = claim.unresolvedItems,
-        reconciliationEvidence = claim.reconciliationEvidence,
-        repositoryCheckpoint = claim.repositoryCheckpoint,
+        prompt = prompt,
       ),
     )
     val wire = featureTaskRuntimeImplementationAttemptRecordToWire(appended)

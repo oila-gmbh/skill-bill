@@ -1,5 +1,3 @@
-@file:Suppress("MaxLineLength")
-
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimeRunReport
@@ -10,92 +8,94 @@ import kotlin.test.assertTrue
 
 class RealValidatorProducerGateIntegrationTest {
   @Test
-  fun `an undeclared key in an implement receipt is absorbed and implement advances on its first launch`() {
-    val harness = realValidatorHarness(RECEIPT_WITH_UNDECLARED_KEY)
+  fun `completed implement with only value advances to audit`() {
+    val harness = realValidatorHarness(IMPLEMENT_VALUE_ONLY)
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
 
-    harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     val launched = harness.launchedPromptPhaseOrder()
-    assertEquals(1, launched.count { it == "implement" }, "an absorbed undeclared key must not cost an attempt")
-    assertTrue(launched.contains("audit"), "the absorbed receipt must advance to its consumer")
-    harness.launcher.requests.forEach { request ->
-      assertNoRawResponseSpan(requireNotNull(request.skillRunRequest.promptOverride), "MUST NOT SURVIVE")
-    }
+    assertEquals(1, launched.count { it == "implement" })
+    assertTrue(launched.contains("audit"))
   }
 
   @Test
-  fun `a wrong-typed field in an implement receipt blocks implement with the constraint kept private`() {
-    val harness = realValidatorHarness(RECEIPT_WITH_WRONG_TYPED_COMPLETED_TASK_IDS)
+  fun `legacy keys beside value complete implement without producer-projection re-entry`() {
+    val harness = realValidatorHarness(IMPLEMENT_LEGACY_KEYS_BESIDE_VALUE)
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals(1, harness.launchedPromptPhaseOrder().count { it == "implement" })
+    assertTrue(harness.launchedPromptPhaseOrder().contains("audit"))
+  }
+
+  @Test
+  fun `malformed JSON stuffed inside value still completes implement`() {
+    val harness = realValidatorHarness(IMPLEMENT_MALFORMED_JSON_IN_VALUE)
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    assertEquals(1, harness.launchedPromptPhaseOrder().count { it == "implement" })
+    assertTrue(harness.launchedPromptPhaseOrder().contains("audit"))
+  }
+
+  @Test
+  fun `blank value blocks implement at the phase-output schema`() {
+    val harness = realValidatorHarness(IMPLEMENT_BLANK_VALUE, useRealPhaseOutputValidator = true)
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
     assertEquals("implement", blocked.lastIncompletePhase)
-    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
-    assertEquals(1, harness.launchedPromptPhaseOrder().count { it == "implement" })
     assertTrue(
-      !harness.launchedPromptPhaseOrder().contains("audit"),
-      "a rejected implement receipt must not reach its consumer",
+      blocked.blockedReason.contains("value", ignoreCase = true) ||
+        harness.io.database.rejectedDiagnostics().any {
+          it.metadata.phaseId == "implement" && it.metadata.reason.contains("value", ignoreCase = true)
+        },
     )
-    assertDiagnosticNamesConstraint(
-      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "implement" }.metadata.reason,
-      "string found, array expected",
-    )
+    assertTrue(!harness.launchedPromptPhaseOrder().contains("audit"))
   }
 
-  @Test
-  fun `an absorbed undeclared key never masks a coexisting violation`() {
-    val harness = realValidatorHarness(RECEIPT_WITH_UNDECLARED_KEY_AND_WRONG_TYPED_COMPLETED_TASK_IDS)
-    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
-    assertDiagnosticNamesConstraint(
-      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "implement" }.metadata.reason,
-      "string found, array expected",
-    )
-  }
-
-  private fun realValidatorHarness(implementOutput: String): RunnerHarness = runnerHarness(
+  private fun realValidatorHarness(
+    implementOutput: String,
+    useRealPhaseOutputValidator: Boolean = false,
+  ): RunnerHarness = runnerHarness(
     launcher = RuntimeRecordingLauncher { request ->
       val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
       facts(if (phaseId == "implement") implementOutput else validJsonOutput(phaseId))
+    },
+    validator = if (useRealPhaseOutputValidator) {
+      realFeatureTaskRuntimePhaseOutputValidator
+    } else {
+      AlwaysValidValidator
     },
     agentAssignment = phasePerAgentAssignment(),
     runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
   )
 }
 
-private const val RECEIPT_WITH_UNDECLARED_KEY: String =
-  """{"contract_version":"0.2","phase_id":"implement","status":"completed",""" +
+private const val IMPLEMENT_VALUE_ONLY: String =
+  """{"contract_version":"0.4","phase_id":"implement","status":"completed",""" +
+    """"summary":"Implement output.","produced_outputs":{"value":"Dense implement prose for audit."}}"""
+
+private const val IMPLEMENT_LEGACY_KEYS_BESIDE_VALUE: String =
+  """{"contract_version":"0.4","phase_id":"implement","status":"completed",""" +
     """"summary":"Implement output.","produced_outputs":{""" +
-    """"projection_kind":"implementation_receipt","contract_version":"0.2",""" +
+    """"value":"Dense implement prose with leftover receipt keys",""" +
     """"completed_task_ids":["task-1"],"changed_paths":["src/Foo.kt"],""" +
-    """"tests_executed":[{"name":"FooTest.kt","outcome":"passed"}],""" +
-    """"reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},""" +
-    """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true},""" +
-    """"leaked_planning_narration":"MUST NOT SURVIVE"}}"""
+    """"reconciled_state":{"reconciled":true}}}"""
 
-private const val RECEIPT_WITH_WRONG_TYPED_COMPLETED_TASK_IDS: String =
-  """{"contract_version":"0.2","phase_id":"implement","status":"completed",""" +
+private const val IMPLEMENT_MALFORMED_JSON_IN_VALUE: String =
+  """{"contract_version":"0.4","phase_id":"implement","status":"completed",""" +
     """"summary":"Implement output.","produced_outputs":{""" +
-    """"projection_kind":"implementation_receipt","contract_version":"0.2",""" +
-    """"completed_task_ids":"MUST NOT SURVIVE","changed_paths":["src/Foo.kt"],""" +
-    """"tests_executed":[{"name":"FooTest.kt","outcome":"passed"}],""" +
-    """"reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},""" +
-    """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true}}}"""
+    """"value":"{partial json without closing"}}"""
 
-private const val RECEIPT_WITH_UNDECLARED_KEY_AND_WRONG_TYPED_COMPLETED_TASK_IDS: String =
-  """{"contract_version":"0.2","phase_id":"implement","status":"completed",""" +
-    """"summary":"Implement output.","produced_outputs":{""" +
-    """"projection_kind":"implementation_receipt","contract_version":"0.2",""" +
-    """"completed_task_ids":"MUST NOT SURVIVE","changed_paths":["src/Foo.kt"],""" +
-    """"tests_executed":[{"name":"FooTest.kt","outcome":"passed"}],""" +
-    """"reconciliation_evidence":{"reconciled":true,"evidence":"Fixture tree at target state."},""" +
-    """"repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},"reconciled_state":{"reconciled":true},""" +
-    """"leaked_planning_narration":"MUST NOT SURVIVE EITHER"}}"""
+private const val IMPLEMENT_BLANK_VALUE: String =
+  """{"contract_version":"0.4","phase_id":"implement","status":"completed",""" +
+    """"summary":"Implement output.","produced_outputs":{"value":"   "}}"""

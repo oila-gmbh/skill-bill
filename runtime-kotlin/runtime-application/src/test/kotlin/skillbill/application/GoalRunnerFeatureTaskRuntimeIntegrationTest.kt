@@ -66,30 +66,6 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   }
 
   @Test
-  fun `goal child cannot advance while unresolved_items remain open`() {
-    val parity = goalChildParityRun(
-      launcher = unresolvedItemsImplementLauncher(agentBlockAfterSegments = 4),
-      config = GoalChildParityConfig(
-        gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal"),
-      ),
-    )
-
-    val launched = parity.runtime.launchedPromptPhaseOrder()
-    assertEquals(0, launched.count { it == "audit" }, "audit must never launch from an unresolved receipt")
-    assertEquals(0, launched.count { it == "review" }, "review must never launch from an unresolved receipt")
-    assertTrue(launched.count { it == "implement" } > 1, "the child must continue implement rather than advance")
-    val incompleteAttempts = parity.runtime.recorder.loadImplementationAttempts(WORKFLOW_ID).orEmpty()
-      .count {
-        it.phaseId == "implement" &&
-          it.status == skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
-      }
-    assertTrue(
-      incompleteAttempts >= 1,
-      "incomplete continuation segments stay durable so a resume carries no lost obligations",
-    )
-  }
-
-  @Test
   fun `goal runner completes when the typed commit receipt carries its commit sha`() {
     val parity = goalChildParityRun(
       launcher = defaultPhaseAwareLauncher(),

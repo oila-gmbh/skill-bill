@@ -1,12 +1,22 @@
 # featuretask runtime boundary history
 
+## [2026-08-27] SKILL-213 — Prose-centric implement phase I/O
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, runtime-cli, runtime-core
+- Extended `phase_prose` to implement: preplan, plan, and implement share one `value`/`prompt` shell; former receipt JSON is stuffed inside `value`.
+- Dropped gated `implementation_receipt`, `regenerate_implement`, receipt-shaped completion gates, and mutating-reconciliation for implement; audit consumes raw implement `value`.
+- Finalization paths (validate, write_history, commit) take changed paths from repository checkpoint inventory, not receipt fields.
+- Pattern: one prose kit through implement → audit; attempt persistence and continuation rebuild from stuffed `value` segments. reusable
+- Limitation: audit gaps and later phases stay on their own contracts; runtime does not parse `value` at prose handoffs.
+Feature flag: N/A
+Acceptance criteria: 14/14 implemented
+
 ## [2026-08-27] SKILL-212 — Prose-centric plan phase I/O
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, runtime-cli, runtime-core
 - Generalized SKILL-211 preplan prose into phase-neutral `feature_task_runtime.phase_prose` (`value`, optional `prompt`); preplan and plan `$ref` one `$defs` shape.
 - Dropped gated `executable_plan` / `plan_commitment`, `regenerate_plan`, and plan-task-id closure on implement; audit and audit-gap consume the same prose kit.
 - Decompose stop requires `produced_outputs.decomposition_package`; leftover `mode: decompose` beside `value` is a plan handoff.
 - Pattern: one declaration helper + decoder for every prose planning edge; later matrix rows reuse `phase_prose` without a new contract. reusable
-- Limitation: implement receipt and later phases stay off `PhaseOutput`; plan prose is not parsed for task ids.
+- Limitation (superseded by SKILL-213 for implement): plan prose is not parsed for task ids; later non-prose phases stay on their own contracts.
 Feature flag: N/A
 Acceptance criteria: 11/11 implemented
 

@@ -437,8 +437,9 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     "constraints",
   )
 
-  private val RECONCILIATION_EVIDENCE_KEYS = governedKeysOf("reconciliation_evidence")
-  private val REPOSITORY_CHECKPOINT_KEYS = governedKeysOf("repositoryCheckpoint")
+  private val RECONCILIATION_EVIDENCE_KEYS = setOf("reconciled", "evidence")
+  private val REPOSITORY_CHECKPOINT_KEYS =
+    setOf("fingerprint", "base_ref", "head_ref", "working_tree_owned_paths")
   private val PLAN_TASK_KEYS = setOf(
     "task_id",
     "depends_on",
@@ -449,11 +450,8 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     "constraints",
   )
   private val TASK_COMMITMENT_KEYS = setOf("task_id", "criterion_refs", "test_obligations", "constraints")
-  private val TEST_EXECUTION_KEYS = governedKeysOf("test_execution")
-  private val DEVIATION_KEYS = governedKeysOf("deviation")
-
-  private fun governedKeysOf(schemaDefName: String): Set<String> =
-    FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS.getValue(schemaDefName)
+  private val TEST_EXECUTION_KEYS = setOf("name", "outcome")
+  private val DEVIATION_KEYS = setOf("ref", "note")
 
   /**
    * Task-id rule: trim, lowercase, replace underscore/whitespace runs with a single hyphen, strip
@@ -502,42 +500,7 @@ enum class FeatureTaskRuntimeProjectionCanonicalizationTransform(val wireValue: 
   MISNAMED_KEY_ADOPTED("misnamed_key_adopted"),
 }
 
-/**
- * Governed key sets of the fully-enumerated closed projection objects — the three top-level variants and
- * every nested one — keyed by their location in
- * `orchestration/contracts/feature-task-runtime-planning-projections-schema.yaml`: a `$defs` name, or a
- * `<variant>.<property>` path for an inline object. A top-level variant's entry is keyed by its
- * `projection_kind`, which is also its `$defs` name. Parity with the schema is asserted by
- * [skillbill.workflow.taskruntime.model] canonicalization parity coverage, so a schema property addition
- * that is not mirrored here fails a test instead of silently becoming an unknown key. The foreign-owned
- * co-residents (`_goal_planning_shared_context`, `reconciled_state`, `repair_item_results`,
- * `deferred_repair_item_ids`, `unresolvable_repair`) are declared properties of their variants, so they
- * appear here and the prune retains them.
- */
-internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set<String>> = mapOf(
-  "implementation_receipt" to setOf(
-    "projection_kind",
-    "contract_version",
-    "completed_task_ids",
-    "changed_paths",
-    "tests_added",
-    "tests_updated",
-    "tests_executed",
-    "deviations",
-    "unresolved_items",
-    "reconciliation_evidence",
-    "repository_checkpoint",
-    "reconciled_state",
-    "repair_item_results",
-    "deferred_repair_item_ids",
-    "unresolvable_repair",
-    "repair_receipt",
-  ),
-  "reconciliation_evidence" to setOf("reconciled", "evidence"),
-  "repositoryCheckpoint" to setOf("fingerprint", "base_ref", "head_ref", "working_tree_owned_paths"),
-  "test_execution" to setOf("name", "outcome"),
-  "deviation" to setOf("ref", "note"),
-)
+internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set<String>> = emptyMap()
 
 /** The count cap on recorded canonicalizations, so diagnostics stay bounded regardless of projection
  *  size. */

@@ -1,123 +1,48 @@
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
-import skillbill.application.featuretask.RejectedOutputDiagnosticService
 import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
-import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/**
- * SKILL-140 quarantine-and-regenerate runner coverage: crash-resume cap continuity (AC-003),
- * truncated-pipeline block (AC-005), and per-run regeneration telemetry (AC-006). The end-to-end
- * legacy-record quarantine, regeneration, and advance (AC-001, AC-002) is proven in
- * [FeatureTaskRuntimeProjectionRejectionTest]; domain cap/edge behavior in
- * FeatureTaskRuntimeTransitionFunctionTest.
- */
 class FeatureTaskRuntimeQuarantineRegenerateTest {
   private val legacyImplement =
-    """{"contract_version":"0.2","phase_id":"implement","status":"completed","summary":"Legacy implement.",""" +
+    """{"contract_version":"0.4","phase_id":"implement","status":"completed","summary":"Legacy implement.",""" +
       """"produced_outputs":{"changed_paths":["src/Foo.kt"],"narration":"free-form legacy body",""" +
       """"reconciled_state":{"reconciled":true,"evidence":"legacy"}}}"""
 
-  // AC-003: a crash mid-regeneration resumes the same cap sequence without resetting the per-edge
-  // counter, mirroring the implement-fix crash test (`crash mid-implement resume reconciles without
-  // resetting the per-edge cap`). Run 1 fires the edge once and the implement regeneration crashes; the
-  // durable implement record retains the regeneration loop context across the crash — the watermark a reset
-  // would drop. Run 2 heals and advances, and the edge is never re-minted at 1. (The record-stamping
-  // half of the fix, which seeds that watermark when a crash lands before the LOOP_EDGE ledger write,
-  // is isolated in `invalidating a quarantined producer stamps the regeneration watermark durably`;
-  // the at-cap terminal block is covered in FeatureTaskRuntimeTransitionFunctionTest.)
   @Test
-  fun `a crash mid-regeneration resumes without resetting the regeneration cap`() {
-    var implementLaunches = 0
-    var crashOnRegeneration = true
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when {
-          phaseId == "implement" && ++implementLaunches == 1 && crashOnRegeneration -> spawnFailedFacts()
-          else -> facts(validJsonOutput(phaseId))
-        }
-      },
-    )
-    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
-    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), legacyImplement)
-    harness.recorder.retainImplementEvidence(legacyImplement)
-
-    val firstBlocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-    assertEquals("implement", firstBlocked.lastIncompletePhase)
-    val blockedImplement = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID, blockedImplement.loopId)
-    assertEquals(1, blockedImplement.edgeIteration)
-
-    // Run 2 (resume): the crash heals. The surviving watermark means the edge is NOT re-fired at 1;
-    // implement regenerates a valid record and the consumer advances to completion.
-    crashOnRegeneration = false
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val regenerationEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
-      .filter {
-        it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
-          it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID
-      }
-      .mapNotNull { it.edgeIteration }
-    assertEquals(
-      listOf(1),
-      regenerationEdges,
-      "the regeneration edge fired once and its cap watermark survived the crash without reset",
-    )
-  }
-
-  // AC-003 (F-001 isolation): the durable producer invalidation stamps the regeneration loop context
-  // onto the running record in the SAME transaction that clears its settled completion, so the per-edge
-  // cap watermark survives a crash landing after that commit but before the LOOP_EDGE ledger write.
-  // `FeatureTaskRuntimeRunState.edgeIterationByLoop` reseeds the cap from this record context on resume,
-  // so a reset to 0 (which would let the cap be exceeded) is impossible. Stamping is proven here rather
-  // than through the launch-time crash test, whose crash lands after the ledger write.
-  @Test
-  fun `invalidating a quarantined producer stamps the regeneration watermark durably`() {
+  fun `invalidating a quarantined producer stamps the supplied loop watermark durably`() {
     val harness = runnerHarness()
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), legacyImplement)
 
     harness.recorder.invalidateQuarantinedProducerRecord(
       WORKFLOW_ID,
       "implement",
-      FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID,
+      "review_fix",
       edgeIteration = 1,
     )
 
     val implement = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
     assertEquals("running", implement.status, "the settled completion is cleared so the producer relaunches")
     assertEquals(
-      FeatureTaskRuntimePhaseWorkflowDefinition.IMPLEMENT_REGENERATION_LOOP_ID,
+      "review_fix",
       implement.loopId,
-      "the regeneration loop id is stamped durably, seeding the resume watermark before the ledger write",
+      "the loop id is stamped durably, seeding the resume watermark before the ledger write",
     )
     assertEquals(1, implement.edgeIteration, "the per-edge iteration is stamped durably so the cap cannot reset")
     assertEquals(null, implement.rejectedOutput, "raw rejected evidence must remain outside workflow artifacts")
     assertEquals(null, implement.outputArtifact, "the rejected payload is no longer selectable as the producer output")
   }
 
-  // AC-005: a goal-continuation truncation dropped the producer, so the rejected record cannot be
-  // regenerated in-band; the run blocks durably with an actionable reason instead of attempting an
-  // impossible re-entry.
   @Test
-  fun `a rejected record whose producer the pipeline dropped blocks durably with an actionable reason`() {
+  fun `a rejected record whose producer the pipeline dropped blocks durably with a value-required reason`() {
     val surviving = listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
@@ -143,43 +68,13 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "absent from this run's resolved pipeline")
+    assertContains(blocked.blockedReason, "produced_outputs.value is required")
     assertTrue(
       harness.launchedPromptPhaseOrder().none { it == "implement" },
       "a dropped producer is never re-entered",
     )
   }
 
-  // AC-006: per-run regeneration telemetry records activation and attempt counts and outcome classes,
-  // and the emitted payload carries no rejected-record bytes.
-  @Test
-  fun `regeneration telemetry records activation and attempt counts without record contents`() {
-    val harness = telemetryRunnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
-      },
-    )
-    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
-    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), legacyImplement)
-    harness.recorder.retainImplementEvidence(legacyImplement)
-
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request))
-
-    val finished = harness.lifecycle.finishedRecords.single()
-    assertEquals(1, finished.regenerationActivationCount, "one producer's regeneration loop activated")
-    assertEquals(1, finished.regenerationAttemptCount, "the regeneration edge fired once")
-    assertEquals(mapOf("regenerated" to 1), finished.regenerationOutcomeCounts)
-    // Content-leak guard: no rejected-record bytes reach the emitted telemetry payload.
-    assertTrue(
-      finished.regenerationOutcomeCounts.keys.none { it.contains("free-form") } &&
-        !finished.blockedReason.contains("free-form legacy body"),
-      "regeneration telemetry must carry counts and class labels only, never record contents",
-    )
-  }
-
-  // AC-002: the quarantine evidence store is append-only, retrievable in order, and re-appending an
-  // already-recorded entry (crash replay) never duplicates or mutates a prior entry.
   @Test
   fun `quarantine evidence is append-only retrievable in order and crash-replay idempotent`() {
     val harness = runnerHarness()
@@ -208,52 +103,10 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
     val loaded = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     assertEquals(listOf("rod_one", "rod_two"), loaded.map { it.diagnosticIdentity })
 
-    // Crash replay: re-appending the first entry is a no-op; the store never duplicates or reorders.
     harness.recorder.appendQuarantineEntry(WORKFLOW_ID, first)
     val reloaded = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     assertEquals(2, reloaded.size, "an already-recorded entry is never duplicated")
     assertEquals(loaded.map { it.diagnosticIdentity }, reloaded.map { it.diagnosticIdentity })
-  }
-
-  @Test
-  fun `a diagnostic persistence conflict marks the quarantine append and still regenerates`() {
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-    )
-    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
-    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), legacyImplement)
-    harness.recorder.retainImplementEvidence(legacyImplement)
-    harness.recorder.recordRejectedOutput(
-      RejectedOutputDiagnosticRequest(
-        workflowId = WORKFLOW_ID,
-        phaseId = "implement",
-        attempt = 1,
-        rule = "divergent-pre-record",
-        path = "/",
-        reason = "divergent-pre-record",
-        agentId = phaseAgent("implement"),
-        model = "test-model",
-        rawResponse = legacyImplement.encodeToByteArray(),
-      ),
-    )
-
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
-    val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "implement" })
-    assertEquals(true, entry.diagnosticDegraded)
-    assertEquals(null, entry.diagnosticIdentity)
-    assertTrue(harness.launchedPromptPhaseOrder().any { it == "implement" }, "regeneration still fires")
-
-    harness.runner.run(harness.request())
-    val reloaded = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
-    val reloadedEntry = requireNotNull(reloaded.firstOrNull { it.producingPhaseId == "implement" })
-    assertEquals(true, reloadedEntry.diagnosticDegraded)
-    assertEquals(null, reloadedEntry.diagnosticIdentity)
   }
 
   @Test
@@ -285,21 +138,4 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
     assertEquals(identity, loaded.single().diagnosticIdentity)
     assertEquals(false, loaded.single().diagnosticDegraded)
   }
-}
-
-private fun FeatureTaskRuntimePhaseRecorder.retainImplementEvidence(output: String) {
-  val bytes = output.encodeToByteArray()
-  retainProducerOutput(
-    ProducerOutputEvidence(
-      workflowId = WORKFLOW_ID,
-      phaseId = "implement",
-      attempt = 1,
-      agentId = phaseAgent("implement"),
-      model = "test-model",
-      recordedAt = Instant.EPOCH,
-      byteSize = bytes.size.toLong(),
-      sha256 = RejectedOutputDiagnosticService.sha256(bytes),
-      payload = bytes,
-    ),
-  )
 }

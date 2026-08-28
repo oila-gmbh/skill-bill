@@ -694,7 +694,7 @@ class FeatureTaskRuntimeRunnerTest {
     val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
     val auditBriefing = requireNotNull(briefings["audit"]) { "audit briefing must be persisted" }
     assertContains(auditBriefing.briefingText, "Fixture plan prose for downstream implement and audit.")
-    assertContains(auditBriefing.briefingText, "changed_paths")
+    assertContains(auditBriefing.briefingText, "Fixture implement prose for downstream audit.")
     assertFalse(auditBriefing.briefingText.contains("Phase produced a validated output."))
     // Audit runs before review, so it no longer carries any review output.
     assertFalse(auditBriefing.hasUpstreamReceipt("review"))
@@ -5109,9 +5109,8 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     assertTrue(git.createCommitMessages.isEmpty(), "a non-mutating cycle must never reach the checkpoint boundary")
   }
 
-  // (d) The reconciliation gate rejects an implement output that did not report reconciliation: the
-  // silent skip is routed through the loud schema-gate failure path, so implement retries until a
-  // reconciled receipt lands. A reconciled output advances (proved in test (a)).
+  // (d) Implement no longer owes mutating-reconciliation: a completed output with value and without
+  // reconciled_state advances. implement_fix still enforces the gate (see ReviewFixLoopTest).
   @Test
   fun `reconciliation gate rejects an implement output without a reconciliation report`() {
     var implementLaunches = 0
@@ -5121,20 +5120,18 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId == "implement") {
           implementLaunches += 1
-          facts(if (implementLaunches == 1) IMPLEMENT_NO_RECONCILE_OUTPUT else validJsonOutput(phaseId))
+          facts(IMPLEMENT_NO_RECONCILE_OUTPUT)
         } else {
           facts(validJsonOutput(phaseId))
         }
       },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertEquals(1, implementLaunches, "a one-attempt budget leaves no relaunch")
-    assertGateBlockNamesRule(blocked.blockedReason, "mutating-reconciliation")
-    assertDiagnosticNamesConstraint(
-      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "implement" }.metadata.reason,
-      "reconciliation report",
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertEquals(1, implementLaunches)
+    assertTrue(
+      harness.io.database.rejectedDiagnostics().none { it.metadata.phaseId == "implement" },
+      "implement must not re-enter for a missing reconciliation report",
     )
   }
 
@@ -5325,7 +5322,7 @@ private val VALID_VERIFY_FINDINGS_OUTPUT = verifyFindingsOutput()
 private val PREPLAN_OUTPUT = seededProjectionEnvelope("preplan", PlanningProjectionFixtures.PREPLAN_DIGEST)
 private val PLAN_OUTPUT = seededProjectionEnvelope("plan", PlanningProjectionFixtures.PLAN_PROSE)
 internal val IMPLEMENT_OUTPUT =
-  seededProjectionEnvelope("implement", PlanningProjectionFixtures.IMPLEMENTATION_RECEIPT)
+  seededProjectionEnvelope("implement", PlanningProjectionFixtures.IMPLEMENT_PROSE)
 
 private fun seededProjectionEnvelope(phaseId: String, producedOutputs: String): String =
   """{"contract_version":"0.3","phase_id":"$phaseId","status":"completed",""" +

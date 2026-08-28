@@ -30,12 +30,11 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
   @Test
   fun `a reconciliation report placed beside produced_outputs is moved into it`() {
-    // The shape observed on wftr-20260824-125937-qn99: an implement receipt whose work landed, then
-    // 42KB of it discarded because reconciled_state sat next to produced_outputs instead of in it.
     val misplaced =
       """{"contract_version":"0.4","phase_id":"implement","status":"completed",""" +
         """"summary":"Reconciled the repository to the intended state.",""" +
-        """"produced_outputs":{"projection_kind":"implementation_receipt","changed_paths":["a/B.kt"],""" +
+        """"produced_outputs":{"value":"Implement prose with former receipt stuffed inside.",""" +
+        """"changed_paths":["a/B.kt"],""" +
         """"reconciliation_evidence":{"reconciled":true,"evidence":"tree at target"}},""" +
         """"reconciled_state":{"reconciled":true}}"""
 
@@ -56,6 +55,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     )
     @Suppress("UNCHECKED_CAST")
     val produced = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+    assertEquals("Implement prose with former receipt stuffed inside.", produced["value"])
     assertEquals(mapOf("reconciled" to true), produced["reconciled_state"])
     assertEquals(
       mapOf("reconciled" to true, "evidence" to "tree at target"),
@@ -66,8 +66,6 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
   @Test
   fun `an absent summary is recovered from the prose the producer wrote before the envelope`() {
-    // The shape observed on wftr-20260824-173259-uiwi: a 13-task implement receipt discarded because
-    // the one descriptive field nothing branches on was narrated above the fence instead of inside it.
     val narrated = """
       |Formatting-risk check is clean: no added line exceeds 100 characters outside imports.
       |
@@ -75,7 +73,8 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
       |
       |```json
       |{"contract_version":"0.4","phase_id":"implement","status":"completed",
-      |"produced_outputs":{"projection_kind":"implementation_receipt","changed_paths":["a/B.kt"]}}
+      |"produced_outputs":{"value":"Implement prose with former receipt stuffed inside.",
+      |"changed_paths":["a/B.kt"]}}
       |```
     """.trimMargin()
 
@@ -89,14 +88,15 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     )
     @Suppress("UNCHECKED_CAST")
     val produced = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
-    assertEquals(listOf("a/B.kt"), produced["changed_paths"], "the receipt itself must survive intact")
+    assertEquals("Implement prose with former receipt stuffed inside.", produced["value"])
+    assertEquals(listOf("a/B.kt"), produced["changed_paths"], "legacy sibling keys beside value survive")
   }
 
   @Test
   fun `an absent summary with no prose to recover is marked rather than fabricated`() {
     val bare =
       """{"contract_version":"0.4","phase_id":"implement","status":"completed",""" +
-        """"produced_outputs":{"projection_kind":"implementation_receipt"}}"""
+        """"produced_outputs":{"value":"Implement prose with former receipt stuffed inside."}}"""
 
     val result = adapter.validatePhaseOutput(bare, "implement")
 
@@ -166,7 +166,8 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   fun `a stray root key does not overwrite a member produced_outputs already states`() {
     val collision =
       """{"contract_version":"0.4","phase_id":"implement","status":"completed","summary":"Done.",""" +
-        """"produced_outputs":{"reconciled_state":{"reconciled":true,"evidence":"stated"}},""" +
+        """"produced_outputs":{"value":"Implement prose.",""" +
+        """"reconciled_state":{"reconciled":true,"evidence":"stated"}},""" +
         """"reconciled_state":{"reconciled":false}}"""
 
     val result = adapter.validatePhaseOutput(collision, "implement")
@@ -175,6 +176,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
     @Suppress("UNCHECKED_CAST")
     val produced = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+    assertEquals("Implement prose.", produced["value"])
     assertEquals(
       mapOf("reconciled" to true, "evidence" to "stated"),
       produced["reconciled_state"],

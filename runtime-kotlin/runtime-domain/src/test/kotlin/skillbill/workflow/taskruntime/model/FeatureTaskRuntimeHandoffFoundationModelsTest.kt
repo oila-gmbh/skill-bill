@@ -12,12 +12,12 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
     val declaration = PhaseHandoffProjectionDeclaration(
       consumerPhaseId = "audit",
       sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput("implement"),
-      projectionName = "implementation_receipt",
-      projectionContractId = "feature_task_runtime.implementation_receipt",
+      projectionName = "implement_prose",
+      projectionContractId = "feature_task_runtime.phase_prose",
       projectionContractVersion = "0.1",
       promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
       budget = FeatureTaskRuntimeHandoffProjectionBudget(4096, 16),
-      declaredFieldNames = listOf("changed_paths"),
+      declaredFieldNames = listOf("value", "directive"),
       checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
       required = false,
       allowsPrivateArtifactReference = true,
@@ -43,7 +43,7 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
     val wire = FeatureTaskRuntimeProjectionMeasurement(
       workflowId = "wftr-1",
       consumerPhaseId = "audit",
-      projectionContractId = "implementation_receipt",
+      projectionContractId = "feature_task_runtime.phase_prose",
       producerIteration = FeatureTaskRuntimeProducerIteration("implement", 2),
       repositoryCheckpointFingerprint = "checkpoint-1",
       projectedUtf8Bytes = 120,
@@ -107,7 +107,7 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
       FeatureTaskRuntimeProjectionMeasurement(
         workflowId = "wftr-1",
         consumerPhaseId = "audit",
-        projectionContractId = "implementation_receipt",
+        projectionContractId = "feature_task_runtime.phase_prose",
         producerIteration = FeatureTaskRuntimeProducerIteration("implement", 1),
         repositoryCheckpointFingerprint = "checkpoint-1",
         projectedUtf8Bytes = -1,

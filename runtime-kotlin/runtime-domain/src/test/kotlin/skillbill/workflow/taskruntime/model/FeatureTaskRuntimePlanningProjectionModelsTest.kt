@@ -2,109 +2,42 @@
 
 package skillbill.workflow.taskruntime.model
 
-import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
-import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.model.SpecSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePlanningProjectionModelsTest {
   @Test
-  fun `receipt rejects absolute paths, backslashes, dotdot segments, and duplicates`() {
-    val baseCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "abc")
-    val baseReconciliation = FeatureTaskRuntimeReconciliationEvidence(reconciled = true, evidence = "ok")
-    val baseExecuted = listOf(FeatureTaskRuntimeTestExecution("FooTest.kt", FeatureTaskRuntimeTestOutcome.PASSED))
-
-    assertFailsWith<IllegalArgumentException> {
-      receipt(listOf("/absolute.kt"), baseCheckpoint, baseReconciliation, baseExecuted)
-    }
-    assertFailsWith<IllegalArgumentException> {
-      receipt(listOf("src\\Foo.kt"), baseCheckpoint, baseReconciliation, baseExecuted)
-    }
-    assertFailsWith<IllegalArgumentException> {
-      receipt(listOf("src/../Foo.kt"), baseCheckpoint, baseReconciliation, baseExecuted)
-    }
-    assertFailsWith<IllegalArgumentException> {
-      receipt(listOf("src/Foo.kt", "src/Foo.kt"), baseCheckpoint, baseReconciliation, baseExecuted)
-    }
-  }
-
-  @Test
-  fun `receipt omits repository_checkpoint from projection fields when absent`() {
-    val receipt = FeatureTaskRuntimeImplementationReceipt(
-      completedTaskIds = listOf("task-01"),
-      changedPaths = listOf("src/Foo.kt"),
-      testsExecuted = listOf(FeatureTaskRuntimeTestExecution("FooTest.kt", FeatureTaskRuntimeTestOutcome.PASSED)),
-      reconciliationEvidence = FeatureTaskRuntimeReconciliationEvidence(reconciled = true, evidence = "ok"),
-    )
-    val fieldNames = receipt.toProjectionFields().map { it.name }
-    assertFalse(
-      fieldNames.contains(FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT),
-      fieldNames.toString(),
-    )
-  }
-
-  @Test
-  fun `receipt accepts an empty changed_paths list for a reconciled no-op`() {
-    val produced = linkedMapOf<String, Any?>(
-      "projection_kind" to "implementation_receipt",
-      "contract_version" to FeatureTaskRuntimePlanningProjectionContract.VERSION,
-      "completed_task_ids" to listOf("task-01"),
-      "changed_paths" to emptyList<String>(),
-      "tests_executed" to emptyList<Any?>(),
-      "reconciliation_evidence" to linkedMapOf(
-        "reconciled" to true,
-        "evidence" to "tree already matches target; no edits this turn",
-      ),
-      "repository_checkpoint" to linkedMapOf("fingerprint" to "abc123"),
-    )
-    val parsed = assertIs<FeatureTaskRuntimeImplementationReceipt>(
-      featureTaskRuntimePlanningProjectionFromEnvelope(
-        envelope = linkedMapOf("produced_outputs" to produced),
-        producingPhaseId = "implement",
-        expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
-        schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
-      ),
-    )
-    assertEquals(emptyList<String>(), parsed.changedPaths)
-  }
-
-  @Test
-  fun `an unknown projection kind is rejected at the parse seam`() {
-    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      featureTaskRuntimePlanningProjectionFromEnvelope(
-        envelope = linkedMapOf("produced_outputs" to linkedMapOf("projection_kind" to "whole_envelope")),
-        producingPhaseId = "implement",
-        expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
-        schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
-      )
-    }
-  }
-
-  @Test
-  fun `the producing-phase mapping names only implement and nothing else`() {
-    listOf("preplan", "plan").forEach { phaseId ->
+  fun `producedProjectionKindFor is null for every phase including implement`() {
+    listOf(
+      "preplan",
+      "plan",
+      "implement",
+      "audit",
+      "implement_fix",
+      "review",
+      "validate",
+      "write_history",
+      "commit_push",
+      "pr",
+    ).forEach { phaseId ->
       assertNull(
         FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor(phaseId),
-        "phase '$phaseId' delivers prose on the phase-output envelope, not a bounded planning projection",
+        "phase '$phaseId' must not name a bounded planning projection producer kind",
       )
     }
+  }
+
+  @Test
+  fun `SHARED_REVIEW_EVIDENCE_ID remains the shared review evidence contract id`() {
     assertEquals(
-      FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
-      FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor("implement"),
+      "feature_task_runtime.shared_review_evidence",
+      FeatureTaskRuntimePlanningProjectionContract.SHARED_REVIEW_EVIDENCE_ID,
     )
-    listOf("audit", "implement_fix", "review", "validate", "write_history", "commit_push", "pr").forEach { phaseId ->
-      assertNull(
-        FeatureTaskRuntimePlanningProjectionContract.producedProjectionKindFor(phaseId),
-        "phase '$phaseId' produces no planning projection and must not be gated against one",
-      )
-    }
   }
 
   @Test
@@ -191,18 +124,5 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
         "depends_on" to listOf(1),
       ),
     ),
-  )
-
-  private fun receipt(
-    changedPaths: List<String>,
-    checkpoint: FeatureTaskRuntimeRepositoryCheckpoint,
-    reconciliation: FeatureTaskRuntimeReconciliationEvidence,
-    executed: List<FeatureTaskRuntimeTestExecution>,
-  ) = FeatureTaskRuntimeImplementationReceipt(
-    completedTaskIds = listOf("task-01"),
-    changedPaths = changedPaths,
-    testsExecuted = executed,
-    reconciliationEvidence = reconciliation,
-    repositoryCheckpoint = checkpoint,
   )
 }

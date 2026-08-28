@@ -643,36 +643,18 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     assertTrue(def.PHASE_REVIEW !in shipped.spanBetween(edge.destinationPhaseId, edge.fromPhaseId))
   }
 
-  // SKILL-140: quarantine-and-regenerate edges computed by the shared transition function.
   @Test
-  fun `RECORD_REJECTED below cap re-enters the producer on its regeneration loop`() {
+  fun `RECORD_REJECTED at audit advances forward when no regeneration edge targets implement`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
-    val cases = listOf(
-      Triple(def.PHASE_AUDIT, def.PHASE_IMPLEMENT, def.IMPLEMENT_REGENERATION_LOOP_ID),
-    )
-    cases.forEach { (consumer, producer, loopId) ->
-      val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-        shippedTransition(consumer, FeatureTaskRuntimeVerdict.RECORD_REJECTED, edgeIterationCount = 0),
-      )
-      assertEquals(producer, next.phaseId, "consumer $consumer re-enters producer $producer")
-      assertEquals(loopId, next.loopId)
-      assertEquals(1, next.edgeIteration)
-    }
-  }
-
-  @Test
-  fun `RECORD_REJECTED at the regeneration cap blocks terminally naming the loop and edge iteration`() {
-    val def = FeatureTaskRuntimePhaseWorkflowDefinition
-    val block = assertIs<FeatureTaskRuntimeNextPhase.TerminalBlock>(
+    val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
       shippedTransition(
         def.PHASE_AUDIT,
         FeatureTaskRuntimeVerdict.RECORD_REJECTED,
-        edgeIterationCount = def.MAX_RECORD_REGENERATION_ATTEMPTS,
+        edgeIterationCount = 0,
       ),
     )
-    assertEquals(def.IMPLEMENT_REGENERATION_LOOP_ID, block.loopId)
-    assertEquals(def.MAX_RECORD_REGENERATION_ATTEMPTS, block.edgeIteration)
-    assertEquals(FeatureTaskRuntimeVerdict.RECORD_REJECTED, block.unresolvedVerdict)
+    assertEquals(def.PHASE_REVIEW, next.phaseId)
+    assertEquals(null, next.loopId)
   }
 
   @Test

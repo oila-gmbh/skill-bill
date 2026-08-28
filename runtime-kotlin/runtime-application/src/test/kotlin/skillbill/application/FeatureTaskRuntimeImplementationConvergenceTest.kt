@@ -10,29 +10,14 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeImplementationConvergenceTest {
   @Test
-  fun `a partial implement receipt advances without plan-task closure enforcement`() {
+  fun `a partial implement prose advances without plan-task closure enforcement`() {
     val harness = runnerHarness(launcher = partialImplementLauncher())
 
     val report = harness.runner.run(harness.request())
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
     assertEquals(1, harness.launchedPromptPhaseOrder().count { it == "implement" })
     assertTrue(harness.launchedPromptPhaseOrder().contains("audit"))
-  }
-
-  @Test
-  fun `unresolved_items blocks completion and re-enters implement`() {
-    val harness = runnerHarness(launcher = unresolvedItemsImplementLauncher())
-
-    val report = harness.runner.run(harness.request())
-
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("implement", report.lastIncompletePhase)
-    val implementBriefings = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "implement" }
-    assertTrue(implementBriefings.size > 1)
-    assertTrue(implementBriefings.any { it.contains("unresolved_items") })
   }
 
   @Test
@@ -48,22 +33,6 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
       .count { it == FeatureTaskRuntimeContinuationKind.SCHEMA_CORRECTION }
 
     assertEquals(0, schemaCorrections, "a retryable terminal envelope is semantic, not a structural repair")
-  }
-
-  @Test
-  fun `a receipt that breaks its projection contract takes the structural path`() {
-    val harness = runnerHarness(launcher = malformedProjectionImplementLauncher())
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertEquals("implement", blocked.lastIncompletePhase)
-    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
-    assertEquals(
-      1,
-      harness.launcher.requests
-        .map { requireNotNull(it.skillRunRequest.promptOverride) }
-        .count { phaseIdFromPrompt(it) == "implement" },
-    )
   }
 }
 
@@ -82,8 +51,7 @@ internal fun planProseOutput(): String = """
 """.trimIndent()
 
 internal fun partialImplementOutput(closedTaskCount: Int = 1): String {
-  val closed = (1..closedTaskCount).joinToString(",") { "\"task-$it\"" }
-  val paths = (1..closedTaskCount).joinToString(",") { "\"src/Foo$it.kt\"" }
+  val paths = (1..closedTaskCount).joinToString(",") { "src/Foo$it.kt" }
   return """
   {
     "contract_version": "0.4",
@@ -91,38 +59,11 @@ internal fun partialImplementOutput(closedTaskCount: Int = 1): String {
     "status": "completed",
     "summary": "Implementation segment produced a validated output.",
     "produced_outputs": {
-      "projection_kind":"implementation_receipt",
-      "contract_version":"0.2",
-      "completed_task_ids":[$closed],
-      "changed_paths":[$paths],
-      "tests_executed":[],
-      "reconciliation_evidence":{"reconciled":true,"evidence":"Segment tree at target state."},
-      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
-      "reconciled_state":{"reconciled":true}
+      "value": "Segment closed paths [$paths] at target state."
     }
   }
   """.trimIndent()
 }
-
-private fun unresolvedImplementOutput(): String = """
-  {
-    "contract_version": "0.4",
-    "phase_id": "implement",
-    "status": "completed",
-    "summary": "Implementation segment produced a validated output.",
-    "produced_outputs": {
-      "projection_kind":"implementation_receipt",
-      "contract_version":"0.2",
-      "completed_task_ids":["task-1"],
-      "changed_paths":["src/Foo1.kt"],
-      "tests_executed":[],
-      "unresolved_items":["tests still owed"],
-      "reconciliation_evidence":{"reconciled":true,"evidence":"Segment tree at target state."},
-      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
-      "reconciled_state":{"reconciled":true}
-    }
-  }
-""".trimIndent()
 
 private fun terminalImplementOutput(status: String, disposition: String = "retryable"): String = """
   {
@@ -154,48 +95,8 @@ internal fun unresolvedItemsImplementLauncher(agentBlockAfterSegments: Int? = nu
         if (implementLaunches > keepUnresolvedThrough) {
           facts(terminalImplementOutput("blocked", disposition = "needs_user_action"))
         } else {
-          facts(unresolvedImplementOutput())
+          facts(partialImplementOutput())
         }
-      }
-      else -> facts(defaultPhaseOutput(request))
-    }
-  }
-}
-
-private fun malformedProjectionImplementOutput(): String = """
-  {
-    "contract_version": "0.4",
-    "phase_id": "implement",
-    "status": "completed",
-    "summary": "Implementation segment produced a validated envelope with an invalid receipt.",
-    "produced_outputs": {
-      "projection_kind":"implementation_receipt",
-      "contract_version":"0.2",
-      "completed_task_ids":["task-1"],
-      "changed_paths":["src/Foo1.kt"],
-      "tests_executed":[],
-      "deviations":["a free-text deviation the projection contract forbids"],
-      "reconciliation_evidence":{"reconciled":true,"evidence":"Segment tree at target state."},
-      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
-      "reconciled_state":{"reconciled":true}
-    }
-  }
-""".trimIndent()
-
-private fun malformedProjectionImplementLauncher(): RuntimeRecordingLauncher {
-  var implementLaunches = 0
-  return RuntimeRecordingLauncher { request ->
-    when (phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
-      "plan" -> facts(planProseOutput())
-      "implement" -> {
-        implementLaunches += 1
-        facts(
-          if (implementLaunches == 1) {
-            malformedProjectionImplementOutput()
-          } else {
-            partialImplementOutput()
-          },
-        )
       }
       else -> facts(defaultPhaseOutput(request))
     }

@@ -1,27 +1,7 @@
 # Feature-task-runtime implementation-attempt schema (canonical source of truth).
 #
-# This file describes the durable, append-only history of implementation ATTEMPTS for one run.
-# Each entry is the bounded receipt one `implement` launch produced, stamped with the attempt
+# Each entry stores the stuffed value segment one mutating-phase launch produced plus attempt
 # identity the runtime minted for it.
-#
-# Why this exists:
-#
-# - The per-phase record store (`feature_task_runtime_phase_records`) is put()-replaced per phase
-#   id, so it holds only the LATEST implement output. A semantic continuation loop needs the prior
-#   receipt to tell the next segment which plan tasks are still open, and it must survive both an
-#   in-process retry and a fresh-process crash resume. A replaceable snapshot cannot serve that.
-# - The continuation projection is reconstructed from THIS store plus the delivered executable-plan
-#   projection, never from the latest in-memory prompt. Retry and resume therefore derive an
-#   identical projection from identical durable state.
-#
-# What lives here vs. in Kotlin:
-#
-# - This file defines the SHAPE of one attempt entry and the list envelope: required fields, the
-#   pinned contract version, and strict `additionalProperties: false` at every object so an
-#   undeclared wire field fails loudly.
-# - Append-only ordering by `sequence_number`, pruning at the declared bound, and the rule that an
-#   attempt carrying an open obligation is not pruned while a bounded slot is still free are runtime
-#   behaviors documented under `x-coherence-checks` below.
 #
 # Versioning rule:
 #
@@ -36,10 +16,9 @@ $id: "https://skill-bill.dev/contracts/feature-task-runtime-implementation-attem
 title: Feature-task-runtime implementation attempts
 description: >-
   The durable append-only history of implementation attempts for one run. Each entry carries the
-  bounded implementation receipt that attempt produced (completed task ids, changed paths,
-  deviations, unresolved items, reconciliation evidence, repository checkpoint) plus the attempt
-  identity the runtime minted (sequence number, phase, loop, edge iteration, attempt number, agent,
-  status, failure disposition, recorded-at). It carries no raw prompt, no raw phase response, and no
+  stuffed value segment that attempt produced plus the attempt identity the runtime minted
+  (sequence number, phase, loop, edge iteration, attempt number, agent, status, failure
+  disposition, recorded-at). It carries no raw prompt, no raw phase response, and no
   rejected-output body.
 type: object
 additionalProperties: false
@@ -49,7 +28,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.1"
+    const: "0.2"
     description: >-
       Pinned implementation-attempt contract version; a mismatch is an unsupported-version rejection
       that quarantines and regenerates rather than being reinterpreted.
@@ -68,12 +47,10 @@ x-coherence-checks:
       Entries are appended through the shared appendBoundedHistoryBySequence helper and ordered by
       sequence_number. A write never mutates a prior entry; FeatureTaskRuntimeImplementationAttempt
       mints sequence_number from the persisted max, so ordering is durable rather than positional.
-  - id: bounded-retention-prefers-open-obligations
+  - id: bounded-retention
     description: >-
-      Pruning at FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_LIMIT drops the OLDEST entry that
-      carries no open obligation (empty unresolved_items and no still-open plan task) before it drops
-      one that does, so a bounded store never silently discards the obligation set the continuation
-      projection is derived from while a free slot remains.
+      Pruning at FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_LIMIT drops the oldest closed attempt
+      before growing past the declared bound.
   - id: derived-and-bounded
     description: >-
       Every field here is derived from the validated phase output or minted by the runtime. Raw
@@ -95,50 +72,6 @@ $defs:
     minLength: 1
     maxLength: 4096
     pattern: ".*\\S.*"
-  # Mirrors the planning-projections taskId $def so plan task ids and closed task ids are the same
-  # vocabulary on both sides of the completion gate.
-  taskId:
-    type: string
-    pattern: "^[a-z][a-z0-9-]*$"
-    minLength: 1
-    maxLength: 128
-  # Mirrors the planning-projections repoPath $def: repository-relative, no leading slash, no
-  # backslash, no `..` segment.
-  repoPath:
-    type: string
-    minLength: 1
-    maxLength: 1024
-    pattern: "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
-  compactSummary:
-    allOf:
-      - { $ref: "#/$defs/nonBlank" }
-      - { pattern: "^[^\\n\\r\\t`]+$" }
-      - { not: { pattern: "\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )" } }
-
-  deviation:
-    type: object
-    additionalProperties: false
-    required: [ref, note]
-    properties:
-      ref: { $ref: "#/$defs/nonBlank" }
-      note: { $ref: "#/$defs/compactSummary" }
-
-  reconciliation_evidence:
-    type: object
-    additionalProperties: false
-    required: [reconciled, evidence]
-    properties:
-      reconciled: { type: boolean }
-      evidence: { $ref: "#/$defs/nonBlank" }
-
-  repository_checkpoint:
-    type: object
-    additionalProperties: false
-    required: [fingerprint]
-    properties:
-      fingerprint: { $ref: "#/$defs/nonBlank" }
-      base_ref: { $ref: "#/$defs/nonBlank" }
-      head_ref: { $ref: "#/$defs/nonBlank" }
 
   implementation_attempt:
     type: object
@@ -150,8 +83,7 @@ $defs:
       - agent_id
       - status
       - recorded_at
-      - completed_task_ids
-      - changed_paths
+      - value
     properties:
       sequence_number:
         type: integer
@@ -159,27 +91,27 @@ $defs:
         description: Monotonic append order, minted by the recorder from the persisted max.
       phase_id:
         $ref: "#/$defs/nonBlank"
-        description: The mutating phase that produced this receipt (implement or implement_fix).
+        description: The mutating phase that produced this segment (implement or implement_fix).
       loop_id:
         $ref: "#/$defs/nonBlank"
         description: >-
           Backward-edge loop this attempt ran under when it was a re-entry; absent under the base
-          forward launch. Read by the completion gate to select loop-aware closure semantics.
+          forward launch.
       edge_iteration:
         type: integer
         minimum: 1
       attempt_number:
         type: integer
         minimum: 1
-        description: The phase attempt/iteration this receipt was produced at.
+        description: The phase attempt/iteration this segment was produced at.
       agent_id:
         $ref: "#/$defs/nonBlank"
       status:
         type: string
         enum: [completed, blocked, failed, incomplete]
         description: >-
-          The envelope status this receipt was carried on, plus `incomplete` for a receipt the
-          completion gate rejected as semantically incomplete while it remained schema-valid.
+          The envelope status this segment was carried on, plus `incomplete` for a segment the
+          completion gate rejected while it remained schema-valid.
       failure_disposition:
         type: string
         enum:
@@ -191,23 +123,9 @@ $defs:
       recorded_at:
         $ref: "#/$defs/nonBlank"
         description: Runtime-minted ISO-8601 instant; never an agent-reported time.
-      completed_task_ids:
-        type: array
-        maxItems: 128
-        uniqueItems: true
-        items: { $ref: "#/$defs/taskId" }
-      changed_paths:
-        type: array
-        maxItems: 512
-        uniqueItems: true
-        items: { $ref: "#/$defs/repoPath" }
-      deviations:
-        type: array
-        maxItems: 128
-        items: { $ref: "#/$defs/deviation" }
-      unresolved_items:
-        type: array
-        maxItems: 128
-        items: { $ref: "#/$defs/nonBlank" }
-      reconciliation_evidence: { $ref: "#/$defs/reconciliation_evidence" }
-      repository_checkpoint: { $ref: "#/$defs/repository_checkpoint" }
+      value:
+        $ref: "#/$defs/nonBlank"
+        description: The stuffed produced_outputs.value segment from this attempt.
+      prompt:
+        $ref: "#/$defs/nonBlank"
+        description: Optional produced_outputs.prompt when the producer emitted one.

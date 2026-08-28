@@ -2026,7 +2026,7 @@ private class RecordingPhaseLauncher(
         "verify_findings" -> "finding_dispositions: []"
         "preplan" -> PREPLAN_DIGEST_OUTPUTS
         "plan" -> PLAN_PROSE_OUTPUTS
-        "implement" -> IMPLEMENTATION_RECEIPT_OUTPUTS
+        "implement" -> IMPLEMENT_PROSE_OUTPUTS
         "validate" -> VALIDATION_RESULT_OUTPUTS
         "write_history" -> HISTORY_RESULT_OUTPUTS
         "commit_push" -> COMMIT_PUSH_RESULT_OUTPUTS
@@ -2057,14 +2057,8 @@ private class RecordingPhaseLauncher(
     private const val PLAN_PROSE_OUTPUTS: String =
       """{value: "Fixture plan prose for downstream implement and audit."}"""
 
-    private const val IMPLEMENTATION_RECEIPT_OUTPUTS: String =
-      """{projection_kind: "implementation_receipt", contract_version: "0.2", completed_task_ids: ["task-1"], """ +
-        """changed_paths: ["src/Foo.kt"], tests_executed: [{name: "FooTest", outcome: "passed"}], """ +
-        """reconciliation_evidence: {reconciled: true, evidence: "Fixture tree at target state."}, """ +
-        """repository_checkpoint: {fingerprint: "fixture-checkpoint-1"}, """ +
-        // The mutating-phase reconciliation gate reads this alongside the receipt's own evidence.
-        """reconciled_state: {reconciled: true, """ +
-        """evidence: "All planned changes are present at their intended state."}}"""
+    private const val IMPLEMENT_PROSE_OUTPUTS: String =
+      """{value: "Fixture implement prose for downstream audit."}"""
 
     private const val VALIDATION_RESULT_OUTPUTS: String =
       """{validation_result: {validation_status: "passed", checks: ["FooTest"], """ +

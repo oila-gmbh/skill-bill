@@ -14,14 +14,6 @@ class GoalRunnerReAttemptCauseTest {
   )
 
   @Test
-  fun `regenerate_implement loop is recognized as regeneration`() {
-    assertEquals(
-      "regeneration",
-      runner().reAttemptCauseFor(GoalRunnerStopReason.RECONCILED_RESUMABLE, mapOf("regenerate_implement" to 1)),
-    )
-  }
-
-  @Test
   fun `non-regeneration loop on a reconciled resumable stop classifies as crash_resume`() {
     assertEquals(
       "crash_resume",

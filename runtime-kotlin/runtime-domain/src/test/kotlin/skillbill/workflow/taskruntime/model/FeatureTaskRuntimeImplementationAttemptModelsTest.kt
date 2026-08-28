@@ -5,6 +5,7 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeImplementationAttemptModelsTest {
@@ -47,17 +48,15 @@ class FeatureTaskRuntimeImplementationAttemptModelsTest {
   }
 
   @Test
-  fun `wire round-trip preserves every receipt field`() {
+  fun `wire round-trip preserves value prompt and loop context`() {
     val entry = attempt(
       sequenceNumber = 7,
       status = FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE,
     ).copy(
       loopId = "audit_gap",
       edgeIteration = 2,
-      deviations = listOf(FeatureTaskRuntimeReceiptDeviation("task-3", "moved to a sibling file")),
-      unresolvedItems = listOf("task-4 tests still owed"),
-      reconciliationEvidence = FeatureTaskRuntimeReceiptReconciliation(true, "re-read every changed path"),
-      repositoryCheckpoint = FeatureTaskRuntimeReceiptCheckpoint("abc123", "main", "feat/x"),
+      prompt = "optional directive",
+      failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
     )
 
     val decoded = featureTaskRuntimeImplementationAttemptsFromWire(
@@ -96,11 +95,13 @@ class FeatureTaskRuntimeImplementationAttemptModelsTest {
   }
 
   @Test
-  fun `a completed attempt with unresolved items still carries an open obligation`() {
-    val entry = attempt(status = FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED)
-      .copy(unresolvedItems = listOf("task-2 not started"))
-
-    assertTrue(entry.carriesOpenObligation)
+  fun `only an incomplete attempt carries an open obligation`() {
+    assertTrue(
+      attempt(status = FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE).carriesOpenObligation,
+    )
+    assertFalse(
+      attempt(status = FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED).carriesOpenObligation,
+    )
   }
 
   private fun attempt(
@@ -114,7 +115,6 @@ class FeatureTaskRuntimeImplementationAttemptModelsTest {
     agentId = "claude",
     status = status,
     recordedAt = "2026-08-04T10:00:00Z",
-    completedTaskIds = listOf("task-1"),
-    changedPaths = listOf("runtime-kotlin/Sample.kt"),
+    value = "segment-$sequenceNumber prose",
   )
 }

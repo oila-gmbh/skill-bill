@@ -8,9 +8,6 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
@@ -351,24 +348,10 @@ fun interface FeatureTaskRuntimeRunEventSink {
   }
 }
 
-/**
- * The bounded prior receipt plus the still-open obligations a continuation segment needs.
- *
- * Reconstructed entirely from durable records, so an in-process retry and a fresh-process crash resume
- * derive an identical projection: it does not read the latest in-memory prompt, and it does not read
- * the phase-records artifact, which is put()-replaced per phase id and therefore cannot hold a prior
- * receipt at all.
- */
 data class FeatureTaskRuntimeImplementationContinuation(
   val phaseId: String,
   val segmentNumber: Int,
-  val completedTaskIds: List<String>,
-  val openObligationIds: List<String>,
-  val obligationNoun: String,
-  val changedPaths: List<String>,
-  val deviations: List<FeatureTaskRuntimeReceiptDeviation>,
-  val unresolvedItems: List<String>,
-  val reconciliationEvidence: FeatureTaskRuntimeReceiptReconciliation?,
-  val repositoryCheckpoint: FeatureTaskRuntimeReceiptCheckpoint?,
+  val priorValueSegments: List<String>,
+  val latestPrompt: String?,
   val failureDisposition: String?,
 )

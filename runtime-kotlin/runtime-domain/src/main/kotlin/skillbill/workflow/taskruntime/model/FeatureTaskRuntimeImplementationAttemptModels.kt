@@ -6,14 +6,6 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 
-/**
- * Effect-free durable model for one implementation attempt: the bounded receipt a mutating-phase
- * launch produced plus the attempt identity the runtime minted for it. There is no clock and no
- * randomness here — the application layer mints `sequenceNumber` and `recordedAt` and passes them in.
- *
- * The projection is bounded and derived by construction: there is no field that can hold a raw
- * prompt, a raw phase response, or a rejected-output body.
- */
 data class FeatureTaskRuntimeImplementationAttempt(
   val sequenceNumber: Int,
   val phaseId: String,
@@ -21,15 +13,11 @@ data class FeatureTaskRuntimeImplementationAttempt(
   val agentId: String,
   val status: FeatureTaskRuntimeImplementationAttemptStatus,
   val recordedAt: String,
-  val completedTaskIds: List<String> = emptyList(),
-  val changedPaths: List<String> = emptyList(),
+  val value: String,
   val loopId: String? = null,
   val edgeIteration: Int? = null,
   val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
-  val deviations: List<FeatureTaskRuntimeReceiptDeviation> = emptyList(),
-  val unresolvedItems: List<String> = emptyList(),
-  val reconciliationEvidence: FeatureTaskRuntimeReceiptReconciliation? = null,
-  val repositoryCheckpoint: FeatureTaskRuntimeReceiptCheckpoint? = null,
+  val prompt: String? = null,
 ) {
   init {
     require(sequenceNumber >= 0) {
@@ -41,18 +29,7 @@ data class FeatureTaskRuntimeImplementationAttempt(
     }
     require(agentId.isNotBlank()) { "FeatureTaskRuntimeImplementationAttempt.agentId must be non-blank." }
     require(recordedAt.isNotBlank()) { "FeatureTaskRuntimeImplementationAttempt.recordedAt must be non-blank." }
-    require(completedTaskIds.distinct().size == completedTaskIds.size) {
-      "FeatureTaskRuntimeImplementationAttempt.completedTaskIds must not repeat a task id."
-    }
-    require(completedTaskIds.all(String::isNotBlank)) {
-      "FeatureTaskRuntimeImplementationAttempt.completedTaskIds must not contain blanks."
-    }
-    require(changedPaths.distinct().size == changedPaths.size) {
-      "FeatureTaskRuntimeImplementationAttempt.changedPaths must not repeat a path."
-    }
-    require(unresolvedItems.all(String::isNotBlank)) {
-      "FeatureTaskRuntimeImplementationAttempt.unresolvedItems must not contain blanks."
-    }
+    require(value.isNotBlank()) { "FeatureTaskRuntimeImplementationAttempt.value must be non-blank." }
     edgeIteration?.let { iteration ->
       require(iteration >= 1) {
         "FeatureTaskRuntimeImplementationAttempt.edgeIteration must be >= 1 when present, was $iteration."
@@ -60,15 +37,8 @@ data class FeatureTaskRuntimeImplementationAttempt(
     }
   }
 
-  /**
-   * Whether this attempt still owes work. Retention prefers to prune attempts that owe nothing, so a
-   * bounded store never silently discards the obligation set the continuation projection is derived
-   * from while a free slot remains.
-   */
   val carriesOpenObligation: Boolean
-    get() = unresolvedItems.isNotEmpty() ||
-      status == FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE ||
-      reconciliationEvidence?.reconciled == false
+    get() = status == FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
 
   @OpenBoundaryMap("Feature-task-runtime implementation-attempt entry at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
@@ -78,20 +48,15 @@ data class FeatureTaskRuntimeImplementationAttempt(
     "agent_id" to agentId,
     "status" to status.wireValue,
     "recorded_at" to recordedAt,
-    "completed_task_ids" to completedTaskIds,
-    "changed_paths" to changedPaths,
+    "value" to value,
   ).apply {
     loopId?.let { put("loop_id", it) }
     edgeIteration?.let { put("edge_iteration", it) }
     failureDisposition?.let { put("failure_disposition", it.wireValue) }
-    if (deviations.isNotEmpty()) put("deviations", deviations.map { it.toArtifactMap() })
-    if (unresolvedItems.isNotEmpty()) put("unresolved_items", unresolvedItems)
-    reconciliationEvidence?.let { put("reconciliation_evidence", it.toArtifactMap()) }
-    repositoryCheckpoint?.let { put("repository_checkpoint", it.toArtifactMap()) }
+    prompt?.let { put("prompt", it) }
   }
 
   companion object {
-    /** Strict decode; loud-fails on a missing or malformed field and never best-effort fills a default. */
     @OpenBoundaryMap("Feature-task-runtime implementation-attempt decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeImplementationAttempt {
       val unexpected = raw.keys - ALLOWED_FIELDS
@@ -109,8 +74,7 @@ data class FeatureTaskRuntimeImplementationAttempt(
           agentId = raw.requireStringField("agent_id"),
           status = FeatureTaskRuntimeImplementationAttemptStatus.fromWireValue(raw.requireStringField("status")),
           recordedAt = raw.requireStringField("recorded_at"),
-          completedTaskIds = raw.optionalStringListField("completed_task_ids"),
-          changedPaths = raw.optionalStringListField("changed_paths"),
+          value = raw.requireStringField("value"),
           loopId = raw.optionalStringField("loop_id"),
           edgeIteration = raw.optionalAttemptIntField("edge_iteration"),
           failureDisposition = raw.optionalStringField("failure_disposition")?.let { value ->
@@ -119,31 +83,7 @@ data class FeatureTaskRuntimeImplementationAttempt(
                 "Feature-task-runtime implementation-attempt 'failure_disposition' has unsupported value.",
               )
           },
-          deviations = (raw["deviations"] as? List<*>).orEmpty().map { value ->
-            FeatureTaskRuntimeReceiptDeviation.fromArtifactMap(
-              JsonSupport.anyToStringAnyMap(value)
-                ?: implementationAttemptError(
-                  "Feature-task-runtime implementation-attempt 'deviations' must contain only objects.",
-                ),
-            )
-          },
-          unresolvedItems = raw.optionalStringListField("unresolved_items"),
-          reconciliationEvidence = raw["reconciliation_evidence"]?.let { value ->
-            FeatureTaskRuntimeReceiptReconciliation.fromArtifactMap(
-              JsonSupport.anyToStringAnyMap(value)
-                ?: implementationAttemptError(
-                  "Feature-task-runtime implementation-attempt 'reconciliation_evidence' must be an object.",
-                ),
-            )
-          },
-          repositoryCheckpoint = raw["repository_checkpoint"]?.let { value ->
-            FeatureTaskRuntimeReceiptCheckpoint.fromArtifactMap(
-              JsonSupport.anyToStringAnyMap(value)
-                ?: implementationAttemptError(
-                  "Feature-task-runtime implementation-attempt 'repository_checkpoint' must be an object.",
-                ),
-            )
-          },
+          prompt = raw.optionalStringField("prompt"),
         )
       } catch (error: IllegalArgumentException) {
         implementationAttemptError(
@@ -154,18 +94,11 @@ data class FeatureTaskRuntimeImplementationAttempt(
 
     private val ALLOWED_FIELDS = setOf(
       "sequence_number", "phase_id", "attempt_number", "agent_id", "status", "recorded_at",
-      "completed_task_ids", "changed_paths", "loop_id", "edge_iteration", "failure_disposition",
-      "deviations", "unresolved_items", "reconciliation_evidence", "repository_checkpoint",
+      "value", "loop_id", "edge_iteration", "failure_disposition", "prompt",
     )
   }
 }
 
-/**
- * The envelope status the receipt was carried on, plus [INCOMPLETE] for a receipt that was
- * schema-valid but did not close every planned obligation. [INCOMPLETE] is deliberately not a
- * schema-invalidity marker: it records semantic incompleteness so the continuation loop can be told
- * apart from structural repair on both status surfaces and telemetry.
- */
 enum class FeatureTaskRuntimeImplementationAttemptStatus(val wireValue: String) {
   COMPLETED("completed"),
   BLOCKED("blocked"),
@@ -182,73 +115,6 @@ enum class FeatureTaskRuntimeImplementationAttemptStatus(val wireValue: String) 
   }
 }
 
-data class FeatureTaskRuntimeReceiptDeviation(val ref: String, val note: String) {
-  init {
-    require(ref.isNotBlank()) { "FeatureTaskRuntimeReceiptDeviation.ref must be non-blank." }
-    require(note.isNotBlank()) { "FeatureTaskRuntimeReceiptDeviation.note must be non-blank." }
-  }
-
-  @OpenBoundaryMap("Feature-task-runtime receipt deviation at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf("ref" to ref, "note" to note)
-
-  companion object {
-    @OpenBoundaryMap("Feature-task-runtime receipt deviation decode from the durable workflow-artifact map")
-    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeReceiptDeviation =
-      FeatureTaskRuntimeReceiptDeviation(
-        ref = raw.requireStringField("ref"),
-        note = raw.requireStringField("note"),
-      )
-  }
-}
-
-data class FeatureTaskRuntimeReceiptReconciliation(val reconciled: Boolean, val evidence: String) {
-  init {
-    require(evidence.isNotBlank()) { "FeatureTaskRuntimeReceiptReconciliation.evidence must be non-blank." }
-  }
-
-  @OpenBoundaryMap("Feature-task-runtime receipt reconciliation evidence at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf("reconciled" to reconciled, "evidence" to evidence)
-
-  companion object {
-    @OpenBoundaryMap("Feature-task-runtime receipt reconciliation decode from the durable workflow-artifact map")
-    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeReceiptReconciliation =
-      FeatureTaskRuntimeReceiptReconciliation(
-        reconciled = raw["reconciled"] as? Boolean
-          ?: implementationAttemptError(
-            "Feature-task-runtime receipt 'reconciliation_evidence.reconciled' must decode to a boolean.",
-          ),
-        evidence = raw.requireStringField("evidence"),
-      )
-  }
-}
-
-data class FeatureTaskRuntimeReceiptCheckpoint(
-  val fingerprint: String,
-  val baseRef: String? = null,
-  val headRef: String? = null,
-) {
-  init {
-    require(fingerprint.isNotBlank()) { "FeatureTaskRuntimeReceiptCheckpoint.fingerprint must be non-blank." }
-  }
-
-  @OpenBoundaryMap("Feature-task-runtime receipt repository checkpoint at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>("fingerprint" to fingerprint).apply {
-    baseRef?.let { put("base_ref", it) }
-    headRef?.let { put("head_ref", it) }
-  }
-
-  companion object {
-    @OpenBoundaryMap("Feature-task-runtime receipt checkpoint decode from the durable workflow-artifact map")
-    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeReceiptCheckpoint =
-      FeatureTaskRuntimeReceiptCheckpoint(
-        fingerprint = raw.requireStringField("fingerprint"),
-        baseRef = raw.optionalStringField("base_ref"),
-        headRef = raw.optionalStringField("head_ref"),
-      )
-  }
-}
-
-/** The list-envelope wire form; carries the pinned contract version alongside the ordered entries. */
 @OpenBoundaryMap("Feature-task-runtime implementation-attempt record at the durable workflow-artifact seam")
 fun featureTaskRuntimeImplementationAttemptRecordToWire(
   attempts: List<FeatureTaskRuntimeImplementationAttempt>,
@@ -257,11 +123,6 @@ fun featureTaskRuntimeImplementationAttemptRecordToWire(
   "attempts" to attempts.map { it.toArtifactMap() },
 )
 
-/**
- * Strict decode of the durable implementation-attempt store. An absent key is the caller's concern
- * (it decodes to an empty history there); a present-but-malformed value loud-fails here so the
- * runtime quarantines and regenerates rather than reading an understated obligation set.
- */
 @OpenBoundaryMap("Feature-task-runtime implementation-attempt decode from the durable workflow-artifact map")
 fun featureTaskRuntimeImplementationAttemptsFromWire(raw: Any?): List<FeatureTaskRuntimeImplementationAttempt> {
   val map = raw as? Map<*, *>
@@ -285,14 +146,6 @@ fun featureTaskRuntimeImplementationAttemptsFromWire(raw: Any?): List<FeatureTas
   }
 }
 
-/**
- * Appends one attempt to the durable history and prunes to
- * [FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_LIMIT]. Ordering by `sequence_number` and
- * oldest-first pruning come from the shared [appendBoundedHistoryBySequence] helper; the only thing
- * added here is that an attempt still carrying an open obligation is passed over for pruning while a
- * closed attempt is available to drop instead. Dropping an open obligation to retain a closed one
- * would let the continuation projection understate what is still owed.
- */
 fun featureTaskRuntimeAppendImplementationAttempt(
   existing: List<FeatureTaskRuntimeImplementationAttempt>,
   entry: FeatureTaskRuntimeImplementationAttempt,
@@ -306,8 +159,6 @@ fun featureTaskRuntimeAppendImplementationAttempt(
   if (ordered.size <= retentionLimit) return ordered
   val overflow = ordered.size - retentionLimit
   val droppableIndices = ordered.indices.filterNot { ordered[it].carriesOpenObligation }.take(overflow)
-  // Every retained attempt still owes work: retention is a hard bound, so fall back to plain
-  // oldest-first rather than growing the store past its declared limit.
   val dropped = if (droppableIndices.size == overflow) droppableIndices.toSet() else (0 until overflow).toSet()
   return ordered.filterIndexed { index, _ -> index !in dropped }
 }

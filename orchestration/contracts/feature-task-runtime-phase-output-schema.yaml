@@ -562,3 +562,13 @@ allOf:
         produced_outputs:
           allOf:
             - { $ref: "#/$defs/phaseProseProducedOutputs" }
+  - if:
+      properties:
+        phase_id: { const: implement }
+        status: { const: completed }
+      required: [phase_id, status]
+    then:
+      properties:
+        produced_outputs:
+          allOf:
+            - { $ref: "#/$defs/phaseProseProducedOutputs" }

@@ -12,7 +12,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
@@ -66,33 +65,15 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // (the finished-event audit-gap iteration count) reference the same loop the backward edge mints.
   const val AUDIT_GAP_LOOP_ID: String = "audit_gap"
 
-  // The shared advisory threshold for the semantic remediation loops (`review_fix`, `audit_gap`). Both
-  // loops are unbounded by design — the verdict, never a count, settles them — so crossing this many
-  // iterations warns the operator once and remediation continues. Declared here once so no seam can
-  // drift to its own literal.
   const val SEMANTIC_LOOP_WARNING_THRESHOLD: Int = 3
 
-  // SKILL-140: per-producer regeneration loop ids. A launch seam that quarantines an upstream
-  // producer's rejected durable record re-enters that producer under its own bounded loop, so each
-  // producer's regeneration cap and telemetry count are tracked independently of the others.
   const val PREPLAN_REGENERATION_LOOP_ID: String = "regenerate_preplan"
-  const val IMPLEMENT_REGENERATION_LOOP_ID: String = "regenerate_implement"
 
-  // The pinned per-edge regeneration cap: a quarantined producer is re-run at most this many times
-  // before the run blocks durably naming the quarantined record, producing phase, and attempt count.
   const val MAX_RECORD_REGENERATION_ATTEMPTS: Int = 2
 
-  // The pinned consumer-phase -> (producing phase, regeneration loop id) mapping the launch seam and
-  // the backward edges share. Each consumer that parses exactly one bounded planning projection from a
-  // producer maps to that producer's regeneration edge. A consumer absent from this map has no
-  // attributable producer, so its rejection blocks durably rather than re-entering an impossible edge.
-  val REGENERATION_LOOP_ID_BY_PRODUCER: Map<String, String> = mapOf(
-    PHASE_IMPLEMENT to IMPLEMENT_REGENERATION_LOOP_ID,
-  )
+  val REGENERATION_LOOP_ID_BY_PRODUCER: Map<String, String> = emptyMap()
 
-  val REGENERATION_PRODUCER_BY_CONSUMER: Map<String, String> = mapOf(
-    PHASE_AUDIT to PHASE_IMPLEMENT,
-  )
+  val REGENERATION_PRODUCER_BY_CONSUMER: Map<String, String> = emptyMap()
 
   // Phases whose attempt watermark a review-generation restart rewinds. Only these carry a non-zero
   // evidence generation, so every other phase keeps a generation-blind key and a byte-identical
@@ -282,6 +263,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
 
   fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
     phaseProseDeclaration(PHASE_IMPLEMENT, PHASE_PLAN),
+    phaseProseDeclaration(PHASE_IMPLEMENT, PHASE_IMPLEMENT),
     phaseProjection(
       consumerPhaseId = PHASE_IMPLEMENT,
       producingPhaseId = PHASE_AUDIT,
@@ -309,25 +291,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
     declaredFieldNames = listOf("value", "directive"),
     checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-    required = true,
-  )
-
-  fun implementationReceiptDeclaration(
-    consumerPhaseId: String,
-    producingPhaseId: String = PHASE_IMPLEMENT,
-  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
-    consumerPhaseId = consumerPhaseId,
-    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
-    projectionName = "${producingPhaseId}_implementation_receipt",
-    projectionContractId = FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID,
-    projectionContractVersion = FeatureTaskRuntimePlanningProjectionContract.VERSION,
-    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-    budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-    declaredFieldNames = FeatureTaskRuntimeImplementationReceipt.DECLARED_FIELD_NAMES,
-    // AC-012: the receipt is a producer claim, so audit refreshes its repository-derived context from a
-    // freshly resolved checkpoint rather than inspecting whatever tree happens to be current. The
-    // producer's own claims survive the refresh; only the repository evidence is re-derived.
-    checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
     required = true,
   )
 
@@ -405,7 +368,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     PHASE_IMPLEMENT to listOf(phaseProseDeclaration(PHASE_IMPLEMENT, PHASE_PLAN)),
     PHASE_AUDIT to listOf(
       phaseProseDeclaration(PHASE_AUDIT, PHASE_PLAN),
-      implementationReceiptDeclaration(PHASE_AUDIT),
+      phaseProseDeclaration(PHASE_AUDIT, PHASE_IMPLEMENT),
       sharedReviewEvidenceDeclaration(PHASE_AUDIT),
     ),
     PHASE_IMPLEMENT_FIX to listOf(
@@ -688,17 +651,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           perEdgeCap = null,
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
           warnAfterIterations = SEMANTIC_LOOP_WARNING_THRESHOLD,
-        ),
-        // SKILL-140: quarantine-and-regenerate edges. A consumer that rejects an upstream producer's
-        // durable record at its launch seam re-enters that producer under a bounded cap; cap
-        // exhaustion blocks durably (BLOCK, the default), naming the quarantined record.
-        FeatureTaskRuntimeBackwardEdge(
-          fromPhaseId = PHASE_AUDIT,
-          triggeringVerdict = FeatureTaskRuntimeVerdict.RECORD_REJECTED,
-          destinationPhaseId = PHASE_IMPLEMENT,
-          loopId = IMPLEMENT_REGENERATION_LOOP_ID,
-          perEdgeCap = MAX_RECORD_REGENERATION_ATTEMPTS,
-          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
       ),
       loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX, PHASE_BUILD),

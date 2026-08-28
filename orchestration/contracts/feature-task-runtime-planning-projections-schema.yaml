@@ -1,33 +1,11 @@
 # Feature-task-runtime planning-projections schema (canonical source of truth).
 #
-# This file describes the concrete bounded projection that replaces the coarse whole-receipt
-# projection for the implement->audit handoff edge:
+# Quarantined at contract version 0.3: no live planning projection variants remain. Implement prose
+# lives in feature-task-runtime-phase-output-schema.yaml and is delivered through
+# feature_task_runtime.phase_prose handoff projections, not through this schema.
 #
-# - implementation_receipt: the bounded producer claim `audit` receives from `implement` (AC-008/009)
-#
-# Plan and preplan prose live in feature-task-runtime-phase-output-schema.yaml and are delivered
-# through phase-scoped handoff projections, not through this schema.
-#
-# The generic handoff envelope (feature-task-runtime-handoff-envelope-schema.yaml) is the wire
-# container; each concrete projection names its contract id/version there. This schema is the
-# value-level contract for the structured payload those projections parse and forward: it pins the
-# allowed field names, the discriminator, the contract version, and strict
-# additionalProperties:false per variant, so a producer envelope, a narration block, a generic
-# producer summary, progress diagnostics, tool output, or raw source body cannot satisfy any variant.
-#
-# Why this exists:
-#
-# - AC-006/AC-009: the projection excludes planning narration, presentation summary, generic
-#   producer summary, progress diagnostics, and arbitrary plan output fields. Strict per-variant
-#   shape is what keeps the delivered projection bounded rather than the whole producing output.
-#
-# What lives here vs. in Kotlin:
-#
-# - This file defines the SHAPE of each variant: required fields, enums, the pinned contract version,
-#   and strict additionalProperties:false so an undeclared wire field fails loudly.
-# - changed-path normalization/uniqueness/count limits beyond what JSON Schema expresses, and the
-#   checkpoint policy are cross-field rules enforced in FeatureTaskRuntimePlanningProjectionModels.kt
-#   and documented under x-coherence-checks.
+# Legacy implementation_receipt payloads fail this reject-all root; the runtime quarantines and
+# regenerates in-band rather than dual-reading old receipts.
 #
 # Versioning rule:
 #
@@ -38,156 +16,17 @@
 $schema: "https://json-schema.org/draft/2020-12/schema"
 $id: "https://skill-bill.dev/contracts/feature-task-runtime-planning-projections-schema.yaml"
 title: "Feature-task-runtime planning projections"
-description: "Strict oneOf over the concrete bounded implementation receipt for the implement/audit edge."
+description: "Quarantined reject-all schema; no live bounded planning projection variants."
 type: object
-oneOf:
-  - $ref: "#/$defs/implementation_receipt"
+oneOf: []
 
 x-coherence-checks:
-  - id: discriminator-uniqueness
-    description: >-
-      The variant carries projection_kind implementation_receipt. The Kotlin ProjectionKind enum mirrors
-      this value; an unknown or missing kind is a malformed-projection rejection.
-  - id: changed-path-normalization
-    description: >-
-      implementation_receipt.changed_paths are normalized repository-relative paths: no absolute
-      paths, no backslashes, no `..` segments, no duplicates, and bounded by the projection budget.
-  - id: list-cap-budget-agreement
-    description: >-
-      Every `maxItems` here equals the matching Kotlin cap
-      (FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT, FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT
-      for changed_paths and working_tree_owned_paths), and
-      FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION sums the widest variant's caps.
-      A schema-valid projection therefore cannot overflow the item budget it is delivered under.
-  - id: tests-executed-distinct
-    description: >-
-      tests_executed entries (name + outcome) are distinct from the tests_added/tests_updated
-      identifier lists; a test merely listed as added is not also counted as executed.
   - id: contract-version-parity
     description: >-
-      every variant's contract_version.const equals FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
+      contract_version.const equals FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
       pinned by FeatureTaskRuntimePlanningProjectionsSchemaContractVersionTest.
 
 $defs:
   contractVersion:
     type: string
-    const: "0.2"
-  nonBlank:
-    type: string
-    minLength: 1
-    maxLength: 4096
-    pattern: ".*\\S.*"
-  compactSummary:
-    allOf:
-      - { $ref: "#/$defs/nonBlank" }
-      - { pattern: "^[^\\n\\r\\t`]+$" }
-      - { not: { pattern: "\\{\\s*\"|\"\\s*:\\s*[\\[{\"]|@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )" } }
-  strings:
-    type: array
-    maxItems: 128
-    items: { $ref: "#/$defs/nonBlank" }
-  openWorkItems:
-    type: array
-    maxItems: 128
-    items:
-      oneOf:
-        - { $ref: "#/$defs/nonBlank" }
-        - { $ref: "#/$defs/deviation" }
-  repoPath:
-    type: string
-    minLength: 1
-    maxLength: 1024
-    pattern: "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
-  repositoryCheckpoint:
-    type: object
-    additionalProperties: false
-    required: [fingerprint]
-    properties:
-      fingerprint: { $ref: "#/$defs/nonBlank" }
-      base_ref: { $ref: "#/$defs/nonBlank" }
-      head_ref: { $ref: "#/$defs/nonBlank" }
-      working_tree_owned_paths:
-        type: array
-        maxItems: 512
-        items: { $ref: "#/$defs/repoPath" }
-
-  implementation_receipt:
-    type: object
-    additionalProperties: false
-    required:
-      - projection_kind
-      - contract_version
-      - completed_task_ids
-      - changed_paths
-      - tests_executed
-      - reconciliation_evidence
-    properties:
-      projection_kind: { const: "implementation_receipt" }
-      contract_version: { $ref: "#/$defs/contractVersion" }
-      completed_task_ids:
-        type: array
-        maxItems: 128
-        items:
-          type: string
-          pattern: "^[a-z][a-z0-9-]*$"
-          minLength: 1
-          maxLength: 128
-      changed_paths:
-        type: array
-        uniqueItems: true
-        maxItems: 512
-        items: { $ref: "#/$defs/repoPath" }
-      tests_added:
-        type: array
-        maxItems: 128
-        items: { $ref: "#/$defs/repoPath" }
-      tests_updated:
-        type: array
-        maxItems: 128
-        items: { $ref: "#/$defs/repoPath" }
-      tests_executed:
-        type: array
-        maxItems: 128
-        items: { $ref: "#/$defs/test_execution" }
-      deviations:
-        type: array
-        maxItems: 128
-        items: { $ref: "#/$defs/deviation" }
-      unresolved_items: { $ref: "#/$defs/openWorkItems" }
-      reconciliation_evidence: { $ref: "#/$defs/reconciliation_evidence" }
-      repository_checkpoint: { $ref: "#/$defs/repositoryCheckpoint" }
-      reconciled_state: { type: object }
-      repair_item_results: { type: array }
-      deferred_repair_item_ids:
-        type: array
-        uniqueItems: true
-        maxItems: 100
-        items: { type: string, minLength: 1, pattern: ".*\\S.*" }
-      unresolvable_repair: { type: object }
-      repair_receipt: { type: object }
-
-  test_execution:
-    type: object
-    additionalProperties: false
-    required: [name, outcome]
-    properties:
-      name: { $ref: "#/$defs/repoPath" }
-      outcome:
-        type: string
-        enum: [passed, failed, skipped]
-
-  deviation:
-    type: object
-    additionalProperties: false
-    required: [ref, note]
-    properties:
-      ref: { $ref: "#/$defs/nonBlank" }
-      note: { $ref: "#/$defs/compactSummary" }
-
-  reconciliation_evidence:
-    type: object
-    additionalProperties: false
-    required: [reconciled, evidence]
-    properties:
-      reconciled: { const: true }
-      evidence: { $ref: "#/$defs/nonBlank" }
+    const: "0.3"

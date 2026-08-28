@@ -71,6 +71,7 @@ internal fun phasesFor(request: FeatureTaskRuntimeRunRequest): List<String> {
 }
 
 internal fun mutatingReconciliationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
+  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) return null
   if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
   // Only a completion claim owes a reconciliation report. A retryable blocked or failed envelope is a
   // schema-valid terminal outcome that never claimed the tree reached target, so charging it with a

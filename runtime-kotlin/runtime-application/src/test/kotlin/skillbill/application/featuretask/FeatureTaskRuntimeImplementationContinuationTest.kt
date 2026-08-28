@@ -2,9 +2,6 @@ package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -18,10 +15,10 @@ class FeatureTaskRuntimeImplementationContinuationTest {
   }
 
   @Test
-  fun `closures from segment one stay closed and only still-open obligations reach segment three`() {
+  fun `prior value segments accumulate and the next segment number advances`() {
     val history = listOf(
-      attempt(sequenceNumber = 1, completedTaskIds = listOf("task-1")),
-      attempt(sequenceNumber = 2, completedTaskIds = listOf("task-2")),
+      attempt(sequenceNumber = 1, value = "segment one"),
+      attempt(sequenceNumber = 2, value = "segment two"),
     )
 
     val continuation = assertNotNull(
@@ -29,13 +26,13 @@ class FeatureTaskRuntimeImplementationContinuationTest {
     )
 
     assertEquals(3, continuation.segmentNumber)
-    assertEquals(listOf("task-1", "task-2"), continuation.completedTaskIds)
-    assertEquals(listOf("task-3"), continuation.openObligationIds)
+    assertEquals(listOf("segment one", "segment two"), continuation.priorValueSegments)
+    assertEquals("optional directive", continuation.latestPrompt)
   }
 
   @Test
   fun `the projection is byte-identical for the same durable state regardless of who rebuilds it`() {
-    val history = listOf(attempt(sequenceNumber = 1, completedTaskIds = listOf("task-1")))
+    val history = listOf(attempt(sequenceNumber = 1, value = "segment one"))
 
     val inProcessRetry = featureTaskRuntimeImplementationContinuationFrom("implement", history, obligations())
     val freshProcessResume = featureTaskRuntimeImplementationContinuationFrom(
@@ -50,29 +47,27 @@ class FeatureTaskRuntimeImplementationContinuationTest {
   @Test
   fun `attempts under a different loop id are not mixed into the projection`() {
     val history = listOf(
-      attempt(sequenceNumber = 1, completedTaskIds = listOf("task-1")),
-      attempt(sequenceNumber = 2, completedTaskIds = listOf("task-2")).copy(loopId = "audit_gap"),
+      attempt(sequenceNumber = 1, value = "segment one"),
+      attempt(sequenceNumber = 2, value = "segment two").copy(loopId = "audit_gap"),
     )
 
     val continuation = assertNotNull(
       featureTaskRuntimeImplementationContinuationFrom("implement", history, obligations()),
     )
 
-    assertEquals(listOf("task-1"), continuation.completedTaskIds)
-    assertEquals(listOf("task-2", "task-3"), continuation.openObligationIds)
+    assertEquals(listOf("segment one"), continuation.priorValueSegments)
+    assertEquals(2, continuation.segmentNumber)
   }
 
   @Test
-  fun `the continuation directive names every still-open obligation and the bounded prior receipt`() {
+  fun `the continuation directive names every prior value segment`() {
     val continuation = assertNotNull(
       featureTaskRuntimeImplementationContinuationFrom(
         "implement",
         listOf(
-          attempt(sequenceNumber = 1, completedTaskIds = listOf("task-1")).copy(
-            deviations = listOf(FeatureTaskRuntimeReceiptDeviation("task-1", "used a sibling file")),
-            unresolvedItems = listOf("task-2 tests still owed"),
-            reconciliationEvidence = FeatureTaskRuntimeReceiptReconciliation(true, "re-read every changed path"),
-            repositoryCheckpoint = FeatureTaskRuntimeReceiptCheckpoint("abc123", "main", "feat/x"),
+          attempt(sequenceNumber = 1, value = "segment one prose").copy(
+            prompt = "keep going on task-2",
+            failureDisposition = null,
           ),
         ),
         obligations(),
@@ -82,16 +77,7 @@ class FeatureTaskRuntimeImplementationContinuationTest {
     val directive = implementationContinuationDirective("implement", continuation)
 
     assertTrue(directive.contains("segment 2"), directive)
-    listOf(
-      "task-2",
-      "task-3",
-      "task-1",
-      "src/Foo.kt",
-      "used a sibling file",
-      "task-2 tests still owed",
-      "re-read every changed path",
-      "abc123",
-    ).forEach { expected ->
+    listOf("segment one prose", "keep going on task-2").forEach { expected ->
       assertTrue(directive.contains(expected), "Directive must carry '$expected'; got:\n$directive")
     }
   }
@@ -100,7 +86,7 @@ class FeatureTaskRuntimeImplementationContinuationTest {
   fun `the continuation directive is empty for a different phase or no continuation`() {
     val continuation = featureTaskRuntimeImplementationContinuationFrom(
       "implement",
-      listOf(attempt(sequenceNumber = 1, completedTaskIds = listOf("task-1"))),
+      listOf(attempt(sequenceNumber = 1, value = "segment one")),
       obligations(),
     )
 
@@ -114,7 +100,7 @@ class FeatureTaskRuntimeImplementationContinuationTest {
     loopId = null,
   )
 
-  private fun attempt(sequenceNumber: Int, completedTaskIds: List<String>): FeatureTaskRuntimeImplementationAttempt =
+  private fun attempt(sequenceNumber: Int, value: String): FeatureTaskRuntimeImplementationAttempt =
     FeatureTaskRuntimeImplementationAttempt(
       sequenceNumber = sequenceNumber,
       phaseId = "implement",
@@ -122,7 +108,7 @@ class FeatureTaskRuntimeImplementationContinuationTest {
       agentId = "claude",
       status = FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE,
       recordedAt = "2026-08-04T10:0$sequenceNumber:00Z",
-      completedTaskIds = completedTaskIds,
-      changedPaths = listOf("src/Foo.kt"),
+      value = value,
+      prompt = "optional directive",
     )
 }
