@@ -175,6 +175,8 @@ data class FeatureTaskRuntimeAuditGapProgress(
   }
 
   companion object {
+    const val HAD_GAPS_MARKER: String = "gaps_found"
+
     /** Strict decode; loud-fails on a missing or malformed required field. */
     @OpenBoundaryMap("Feature-task-runtime audit-gap progress decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeAuditGapProgress {

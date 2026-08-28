@@ -530,9 +530,6 @@ internal class FeatureTaskRuntimeRunState(
   fun unresolvedReviewFindings(phaseId: String): List<FeatureTaskRuntimeReviewFinding> =
     FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings(parsedOutput(outputFor(phaseId)))
 
-  fun unmetAuditCriteria(phaseId: String): List<String> =
-    FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(parsedOutput(outputFor(phaseId)))
-
   // The latest validated output for the phase (highest iteration), or null when none is present.
   fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =
     outputs.filter { it.phaseId == phaseId }.maxByOrNull { it.iteration }

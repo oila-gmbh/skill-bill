@@ -373,7 +373,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       listOf(
         def.PHASE_PLAN to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
         def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
-        def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
+        def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
       ),
       upstreamRemediation.map {
         (it.sourceRef as FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput).producingPhaseId to
@@ -385,9 +385,13 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     )
     assertTrue(auditRemediation.none { it.projectionContractId == def.UPSTREAM_PHASE_RECEIPT_CONTRACT_ID })
     assertEquals(
-      listOf("unmet_criteria", "repository_checkpoint"),
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      upstreamRemediation.last().checkpointPolicy,
+      "audit-to-implement prose refreshes the repository checkpoint",
+    )
+    assertEquals(
+      listOf("value", "directive"),
       upstreamRemediation.last().declaredFieldNames,
-      "the remediation handoff carries the unmet criteria and the checkpoint, and nothing else",
     )
   }
 

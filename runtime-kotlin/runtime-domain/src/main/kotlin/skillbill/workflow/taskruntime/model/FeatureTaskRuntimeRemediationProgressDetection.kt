@@ -7,28 +7,16 @@ data class FeatureTaskRuntimeAuditRepairProgressDecision(
   val reason: String?,
 )
 
-data class FeatureTaskRuntimeAuditRepairGapIdentities(
-  val gapIds: Set<String>,
-  val criterionRefs: Set<String>,
-)
-
 fun detectAuditRepairNonProgress(
-  previousCriterionRefs: Set<String>,
-  currentCriterionRefs: Set<String>,
+  previousHadGaps: Boolean,
+  currentHasGaps: Boolean,
   previousRepositoryFingerprint: String,
   currentRepositoryFingerprint: String,
 ): FeatureTaskRuntimeAuditRepairProgressDecision {
-  if (currentCriterionRefs.isEmpty()) {
+  if (!currentHasGaps) {
     return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
   }
-  if (previousCriterionRefs.isEmpty()) {
-    return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
-  }
-  val clearedPriorRefs = previousCriterionRefs - currentCriterionRefs
-  val retainedPriorRefs = previousCriterionRefs intersect currentCriterionRefs
-  val madeProgress = clearedPriorRefs.isNotEmpty() &&
-    (currentCriterionRefs.size < previousCriterionRefs.size || retainedPriorRefs.isNotEmpty())
-  if (madeProgress) {
+  if (!previousHadGaps) {
     return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
   }
   val repositoryUnchanged = previousRepositoryFingerprint == currentRepositoryFingerprint
@@ -37,8 +25,8 @@ fun detectAuditRepairNonProgress(
   return FeatureTaskRuntimeAuditRepairProgressDecision(
     blocked = blocked,
     reason = if (blocked) {
-      "Audit made no progress: the unmet acceptance criteria are unchanged " +
-        "(${currentCriterionRefs.sorted()}) and the repository fingerprint is unchanged."
+      "Audit made no progress: the envelope verdict is still gaps_found and the " +
+        "repository fingerprint is unchanged."
     } else {
       null
     },

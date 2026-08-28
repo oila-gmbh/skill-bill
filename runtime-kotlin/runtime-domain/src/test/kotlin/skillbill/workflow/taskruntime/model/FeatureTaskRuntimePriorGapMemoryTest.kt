@@ -6,12 +6,13 @@ import kotlin.test.assertFailsWith
 
 class FeatureTaskRuntimePriorGapMemoryTest {
   @Test
-  fun `toProjectionFields renders exactly the four declared fields`() {
+  fun `toProjectionFields renders exactly the declared fields`() {
     val memory = FeatureTaskRuntimePriorGapMemory(
       round = 2,
-      priorUnmetCriteria = listOf("AC-001: missing the bounded projection", "AC-003: audit re-justification"),
-      lastImplementClaims = listOf("AC-001"),
-      stickyIds = listOf("AC-001"),
+      priorAuditValues = listOf(
+        """{"gaps":[{"criterion":"AC-001","note":"missing projection"}]}""",
+        """{"gaps":[{"criterion":"AC-003","note":"audit re-justification"}]}""",
+      ),
     )
     assertEquals(FeatureTaskRuntimePriorGapMemory.DECLARED_FIELD_NAMES, memory.toProjectionFields().map { it.name })
     assertEquals(
@@ -19,75 +20,83 @@ class FeatureTaskRuntimePriorGapMemoryTest {
       memory.toProjectionFields().single { it.name == FeatureTaskRuntimePriorGapMemory.FIELD_ROUND }.value,
     )
     assertEquals(
-      FeatureTaskRuntimeHandoffProjectionValue.TextList(memory.priorUnmetCriteria),
+      FeatureTaskRuntimeHandoffProjectionValue.TextList(memory.priorAuditValues),
       memory.toProjectionFields()
-        .single { it.name == FeatureTaskRuntimePriorGapMemory.FIELD_PRIOR_UNMET_CRITERIA }.value,
-    )
-    assertEquals(
-      FeatureTaskRuntimeHandoffProjectionValue.TextList(memory.lastImplementClaims),
-      memory.toProjectionFields()
-        .single { it.name == FeatureTaskRuntimePriorGapMemory.FIELD_LAST_IMPLEMENT_CLAIMS }.value,
-    )
-    assertEquals(
-      FeatureTaskRuntimeHandoffProjectionValue.TextList(memory.stickyIds),
-      memory.toProjectionFields().single { it.name == FeatureTaskRuntimePriorGapMemory.FIELD_STICKY_IDS }.value,
+        .single { it.name == FeatureTaskRuntimePriorGapMemory.FIELD_PRIOR_AUDIT_VALUES }.value,
     )
   }
 
   @Test
-  fun `an over-length prior unmet note is rejected so a bounded projection never leaks an unbounded audit note`() {
-    val tooLong = "x".repeat(FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS + 1)
+  fun `a stuffed value longer than the old per-note cap is accepted`() {
+    val stuffed = "x".repeat(FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS + 1)
+    val memory = FeatureTaskRuntimePriorGapMemory(
+      round = 1,
+      priorAuditValues = listOf(stuffed),
+    )
+    assertEquals(listOf(stuffed), memory.priorAuditValues)
+  }
+
+  @Test
+  fun `an over-budget prior audit value is rejected so a bounded projection never leaks unbounded prose`() {
+    val tooLong = "x".repeat(FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION.maxUtf8Bytes + 1)
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimePriorGapMemory(
         round = 1,
-        priorUnmetCriteria = listOf("AC-001: $tooLong"),
-        lastImplementClaims = emptyList(),
-        stickyIds = emptyList(),
+        priorAuditValues = listOf(tooLong),
       )
     }
   }
 
   @Test
   fun `an over-cap list is rejected and empty lists are valid`() {
-    val overCap = List(FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT + 1) { "AC-001" }
+    val overCap = List(FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT + 1) { "AC-001 value $it" }
     assertFailsWith<IllegalArgumentException> {
       FeatureTaskRuntimePriorGapMemory(
         round = 1,
-        priorUnmetCriteria = overCap,
-        lastImplementClaims = emptyList(),
-        stickyIds = emptyList(),
+        priorAuditValues = overCap,
       )
     }
-    // Empty lists are the AC-004 degradation shape: absent memory, never a rejection.
     val empty = FeatureTaskRuntimePriorGapMemory(
       round = 1,
-      priorUnmetCriteria = emptyList(),
-      lastImplementClaims = emptyList(),
-      stickyIds = emptyList(),
+      priorAuditValues = emptyList(),
     )
     assertEquals(
-      listOf(
-        FeatureTaskRuntimePriorGapMemory.FIELD_PRIOR_UNMET_CRITERIA,
-        FeatureTaskRuntimePriorGapMemory.FIELD_LAST_IMPLEMENT_CLAIMS,
-        FeatureTaskRuntimePriorGapMemory.FIELD_STICKY_IDS,
-      ),
+      listOf(FeatureTaskRuntimePriorGapMemory.FIELD_PRIOR_AUDIT_VALUES),
       empty.toProjectionFields().filter { it.value.itemCount == 0 }.map { it.name },
     )
   }
 
   @Test
-  fun `decode round-trips the four fields and reuses construction bounds`() {
+  fun `decode round-trips the fields and reuses construction bounds`() {
     val memory = FeatureTaskRuntimePriorGapMemory(
       round = 3,
-      priorUnmetCriteria = listOf("AC-004: degrade gracefully"),
-      lastImplementClaims = listOf("AC-004"),
-      stickyIds = listOf("AC-004"),
+      priorAuditValues = listOf("""{"gaps":[{"criterion":"AC-004","note":"degrade gracefully"}]}"""),
     )
     val decoded = FeatureTaskRuntimePriorGapMemory.fromMap(
       memory.toProjectionFields().associate { it.name to it.value.wireDecode() },
     )
     assertEquals(memory, decoded)
     assertFailsWith<IllegalArgumentException> { FeatureTaskRuntimePriorGapMemory.fromMap(mapOf()) }
+  }
+
+  @Test
+  fun `over-budget values are dropped whole rather than sliced`() {
+    val overBudget = """{"gaps":[{"criterion":"AC-7","note":"abcdefghij"}]}"""
+    val bounded = boundPriorGapNotes(listOf(overBudget), maxUtf8Bytes = 8, maxItems = 8)
+    assertEquals(emptyList(), bounded.values)
+    assertEquals(1, bounded.droppedForUtf8Budget)
+    assertEquals(0, bounded.droppedForListCap)
+  }
+
+  @Test
+  fun `newest values that fit are kept when packing overflows the utf8 budget`() {
+    val bounded = boundPriorGapNotes(
+      listOf("oldest-aaaaaa", "middle-bbbbbb", "newest-cccccc"),
+      maxUtf8Bytes = 13,
+      maxItems = 8,
+    )
+    assertEquals(listOf("newest-cccccc"), bounded.values)
+    assertEquals(2, bounded.droppedForUtf8Budget)
   }
 }
 

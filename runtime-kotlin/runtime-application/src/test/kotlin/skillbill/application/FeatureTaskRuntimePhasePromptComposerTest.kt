@@ -759,7 +759,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(reviewPrompt, "\"findings\" array", false, "review names the findings signal")
     assertContains(reviewPrompt, "\"approved\" or \"changes_requested\"", false, "review names the verdict values")
     assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
-    assertAuditPromptNamesSignal(auditPrompt, "produced_outputs.gaps array", "the criterion list")
+    assertAuditPromptNamesSignal(auditPrompt, "produced_outputs.value", "the audit prose signal")
     assertAuditPromptNamesSignal(auditPrompt, "satisfied | gaps_found", "the verdict values")
     assertAuditPromptNamesSignal(
       auditPrompt,
@@ -794,9 +794,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(
       FeatureTaskRuntimePhasePromptComposer.compose(
         ISSUE_KEY,
-        briefingFor("implement", unmetCriterionRefs = listOf("AC-003: missing DI binding")),
+        briefingFor("implement", auditGapReentry = true),
       ),
-      "Follow that plan completely",
+      "Follow every gap named there completely",
       false,
       "implement remediation should prefer the audit's plan",
     )
@@ -827,7 +827,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   fun `carried disposition observation enumeration failure names the closed token set`() {
     val retry = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
-      briefingFor("audit", unmetCriterionRefs = listOf("AC-001")),
+      briefingFor("audit"),
       priorSchemaFailure =
       "produced_outputs.carried_gap_dispositions[0].evidence.observation: does not have a value in the " +
         "enumeration [\"resolution_verified\", \"recurrence_verified\"]",
@@ -975,10 +975,11 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditRetry, "<one sentence describing what this phase did>", false, "audit hands back a skeleton")
     assertContains(auditRetry, "\"phase_id\": \"audit\"", false, "skeleton pins the phase id")
     assertContains(auditRetry, "\"verdict\": \"satisfied\"", false, "audit skeleton seeds the audit verdict")
-    assertContains(auditRetry, "\"gaps\": []", false, "audit skeleton seeds the criterion list")
+    assertContains(auditRetry, "\"value\":", false, "audit skeleton seeds produced_outputs.value")
+    assertContains(auditRetry, "\"gaps\":[]", false, "audit skeleton example inner shape names gaps")
     assertContains(
       auditRetry,
-      "\"non_blocking_findings\": []",
+      "\"non_blocking_findings\":[]",
       false,
       "audit skeleton seeds the non-blocking findings key",
     )
@@ -1015,20 +1016,16 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `an oversized audit artifact reference receives structural retry guidance`() {
+  fun `an oversized audit value receives compression retry guidance`() {
     val retry = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("audit"),
       priorSchemaFailure =
-      "produced_outputs.audit_repair_plan: gaps[0].failure_evidence.artifact_ref: " +
-        "must be at most 256 characters long",
+      "produced_outputs.value: must be at most 4096 characters long",
     )
 
-    assertContains(retry, "artifact_ref is a bounded pointer, not an evidence container")
-    assertContains(retry, "It MUST be at most 256 characters")
-    assertContains(retry, "Do not concatenate multiple paths")
-    assertContains(retry, "Put necessary detail in the issue")
-    assertContains(retry, "fix, or other schema-authorized descriptive fields")
+    assertContains(retry, "bounded SUMMARY, not a verification transcript")
+    assertContains(retry, "rejected for length alone")
   }
 
   @Test
@@ -1106,9 +1103,23 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `audit remediation names the criteria it must implement in this invocation`() {
-    val briefing = briefingFor("implement").copy(
-      unresolvedAuditGapIds = listOf("AC-004", "AC-005"),
+  fun `audit remediation names the audit prose it must implement in this invocation`() {
+    val auditOutput = """
+    {
+      "contract_version": "0.5",
+      "phase_id": "audit",
+      "status": "completed",
+      "summary": "Audit found gaps.",
+      "verdict": "gaps_found",
+      "produced_outputs": {
+        "value": "{\"gaps\":[{\"criterion\":\"AC-004\",\"note\":\"gap four\"},{\"criterion\":\"AC-005\",\"note\":\"gap five\"}],\"non_blocking_findings\":[]}"
+      }
+    }
+    """.trimIndent()
+    val briefing = briefingFor(
+      phaseId = "implement",
+      auditGapReentry = true,
+      auditOutput = auditOutput,
     )
 
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefing)
@@ -1117,62 +1128,48 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "AC-004")
     assertContains(prompt, "AC-005")
     assertContains(prompt, "implementation_receipt JSON stuffed inside value")
-    assertTrue(
-      !prompt.contains("repair_item_results"),
-      "the remediation round owes no per-item results",
-    )
-    assertTrue(
-      !prompt.contains("openObligationIds") && !prompt.contains("Still open"),
-      "remediation must not enumerate openObligationIds",
-    )
+    assertTrue(!prompt.contains("repair_item_results"))
   }
 
   @Test
-  fun `audit_gap implement re-entry renders sticky-priority directive but forward implement does not`() {
+  fun `audit_gap implement re-entry renders prior-gap directive but forward implement does not`() {
     val memory = FeatureTaskRuntimePriorGapMemory(
       round = 2,
-      priorUnmetCriteria = listOf("AC-002: $AUDIT_GAP_MESSAGE"),
-      lastImplementClaims = listOf("AC-001"),
-      stickyIds = listOf("AC-002"),
+      priorAuditValues = listOf("""{"gaps":[{"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}]}"""),
     )
     val remediation = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
-      briefingFor("implement", priorGapMemory = memory),
+      briefingFor("implement", priorGapMemory = memory, auditGapReentry = true),
     )
-    assertContains(remediation, "Prior-gap memory — sticky criteria take priority")
+    assertContains(remediation, "Prior-gap memory — re-justify recurrence against prior audit prose")
     assertContains(remediation, "AC-002")
-    assertContains(remediation, "Never narrow scope to only the")
-    assertContains(remediation, "closing every entry in the audit_gaps list")
+    assertContains(remediation, "prior_audit_values")
 
     val forward = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("implement"),
     )
-    assertTrue(!forward.contains("Prior-gap memory — sticky criteria take priority"))
+    assertTrue(!forward.contains("Prior-gap memory — re-justify recurrence against prior audit prose"))
     assertTrue(!forward.contains("prior_gap_memory"))
   }
 
   @Test
-  fun `audit after remediation requires sticky re-justification while first audit keeps blank-slate wording`() {
+  fun `audit after remediation requires re-justification while first audit keeps blank-slate wording`() {
     val memory = FeatureTaskRuntimePriorGapMemory(
       round = 2,
-      priorUnmetCriteria = listOf("AC-002: $AUDIT_GAP_MESSAGE"),
-      lastImplementClaims = listOf("AC-001"),
-      stickyIds = listOf("AC-002"),
+      priorAuditValues = listOf("""{"gaps":[{"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}]}"""),
     )
     val remediation = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
-      briefingFor("audit", priorGapMemory = memory),
+      briefingFor("audit", priorGapMemory = memory, auditGapReentry = true),
     )
     assertContains(remediation, "explicit re-justification")
-    assertContains(remediation, "Sticky ids")
+    assertContains(remediation, "prior_audit_values")
     assertContains(remediation, "AC-002")
-    assertTrue(!remediation.contains("nothing to carry forward"), "blank-slate wording must be subordinated")
-    assertTrue(!remediation.contains("never need to account for what an earlier audit said"))
+    assertTrue(!remediation.contains("nothing to carry forward"))
 
     val firstAudit = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
     assertContains(firstAudit, "nothing to carry forward")
-    assertContains(firstAudit, "never need to account for what an earlier audit said")
   }
 
   @Test
@@ -1201,8 +1198,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(reviewPrompt, keys.REVIEW_FINDINGS, false, "review names the findings key")
     assertContains(reviewPrompt, keys.VERDICT, false, "review names the verdict key")
     assertContains(reviewPrompt, keys.REVIEW_RUN_ID, false, "review names the run-id key that keys loop findings")
-    assertContains(auditPrompt, keys.AUDIT_GAPS, false, "audit names the compact gaps key")
-    assertContains(auditPrompt, keys.AUDIT_NON_BLOCKING_FINDINGS, false, "audit names the non-blocking key")
+    assertContains(auditPrompt, "\"value\"", false, "audit names the prose value key")
+    assertContains(auditPrompt, "non_blocking_findings", false, "audit teaches inner gap shape inside value")
     assertContains(auditPrompt, keys.VERDICT, false, "audit names the verdict key")
   }
 
@@ -1519,7 +1516,7 @@ private val PREPLAN_OUTPUT = projectionEnvelope("preplan", PlanningProjectionFix
 private val PLAN_OUTPUT = projectionEnvelope("plan", PlanningProjectionFixtures.PLAN_PROSE)
 
 private fun projectionEnvelope(phaseId: String, producedOutputs: String): String =
-  """{"contract_version":"0.4","phase_id":"$phaseId","status":"completed",""" +
+  """{"contract_version":"0.5","phase_id":"$phaseId","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
 
 private fun projectionExampleCases() = listOf(
@@ -1535,14 +1532,21 @@ private val implementPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMP
 private fun briefingFor(
   phaseId: String,
   featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-  unmetCriterionRefs: List<String> = emptyList(),
-  validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
+  auditGapReentry: Boolean = false,
+  auditOutput: String = validJsonOutput("audit"),
 ): FeatureTaskRuntimePhaseLaunchBriefing {
   val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
+  val declaration = if (auditGapReentry && phaseId == implementPhase) {
+    phaseDeclaration(phaseId, featureSize).copy(
+      projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.auditRemediationProjections(),
+    )
+  } else {
+    phaseDeclaration(phaseId, featureSize)
+  }
   return FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = phaseDeclaration(phaseId, featureSize),
+      declaration = declaration,
       runInvariants = FeatureTaskRuntimeRunInvariants(
         specReference = SPEC_REFERENCE,
         featureSize = featureSize,
@@ -1553,18 +1557,16 @@ private fun briefingFor(
         FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
         FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
         FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
-        FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
+        FeatureTaskRuntimePhaseOutput("audit", 1, auditOutput),
         FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
         verifyFindingsPhaseOutput(),
         FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
         FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
         FeatureTaskRuntimePhaseOutput("commit_push", 1, FINALISED_COMMIT_PUSH_OUTPUT),
       ),
-      reentryGapCriteria = unmetCriterionRefs,
-      // audit's implementation-receipt edge refreshes from a resolved checkpoint (AC-012).
       repositoryCheckpoint = checkpoint,
       expectedRepositoryCheckpoint = checkpoint,
-      validationDepth = validationDepth,
+      validationDepth = ValidationDepth.DEFAULT,
       priorGapMemory = priorGapMemory,
     ),
   )

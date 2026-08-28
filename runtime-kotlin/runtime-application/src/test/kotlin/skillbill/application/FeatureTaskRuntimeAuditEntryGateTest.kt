@@ -255,10 +255,11 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   }
 
   @Test
-  fun `an undecidable audit fails its own schema gate rather than wedging the run behind the gate`() {
+  fun `an undecidable audit fails the phase-output schema rather than wedging the run behind the gate`() {
     var auditLaunches = 0
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
+      validator = realFeatureTaskRuntimePhaseOutputValidator,
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId == "audit") {
@@ -272,8 +273,8 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertEquals(1, auditLaunches, "an undecidable audit settles on its own gate, without a relaunch")
-    assertGateBlockNamesRule(blocked.blockedReason, "output-verification")
+    assertEquals(1, auditLaunches, "an off-vocabulary audit verdict settles on the schema gate, without a relaunch")
+    assertGateBlockNamesRule(blocked.blockedReason, "phase-output-schema")
     assertTrue(
       !blocked.blockedReason.contains("off-vocabulary verdict 'x' and no y'"),
       "the blocked reason must not quote the response wire verdict",
@@ -285,7 +286,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   }
 
   @Test
-  fun `an audit affirming no unmet criteria settles satisfied even under a synonym verdict`() {
+  fun `an audit with satisfied verdict and audit prose advances to review`() {
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       launcher = RuntimeRecordingLauncher { request ->
@@ -299,7 +300,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(
       harness.launchOrder().contains("review"),
-      "an audit whose criteria array affirms completeness must not block review on its wording",
+      "an audit whose envelope verdict is satisfied must not block review",
     )
   }
 
@@ -552,12 +553,11 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   }
 
   @Test
-  fun `gaps_found with absent, empty, or malformed gaps blocks before remediation`() {
+  fun `gaps_found with blank or missing audit value blocks before remediation`() {
     listOf(
       "{}",
-      "{\"gaps\":[]}",
-      "{\"gaps\":[{\"note\":\"AC4 is missing\"},{}]}",
-      "{\"gaps\":[{\"criterion\":\"AC-004\",\"severity\":\"nit\"}]}",
+      "{\"value\":\"\"}",
+      "{\"value\":\"   \"}",
     ).forEach { producedOutputs ->
       var auditLaunches = 0
       val harness = runnerHarness(
@@ -604,9 +604,10 @@ private const val CLEAN_REVIEW_OUTPUT = """{"contract_version":"0.1","produced_o
 // `' and no` in the wire value is the realistic scrub bug: a non-greedy `'.*?'(?= and no)` match
 // stops early and leaves a response-derived suffix in Violated constraint outside the authorized
 // repair section.
-private const val UNDECIDABLE_AUDIT_OUTPUT = """{"contract_version":"0.1","verdict":"x' and no y"}"""
+private const val UNDECIDABLE_AUDIT_OUTPUT =
+  """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",""" +
+    """"verdict":"x' and no y","produced_outputs":{"value":"{\"gaps\":[]}"}}"""
 
-// Affirms every criterion through the criteria array while wording the verdict off-vocabulary: the
-// derived verdict is decidable, so this settles satisfied and review proceeds.
 private const val SYNONYM_SATISFIED_AUDIT_OUTPUT =
-  """{"contract_version":"0.1","verdict":"Satisfied","produced_outputs":{"gaps":[]}}"""
+  """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"criteria met",""" +
+    """"verdict":"satisfied","produced_outputs":{"value":"{\"gaps\":[],\"non_blocking_findings\":[]}"}}"""

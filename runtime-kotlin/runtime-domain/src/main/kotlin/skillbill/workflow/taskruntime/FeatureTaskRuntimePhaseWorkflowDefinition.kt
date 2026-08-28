@@ -219,7 +219,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     const val VERSION: String = "0.1"
     const val PHASE_PROSE: String = "feature_task_runtime.phase_prose"
     const val AUDIT_CLEARANCE: String = "feature_task_runtime.audit_clearance"
-    const val AUDIT_REPAIR_REQUEST: String = "feature_task_runtime.audit_repair_request"
     const val REVIEW_CLEARANCE: String = "feature_task_runtime.review_clearance"
     const val REVIEW_REPAIR_REQUEST: String = "feature_task_runtime.review_repair_request"
     const val FINDINGS_VERIFICATION_INPUT: String = "feature_task_runtime.findings_verification_input"
@@ -264,15 +263,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
     phaseProseDeclaration(PHASE_IMPLEMENT, PHASE_PLAN),
     phaseProseDeclaration(PHASE_IMPLEMENT, PHASE_IMPLEMENT),
-    phaseProjection(
-      consumerPhaseId = PHASE_IMPLEMENT,
-      producingPhaseId = PHASE_AUDIT,
-      name = "audit_repair_request",
-      contractId = PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
-      fields = listOf(
-        "unmet_criteria",
-        "repository_checkpoint",
-      ),
+    phaseProseDeclaration(
+      PHASE_IMPLEMENT,
+      PHASE_AUDIT,
       checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
     ),
     priorGapMemoryDeclaration(PHASE_IMPLEMENT),
@@ -281,6 +274,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   fun phaseProseDeclaration(
     consumerPhaseId: String,
     producingPhaseId: String = PHASE_PREPLAN,
+    checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
   ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
     consumerPhaseId = consumerPhaseId,
     sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
@@ -290,7 +285,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
     budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
     declaredFieldNames = listOf("value", "directive"),
-    checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+    checkpointPolicy = checkpointPolicy,
     required = true,
   )
 
@@ -349,7 +344,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       sourceRef = FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory,
       projectionName = PRIOR_GAP_MEMORY_PROJECTION_NAME,
       projectionContractId = PhaseProjectionContract.PRIOR_GAP_MEMORY,
-      projectionContractVersion = PhaseProjectionContract.VERSION,
+      projectionContractVersion = "0.2",
       promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
       budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
       declaredFieldNames = FeatureTaskRuntimePriorGapMemory.DECLARED_FIELD_NAMES,

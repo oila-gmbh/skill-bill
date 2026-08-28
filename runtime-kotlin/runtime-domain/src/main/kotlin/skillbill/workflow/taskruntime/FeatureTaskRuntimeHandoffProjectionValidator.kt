@@ -21,7 +21,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 
 /**
@@ -292,7 +291,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
               } ?: FeatureTaskRuntimeHandoffProjectionValue.Text(output.payload),
             ),
           )
-      } ?: durableAuditRepairProjectionFields(inputs, declaration)
+      }
     is FeatureTaskRuntimeHandoffSourceRef.RunInvariantField ->
       runInvariantFields(inputs.runInvariants, sourceRef.invariantField)
     FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling -> listOf(
@@ -334,25 +333,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         ),
       )
     }
-
-  private fun durableAuditRepairProjectionFields(
-    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
-    declaration: PhaseHandoffProjectionDeclaration,
-  ): List<FeatureTaskRuntimeHandoffProjectionField>? {
-    if (
-      declaration.projectionContractId !=
-      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST ||
-      inputs.unmetCriterionRefs.isEmpty()
-    ) {
-      return null
-    }
-    val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, emptyMap())
-    return declaration.declaredFieldNames.mapNotNull { name ->
-      runtimeOwned[name]?.let { value ->
-        FeatureTaskRuntimeHandoffProjectionField(name, projectionValue(name, value, inputs, declaration))
-      }
-    }
-  }
 
   private fun runInvariantFields(
     runInvariants: FeatureTaskRuntimeRunInvariants,
@@ -517,7 +497,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
 
   private val PHASE_PROJECTION_CONTRACT_IDS: Set<String> = setOf(
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_CLEARANCE,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT,
@@ -556,12 +535,13 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         "validated producer output could not be decoded as an object.",
       )
     val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
-    val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, produced)
+    val runtimeOwned = runtimeOwnedPhaseProjectionValues(inputs, declaration, produced, envelope)
     return declaration.declaredFieldNames.mapNotNull { name ->
-      val value = runtimeOwned[name] ?: if (name == "verdict") {
-        envelope[name]
-      } else {
-        resolveDeclaredPhaseField(produced, name)
+      val value = runtimeOwned[name] ?: when {
+        declaration.projectionContractId ==
+          FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE -> null
+        name == "verdict" -> envelope[name]
+        else -> resolveDeclaredPhaseField(produced, name)
       }
       value?.let {
         FeatureTaskRuntimeHandoffProjectionField(name, projectionValue(name, it, inputs, declaration))
@@ -573,19 +553,16 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
     produced: Map<String, Any?>,
+    envelope: Map<String, Any?>,
   ): Map<String, Any?> = when (declaration.projectionContractId) {
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE -> mapOf(
-      "clearance_status" to auditClearanceStatus(produced),
+      "clearance_status" to auditClearanceStatus(envelope),
       "review_scope" to FeatureTaskRuntimePhaseWorkflowDefinition
         .ceremonyScaling(inputs.runInvariants.featureSize)
         .reviewScope
         .wireValue,
       "repository_checkpoint" to checkpointFingerprint(inputs),
-      "verdict" to auditClearanceStatus(produced),
-    )
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST -> mapOf(
-      "unmet_criteria" to inputs.unmetCriterionRefs,
-      "repository_checkpoint" to checkpointFingerprint(inputs),
+      "verdict" to auditClearanceStatus(envelope),
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
       "unresolved_blocker_findings" to verifiedFindingsProjection(produced),
@@ -643,21 +620,8 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     return fields
   }
 
-  private fun auditClearanceStatus(produced: Map<String, Any?>): String? {
-    val gaps = produced["gaps"] as? List<*>
-    if (gaps != null) {
-      return when {
-        gaps.isEmpty() -> FeatureTaskRuntimeVerdict.SATISFIED.wireValue
-        else -> FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue
-      }
-    }
-    val unmetCriteria = produced["unmet_criteria"] as? List<*>
-    return when {
-      unmetCriteria == null -> resolveDeclaredPhaseField(produced, "clearance_status")?.toString()
-      unmetCriteria.isEmpty() -> FeatureTaskRuntimeVerdict.SATISFIED.wireValue
-      else -> FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue
-    }
-  }
+  private fun auditClearanceStatus(envelope: Map<String, Any?>): String? =
+    (envelope["verdict"] as? String)?.takeIf(String::isNotBlank)
 
   private fun verifiedFindingsProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
     FeatureTaskRuntimeFindingVerificationDisposition.parseList(

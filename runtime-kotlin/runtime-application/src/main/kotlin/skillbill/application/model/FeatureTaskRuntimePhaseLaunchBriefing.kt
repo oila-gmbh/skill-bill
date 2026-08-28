@@ -185,9 +185,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
 
     private fun priorGapMemoryToMap(memory: FeatureTaskRuntimePriorGapMemory): Map<String, Any?> = linkedMapOf(
       FeatureTaskRuntimePriorGapMemory.FIELD_ROUND to memory.round,
-      FeatureTaskRuntimePriorGapMemory.FIELD_PRIOR_UNMET_CRITERIA to memory.priorUnmetCriteria,
-      FeatureTaskRuntimePriorGapMemory.FIELD_LAST_IMPLEMENT_CLAIMS to memory.lastImplementClaims,
-      FeatureTaskRuntimePriorGapMemory.FIELD_STICKY_IDS to memory.stickyIds,
+      FeatureTaskRuntimePriorGapMemory.FIELD_PRIOR_AUDIT_VALUES to memory.priorAuditValues,
     )
 
     private fun missingMessage(key: String, kind: String): String =

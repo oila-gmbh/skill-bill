@@ -428,20 +428,14 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `continue on shrink even when the repository is unchanged`() {
+  fun `gaps_found without scrapeable criterion refs pauses when the repository is unchanged`() {
     var auditLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId == "audit") {
           auditLaunches += 1
-          facts(
-            when (auditLaunches) {
-              1 -> auditCriteriaOutput("AC-002", "AC-003")
-              2 -> auditCriteriaOutput("AC-001", "AC-002")
-              else -> auditSatisfiedOutput()
-            },
-          )
+          facts(auditGapsWithoutCanonicalRefsOutput())
         } else {
           facts(defaultPhaseOutput(request))
         }
@@ -453,12 +447,11 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       ),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val report = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
 
-    val edges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
-      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
-      .mapNotNull { it.edgeIteration }
-    assertEquals(listOf(1, 2), edges, "AC-003 was cleared, so the run continues across the unchanged tree")
+    assertContains(report.pauseReason, "Audit made no progress")
+    assertContains(report.pauseReason, "envelope verdict is still gaps_found")
+    assertContains(report.pauseReason, "repository fingerprint is unchanged")
   }
 
   @Test
@@ -637,70 +630,77 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 }
 
-// The unique unmet-criterion message a gaps_found audit carries, so the implementation-remediation briefing
-// and a cap-exhaustion block can be asserted to contain it.
 internal const val AUDIT_GAP_MESSAGE = "AC-2 acceptance criterion is not yet implemented"
 
-// A schema-valid audit output whose gaps drive the verdict: a non-empty array => gaps_found
-// (the runtime classifies from the gaps, no top-level verdict needed), an empty array => satisfied.
 internal fun auditGapsOutput(): String = """
   {
-    "contract_version": "0.4",
+    "contract_version": "0.5",
     "phase_id": "audit",
     "status": "completed",
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "gaps": [{"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}]
+      "value": "{\"gaps\":[{\"criterion\":\"AC-002\",\"note\":\"$AUDIT_GAP_MESSAGE\"}],\"non_blocking_findings\":[]}"
+    }
+  }
+""".trimIndent()
+
+internal fun auditGapsWithoutCanonicalRefsOutput(): String = """
+  {
+    "contract_version": "0.5",
+    "phase_id": "audit",
+    "status": "completed",
+    "summary": "Audit found unmet acceptance criteria.",
+    "verdict": "gaps_found",
+    "produced_outputs": {
+      "value": "AC-7 login flow is incomplete; no canonical criterion list."
     }
   }
 """.trimIndent()
 
 internal fun auditTwoGapsOutput(): String = """
   {
-    "contract_version": "0.4",
+    "contract_version": "0.5",
     "phase_id": "audit",
     "status": "completed",
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "gaps": [
-        {"criterion":"AC-003","note":"$AUDIT_GAP_MESSAGE"},
-        {"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}
-      ]
+      "value": "{\"gaps\":[{\"criterion\":\"AC-003\",\"note\":\"$AUDIT_GAP_MESSAGE\"},{\"criterion\":\"AC-002\",\"note\":\"$AUDIT_GAP_MESSAGE\"}],\"non_blocking_findings\":[]}"
     }
   }
 """.trimIndent()
 
 internal fun auditSatisfiedOutput(): String = """
   {
-    "contract_version": "0.4",
+    "contract_version": "0.5",
     "phase_id": "audit",
     "status": "completed",
     "summary": "Every acceptance criterion is met.",
     "verdict": "satisfied",
     "produced_outputs": {
-      "gaps": []
+      "value": "{\"gaps\":[],\"non_blocking_findings\":[]}"
     }
   }
 """.trimIndent()
 
-internal fun auditCriteriaOutput(vararg criteria: String): String = """
+internal fun auditCriteriaOutput(vararg criteria: String): String {
+  val gapEntries = criteria.joinToString(",") {
+    """{\"criterion\":\"$it\",\"note\":\"$AUDIT_GAP_MESSAGE\"}"""
+  }
+  return """
   {
-    "contract_version": "0.4",
+    "contract_version": "0.5",
     "phase_id": "audit",
     "status": "completed",
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "gaps": [
-        ${criteria.joinToString(
-  ",\n        ",
-) { """{"criterion":"$it","note":"$AUDIT_GAP_MESSAGE"}""" }}
-      ]
+      "value": "{\"gaps\":[$gapEntries],\"non_blocking_findings\":[]}"
     }
   }
-""".trimIndent()
+  """.trimIndent()
+}
 
 internal fun auditGapLauncher(convergeOnAudit: Int): RuntimeRecordingLauncher {
   var auditLaunches = 0
@@ -736,18 +736,11 @@ fun `prior-gap memory appears on the second audit_gap implement and the audit th
   // The second audit_gap implement (round 2) carries the memory projection; sticky ids come from the
   // two prior audits both reporting AC-002.
   assertContains(implementBriefing, "prior_gap_memory")
-  assertContains(implementBriefing, "sticky_ids")
+  assertContains(implementBriefing, "prior_audit_values")
   assertContains(implementBriefing, "AC-002")
-  // Sticky ids are the two refs both audits reported, never the ref+note text: the directive pins the
-  // exact ref set, which a leaked "AC-002: <note>" line would break.
-  assertContains(implementBriefing, "Prioritize the sticky criterion ids (AC-003, AC-002)")
-  // last_implement_claims is the union of the prior implement receipt's completed task criterion refs
-  // through the plan mapping (task-1 -> AC-001).
-  assertContains(implementBriefing, "last_implement_claims")
-  assertContains(implementBriefing, "AC-001")
-  // The audit that follows remediation also carries the memory projection.
+  assertContains(implementBriefing, "re-justify recurrence against prior audit prose")
   assertContains(auditBriefing, "prior_gap_memory")
-  assertContains(auditBriefing, "sticky_ids")
+  assertContains(auditBriefing, "prior_audit_values")
 }
 
 // AC-004: an in-flight workflow without a second comparable audit still completes with empty memory;
@@ -763,7 +756,7 @@ fun `in-flight workflow without a second comparable audit completes with empty s
     harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["implement"],
   ).briefingText
   assertContains(implementBriefing, "prior_gap_memory")
-  assertContains(implementBriefing, "sticky_ids")
+  assertContains(implementBriefing, "prior_audit_values")
 }
 
 class FeatureTaskRuntimeAuditGapSharedEvidenceTest {

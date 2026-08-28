@@ -1,12 +1,9 @@
 package skillbill.application.featuretask
 
 /**
- * The machine-readable keys the runtime's review/audit verification gates read from a phase's output,
+ * The machine-readable keys the runtime's review verification gates read from a phase's output,
  * shared by the gate ([FeatureTaskRuntimeRunner]) and the prompt that instructs the agent to emit them
- * ([FeatureTaskRuntimePhasePromptComposer]) so the two cannot drift. A verifying-phase prompt that names
- * a key the gate no longer reads — or omits one it does — is the exact prompt/gate disagreement this
- * feature exists to prevent; binding both sides to these constants makes such drift a compile-time edit
- * in one place, and a contract test asserts the composed prompt names each gate key.
+ * ([FeatureTaskRuntimePhasePromptComposer]) so the two cannot drift.
  */
 internal object FeatureTaskRuntimeVerificationSignalKeys {
   /** Top-level verdict string both verifying gates accept as an explicit advance/remediation signal. */
@@ -17,37 +14,8 @@ internal object FeatureTaskRuntimeVerificationSignalKeys {
 
   /**
    * produced_outputs key carrying the Review run ID the pass's `bill-code-review` invocation reported.
-   * It is the shared key that joins a workflow-loop finding to the imported review run's findings, so
-   * without it every loop-recorded outcome stays unresolved and can never attach to the routed pack.
-   * Absent or blank means the pass genuinely reported no run id, which stays unresolved rather than
-   * being guessed.
    */
   const val REVIEW_RUN_ID = "review_run_id"
-
-  /**
-   * Legacy produced_outputs key for unmet acceptance criteria. Rejected when non-empty: agents must
-   * emit [AUDIT_GAPS]. An empty array is still tolerated so a satisfied audit that has not yet been
-   * re-prompted does not fail the gate twice for the same migration.
-   */
-  const val AUDIT_UNMET_CRITERIA = "unmet_criteria"
-
-  /**
-   * Compact agent-facing audit gaps (an empty [] affirms all criteria met). Normalized into the durable
-   * unmet-criteria and repair-plan model on the audit_gap edge.
-   */
-  const val AUDIT_GAPS = "gaps"
-
-  /** produced_outputs key for Minor/Nit audit findings that never reopen implementation. */
-  const val AUDIT_NON_BLOCKING_FINDINGS = "non_blocking_findings"
-
-  /**
-   * Spelling agents reach for in place of [AUDIT_GAPS]. It is rejected, not accepted: while it was an
-   * accepted alias, an audit emitting only this key was classified `gaps_found` by the verdict readers
-   * but skipped the repair-plan gate, which keys on the canonical name, and the run blocked much later
-   * on a misleading durability message. One canonical representation is the only way the gate and the
-   * verdict cannot disagree.
-   */
-  const val AUDIT_FAILING_CRITERIA_REJECTED_ALIAS = "failing_criteria"
 
   const val FINDINGS_VERIFICATION_DISPOSITIONS = "finding_dispositions"
 }

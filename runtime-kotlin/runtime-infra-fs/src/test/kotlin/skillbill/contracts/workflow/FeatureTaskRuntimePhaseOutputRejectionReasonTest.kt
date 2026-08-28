@@ -15,7 +15,7 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
   fun `a schema violation reports the offending value privately and withholds it from the payload-free reason`() {
     val offendingValue = "totally-done-trust-me"
     val envelope =
-      """{"contract_version":"0.4","phase_id":"plan","status":"$offendingValue",""" +
+      """{"contract_version":"0.5","phase_id":"plan","status":"$offendingValue",""" +
         """"summary":"Plan output.","produced_outputs":{"value":"Plan prose."}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
@@ -59,7 +59,7 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
   @Test
   fun `a phase_id mismatch names the expected phase without echoing the produced one`() {
     val envelope =
-      """{"contract_version":"0.4","phase_id":"implement-but-lying","status":"completed",""" +
+      """{"contract_version":"0.5","phase_id":"implement-but-lying","status":"completed",""" +
         """"summary":"Plan output.","produced_outputs":{"value":"Plan prose."}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
@@ -96,19 +96,19 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
   }
 
   @Test
-  fun `an unmet-criterion note carrying backticks is rejected without leaking the value`() {
-    val offendingNote = "The ```prepareLaunch``` checkpoint is absent."
+  fun `a whitespace-only audit value is rejected without leaking the value`() {
+    val offendingValue = "   "
     val envelope =
-      """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"audit",""" +
-        """"verdict":"gaps_found","produced_outputs":{"gaps":[""" +
-        """{"criterion":"AC-001","note":"$offendingNote"}]}}"""
+      """{"contract_version":"0.5","phase_id":"audit","status":"completed","summary":"audit",""" +
+        """"verdict":"gaps_found","produced_outputs":{"value":"$offendingValue"}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "audit")
     }
 
-    assertContains(error.reason, "produced_outputs.gaps")
+    assertContains(error.reason, "value")
     val payloadFree = assertNotNull(error.payloadFreeReason)
-    assertFalse(payloadFree.contains(offendingNote), "payload-free reason leaked a value: $payloadFree")
+    assertFalse(payloadFree.contains(" — offending value: "))
+    assertEquals(error.reason, payloadFree)
   }
 }

@@ -4,6 +4,7 @@ import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.MalformedMachineConfigError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
@@ -2022,7 +2023,7 @@ private class RecordingPhaseLauncher(
       // Subtask 4 F-003 for review, Subtask 5 AC1 for audit).
       val producedOutputs = when (phaseId) {
         "review" -> "findings: []"
-        "audit" -> "gaps: []"
+        "audit" -> """{value: "{\"gaps\":[],\"non_blocking_findings\":[]}"}"""
         "verify_findings" -> "finding_dispositions: []"
         "preplan" -> PREPLAN_DIGEST_OUTPUTS
         "plan" -> PLAN_PROSE_OUTPUTS
@@ -2039,7 +2040,7 @@ private class RecordingPhaseLauncher(
       }
       val base =
         """
-        contract_version: "0.4"
+        contract_version: "$FEATURE_TASK_RUNTIME_CONTRACT_VERSION"
         phase_id: "$phaseId"
         status: "completed"
         summary: "Phase produced a validated output."
@@ -2078,7 +2079,7 @@ private class RecordingPhaseLauncher(
 
     val DECOMPOSE_PLAN_OUTPUT: String = """
       {
-        "contract_version": "0.4",
+        "contract_version": "$FEATURE_TASK_RUNTIME_CONTRACT_VERSION",
         "phase_id": "plan",
         "status": "completed",
         "summary": "Plan needs ordered subtasks.",

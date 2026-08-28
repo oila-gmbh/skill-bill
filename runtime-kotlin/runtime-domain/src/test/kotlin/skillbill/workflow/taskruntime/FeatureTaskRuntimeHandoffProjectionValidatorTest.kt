@@ -369,7 +369,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
             producer to FeatureTaskRuntimePhaseOutput(
               phaseId = producer,
               iteration = 2,
-              payload = """{"produced_outputs":{"unmet_criteria":[],"audit_result":{""" +
+              payload = """{"verdict":"satisfied","produced_outputs":{"unmet_criteria":[],"audit_result":{""" +
                 """"clearance_status":"agent-claim","review_scope":"agent-scope",""" +
                 """"repository_checkpoint":{"fingerprint":"agent-tree"}}}}""",
             ),
@@ -715,9 +715,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     // Present memory is delivered with exactly the declared field shape.
     val memory = FeatureTaskRuntimePriorGapMemory(
       round = 2,
-      priorUnmetCriteria = listOf("AC-002: gap note"),
-      lastImplementClaims = listOf("AC-001"),
-      stickyIds = listOf("AC-002"),
+      priorAuditValues = listOf("""{"gaps":[{"criterion":"AC-002","note":"gap note"}]}"""),
     )
     val delivered = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       inputs(consumerPhaseId = consumer, declarations = listOf(memoryDeclaration), priorGapMemory = memory),

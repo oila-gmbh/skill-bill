@@ -88,8 +88,6 @@ import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
@@ -127,6 +125,7 @@ import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
+import skillbill.workflow.taskruntime.model.boundPriorGapNotes
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.taskruntime.model.upsertRepairReceipt
@@ -286,18 +285,13 @@ internal class FeatureTaskRuntimeRunLoop(
       return null
     }
     state.recordEdgeIteration(loopId, reentry.edgeIteration)
-    val auditGapLoop = loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
     val resumePhaseId = reentry.resumePhaseId
     return PendingReentry(
       phaseId = resumePhaseId,
       loopId = loopId,
       edgeIteration = reentry.edgeIteration,
       drivingVerdict = reentry.drivingVerdict,
-      reentryGapCriteria = if (auditGapLoop && resumePhaseId == reentry.destinationPhaseId) {
-        auditGapCriteriaForResume()
-      } else {
-        emptyList()
-      },
+      reentryGapCriteria = emptyList(),
       expectedRepositoryCheckpoint = if (
         loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
       ) {
@@ -306,20 +300,6 @@ internal class FeatureTaskRuntimeRunLoop(
         null
       },
     )
-  }
-
-  private fun auditGapCriteriaForResume(): List<String> {
-    val fromAudit = state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
-    if (fromAudit.isNotEmpty()) return fromAudit
-    val fromBriefing = recorder.loadPhaseBriefings(request.workflowId, request.dbPathOverride)
-      ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
-      ?.unresolvedAuditGapIds
-      .orEmpty()
-    if (fromBriefing.isNotEmpty()) return fromBriefing
-    return recorder.loadAuditGapProgress(request.workflowId, request.dbPathOverride)
-      ?.criterionRefs
-      ?.sorted()
-      .orEmpty()
   }
 
   private fun reviewedCheckpointFingerprint(): String? =
@@ -389,13 +369,6 @@ internal class FeatureTaskRuntimeRunLoop(
     ) {
       state.auditGapPlanningContextError()?.let { reason ->
         blockInvalidAuditGapRecovery(resumedReentry, reason)
-        return
-      }
-      if (resumedReentry.reentryGapCriteria.isEmpty()) {
-        blockInvalidAuditGapRecovery(
-          resumedReentry,
-          EMPTY_AUDIT_GAP_CRITERIA_BLOCK_REASON,
-        )
         return
       }
     }
@@ -700,9 +673,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun settleCarriedForwardAudit(pause: FeatureTaskRuntimeAuditGapPause): PhaseSettlement {
     val auditPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
-    val unmetFromAudit = state.unmetAuditCriteria(auditPhaseId)
     if (
-      unmetFromAudit.isEmpty() &&
       state.isComplete(auditPhaseId) &&
       state.verdictFor(auditPhaseId) == FeatureTaskRuntimeVerdict.SATISFIED
     ) {
@@ -715,24 +686,15 @@ internal class FeatureTaskRuntimeRunLoop(
       val acceptedOutput = outputValidator
         .validatePhaseOutput(outputArtifact, auditPhaseId)
         .requireAcceptedOutput(auditPhaseId)
-      val acceptedUnmet = FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(
-        acceptedOutput.normalizedOutput.envelope,
-      )
       val derivedVerdict = FeatureTaskRuntimeOutputVerification.verdictFor(
         auditPhaseId,
         acceptedOutput.normalizedOutput.envelope,
       )
-      if (acceptedUnmet.isEmpty()) {
-        if (!state.isComplete(auditPhaseId)) {
-          recordCarriedForwardAudit(acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence)
-        }
-        consumeAuditGapRetryGrant(pause)
-        PhaseSettlement.completed(auditPhaseId, derivedVerdict)
-      } else {
+      if (!state.isComplete(auditPhaseId)) {
         recordCarriedForwardAudit(acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence)
-        consumeAuditGapRetryGrant(pause)
-        PhaseSettlement.completed(auditPhaseId, FeatureTaskRuntimeVerdict.GAPS_FOUND)
       }
+      consumeAuditGapRetryGrant(pause)
+      PhaseSettlement.completed(auditPhaseId, derivedVerdict)
     }.fold(
       onSuccess = { it },
       onFailure = { error -> blockCarriedForwardAudit(error.message.orEmpty()) },
@@ -887,10 +849,8 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  // Gaps on the settled audit are the authority for taking audit_gap. A stale retry_fix grant must
-  // not force the edge when the durable audit is already satisfied with an empty gaps array.
   private fun authoritativeAuditRepairPlanMatches(auditPhaseId: String): Boolean =
-    state.unmetAuditCriteria(auditPhaseId).isNotEmpty()
+    state.verdictFor(auditPhaseId) == FeatureTaskRuntimeVerdict.GAPS_FOUND
 
   private fun reentersMutatingPhase(edge: FeatureTaskRuntimeBackwardEdge, destinationPhaseId: String): Boolean =
     spanBetween(destinationPhaseId, edge.fromPhaseId).any(FeatureTaskRuntimePhaseWorkflowDefinition::isMutatingPhase)
@@ -1930,17 +1890,12 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
     state.recordEdgeIteration(loopId, edgeIteration)
-    val reentryGapCriteria = if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
-      state.unmetAuditCriteria(edge.fromPhaseId)
-    } else {
-      emptyList()
-    }
     pendingReentry = PendingReentry(
       destinationPhaseId,
       loopId,
       edgeIteration,
       verdict,
-      reentryGapCriteria,
+      emptyList(),
       if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
         reviewedCheckpointFingerprint()
       } else {
@@ -2190,17 +2145,11 @@ internal class FeatureTaskRuntimeRunLoop(
     } else {
       state.unresolvedReviewFindings(phaseId)
     }
-    val unmetCriteria = if (transition.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
-      state.unmetAuditCriteria(phaseId)
-    } else {
-      emptyList()
-    }
     val reason = capExhaustionReason(
       transition.loopId,
       transition.edgeIteration,
       transition.unresolvedVerdict,
       unresolvedFindings,
-      unmetCriteria,
     )
     val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
       phaseId = phaseId,
@@ -2377,7 +2326,6 @@ internal class FeatureTaskRuntimeRunLoop(
     edgeIteration: Int,
     verdict: FeatureTaskRuntimeVerdict,
     unresolvedFindings: List<FeatureTaskRuntimeReviewFinding> = emptyList(),
-    unmetCriteria: List<String> = emptyList(),
   ): String {
     if (FeatureTaskRuntimePhaseWorkflowDefinition.isRegenerationLoopId(loopId)) {
       return regenerationCapExhaustionReason(loopId, edgeIteration)
@@ -2388,14 +2336,9 @@ internal class FeatureTaskRuntimeRunLoop(
       " Unresolved findings: " +
         unresolvedFindings.joinToString("; ") { "[${it.severity.wireValue}] ${it.message}" } + "."
     }
-    val criteriaSuffix = if (unmetCriteria.isEmpty()) {
-      ""
-    } else {
-      " Unmet criteria: " + unmetCriteria.joinToString("; ") + "."
-    }
     return "Backward-edge loop '$loopId' exhausted its per-edge cap after $edgeIteration iteration(s) with the " +
       "verdict '${verdict.wireValue}' still unresolved; the run blocks rather than re-entering past the cap." +
-      findingsSuffix + criteriaSuffix
+      findingsSuffix
   }
 
   // SKILL-140: AC-004 cap-exhaustion reason for a regeneration loop, naming the quarantined record, the
@@ -2825,10 +2768,6 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
       "exhausted the bounded implementation-continuation budget" in reason
 
-  private fun isStaleEmptyAuditGapCriteriaBlock(phaseId: String, reason: String): Boolean =
-    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
-      reason == EMPTY_AUDIT_GAP_CRITERIA_BLOCK_REASON
-
   // A pre-quarantine build blocked a launch-seam planning-projection rejection with a terminal
   // needs_user_action disposition; the current seam instead quarantines the upstream record and
   // regenerates its producer. Such a legacy row is stale, not terminal: re-enter the phase so the live
@@ -2864,12 +2803,10 @@ internal class FeatureTaskRuntimeRunLoop(
     val reenterableRecordRejection = isReenterableRecordRejection(state, phaseId, persistedReason)
     val removedContinuationBudget =
       isRemovedImplementationContinuationBudgetBlock(phaseId, persistedReason)
-    val staleEmptyAuditGapCriteria = isStaleEmptyAuditGapCriteriaBlock(phaseId, persistedReason)
     val restartsBudget = listOf(
       retryReviewPreparation,
       reenterableRecordRejection,
       removedContinuationBudget,
-      staleEmptyAuditGapCriteria,
       operatorReopenedPhase(phaseId),
     ).any { it }
     if (restartsBudget) {
@@ -2900,7 +2837,8 @@ internal class FeatureTaskRuntimeRunLoop(
       reenterableRecordRejection -> true
       isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
       isRemovedImplementationContinuationBudgetBlock(phaseId, persistedReason) -> true
-      isStaleEmptyAuditGapCriteriaBlock(phaseId, persistedReason) -> true
+      phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+        persistedReason.startsWith("Audit-gap recovery requires") -> true
       disposition != null -> disposition.retryOnResume
       else -> FeatureTaskRuntimePhaseWorkflowDefinition.retriesOnInvalidOutput(phaseId)
     }
@@ -5376,14 +5314,6 @@ internal class FeatureTaskRuntimeRunLoop(
     null
   }
 
-  /**
-   * Whether this settled gaps audit should mint a no-progress pause instead of re-entering implement.
-   * Reads the previous completed audit from the durable progress artifact (the OLD value), runs the
-   * upgraded shrink-based rule against this audit's canonical criterion refs and the already-computed
-   * repository fingerprint, then writes the artifact with this audit's refs+fingerprint so the next
-   * audit compares consecutive rounds. Returns the pause to mint, or null to continue. The first gaps
-   * audit (artifact absent) and any satisfied audit (empty current set) continue.
-   */
   @Suppress("ReturnCount")
   private fun auditGapProgressPause(
     run: PhaseRun,
@@ -5392,27 +5322,24 @@ internal class FeatureTaskRuntimeRunLoop(
     @Suppress("UnusedParameter") auditOutputArtifact: String,
   ): FeatureTaskRuntimeAuditGapPause? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
-    val currentCriterionRefs = FeatureTaskRuntimeOutputVerification
-      .canonicalAuditCriterionRefs(outputMap)
-      .toSet()
+    val verdict = FeatureTaskRuntimeOutputVerification.verdictFor(run.phaseId, outputMap)
+    val currentHasGaps = verdict == FeatureTaskRuntimeVerdict.GAPS_FOUND
     val previous = recorder.loadAuditGapProgress(request.workflowId, request.dbPathOverride)
-    val decision = if (previous == null || currentCriterionRefs.isEmpty()) {
+    val decision = if (previous == null || !currentHasGaps) {
       FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
     } else {
       detectAuditRepairNonProgress(
-        previousCriterionRefs = previous.criterionRefs,
-        currentCriterionRefs = currentCriterionRefs,
+        previousHadGaps = previous.criterionRefs.isNotEmpty(),
+        currentHasGaps = true,
         previousRepositoryFingerprint = previous.repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
         currentRepositoryFingerprint = repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
       )
     }
-    // Only a gaps verdict (a non-empty current set) advances the comparison; a satisfied audit writes
-    // nothing so a later stale read cannot re-arm the bound against an empty prior round.
-    if (currentCriterionRefs.isNotEmpty()) {
+    if (currentHasGaps) {
       recorder.persistAuditGapProgress(
         request.workflowId,
         FeatureTaskRuntimeAuditGapProgress(
-          criterionRefs = currentCriterionRefs,
+          criterionRefs = setOf(FeatureTaskRuntimeAuditGapProgress.HAD_GAPS_MARKER),
           repositoryFingerprint = repositoryFingerprint,
         ),
         request.dbPathOverride,
@@ -5479,7 +5406,6 @@ internal class FeatureTaskRuntimeRunLoop(
         outputMap,
         reviewFindingIdsForVerification(),
       )
-      ?: FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(run.phaseId, outputMap)
 
   private sealed interface BoundaryBodyDeliveryDecision {
     data object NotApplicable : BoundaryBodyDeliveryDecision
@@ -6018,7 +5944,7 @@ internal class FeatureTaskRuntimeRunLoop(
       runInvariants = run.request.runInvariants,
       recordedOutputs = state.outputs(),
       drivingVerdict = run.reentry?.drivingVerdict,
-      reentryGapCriteria = auditGapCriteriaFor(run, state),
+      reentryGapCriteria = emptyList(),
       priorGapMemory = priorGapMemoryFor(run, state),
       durablyClosedCriterionRefs = durablyClosedCriterionRefs,
       repairLedger = null,
@@ -6474,30 +6400,6 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private data class LaunchPreparationRejected(val result: LaunchResult) : LaunchPreparation
 
-  private fun auditGapCriteriaFor(run: PhaseRun, state: FeatureTaskRuntimeRunState): List<String> {
-    run.reentry
-      ?.takeIf { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID }
-      ?.reentryGapCriteria
-      ?.let { return it }
-    val scopedPhases = setOf(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-    )
-    val auditGapFired =
-      state.edgeIterationCount(FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) > 0
-    if (run.phaseId !in scopedPhases || !auditGapFired) {
-      return emptyList()
-    }
-    return state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
-  }
-
-  /**
-   * Derives the bounded prior-gap memory for an `audit_gap` remediation round, or null when none is
-   * owed. Memory is derived only for the audit_gap implement re-entry and the audit that follows a
-   * remediation implement; every other launch (forward implement, first forward audit) receives null
-   * so its briefing stays byte-identical. Absent plan/receipt/audit data degrades to empty lists
-   * rather than failing the launch (AC-004).
-   */
   private fun priorGapMemoryFor(run: PhaseRun, state: FeatureTaskRuntimeRunState): FeatureTaskRuntimePriorGapMemory? {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val auditGapFired = state.edgeIterationCount(def.AUDIT_GAP_LOOP_ID) > 0
@@ -6514,55 +6416,33 @@ internal class FeatureTaskRuntimeRunLoop(
     val auditOutputs = state.outputs()
       .filter { it.phaseId == def.PHASE_AUDIT }
       .sortedBy { it.iteration }
-    val lastAudit = auditOutputs.lastOrNull() ?: return null
-    val lastAuditObject = outputEnvelopeOf(lastAudit)
-    val priorUnmetCriteria = FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(lastAuditObject)
-    val stickyIds = if (auditOutputs.size >= 2) {
-      val refsLast = FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(lastAuditObject)
-      val refsPrior = FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(
-        outputEnvelopeOf(auditOutputs[auditOutputs.size - 2]),
-      )
-      refsLast.filter { it in refsPrior }
-    } else {
-      emptyList()
+    if (auditOutputs.isEmpty()) return null
+    val auditValues = auditOutputs.mapNotNull { output ->
+      outputEnvelopeOf(output)?.let(FeatureTaskRuntimeOutputVerification::auditProseValue)
     }
-    return FeatureTaskRuntimePriorGapMemory(
-      round = round,
-      priorUnmetCriteria = boundPriorGapNotes(priorUnmetCriteria),
-      lastImplementClaims = boundPriorGapNotes(lastImplementClaims()),
-      stickyIds = boundPriorGapNotes(stickyIds),
-    )
-  }
-
-  private fun boundPriorGapNotes(values: List<String>): List<String> {
-    val truncatedCount = values.count { it.length > FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS }
-    val droppedCount = (values.size - FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT).coerceAtLeast(0)
-    if (truncatedCount > 0 || droppedCount > 0) {
+    if (auditValues.isEmpty()) return null
+    val priorAuditValues = if (implementReentry) {
+      auditValues.dropLast(1)
+    } else {
+      auditValues
+    }
+    val bounded = boundPriorGapNotes(priorAuditValues)
+    if (bounded.droppedForListCap > 0 || bounded.droppedForUtf8Budget > 0) {
       runCatching {
         diagnostics.warning(
           "seam=FeatureTaskRuntimeRunLoop.priorGapMemoryFor " +
             "value_expected=bounded_prior_gap_memory " +
-            "value_used=truncated_or_capped " +
-            "cause=truncated_notes=$truncatedCount;dropped_entries=$droppedCount",
+            "value_used=dropped_whole_values " +
+            "cause=dropped_entries=${bounded.droppedForListCap};" +
+            "dropped_over_utf8=${bounded.droppedForUtf8Budget}",
         )
       }
     }
-    return values
-      .take(FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT)
-      .map { note ->
-        if (note.length <= FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS) {
-          note
-        } else {
-          note.take(FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS)
-        }
-      }
+    return FeatureTaskRuntimePriorGapMemory(
+      round = round,
+      priorAuditValues = bounded.values,
+    )
   }
-
-  /**
-   * The criterion refs the most recent completed implement receipt claimed to address, joined through
-   * the plan output's task-to-criterion mapping. Empty when either output is absent or does not parse.
-   */
-  private fun lastImplementClaims(): List<String> = emptyList()
 
   private fun outputEnvelopeOf(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
     output.normalizedOutput?.envelope?.takeIf { it.isNotEmpty() }
@@ -7036,10 +6916,6 @@ private const val UNPROVEN_REPOSITORY_FINGERPRINT =
 // so this phrase is emitted by no live path and only ever matches a legacy durable row.
 private const val LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION =
   "rejected an upstream bounded planning projection at the launch seam"
-
-private const val EMPTY_AUDIT_GAP_CRITERIA_BLOCK_REASON =
-  "Audit-gap recovery requires the unmet acceptance criteria the audit reported; the resumed " +
-    "audit record carries none."
 
 // NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
 private const val OWNED_PATH_DELIMITER = '\u0000'
