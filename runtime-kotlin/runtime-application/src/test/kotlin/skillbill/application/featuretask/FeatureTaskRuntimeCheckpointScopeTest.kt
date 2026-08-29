@@ -59,18 +59,15 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertIs<FeatureTaskRuntimeCheckpointDecision.Skip>(decision)
   }
 
-  // AC-003: the block is reachable because the inventory no longer contains the phase delta.
   @Test
-  fun `a path introduced outside the owned inventory blocks and names the exact path`() {
+  fun `a path introduced outside the owned inventory is staged when the phase wrote it`() {
     val decision = decide(
       ownedPaths = listOf("src/Owned.kt"),
       phaseIntroducedPaths = listOf("src/Owned.kt", "src/Smuggled.kt"),
     )
 
-    val block = assertIs<FeatureTaskRuntimeCheckpointDecision.Block>(decision)
-    assertContains(block.reason, "'src/Smuggled.kt'")
-    assertContains(block.reason, ISSUE)
-    assertTrue(block.reason.startsWith("needs_human: "), "block reason must carry a documented telemetry prefix")
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("src/Owned.kt", "src/Smuggled.kt"), stage.ownedPaths)
   }
 
   @Test
@@ -88,36 +85,37 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   }
 
   @Test
-  fun `a concurrently prepared foreign feature spec blocks and never enters the inventory`() {
+  fun `a concurrently prepared foreign feature spec is staged when the phase wrote it`() {
+    val foreign = ".feature-specs/OTHER-999-concurrent/spec.md"
     val decision = decide(
       ownedPaths = listOf(".feature-specs/$ISSUE-scoped/spec.md"),
       phaseIntroducedPaths = listOf(
         ".feature-specs/$ISSUE-scoped/spec.md",
-        ".feature-specs/OTHER-999-concurrent/spec.md",
+        foreign,
       ),
     )
 
-    val block = assertIs<FeatureTaskRuntimeCheckpointDecision.Block>(decision)
-    assertContains(block.reason, "'.feature-specs/OTHER-999-concurrent/spec.md'")
-    assertFalse(
-      block.reason.contains("$ISSUE-scoped/spec.md"),
-      "the active issue's own governed spec is never reported as foreign",
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(
+      listOf(".feature-specs/$ISSUE-scoped/spec.md", foreign).sorted(),
+      stage.ownedPaths.sorted(),
     )
   }
 
   @Test
-  fun `a foreign feature spec inside the owned inventory is evicted rather than staged`() {
+  fun `a foreign feature spec inside the owned inventory is staged with the rest`() {
+    val foreign = ".feature-specs/OTHER-999-concurrent/spec.md"
     val decision = decide(
-      ownedPaths = listOf(".feature-specs/OTHER-999-concurrent/spec.md", "src/Owned.kt"),
+      ownedPaths = listOf(foreign, "src/Owned.kt"),
       phaseIntroducedPaths = listOf("src/Owned.kt"),
     )
 
     val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
-    assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
+    assertEquals(listOf(foreign, "src/Owned.kt"), stage.ownedPaths)
   }
 
   @Test
-  fun `an already-owned foreign feature spec the phase left dirty does not block the checkpoint`() {
+  fun `an already-owned foreign feature spec the phase left dirty is staged`() {
     val foreign = ".feature-specs/OTHER-999-concurrent/spec.md"
     val decision = decide(
       ownedPaths = listOf(foreign, "src/Owned.kt"),
@@ -125,7 +123,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     )
 
     val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
-    assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
+    assertEquals(listOf(foreign, "src/Owned.kt"), stage.ownedPaths)
   }
 
   @Test
@@ -269,22 +267,6 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       exclusions,
     )
     assertFalse("src/Owned.kt" in exclusions, "an owned path must stay inside the review scope")
-  }
-
-  @Test
-  fun `foreign governed spec detection accepts every directory spelling of the active issue`() {
-    assertFalse(FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(".feature-specs/$ISSUE/spec.md", ISSUE))
-    assertFalse(
-      FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(".feature-specs/$ISSUE-slug/spec.md", ISSUE),
-    )
-    assertTrue(
-      FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(".feature-specs/OTHER-1/spec.md", ISSUE),
-    )
-    // A different issue whose key merely starts with the same characters is still foreign.
-    assertTrue(
-      FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(".feature-specs/SKILL-1500/spec.md", "SKILL-150"),
-    )
-    assertFalse(FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath("src/Owned.kt", ISSUE))
   }
 
   @Test
