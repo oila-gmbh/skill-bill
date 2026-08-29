@@ -95,6 +95,9 @@ discriminator:
 #   loudly.
 oneOf:
   - $ref: "#/$defs/doctorEvent"
+  - $ref: "#/$defs/featureTaskAuditSettleEvent"
+  - $ref: "#/$defs/featureTaskPhaseBlockEvent"
+  - $ref: "#/$defs/featureTaskPhaseCompleteEvent"
   - $ref: "#/$defs/featureVerifyFinishedEvent"
   - $ref: "#/$defs/featureVerifyStatsEvent"
   - $ref: "#/$defs/featureVerifyStartedEvent"
@@ -404,6 +407,105 @@ $defs:
         const: doctor
       contract_version:
         const: "1.11.0"
+
+  featureTaskPhaseCompleteEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+      - phase_id
+      - attempt
+      - value
+    properties:
+      event_name:
+        const: feature_task_phase_complete
+      contract_version:
+        const: "1.11.0"
+      workflow_id:
+        type: string
+        minLength: 1
+      phase_id:
+        type: string
+        enum: [preplan, plan, implement]
+      attempt:
+        type: integer
+        minimum: 1
+      value:
+        type: string
+        minLength: 1
+      prompt:
+        type: string
+        minLength: 1
+      summary:
+        type: string
+        minLength: 1
+
+  featureTaskPhaseBlockEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+      - phase_id
+      - attempt
+      - reason
+    properties:
+      event_name:
+        const: feature_task_phase_block
+      contract_version:
+        const: "1.11.0"
+      workflow_id:
+        type: string
+        minLength: 1
+      phase_id:
+        type: string
+        enum: [preplan, plan, implement, audit]
+      attempt:
+        type: integer
+        minimum: 1
+      reason:
+        type: string
+        minLength: 1
+      failure_disposition:
+        type: string
+        minLength: 1
+
+  featureTaskAuditSettleEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - workflow_id
+      - attempt
+      - verdict
+      - value
+    properties:
+      event_name:
+        const: feature_task_audit_settle
+      contract_version:
+        const: "1.11.0"
+      workflow_id:
+        type: string
+        minLength: 1
+      phase_id:
+        type: string
+        enum: [audit]
+      attempt:
+        type: integer
+        minimum: 1
+      verdict:
+        type: string
+        enum: [satisfied, gaps_found]
+      value:
+        type: string
+        minLength: 1
+      summary:
+        type: string
+        minLength: 1
 
   updateCheckEvent:
     type: object

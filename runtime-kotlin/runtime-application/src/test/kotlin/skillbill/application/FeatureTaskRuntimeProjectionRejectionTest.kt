@@ -9,8 +9,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * Implement feeds audit as phase prose under the planning-projection budget. Overflow and missing
- * value block the consumer durably; quarantine/regenerate for implement is gone.
+ * Implement feeds audit as phase prose. Missing value blocks the consumer durably;
+ * quarantine/regenerate for implement is gone. Projection byte ceilings were dropped.
  */
 class FeatureTaskRuntimeProjectionRejectionTest {
   @Test
@@ -38,7 +38,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
   }
 
   @Test
-  fun `a projection that overflows its budget blocks the phase durably instead of aborting the run`() {
+  fun `oversized implement prose reaches audit without a projection budget block`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -57,16 +57,8 @@ class FeatureTaskRuntimeProjectionRejectionTest {
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "handoff projection")
-    assertContains(blocked.blockedReason, "budget")
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "audit" })
-
-    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
-    assertEquals("blocked", record.status)
-    assertEquals("needs_user_action", record.failureDisposition?.wireValue)
-    assertTrue(requireNotNull(record.blockedReason).isNotBlank())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
+    assertTrue(harness.launchedPromptPhaseOrder().contains("audit"))
   }
 
   @Test
@@ -102,7 +94,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
     val legacyImplementation =
-      """{"contract_version":"0.4","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
+      """{"contract_version":"0.6","phase_id":"implement","status":"completed","summary":"Legacy impl.",""" +
         """"produced_outputs":{"steps":["did the thing"],"narration":"free-form legacy body"}}"""
     harness.seedPhase(
       "implement",
@@ -162,7 +154,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val escaped = stuffed.replace("\\", "\\\\").replace("\"", "\\\"")
     return """
       {
-        "contract_version": "0.4",
+        "contract_version": "0.6",
         "phase_id": "implement",
         "status": "completed",
         "summary": "Implement prose.",
@@ -174,14 +166,14 @@ class FeatureTaskRuntimeProjectionRejectionTest {
   }
 
   private fun preplanEnvelope(value: String = "Fixture preplan prose."): String =
-    """{"contract_version":"0.4","phase_id":"preplan","status":"completed","summary":"Prose.",""" +
+    """{"contract_version":"0.6","phase_id":"preplan","status":"completed","summary":"Prose.",""" +
       """"produced_outputs":{"value":"$value"}}"""
 
   private fun oversizeImplementProse(): String {
     val prose = "x".repeat(OVERSIZE_PROSE_CHARS)
     return """
       {
-        "contract_version": "0.4",
+        "contract_version": "0.6",
         "phase_id": "implement",
         "status": "completed",
         "summary": "Oversize implement prose.",

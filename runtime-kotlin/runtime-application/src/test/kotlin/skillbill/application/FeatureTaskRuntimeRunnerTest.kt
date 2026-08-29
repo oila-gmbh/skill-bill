@@ -6,6 +6,7 @@ import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvel
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureSpecPreparationRuntime
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
+import skillbill.application.featuretask.FeatureTaskPhaseSettlementService
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
@@ -26,6 +27,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.GoalSubtaskReviewInputReady
+import skillbill.application.featuretask.InMemoryFeatureTaskPhaseSettlementRepository
 import skillbill.application.featuretask.RemediationBaseCoherent
 import skillbill.application.featuretask.SpecSourceResolver
 import skillbill.application.featuretask.phaseDeclaration
@@ -2846,59 +2848,6 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertTrue(
       harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
       "no audit briefing may be persisted against an unmeasurable repository scope",
-    )
-  }
-
-  @Test
-  fun `an owned-path inventory past the checkpoint limit blocks the phase instead of unwinding the run`() {
-    // The rendered scope sits inside the briefing framing ceiling, whose overflow throw is untyped and
-    // uncaught: it would unwind past the handler that already persisted STATUS_RUNNING and leave the
-    // row running with no blocked reason. The cap turns that into a typed durable block.
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    git.repositoryFingerprintValue = "child-fingerprint-1"
-    git.ownedPathsValue = (1..2_000).map { "runtime-domain/Generated$it.kt" }
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        branchSetup = BranchSetupTestConfig(gitOperations = git),
-      ),
-    )
-    harness.seedCheckpointAudit()
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "owned-path inventory holds 2000 entries")
-    assertTrue(
-      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
-      "no audit briefing may be persisted from an over-limit repository scope",
-    )
-  }
-
-  @Test
-  fun `an owned-path inventory under the count cap but over the byte ceiling blocks instead of unwinding the run`() {
-    // F-001: the count cap (<=500) does not bound bytes. ~200 long but realistic paths clear the count
-    // cap yet render past the 65536-byte briefing framing ceiling. The framing throw is now typed and
-    // caught at the launch seam, so the audit phase blocks durably instead of unwinding past the
-    // STATUS_RUNNING persist and crash-looping on every resume.
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    git.repositoryFingerprintValue = "child-fingerprint-1"
-    git.ownedPathsValue = (1..200).map { "runtime-domain/model/${"segment".repeat(50)}/Generated$it.kt" }
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        branchSetup = BranchSetupTestConfig(gitOperations = git),
-      ),
-    )
-    harness.seedCheckpointAudit()
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "ceiling")
-    assertTrue(
-      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
-      "no audit briefing may be persisted when its framing overflows the byte ceiling",
     )
   }
 }
@@ -5927,6 +5876,7 @@ private fun harnessRunner(
       harnessReviewDriverSyncingPendingVerifyFindings(runtimeConfig.reviewDriver),
     ),
     FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
+    FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
     diagnostics,
   )
 }
@@ -5988,6 +5938,7 @@ internal fun telemetryRunnerHarness(
     ),
     // Telemetry harness validates event emission, not crash reconciliation; no-op supervisor.
     FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
+    FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
   )
   val request = FeatureTaskRuntimeRunRequest(
     issueKey = ISSUE_KEY,

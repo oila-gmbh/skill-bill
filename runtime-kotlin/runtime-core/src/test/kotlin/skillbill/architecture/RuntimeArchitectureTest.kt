@@ -2001,6 +2001,12 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.model.appendBoundedHistoryBySequence",
       // Durable artifact-map seams riding inside the family workflow row's artifacts_json.
       "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput",
+      "skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.trySynthesize",
+      "skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.envelopeFromSettlement",
+      "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.complete",
+      "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.block",
+      "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.auditSettle",
+      "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.findEnvelope",
       // SKILL-137: domain-owned canonical planning-projections schema gate (infra-fs adapter
       // bound in DI). Raw-map because the schema validates the produced_outputs wire map.
       "skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection",

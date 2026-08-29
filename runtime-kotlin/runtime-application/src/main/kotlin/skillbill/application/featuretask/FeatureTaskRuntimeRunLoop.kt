@@ -38,7 +38,6 @@ import skillbill.config.model.PhaseCompactionDirective
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
@@ -83,6 +82,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeQualityGateRouting
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_NO_PROGRESS
@@ -141,6 +141,7 @@ internal data class FeatureTaskRuntimeRunLoopDependencies(
   val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   val phaseGates: FeatureTaskRuntimePhaseGates,
   val subtaskLauncher: GoalRunnerSubtaskLauncher,
+  val phaseSettlementService: FeatureTaskPhaseSettlementService,
 )
 
 internal data class FeatureTaskRuntimeRunLoopContext(
@@ -233,6 +234,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private val outputValidator get() = dependencies.outputValidator
   private val phaseGates get() = dependencies.phaseGates
   private val subtaskLauncher get() = dependencies.subtaskLauncher
+  private val phaseSettlementService get() = dependencies.phaseSettlementService
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
   private val gitOperations get() = phaseGates.gitOperations
@@ -2933,6 +2935,9 @@ internal class FeatureTaskRuntimeRunLoop(
           timeout = run.request.timeout,
           agentAddonSelection = run.request.agentAddonSelection,
           baselineUntrackedPaths = reviewBaselineUntrackedPaths(run),
+          ownedPathspec = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+            ?.workflowOwnedPaths
+            .orEmpty(),
         ),
       ),
     )
@@ -4577,6 +4582,36 @@ internal class FeatureTaskRuntimeRunLoop(
         PhaseOutcome.completed(gateTriageSegmentOutput(run, iteration, outputText)),
       )
     }
+    val settlementEnvelope = phaseSettlementService.findEnvelope(
+      workflowId = run.request.workflowId,
+      phaseId = run.phaseId,
+      attempt = iteration,
+      dbPathOverride = run.request.dbPathOverride,
+    )
+    if (settlementEnvelope != null) {
+      try {
+        val acceptedOutput = outputValidator
+          .validatePhaseOutput(JsonSupport.mapToJsonString(settlementEnvelope), sourceLabel = run.phaseId)
+          .requireAcceptedOutput(run.phaseId)
+        return settleValidatedOutput(
+          run, iteration, acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence, observability, fileManifest,
+          outputText, outputBytes, outputTruncated, outputByteSize, outputSha256,
+        )
+      } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+        phaseSettlementService.clear(
+          workflowId = run.request.workflowId,
+          phaseId = run.phaseId,
+          attempt = iteration,
+          dbPathOverride = run.request.dbPathOverride,
+        )
+        persistVerifyFindingsCheckpointIfPresent(run, outputText)
+        recordRejectedOutput(
+          run, iteration, "phase-settlement-schema", error.reason, outputBytes,
+          path = rejectionPath(error.reason),
+          outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
+        )
+      }
+    }
     return try {
       val acceptedOutput = outputValidator
         .validatePhaseOutput(outputText, sourceLabel = run.phaseId)
@@ -5403,18 +5438,12 @@ internal class FeatureTaskRuntimeRunLoop(
    * owns nothing — and an audit reading it concludes no work exists here, so an unmeasurable read must
    * not be able to produce it. The caller drops the whole checkpoint, matching how an unmeasurable
    * fingerprint already blocks the launch instead of degrading it.
-   *
-   * An inventory past [MAX_CHECKPOINT_OWNED_PATHS] is rejected as a typed projection failure rather
-   * than left to trip the briefing framing ceiling: that ceiling throws `IllegalArgumentException`,
-   * which the launch path does not catch, so it would unwind past the handler that already persisted
-   * STATUS_RUNNING and leave the row running with no blocked reason. Truncating instead is not an
-   * option — audit would read a silently narrowed scope as the complete one.
    */
   private fun checkpointOwnedPaths(run: PhaseRun, baselineOwnedPaths: List<String>): List<String>? {
     val owned = gitOperations.repositoryOwnedPaths(run.request.repoRoot)
     if (!owned.ok) return null
     val baseline = baselineOwnedPaths.toSet()
-    val paths = owned.value.orEmpty()
+    return owned.value.orEmpty()
       .split(OWNED_PATH_DELIMITER)
       .map(String::trim)
       .filter(String::isNotBlank)
@@ -5422,23 +5451,6 @@ internal class FeatureTaskRuntimeRunLoop(
       .filterNot { path -> isFeatureSpecPathForIssue(path, run.request.issueKey) }
       .distinct()
       .sorted()
-    if (paths.size > MAX_CHECKPOINT_OWNED_PATHS) {
-      val declaration = run.declaration.projectionDeclarations.first { projection ->
-        projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
-      }
-      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
-        workflowId = run.request.workflowId,
-        consumerPhaseId = run.phaseId,
-        projectionName = declaration.projectionName,
-        projectionContractId = declaration.projectionContractId,
-        projectionContractVersion = declaration.projectionContractVersion,
-        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
-        reason = "the scoped owned-path inventory holds ${paths.size} entries, over the " +
-          "$MAX_CHECKPOINT_OWNED_PATHS-entry checkpoint limit; narrow the run scope or commit " +
-          "unrelated working-tree changes before relaunching",
-      )
-    }
-    return paths
   }
 
   private fun completedPhaseRepositoryFingerprint(run: PhaseRun) = if (
@@ -6155,8 +6167,35 @@ internal class FeatureTaskRuntimeRunLoop(
       agentRunValidateFallback = run.agentRunValidateFallback,
       packCollectAllCommand = packCollectAllCommand(run),
       packBuildCommand = packBuildCommand(run),
-    ) + verifyFindingsSpecIntentSection(run)
+    ) + verifyFindingsSpecIntentSection(run) + proseSettlementDirective(run, state)
     return PreparedLaunch(briefing, prompt)
+  }
+
+  private fun proseSettlementDirective(run: PhaseRun, state: FeatureTaskRuntimeRunState): String {
+    if (!ProsePhaseOutputSynthesizer.isProsePhase(run.phaseId)) return ""
+    val attempt = state.nextIteration(run.phaseId)
+    val workflowId = run.request.workflowId
+    return buildString {
+      appendLine()
+      appendLine("## Phase settlement (preferred)")
+      appendLine(
+        "Prefer skill-bill MCP settlement over stdout envelope packaging. Pass workflow_id=" +
+          "`$workflowId` and attempt=`$attempt`.",
+      )
+      when (run.phaseId) {
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+          appendLine(
+            "Call `feature_task_audit_settle` with verdict `satisfied` or `gaps_found` and a non-blank " +
+              "`value` prose string. Call `feature_task_phase_block` only to durable-block.",
+          )
+        else ->
+          appendLine(
+            "Call `feature_task_phase_complete` with a non-blank `value` (and optional `prompt`). " +
+              "Call `feature_task_phase_block` to durable-block. Stdout envelopes remain a fallback; " +
+              "packaging near-misses are absorbed when `value` can be recovered.",
+          )
+      }
+    }
   }
 
   private fun findingPathsForBoundaryMemory(
@@ -7069,10 +7108,6 @@ private const val LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION =
 
 // NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
 private const val OWNED_PATH_DELIMITER = '\u0000'
-
-// Bounds the rendered checkpoint scope well under the briefing framing ceiling, so an oversized
-// inventory is rejected as a typed projection failure instead of tripping that ceiling's untyped throw.
-private const val MAX_CHECKPOINT_OWNED_PATHS = 500
 
 /**
  * Quotes a response wire verdict that must not reach retry prompts outside the repair section.

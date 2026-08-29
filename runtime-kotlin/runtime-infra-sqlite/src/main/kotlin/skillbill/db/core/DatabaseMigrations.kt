@@ -3,6 +3,7 @@ package skillbill.db.core
 import skillbill.db.telemetry.FeedbackEventMigration
 import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.telemetry.TelemetryOutboxLastErrorMigration
+import skillbill.db.workflow.FeatureTaskPhaseSettlementsMigration
 import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationMigration
 import java.sql.Connection
 
@@ -485,6 +486,11 @@ internal object DatabaseMigrations {
         version = 34,
         name = "allow-goal-planning-phase-output-0-6",
         operation = ::rebuildGoalPlanningPlansForPhaseOutputV06,
+      ),
+      DatabaseMigration(
+        version = 35,
+        name = "add-feature-task-phase-settlements",
+        operation = FeatureTaskPhaseSettlementsMigration::apply,
       ),
     ).also(::requireDeterministicMigrations)
 

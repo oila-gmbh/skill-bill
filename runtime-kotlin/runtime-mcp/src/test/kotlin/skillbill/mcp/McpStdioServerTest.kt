@@ -386,6 +386,9 @@ class McpStdioServerTest {
 private val expectedToolInventory =
   listOf(
     "doctor",
+    "feature_task_audit_settle",
+    "feature_task_phase_block",
+    "feature_task_phase_complete",
     "feature_verify_finished",
     "feature_verify_stats",
     "feature_verify_started",

@@ -28,7 +28,7 @@ class FileSystemDiffResolver : DiffResolverPort {
       if (!completed) {
         process.destroyForcibly()
         null
-      } else if (process.exitValue() == 0) {
+      } else if (process.exitValue() in setOf(0, 1)) {
         val sizeBytes = Files.size(outputFile)
         if (sizeBytes > MAX_DIFF_BYTES) return null
         Files.readString(outputFile)

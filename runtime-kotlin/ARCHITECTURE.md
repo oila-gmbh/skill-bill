@@ -417,6 +417,12 @@ runtime-ports
     - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
     - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
     - `skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
+    - `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.trySynthesize`
+    - `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.envelopeFromSettlement`
+    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.complete`
+    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.block`
+    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.auditSettle`
+    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.findEnvelope`
     - `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
@@ -1223,6 +1229,12 @@ Categories:
 - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
 - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
 - `skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
+- `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.trySynthesize`
+- `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.envelopeFromSettlement`
+- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.complete`
+- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.block`
+- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.auditSettle`
+- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.findEnvelope`
 - `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`

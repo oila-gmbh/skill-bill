@@ -570,8 +570,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val input = GoalSubtaskReviewInput(
       reviewBaseSha = "a".repeat(40),
       currentHeadSha = "b".repeat(40),
-      trackedDelta = "committed staged and unstaged delta",
-      ownedUntrackedPatches = "run-owned untracked delta",
+      trackedDelta = "scope-fingerprint:abc\n",
+      ownedUntrackedPatches = "",
     )
 
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -582,9 +582,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       goalSubtaskReviewInput = input,
     )
 
-    assertContains(prompt, input.trackedDelta)
-    assertContains(prompt, input.ownedUntrackedPatches)
-    assertContains(prompt, "durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`")
+    assertFalse(prompt.contains("scope-fingerprint:abc"))
+    assertContains(prompt, "durable base `${input.reviewBaseSha}`")
+    assertContains(prompt, "resolves that scope itself")
   }
 
   @Test

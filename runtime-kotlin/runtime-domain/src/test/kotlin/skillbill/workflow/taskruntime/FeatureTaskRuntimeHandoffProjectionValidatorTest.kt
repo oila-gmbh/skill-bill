@@ -16,7 +16,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
@@ -41,23 +40,6 @@ private const val COMMIT_PUSH_PHASE_PAYLOAD =
 
 @Suppress("LargeClass") // single suite over one validator; splitting would scatter projection-contract cases
 class FeatureTaskRuntimeHandoffProjectionValidatorTest {
-  @Test
-  fun `projection byte budget counts the complete canonical delivered representation`() {
-    val valueOnlyBytes = """{"plan":"ok"}""".toByteArray(Charsets.UTF_8).size
-    val declaration = declaration(
-      budget = FeatureTaskRuntimeHandoffProjectionBudget(
-        maxUtf8Bytes = valueOnlyBytes,
-        maxCollectionItems = 1,
-      ),
-    )
-
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      FeatureTaskRuntimeHandoffProjectionValidator.validate(inputs(declarations = listOf(declaration)))
-    }
-
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
-  }
-
   @Test
   fun `projection byte size equals its canonical delivered rendering`() {
     val projection = FeatureTaskRuntimeHandoffProjectionValidator.validate(inputs())
@@ -596,30 +578,6 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `budget enforcement measures the exact prompt-visible rendering`() {
-    val payload = """{"items":["${"x".repeat(80)}"]}"""
-    val wireOnlyBytes = payload.toByteArray(Charsets.UTF_8).size
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      FeatureTaskRuntimeHandoffProjectionValidator.validate(
-        inputs(
-          declarations = listOf(
-            declaration(
-              budget = FeatureTaskRuntimeHandoffProjectionBudget(
-                maxUtf8Bytes = wireOnlyBytes + 1,
-                maxCollectionItems = 64,
-              ),
-            ),
-          ),
-          resolvedUpstream = upstream(payload),
-        ),
-      )
-    }
-
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
-    assertContains(error.message.orEmpty(), "UTF-8 bytes")
-  }
-
-  @Test
   fun `a duplicate projection name is rejected`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimeHandoffProjectionValidator.validate(
@@ -662,55 +620,6 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     }
 
     assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.UNDECLARED_FIELD, error.failureKind)
-  }
-
-  @Test
-  fun `budget overflow rejects instead of truncating or substituting the source artifact`() {
-    val oversized = """{"plan":"${"p".repeat(5_000)}"}"""
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      FeatureTaskRuntimeHandoffProjectionValidator.validate(
-        inputs(
-          declarations = listOf(
-            declaration(budget = FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 128, maxCollectionItems = 8)),
-          ),
-          resolvedUpstream = upstream(oversized),
-        ),
-      )
-    }
-
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
-    assertFalse(
-      error.message.orEmpty().contains("ppppppppppppppppppppppppppppppp"),
-      "the rejection echoed the oversized body; a typed error must name identifiers, not payload content",
-    )
-    assertContains(error.message.orEmpty(), "128-byte budget")
-  }
-
-  @Test
-  fun `collection item overflow rejects instead of dropping items`() {
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      FeatureTaskRuntimeHandoffProjectionValidator.validate(
-        inputs(
-          declarations = listOf(
-            PhaseHandoffProjectionDeclaration(
-              consumerPhaseId = CONSUMER,
-              sourceRef = FeatureTaskRuntimeHandoffSourceRef
-                .RunInvariantField(FeatureTaskRuntimeRunInvariantPromptField.ACCEPTANCE_CRITERIA),
-              projectionName = "criteria",
-              projectionContractId = "test.criteria",
-              projectionContractVersion = "0.1",
-              promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-              budget = FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 100_000, maxCollectionItems = 2),
-              declaredFieldNames = listOf("acceptance_criteria"),
-            ),
-          ),
-          runInvariants = runInvariants(acceptanceCriteria = listOf("AC-1", "AC-2", "AC-3")),
-        ),
-      )
-    }
-
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
-    assertContains(error.message.orEmpty(), "3 items")
   }
 
   @Test
