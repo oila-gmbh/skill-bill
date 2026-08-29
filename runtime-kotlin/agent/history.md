@@ -1,3 +1,13 @@
+## [2026-08-29] SKILL-220 subtask 3 — Failure identity and exhaustive dispatch
+Areas: runtime-kotlin/{contracts/error,domain/workflow,application/{featuretask,goalrunner,review,workflow},cli,infra-fs,infra-sqlite,ports}, intellij-plugin
+- Shared failure case-to-code contract on in-scope hierarchies; unknown wire tokens are typed violations (no `SCHEMA_INVALID` collapse); conformance test asserts totality and injectivity.
+- Production sealed/`enum` `when` arms made exhaustive (LaunchPreparation, lease/status/policy/handoff/decode sites); open JSON/stdout/XML sites stay open with a one-line reason.
+- Durable control-state, handoff, and phase-output parse boundaries emit typed schema/contract failures; `CancellationException` rethrown before broad catch; capability vocabularies stay open (decision recorded).
+- Pattern: bind failure identity once on the sealed hierarchy; map at the parse boundary; let the compiler checklist closed sets. reusable
+- Limitation: distinct failure hierarchies not merged; `@OpenBoundaryMap` maps stay open; oversized-file splits deferred to later subtasks.
+Feature flag: N/A
+Acceptance criteria: 8/9 implemented (validate gate deferred)
+
 ## [2026-08-29] SKILL-220 subtask 2 — Inline FQN sweep
 Areas: runtime-kotlin/{application,domain,ports,cli,mcp,core,infra-fs,infra-sqlite,build-logic}, intellij-plugin
 - Replaced inline fully-qualified type/callable references across scoped Kotlin trees with `import` plus simple name (~234 files); extension receivers (e.g. `PreparedStatement.bindOwnership`) follow the same rule.

@@ -7,7 +7,7 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.attemptedUnresolvedEntries
 import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 import skillbill.workflow.taskruntime.model.withStableFindingRefs
-import skillbill.workflow.taskruntime.model.withoutRefutedFindings
+import skillbill.workflow.goal.model.withoutRefutedFindings
 
 /**
  * The findings the last review pass carries into this round. Refs are stabilized first so a review

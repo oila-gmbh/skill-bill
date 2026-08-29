@@ -4,6 +4,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
+import skillbill.application.goalrunner.staleChildPlanningRecoveryCommand
 
 internal enum class GoalPlanningRecoveryKind {
   HARD_RESET,

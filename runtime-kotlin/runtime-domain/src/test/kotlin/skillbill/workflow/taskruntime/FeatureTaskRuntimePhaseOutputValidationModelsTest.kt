@@ -78,7 +78,7 @@ class FeatureTaskRuntimePhaseOutputValidationModelsTest {
     )
 
     assertEquals(evidence, FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap(evidence.toArtifactMap()))
-    assertFailsWith<IllegalArgumentException> {
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap(evidence.toArtifactMap() + ("unexpected" to true))
     }
   }

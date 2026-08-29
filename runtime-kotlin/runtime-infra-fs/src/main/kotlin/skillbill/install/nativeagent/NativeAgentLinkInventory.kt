@@ -21,7 +21,6 @@ import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
 import com.fasterxml.jackson.databind.JsonNode
 import skillbill.nativeagent.rendering.NativeAgentProvider
-import skillbill.nativeagent.rendering.NativeAgentProvider.entries.flatMap
 
 internal data class NativeAgentLinkInventoryEntry(
   val logicalName: String,
@@ -197,7 +196,7 @@ internal object NativeAgentLinkInventory {
   private fun bootstrap(home: Path, managedRoots: List<Path>, sourceRoot: Path): BootstrapPlan {
     val retain = mutableListOf<NativeAgentLinkInventoryEntry>()
     val remove = mutableListOf<NativeAgentLinkInventoryEntry>()
-    flatMap { provider ->
+    NativeAgentProvider.entries.flatMap { provider ->
       provider.homeAgentDirs(home).flatMap { directory ->
         if (!Files.isDirectory(directory)) return@flatMap emptyList()
         Files.list(directory).use { paths ->

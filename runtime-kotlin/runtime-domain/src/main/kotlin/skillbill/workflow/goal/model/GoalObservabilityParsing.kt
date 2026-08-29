@@ -2,7 +2,7 @@ package skillbill.workflow.goal.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.goal.GoalObservabilityEventValidator
-import skillbill.workflow.invalidGoalObservabilityEvent
+import skillbill.workflow.goal.invalidGoalObservabilityEvent
 
 @OpenBoundaryMap("Goal observability latest-event durable artifact parse seam")
 fun goalObservabilityLatestEventFromArtifacts(

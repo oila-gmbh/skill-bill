@@ -12,8 +12,6 @@ import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
-import java.sourceSets.create
-import java.sourceSets.getByName
 
 private const val JDK_VERSION = 21
 private const val MAX_TEST_FORKS = 8
@@ -95,8 +93,8 @@ private fun Project.configureRepoTestSourceSet() {
   }
 
   val java = extensions.getByType(JavaPluginExtension::class.java)
-  val repoTestSourceSet = create("repoTest")
-  val testSourceSet = getByName("test")
+  val repoTestSourceSet = java.sourceSets.create("repoTest")
+  val testSourceSet = java.sourceSets.getByName("test")
 
   configurations.getByName(repoTestSourceSet.implementationConfigurationName)
     .extendsFrom(configurations.getByName(testSourceSet.implementationConfigurationName))

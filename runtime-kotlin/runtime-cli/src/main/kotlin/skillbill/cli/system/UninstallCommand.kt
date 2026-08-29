@@ -283,11 +283,15 @@ private fun desktopPlan(
   val appDir = desktopAppDir?.let(Path::of) ?: defaultDesktopAppDir(home, environment, os)
   val executable = when (os) {
     DesktopOs.WINDOWS -> appDir.resolve("SkillBill.exe")
-    else -> appDir.resolve("bin/skillbill-desktop")
+    DesktopOs.MAC,
+    DesktopOs.LINUX,
+    -> appDir.resolve("bin/skillbill-desktop")
   }
   val launcher = when (os) {
     DesktopOs.WINDOWS -> null
-    else -> LauncherRemoval(binDir.resolve("skillbill-desktop"), executable)
+    DesktopOs.MAC,
+    DesktopOs.LINUX,
+    -> LauncherRemoval(binDir.resolve("skillbill-desktop"), executable)
   }
   val dataHome = environment["XDG_DATA_HOME"]?.let(Path::of) ?: home.resolve(".local/share")
   val linuxFiles = if (os == DesktopOs.LINUX) {
@@ -320,7 +324,7 @@ private fun currentOs(): DesktopOs {
   return when {
     "mac" in osName || "darwin" in osName -> DesktopOs.MAC
     "win" in osName -> DesktopOs.WINDOWS
-    else -> DesktopOs.LINUX
+    else -> DesktopOs.LINUX // open host OS name: unrecognized platforms default to Linux layout
   }
 }
 

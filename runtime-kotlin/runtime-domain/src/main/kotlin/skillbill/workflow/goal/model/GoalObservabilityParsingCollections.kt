@@ -1,6 +1,6 @@
 package skillbill.workflow.goal.model
 
-import skillbill.workflow.invalidGoalObservabilityEvent
+import skillbill.workflow.goal.invalidGoalObservabilityEvent
 
 internal fun Map<*, *>.requireOnlyKeys(allowedKeys: Set<String>, sourceLabel: String) {
   keys.forEach { key ->

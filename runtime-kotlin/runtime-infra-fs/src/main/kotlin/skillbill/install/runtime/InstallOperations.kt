@@ -9,7 +9,7 @@ import skillbill.install.plan.InstallContext
 import skillbill.install.plan.SUPPORTED_AGENTS
 import skillbill.install.plan.agentPaths
 import skillbill.install.plan.buildInstallPlan
-import codexAgentsPath
+import skillbill.install.plan.codexAgentsPath
 import skillbill.install.plan.detectAgents
 import skillbill.install.plan.installSkill
 import skillbill.install.support.claudeConfigRoot

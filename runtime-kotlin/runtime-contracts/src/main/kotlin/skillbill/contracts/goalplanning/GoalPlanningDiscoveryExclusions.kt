@@ -1,5 +1,6 @@
 package skillbill.contracts.goalplanning
 
+import kotlin.coroutines.cancellation.CancellationException
 import org.yaml.snakeyaml.Yaml
 import skillbill.error.InvalidGoalPlanningDiscoveryExclusionsSchemaError
 
@@ -64,10 +65,17 @@ object GoalPlanningDiscoveryExclusions {
       )
 
   internal fun parse(document: String): Contract {
-    val root = runCatching { Yaml().load<Any?>(document) }.getOrNull() as? Map<*, *>
-      ?: throw InvalidGoalPlanningDiscoveryExclusionsSchemaError(
+    val root = try {
+      Yaml().load<Any?>(document) as? Map<*, *>
+    } catch (error: CancellationException) {
+      throw error
+    } catch (_: Exception) {
+      throw InvalidGoalPlanningDiscoveryExclusionsSchemaError(
         "goal planning discovery exclusion contract is not a YAML mapping",
       )
+    } ?: throw InvalidGoalPlanningDiscoveryExclusionsSchemaError(
+      "goal planning discovery exclusion contract is not a YAML mapping",
+    )
     requireKnownKeysOnly(root)
     requireSupportedVersion(root["contract_version"])
     return Contract(

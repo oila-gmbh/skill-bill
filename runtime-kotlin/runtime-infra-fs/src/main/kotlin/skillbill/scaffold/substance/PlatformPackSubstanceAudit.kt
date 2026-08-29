@@ -542,7 +542,9 @@ object PlatformPackSubstanceAudit {
   private fun roleKey(file: AuthoredFile): String = when (file.role) {
     AuthoredFileRole.SPECIALIST -> "specialist:${file.area}"
     AuthoredFileRole.SIDECAR -> "sidecar:${file.area}:${file.path.name}"
-    else -> file.role.name.lowercase(Locale.ROOT)
+    AuthoredFileRole.BASELINE,
+    AuthoredFileRole.QUALITY_CHECK,
+    -> file.role.name.lowercase(Locale.ROOT)
   }
 
   private fun relative(path: Path): String {

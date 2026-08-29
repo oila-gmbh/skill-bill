@@ -65,13 +65,13 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.pathContentIdentities
 import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprint
-import skillbill.ports.workflow.repositoryFingerprint
+import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.ports.workflow.gitops.repositoryOwnedPaths
-import skillbill.ports.workflow.restoreIndexState
+import skillbill.ports.workflow.gitops.restoreIndexState
 import skillbill.ports.workflow.gitops.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.gitops.runtimePhaseHeadCommit
 import skillbill.ports.workflow.gitops.stagePaths
-import skillbill.ports.workflow.stagedPaths
+import skillbill.ports.workflow.gitops.stagedPaths
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
@@ -121,7 +121,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
+import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
@@ -152,7 +152,7 @@ import skillbill.application.goalrunner.StructuredGoalReviewFinding
 import skillbill.workflow.taskruntime.model.UNPROVEN_REPOSITORY_FINGERPRINT
 import skillbill.error.UnreadableSpecIntentProjectionError
 import skillbill.application.review.model.UsageValidationException
-import skillbill.workflow.taskruntime.model
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 
 internal data class FeatureTaskRuntimeRunLoopDependencies(
   val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -3658,7 +3658,8 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     return when (val resolution = phaseGates.validationGateResolver.resolve(validationChangedPaths(run))) {
       is ValidationGateResolution.Declared -> resolution.declaration.collectAllFullGateCommand.joinToString(" ")
-      else -> null
+      is ValidationGateResolution.Absent -> null
+      is ValidationGateResolution.Incompatible -> null
     }
   }
 
@@ -3668,7 +3669,8 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     return when (val resolution = phaseGates.validationGateResolver.resolve(validationChangedPaths(run))) {
       is ValidationGateResolution.Declared -> resolution.declaration.buildCommand?.joinToString(" ")
-      else -> null
+      is ValidationGateResolution.Absent -> null
+      is ValidationGateResolution.Incompatible -> null
     }
   }
 
@@ -4032,8 +4034,7 @@ internal class FeatureTaskRuntimeRunLoop(
       it.phaseId == run.phaseId &&
         it.loopId == run.reentry?.loopId &&
         it.edgeIteration == run.reentry?.edgeIteration &&
-        it.status == model
-          .FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
+        it.status == FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
     }
   }
 
@@ -6248,7 +6249,7 @@ internal class FeatureTaskRuntimeRunLoop(
           appendLine("## Spec intent projection (verify_findings)")
           appendLine(JsonSupport.mapToJsonString(resolution.projection.toProjectionPayload()))
         }
-        else -> Unit
+        is SpecIntentResolution.None -> Unit
       }
       append(phaseGates.findingVerificationBoundaryMemory.promptSection(boundarySections))
       if (boundarySelection != null) {
@@ -6945,12 +6946,12 @@ internal class FeatureTaskRuntimeRunLoop(
     val schemaInvalidRetryReason: String? get() = (this as? SchemaInvalid)?.retryReason
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
       get() = when (this) {
+        is Settled -> null
         is SchemaInvalid -> fileManifest
         is IncompleteWork -> fileManifest
         is RetryableTerminal -> fileManifest
         is FindingsOwed -> fileManifest
         is BoundaryBodyDelivery -> fileManifest
-        else -> null
       }
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
     val malformedOutput: Boolean get() = (this as? SchemaInvalid)?.malformedOutput == true
@@ -6960,11 +6961,12 @@ internal class FeatureTaskRuntimeRunLoop(
     /** The operator-facing sentence for whichever non-settled variant this is. */
     val retryableOperatorReason: String?
       get() = when (this) {
+        is Settled -> null
         is SchemaInvalid -> operatorReason
         is IncompleteWork -> operatorReason
         is RetryableTerminal -> operatorReason
         is FindingsOwed -> operatorReason
-        else -> null
+        is BoundaryBodyDelivery -> null
       }
 
     /**
@@ -6976,8 +6978,12 @@ internal class FeatureTaskRuntimeRunLoop(
      */
     val semanticRetryReason: String?
       get() = when (this) {
+        is Settled -> null
         is SchemaInvalid -> retryReason
-        else -> null
+        is IncompleteWork -> null
+        is RetryableTerminal -> null
+        is FindingsOwed -> null
+        is BoundaryBodyDelivery -> null
       }
 
     /** Prompt-facing constraint text for a retryable terminal envelope's own continuation directive. */

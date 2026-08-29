@@ -352,7 +352,10 @@ data class CorrectiveRepairPromptProjection(
           "Exact repair projection must use inclusion reason exact_within_budget."
         }
       }
-      else -> {
+      CorrectiveRepairResponseAvailability.RESPONSE_ALREADY_TRUNCATED,
+      CorrectiveRepairResponseAvailability.RESPONSE_EXCEEDS_REPAIR_BUDGET,
+      CorrectiveRepairResponseAvailability.RESPONSE_UNAVAILABLE,
+      -> {
         require(exactResponseBody == null) {
           "Non-exact repair projection must not carry a response body or excerpt."
         }

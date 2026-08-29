@@ -254,7 +254,7 @@ private fun Map<String, Any?>.nonNegativeLongOrDefault(key: String): Long = when
   is BigInteger -> runCatching { value.longValueExact() }.getOrNull()
   is BigDecimal -> runCatching { value.toBigIntegerExact().longValueExact() }.getOrNull()
   is Number -> value.toLong()
-  else -> null
+  else -> null // untrusted durable JSON value shape: non-numeric primitives fail the field below
 }?.takeIf { it >= 0 }
   ?: goalRunnerControlSchemaError("field '$key' must be a non-negative integer.")
 
@@ -334,7 +334,7 @@ private fun Any?.toPositiveLong(key: String): Long = when (this) {
   is BigInteger -> runCatching { longValueExact() }.getOrNull()
   is BigDecimal -> runCatching { toBigIntegerExact().longValueExact() }.getOrNull()
   is Number -> runCatching { BigDecimal(toString()).longValueExact() }.getOrNull()
-  else -> null
+  else -> null // untrusted durable JSON value shape: non-numeric primitives fail the field below
 }?.also {
   if (it <= 0) goalRunnerControlSchemaError("execution lease field '$key' must be positive.")
 } ?: goalRunnerControlSchemaError("execution lease field '$key' must be a positive integer.")

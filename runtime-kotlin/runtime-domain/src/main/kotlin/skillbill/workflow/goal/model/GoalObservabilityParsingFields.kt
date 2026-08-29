@@ -1,7 +1,7 @@
 package skillbill.workflow.goal.model
 
 import skillbill.contracts.workflow.GOAL_OBSERVABILITY_EVENT_CONTRACT_VERSION
-import skillbill.workflow.invalidGoalObservabilityEvent
+import skillbill.workflow.goal.invalidGoalObservabilityEvent
 
 internal fun List<*>?.toStringList(): List<String> =
   this?.mapNotNull { it?.toString()?.takeIf(String::isNotBlank) }.orEmpty()

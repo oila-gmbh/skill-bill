@@ -2,6 +2,7 @@ package skillbill.application.goalrunner.planning
 
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.requireValidPlanningProjection
+import skillbill.application.goalrunner.decodeWorkflowSteps
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError

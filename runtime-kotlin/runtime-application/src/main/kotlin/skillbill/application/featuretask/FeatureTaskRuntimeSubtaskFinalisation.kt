@@ -7,10 +7,10 @@ import skillbill.ports.workflow.gitops.captureIndexState
 import skillbill.ports.workflow.gitops.deleteCheckpointRefsUnderPrefix
 import skillbill.ports.workflow.gitops.headCommitMessage
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.resolveCheckpointRef
-import skillbill.ports.workflow.restoreIndexState
+import skillbill.ports.workflow.gitops.resolveCheckpointRef
+import skillbill.ports.workflow.gitops.restoreIndexState
 import skillbill.ports.workflow.gitops.stagePaths
-import skillbill.ports.workflow.updateCheckpointRef
+import skillbill.ports.workflow.gitops.updateCheckpointRef
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import java.nio.file.Path
 

@@ -108,6 +108,6 @@ object IdeStatusSelectionPolicy {
     "blocked" -> IdeStatusLifecycleState.BLOCKED
     "failed" -> IdeStatusLifecycleState.FAILED
     "completed", "abandoned", "complete", "skipped" -> IdeStatusLifecycleState.TERMINAL
-    else -> null
+    else -> null // untrusted durable workflow status wire value
   }
 }

@@ -81,7 +81,9 @@ import java.nio.file.Path
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import java.time.Clock
+import kotlin.coroutines.cancellation.CancellationException
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.ShellContentContractException
 
 private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 
@@ -1340,7 +1342,15 @@ class GoalRunner(
   }
 
   private fun safeProgress(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerWorkflowProgress? =
-    runCatching { outcomeStore.progress(workflowId, request.dbPathOverride) }.getOrNull()
+    try {
+      outcomeStore.progress(workflowId, request.dbPathOverride)
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: ShellContentContractException) {
+      throw error
+    } catch (_: Exception) {
+      null
+    }
 
   private fun completedIteration(
     state: GoalRunnerManifestState,
@@ -2118,7 +2128,15 @@ private fun supervisionEvent(
     GoalRunnerStopReason.TIMEOUT -> "killed_unresponsive_child"
     GoalRunnerStopReason.INTERRUPTED -> "killed_by_parent_interrupt"
     GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> "continue_inline"
-    else -> "none"
+    GoalRunnerStopReason.FAILED,
+    GoalRunnerStopReason.BLOCKED,
+    GoalRunnerStopReason.POLICY_BLOCKED,
+    GoalRunnerStopReason.PULL_REQUEST_FAILED,
+    GoalRunnerStopReason.DEPENDENCIES_BLOCKED,
+    GoalRunnerStopReason.RECONCILED_RESUMABLE,
+    GoalRunnerStopReason.AWAITING_OPERATOR_DECISION,
+    GoalRunnerStopReason.PAUSED,
+    -> "none"
   },
   processState = liveness?.processState.orEmpty().ifBlank { "unknown" },
   workflowId = knownWorkflowId,
@@ -2174,7 +2192,17 @@ private class GoalRunnerTickProgressReader(
       ?: return null
     val childProgress = subtask.workflowId
       ?.takeIf(String::isNotBlank)
-      ?.let { workflowId -> runCatching { outcomeStore.progress(workflowId, request.dbPathOverride) }.getOrNull() }
+      ?.let { workflowId ->
+        try {
+          outcomeStore.progress(workflowId, request.dbPathOverride)
+        } catch (error: CancellationException) {
+          throw error
+        } catch (error: ShellContentContractException) {
+          throw error
+        } catch (_: Exception) {
+          null
+        }
+      }
     return GoalRunnerProgressState(subtask, childProgress)
   }
 
@@ -2464,7 +2492,15 @@ private fun GoalRunnerStopReason.toLedgerAction(): GoalAttemptLedgerAction = whe
   GoalRunnerStopReason.TIMEOUT -> GoalAttemptLedgerAction.TIMEOUT
   GoalRunnerStopReason.INTERRUPTED -> GoalAttemptLedgerAction.INTERRUPTION
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME -> GoalAttemptLedgerAction.RETRY
-  else -> GoalAttemptLedgerAction.FINAL_RECONCILED_OUTCOME
+  GoalRunnerStopReason.FAILED,
+  GoalRunnerStopReason.BLOCKED,
+  GoalRunnerStopReason.POLICY_BLOCKED,
+  GoalRunnerStopReason.PULL_REQUEST_FAILED,
+  GoalRunnerStopReason.DEPENDENCIES_BLOCKED,
+  GoalRunnerStopReason.RECONCILED_RESUMABLE,
+  GoalRunnerStopReason.AWAITING_OPERATOR_DECISION,
+  GoalRunnerStopReason.PAUSED,
+  -> GoalAttemptLedgerAction.FINAL_RECONCILED_OUTCOME
 }
 
 // SKILL-87: [openWithAssignedId] is the pre-assigned id only on a first run (open-with-this-id), null
@@ -2550,7 +2586,13 @@ private fun GoalRunnerStopReason.toDiagnosticClass(): String = when (this) {
   GoalRunnerStopReason.INTERRUPTED,
   GoalRunnerStopReason.BLOCKED,
   -> "child_process_failed"
-  else -> name.lowercase()
+  GoalRunnerStopReason.POLICY_BLOCKED,
+  GoalRunnerStopReason.PULL_REQUEST_FAILED,
+  GoalRunnerStopReason.DEPENDENCIES_BLOCKED,
+  GoalRunnerStopReason.RECONCILED_RESUMABLE,
+  GoalRunnerStopReason.AWAITING_OPERATOR_DECISION,
+  GoalRunnerStopReason.PAUSED,
+  -> name.lowercase()
 }
 
 private fun confirmedAliveKillDiagnosticClass(liveness: GoalRunnerLivenessSnapshot?): String? =
@@ -2565,7 +2607,11 @@ private fun GoalRunnerStopReason.nextSafeAction(): String = when (this) {
   GoalRunnerStopReason.PAUSED,
   -> "resume_from_last_resumable_step"
   GoalRunnerStopReason.FAILED -> "inspect_child_output_then_resume"
-  else -> "inspect_blocked_reason"
+  GoalRunnerStopReason.BLOCKED,
+  GoalRunnerStopReason.POLICY_BLOCKED,
+  GoalRunnerStopReason.PULL_REQUEST_FAILED,
+  GoalRunnerStopReason.DEPENDENCIES_BLOCKED,
+  -> "inspect_blocked_reason"
 }
 
 internal fun recoverySafeAction(
@@ -2576,7 +2622,9 @@ internal fun recoverySafeAction(
 ): String = when (classifyDurableChild(progress)) {
   DurableChildRecoveryClass.RESUMABLE -> "resume_from_last_resumable_step"
   DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL -> scopedChildRecoveryCommand(issueKey, subtaskId)
-  else -> fallback
+  DurableChildRecoveryClass.ABSENT,
+  DurableChildRecoveryClass.ACTIVE,
+  -> fallback
 }
 
 private fun missingResultPrefixDiagnostics(lastResumableStep: String?): GoalRunnerLaunchDiagnostics =

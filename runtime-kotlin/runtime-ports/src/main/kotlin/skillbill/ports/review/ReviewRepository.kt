@@ -8,6 +8,7 @@ import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
+import skillbill.ports.workflow.WorkflowStatsRepository
 
 interface ReviewRepository :
   WorkflowStatsRepository,

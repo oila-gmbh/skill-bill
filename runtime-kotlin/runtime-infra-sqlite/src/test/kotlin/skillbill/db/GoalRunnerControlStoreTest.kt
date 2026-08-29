@@ -82,6 +82,19 @@ class GoalRunnerControlStoreTest {
   }
 
   @Test
+  fun `malformed control-state JSON returns a typed schema error not IllegalArgumentException`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-control-malformed-json").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      store.persistControlState("parent-malformed", GoalRunnerControlState())
+      writeRawControlState(connection, "parent-malformed", "{not valid json")
+
+      assertFailsWith<InvalidWorkflowStateSchemaError> { store.controlState("parent-malformed") }
+    }
+  }
+
+  @Test
   fun `control state survives a reopened database and duplicate writes remain stable`() {
     val dbPath = Files.createTempDirectory("skillbill-goal-control-restart").resolve("metrics.db")
     val state = GoalRunnerControlState(

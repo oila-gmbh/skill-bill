@@ -100,7 +100,10 @@ object GoalRunnerWorkerSubtaskScheduler {
             GoalRunnerWorkerSubtaskRequestOutcome.Accepted(outcome.request, subtask)
           }
         }
-        else -> outcome
+        is GoalRunnerWorkerSubtaskRequestOutcome.Accepted,
+        is GoalRunnerWorkerSubtaskRequestOutcome.Rejected,
+        is GoalRunnerWorkerSubtaskRequestOutcome.RequiresOperatorConfirmation,
+        -> outcome
       }
     }
     return GoalRunnerWorkerSubtaskSchedulingResult(nextManifest.withParentStatusForWorkerRequests(), scheduledOutcomes)

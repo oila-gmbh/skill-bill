@@ -75,7 +75,12 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         FeatureTaskRuntimeProducerIteration(source.producingPhaseId, output.iteration)
       }
     }
-    else -> declaration.producerIteration
+    is FeatureTaskRuntimeHandoffSourceRef.RunInvariantField -> declaration.producerIteration
+    FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling -> declaration.producerIteration
+    FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence -> declaration.producerIteration
+    FeatureTaskRuntimeHandoffSourceRef.RepairLedger -> declaration.producerIteration
+    FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory -> declaration.producerIteration
+    is FeatureTaskRuntimeHandoffSourceRef.AddonContentRef -> declaration.producerIteration
   }
 
   private fun rejectConflictingGateReceipts(inputs: FeatureTaskRuntimeHandoffProjectionInputs) {

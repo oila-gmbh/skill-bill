@@ -3,7 +3,7 @@
 package skillbill.scaffold.runtime
 
 import skillbill.error.MissingSupportingFileTargetError
-import PlatformManifest
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.FEATURE_TASK_ADDON_CONSUMER
 import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
@@ -14,7 +14,7 @@ import java.nio.file.Path
 import kotlin.io.path.relativeTo
 import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS as POLICY_APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.policy.scaffold.PLATFORM_PACK_PRESETS as POLICY_PLATFORM_PACK_PRESETS
-import skillbill.scaffold.policy.scaffold.PLATFORM_PACK_SHELL_CONTRACT_VERSION as POLICY_SHELL_CONTRACT_VERSION
+import skillbill.scaffold.policy.platformpack.PLATFORM_PACK_SHELL_CONTRACT_VERSION as POLICY_SHELL_CONTRACT_VERSION
 import skillbill.scaffold.policy.scaffold.SCAFFOLD_PAYLOAD_VERSION as POLICY_SCAFFOLD_PAYLOAD_VERSION
 import skillbill.scaffold.policy.scaffold.displayNameFromSlug as policyDisplayNameFromSlug
 

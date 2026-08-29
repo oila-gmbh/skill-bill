@@ -25,6 +25,7 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.application.goalrunner.stderrExcerpt
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -846,7 +847,10 @@ class DefaultGoalPlanningSweep(
       is GoalPlanningPhaseProduction.RetryableDecline ->
         Triple(production.reason, production.rejectedOutput, production.agentId)
 
-      else -> return
+      is GoalPlanningPhaseProduction.Captured,
+      is GoalPlanningPhaseProduction.EmptyProviderTurn,
+      is GoalPlanningPhaseProduction.Stopped,
+      -> return
     }
     recordPlanningRejection(shared, phaseId, subtask, attempt, rule, reason, agentId, output)
   }

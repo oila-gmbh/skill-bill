@@ -1,6 +1,8 @@
 package skillbill.ports.featuretask.model
 
 import skillbill.contracts.workflow.FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.WorkflowStateRecord
 
 data class FeatureTaskExecutionIdentity(
   val workflowId: String,

@@ -1,5 +1,7 @@
 package skillbill.error
 
+import kotlin.enums.EnumEntries
+
 interface FailureWireCode {
   val wireValue: String
 }
@@ -30,6 +32,10 @@ fun coarseFailureKindForPhaseOutputWireCode(wireCode: String): FeatureTaskRuntim
   }
 
 fun <E> Array<E>.failureWireByValue(value: String, hierarchy: String): E where E : Enum<E>, E : FailureWireCode =
+  firstOrNull { it.wireValue == value }
+    ?: throw UnrecognizedFailureWireCodeError(hierarchy, value)
+
+fun <E> EnumEntries<E>.failureWireByValue(value: String, hierarchy: String): E where E : Enum<E>, E : FailureWireCode =
   firstOrNull { it.wireValue == value }
     ?: throw UnrecognizedFailureWireCodeError(hierarchy, value)
 

@@ -558,7 +558,10 @@ class SkillRemoveJvmFileSystem(
     val skillsRoot = repoRoot.resolve("skills")
     val selectedPlatforms: List<String>? = when (target) {
       is SkillRemovalTarget.PlatformPack -> listOf(target.platform)
-      else -> null
+      is SkillRemovalTarget.HorizontalSkill,
+      is SkillRemovalTarget.AddOn,
+      is SkillRemovalTarget.ExternalAddOn,
+      -> null
     }
     val baseRequest = NativeAgentLinkRequest(
       platformPacksRoot = platformPacksRoot,

@@ -1,5 +1,7 @@
 package skillbill.application.featuretask.model
 
+import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecution
+
 /** Request for the read-only status projection of one runtime workflow. */
 data class FeatureTaskRuntimeStatusRequest(
   val workflowId: String,

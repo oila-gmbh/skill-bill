@@ -7,7 +7,6 @@ import skillbill.error.FeatureTaskRuntimePhaseOutputStructuralRepairSource
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.FailureWireCode
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
-import skillbill.error.coarseFailureKindForPhaseOutputWireCode
 import skillbill.error.failureWireByValue
 
 /** Stable contract version for the typed phase-output validation result. */
@@ -69,7 +68,21 @@ enum class FeatureTaskRuntimePhaseOutputFailureCode(
   ;
 
   val coarseFailureKind: FeatureTaskRuntimePhaseOutputFailureKind
-    get() = coarseFailureKindForPhaseOutputWireCode(wireValue)
+    get() = when (this) {
+      MALFORMED,
+      ROOT_NOT_OBJECT,
+      NO_REPAIR_CANDIDATE,
+      AMBIGUOUS_REPAIR,
+      REPAIR_LIMIT_EXCEEDED,
+      UNSUPPORTED_REPAIR,
+      DUPLICATE_KEY,
+      -> FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED
+      SCHEMA_INVALID,
+      PHASE_ID_MISMATCH,
+      SEMANTIC_INVALID,
+      MULTIPLE_OUTPUT_CANDIDATES,
+      -> FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID
+    }
 
   companion object {
     private const val HIERARCHY = "FeatureTaskRuntimePhaseOutputFailureCode"
@@ -136,27 +149,32 @@ data class FeatureTaskRuntimePhaseOutputRepairEvidence(
         "operation",
         "source_location",
       )
-      require(raw.keys == expectedFields) {
-        "Phase-output repair evidence contains unsupported or missing fields."
+      if (raw.keys != expectedFields) {
+        throw phaseOutputRepairEvidenceSchemaError(
+          "Phase-output repair evidence contains unsupported or missing fields.",
+        )
       }
-      val location = requireNotNull(raw["source_location"] as? Map<*, *>) {
-        "Phase-output repair evidence source_location must be an object."
-      }
-      require(location.keys == setOf("source_label", "offset", "line", "column")) {
-        "Phase-output repair evidence source_location contains unsupported fields."
+      val location = raw["source_location"] as? Map<*, *>
+        ?: throw phaseOutputRepairEvidenceSchemaError(
+          "Phase-output repair evidence source_location must be an object.",
+        )
+      if (location.keys != setOf("source_label", "offset", "line", "column")) {
+        throw phaseOutputRepairEvidenceSchemaError(
+          "Phase-output repair evidence source_location contains unsupported fields.",
+        )
       }
       return FeatureTaskRuntimePhaseOutputRepairEvidence(
-        contractVersion = raw.requireString("contract_version"),
-        validatorVersion = raw.requireString("validator_version"),
-        format = FeatureTaskRuntimePhaseOutputFormat.fromWire(raw.requireString("format")),
-        originalDigest = raw.requireString("original_digest"),
-        repairedDigest = raw.requireString("repaired_digest"),
-        operation = FeatureTaskRuntimePhaseOutputRepairOperation.fromWire(raw.requireString("operation")),
+        contractVersion = raw.requireRepairEvidenceString("contract_version"),
+        validatorVersion = raw.requireRepairEvidenceString("validator_version"),
+        format = FeatureTaskRuntimePhaseOutputFormat.fromWire(raw.requireRepairEvidenceString("format")),
+        originalDigest = raw.requireRepairEvidenceString("original_digest"),
+        repairedDigest = raw.requireRepairEvidenceString("repaired_digest"),
+        operation = FeatureTaskRuntimePhaseOutputRepairOperation.fromWire(raw.requireRepairEvidenceString("operation")),
         sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation(
-          sourceLabel = location.requireString("source_label"),
-          offset = location.requireInt("offset"),
-          line = location.requireInt("line"),
-          column = location.requireInt("column"),
+          sourceLabel = location.requireRepairEvidenceString("source_label"),
+          offset = location.requireRepairEvidenceInt("offset"),
+          line = location.requireRepairEvidenceInt("line"),
+          column = location.requireRepairEvidenceInt("column"),
         ),
       )
     }
@@ -179,14 +197,21 @@ data class FeatureTaskRuntimePhaseOutputRepairEvidence(
   )
 }
 
-private fun Map<*, *>.requireString(field: String): String = this[field] as? String
-  ?: throw IllegalArgumentException("Phase-output repair evidence field '$field' must be a string.")
+private fun phaseOutputRepairEvidenceSchemaError(reason: String): Nothing =
+  throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+    sourceLabel = "repair_evidence",
+    reason = reason,
+    payloadFreeReason = reason,
+  )
 
-private fun Map<*, *>.requireInt(field: String): Int = when (val value = this[field]) {
+private fun Map<*, *>.requireRepairEvidenceString(field: String): String = this[field] as? String
+  ?: phaseOutputRepairEvidenceSchemaError("Phase-output repair evidence field '$field' must be a string.")
+
+private fun Map<*, *>.requireRepairEvidenceInt(field: String): Int = when (val value = this[field]) {
   is Int -> value
   is Number -> value.toInt().takeIf { value.toDouble() == it.toDouble() }
-  else -> null
-} ?: throw IllegalArgumentException("Phase-output repair evidence field '$field' must be an integer.")
+  else -> null // untrusted durable JSON value shape: non-integer primitives fail the field below
+} ?: phaseOutputRepairEvidenceSchemaError("Phase-output repair evidence field '$field' must be an integer.")
 
 /**
  * Typed result at the phase-output validation boundary. The normalized envelope is

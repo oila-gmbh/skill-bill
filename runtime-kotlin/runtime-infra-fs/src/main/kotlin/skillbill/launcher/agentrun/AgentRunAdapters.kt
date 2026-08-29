@@ -221,7 +221,9 @@ private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatchin
 private fun decodeClaudeStreamJson(stdout: String): DecodedAgentRunOutput {
   val terminal = stdout.lineSequence()
     .filter(String::isNotBlank)
-    .mapNotNull { line -> runCatching { structuredOutputMapper.readTree(line) }.getOrNull() }
+    .mapNotNull { line ->
+      runCatching { structuredOutputMapper.readTree(line) }.getOrNull() // open agent stdout NDJSON: skip malformed lines
+    }
     .lastOrNull { event -> event.path("type").takeIf { it.isTextual }?.asText() == "result" }
     // No terminal event means the stream was cut before Claude finished, not that the raw NDJSON is
     // the answer. Handing the transport back makes the phase schema gate read a run of per-turn
@@ -240,7 +242,7 @@ private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   var text: String? = null
   var decodedEnvelope = false
   stdout.lineSequence().filter(String::isNotBlank).forEach { line ->
-    runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event ->
+    runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event -> // open agent stdout NDJSON: skip malformed lines
       decodedEnvelope = true
       event.path("item").path("text").takeIf { it.isTextual }?.asText()?.let { text = it }
     }

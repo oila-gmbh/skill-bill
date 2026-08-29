@@ -1,7 +1,6 @@
 package dev.skillbill.runtime.buildlogic
 
 import org.gradle.api.provider.Property
-import dev.skillbill.runtime.buildlogic.runtimeTargetTokens
 
 /**
  * SKILL-55 subtask 1 (F-004/F-005): typed contract for the `skillbill.runtime-image`
@@ -20,7 +19,7 @@ abstract class RuntimeImageExtension {
   abstract val imageBaseName: Property<String>
 
   /** Canonical per-OS/arch target tokens (typed contract for subtasks 3/4). */
-  val runtimeTargetTokens: List<String> = runtimeTargetTokens
+  val runtimeTargetTokens: List<String> = dev.skillbill.runtime.buildlogic.runtimeTargetTokens
 
   /** Resolved host token, or `null` for an unsupported known-gap host (F-001). */
   val hostRuntimeToken: String? = resolveHostRuntimeToken()

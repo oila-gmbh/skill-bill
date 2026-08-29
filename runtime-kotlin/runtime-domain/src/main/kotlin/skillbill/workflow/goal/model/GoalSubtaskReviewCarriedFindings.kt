@@ -1,5 +1,7 @@
 package skillbill.workflow.goal.model
 
+import skillbill.workflow.taskruntime.model.normalizeIdentityPart
+
 /**
  * The carried set with every finding the verification stage refuted removed. Verification exists to
  * drop findings that do not survive scrutiny, so a refuted finding is not carried into the round at

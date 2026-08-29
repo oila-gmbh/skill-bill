@@ -180,7 +180,7 @@ private fun parsedReviewScope(scope: String): ParallelReviewScope = when (scope)
   "unstaged" -> ParallelReviewScope.UNSTAGED
   DEFAULT_CODE_REVIEW_SCOPE -> ParallelReviewScope.BRANCH
   "pr" -> ParallelReviewScope.PR
-  else -> throw UsageError("Invalid scope: $scope")
+  else -> throw UsageError("Invalid scope: $scope") // open CLI scope token: reject unrecognized values
 }
 
 private fun runParallelReviewDriver(

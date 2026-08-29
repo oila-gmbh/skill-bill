@@ -139,7 +139,9 @@ class IdeStatusService(
     val routeScope = when (item.workflowKind) {
       WorkItemKind.FEATURE_TASK_PROSE, WorkItemKind.FEATURE_TASK_RUNTIME ->
         unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(item.workflowId)?.routeScope
-      else -> null
+      WorkItemKind.FEATURE_VERIFY,
+      WorkItemKind.FEATURE_GOAL,
+      -> null
     }
     // Within a tier, never prefer a goal-child over an authoritative feature-goal for the same issue.
     if (routeScope == FeatureTaskRouteScope.GOAL_CHILD &&

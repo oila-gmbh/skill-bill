@@ -45,7 +45,7 @@ import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.NoopGoalRunnerAttemptLedgerStore
-import GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
@@ -802,11 +802,11 @@ class GoalRunnerStatusService(
         status = status,
         parentWorkflowId = loaded.parentWorkflowId,
         diagnoses = diagnoses,
-        refusalReason = when (status) {
-          GoalRunnerRepairStatus.NOT_WEDGED ->
-            "Subtask ${request.subtaskId} is not wedged; passed checks: " +
-              (healthy?.passedChecks?.joinToString(", ") ?: "none")
-          else -> "Goal children passed every repair check; no durable write."
+        refusalReason = if (status == GoalRunnerRepairStatus.NOT_WEDGED) {
+          "Subtask ${request.subtaskId} is not wedged; passed checks: " +
+            (healthy?.passedChecks?.joinToString(", ") ?: "none")
+        } else {
+          "Goal children passed every repair check; no durable write."
         },
       )
     }
@@ -875,7 +875,10 @@ class GoalRunnerStatusService(
       ?: return false
     return when (workerSupervisor.inspect(ownership)) {
       FeatureTaskRuntimeProcessInspection.ExactLive -> true
-      else -> false
+      FeatureTaskRuntimeProcessInspection.NotRunning,
+      is FeatureTaskRuntimeProcessInspection.OwnershipMismatch,
+      is FeatureTaskRuntimeProcessInspection.Unsupported,
+      -> false
     }
   }
 

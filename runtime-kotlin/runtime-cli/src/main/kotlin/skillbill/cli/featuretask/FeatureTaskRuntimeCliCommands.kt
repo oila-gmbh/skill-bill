@@ -888,7 +888,11 @@ private fun verifyRuntimeResume(
     is FeatureTaskContinuationLookupResult.AlreadyRunning -> result.candidate
     is FeatureTaskContinuationLookupResult.TerminalOnly ->
       throw UsageError("Workflow '$workflowId' is terminal and cannot be resumed; no phase was launched.")
-    else -> throw UsageError("Workflow '$workflowId' is not a resumable runtime workflow.")
+    FeatureTaskContinuationLookupResult.NoMatch,
+    is FeatureTaskContinuationLookupResult.Ambiguous,
+    is FeatureTaskContinuationLookupResult.GoalContinuation,
+    is FeatureTaskContinuationLookupResult.NeedsIdentityRepair,
+    -> throw UsageError("Workflow '$workflowId' is not a resumable runtime workflow.")
   }
   if (candidate.mode != RUNTIME) {
     throw UsageError("Workflow '$workflowId' was persisted in ${candidate.mode.wireValue} mode.")

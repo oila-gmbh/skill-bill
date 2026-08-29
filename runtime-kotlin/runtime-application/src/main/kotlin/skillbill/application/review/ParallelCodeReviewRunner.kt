@@ -1111,7 +1111,10 @@ class ParallelCodeReviewRunner(
     val head = canonicalRevision(request.headRevision ?: HEAD_REVISION, request.repoRoot)
     val base = request.baseRevision?.let { canonicalRevision(it, request.repoRoot) } ?: when (request.scope) {
       ParallelReviewScope.PR -> detectPrBase(request.repoRoot)
-      else -> detectBranchBase(request.repoRoot)
+      ParallelReviewScope.STAGED,
+      ParallelReviewScope.UNSTAGED,
+      ParallelReviewScope.BRANCH,
+      -> detectBranchBase(request.repoRoot)
     }
     return base to head
   }

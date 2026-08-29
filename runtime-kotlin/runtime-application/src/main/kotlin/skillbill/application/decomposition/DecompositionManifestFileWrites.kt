@@ -9,7 +9,7 @@ import skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidenc
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationFailureCode
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
 import skillbill.workflow.decomposition.model.requireAccepted
-import skillbill.workflow.toWireMap
+import skillbill.workflow.decomposition.toWireMap
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 

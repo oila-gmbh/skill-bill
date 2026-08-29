@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.security.MessageDigest
+import skillbill.application.featuretask.requireValidPlanningProjection
 import skillbill.contracts.JsonSupport
 
 class GoalPlanningPreparationValidator(

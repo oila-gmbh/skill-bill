@@ -27,9 +27,11 @@ import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.requireRuntimeModeForEngineWrite
 import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
+import kotlin.coroutines.cancellation.CancellationException
 import skillbill.contracts.JsonSupport
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.LegacyProseWorkflowError
@@ -114,7 +116,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifacts
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
@@ -2448,9 +2450,7 @@ class WorkflowGoalRunnerOutcomeStore(
   private fun candidateLivenessInstants(candidate: GoalContinuationCandidate): List<Instant> {
     val artifacts = decodeArtifacts(candidate.snapshot.artifactsJson)
     val declared = declaredProgressEventFrom(artifacts)?.timestamp
-    val observed = runCatching {
-      goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)?.timestamp
-    }.getOrNull()
+    val observed = goalObservabilityLatestEventFromArtifacts(artifacts, goalObservabilityEventValidator)?.timestamp
     return listOfNotNull(declared, observed, candidate.snapshot.updatedAt).mapNotNull(::parseInstantOrNull)
   }
 
@@ -2533,30 +2533,6 @@ private data class HistoryArtifactAppend(
   val retentionLimit: Int,
   val entryMap: Map<String, Any?>,
 )
-
-private data class GoalProgressEventRequiredFields(
-  val eventKind: GoalProgressEventKind,
-  val workflowId: String,
-  val workflowPhase: String,
-  val timestamp: String,
-  val sequenceNumber: Int,
-) {
-  companion object {
-    fun of(
-      eventKind: GoalProgressEventKind?,
-      workflowId: String?,
-      workflowPhase: String?,
-      timestamp: String?,
-      sequenceNumber: Int?,
-    ): GoalProgressEventRequiredFields? = GoalProgressEventRequiredFields(
-      eventKind = eventKind ?: return null,
-      workflowId = workflowId ?: return null,
-      workflowPhase = workflowPhase ?: return null,
-      timestamp = timestamp ?: return null,
-      sequenceNumber = sequenceNumber ?: return null,
-    )
-  }
-}
 
 private data class GoalContinuationCandidate(
   val family: WorkflowFamily,
@@ -2872,7 +2848,7 @@ private fun goalContinuationTerminalStatus(status: String?): GoalRunnerTerminalS
   "blocked" -> GoalRunnerTerminalStatus.BLOCKED
   "timeout", "timed_out" -> GoalRunnerTerminalStatus.TIMEOUT
   "paused" -> GoalRunnerTerminalStatus.PAUSED
-  else -> null
+  else -> null // untrusted durable workflow status wire value
 }
 
 private fun terminalStatus(
@@ -3033,41 +3009,66 @@ private fun progressEventFrom(artifacts: Map<String, Any?>): GoalRunnerProgressE
     ?.toGoalRunnerProgressEventOrNull()
 
 // SKILL-64 Subtask 3 (AC20-AC23): decode the latest declared progress event for
-// the supervisor read seam. Soft-decode: malformed records yield null rather
-// than failing the read.
+// the supervisor read seam. Malformed durable records fail loudly at this seam.
 private fun declaredProgressEventFrom(artifacts: Map<String, Any?>): GoalProgressEvent? =
-  (artifacts[GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY] as? Map<*, *>)?.toGoalProgressEventOrNull()
+  when (val raw = artifacts[GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY]) {
+    null -> null
+    is Map<*, *> -> raw.decodeDeclaredGoalProgressEvent(GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY)
+    else -> throw InvalidGoalProgressEventSchemaError(
+      GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY,
+      "<root>",
+      "must be an object.",
+    )
+  }
 
-private fun Map<*, *>.toGoalProgressEventOrNull(): GoalProgressEvent? {
-  val eventKind = this["event_kind"]?.toString()?.takeIf(String::isNotBlank)
-    ?.let { value -> runCatching { GoalProgressEventKind.fromWire(value) }.getOrNull() }
+private fun Map<*, *>.decodeDeclaredGoalProgressEvent(sourceLabel: String): GoalProgressEvent {
+  val eventKindWire = this["event_kind"]?.toString()?.takeIf(String::isNotBlank)
+    ?: throw InvalidGoalProgressEventSchemaError(sourceLabel, "event_kind", "is required.")
+  val eventKind = GoalProgressEventKind.entries.firstOrNull { it.wireValue == eventKindWire }
+    ?: throw InvalidGoalProgressEventSchemaError(sourceLabel, "event_kind", "unrecognized value '$eventKindWire'.")
   val workflowId = this["workflow_id"]?.toString()?.takeIf(String::isNotBlank)
+    ?: throw InvalidGoalProgressEventSchemaError(sourceLabel, "workflow_id", "is required.")
   val workflowPhase = this["workflow_phase"]?.toString()?.takeIf(String::isNotBlank)
+    ?: throw InvalidGoalProgressEventSchemaError(sourceLabel, "workflow_phase", "is required.")
   val timestamp = this["timestamp"]?.toString()?.takeIf(String::isNotBlank)
-  val sequenceNumber = this["sequence_number"].asGoalRunnerIntOrNull()
-  val required = GoalProgressEventRequiredFields.of(eventKind, workflowId, workflowPhase, timestamp, sequenceNumber)
-    ?: return null
-  return runCatching {
+    ?: throw InvalidGoalProgressEventSchemaError(sourceLabel, "timestamp", "is required.")
+  val sequenceNumber = this["sequence_number"].asDeclaredGoalProgressInt(sourceLabel, "sequence_number")
+  val outcomeWire = this["outcome"]?.toString()?.takeIf(String::isNotBlank)
+  val outcome = if (outcomeWire == null) {
+    GoalProgressOutcome.NONE
+  } else {
+    GoalProgressOutcome.entries.firstOrNull { it.wireValue == outcomeWire }
+      ?: throw InvalidGoalProgressEventSchemaError(sourceLabel, "outcome", "unrecognized value '$outcomeWire'.")
+  }
+  return try {
     GoalProgressEvent(
-      eventKind = required.eventKind,
-      workflowId = required.workflowId,
-      workflowPhase = required.workflowPhase,
-      // SKILL-64 Subtask 3 (F-C01): process_alive is the authoritative liveness
-      // signal. On a missing/null/unparseable value, bias toward NOT alive so a
-      // corrupt record cannot mask an unresponsive child (AC23). Only an
-      // explicit boolean true keeps the child considered alive.
+      eventKind = eventKind,
+      workflowId = workflowId,
+      workflowPhase = workflowPhase,
       processAlive = this["process_alive"] == true,
-      sequenceNumber = required.sequenceNumber,
-      timestamp = required.timestamp,
+      sequenceNumber = sequenceNumber,
+      timestamp = timestamp,
       stepId = this["step_id"]?.toString()?.takeIf(String::isNotBlank),
       operationName = this["operation_name"]?.toString()?.takeIf(String::isNotBlank),
       operationKind = this["operation_kind"]?.toString()?.takeIf(String::isNotBlank),
       expectedLong = this["expected_long"] == true,
-      outcome = this["outcome"]?.toString()?.takeIf(String::isNotBlank)
-        ?.let { value -> runCatching { GoalProgressOutcome.fromWire(value) }.getOrNull() }
-        ?: GoalProgressOutcome.NONE,
+      outcome = outcome,
     )
-  }.getOrNull()
+  } catch (error: IllegalArgumentException) {
+    throw InvalidGoalProgressEventSchemaError(sourceLabel, "<root>", error.message ?: "invalid event.", error)
+  }
+}
+
+private fun Any?.asDeclaredGoalProgressInt(sourceLabel: String, fieldPath: String): Int = when (this) {
+  is Int -> this
+  is Number -> toInt()
+  is String -> toIntOrNull()
+    ?: throw InvalidGoalProgressEventSchemaError(sourceLabel, fieldPath, "must be an integer.")
+  else -> throw InvalidGoalProgressEventSchemaError(sourceLabel, fieldPath, "must be an integer.")
+}.also { value ->
+  if (value < 0) {
+    throw InvalidGoalProgressEventSchemaError(sourceLabel, fieldPath, "must be non-negative.")
+  }
 }
 
 private fun Map<*, *>.toGoalRunnerProgressEventOrNull(): GoalRunnerProgressEvent? {
@@ -3180,9 +3181,18 @@ private fun WorkflowStateSnapshot.progressToken(): String = listOf(
 ).joinToString("\n")
 
 internal fun decodeWorkflowSteps(stepsJson: String): List<WorkflowStepState> {
-  val element = runCatching { JsonSupport.json.parseToJsonElement(stepsJson) }.getOrNull() ?: return emptyList()
-  return (JsonSupport.jsonElementToValue(element) as? List<*>).orEmpty().mapNotNull { raw ->
-    val item = raw as? Map<*, *> ?: return@mapNotNull null
+  val element = try {
+    JsonSupport.json.parseToJsonElement(stepsJson)
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: Exception) {
+    throw InvalidWorkflowStateSchemaError("Workflow steps JSON is malformed: ${error.message}")
+  }
+  val items = JsonSupport.jsonElementToValue(element) as? List<*>
+    ?: throw InvalidWorkflowStateSchemaError("Workflow steps JSON must be an array.")
+  return items.mapIndexed { index, raw ->
+    val item = raw as? Map<*, *>
+      ?: throw InvalidWorkflowStateSchemaError("Workflow steps[$index] must be an object.")
     WorkflowStepState(
       stepId = item["step_id"]?.toString().orEmpty(),
       status = item["status"]?.toString().orEmpty(),
