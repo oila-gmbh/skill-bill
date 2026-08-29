@@ -2,7 +2,6 @@ package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
@@ -10,14 +9,12 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
-import java.nio.charset.StandardCharsets
 
 /**
  * Per-phase allowlist of prompt-visible run invariants (AC-012). Run identity stays durable runtime
@@ -63,25 +60,15 @@ object FeatureTaskRuntimeRunInvariantPromptAllowlist {
  * Pure, deterministic assembler of the per-phase launch briefing from a resolved handoff.
  *
  * Layer 2 is no longer a payload map. The assembler hands the phase's static projection
- * declarations to [FeatureTaskRuntimeHandoffProjectionValidator], which counts UTF-8 bytes and
- * collection items against each declaration's budget and REJECTS an oversized projection instead of
- * truncating it. There is deliberately no truncation marker: a phase either receives a whole
- * validated projection or the launch fails loudly with a typed error naming the projection.
- *
- * [FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING] now bounds the non-projection framing
- * (run-invariants, directives, headers, derived-context keys). Projection bodies are bounded
- * independently by their own declared budgets, so the serialized text stays deterministically
- * bounded by the ceiling plus the declared per-projection budgets. If the framing alone exceeds the
- * ceiling the assembler loud-fails rather than silently truncate the governing contract.
+ * declarations to [FeatureTaskRuntimeHandoffProjectionValidator], which validates shape and
+ * contract without truncating. A phase either receives a whole validated projection or the launch
+ * fails loudly with a typed error naming the projection.
  *
  * Run invariants are rendered through [FeatureTaskRuntimeRunInvariantPromptAllowlist]: identity
  * fields reach every phase, while acceptance-contract, policy, and review fields reach only the
  * phases that act on them. The typed fields stay on the briefing as durable state regardless.
  */
 object FeatureTaskRuntimePhaseBriefingAssembler {
-  /** Byte ceiling for the non-projection framing of [FeatureTaskRuntimePhaseLaunchBriefing.briefingText]. */
-  const val FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING: Int = 65_536
-
   fun assemble(
     handoff: FeatureTaskRuntimePhaseHandoff,
     workflowId: String? = null,
@@ -192,39 +179,9 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
   private fun serialize(
     handoff: FeatureTaskRuntimePhaseHandoff,
     envelope: FeatureTaskRuntimeHandoffEnvelope,
-    workflowId: String?,
-  ): String {
-    // Framing = the briefing with empty projection bodies. The bodies themselves were already
-    // budget-checked by the validator, so only the framing needs its own ceiling. The resolved
-    // repository checkpoint renders here too; an audit whose uncommitted tree owns a large feature
-    // can overflow that byte ceiling. A bare require() would throw IllegalArgumentException past the
-    // launch handler that already persisted STATUS_RUNNING and wedge the row; a typed error is
-    // caught there instead.
-    val framingBytes = renderBriefing(handoff, emptyEnvelope(envelope))
-      .toByteArray(StandardCharsets.UTF_8).size
-    if (framingBytes > FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING) {
-      throw InvalidFeatureTaskRuntimePhaseBriefingFramingError(
-        consumerPhaseId = handoff.phaseId,
-        workflowId = workflowId,
-        framingBytes = framingBytes,
-        ceilingBytes = FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING,
-      )
-    }
-    return renderBriefing(handoff, envelope)
-  }
+    @Suppress("UNUSED_PARAMETER") workflowId: String?,
+  ): String = renderBriefing(handoff, envelope)
 
-  private fun emptyEnvelope(envelope: FeatureTaskRuntimeHandoffEnvelope): FeatureTaskRuntimeHandoffEnvelope =
-    envelope.copy(
-      projections = envelope.projections.map { projection ->
-        projection.copy(
-          fields = projection.fields.map { field ->
-            field.copy(value = FeatureTaskRuntimeHandoffProjectionValue.Text(""))
-          },
-        )
-      },
-    )
-
-  // Called twice: once with emptied projection bodies to measure framing, once with the real ones.
   @Suppress("LongMethod")
   private fun renderBriefing(
     handoff: FeatureTaskRuntimePhaseHandoff,

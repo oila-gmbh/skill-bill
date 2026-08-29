@@ -2,8 +2,6 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.contracts.JsonSupport
-import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
-import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
@@ -14,16 +12,13 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-
-private val CEILING = FeatureTaskRuntimePhaseBriefingAssembler.FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING
 
 class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
   @Test
-  fun `an oversized upstream projection is rejected, never truncated into the briefing`() {
+  fun `an oversized upstream projection is delivered whole rather than truncated`() {
     val oversizedBytes = 400_000
     val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
       "fixture-checkpoint",
@@ -37,20 +32,8 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       expectedRepositoryCheckpoint = checkpoint,
     )
 
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
-    }
-
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, error.consumerPhaseId)
-    assertEquals("wftr-1", error.workflowId)
-    assertContains(error.message.orEmpty(), "wftr-1")
-    assertContains(error.message.orEmpty(), error.projectionName)
-    assertContains(error.message.orEmpty(), error.projectionContractId)
-    assertFalse(
-      error.message.orEmpty().contains("p".repeat(64)),
-      "the rejection echoed the oversized payload body; typed errors must name identifiers, not content",
-    )
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
+    assertContains(briefing.briefingText, "r".repeat(64))
   }
 
   @Test
@@ -106,8 +89,8 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   }
 
   @Test
-  fun `pathologically large layer-1 loud-fails instead of emitting an over-budget or truncated-contract briefing`() {
-    val pathologicalCriterion = "AC-huge: ${"x".repeat(CEILING + 10_000)}"
+  fun `pathologically large layer-1 still renders the acceptance contract`() {
+    val pathologicalCriterion = "AC-huge: ${"x".repeat(80_000)}"
     val handoff = FeatureTaskRuntimePhaseHandoff(
       phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
       runInvariants = FeatureTaskRuntimeRunInvariants(
@@ -119,19 +102,9 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       derivedContextKeys = emptyList(),
     )
 
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
-    }
-    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW, error.failureKind)
-    assertEquals("wftr-1", error.workflowId)
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT, error.consumerPhaseId)
-    assertEquals("run_invariant_acceptance_criteria", error.projectionName)
-    assertContains(error.reason, "bytes")
-    assertContains(error.reason, "budget")
-    assertFalse(
-      error.message.orEmpty().contains("x".repeat(64)),
-      "a projection rejection must name the measured size, never echo the contract content it refused to deliver",
-    )
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
+    assertContains(briefing.briefingText, "AC-huge:")
+    assertContains(briefing.briefingText, "x".repeat(64))
   }
 
   @Test

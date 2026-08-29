@@ -2848,32 +2848,6 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       "no audit briefing may be persisted against an unmeasurable repository scope",
     )
   }
-
-  @Test
-  fun `an owned-path inventory over the byte ceiling blocks instead of unwinding the run`() {
-    // ~200 long but realistic paths render past the 65536-byte briefing framing ceiling. The framing
-    // throw is typed and caught at the launch seam, so the audit phase blocks durably instead of
-    // unwinding past the STATUS_RUNNING persist and crash-looping on every resume.
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    git.repositoryFingerprintValue = "child-fingerprint-1"
-    git.ownedPathsValue = (1..200).map { "runtime-domain/model/${"segment".repeat(50)}/Generated$it.kt" }
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        branchSetup = BranchSetupTestConfig(gitOperations = git),
-      ),
-    )
-    harness.seedCheckpointAudit()
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertEquals("audit", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "ceiling")
-    assertTrue(
-      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["audit"] == null,
-      "no audit briefing may be persisted when its framing overflows the byte ceiling",
-    )
-  }
 }
 
 class FeatureTaskRuntimeRunnerSpecLifecycleTest {

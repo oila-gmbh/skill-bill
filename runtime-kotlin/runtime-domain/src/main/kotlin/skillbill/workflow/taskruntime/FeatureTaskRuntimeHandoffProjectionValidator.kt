@@ -46,7 +46,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       if (resolved == null) return@mapNotNull null
       enforceDeclaredShape(inputs, declaration, fields)
       enforceCompactReferences(inputs, declaration, fields)
-      val projection = FeatureTaskRuntimeHandoffProjection(
+      FeatureTaskRuntimeHandoffProjection(
         projectionName = declaration.projectionName,
         sourceRef = declaration.sourceRef,
         projectionContractId = declaration.projectionContractId,
@@ -55,8 +55,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         fields = fields,
         producerIteration = resolvedProducerIteration(inputs, declaration),
       )
-      enforceBudget(inputs, declaration, projection)
-      projection
     }
     return FeatureTaskRuntimeHandoffEnvelope(
       consumerPhaseId = inputs.consumerPhaseId,
@@ -424,33 +422,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       if (problem != null) {
         reject(inputs, declaration, FeatureTaskRuntimeHandoffProjectionFailureKind.INVALID_COMPACT_REFERENCE, problem)
       }
-    }
-  }
-
-  private fun enforceBudget(
-    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
-    declaration: PhaseHandoffProjectionDeclaration,
-    projection: FeatureTaskRuntimeHandoffProjection,
-  ) {
-    val byteSize = projection.utf8ByteSize
-    if (byteSize > declaration.budget.maxUtf8Bytes) {
-      reject(
-        inputs,
-        declaration,
-        FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
-        "projection is $byteSize UTF-8 bytes against a ${declaration.budget.maxUtf8Bytes}-byte budget; " +
-          "the runtime rejects rather than truncating or substituting the full source artifact.",
-      )
-    }
-    val itemCount = projection.itemCount
-    if (itemCount > declaration.budget.maxCollectionItems) {
-      reject(
-        inputs,
-        declaration,
-        FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
-        "projection carries $itemCount items against a ${declaration.budget.maxCollectionItems}-item budget; " +
-          "the runtime rejects rather than dropping items.",
-      )
     }
   }
 
