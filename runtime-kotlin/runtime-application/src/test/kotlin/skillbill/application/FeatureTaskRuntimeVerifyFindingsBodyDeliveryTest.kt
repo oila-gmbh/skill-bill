@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeContinuationKind
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import java.nio.file.Files

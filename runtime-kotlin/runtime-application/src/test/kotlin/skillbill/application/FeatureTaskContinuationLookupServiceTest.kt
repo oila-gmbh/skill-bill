@@ -4,21 +4,21 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.toRecord
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -389,7 +389,7 @@ class FeatureTaskContinuationLookupServiceTest {
           encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
       )
       states.saveFeatureTaskWorkflow(
-        skillbill.ports.persistence.model.WorkflowStateRecord(
+        skillbill.ports.workflow.model.WorkflowStateRecord(
           workflowId = "wfl-prose-goal-parent",
           sessionId = "fis-prose-goal",
           workflowName = "bill-feature-task",

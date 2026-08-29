@@ -1,8 +1,8 @@
 package skillbill.application.review
 
-import skillbill.application.model.ParallelCodeReviewRequest
-import skillbill.application.model.ParallelReviewScope
-import skillbill.application.model.ReviewPrelaunchExpansion
+import skillbill.application.review.model.ParallelCodeReviewRequest
+import skillbill.application.review.model.ParallelReviewScope
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
@@ -16,14 +16,14 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.ports.persistence.ReviewRepository
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.model.ReviewAccountingRecord
-import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.review.model.ReviewAccountingRecord
+import skillbill.ports.review.model.ReviewIntegrationPassRecord
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
@@ -50,7 +50,7 @@ import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path

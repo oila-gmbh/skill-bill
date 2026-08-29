@@ -14,7 +14,9 @@ import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.asPendingForOperatorResume
 import skillbill.application.featuretask.phaseLedgerFrom
 import skillbill.application.featuretask.phaseRecordsFrom
-import skillbill.application.model.GoalRunnerChildRepairApplyResult
+import skillbill.application.goalrunner.planning.GoalChildPlanningHydrator
+import skillbill.application.goalrunner.planning.cascadeEligiblePlanSubtaskIds
+import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
@@ -44,64 +46,64 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
-import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
-import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent
-import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
-import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerSummary
-import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
-import skillbill.ports.goalrunner.model.GoalRunnerCompletionPersistenceResult
-import skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorization
-import skillbill.ports.goalrunner.model.GoalRunnerLedgerSequenceWatermarks
-import skillbill.ports.goalrunner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
-import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.goalrunner.model.GoalRunnerPausePersistenceResult
-import skillbill.ports.goalrunner.model.GoalRunnerProgressEvent
-import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
-import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
-import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
-import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
-import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.persistence.model.GoalChildWorkflowDeletionScope
+import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent
+import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerSummary
+import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.runner.model.GoalRunnerCompletionPersistenceResult
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorization
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.goalrunner.runner.model.GoalRunnerPausePersistenceResult
+import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEvent
+import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
+import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.goalrunner.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.GoalObservabilityEventValidator
-import skillbill.workflow.GoalProgressEventValidator
-import skillbill.workflow.NoopGoalObservabilityEventValidator
-import skillbill.workflow.NoopGoalProgressEventValidator
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
-import skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT
-import skillbill.workflow.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
-import skillbill.workflow.model.GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY
-import skillbill.workflow.model.GoalProgressEvent
-import skillbill.workflow.model.GoalProgressEventKind
-import skillbill.workflow.model.GoalProgressOutcome
-import skillbill.workflow.model.ValidationDepth
-import skillbill.workflow.model.WorkflowStateSnapshot
-import skillbill.workflow.model.WorkflowStepState
-import skillbill.workflow.model.WorkflowUpdateInput
-import skillbill.workflow.model.appendBoundedHistoryBySequence
-import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.goal.GoalProgressEventValidator
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
+import skillbill.workflow.goal.NoopGoalProgressEventValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT
+import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.goal.model.GoalProgressEventKind
+import skillbill.workflow.goal.model.GoalProgressOutcome
+import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.engine.model.WorkflowStepState
+import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
+import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
@@ -113,10 +115,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifacts
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.goal.model.GoalSubtaskReviewArtifacts
+import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.nio.file.Path
 import java.time.Clock
@@ -408,7 +410,7 @@ class WorkflowGoalRunnerManifestStore(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String?,
-    options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
+    options: skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions,
   ): GoalRunnerScopedReplanWriteResult {
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
       executeScopedReplan(unitOfWork, state, subtaskId, options)
@@ -426,7 +428,7 @@ class WorkflowGoalRunnerManifestStore(
     unitOfWork: UnitOfWork,
     state: GoalRunnerManifestState,
     subtaskId: Int,
-    options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
+    options: skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions,
   ): Pair<GoalRunnerScopedReplanWriteResult, String> {
     val preparations = unitOfWork.goalPlanningPreparations
     val plannedBefore = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
@@ -466,10 +468,10 @@ class WorkflowGoalRunnerManifestStore(
   )
 
   private fun discardScopedReplanPlans(
-    preparations: skillbill.ports.persistence.GoalPlanningPreparationRepository,
+    preparations: skillbill.ports.goalrunner.GoalPlanningPreparationRepository,
     state: GoalRunnerManifestState,
     subtaskId: Int,
-    options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
+    options: skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions,
     plannedBefore: List<Int>,
   ): ScopedReplanDiscard {
     if (!options.includeSharedPreplan) {
@@ -744,7 +746,7 @@ class WorkflowGoalRunnerManifestStore(
   override fun reviewMode(
     parentWorkflowId: String,
     dbPathOverride: String?,
-  ): skillbill.workflow.model.CodeReviewExecutionMode? = database.read(dbPathOverride) { unitOfWork ->
+  ): skillbill.workflow.goal.model.CodeReviewExecutionMode? = database.read(dbPathOverride) { unitOfWork ->
     unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
       ?: featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
         ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson))?.codeReviewMode }
@@ -752,9 +754,9 @@ class WorkflowGoalRunnerManifestStore(
 
   override fun persistReviewMode(
     parentWorkflowId: String,
-    mode: skillbill.workflow.model.CodeReviewExecutionMode,
+    mode: skillbill.workflow.goal.model.CodeReviewExecutionMode,
     dbPathOverride: String?,
-  ): skillbill.workflow.model.CodeReviewExecutionMode = database.transaction(dbPathOverride) { unitOfWork ->
+  ): skillbill.workflow.goal.model.CodeReviewExecutionMode = database.transaction(dbPathOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     migrateLegacyGoalRunnerControls(unitOfWork, record)
@@ -1255,7 +1257,7 @@ private class GoalRunnerControlCoordinator(
         val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
         val manifest = parent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
         if (controls.requiresPauseBoundary(manifest)) {
-          throw skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException(controls)
+          throw skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException(controls)
         }
         spawn()
       }
@@ -1269,7 +1271,7 @@ private class GoalRunnerControlCoordinator(
         val manifest = parent.decompositionRuntime(decompositionManifestValidator)
           ?: error("Goal parent '$parentWorkflowId' has no decomposition manifest.")
         if (controls.requiresPauseBoundary(manifest)) {
-          throw skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException(controls)
+          throw skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException(controls)
         }
         spawn()
       }
@@ -1454,7 +1456,7 @@ private fun reviewPolicyFromLegacyArtifacts(artifacts: Map<String, Any?>): GoalR
   val mode = policy["code_review_mode"] as? String
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' is missing code_review_mode.")
   val codeReviewMode = try {
-    skillbill.workflow.model.CodeReviewExecutionMode.fromWire(mode)
+    skillbill.workflow.goal.model.CodeReviewExecutionMode.fromWire(mode)
   } catch (error: IllegalArgumentException) {
     throw IllegalStateException("Goal review policy artifact has invalid code_review_mode '$mode'.", error)
   }
@@ -1567,7 +1569,7 @@ class WorkflowGoalRunnerOutcomeStore(
     subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String?,
-  ): skillbill.application.model.GoalRunnerChildWedgeDiagnosis = database.read(dbPathOverride) { unitOfWork ->
+  ): skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis = database.read(dbPathOverride) { unitOfWork ->
     childRepair.diagnose(
       workflowStates = unitOfWork.workflowStates,
       workflowId = workflowId,
@@ -1581,7 +1583,7 @@ class WorkflowGoalRunnerOutcomeStore(
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
-    wedgeClasses: List<skillbill.application.model.GoalRunnerWedgeClass>,
+    wedgeClasses: List<skillbill.application.goalrunner.model.GoalRunnerWedgeClass>,
     repoRoot: Path,
     dbPathOverride: String?,
   ): GoalRunnerChildRepairApplyResult {
@@ -3094,7 +3096,7 @@ private fun GoalRunnerProgressEvent.summary(): String = buildString {
   }
 }
 
-private fun skillbill.workflow.model.GoalObservabilityEvent.toProgressEvent(): GoalObservabilityProgressEvent =
+private fun skillbill.workflow.goal.model.GoalObservabilityEvent.toProgressEvent(): GoalObservabilityProgressEvent =
   GoalObservabilityProgressEvent(
     issueKey = issueKey,
     subtaskId = subtaskId,

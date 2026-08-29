@@ -3,12 +3,12 @@ package skillbill.application
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.WorkflowService
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

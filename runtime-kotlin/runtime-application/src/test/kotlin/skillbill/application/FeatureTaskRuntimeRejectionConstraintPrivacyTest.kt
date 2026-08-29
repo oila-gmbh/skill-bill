@@ -2,9 +2,9 @@
 
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

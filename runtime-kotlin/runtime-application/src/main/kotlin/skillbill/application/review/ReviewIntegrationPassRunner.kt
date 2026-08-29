@@ -1,11 +1,11 @@
 package skillbill.application.review
 
-import skillbill.application.model.ReviewLaneIntegrationInput
+import skillbill.application.review.model.ReviewLaneIntegrationInput
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator

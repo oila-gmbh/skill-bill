@@ -2,8 +2,8 @@ package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.attemptedUnresolvedEntries
 import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 import skillbill.workflow.taskruntime.model.withStableFindingRefs

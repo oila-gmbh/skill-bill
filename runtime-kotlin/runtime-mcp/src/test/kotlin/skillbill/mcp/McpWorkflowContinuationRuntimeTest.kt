@@ -1,17 +1,17 @@
 package skillbill.mcp
 
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpWorkflowRuntime
 import skillbill.mcp.workflow.workflowContinue
-import skillbill.ports.workflow.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
+import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path

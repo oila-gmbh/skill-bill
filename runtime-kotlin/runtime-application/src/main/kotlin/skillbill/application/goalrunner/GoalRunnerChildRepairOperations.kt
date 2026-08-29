@@ -6,32 +6,32 @@ import skillbill.application.featuretask.diagnoseUnsettledCompletedUpstreamPhase
 import skillbill.application.featuretask.featureSizeFromArtifacts
 import skillbill.application.featuretask.phaseLedgerFrom
 import skillbill.application.featuretask.phaseRecordsFrom
-import skillbill.application.model.GoalRunnerAppliedRepair
-import skillbill.application.model.GoalRunnerChildRepairApplyResult
-import skillbill.application.model.GoalRunnerChildWedgeDiagnosis
-import skillbill.application.model.GoalRunnerWedgeClass
-import skillbill.application.model.GoalRunnerWedgeFinding
+import skillbill.application.goalrunner.model.GoalRunnerAppliedRepair
+import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
+import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
+import skillbill.application.goalrunner.model.GoalRunnerWedgeFinding
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
-import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.ValidationDepth
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 import java.nio.file.Path
 import java.time.Instant
 
@@ -439,7 +439,7 @@ internal class GoalRunnerChildRepairOperations(
 
   @Suppress("LongParameterList") // diagnosis accumulators plus identity context; bundling would hide the seam
   private fun diagnoseStaleBlockedOutcome(
-    record: skillbill.workflow.model.WorkflowStateSnapshot,
+    record: skillbill.workflow.engine.model.WorkflowStateSnapshot,
     artifacts: Map<String, Any?>,
     issueKey: String,
     subtaskId: Int,

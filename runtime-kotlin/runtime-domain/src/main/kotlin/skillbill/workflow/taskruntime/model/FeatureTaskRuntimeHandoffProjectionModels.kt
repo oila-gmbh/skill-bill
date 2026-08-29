@@ -6,10 +6,10 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRA
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.goal.model.ValidationDepth
 
 /**
  * Typed handoff-projection primitives. Together they replace the generic upstream-payload map with a

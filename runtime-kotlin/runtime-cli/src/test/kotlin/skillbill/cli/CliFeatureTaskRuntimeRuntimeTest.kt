@@ -15,26 +15,26 @@ import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
-import skillbill.ports.workflow.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.ScopedStagingGitOperations
-import skillbill.ports.workflow.ScopedStagingGitOperationsProvider
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.model.GoalObservabilityChangedFileSummary
-import skillbill.workflow.model.GoalObservabilityDiffStat
-import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
+import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
+import skillbill.workflow.goal.model.GoalObservabilityDiffStat
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
@@ -2321,7 +2321,7 @@ private class FakeRuntimeGitOperations(
 
       override fun recoverBaseline(
         repoRoot: Path,
-        request: skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest,
+        request: skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
         status = "error",

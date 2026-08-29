@@ -1,7 +1,7 @@
 package skillbill.cli
 
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.work.padTerminalEnd
 import skillbill.cli.work.terminalDisplayWidth

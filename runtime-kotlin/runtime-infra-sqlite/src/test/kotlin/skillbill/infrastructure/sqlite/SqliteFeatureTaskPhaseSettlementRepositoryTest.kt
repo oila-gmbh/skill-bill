@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.db.core.DatabaseRuntime
-import skillbill.ports.persistence.model.FeatureTaskPhaseSettlement
+import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import java.nio.file.Files
 import java.time.Instant
 import kotlin.test.Test

@@ -7,7 +7,7 @@ import skillbill.error.InvalidInstallPlanSchemaError
  * SKILL-52.3 Subtask 1: domain-owned validator port for the install-plan
  * wire snapshot map.
  *
- * Mirrors [skillbill.workflow.WorkflowSnapshotValidator]: `runtime-domain`
+ * Mirrors [skillbill.workflow.engine.WorkflowSnapshotValidator]: `runtime-domain`
  * install policy code MUST NOT import the concrete schema validator (which
  * now lives in `runtime-infra-fs`). The application/infra boundary
  * constructs the validator implementation and threads it through the

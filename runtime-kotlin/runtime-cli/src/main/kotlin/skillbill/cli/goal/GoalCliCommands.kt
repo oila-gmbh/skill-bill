@@ -18,31 +18,31 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.goalrunner.GoalOperatorDecisionService
-import skillbill.application.goalrunner.GoalPlanningLogService
+import skillbill.application.goalrunner.planning.GoalPlanningLogService
 import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
+import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.model.GoalPreflightRequest
 import skillbill.application.goalrunner.model.GoalPreflightResult
-import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
-import skillbill.application.model.GoalPlanningLog
-import skillbill.application.model.GoalPlanningLogAttempt
-import skillbill.application.model.GoalPlanningLogRequest
-import skillbill.application.model.GoalRunnerAcceptRequest
-import skillbill.application.model.GoalRunnerAcceptResult
-import skillbill.application.model.GoalRunnerOperatorDecisionRequest
-import skillbill.application.model.GoalRunnerPauseResult
-import skillbill.application.model.GoalRunnerRepairRequest
-import skillbill.application.model.GoalRunnerReplanRequest
-import skillbill.application.model.GoalRunnerReplanResult
-import skillbill.application.model.GoalRunnerResetRequest
-import skillbill.application.model.GoalRunnerResetResult
-import skillbill.application.model.GoalRunnerResumeResult
-import skillbill.application.model.GoalRunnerRunRequest
-import skillbill.application.model.GoalRunnerStatusRequest
-import skillbill.application.model.GoalRunnerStopStatus
-import skillbill.application.model.GoalRunnerStopVerbResult
+import skillbill.application.goalrunner.model.DEFAULT_GOAL_PLANNING_BUDGET
+import skillbill.application.goalrunner.planning.model.GoalPlanningLog
+import skillbill.application.goalrunner.planning.model.GoalPlanningLogAttempt
+import skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
+import skillbill.application.goalrunner.model.GoalRunnerAcceptRequest
+import skillbill.application.goalrunner.model.GoalRunnerAcceptResult
+import skillbill.application.goalrunner.model.GoalRunnerOperatorDecisionRequest
+import skillbill.application.goalrunner.model.GoalRunnerPauseResult
+import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
+import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
+import skillbill.application.goalrunner.model.GoalRunnerReplanResult
+import skillbill.application.goalrunner.model.GoalRunnerResetRequest
+import skillbill.application.goalrunner.model.GoalRunnerResetResult
+import skillbill.application.goalrunner.model.GoalRunnerResumeResult
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
+import skillbill.application.goalrunner.model.GoalRunnerStopStatus
+import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
 import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.system.RuntimeProvenanceService
 import skillbill.application.telemetry.TelemetryService
@@ -68,13 +68,13 @@ import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
-import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
-import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
+import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
+import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_LINES
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry
-import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
+import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -1159,7 +1159,7 @@ private class GoalRunPresenter(
     )
   }
 
-  fun eventSink(): skillbill.application.model.GoalRunnerEventSink = skillbill.application.model.GoalRunnerEventSink { }
+  fun eventSink(): skillbill.application.goalrunner.model.GoalRunnerEventSink = skillbill.application.goalrunner.model.GoalRunnerEventSink { }
 
   fun outputSink(includeRawChildOutput: Boolean): AgentRunOutputSink = if (!liveOutput) {
     AgentRunOutputSink.NONE
@@ -1685,7 +1685,7 @@ private fun GoalRunnerReplanResult?.toGoalReplanCliMap(issueKey: String): Map<St
   "mode" to "scoped_replan",
 )
 
-private fun resetSnapshotMap(snapshot: skillbill.application.model.GoalRunnerResetSnapshot): Map<String, Any?> =
+private fun resetSnapshotMap(snapshot: skillbill.application.goalrunner.model.GoalRunnerResetSnapshot): Map<String, Any?> =
   linkedMapOf(
     "status" to snapshot.status,
     "current_subtask" to snapshot.currentSubtaskId,
@@ -1703,7 +1703,7 @@ private fun resetSnapshotMap(snapshot: skillbill.application.model.GoalRunnerRes
     },
   )
 
-private fun replanSnapshotMap(snapshot: skillbill.application.model.GoalRunnerReplanSnapshot): Map<String, Any?> =
+private fun replanSnapshotMap(snapshot: skillbill.application.goalrunner.model.GoalRunnerReplanSnapshot): Map<String, Any?> =
   linkedMapOf(
     "status" to snapshot.status,
     "current_subtask" to snapshot.currentSubtaskId,

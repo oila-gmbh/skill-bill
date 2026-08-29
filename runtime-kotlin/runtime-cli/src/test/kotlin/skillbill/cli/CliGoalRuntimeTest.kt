@@ -1,8 +1,8 @@
 package skillbill.cli
 
 import skillbill.SkillBillVersion
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.goal.GOAL_EXIT_BLOCKED
 import skillbill.cli.model.CliExecutionResult
@@ -20,30 +20,30 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.goalrunner.GoalPullRequestPort
-import skillbill.ports.goalrunner.model.GoalPullRequestRequest
-import skillbill.ports.goalrunner.model.GoalPullRequestResult
+import skillbill.ports.goalrunner.runner.GoalPullRequestPort
+import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
+import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.time.NoopRuntimeTimingPort
-import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
-import skillbill.ports.workflow.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.ScopedStagingGitOperations
-import skillbill.ports.workflow.ScopedStagingGitOperationsProvider
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.model.GoalObservabilityDiffStat
-import skillbill.workflow.model.GoalObservabilitySelectedDiffHunk
-import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
+import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.goal.model.GoalObservabilityDiffStat
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunk
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
@@ -2127,7 +2127,7 @@ private object GoalTestWorkflowGitOperations :
 
       override fun recoverBaseline(
         repoRoot: Path,
-        request: skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest,
+        request: skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
         status = "error",

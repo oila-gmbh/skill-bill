@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
-import skillbill.application.model.FeatureTaskRuntimeResolvedPhaseAgent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
+import skillbill.application.featuretask.model.FeatureTaskRuntimeResolvedPhaseAgent
 
 /**
  * Pure per-phase agent resolver. The run-wide override is independent and wins at the launch

@@ -5,7 +5,7 @@ import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 
 /**
  * Durable run-scoped invariants resolved at run creation. Resume reads this artifact instead of

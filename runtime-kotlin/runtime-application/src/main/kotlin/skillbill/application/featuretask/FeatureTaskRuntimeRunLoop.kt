@@ -6,11 +6,13 @@ package skillbill.application.featuretask
 
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolved
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
+import skillbill.application.diagnostics.RejectedOutputDiagnosticService
+import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
+import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
@@ -23,15 +25,15 @@ import skillbill.application.featuretask.validation.model.ValidationGateResoluti
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
-import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.model.FeatureTaskRuntimePlanningStopDecision
-import skillbill.application.model.FeatureTaskRuntimeResolvedPhaseAgent
-import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.model.ParallelCodeReviewRequest
-import skillbill.application.model.ParallelCodeReviewResult
+import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimePlanningStopDecision
+import skillbill.application.featuretask.model.FeatureTaskRuntimeResolvedPhaseAgent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.review.model.ParallelCodeReviewRequest
+import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.toProjectionPayload
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseCompactionDirective
@@ -53,31 +55,31 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.persistence.ProducerOutputEvidence
-import skillbill.ports.workflow.buildGoalSubtaskReviewInput
-import skillbill.ports.workflow.captureIndexState
-import skillbill.ports.workflow.headCommitMessage
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.pathContentIdentities
-import skillbill.ports.workflow.repositoryCheckpointFingerprint
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.captureIndexState
+import skillbill.ports.workflow.gitops.headCommitMessage
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.pathContentIdentities
+import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprint
 import skillbill.ports.workflow.repositoryFingerprint
-import skillbill.ports.workflow.repositoryOwnedPaths
+import skillbill.ports.workflow.gitops.repositoryOwnedPaths
 import skillbill.ports.workflow.restoreIndexState
-import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
-import skillbill.ports.workflow.runtimePhaseHeadCommit
-import skillbill.ports.workflow.stagePaths
+import skillbill.ports.workflow.gitops.runtimePhaseChangedPathsBetweenCommits
+import skillbill.ports.workflow.gitops.runtimePhaseHeadCommit
+import skillbill.ports.workflow.gitops.stagePaths
 import skillbill.ports.workflow.stagedPaths
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.telemetry.estimation.estimateTokens
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.model.SpecSource
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeQualityGateRouting
@@ -120,8 +122,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
-import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
@@ -543,7 +546,7 @@ internal class FeatureTaskRuntimeRunLoop(
   )
 
   private fun settleCarriedForwardGoalReview(
-    reviewState: skillbill.workflow.taskruntime.model.GoalSubtaskReviewState,
+    reviewState: skillbill.workflow.goal.model.GoalSubtaskReviewState,
     reentry: PendingReentry?,
   ): PhaseSettlement =
     runCatching { goalContinuationRecorder.lastGoalReviewResult(request.workflowId, request.dbPathOverride) }.fold(
@@ -556,7 +559,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun validateCarriedForwardGoalReview(
     rawResult: String,
-    reviewState: skillbill.workflow.taskruntime.model.GoalSubtaskReviewState,
+    reviewState: skillbill.workflow.goal.model.GoalSubtaskReviewState,
     reentry: PendingReentry?,
   ): PhaseSettlement = runCatching {
     val acceptedOutput = outputValidator
@@ -2875,7 +2878,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private data class RuntimeOwnedReviewLaunch(
     val iteration: Int,
     val passNumber: Int,
-    val resolvedTier: skillbill.workflow.model.CodeReviewExecutionMode,
+    val resolvedTier: skillbill.workflow.goal.model.CodeReviewExecutionMode,
     val reviewRunId: String,
     val checkpoint: String,
   )
@@ -3006,16 +3009,16 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun invokeReviewDriver(request: ParallelCodeReviewRequest): ReviewDriverAttempt = try {
     ReviewDriverReady(phaseGates.reviewDriver.run(request))
-  } catch (error: skillbill.application.model.DiffResolutionException) {
+  } catch (error: skillbill.application.review.model.DiffResolutionException) {
     ReviewDriverFailed(
       "Runtime-owned review could not resolve the child-owned diff: ${error.message.orEmpty()}",
     )
-  } catch (error: skillbill.application.model.UsageValidationException) {
+  } catch (error: skillbill.application.review.model.UsageValidationException) {
     ReviewDriverFailed(
       "Runtime-owned review failed: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
     )
-  } catch (error: skillbill.application.model.StackDetectionException) {
+  } catch (error: skillbill.application.review.model.StackDetectionException) {
     ReviewDriverFailed(
       "Runtime-owned review failed: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
@@ -3099,8 +3102,8 @@ internal class FeatureTaskRuntimeRunLoop(
     passNumber: Int,
     result: ParallelCodeReviewResult,
     reviewRunId: String,
-    resolvedTier: skillbill.workflow.model.CodeReviewExecutionMode,
-  ): List<skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition> {
+    resolvedTier: skillbill.workflow.goal.model.CodeReviewExecutionMode,
+  ): List<GoalSubtaskBlockerDisposition> {
     if (passNumber < 2) return emptyList()
     val prior = recorder.fetchUnaddressedLedger(run.request.workflowId, run.request.dbPathOverride)
     if (prior.isEmpty()) return emptyList()

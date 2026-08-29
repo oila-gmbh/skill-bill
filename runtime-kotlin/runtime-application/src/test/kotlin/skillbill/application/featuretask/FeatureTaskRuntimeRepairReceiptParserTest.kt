@@ -5,7 +5,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -4,9 +4,9 @@ import skillbill.application.goalrunner.DefaultGoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.GoalRunnerExecutionAlreadyRunningException
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.model.GoalRunnerManifestState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan

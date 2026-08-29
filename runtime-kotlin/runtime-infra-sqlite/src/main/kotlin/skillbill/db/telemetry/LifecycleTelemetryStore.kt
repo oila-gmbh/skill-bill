@@ -1,6 +1,6 @@
 package skillbill.db.telemetry
 
-import skillbill.ports.persistence.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
 import skillbill.review.model.ReviewStageDegradationMeasurement

@@ -2,19 +2,19 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.goalrunner.GoalRunner
-import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
-import skillbill.application.model.GoalRunnerRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import java.nio.file.Path
 import kotlin.test.Test
@@ -639,7 +639,7 @@ private fun goalChildParityRun(
 
 private class RuntimeChildLauncher(
   private val runner: FeatureTaskRuntimeRunner,
-  private val template: skillbill.application.model.FeatureTaskRuntimeRunRequest,
+  private val template: skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest,
   private val outcomes: RecordingOutcomeStore,
 ) : GoalRunnerSubtaskLauncher {
   val reports: MutableList<FeatureTaskRuntimeRunReport> = mutableListOf()

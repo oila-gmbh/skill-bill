@@ -10,7 +10,7 @@ import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection

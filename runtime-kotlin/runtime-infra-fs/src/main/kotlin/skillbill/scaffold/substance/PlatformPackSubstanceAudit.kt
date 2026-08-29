@@ -13,7 +13,7 @@ package skillbill.scaffold.substance
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.CODE_REVIEW_FALLBACK_CAPABILITY
 import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.nio.file.Files

@@ -10,7 +10,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateTriageRe
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
 import java.util.concurrent.atomic.AtomicInteger

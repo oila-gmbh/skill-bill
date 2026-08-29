@@ -6,7 +6,7 @@ import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

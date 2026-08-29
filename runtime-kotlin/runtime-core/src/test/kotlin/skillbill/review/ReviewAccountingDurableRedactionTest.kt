@@ -1,6 +1,6 @@
 package skillbill.review
 
-import skillbill.application.model.ReviewPrelaunchExpansion
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewHarnessConfig
 import skillbill.application.review.ReviewRecorder
@@ -15,7 +15,7 @@ import skillbill.contracts.review.ReviewContextSchemaValidator
 import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
-import skillbill.ports.persistence.model.ReviewAccountingRecord
+import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.review.context.model.ReviewAccountingSummary
 import java.nio.file.Files
 import java.sql.Connection

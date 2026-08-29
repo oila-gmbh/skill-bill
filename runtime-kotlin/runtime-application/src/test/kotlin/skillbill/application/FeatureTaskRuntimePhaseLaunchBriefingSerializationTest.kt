@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection

@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY

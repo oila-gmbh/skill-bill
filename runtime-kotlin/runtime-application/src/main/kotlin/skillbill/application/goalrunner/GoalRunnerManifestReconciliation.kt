@@ -5,12 +5,12 @@ import skillbill.application.featuretask.FeatureTaskRuntimeCheckpointRefPruneReq
 import skillbill.application.featuretask.pruneCompletedSubtaskCheckpointRefs
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 
 internal fun reconcileGoalManifest(

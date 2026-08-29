@@ -5,11 +5,11 @@ import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
@@ -19,7 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import java.nio.file.Files

@@ -1,0 +1,1554 @@
+package skillbill.application.goalrunner.planning
+
+import me.tatarka.inject.annotations.Inject
+import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
+import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy
+import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.application.featuretask.boundedSchemaGateDetail
+import skillbill.application.featuretask.producerProjectionGateReason
+import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptRecord
+import skillbill.application.goalrunner.planning.model.GoalPlanningBurstSchedule
+import skillbill.application.goalrunner.planning.model.GoalPlanningEmptyTurnEvidence
+import skillbill.application.goalrunner.planning.model.GoalPlanningPhaseProduction
+import skillbill.application.goalrunner.planning.model.GoalPlanningRejectionRecord
+import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
+import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.goalrunner.model.GoalRunnerStopReason
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunOutputStream
+import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningIdentity
+import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.time.NoopRuntimeTimingPort
+import skillbill.ports.time.RuntimeTimingPort
+import skillbill.ports.time.model.RuntimeWaitResult
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.goal.model.GoalProgressEventKind
+import skillbill.workflow.goal.model.GoalProgressOutcome
+import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import java.nio.file.Path
+import java.time.Instant
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.ZERO
+
+fun interface GoalPlanningSweep {
+  fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome
+
+  companion object {
+    val NONE: GoalPlanningSweep = GoalPlanningSweep { _, _ -> GoalPlanningSweepOutcome.PreparedAll() }
+  }
+}
+
+internal data class GoalPlanningSharedContext(
+  val issueKey: String,
+  val normalizedIssueKey: String,
+  val parentWorkflowId: String,
+  val manifest: DecompositionManifest,
+  val controlState: GoalRunnerControlState,
+  val repositoryIdentity: String,
+  val parentSpec: String,
+  val parentSpecHash: String,
+  val decompositionManifestHash: String,
+  val dbPathOverride: String?,
+  val repoRoot: Path,
+  val invokedAgentId: String,
+  val configuredAgentOverrideId: String?,
+  val specSource: SpecSource,
+  val parentSpecPath: Path,
+  val planningPacket: Map<String, Any?>,
+)
+
+@Suppress("LargeClass", "LongParameterList", "TooManyFunctions")
+@Inject
+class DefaultGoalPlanningSweep(
+  private val checkpoint: GoalPlanningPreparationCheckpoint,
+  private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  private val subtaskLauncher: GoalRunnerSubtaskLauncher,
+  private val invariantsSource: FeatureTaskRuntimeRunInvariantsSource,
+  private val manifestFileStore: DecompositionManifestFileStore,
+  private val contextDiscovery: GoalPlanningContextDiscovery,
+  private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  private val planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
+  private val manifestStore: GoalRunnerManifestStore,
+  private val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
+  private val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
+  private val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
+  private val refreshLiveness: GoalPlanningRefreshLiveness = GoalPlanningRefreshLiveness.IDLE,
+) : GoalPlanningSweep {
+  @Suppress("ReturnCount")
+  override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
+    val canonicalRepository = canonicalRepository(request.repoRoot)
+    val identity = GoalPlanningIdentity(
+      state.parentWorkflowId,
+      state.manifest.issueKey.trim().uppercase(),
+      "repo-root-realpath-v1:$canonicalRepository",
+    )
+    val existingShared = runCatching { checkpoint.findSharedPreplan(identity, request.dbPathOverride) }
+      .getOrElse { error ->
+        return preSweepStopped(
+          request,
+          preparationStateReadReason(error, request.issueKey, 0),
+        )
+      }
+    val recoveredPacket = existingShared?.let(::planningPacketFrom)
+    if (existingShared != null && recoveredPacket == null) {
+      val remedySubtaskId = goalPlanningRemedySubtaskId(state.manifest.subtasks)
+      return preSweepStopped(
+        request,
+        goalPlanningMissingSharedContextPacketStopReason(request.issueKey, remedySubtaskId),
+      )
+    }
+    var shared = runCatching { gatherSharedContext(state, request, recoveredPacket) }.getOrElse { error ->
+      return preSweepStopped(request, sharedContextReason(error))
+    }
+    val activeSubtasks = state.manifest.subtasks.filter {
+      it.id in GoalPlanningSharedContextPacket.includedSubtaskIds(shared.planningPacket)
+    }
+    val currentProvenance = currentProvenance(shared)
+    when (
+      val settled = settleSharedPreplan(
+        existingShared = existingShared,
+        currentProvenance = currentProvenance,
+        shared = shared,
+        state = state,
+        request = request,
+        identity = identity,
+      )
+    ) {
+      is SharedPreplanSettlement.Halt -> return settled.outcome
+      is SharedPreplanSettlement.Ready -> {
+        shared = settled.shared
+        if (activeSubtasks.isEmpty()) {
+          return GoalPlanningSweepOutcome.PreparedAll(identity, settled.provenance)
+        }
+        return produceMissingPlans(
+          shared = shared,
+          request = request,
+          identity = identity,
+          provenance = settled.provenance,
+          sharedCheckpoint = settled.checkpoint,
+          activeSubtasks = activeSubtasks,
+        )
+      }
+    }
+  }
+
+  @Suppress("ReturnCount")
+  private fun produceMissingPlans(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    identity: GoalPlanningIdentity,
+    provenance: GoalPlanningContractProvenance,
+    sharedCheckpoint: SharedGoalPreplanCheckpoint,
+    activeSubtasks: List<DecompositionSubtask>,
+  ): GoalPlanningSweepOutcome {
+    val descriptors = runCatching {
+      activeSubtasks.mapIndexed { order, subtask -> descriptor(shared, subtask, order) }
+    }
+      .getOrElse { error ->
+        return stopped(
+          shared,
+          0,
+          "Goal planning governed subtask provenance could not be computed: ${error.message.orEmpty()}",
+        )
+      }
+    val subtasksById = activeSubtasks.associateBy(DecompositionSubtask::id)
+    val resolvedBodies = GoalPlanningResolvedBoundaryBodies()
+    var plansLaunchedThisPrepare = 0
+    while (true) {
+      val recovery = runCatching {
+        checkpoint.recoveryProgress(identity, descriptors, provenance, shared.dbPathOverride).firstMissingSubtaskId
+      }
+      recovery.exceptionOrNull()?.let { error ->
+        val subtaskId = recoverySubtaskId(error)
+        val phaseId = PHASE_PLAN.takeIf { subtaskId != 0 } ?: PHASE_PREPLAN
+        return stopped(
+          shared,
+          subtaskId,
+          preparationStateReadReason(error, shared.issueKey, subtaskId),
+          phaseId,
+        )
+      }
+      val missingId = recovery.getOrThrow()
+      if (missingId == null) return GoalPlanningSweepOutcome.PreparedAll(identity, provenance, descriptors)
+      val subtask = subtasksById[missingId]
+        ?: return stopped(shared, missingId, noSuchSubtaskReason(missingId))
+      val descriptor = descriptors.single { it.subtaskId == missingId }
+      if (plansLaunchedThisPrepare > 0) {
+        interruptibleWait(burstSchedule.planLaunchPace, shared, missingId, PHASE_PLAN)?.let { return it }
+      }
+      producePlan(shared, request, subtask, descriptor, provenance, sharedCheckpoint.preplanPayload, resolvedBodies)
+        ?.let { return it }
+      plansLaunchedThisPrepare += 1
+    }
+  }
+
+  private sealed class SharedPreplanSettlement {
+    class Ready(
+      val provenance: GoalPlanningContractProvenance,
+      val checkpoint: SharedGoalPreplanCheckpoint,
+      val shared: GoalPlanningSharedContext,
+    ) : SharedPreplanSettlement()
+
+    class Halt(val outcome: GoalPlanningSweepOutcome) : SharedPreplanSettlement()
+  }
+
+  /**
+   * Settles shared-preplan recoverability for one prepare(): reuse, produce, or one in-run refresh.
+   */
+  @Suppress("ReturnCount")
+  private fun settleSharedPreplan(
+    existingShared: SharedGoalPreplanCheckpoint?,
+    currentProvenance: GoalPlanningContractProvenance,
+    shared: GoalPlanningSharedContext,
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    identity: GoalPlanningIdentity,
+  ): SharedPreplanSettlement {
+    // At most one in-run shared-preplan regeneration per prepare()/launch.
+    var working = shared
+    val (provenance, sharedCheckpoint) = when (
+      val recoverability = classifyRecoverability(existingShared, currentProvenance, working)
+    ) {
+      is GoalPlanningProvenanceRecoverability.Irrecoverable ->
+        return SharedPreplanSettlement.Halt(incompatibleProvenance(working, recoverability.recoveryKind))
+      is GoalPlanningProvenanceRecoverability.Reuse -> {
+        val settled = existingShared ?: produceSharedPreplan(working, request, recoverability.provenance)
+          .getOrElse { error ->
+            return SharedPreplanSettlement.Halt(stopped(working, 0, error.message.orEmpty(), PHASE_PREPLAN))
+          }
+        recoverability.provenance to settled
+      }
+      is GoalPlanningProvenanceRecoverability.StaleValid -> {
+        return settleStaleValidSharedPreplan(
+          existingShared = requireNotNull(existingShared),
+          currentProvenance = currentProvenance,
+          shared = working,
+          state = state,
+          request = request,
+          identity = identity,
+          refreshedThisPrepare = false,
+        )
+      }
+    }
+    return SharedPreplanSettlement.Ready(provenance, sharedCheckpoint, working)
+  }
+
+  @Suppress("ReturnCount")
+  private fun settleStaleValidSharedPreplan(
+    existingShared: SharedGoalPreplanCheckpoint,
+    currentProvenance: GoalPlanningContractProvenance,
+    shared: GoalPlanningSharedContext,
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    identity: GoalPlanningIdentity,
+    refreshedThisPrepare: Boolean,
+  ): SharedPreplanSettlement {
+    var working = shared
+    var alreadyRefreshed = refreshedThisPrepare
+    val first = refreshStaleSharedPreplan(
+      existing = existingShared,
+      shared = working,
+      state = state,
+      request = request,
+      currentProvenance = currentProvenance,
+      refreshedThisPrepare = alreadyRefreshed,
+    ).getOrElse { error ->
+      return SharedPreplanSettlement.Halt(
+        when (error) {
+          is RefreshRefused -> stopped(working, 0, error.reason, PHASE_PREPLAN)
+          else -> stopped(working, 0, error.message.orEmpty(), PHASE_PREPLAN)
+        },
+      )
+    }
+    alreadyRefreshed = true
+    val afterRefresh = runCatching {
+      checkpoint.findSharedPreplan(identity, request.dbPathOverride)
+    }.getOrElse { error ->
+      return SharedPreplanSettlement.Halt(
+        preSweepStopped(
+          request,
+          preparationStateReadReason(error, request.issueKey, 0),
+        ),
+      )
+    }
+      ?: first.checkpoint
+    val afterPacket = planningPacketFrom(afterRefresh) ?: working.planningPacket
+    // Continue prepare with the post-refresh packet so cascaded plan regen uses the same
+    // parent_spec/catalog the new preplan selected against, not the pre-refresh recovered packet.
+    working = working.copy(planningPacket = afterPacket)
+    val (provenance, sharedCheckpoint) = when (
+      val second = classifyRecoverability(afterRefresh, currentProvenance, working)
+    ) {
+      is GoalPlanningProvenanceRecoverability.Irrecoverable ->
+        return SharedPreplanSettlement.Halt(incompatibleProvenance(working, second.recoveryKind))
+      is GoalPlanningProvenanceRecoverability.Reuse -> second.provenance to afterRefresh
+      is GoalPlanningProvenanceRecoverability.StaleValid -> {
+        refreshStaleSharedPreplan(
+          existing = afterRefresh,
+          shared = working,
+          state = state,
+          request = request,
+          currentProvenance = currentProvenance,
+          refreshedThisPrepare = alreadyRefreshed,
+        ).getOrElse { error ->
+          return SharedPreplanSettlement.Halt(
+            when (error) {
+              is RefreshRefused -> stopped(working, 0, error.reason, PHASE_PREPLAN)
+              else -> stopped(working, 0, error.message.orEmpty(), PHASE_PREPLAN)
+            },
+          )
+        }.let { it.provenance to it.checkpoint }
+      }
+    }
+    return SharedPreplanSettlement.Ready(provenance, sharedCheckpoint, working)
+  }
+
+  private fun currentProvenance(shared: GoalPlanningSharedContext) = GoalPlanningContractProvenance(
+    shared.parentSpecHash,
+    shared.decompositionManifestHash,
+    GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+  )
+
+  /**
+   * Classifies saved shared-preplan recoverability. Payload integrity always runs when a checkpoint
+   * exists — never short-circuit on provenance equality alone.
+   *
+   * When provenance was already advanced to the current parent-spec hash (equal-set refresh) while the
+   * embedded packet still carries the prior parent_spec text, treat the current on-disk parent spec as
+   * the saved text for classification so self-hash and freshness stay coherent without rewriting payload
+   * bytes.
+   */
+  private fun classifyRecoverability(
+    existing: SharedGoalPreplanCheckpoint?,
+    current: GoalPlanningContractProvenance,
+    shared: GoalPlanningSharedContext,
+  ): GoalPlanningProvenanceRecoverability {
+    if (existing == null) {
+      return GoalPlanningProvenanceRecoverability.Reuse(current)
+    }
+    val packetParentSpec = shared.planningPacket["parent_spec"] as? String
+    val savedParentSpec = if (existing.provenance.parentSpecHash == shared.parentSpecHash) {
+      shared.parentSpec
+    } else {
+      packetParentSpec
+    }
+    return classifyGoalPlanningProvenanceRecoverability(
+      existing = existing,
+      current = current,
+      savedParentSpec = savedParentSpec,
+      currentParentSpec = shared.parentSpec,
+    )
+  }
+
+  private data class RefreshedSharedPreplan(
+    val provenance: GoalPlanningContractProvenance,
+    val checkpoint: SharedGoalPreplanCheckpoint,
+  )
+
+  private class RefreshRefused(val reason: String) : RuntimeException(reason)
+
+  /**
+   * In-run refresh for a valid-but-stale shared preplan. One regeneration per prepare(); heading-set
+   * equality decides provenance-only advance vs full payload replace + shared cascade helper.
+   */
+  @Suppress("ReturnCount")
+  private fun refreshStaleSharedPreplan(
+    existing: SharedGoalPreplanCheckpoint,
+    shared: GoalPlanningSharedContext,
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    currentProvenance: GoalPlanningContractProvenance,
+    refreshedThisPrepare: Boolean,
+  ): Result<RefreshedSharedPreplan> = runCatching {
+    if (refreshedThisPrepare) {
+      return@runCatching RefreshedSharedPreplan(existing.provenance, existing)
+    }
+    refuseRefreshReason(shared.issueKey, refreshLiveness.resolve(state, shared.dbPathOverride))?.let { reason ->
+      throw RefreshRefused(reason)
+    }
+    val refreshShared = shared.copy(planningPacket = freshPlanningPacket(shared, state))
+    val produced = produceSharedPreplanCheckpoint(refreshShared, request, currentProvenance)
+      .getOrElse { throw it }
+    val savedValueHash = preplanProseValueHash(existing.preplanPayload)
+    val newValueHash = preplanProseValueHash(produced.preplanPayload)
+    val savedPromptHash = preplanProsePromptHash(existing.preplanPayload)
+    val newPromptHash = preplanProsePromptHash(produced.preplanPayload)
+    if (savedValueHash == newValueHash && savedPromptHash == newPromptHash) {
+      checkpoint.sharedPreplanRefresh.advanceSharedPreplanProvenance(
+        identity = existing.identity,
+        expectedPayloadSha256 = existing.payloadSha256,
+        provenance = currentProvenance,
+        dbOverride = shared.dbPathOverride,
+      )
+      val advanced = existing.copy(provenance = currentProvenance)
+      RefreshedSharedPreplan(currentProvenance, advanced)
+    } else {
+      val cascadeIds = cascadeEligiblePlanSubtaskIds(
+        plannedIds = checkpoint.sharedPreplanRefresh.listPreparedPlanSubtaskIds(
+          state.parentWorkflowId,
+          shared.dbPathOverride,
+        ),
+        subtasks = state.manifest.subtasks,
+      )
+      val replaced = checkpoint.sharedPreplanRefresh.replaceSharedPreplanForRefresh(
+        checkpoint = produced,
+        expectedPayloadSha256 = existing.payloadSha256,
+        cascadePlanSubtaskIds = cascadeIds,
+        dbOverride = shared.dbPathOverride,
+      )
+      RefreshedSharedPreplan(currentProvenance, replaced)
+    }
+  }
+
+  private fun freshPlanningPacket(
+    shared: GoalPlanningSharedContext,
+    state: GoalRunnerManifestState,
+  ): Map<String, Any?> {
+    val discovered = contextDiscovery.discover(shared.repoRoot)
+    val decomposition = manifestFileStore.readText(
+      resolvedGovernedPath(
+        shared.repoRoot,
+        state.manifest.parentSpecPath.substringBeforeLast("/") + "/" + DECOMPOSITION_MANIFEST_FILENAME,
+      ),
+    )
+    val packet = linkedMapOf<String, Any?>(
+      "packet_version" to GoalPlanningSharedContextPacket.VERSION,
+      "repository_identity" to shared.repositoryIdentity,
+      "normalized_issue_key" to shared.normalizedIssueKey,
+      "parent_spec_path" to state.manifest.parentSpecPath,
+      "parent_spec" to shared.parentSpec.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
+      "decomposition_manifest" to decomposition.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
+      "boundary_memory" to GoalPlanningSharedContextPacket.catalog(discovered),
+      "validation_guidance" to discovered.validationGuidance.take(
+        GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS,
+      ),
+      "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(state.manifest.subtasks),
+    )
+    return packet + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(packet))
+  }
+
+  private fun incompatibleProvenance(
+    shared: GoalPlanningSharedContext,
+    kind: GoalPlanningRecoveryKind,
+  ): GoalPlanningSweepOutcome.Stopped = stopped(
+    shared,
+    0,
+    goalPlanningIncompatibleProvenanceStopReason(
+      shared.issueKey,
+      goalPlanningRemedySubtaskId(shared.manifest.subtasks),
+      kind,
+    ),
+    PHASE_PREPLAN,
+  )
+
+  private fun recoverySubtaskId(error: Throwable): Int {
+    val recoveryError = error as? IncompatibleGoalPlanningPreparationRecoveryError
+    if (
+      recoveryError != null &&
+      error.message?.contains("must be completed with non-empty produced_outputs") == true
+    ) {
+      return 0
+    }
+    return recoveryError?.subtaskId ?: 0
+  }
+
+  @Suppress("ReturnCount")
+  private fun produceSharedPreplan(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    provenance: GoalPlanningContractProvenance,
+  ): Result<SharedGoalPreplanCheckpoint> =
+    produceSharedPreplanCheckpoint(shared, request, provenance).mapCatching { produced ->
+      produced.also { checkpoint.recheckpointSharedPreplan(it, shared.dbPathOverride) }
+    }
+
+  private fun produceSharedPreplanCheckpoint(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    provenance: GoalPlanningContractProvenance,
+  ): Result<SharedGoalPreplanCheckpoint> = runCatching {
+    val runInvariants = invariantsSource.read(shared.parentSpecPath)
+    // The bytes actually checkpointed are the enriched ones, so enrichment is the finalizer the
+    // producer gate runs on. Gating the raw child stdout would let an enrichment that invalidates the
+    // projection settle unchecked.
+    val preplanProduction = producePhase(shared, request, null, runInvariants, PHASE_PREPLAN, emptyList()) { raw ->
+      enrichPreplan(raw, shared.planningPacket)
+    }
+    if (preplanProduction is GoalPlanningPhaseProduction.Stopped) error(preplanProduction.outcome.blockedReason)
+    val captured = preplanProduction as GoalPlanningPhaseProduction.Captured
+    val preplanPayload = captured.payload
+    SharedGoalPreplanCheckpoint(
+      identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity),
+      provenance = provenance,
+      payloadSha256 = sha256HexUtf8(preplanPayload),
+      preplanPayload = preplanPayload,
+      repairEvidence = captured.repairEvidence,
+    )
+  }
+
+  private fun producePlan(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask,
+    descriptor: GovernedGoalSubtaskDescriptor,
+    provenance: GoalPlanningContractProvenance,
+    preplanPayload: String,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies,
+  ): GoalPlanningSweepOutcome.Stopped? {
+    val resolvedSpecPath = resolvedSubSpecPath(shared.repoRoot, subtask.specPath)
+      ?: return stopped(shared, subtask.id, unresolvedSpecReason(subtask), PHASE_PLAN)
+    val runInvariants = runCatching { invariantsSource.read(resolvedSpecPath) }.getOrElse { error ->
+      return stopped(shared, subtask.id, invariantReadReason(subtask, error), PHASE_PLAN)
+    }
+    val planProduction = producePhase(
+      shared,
+      request,
+      subtask,
+      runInvariants,
+      PHASE_PLAN,
+      listOf(FeatureTaskRuntimePhaseOutput(PHASE_PREPLAN, 1, preplanPayload)),
+      resolvedBodies = resolvedBodies,
+    )
+    if (planProduction is GoalPlanningPhaseProduction.Stopped) return planProduction.outcome
+    val captured = planProduction as GoalPlanningPhaseProduction.Captured
+    val planPayload = captured.payload
+    val record = GoalSubtaskPlanCheckpoint(
+      identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity),
+      subtaskId = subtask.id,
+      manifestOrder = descriptor.manifestOrder,
+      governedSubSpecPath = descriptor.governedSubSpecPath,
+      subSpecHash = descriptor.subSpecHash,
+      provenance = provenance,
+      payloadSha256 = sha256HexUtf8(planPayload),
+      planPayload = planPayload,
+      repairEvidence = captured.repairEvidence,
+    )
+    return runCatching { checkpoint.recheckpointSubtaskPlan(record, shared.dbPathOverride) }.fold(
+      onSuccess = { null },
+      onFailure = { error -> stopped(shared, subtask.id, persistenceReason(subtask, error), PHASE_PLAN) },
+    )
+  }
+
+  private fun descriptor(
+    shared: GoalPlanningSharedContext,
+    subtask: DecompositionSubtask,
+    order: Int,
+  ): GovernedGoalSubtaskDescriptor {
+    val path = resolvedSubSpecPath(shared.repoRoot, subtask.specPath) ?: error(unresolvedSpecReason(subtask))
+    val governedPath = shared.repoRoot.relativize(path).joinToString("/")
+    val identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity)
+    // Reads the stored record directly: a governed sub-spec that no longer exists on disk can only recover its
+    // hash from what was persisted, and that recovery must not depend on the stored plan's projection verdict.
+    val recovered = checkpoint.findStoredSubtaskPlan(
+      identity,
+      subtask.id,
+      governedPath,
+      shared.dbPathOverride,
+    )
+    // A complete subtask's plan is never hydrated into a fresh child again, so its stored hash stays
+    // authoritative: a sub-spec edited or deleted after completion must not wedge goal recovery.
+    val subSpecHash = when {
+      recovered != null && subtask.status == "complete" -> recovered.subSpecHash
+      manifestFileStore.isRegularFile(path) -> sha256HexUtf8(manifestFileStore.readText(path))
+      else -> error(unresolvedSpecReason(subtask))
+    }
+    return GovernedGoalSubtaskDescriptor(
+      subtask.id,
+      order,
+      governedPath,
+      subSpecHash,
+    )
+  }
+
+  /**
+   * Produces one planning phase and gates the exact payload bytes that will be checkpointed through the
+   * shared producer projection gate. A projection-invalid output relaunches the same phase with the
+   * bounded validation detail in the remediation prompt; nothing is checkpointed in the failing state.
+   * Schema and empty-turn retries are uncapped; `--planning-budget-minutes` and pause remain the stop
+   * paths. Every attempt records a durable completion event on the parent workflow.
+   */
+  private fun producePhase(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    runInvariants: FeatureTaskRuntimeRunInvariants,
+    phaseId: String,
+    recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies = GoalPlanningResolvedBoundaryBodies(),
+    finalizePayload: (String) -> String = { it },
+  ): GoalPlanningPhaseProduction {
+    var priorSchemaFailure: String? = null
+    var retryableDeclines = 0
+    var attempt = 0
+    while (true) {
+      attempt += 1
+      recordPlanningAttemptStarted(shared, phaseId, subtask, attempt)
+      val production = produceAttemptOrStop(
+        shared,
+        request,
+        subtask,
+        runInvariants,
+        phaseId,
+        recordedOutputs,
+        priorSchemaFailure,
+        resolvedBodies,
+      )
+      // Each branch yields the production to return, or null to relaunch under the same loop.
+      val settled: GoalPlanningPhaseProduction? = when (production) {
+        is GoalPlanningPhaseProduction.Stopped -> {
+          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          production
+        }
+
+        is GoalPlanningPhaseProduction.SchemaRejected -> {
+          recordFailedAttempt(shared, phaseId, subtask, attempt, SCHEMA_REJECTED_PLANNING_RULE, production)
+          priorSchemaFailure = production.reason
+          null
+        }
+
+        is GoalPlanningPhaseProduction.UnsuccessfulStatus -> {
+          recordFailedAttempt(shared, phaseId, subtask, attempt, UNSUCCESSFUL_PLANNING_STATUS_RULE, production)
+          GoalPlanningPhaseProduction.Stopped(production.outcome)
+        }
+
+        is GoalPlanningPhaseProduction.RetryableDecline -> {
+          retryableDeclines += 1
+          declineRetryStop(shared, phaseId, subtask, attempt, retryableDeclines, production)
+        }
+
+        is GoalPlanningPhaseProduction.EmptyProviderTurn -> {
+          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          recordEmptyProviderTurn(shared, phaseId, subtask, attempt, production)
+          backoffStop(shared, phaseId, subtask, attempt)
+        }
+
+        is GoalPlanningPhaseProduction.Captured -> {
+          val gated = gateCapturedPayload(production, phaseId, finalizePayload)
+          if (gated is GoalPlanningPhaseProduction.Captured) {
+            recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
+            gated
+          } else {
+            val rejected = gated as GoalPlanningPhaseProduction.SchemaRejected
+            recordFailedAttempt(shared, phaseId, subtask, attempt, SCHEMA_REJECTED_PLANNING_RULE, rejected)
+            priorSchemaFailure = rejected.reason
+            null
+          }
+        }
+      }
+      if (settled != null) return settled
+    }
+  }
+
+  /**
+   * Runs the exact bytes that would be checkpointed through the producer projection gate. Returns
+   * the captured production when the gate accepts, or the bounded gate detail as a rejection.
+   */
+  private fun gateCapturedPayload(
+    captured: GoalPlanningPhaseProduction.Captured,
+    phaseId: String,
+    finalizePayload: (String) -> String,
+  ): GoalPlanningPhaseProduction {
+    val payload = finalizePayload(captured.payload)
+    val accepted = if (payload == captured.payload) {
+      skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput(
+        normalizedOutput = captured.normalizedOutput,
+        repairEvidence = captured.repairEvidence,
+      )
+    } else {
+      outputValidator.validatePhaseOutput(payload, phaseId).requireAcceptedOutput(phaseId)
+    }
+    val canonicalPayload = accepted.normalizedOutput.canonicalJson
+    val gateReason = projectionGateReason(canonicalPayload, phaseId)
+      ?: return GoalPlanningPhaseProduction.Captured(
+        canonicalPayload,
+        accepted.normalizedOutput,
+        // Enrichment revalidates the final payload, but it must not discard evidence captured
+        // while structurally repairing the child output before enrichment.
+        accepted.repairEvidence ?: captured.repairEvidence,
+        captured.agentId,
+      )
+    return GoalPlanningPhaseProduction.SchemaRejected(gateReason, canonicalPayload, captured.agentId)
+  }
+
+  @Suppress("TooGenericExceptionCaught")
+  private fun produceAttemptOrStop(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    runInvariants: FeatureTaskRuntimeRunInvariants,
+    phaseId: String,
+    recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    priorSchemaFailure: String?,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies,
+  ): GoalPlanningPhaseProduction = try {
+    produceAttempt(
+      shared,
+      request,
+      subtask,
+      runInvariants,
+      phaseId,
+      recordedOutputs,
+      priorSchemaFailure,
+      resolvedBodies,
+    )
+  } catch (error: Exception) {
+    GoalPlanningPhaseProduction.Stopped(
+      stopped(
+        shared,
+        subtask?.id ?: 0,
+        unexpectedPlanningFailureReason(phaseId, error),
+        phaseId,
+      ),
+    )
+  }
+
+  private fun recordEmptyProviderTurn(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+    production: GoalPlanningPhaseProduction.EmptyProviderTurn,
+  ) = recordPlanningRejection(
+    shared,
+    phaseId,
+    subtask,
+    attempt,
+    EMPTY_PLANNING_HARVEST_RULE,
+    production.reason,
+    production.evidence.agentId,
+    production.evidence.rawOutputPreview.orEmpty(),
+  )
+
+  /**
+   * Persists one planning rejection with the offending output. The diagnostic phase id carries the
+   * subtask because every subtask restarts `attempt` at 1 under one parent workflow, and the
+   * diagnostics store is keyed by (workflow, phase, attempt, repair turn): an unscoped `plan` would
+   * let subtask 2's first rejection collide with subtask 1's and silently keep only one of them.
+   */
+  private fun recordPlanningRejection(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+    rule: String,
+    reason: String,
+    agentId: String,
+    rawEvidence: String,
+  ) {
+    planningRejectionRecorder.record(
+      GoalPlanningRejectionRecord(
+        parentWorkflowId = shared.parentWorkflowId,
+        issueKey = shared.issueKey,
+        dbPathOverride = shared.dbPathOverride,
+        phaseId = diagnosticPhaseId(phaseId, subtask),
+        subtaskId = subtask?.id ?: 0,
+        attempt = attempt,
+        rule = rule,
+        reason = reason,
+        agentId = agentId,
+        rawEvidence = rawEvidence,
+      ),
+    )
+  }
+
+  private fun diagnosticPhaseId(phaseId: String, subtask: DecompositionSubtask?): String =
+    subtask?.let { "$phaseId:${it.id}" } ?: phaseId
+
+  /**
+   * Records the decline and decides whether the sweep may relaunch. Unlike an empty turn, a declined
+   * envelope is a considered answer: retrying it forever would let an agent that declines identically
+   * every time wedge a goal that has no planning budget, so the transient reading is bounded and then
+   * believed. Returns the stop to propagate, or null to relaunch. No `priorSchemaFailure` is set —
+   * the output was well-formed, and naming the schema gate would describe a failure that never
+   * happened.
+   */
+  private fun declineRetryStop(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+    declines: Int,
+    production: GoalPlanningPhaseProduction.RetryableDecline,
+  ): GoalPlanningPhaseProduction.Stopped? {
+    recordFailedAttempt(shared, phaseId, subtask, attempt, RETRYABLE_PLANNING_DECLINE_RULE, production)
+    if (declines >= MAX_RETRYABLE_PLANNING_DECLINES) {
+      return GoalPlanningPhaseProduction.Stopped(
+        stopped(shared, subtask?.id ?: 0, exhaustedDeclineReason(production, declines), phaseId),
+      )
+    }
+    return backoffStop(shared, phaseId, subtask, attempt)
+  }
+
+  private fun backoffStop(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+  ): GoalPlanningPhaseProduction.Stopped? =
+    interruptibleWait(burstSchedule.emptyTurnBackoffAfterAttempt(attempt), shared, subtask?.id ?: 0, phaseId)
+      ?.let { stoppedOutcome -> GoalPlanningPhaseProduction.Stopped(stoppedOutcome) }
+
+  private fun recordFailedAttempt(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+    rule: String,
+    production: GoalPlanningPhaseProduction,
+  ) {
+    recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+    val (reason, output, agentId) = when (production) {
+      is GoalPlanningPhaseProduction.SchemaRejected ->
+        Triple(production.reason, production.rejectedOutput, production.agentId)
+
+      is GoalPlanningPhaseProduction.UnsuccessfulStatus ->
+        Triple(production.reason, production.rejectedOutput, production.agentId)
+
+      is GoalPlanningPhaseProduction.RetryableDecline ->
+        Triple(production.reason, production.rejectedOutput, production.agentId)
+
+      else -> return
+    }
+    recordPlanningRejection(shared, phaseId, subtask, attempt, rule, reason, agentId, output)
+  }
+
+  private fun recordPlanningAttempt(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+    outcome: GoalProgressOutcome,
+    eventKind: GoalProgressEventKind = GoalProgressEventKind.OPERATION_COMPLETED,
+  ) {
+    planningAttemptRecorder.record(
+      GoalPlanningAttemptRecord(
+        shared.parentWorkflowId,
+        shared.issueKey,
+        shared.dbPathOverride,
+        phaseId,
+        subtask?.id ?: 0,
+        attempt,
+        outcome,
+        eventKind,
+      ),
+    )
+  }
+
+  /**
+   * Opens the attempt in the durable ledger before the agent is launched. Without it a planning
+   * attempt is invisible for the minutes it runs and only appears once it has already failed, so an
+   * operator watching a live goal cannot tell a working attempt from a wedged one.
+   */
+  private fun recordPlanningAttemptStarted(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+  ) = recordPlanningAttempt(
+    shared,
+    phaseId,
+    subtask,
+    attempt,
+    GoalProgressOutcome.NONE,
+    GoalProgressEventKind.OPERATION_STARTED,
+  )
+
+  private fun projectionGateReason(payload: String, phaseId: String): String? {
+    val envelope = JsonSupport.parseObjectOrNull(payload)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return "Goal planning '$phaseId' payload is not a JSON object."
+    return producerProjectionGateReason(phaseId, envelope, planningProjectionValidator)
+      ?.let(::boundedSchemaGateDetail)
+  }
+
+  private fun emptyTurnReason(phaseId: String, evidence: GoalPlanningEmptyTurnEvidence): String =
+    "Goal planning '$phaseId' agent turn exited cleanly and returned no output. ${evidence.summary()}"
+
+  @Suppress("ReturnCount")
+  private fun produceAttempt(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    runInvariants: FeatureTaskRuntimeRunInvariants,
+    phaseId: String,
+    recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    priorSchemaFailure: String?,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies,
+  ): GoalPlanningPhaseProduction {
+    val currentSubtaskId = subtask?.id ?: 0
+    planningPauseOutcome(shared, currentSubtaskId, phaseId)?.let { return it }
+    // A recovered shared preplan is already settled by the time its bounded projection is parsed here,
+    // so an unhandled rejection would crash the goal driver with no Stopped outcome, no blocked_reason
+    // and no closed telemetry segment, then crash identically on every resume. Block durably instead.
+    val prompt = runCatching {
+      composePlanningPrompt(
+        shared,
+        request,
+        subtask,
+        runInvariants,
+        phaseId,
+        recordedOutputs,
+        priorSchemaFailure,
+        resolvedBodies,
+      )
+    }
+      .getOrElse { error ->
+        if (error !is InvalidFeatureTaskRuntimePlanningProjectionSchemaError &&
+          error !is InvalidFeatureTaskRuntimeHandoffProjectionError
+        ) {
+          throw error
+        }
+        return GoalPlanningPhaseProduction.Stopped(
+          stopped(shared, currentSubtaskId, projectionRejectedReason(phaseId, error), phaseId),
+        )
+      }
+    val startedAtNanos = System.nanoTime()
+    val outcome = runCatching { launchPlanningAttempt(shared, request, subtask, phaseId, prompt) }
+      .getOrElse { error ->
+        if (error is GoalRunnerLaunchAuthorizationDeniedException) {
+          return planningPauseOutcome(shared, currentSubtaskId, phaseId, error.controlState.pauseReason)
+            ?: error("planning pause outcome was unexpectedly absent")
+        }
+        throw error
+      }
+    val durationMs = (System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI
+    val stdout = stdoutFor(outcome)
+      ?: return emptyOrStopped(outcome, shared, request, currentSubtaskId, phaseId, durationMs)
+    return validatePlanningAttemptOutput(stdout, shared, currentSubtaskId, phaseId, launchedAgentId(outcome))
+  }
+
+  private fun planningPauseOutcome(
+    shared: GoalPlanningSharedContext,
+    subtaskId: Int,
+    phaseId: String,
+    pauseReason: String? = null,
+  ): GoalPlanningPhaseProduction.Stopped? {
+    val controls = manifestStore.controlState(shared.parentWorkflowId, shared.dbPathOverride)
+    if (!controls.requiresPauseBoundary(shared.manifest)) return null
+    val reason = pauseReason?.let { " (reason=$it)" }.orEmpty()
+    return GoalPlanningPhaseProduction.Stopped(
+      stopped(
+        shared,
+        subtaskId,
+        "Goal planning reached a durable pause boundary before launching phase '$phaseId'$reason.",
+        phaseId,
+        GoalRunnerStopReason.PAUSED,
+      ),
+    )
+  }
+
+  /**
+   * Waits [duration] through [timingPort] in [GoalPlanningBurstSchedule.waitSlice] slices so a durable
+   * pause or thread interrupt can terminate the sweep without sleeping through the boundary. Never
+   * uses Thread APIs; [RuntimeWaitResult.INTERRUPTED] maps to the same Stopped shape as a launch
+   * interrupt (blockedReason names interruption; not [unexpectedPlanningFailureReason]).
+   */
+  private fun interruptibleWait(
+    duration: Duration,
+    shared: GoalPlanningSharedContext,
+    subtaskId: Int,
+    phaseId: String,
+  ): GoalPlanningSweepOutcome.Stopped? {
+    if (duration <= ZERO) return null
+    var remaining = duration
+    while (remaining > ZERO) {
+      planningPauseOutcome(shared, subtaskId, phaseId)?.let { return it.outcome }
+      val slice = remaining.coerceAtMost(burstSchedule.waitSlice)
+      when (timingPort.wait(slice)) {
+        RuntimeWaitResult.COMPLETED -> remaining -= slice
+        RuntimeWaitResult.INTERRUPTED -> return stopped(
+          shared,
+          subtaskId,
+          "Goal planning wait was interrupted before launching phase '$phaseId'.",
+          phaseId,
+        )
+      }
+    }
+    return planningPauseOutcome(shared, subtaskId, phaseId)?.outcome
+  }
+
+  private fun validatePlanningAttemptOutput(
+    stdout: String,
+    shared: GoalPlanningSharedContext,
+    subtaskId: Int,
+    phaseId: String,
+    agentId: String,
+  ): GoalPlanningPhaseProduction = runCatching {
+    outputValidator.validatePhaseOutput(stdout, phaseId).requireAcceptedOutput(phaseId)
+  }.fold(
+    onSuccess = { accepted ->
+      val payload = accepted.normalizedOutput.envelope
+      if (payload["status"] != "completed") {
+        val reason = unsuccessfulStatusReason(phaseId, payload)
+        val canonical = accepted.normalizedOutput.canonicalJson
+        // The phase-output contract already decides which dispositions survive a relaunch; planning
+        // reuses that classifier rather than keeping a second opinion about the same enum.
+        if (FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(phaseId, payload).retryOnResume) {
+          GoalPlanningPhaseProduction.RetryableDecline(reason, canonical, agentId)
+        } else {
+          GoalPlanningPhaseProduction.UnsuccessfulStatus(
+            reason,
+            canonical,
+            agentId,
+            stopped(shared, subtaskId, reason, phaseId),
+          )
+        }
+      } else {
+        GoalPlanningPhaseProduction.Captured(
+          accepted.normalizedOutput.canonicalJson,
+          accepted.normalizedOutput,
+          accepted.repairEvidence,
+          agentId,
+        )
+      }
+    },
+    onFailure = { error ->
+      if (error is InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+        GoalPlanningPhaseProduction.SchemaRejected(
+          error.payloadFreeReason ?: "Goal planning phase output was rejected by its schema contract.",
+          stdout,
+          agentId,
+        )
+      } else {
+        GoalPlanningPhaseProduction.Stopped(
+          stopped(shared, subtaskId, malformedReason(phaseId, error), phaseId),
+        )
+      }
+    },
+  )
+
+  private fun launchPlanningAttempt(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    phaseId: String,
+    prompt: String,
+  ): AgentRunLaunchOutcome {
+    request.outputSink.write(AgentRunOutputStream.STDERR, planningProgressMessage(phaseId, subtask))
+    return subtaskLauncher.launch(
+      GoalRunnerSubtaskLaunchRequest(
+        invokedAgentId = shared.invokedAgentId,
+        configuredAgentOverrideId = shared.configuredAgentOverrideId,
+        skillRunRequest = SkillRunRequest(
+          issueKey = request.issueKey,
+          repoRoot = shared.repoRoot,
+          subtaskId = subtask?.id,
+          dbPathOverride = shared.dbPathOverride,
+          timeout = request.planningBudget,
+          progressIdleTimeout = request.progressIdleTimeout,
+          outputSink = request.outputSink,
+          promptOverride = prompt,
+          streamOutputForLiveness = true,
+          // The authorization write transaction must close before the child is awaited. Wrapping the
+          // blocking launch instead held it for the whole planning run, starving lease renewal.
+          spawnAuthorization = manifestStore.authorizePlanningLaunch(shared.parentWorkflowId, shared.dbPathOverride),
+        ),
+      ),
+    )
+  }
+
+  private fun composePlanningPrompt(
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    subtask: DecompositionSubtask?,
+    runInvariants: FeatureTaskRuntimeRunInvariants,
+    phaseId: String,
+    recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    priorSchemaFailure: String?,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies,
+  ): String {
+    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, runInvariants.featureSize),
+      runInvariants = runInvariants,
+      recordedOutputs = recordedOutputs,
+    )
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+      handoff,
+      planningProjectionValidator = planningProjectionValidator,
+      agentAddonSelection = request.agentAddonSelection,
+    )
+    val basePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      issueKey = request.issueKey,
+      briefing = briefing,
+      suppressDecomposition = true,
+      priorSchemaFailure = priorSchemaFailure,
+    )
+    return GoalPlanningContextPromptFormatter.append(
+      basePrompt,
+      shared.planningPacket,
+      subtask,
+      phaseId,
+      resolvedBodies,
+    )
+  }
+
+  private fun gatherSharedContext(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    recoveredPacket: Map<String, Any?>?,
+  ): GoalPlanningSharedContext {
+    val canonicalRepository = canonicalRepository(request.repoRoot)
+    val parentSpecGoverningPath = state.manifest.parentSpecPath
+    val manifestGoverningPath = parentSpecGoverningPath.substringBeforeLast("/") + "/" + DECOMPOSITION_MANIFEST_FILENAME
+    val resolvedParentSpecPath = resolvedGovernedPath(canonicalRepository, parentSpecGoverningPath)
+    val parentSpec = manifestFileStore.readText(resolvedParentSpecPath)
+    val decomposition = manifestFileStore.readText(resolvedGovernedPath(canonicalRepository, manifestGoverningPath))
+    val parentSpecHash = sha256HexUtf8(parentSpec)
+    val decompositionManifestHash = GoalPlanningSharedContextPacket.immutableDecompositionHash(state.manifest)
+    val repositoryIdentity = "repo-root-realpath-v1:$canonicalRepository"
+    val planningPacket = recoveredPacket?.let(GoalPlanningSharedContextPacket::migrate)
+      ?: contextDiscovery.discover(canonicalRepository).let { discovered ->
+        val packet = linkedMapOf<String, Any?>(
+          "packet_version" to GoalPlanningSharedContextPacket.VERSION,
+          "repository_identity" to repositoryIdentity,
+          "normalized_issue_key" to state.manifest.issueKey.trim().uppercase(),
+          "parent_spec_path" to parentSpecGoverningPath,
+          "parent_spec" to parentSpec.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
+          "decomposition_manifest" to decomposition.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
+          "boundary_memory" to GoalPlanningSharedContextPacket.catalog(discovered),
+          "validation_guidance" to discovered.validationGuidance.take(
+            GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS,
+          ),
+          "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(state.manifest.subtasks),
+        )
+        packet + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(packet))
+      }
+    GoalPlanningSharedContextPacket.validate(
+      packet = planningPacket,
+      repositoryIdentity = repositoryIdentity,
+      normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
+      parentSpecPath = parentSpecGoverningPath,
+      subtasks = state.manifest.subtasks,
+    )
+    return GoalPlanningSharedContext(
+      issueKey = request.issueKey,
+      normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
+      parentWorkflowId = state.parentWorkflowId,
+      manifest = state.manifest,
+      controlState = state.controlState,
+      repositoryIdentity = repositoryIdentity,
+      parentSpec = parentSpec,
+      parentSpecHash = parentSpecHash,
+      decompositionManifestHash = decompositionManifestHash,
+      dbPathOverride = request.dbPathOverride,
+      repoRoot = canonicalRepository,
+      invokedAgentId = request.invokedAgentId,
+      configuredAgentOverrideId = request.configuredAgentOverrideId,
+      specSource = state.manifest.specSource,
+      parentSpecPath = resolvedParentSpecPath,
+      planningPacket = planningPacket,
+    )
+  }
+
+  private fun preSweepStopped(
+    request: GoalRunnerRunRequest,
+    reason: String,
+    currentSubtaskId: Int = 0,
+  ): GoalPlanningSweepOutcome.Stopped = GoalPlanningSweepOutcome.Stopped(
+    issueKey = request.issueKey,
+    currentSubtaskId = currentSubtaskId,
+    reason = GoalRunnerStopReason.BLOCKED,
+    blockedReason = reason,
+    lastResumableStep = PHASE_PREPLAN,
+  )
+
+  private fun canonicalRepository(repoRoot: Path): Path = runCatching { repoRoot.toRealPath() }
+    .getOrElse { repoRoot.toAbsolutePath().normalize() }
+
+  private fun planningProgressMessage(phaseId: String, subtask: DecompositionSubtask?): String =
+    if (phaseId == PHASE_PREPLAN) {
+      "skill-bill: goal planning - parent goal shared preplan\n"
+    } else {
+      "skill-bill: goal planning - subtask ${requireNotNull(subtask).id} plan\n"
+    }
+
+  private fun sharedContextReason(error: Throwable): String =
+    "Goal planning shared context could not be gathered: ${error.message.orEmpty()}"
+
+  private fun projectionRejectedReason(phaseId: String, error: Throwable): String =
+    "Goal planning phase '$phaseId' rejected a declared bounded projection at the launch seam: " +
+      "${error.message.orEmpty()}. Migrate or delete the affected goal-planning preparation record."
+
+  private fun preparationStateReadReason(error: Throwable, issueKey: String, subtaskId: Int): String =
+    goalPlanningPreparationStateReadStopReason(error, issueKey, subtaskId)
+
+  /**
+   * A planning launch that exits zero, reports no failure mode and still harvests nothing is a
+   * provider flake, not a bad prompt. It is retried under the same fix-loop cap instead of blocking
+   * the goal on its first occurrence, and its launch facts are retained so the recurrence is
+   * countable rather than anecdotal.
+   */
+  private fun emptyOrStopped(
+    outcome: AgentRunLaunchOutcome,
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    currentSubtaskId: Int,
+    phaseId: String,
+    durationMs: Long,
+  ): GoalPlanningPhaseProduction {
+    val evidence = emptyTurnEvidence(outcome, durationMs)
+      ?: return GoalPlanningPhaseProduction.Stopped(
+        stopped(shared, currentSubtaskId, exhaustedReason(outcome, request.planningBudget), phaseId),
+      )
+    return GoalPlanningPhaseProduction.EmptyProviderTurn(emptyTurnReason(phaseId, evidence), evidence)
+  }
+
+  private fun emptyTurnEvidence(outcome: AgentRunLaunchOutcome, durationMs: Long): GoalPlanningEmptyTurnEvidence? {
+    if (outcome !is AgentRunLaunchFacts) return null
+    val cleanExit = !outcome.spawnFailed && !outcome.timedOut && !outcome.interrupted && outcome.exitStatus == 0
+    if (!cleanExit) return null
+    return GoalPlanningEmptyTurnEvidence(
+      agentId = outcome.agent.id,
+      durationMs = durationMs,
+      exitStatus = outcome.exitStatus,
+      assistantEventCount = outcome.assistantEventCount,
+      rawOutputPreview = outcome.rawOutputPreview,
+    )
+  }
+
+  private fun launchedAgentId(outcome: AgentRunLaunchOutcome): String = when (outcome) {
+    is AgentRunLaunchFacts -> outcome.agent.id
+    is UnsupportedAgentRunLaunch -> "unknown"
+  }
+
+  private fun stdoutFor(outcome: AgentRunLaunchOutcome): String? = when (outcome) {
+    is AgentRunLaunchFacts -> outcome.stdout.takeIf { stdout ->
+      !outcome.spawnFailed &&
+        !outcome.timedOut &&
+        !outcome.interrupted &&
+        outcome.exitStatus == 0 &&
+        stdout.isNotBlank()
+    }
+    is UnsupportedAgentRunLaunch -> null
+  }
+
+  private fun exhaustedReason(outcome: AgentRunLaunchOutcome, planningBudget: Duration?): String = when (outcome) {
+    is UnsupportedAgentRunLaunch -> "Goal planning could not launch a planning agent: ${outcome.reason}"
+    is AgentRunLaunchFacts ->
+      "Goal planning produced no usable agent output: ${exhaustedCause(outcome, planningBudget)}."
+  }
+
+  private fun exhaustedCause(facts: AgentRunLaunchFacts, planningBudget: Duration?): String = when {
+    // The launcher explains WHY a spawn failed (missing CLI, unreadable executable); dropping that
+    // text left the operator with an unactionable "failed to spawn" on a blocked goal.
+    facts.spawnFailed -> stderrExcerpt(facts.stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
+      ?.let { excerpt -> "the planning agent failed to spawn — $excerpt" }
+      ?: "the planning agent failed to spawn"
+    facts.timedOut ->
+      "the planning agent exhausted its $planningBudget planning budget; " +
+        "raise or disable it with --planning-budget-minutes"
+    facts.interrupted -> "the planning agent was interrupted"
+    facts.exitStatus != null && facts.exitStatus != 0 -> "the planning agent exited with status ${facts.exitStatus}"
+    else -> "the planning agent produced no usable output"
+  }
+
+  private fun exhaustedDeclineReason(production: GoalPlanningPhaseProduction.RetryableDecline, declines: Int): String =
+    "${production.reason} Relaunched $declines times under a retryable disposition " +
+      "without a different outcome; the decline is not transient."
+
+  private fun malformedReason(phaseId: String, error: Throwable): String =
+    "Goal planning '$phaseId' output failed the schema gate and could not be prepared: ${error.message.orEmpty()}"
+
+  private fun unexpectedPlanningFailureReason(phaseId: String, error: Exception): String =
+    "Goal planning '$phaseId' failed before its output could be checkpointed: " +
+      "${error::class.simpleName ?: "Exception"}: ${error.message.orEmpty()}"
+
+  /**
+   * A deliberate agent decline is the one planning stop path whose only account of itself is the
+   * envelope it returned. Reporting the status alone discarded the `summary` and
+   * `failure_disposition` sitting beside it, leaving an operator with a blocked goal and no cause.
+   */
+  private fun unsuccessfulStatusReason(phaseId: String, payload: Map<String, Any?>): String {
+    val status = payload["status"] ?: "missing"
+    val disposition = (payload["failure_disposition"] as? String)
+      ?.let { " disposition '$it'" }
+      .orEmpty()
+    val summary = (payload["summary"] as? String)
+      ?.trim()
+      ?.takeIf { it.isNotEmpty() }
+      ?.let { " Agent reported: ${it.take(PLANNING_STOP_DETAIL_MAX_CHARS)}" }
+      .orEmpty()
+    return "Goal planning '$phaseId' stopped with status '$status'$disposition; " +
+      "its output was not checkpointed.$summary"
+  }
+
+  private fun enrichPreplan(payload: String, packet: Map<String, Any?>): String {
+    val root = JsonSupport.parseObjectOrNull(payload)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: error("preplan payload is not a JSON object")
+    val produced = JsonSupport.anyToStringAnyMap(root["produced_outputs"])
+      ?: error("preplan produced_outputs is not an object")
+    return JsonSupport.mapToJsonString(root + ("produced_outputs" to (produced + (SHARED_CONTEXT_FIELD to packet))))
+  }
+
+  private fun planningPacketFrom(record: SharedGoalPreplanCheckpoint): Map<String, Any?>? =
+    JsonSupport.parseObjectOrNull(record.preplanPayload)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("produced_outputs")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(SHARED_CONTEXT_FIELD)
+      ?.let(JsonSupport::anyToStringAnyMap)
+
+  private fun stopped(
+    shared: GoalPlanningSharedContext,
+    subtaskId: Int,
+    blockedReason: String,
+    lastResumableStep: String = PHASE_PREPLAN,
+    reason: GoalRunnerStopReason = GoalRunnerStopReason.BLOCKED,
+  ): GoalPlanningSweepOutcome.Stopped = GoalPlanningSweepOutcome.Stopped(
+    issueKey = shared.issueKey,
+    currentSubtaskId = subtaskId,
+    reason = reason,
+    blockedReason = blockedReason,
+    lastResumableStep = lastResumableStep,
+  )
+
+  private fun noSuchSubtaskReason(subtaskId: Int): String =
+    "Goal planning selected subtask '$subtaskId' which is not present in the accepted decomposition."
+
+  private fun unresolvedSpecReason(subtask: DecompositionSubtask): String =
+    "Goal planning subtask '${subtask.id}' governed spec path '${subtask.specPath}' could not be resolved " +
+      "inside the repository."
+
+  private fun invariantReadReason(subtask: DecompositionSubtask, error: Throwable): String =
+    "Goal planning subtask '${subtask.id}' run-invariants could not be read: ${error.message.orEmpty()}"
+
+  private fun persistenceReason(subtask: DecompositionSubtask, error: Throwable): String =
+    "Goal planning subtask '${subtask.id}' plan could not be checkpointed: ${error.message.orEmpty()}"
+
+  private fun resolvedGovernedPath(canonicalRepository: Path, governingPath: String): Path {
+    val lexical = lexicalPath(canonicalRepository, governingPath)
+    return runCatching { lexical.toRealPath() }.getOrElse { lexical }
+  }
+
+  private fun resolvedSubSpecPath(canonicalRepository: Path, specPath: String): Path? {
+    if (specPath.isBlank()) return null
+    val lexical = lexicalPath(canonicalRepository, specPath)
+    val resolved = runCatching { lexical.toRealPath() }.getOrElse { lexical }
+    return resolved.takeIf { it.startsWith(canonicalRepository) }
+  }
+
+  private fun lexicalPath(canonicalRepository: Path, governingPath: String): Path {
+    val path = Path.of(governingPath)
+    return (if (path.isAbsolute) path else canonicalRepository.resolve(path)).toAbsolutePath().normalize()
+  }
+
+  private companion object {
+    const val PHASE_PREPLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
+    const val PHASE_PLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
+    const val SHARED_CONTEXT_FIELD = "_goal_planning_shared_context"
+    const val EMPTY_PLANNING_HARVEST_RULE = "empty-planning-harvest"
+    const val SCHEMA_REJECTED_PLANNING_RULE = "planning-schema-rejected"
+    const val UNSUCCESSFUL_PLANNING_STATUS_RULE = "planning-unsuccessful-status"
+    const val RETRYABLE_PLANNING_DECLINE_RULE = "planning-retryable-decline"
+    const val MAX_RETRYABLE_PLANNING_DECLINES = 3
+    const val NANOS_PER_MILLI = 1_000_000L
+    const val PLANNING_STOP_DETAIL_MAX_CHARS = 400
+  }
+}
+
+/**
+ * Recoverability of a saved shared preplan relative to the current governed inputs.
+ * [StaleValid] triggers in-run refresh in [DefaultGoalPlanningSweep.prepare].
+ */
+internal sealed interface GoalPlanningProvenanceRecoverability {
+  class Reuse(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
+  class StaleValid(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
+  class Irrecoverable(val recoveryKind: GoalPlanningRecoveryKind) : GoalPlanningProvenanceRecoverability
+}
+
+/**
+ * Validity: manifest hash, parent-spec self-hash, payload sha, and runtime contract identity.
+ * A phase-output or planning contract bump under a live goal is not reusable: the schema's breaking
+ * shape requires a hard reset, so mismatched contract id/version is Invalid rather than StaleValid.
+ * Freshness: canonical parent-spec equality.
+ *
+ * Invalid carries the [GoalPlanningRecoveryKind] the operator must run. This is the only owner of that
+ * decision — a caller that re-derives it from provenance fields drifts the moment a contract identity
+ * field is added here, advertising a replan for a state only a hard reset clears.
+ *
+ * A selected heading id that no longer resolves is not a validity failure. The body resolver already
+ * refuses an off-catalog id and reports it in `unresolvedHeadingIds`, which reaches the plan prompt, so
+ * an unresolvable selection costs one body rather than the whole saved preplan. Treating it as invalid
+ * made a single mis-copied digest permanently discard planning the producer gate had already accepted,
+ * recoverable only by regenerating and re-rolling the same copy.
+ */
+internal fun classifyGoalPlanningProvenanceRecoverability(
+  existing: SharedGoalPreplanCheckpoint?,
+  current: GoalPlanningContractProvenance,
+  savedParentSpec: String?,
+  currentParentSpec: String,
+): GoalPlanningProvenanceRecoverability {
+  if (existing == null) return GoalPlanningProvenanceRecoverability.Reuse(current)
+  val saved = existing.provenance
+  val contractCompatible =
+    saved.planningContractId == current.planningContractId &&
+      saved.planningContractVersion == current.planningContractVersion &&
+      saved.phaseOutputContractId == current.phaseOutputContractId &&
+      saved.phaseOutputContractVersion == current.phaseOutputContractVersion
+  if (!contractCompatible) {
+    return GoalPlanningProvenanceRecoverability.Irrecoverable(GoalPlanningRecoveryKind.HARD_RESET)
+  }
+  val valid = saved.decompositionManifestHash == current.decompositionManifestHash &&
+    savedParentSpec != null &&
+    sha256HexUtf8(savedParentSpec) == saved.parentSpecHash &&
+    sha256HexUtf8(existing.preplanPayload) == existing.payloadSha256
+  if (!valid) return GoalPlanningProvenanceRecoverability.Irrecoverable(GoalPlanningRecoveryKind.SCOPED_REPLAN)
+  val fresh = GoalPlanningSpecCanonicalization.canonical(savedParentSpec) ==
+    GoalPlanningSpecCanonicalization.canonical(currentParentSpec)
+  return if (fresh) {
+    GoalPlanningProvenanceRecoverability.Reuse(saved)
+  } else {
+    GoalPlanningProvenanceRecoverability.StaleValid(saved)
+  }
+}
+
+internal fun preplanProseValue(preplanPayload: String): String = runCatching {
+  JsonSupport.parseObjectOrNull(preplanPayload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("produced_outputs")
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("value")
+    ?.toString()
+    .orEmpty()
+}.getOrDefault("")
+
+internal fun preplanProsePrompt(preplanPayload: String): String? = runCatching {
+  JsonSupport.parseObjectOrNull(preplanPayload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("produced_outputs")
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("prompt")
+    ?.toString()
+    ?.takeIf(String::isNotBlank)
+}.getOrNull()
+
+internal fun preplanProseValueHash(preplanPayload: String): String = sha256HexUtf8(preplanProseValue(preplanPayload))
+
+internal fun preplanProsePromptHash(preplanPayload: String): String =
+  sha256HexUtf8(preplanProsePrompt(preplanPayload).orEmpty())
+
+/**
+ * Durable evidence seam for a planning attempt the run rejected without any output to gate. Kept
+ * separate from [GoalPlanningAttemptRecorder], which counts attempts but retains no launch facts.
+ */
+fun interface GoalPlanningRejectionRecorder {
+  fun record(record: GoalPlanningRejectionRecord)
+
+  companion object {
+    val NONE: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder {}
+  }
+}
+
+@Inject
+class DurableGoalPlanningRejectionRecorder(
+  private val recorder: FeatureTaskRuntimePhaseRecorder,
+) : GoalPlanningRejectionRecorder {
+  override fun record(record: GoalPlanningRejectionRecord) {
+    // Evidence must never decide the run's outcome: a diagnostics failure leaves the planning
+    // rejection exactly as classified rather than converting it into a crash.
+    runCatching {
+      recorder.recordRejectedOutput(
+        RejectedOutputDiagnosticRequest(
+          workflowId = record.parentWorkflowId,
+          phaseId = record.phaseId,
+          attempt = record.attempt.coerceAtLeast(1),
+          rule = record.rule,
+          path = "/",
+          reason = record.reason,
+          agentId = record.agentId,
+          model = "unspecified",
+          rawResponse = record.rawEvidence.encodeToByteArray(),
+        ),
+        record.dbPathOverride,
+      )
+    }
+  }
+}
+
+fun interface GoalPlanningAttemptRecorder {
+  fun record(attempt: GoalPlanningAttemptRecord)
+
+  companion object {
+    val NONE: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder {}
+  }
+}
+
+@Inject
+class DurableGoalPlanningAttemptRecorder(
+  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+) : GoalPlanningAttemptRecorder {
+  private val nextSequenceByWorkflow = mutableMapOf<String, Int>()
+
+  @Synchronized
+  override fun record(attempt: GoalPlanningAttemptRecord) {
+    outcomeStore.recordProgressEvent(
+      GoalRunnerProgressEventRecordRequest(
+        workflowId = attempt.parentWorkflowId,
+        event = GoalProgressEvent(
+          eventKind = attempt.eventKind,
+          workflowId = attempt.parentWorkflowId,
+          workflowPhase = "goal_planning",
+          processAlive = true,
+          sequenceNumber = nextSequenceByWorkflow.getOrPut(attempt.parentWorkflowId) {
+            outcomeStore.ledgerSequenceWatermarks(attempt.issueKey, attempt.dbPathOverride)
+              .maxProgressSequence
+              ?.plus(1)
+              ?: 0
+          },
+          timestamp = Instant.now().toString(),
+          stepId = attempt.phaseId,
+          operationName = "${attempt.phaseId}:${attempt.subtaskId}:attempt:${attempt.attempt}",
+          operationKind = "planning_projection_attempt",
+          expectedLong = true,
+          outcome = attempt.outcome,
+        ),
+      ),
+      attempt.dbPathOverride,
+    )
+    nextSequenceByWorkflow[attempt.parentWorkflowId] = nextSequenceByWorkflow.getValue(attempt.parentWorkflowId) + 1
+  }
+}

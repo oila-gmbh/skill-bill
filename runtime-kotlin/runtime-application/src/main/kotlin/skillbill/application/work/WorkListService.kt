@@ -1,17 +1,17 @@
 package skillbill.application.work
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.model.WorkListItem
-import skillbill.application.model.WorkListItemKind
-import skillbill.application.model.WorkListResult
+import skillbill.application.work.model.WorkListItem
+import skillbill.application.work.model.WorkListItemKind
+import skillbill.application.work.model.WorkListResult
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidWorkListRowError
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.model.WorkItem
-import skillbill.ports.persistence.model.WorkItemKind
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.work.model.WorkItem
+import skillbill.ports.work.model.WorkItemKind
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 
 @Inject
 class WorkListService(

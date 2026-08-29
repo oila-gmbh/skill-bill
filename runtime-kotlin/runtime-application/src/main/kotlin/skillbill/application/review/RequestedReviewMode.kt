@@ -1,7 +1,7 @@
 package skillbill.application.review
 
 import skillbill.review.context.ReviewExecutionModePolicy
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 
 /**
  * The entrypoint-facing seam for an operator-supplied review mode. Entrypoints parse the wire value

@@ -1,3 +1,13 @@
+## [2026-08-29] SKILL-220 subtask 1 — Package clustering
+Areas: runtime-kotlin/{application,domain,ports,cli,mcp,core,infra-fs,infra-sqlite,infra-http}, orchestration/contracts, intellij-plugin/architecture
+- Dissolved catch-all `application.model` and multi-area `ports.persistence` into area-owned packages (featuretask, goalrunner/planning, review, telemetry, learning, workflow, work, diagnostics, updatecheck).
+- Split mixed roots: `workflow` → engine/decomposition/goal/taskruntime/idestatus/specsource; `goalrunner` → runner/planning/findings; FeatureSpec/GoalPlanning/SpecSource/RejectedOutput out of `featuretask`; `scaffold.policy` → platformpack vs scaffold; ports `goalrunner` and `workflow` by concept.
+- Mechanical package moves and import updates only — no type rename, visibility, or public shape change; architecture docs and path assertions updated to match.
+- Pattern: cluster by product area / noun family, not by type kind; dependencies stay inward; empty bucket packages deleted. reusable
+- Limitation: leftover root types stay only when they belong to no cluster; validate/scripts proof owned by the validate phase.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-26] SKILL-209 — Delete dual-agent parallel review
 Areas: runtime-kotlin/{application/review,application/featuretask,application/goalrunner,application/config,cli,domain,ports,infra-fs,infra-sqlite,core}, skills/{bill-code-review,bill-code-review-parallel,bill-feature}, platform-packs/{kotlin,kmp}, docs, scripts
 - Removed the second-parent review product: skill, CLI (`code-review-parallel`, `code-review-merge`, `resolve-parallel-agent`), `--agent2`/`--model2`/`--parallel-review-agent`, and `code_review_parallel_agent` from typed config and new install writes.

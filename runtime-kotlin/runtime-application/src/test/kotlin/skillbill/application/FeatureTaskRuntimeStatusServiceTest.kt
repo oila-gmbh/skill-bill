@@ -11,24 +11,24 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.agentAttributionFromPhaseState
-import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
-import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.model.FeatureTaskRuntimeStatusRequest
-import skillbill.application.model.IdeStatusCurrentPhaseExecutionKind
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.LearningRepository
-import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.ports.persistence.ReviewRepository
-import skillbill.ports.persistence.TelemetryOutboxRepository
-import skillbill.ports.persistence.TelemetryReconciliationRepository
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.FeatureImplementSessionSummary
-import skillbill.ports.persistence.model.FeatureVerifySessionSummary
-import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
@@ -1207,20 +1207,20 @@ private class StatusFakeDatabaseSessionFactory(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
-    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+    override val workList = skillbill.ports.work.EmptyWorkListRepository
+    override val goalPlanningPreparations = skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
     override val featureTaskRuntimeAuditGenerations =
-      skillbill.ports.persistence.EmptyFeatureTaskRuntimeAuditGenerationRepository
+      skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
   }
 }
 
 private class StatusInMemoryWorkflowRepository : WorkflowStateRepository {
   override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
+    identity: skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity,
   ) = Unit
 
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
+    emptyList<skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate>()
 
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 

@@ -2,11 +2,11 @@ package skillbill.mcp.workflow
 
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
-import skillbill.workflow.GoalObservabilityEventValidator
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
-import skillbill.workflow.model.WorkflowSnapshotView
-import skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
+import skillbill.workflow.engine.model.WorkflowSnapshotView
+import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
 
 internal fun workflowSnapshotMcpMap(
   snapshot: WorkflowSnapshotView,

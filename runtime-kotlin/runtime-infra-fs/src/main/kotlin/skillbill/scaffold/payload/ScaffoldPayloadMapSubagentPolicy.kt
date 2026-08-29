@@ -1,9 +1,9 @@
 package skillbill.scaffold.payload
 
 import skillbill.error.InvalidScaffoldPayloadError
-import skillbill.scaffold.policy.ORCHESTRATOR_KINDS_FOR_SUBAGENTS
-import skillbill.scaffold.policy.SUBAGENT_NAME_PATTERN
-import skillbill.scaffold.policy.model.OptionalSubagents
+import skillbill.scaffold.policy.scaffold.ORCHESTRATOR_KINDS_FOR_SUBAGENTS
+import skillbill.scaffold.policy.scaffold.SUBAGENT_NAME_PATTERN
+import skillbill.scaffold.policy.scaffold.model.OptionalSubagents
 
 /**
  * SKILL-52.2 subtask 2 (Task 11): subagent-policy helpers split out of `ScaffoldPayloadMapPolicy`

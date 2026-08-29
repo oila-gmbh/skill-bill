@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.CheckpointHistoryGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
 private val REF_NAME_REJECTED_SEGMENTS = setOf("", ".", "..")

@@ -4,7 +4,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.model.appendBoundedHistoryBySequence
+import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 
 data class FeatureTaskRuntimeImplementationAttempt(
   val sequenceNumber: Int,

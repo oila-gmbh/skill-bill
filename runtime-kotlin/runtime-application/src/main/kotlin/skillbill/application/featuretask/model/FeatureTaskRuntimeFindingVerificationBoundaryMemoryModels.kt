@@ -1,6 +1,6 @@
 package skillbill.application.featuretask.model
 
-import skillbill.ports.goalrunner.model.GoalVerificationBoundaryDiscovery
+import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
 
 data class FeatureTaskRuntimeFindingBoundaryMemoryRequest(
   val findingId: String,

@@ -3,8 +3,8 @@ package skillbill.workflow.taskruntime.model
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.ValidationDepth
 
 /**
  * Domain models for the inter-phase handoff contract. The handoff is an

@@ -2,15 +2,15 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.agentFailureExcerpt
-import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
-import skillbill.application.model.FeatureTaskRuntimeFindingVerificationTelemetry
-import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimePreparation
-import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
-import skillbill.application.model.FeatureTaskRuntimeRunEvent
-import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCrashReconciliationResult
+import skillbill.application.telemetry.model.FeatureTaskRuntimeFindingVerificationTelemetry
+import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
+import skillbill.application.telemetry.model.FeatureTaskRuntimeRegenerationTelemetry
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
@@ -18,12 +18,12 @@ import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.buildGoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeProviderLimitDetector
@@ -38,7 +38,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProviderLimitSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 
 private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
 private const val PHASE_OUTPUT_STATUS_FAILED = "failed"

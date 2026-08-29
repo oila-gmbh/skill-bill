@@ -13,8 +13,8 @@ import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.authoring.validateTarget
 import skillbill.scaffold.manifest.appendCodeReviewArea
 import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
-import skillbill.scaffold.policy.renderPlatformPackManifest
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
 import skillbill.scaffold.rendering.baselineReviewContent
 import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus

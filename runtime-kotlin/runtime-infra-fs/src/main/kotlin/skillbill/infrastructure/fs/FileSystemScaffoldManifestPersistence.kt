@@ -15,7 +15,7 @@ import skillbill.scaffold.manifest.renderGovernedAddonManifestRegistration
 import skillbill.scaffold.manifest.setDeclaredQualityCheckFile
 import java.nio.file.Files
 import java.nio.file.Path
-import skillbill.scaffold.policy.renderPlatformPackManifest as policyRenderPlatformPackManifest
+import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest as policyRenderPlatformPackManifest
 
 /**
  * Filesystem adapter for [ScaffoldManifestPersistencePort]. IO ownership stays here — the

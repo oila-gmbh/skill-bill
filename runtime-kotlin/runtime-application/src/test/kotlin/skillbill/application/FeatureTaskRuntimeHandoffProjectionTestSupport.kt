@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef

@@ -1,9 +1,9 @@
 package skillbill.application.agentrun
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.model.AgentRunAgentResolution
-import skillbill.application.model.AgentRunResult
-import skillbill.application.model.AgentRunStartRequest
+import skillbill.application.agentrun.model.AgentRunAgentResolution
+import skillbill.application.agentrun.model.AgentRunResult
+import skillbill.application.agentrun.model.AgentRunStartRequest
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest

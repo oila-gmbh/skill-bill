@@ -2,8 +2,8 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.infrastructure.fs.contracts.workflow.ProducerOutputEvidenceSchemaValidator
-import skillbill.ports.persistence.ProducerOutputEvidence
-import skillbill.ports.persistence.ProducerOutputEvidenceValidator
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.ports.diagnostics.ProducerOutputEvidenceValidator
 
 @Inject
 class ProducerOutputEvidenceValidatorAdapter : ProducerOutputEvidenceValidator {

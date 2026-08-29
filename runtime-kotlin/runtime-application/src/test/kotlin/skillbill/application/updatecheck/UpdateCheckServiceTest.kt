@@ -1,11 +1,11 @@
 package skillbill.application.updatecheck
 
-import skillbill.application.model.RECOMMENDED_INSTALL_COMMAND
-import skillbill.application.model.UpdateCheckStatus
+import skillbill.application.updatecheck.model.RECOMMENDED_INSTALL_COMMAND
+import skillbill.application.updatecheck.model.UpdateCheckStatus
 import skillbill.application.system.SystemService
 import skillbill.model.TransportContext
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.telemetry.model.HttpResponse

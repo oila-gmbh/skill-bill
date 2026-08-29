@@ -1,7 +1,7 @@
 package skillbill.application.review
 
-import skillbill.application.model.ParallelCodeReviewResult
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.application.review.model.ParallelCodeReviewResult
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

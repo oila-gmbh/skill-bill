@@ -1,8 +1,8 @@
 package skillbill.goalplanning
 
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
-import skillbill.ports.goalrunner.model.GoalPlanningContext
-import skillbill.ports.goalrunner.model.GoalVerificationContext
+import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
+import skillbill.ports.goalrunner.verification.model.GoalVerificationContext
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

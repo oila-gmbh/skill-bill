@@ -71,7 +71,7 @@ class RuntimeArchitectureDocumentationTest {
     assertContains(architecture, INSTALL_PLAN_WIRE_VALIDATOR_PORT)
     assertContains(architecture, "Decomposition-manifest schema validation is owned by")
     assertContains(architecture, DECOMPOSITION_MANIFEST_VALIDATOR_PORT)
-    assertContains(architecture, "skillbill.ports.workflow.DecompositionManifestFileStore")
+    assertContains(architecture, "skillbill.ports.workflow.decomposition.DecompositionManifestFileStore")
     assertContains(architecture, "FileSystemDecompositionManifestFileStore")
     assertContains(architecture, "Platform-pack manifest schema validation is owned by")
     assertContains(architecture, "Native-agent composition schema validation is owned by")
@@ -171,7 +171,7 @@ class RuntimeArchitectureDocumentationTest {
       "reached through the domain-owned port\n  `skillbill.install.model.InstallPlanWireValidator`"
 
     const val DECOMPOSITION_MANIFEST_VALIDATOR_PORT =
-      "reached through the domain-owned port\n  `skillbill.workflow.DecompositionManifestValidator`"
+      "reached through the domain-owned port\n  `skillbill.workflow.decomposition.DecompositionManifestValidator`"
   }
 
   private fun String.includedGradleModules(): List<String> {

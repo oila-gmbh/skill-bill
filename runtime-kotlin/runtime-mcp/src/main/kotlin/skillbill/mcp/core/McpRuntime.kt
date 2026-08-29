@@ -2,13 +2,13 @@
 
 package skillbill.mcp.core
 
-import skillbill.application.model.FeatureVerifyFinishedRequest
-import skillbill.application.model.FeatureVerifyStartedRequest
-import skillbill.application.model.PrDescriptionGeneratedRequest
-import skillbill.application.model.QualityCheckFinishedRequest
-import skillbill.application.model.QualityCheckStartedRequest
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
+import skillbill.application.telemetry.model.FeatureVerifyStartedRequest
+import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
+import skillbill.application.telemetry.model.QualityCheckFinishedRequest
+import skillbill.application.telemetry.model.QualityCheckStartedRequest
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.review.toReviewFinishedTelemetryPayload
 import skillbill.contracts.mcp.McpLearningsSkippedContract
 import skillbill.contracts.mcp.McpOrchestratedPayloadContract
@@ -29,8 +29,8 @@ import skillbill.mcp.workflow.toMcpMap
 import skillbill.model.RuntimeContext
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.telemetry.model.RemoteStatsRequest
 import java.nio.file.Path
 

@@ -10,8 +10,8 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
@@ -310,9 +310,9 @@ private fun resolveWorkflowId(
   workflowId?.let { return WorkflowIdResolution(workflowId = it) }
   require(latest) { "Provide a workflow_id or pass --latest." }
   return when (val latestResult = service.latest(kind, state.dbOverride)) {
-    is skillbill.application.model.WorkflowLatestResult.Ok ->
+    is skillbill.application.workflow.model.WorkflowLatestResult.Ok ->
       WorkflowIdResolution(workflowId = latestResult.summary.workflowId)
-    is skillbill.application.model.WorkflowLatestResult.Error ->
+    is skillbill.application.workflow.model.WorkflowLatestResult.Error ->
       WorkflowIdResolution(workflowId = null, errorPayload = latestResult.toCliMap())
   }
 }

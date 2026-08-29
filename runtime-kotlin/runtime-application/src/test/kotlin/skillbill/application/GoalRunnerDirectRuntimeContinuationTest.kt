@@ -55,8 +55,8 @@ class GoalRunnerDirectRuntimeContinuationTest {
     assertEquals("wftr-fresh-assigned", context.assignedWorkflowId)
   }
 
-  private fun wiringRunRequest(): skillbill.application.model.GoalRunnerRunRequest =
-    skillbill.application.model.GoalRunnerRunRequest(
+  private fun wiringRunRequest(): skillbill.application.goalrunner.model.GoalRunnerRunRequest =
+    skillbill.application.goalrunner.model.GoalRunnerRunRequest(
       issueKey = "SKILL-56",
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       invokedAgentId = "claude",

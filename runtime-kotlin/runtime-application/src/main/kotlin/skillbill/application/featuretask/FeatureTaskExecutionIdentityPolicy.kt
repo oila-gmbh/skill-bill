@@ -2,7 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.contracts.workflow.FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
-import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 
 object FeatureTaskExecutionIdentityPolicy {
   const val REPOSITORY_IDENTITY_PREFIX: String = "repo-root-realpath-v1:"

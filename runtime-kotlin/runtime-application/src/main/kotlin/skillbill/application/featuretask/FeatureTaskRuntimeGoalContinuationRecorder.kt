@@ -10,20 +10,20 @@ import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.buildGoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
-import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.resolveCheckpointRef
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.model.WorkflowStateSnapshot
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
@@ -40,12 +40,12 @@ import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
-import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
+import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.goal.model.GoalSubtaskReviewDisposition
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 import java.time.Instant
 
@@ -498,8 +498,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
 
   private val savePatch =
     fun(
-      record: skillbill.workflow.model.WorkflowStateSnapshot,
-      workflowStates: skillbill.ports.persistence.WorkflowStateRepository,
+      record: skillbill.workflow.engine.model.WorkflowStateSnapshot,
+      workflowStates: skillbill.ports.workflow.WorkflowStateRepository,
       patch: Map<String, Any?>,
     ) {
       val updated = engine.updateRecord(
@@ -540,8 +540,8 @@ private const val CHECKPOINT_IDENTITY_QUARANTINE_ARTIFACT_KEY: String =
 private class RemediationBaseReconciler(
   private val database: DatabaseSessionFactory,
   private val savePatch: (
-    skillbill.workflow.model.WorkflowStateSnapshot,
-    skillbill.ports.persistence.WorkflowStateRepository,
+    skillbill.workflow.engine.model.WorkflowStateSnapshot,
+    skillbill.ports.workflow.WorkflowStateRepository,
     Map<String, Any?>,
   ) -> Unit,
 ) {

@@ -1,9 +1,9 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.model.GoalFinishedRequest
-import skillbill.application.model.GoalIssueFinishedRequest
-import skillbill.application.model.GoalStartedRequest
-import skillbill.application.model.GoalSubtaskFinishedRequest
+import skillbill.application.telemetry.model.GoalFinishedRequest
+import skillbill.application.telemetry.model.GoalIssueFinishedRequest
+import skillbill.application.telemetry.model.GoalStartedRequest
+import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord

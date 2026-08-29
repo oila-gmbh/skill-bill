@@ -1,8 +1,8 @@
 package skillbill.db.telemetry
 
 import skillbill.SkillBillVersion
-import skillbill.ports.persistence.TelemetryOutboxRepository
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import java.sql.Connection
 
 typealias TelemetryOutboxRow = TelemetryOutboxRecord

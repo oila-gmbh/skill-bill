@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
+import skillbill.ports.review.model.ReviewRepositoryStatsSnapshot
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FindingOutcomeRow

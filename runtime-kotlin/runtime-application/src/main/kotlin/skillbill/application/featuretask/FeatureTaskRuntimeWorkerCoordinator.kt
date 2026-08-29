@@ -2,9 +2,9 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick

@@ -2,7 +2,7 @@ package skillbill.application
 
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
-import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
+import skillbill.workflow.goal.model.GoalSubtaskBlockerDispositionVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

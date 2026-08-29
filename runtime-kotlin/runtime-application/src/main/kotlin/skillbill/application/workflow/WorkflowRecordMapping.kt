@@ -1,10 +1,10 @@
 package skillbill.application.workflow
 
 import skillbill.application.telemetry.specInputTypes
-import skillbill.ports.persistence.model.FeatureImplementSessionSummary
-import skillbill.ports.persistence.model.FeatureVerifySessionSummary
-import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.workflow.model.WorkflowStateSnapshot
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 /**
  * SKILL-48 Subtask 2a: `toSnapshot` is a pure record-to-snapshot
@@ -53,7 +53,7 @@ internal fun WorkflowStateSnapshot.toRecord(): WorkflowStateRecord = WorkflowSta
   startedAt = startedAt,
   updatedAt = updatedAt,
   finishedAt = finishedAt,
-  mode = mode?.let(skillbill.ports.persistence.model.FeatureTaskWorkflowMode::fromWireValue),
+  mode = mode?.let(skillbill.ports.workflow.model.FeatureTaskWorkflowMode::fromWireValue),
 )
 
 internal fun FeatureImplementSessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(

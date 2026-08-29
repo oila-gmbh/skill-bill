@@ -12,31 +12,31 @@ import skillbill.goalrunner.model.GoalAttemptLedgerEntry
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
-import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
-import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.GoalProgressEvent
-import skillbill.workflow.model.GoalProgressEventKind
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.goal.model.GoalProgressEventKind
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import java.nio.file.Path
 import java.time.Instant
 import java.time.ZoneOffset
@@ -729,7 +729,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   private fun runtimeCandidateRecordNoDeclaredEvent(
     workflowId: String,
     updatedAt: String?,
-  ): skillbill.ports.persistence.model.WorkflowStateRecord {
+  ): skillbill.ports.workflow.model.WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
@@ -758,7 +758,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     workflowId: String,
     state: GoalSubtaskReviewState,
     rawReviewResult: String,
-  ): skillbill.ports.persistence.model.WorkflowStateRecord {
+  ): skillbill.ports.workflow.model.WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
@@ -788,7 +788,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   private fun runtimeCandidateRecord(
     workflowId: String,
     declaredProgressTimestamp: Instant,
-  ): skillbill.ports.persistence.model.WorkflowStateRecord {
+  ): skillbill.ports.workflow.model.WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
@@ -825,7 +825,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     ).toRecord()
   }
 
-  private fun taskRuntimeWorkflowRecord(workflowId: String): skillbill.ports.persistence.model.WorkflowStateRecord {
+  private fun taskRuntimeWorkflowRecord(workflowId: String): skillbill.ports.workflow.model.WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")

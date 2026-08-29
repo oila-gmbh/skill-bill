@@ -1,7 +1,7 @@
 package skillbill.db.workflow
 
 import skillbill.db.core.DatabaseMigrations
-import skillbill.ports.persistence.model.FeatureTaskRuntimeAuditGenerationRow
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.tempDbConnection
 import java.nio.file.Path
 import java.sql.Connection
@@ -71,7 +71,7 @@ class FeatureTaskRuntimeAuditGenerationStoreTest {
 
   @Test
   fun `the port exposes no update or delete of an existing generation outside quarantine`() {
-    val members = skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRepository::class.java
+    val members = skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository::class.java
       .declaredMethods
       .map { it.name }
       .toSet()

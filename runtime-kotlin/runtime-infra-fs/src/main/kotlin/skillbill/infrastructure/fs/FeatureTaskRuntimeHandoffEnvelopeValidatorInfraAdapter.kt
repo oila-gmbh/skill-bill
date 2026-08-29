@@ -2,7 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.workflow.FeatureTaskRuntimeHandoffEnvelopeSchemaValidator
-import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
 
 /**
  * Bridges the domain-owned [FeatureTaskRuntimeHandoffEnvelopeValidator] port to the concrete

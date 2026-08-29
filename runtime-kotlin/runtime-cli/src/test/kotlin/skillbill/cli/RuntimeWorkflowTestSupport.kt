@@ -1,10 +1,10 @@
 package skillbill.cli
 
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowGetResult
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowUpdateRequest
-import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowGetResult
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.cli.workflow.toCliMap
 import skillbill.contracts.JsonSupport

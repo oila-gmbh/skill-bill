@@ -2,7 +2,7 @@
 
 package skillbill.application.review
 
-import skillbill.application.model.ReviewPrelaunchExpansion
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.ReviewPreparationRequest
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort

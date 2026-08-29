@@ -1,10 +1,10 @@
 package skillbill.db.worklist
 
 import skillbill.error.InvalidWorkListRowError
-import skillbill.ports.persistence.WorkListRepository
-import skillbill.ports.persistence.model.LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES
-import skillbill.ports.persistence.model.WorkItem
-import skillbill.ports.persistence.model.WorkItemKind
+import skillbill.ports.work.WorkListRepository
+import skillbill.ports.work.model.LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES
+import skillbill.ports.work.model.WorkItem
+import skillbill.ports.work.model.WorkItemKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.sql.Connection

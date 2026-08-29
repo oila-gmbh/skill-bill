@@ -1,0 +1,227 @@
+package skillbill.ports.goalrunner.runner.model
+
+import skillbill.goalrunner.model.GoalAttemptLedgerEntry
+import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
+import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.goal.model.GoalProgressEvent
+import java.nio.file.Path
+
+data class GoalRunnerManifestState(
+  val parentWorkflowId: String,
+  val dbPath: String,
+  val manifest: DecompositionManifest,
+  val controlState: GoalRunnerControlState = GoalRunnerControlState(),
+  // The repo root this state was loaded against; save() writes the on-disk manifest projection
+  // under this root instead of the process's OS cwd.
+  val repoRoot: Path? = null,
+)
+
+data class GoalRunnerCompletionPersistenceResult(
+  val state: GoalRunnerManifestState,
+  val paused: Boolean,
+)
+
+data class GoalRunnerScopedReplanWriteResult(
+  val state: GoalRunnerManifestState,
+  val deletedPlanCount: Int,
+  val plannedSubtaskIdsBefore: List<Int>,
+  val plannedSubtaskIdsAfter: List<Int>,
+  val sharedPreplanPrepared: Boolean,
+  val sharedPreplanPreparedBefore: Boolean = sharedPreplanPrepared,
+  val discardedSharedPreplan: Boolean = false,
+  val cascadedPlanSubtaskIds: List<Int> = emptyList(),
+  // Subtasks whose already-hydrated child workflow was deleted because the discarded plan left its
+  // imported planning bytes stale. Without this the next launch fails the hydration provenance check.
+  val clearedChildSubtaskIds: List<Int> = emptyList(),
+)
+
+/**
+ * Shared-preplan opt-in knobs for [skillbill.ports.goalrunner.runner.GoalRunnerManifestStore.saveScopedReplan].
+ * Bundled so the port stays under detekt LongParameterList without suppressing the seam.
+ */
+data class GoalRunnerScopedReplanOptions(
+  val includeSharedPreplan: Boolean = false,
+  val expectedSharedPayloadSha256: String? = null,
+  val planningIdentity: skillbill.ports.goalrunner.model.GoalPlanningIdentity? = null,
+)
+
+data class GoalRunnerPausePersistenceResult(
+  val parentWorkflowId: String,
+  val controlState: GoalRunnerControlState,
+)
+
+data class GoalRunnerLaunchAuthorization(
+  val authorized: Boolean,
+  val controlState: GoalRunnerControlState,
+  val spawnAuthorization: AgentRunSpawnAuthorization? = null,
+)
+
+class GoalRunnerLaunchAuthorizationDeniedException(
+  val controlState: GoalRunnerControlState,
+) : IllegalStateException("Goal runner launch authorization was denied by a durable pause boundary.")
+
+// Reconciliation-policy knobs for reconcileAuthoritativeOutcomes. Defaults preserve the aggressive
+// set-membership semantics. [requireStalenessEvidence] (SKILL-87) flips the inactive stale-block path
+// to demand positive evidence a candidate is gone, so an empty active set cannot false-kill a live
+// subtask; [allowInactiveReconciliation] still gates whether inactive rows reconcile at all.
+data class GoalRunnerReconcileGate(
+  val allowInactiveReconciliation: Boolean = true,
+  val requireStalenessEvidence: Boolean = false,
+)
+
+data class GoalRunnerSubtaskLaunchRequest(
+  val invokedAgentId: String,
+  val configuredAgentOverrideId: String?,
+  val skillRunRequest: SkillRunRequest,
+)
+
+data class GoalRunnerWorkflowProgress(
+  val workflowId: String,
+  val workflowStatus: String,
+  val currentStepId: String,
+  val progressToken: String,
+  val latestDurableProgressEvent: GoalRunnerProgressEvent? = null,
+  val latestGoalObservabilityEvent: GoalObservabilityProgressEvent? = null,
+  // SKILL-64 Subtask 3 (AC20-AC23): latest declared progress event surfaced to
+  // the supervisor for deterministic liveness; null when none recorded yet.
+  val latestDeclaredProgressEvent: GoalProgressEvent? = null,
+  val latestLivenessSignal: String? = null,
+  val lastSnapshotUpdatedAt: String? = null,
+)
+
+data class GoalRunnerObservabilityRecordRequest(
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
+  val workflowPhase: String,
+  val workerRole: String,
+  val livenessClass: String,
+  val activitySummary: String,
+  val sequenceNumber: Int,
+  val timestamp: String,
+) {
+  init {
+    require(workflowId.isNotBlank()) { "workflowId is required." }
+    require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(subtaskId > 0) { "subtaskId must be positive." }
+    require(workflowPhase.isNotBlank()) { "workflowPhase is required." }
+    require(workerRole.isNotBlank()) { "workerRole is required." }
+    require(livenessClass.isNotBlank()) { "livenessClass is required." }
+    require(activitySummary.isNotBlank()) { "activitySummary is required." }
+    require(sequenceNumber >= 0) { "sequenceNumber must be non-negative." }
+    require(timestamp.isNotBlank()) { "timestamp is required." }
+  }
+}
+
+data class GoalRunnerProgressEvent(
+  val stepId: String,
+  val attemptCount: Int,
+  val kind: String,
+  val message: String,
+  val sequence: Int,
+  val timestamp: String,
+)
+
+/**
+ * SKILL-64 Subtask 3 (AC21, AC25): durable declared-progress write request.
+ * The adapter appends [event] to the bounded goal_progress run history and
+ * latest-event artifact keys. The supervisor read seam surfaces the latest
+ * declared operation state via [latestDeclaredProgressEvent].
+ */
+data class GoalRunnerProgressEventRecordRequest(
+  val workflowId: String,
+  val event: GoalProgressEvent,
+) {
+  init {
+    require(workflowId.isNotBlank()) { "workflowId is required." }
+  }
+}
+
+/** SKILL-64 Subtask 3 (AC10, AC11): append-only attempt/event ledger write request. */
+data class GoalRunnerAttemptLedgerRecordRequest(
+  val workflowId: String,
+  val entry: GoalAttemptLedgerEntry,
+) {
+  init {
+    require(workflowId.isNotBlank()) { "workflowId is required." }
+  }
+}
+
+/**
+ * SKILL-64 Subtask 3 (F-D01): highest persisted sequence numbers across an
+ * issue's continuation children for the append-only attempt ledger and the
+ * durable goal_progress stream.
+ * `null` means no durable entries exist yet (a fresh run); the recorder then
+ * starts from its default base offset. The supervisor-side declared-progress
+ * emitter seeds its monotonic goal_progress sequence from [maxProgressSequence]
+ * so a resume run stays monotonic instead of restarting at 0.
+ */
+data class GoalRunnerLedgerSequenceWatermarks(
+  val maxLedgerSequence: Int? = null,
+  val maxProgressSequence: Int? = null,
+  val backwardEdgeCounts: Map<String, Int> = emptyMap(),
+)
+
+data class GoalObservabilityProgressEvent(
+  val issueKey: String,
+  val subtaskId: Int,
+  val workflowPhase: String,
+  val workerRole: String,
+  val livenessClass: String,
+  val activitySummary: String,
+  val sequenceNumber: Int,
+  val timestamp: String,
+)
+
+/**
+ * Aggregated operator metrics derived from scanning all child workflow attempt ledgers for an issue.
+ * Populated by [GoalRunnerWorkflowOutcomeStore.readAttemptLedgerSummary] and threaded into the
+ * status projection for the CLI operator surface (AC-011).
+ */
+data class GoalRunnerAttemptLedgerSummary(
+  val blockedAttemptCount: Int = 0,
+  val supervisorKillCount: Int = 0,
+  val phaseAttemptCounts: Map<String, Int> = emptyMap(),
+  val cumulativeFixIterations: Map<String, Int> = emptyMap(),
+  val reAttemptCauseCounts: Map<String, Int> = emptyMap(),
+  val findingsInScope: Int? = null,
+)
+
+/**
+ * Operator-recorded evidence that a subtask's work landed outside the runtime — a blocked or
+ * abandoned child whose implementation was finished by hand on the feature branch. The runtime
+ * cannot observe that work, so without a durable acceptance every later status read re-derives the
+ * subtask as unstarted and the goal proposes running it again. This record is DB-authoritative and
+ * lives on the goal parent workflow; the manifest projection stays derived, never hand-edited.
+ */
+data class GoalRunnerOutOfBandAcceptance(
+  val subtaskId: Int,
+  val commitSha: String,
+  val reason: String,
+  val acceptedAt: String,
+) {
+  init {
+    require(subtaskId > 0) { "subtaskId must be positive." }
+    require(commitSha.isNotBlank()) { "commitSha is required." }
+    require(reason.isNotBlank()) { "reason is required." }
+    require(acceptedAt.isNotBlank()) { "acceptedAt is required." }
+  }
+}
+
+data class GoalPullRequestRequest(
+  val repoRoot: Path,
+  val issueKey: String,
+  val featureName: String,
+  val baseBranch: String,
+  val headBranch: String,
+  val title: String,
+  val body: String,
+)
+
+sealed interface GoalPullRequestResult {
+  data class Opened(val url: String) : GoalPullRequestResult
+  data class Existing(val url: String) : GoalPullRequestResult
+  data class Failed(val reason: String) : GoalPullRequestResult
+}

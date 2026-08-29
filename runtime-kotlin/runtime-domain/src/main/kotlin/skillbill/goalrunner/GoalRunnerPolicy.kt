@@ -12,9 +12,9 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskSchedulingResult
-import skillbill.workflow.model.DecompositionDependency
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.DecompositionDependency
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 object GoalRunnerQualityGateSelectionResolver {

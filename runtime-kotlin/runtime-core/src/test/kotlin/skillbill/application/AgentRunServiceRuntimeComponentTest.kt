@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.model.AgentRunStartRequest
+import skillbill.application.agentrun.model.AgentRunStartRequest
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.install.model.InstallAgent

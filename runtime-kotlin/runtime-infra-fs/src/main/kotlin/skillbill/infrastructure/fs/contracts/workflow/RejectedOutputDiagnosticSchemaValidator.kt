@@ -10,7 +10,7 @@ import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.contracts.workflow.REJECTED_OUTPUT_DIAGNOSTIC_CONTRACT_VERSION
 import skillbill.contracts.workflow.RejectedOutputDiagnosticSchemaPaths
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
-import skillbill.ports.persistence.RejectedOutputDiagnostic
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
 
 object RejectedOutputDiagnosticSchemaValidator {
   private val mapper = ObjectMapper()

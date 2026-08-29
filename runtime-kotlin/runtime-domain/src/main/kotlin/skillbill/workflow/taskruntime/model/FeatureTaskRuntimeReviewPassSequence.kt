@@ -3,7 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.model.toCodeReviewExecutionMode
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 
 object FeatureTaskRuntimeReviewPassSequence {
   fun modeForPass(pinnedMode: CodeReviewExecutionMode, passNumber: Int): CodeReviewExecutionMode =

@@ -4,7 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.model.ReviewSnapshotPruneResult
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.review.model.ReviewSnapshot
 import java.io.IOException

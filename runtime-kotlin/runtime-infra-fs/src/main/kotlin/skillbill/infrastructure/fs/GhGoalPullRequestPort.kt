@@ -1,9 +1,9 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.goalrunner.GoalPullRequestPort
-import skillbill.ports.goalrunner.model.GoalPullRequestRequest
-import skillbill.ports.goalrunner.model.GoalPullRequestResult
+import skillbill.ports.goalrunner.runner.GoalPullRequestPort
+import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
+import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.nio.file.Files

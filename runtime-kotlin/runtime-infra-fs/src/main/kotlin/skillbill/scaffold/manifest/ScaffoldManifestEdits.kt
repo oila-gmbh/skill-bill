@@ -105,7 +105,7 @@ internal fun renderExternalAddonManifestRegistration(
 }
 
 // SKILL-52.1 subtask 2: `renderPlatformPackManifest` and its YAML-emit helpers now live in
-// `skillbill.scaffold.policy.PlatformPackManifestPolicy` (runtime-domain). The only remaining
+// `skillbill.scaffold.policy.platformpack.PlatformPackManifestPolicy` (runtime-domain). The only remaining
 // platform-pack manifest concerns in this file are the on-disk text mutators
 // (`appendCodeReviewArea`, `setDeclaredQualityCheckFile`, governed-addon registration etc.)
 // which keep their YAML-text helpers below because they edit existing files rather than

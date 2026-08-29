@@ -1,7 +1,7 @@
 package skillbill.mcp.workflow
 
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpWorkflowRuntime
 import skillbill.mcp.core.int

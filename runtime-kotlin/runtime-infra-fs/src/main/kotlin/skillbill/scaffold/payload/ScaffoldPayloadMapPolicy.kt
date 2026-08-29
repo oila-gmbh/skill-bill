@@ -4,11 +4,11 @@ import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.ScaffoldPayloadVersionMismatchError
 import skillbill.error.UnknownPreShellFamilyError
 import skillbill.error.UnknownSkillKindError
-import skillbill.scaffold.policy.ACTIVE_CREATION_SKILL_KINDS
-import skillbill.scaffold.policy.RETIRED_CODE_REVIEW_AREA_KIND_ALIASES
-import skillbill.scaffold.policy.RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES
-import skillbill.scaffold.policy.SCAFFOLD_PAYLOAD_VERSION
-import skillbill.scaffold.policy.rejectRetiredPartialScaffoldKind
+import skillbill.scaffold.policy.scaffold.ACTIVE_CREATION_SKILL_KINDS
+import skillbill.scaffold.policy.scaffold.RETIRED_CODE_REVIEW_AREA_KIND_ALIASES
+import skillbill.scaffold.policy.scaffold.RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES
+import skillbill.scaffold.policy.scaffold.SCAFFOLD_PAYLOAD_VERSION
+import skillbill.scaffold.policy.scaffold.rejectRetiredPartialScaffoldKind
 
 /**
  * SKILL-52.2 subtask 2 (Task 11): the legacy raw-map scaffold-payload policy helpers used to

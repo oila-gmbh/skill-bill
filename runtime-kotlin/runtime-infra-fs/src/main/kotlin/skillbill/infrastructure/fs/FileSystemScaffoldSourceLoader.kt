@@ -7,7 +7,7 @@ import skillbill.ports.scaffold.source.model.ScaffoldPlatformPackLoadRequest
 import skillbill.ports.scaffold.source.model.ScaffoldPlatformPackLoadResult
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.declaredSkillRelativeDirs
-import skillbill.scaffold.policy.requireStringList
+import skillbill.scaffold.policy.scaffold.requireStringList
 import java.nio.file.Files
 import java.nio.file.InvalidPathException
 import java.nio.file.Path

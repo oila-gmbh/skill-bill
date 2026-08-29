@@ -5,7 +5,7 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.reconcileStaleFeatureTaskRuntimeSessions
 import skillbill.db.core.reconcileStaleTelemetrySessions
 import skillbill.db.telemetry.LifecycleTelemetryStore
-import skillbill.ports.persistence.model.TelemetryReconciliationRequest
+import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord

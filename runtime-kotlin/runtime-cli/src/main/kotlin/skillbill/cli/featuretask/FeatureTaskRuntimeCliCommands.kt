@@ -28,19 +28,19 @@ import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.featuretask.model.GoalContinuationCandidate
-import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
-import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimeModelAssignment
-import skillbill.application.model.FeatureTaskRuntimePhaseStatus
-import skillbill.application.model.FeatureTaskRuntimeRunEvent
-import skillbill.application.model.FeatureTaskRuntimeRunEventSink
-import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.model.FeatureTaskRuntimeStatusProjection
-import skillbill.application.model.FeatureTaskRuntimeStatusRequest
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
+import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.featuretask.model.FeatureTaskRuntimeModelAssignment
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusProjection
+import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.workflow.WorkflowService
@@ -61,14 +61,14 @@ import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.ValidationDepth
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
+import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -888,7 +888,7 @@ private fun verifyRuntimeResume(
       throw UsageError("Workflow '$workflowId' is terminal and cannot be resumed; no phase was launched.")
     else -> throw UsageError("Workflow '$workflowId' is not a resumable runtime workflow.")
   }
-  if (candidate.mode != skillbill.ports.persistence.model.FeatureTaskWorkflowMode.RUNTIME) {
+  if (candidate.mode != skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME) {
     throw UsageError("Workflow '$workflowId' was persisted in ${candidate.mode.wireValue} mode.")
   }
   if (candidate.governedSpecPath != governedSpecPath(effectiveRoot, Path.of(specPath))) {
@@ -1098,7 +1098,7 @@ private fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?> 
 }
 
 private fun Map<String, Any?>.withSubtaskOutcome(
-  outcome: skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome?,
+  outcome: skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome?,
 ): Map<String, Any?> = if (outcome == null) {
   this
 } else {

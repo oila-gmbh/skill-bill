@@ -5,7 +5,7 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.telemetry.recordGoalIssueSegmentEnd
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord

@@ -2,7 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.workflow.FeatureTaskRuntimeImplementationAttemptSchemaValidator
-import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator
 
 /**
  * Bridges the domain-owned [FeatureTaskRuntimeImplementationAttemptValidator] port to the concrete

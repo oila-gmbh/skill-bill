@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner
 
-import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 
 internal enum class DurableChildRecoveryClass(val wireValue: String) {
   ABSENT("absent"),

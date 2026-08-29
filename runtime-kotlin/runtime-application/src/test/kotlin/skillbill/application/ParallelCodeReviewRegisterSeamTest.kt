@@ -1,12 +1,12 @@
 package skillbill.application
 
-import skillbill.application.model.ParallelReviewScope
+import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.parseLaneRegisterSeam
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.review.context.model.ReviewRegisterParseSeamException
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

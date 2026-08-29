@@ -1,10 +1,10 @@
 package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
-import skillbill.workflow.model.GoalObservabilityDiffStat
-import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.goal.model.GoalObservabilityDiffStat
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 
 enum class GoalRunnerTerminalStatus {
   COMPLETE,

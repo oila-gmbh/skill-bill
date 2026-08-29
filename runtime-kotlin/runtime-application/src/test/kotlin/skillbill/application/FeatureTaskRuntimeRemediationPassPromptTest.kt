@@ -4,8 +4,8 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize

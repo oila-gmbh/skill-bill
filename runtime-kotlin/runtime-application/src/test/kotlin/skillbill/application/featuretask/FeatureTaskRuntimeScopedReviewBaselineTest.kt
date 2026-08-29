@@ -1,10 +1,10 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import java.nio.file.Path
 import kotlin.test.Test

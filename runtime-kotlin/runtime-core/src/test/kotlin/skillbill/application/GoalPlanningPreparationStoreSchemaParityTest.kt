@@ -5,11 +5,11 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.workflow.GoalPlanningPreparationStore
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.error.ShellContentContractException
-import skillbill.ports.persistence.model.GoalPlanningContractProvenance
-import skillbill.ports.persistence.model.GoalPlanningIdentity
-import skillbill.ports.persistence.model.GoalPlanningPreparationState
-import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
-import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
+import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningIdentity
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
+import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

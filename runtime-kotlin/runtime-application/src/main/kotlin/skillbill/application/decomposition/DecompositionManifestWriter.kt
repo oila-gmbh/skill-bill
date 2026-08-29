@@ -2,18 +2,18 @@
 
 package skillbill.application.decomposition
 
-import skillbill.application.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.model.DecompositionManifestWriteRequest
-import skillbill.application.model.DecompositionManifestWriteResult
+import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.workflow.model.DecompositionManifestWriteRequest
+import skillbill.application.workflow.model.DecompositionManifestWriteResult
 import skillbill.application.workflow.repoRoot
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionExecutionModel
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionManifestPlan
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionExecutionModel
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionManifestPlan
 import java.io.IOException
 import java.nio.file.Path
 
@@ -260,7 +260,7 @@ internal data class PreparedDecompositionManifestWrite(
   val manifestPath: Path,
   val manifest: DecompositionManifest,
   val yaml: String,
-  val repairEvidence: List<skillbill.workflow.model.DecompositionManifestRepairEvidence> = emptyList(),
+  val repairEvidence: List<skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence> = emptyList(),
 )
 
 private fun assertParentSpecIsNotDecomposedSubtask(

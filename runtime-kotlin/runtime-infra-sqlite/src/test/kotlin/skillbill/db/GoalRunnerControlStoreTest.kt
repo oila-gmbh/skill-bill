@@ -5,9 +5,9 @@ import skillbill.db.workflow.GoalRunnerControlStore
 import skillbill.db.workflow.LEGACY_UNKNOWN_PAUSED_AT
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

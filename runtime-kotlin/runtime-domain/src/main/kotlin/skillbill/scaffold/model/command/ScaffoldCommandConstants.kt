@@ -1,17 +1,17 @@
 package skillbill.scaffold.model.command
 
-import skillbill.scaffold.policy.ACTIVE_CREATION_SKILL_KINDS
-import skillbill.scaffold.policy.RETIRED_PARTIAL_SCAFFOLD_KIND_ALIASES
-import skillbill.scaffold.policy.SCAFFOLD_PAYLOAD_VERSION
-import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
-import skillbill.scaffold.policy.SKILL_KIND_AGENT_ADDON
-import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
-import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
-import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
-import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_PACK
-import skillbill.scaffold.policy.SUPPORTED_SKILL_KINDS
-import skillbill.scaffold.policy.isRetiredPartialScaffoldKindAlias
-import skillbill.scaffold.policy.rejectRetiredPartialScaffoldKind
+import skillbill.scaffold.policy.scaffold.ACTIVE_CREATION_SKILL_KINDS
+import skillbill.scaffold.policy.scaffold.RETIRED_PARTIAL_SCAFFOLD_KIND_ALIASES
+import skillbill.scaffold.policy.scaffold.SCAFFOLD_PAYLOAD_VERSION
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_AGENT_ADDON
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_CODE_REVIEW_AREA
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_HORIZONTAL
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
+import skillbill.scaffold.policy.scaffold.SUPPORTED_SKILL_KINDS
+import skillbill.scaffold.policy.scaffold.isRetiredPartialScaffoldKindAlias
+import skillbill.scaffold.policy.scaffold.rejectRetiredPartialScaffoldKind
 
 /**
  * SKILL-52.2 subtask 2: re-export of the scaffold wire-payload constants that adapter parsers

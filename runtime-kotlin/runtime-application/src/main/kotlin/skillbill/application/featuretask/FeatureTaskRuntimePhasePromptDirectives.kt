@@ -2,10 +2,10 @@
 
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
+import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory

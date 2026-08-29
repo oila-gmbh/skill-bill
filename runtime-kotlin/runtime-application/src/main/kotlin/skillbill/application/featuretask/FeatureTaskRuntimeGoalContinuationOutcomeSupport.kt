@@ -1,17 +1,17 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
-import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 
 internal const val BRANCH_SETUP_AGENT_SENTINEL = "branch-setup"
 internal const val GOAL_PLANNING_IMPORT_AGENT_SENTINEL = "goal-planning-import"

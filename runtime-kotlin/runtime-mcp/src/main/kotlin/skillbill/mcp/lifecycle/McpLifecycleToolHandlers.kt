@@ -1,10 +1,10 @@
 package skillbill.mcp.lifecycle
 
-import skillbill.application.model.FeatureVerifyFinishedRequest
-import skillbill.application.model.FeatureVerifyStartedRequest
-import skillbill.application.model.PrDescriptionGeneratedRequest
-import skillbill.application.model.QualityCheckFinishedRequest
-import skillbill.application.model.QualityCheckStartedRequest
+import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
+import skillbill.application.telemetry.model.FeatureVerifyStartedRequest
+import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
+import skillbill.application.telemetry.model.QualityCheckFinishedRequest
+import skillbill.application.telemetry.model.QualityCheckStartedRequest
 import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.boolean

@@ -1,10 +1,10 @@
 package skillbill.application
 
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.model.GoalRunnerReplanRequest
+import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.workflow.model.CurrentSubtaskIntent
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -377,7 +377,7 @@ class GoalRunnerReplanTest {
 
     val status = requireNotNull(
       service.status(
-        skillbill.application.model.GoalRunnerStatusRequest(
+        skillbill.application.goalrunner.model.GoalRunnerStatusRequest(
           issueKey = "SKILL-56",
           invokedAgentId = "codex",
         ),
@@ -407,7 +407,7 @@ class GoalRunnerReplanTest {
   )
 
   private fun refusalBaseStore(
-    base: skillbill.workflow.model.DecompositionManifest = refusalBaseManifest(),
+    base: skillbill.workflow.decomposition.model.DecompositionManifest = refusalBaseManifest(),
   ): InMemoryGoalManifestStore = InMemoryGoalManifestStore(base).apply {
     plannedSubtaskIds = mutableSetOf(1, 2)
   }

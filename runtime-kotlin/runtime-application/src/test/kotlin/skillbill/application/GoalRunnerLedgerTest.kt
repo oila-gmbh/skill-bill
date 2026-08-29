@@ -1,14 +1,14 @@
 package skillbill.application
 
 import skillbill.application.goalrunner.GoalRunner
-import skillbill.application.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains

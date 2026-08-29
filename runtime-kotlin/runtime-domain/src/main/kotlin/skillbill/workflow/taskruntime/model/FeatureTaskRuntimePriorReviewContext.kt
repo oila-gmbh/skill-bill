@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import java.nio.charset.StandardCharsets
 
 const val PRIOR_REVIEW_CONTEXT_MAX_FINDINGS: Int = 60

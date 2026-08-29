@@ -12,14 +12,14 @@ import skillbill.scaffold.platformpack.resolveSkillClass
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.relativeTo
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS as POLICY_APPROVED_CODE_REVIEW_AREAS
-import skillbill.scaffold.policy.PLATFORM_PACK_PRESETS as POLICY_PLATFORM_PACK_PRESETS
-import skillbill.scaffold.policy.PLATFORM_PACK_SHELL_CONTRACT_VERSION as POLICY_SHELL_CONTRACT_VERSION
-import skillbill.scaffold.policy.SCAFFOLD_PAYLOAD_VERSION as POLICY_SCAFFOLD_PAYLOAD_VERSION
-import skillbill.scaffold.policy.displayNameFromSlug as policyDisplayNameFromSlug
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS as POLICY_APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.scaffold.PLATFORM_PACK_PRESETS as POLICY_PLATFORM_PACK_PRESETS
+import skillbill.scaffold.policy.scaffold.PLATFORM_PACK_SHELL_CONTRACT_VERSION as POLICY_SHELL_CONTRACT_VERSION
+import skillbill.scaffold.policy.scaffold.SCAFFOLD_PAYLOAD_VERSION as POLICY_SCAFFOLD_PAYLOAD_VERSION
+import skillbill.scaffold.policy.scaffold.displayNameFromSlug as policyDisplayNameFromSlug
 
 // SKILL-52.1 subtask 2: the canonical shell-contract version now lives in `runtime-domain` under
-// `skillbill.scaffold.policy.PLATFORM_PACK_SHELL_CONTRACT_VERSION`. This alias keeps the existing
+// `skillbill.scaffold.policy.scaffold.PLATFORM_PACK_SHELL_CONTRACT_VERSION`. This alias keeps the existing
 // internal callsites compiling against a single source of truth — bumping the version in one place
 // updates both the manifest renderer and the shell validation seam.
 internal val SHELL_CONTRACT_VERSION: String get() = POLICY_SHELL_CONTRACT_VERSION

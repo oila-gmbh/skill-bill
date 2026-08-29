@@ -60,8 +60,8 @@ class RuntimeImplementationImportRulesTest {
     val mustNotBeDetected = listOf(
       // Domain-owned validator PORTS — the sanctioned reach into validation.
       "skillbill.install.model.InstallPlanWireValidator",
-      "skillbill.workflow.DecompositionManifestValidator",
-      "skillbill.workflow.WorkflowSnapshotValidator",
+      "skillbill.workflow.decomposition.DecompositionManifestValidator",
+      "skillbill.workflow.engine.WorkflowSnapshotValidator",
       // Unrelated types.
       "skillbill.application.InstallService",
       "skillbill.contracts.install.InstallPlanSchemaPaths",

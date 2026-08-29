@@ -3,10 +3,12 @@ package skillbill.application.featuretask
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RecordingLifecycleTelemetryRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
-import skillbill.ports.persistence.ProducerOutputEvidence
-import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
-import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.application.diagnostics.RejectedOutputDiagnosticService
+import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
+import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import java.time.Instant
 import kotlin.test.Test

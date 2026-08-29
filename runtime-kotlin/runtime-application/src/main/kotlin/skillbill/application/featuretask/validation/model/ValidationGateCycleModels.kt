@@ -1,9 +1,9 @@
 package skillbill.application.featuretask.validation.model
 
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.scaffold.model.ValidationGateDeclaration
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase

@@ -40,13 +40,13 @@ import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.ScaffoldResult
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
-import skillbill.scaffold.policy.SKILL_KIND_AGENT_ADDON
-import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
-import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
-import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
-import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_PACK
-import skillbill.scaffold.policy.sharedContractNote
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_AGENT_ADDON
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_CODE_REVIEW_AREA
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_HORIZONTAL
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
+import skillbill.scaffold.policy.scaffold.sharedContractNote
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.rendering.inferSkillDescription
 import skillbill.scaffold.rendering.renderAddonBody
@@ -63,9 +63,9 @@ import skillbill.scaffold.payload.requireStringOrDefaultMap as requireStringOrDe
 import skillbill.scaffold.payload.resolvePlatformPackDefaults as policyResolvePlatformPackDefaults
 import skillbill.scaffold.payload.resolvePlatformPackSelection as policyResolvePlatformPackSelection
 import skillbill.scaffold.payload.validatePayloadVersion as policyValidatePayloadVersion
-import skillbill.scaffold.policy.buildPlatformPackInstallPaths as policyBuildPlatformPackInstallPaths
-import skillbill.scaffold.policy.platformPackNotes as policyPlatformPackNotes
-import skillbill.scaffold.policy.renderPlatformPackManifestContent as policyRenderPlatformPackManifestContent
+import skillbill.scaffold.policy.scaffold.buildPlatformPackInstallPaths as policyBuildPlatformPackInstallPaths
+import skillbill.scaffold.policy.scaffold.platformPackNotes as policyPlatformPackNotes
+import skillbill.scaffold.policy.platformpack.renderPlatformPackManifestContent as policyRenderPlatformPackManifestContent
 
 private data class ManifestSnapshot(
   val manifestPath: Path,

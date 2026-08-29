@@ -2,17 +2,17 @@ package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.repoRelativePath
-import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.review.context.model.SpecIntentAbsenceReason
 import skillbill.review.context.model.SpecIntentDegradationRecord
 import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.context.model.SpecIntentResolutionRung
 import skillbill.review.context.model.SpecIntentSurroundingContext
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionManifestValidationResult
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 
 @Inject

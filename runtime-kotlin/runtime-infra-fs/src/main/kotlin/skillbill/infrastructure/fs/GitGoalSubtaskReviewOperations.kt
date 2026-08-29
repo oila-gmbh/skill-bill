@@ -1,12 +1,12 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
-import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import java.nio.file.Path
 
 internal const val GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES: Int = 1_000_000
@@ -294,8 +294,8 @@ private fun scopeFingerprint(repoRoot: Path, indexTree: String, ownedUntracked: 
 private data class GoalReviewInputMaterial(
   val branch: String?,
   val head: String?,
-  val baseExists: skillbill.ports.workflow.model.WorkflowGitOperationResult?,
-  val baseIsAncestor: skillbill.ports.workflow.model.WorkflowGitOperationResult?,
+  val baseExists: skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult?,
+  val baseIsAncestor: skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult?,
   val indexTree: String?,
   val trackedDelta: String?,
   val untracked: List<String>?,
@@ -342,10 +342,10 @@ private fun reviewInputFailure(
   else -> null
 }
 
-private val isDefinitiveMissingObject: (skillbill.ports.workflow.model.WorkflowGitOperationResult) -> Boolean =
+private val isDefinitiveMissingObject: (skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult) -> Boolean =
   { result -> result.status == "error" && result.error.contains("exit code 128") }
 
-private val isDefinitiveNonAncestor: (skillbill.ports.workflow.model.WorkflowGitOperationResult) -> Boolean =
+private val isDefinitiveNonAncestor: (skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult) -> Boolean =
   { result -> result.status == "error" && result.error.contains("exit code 1") }
 
 private fun GoalReviewInputMaterial.toSnapshot(): GoalReviewInputSnapshot = GoalReviewInputSnapshot(

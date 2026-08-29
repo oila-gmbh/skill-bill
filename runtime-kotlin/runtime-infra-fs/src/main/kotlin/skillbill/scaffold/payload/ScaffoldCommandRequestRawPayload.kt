@@ -1,12 +1,12 @@
 package skillbill.scaffold.payload
 
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
-import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
-import skillbill.scaffold.policy.SKILL_KIND_AGENT_ADDON
-import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
-import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
-import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
-import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_PACK
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_AGENT_ADDON
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_CODE_REVIEW_AREA
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_HORIZONTAL
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
 import skillbill.scaffold.runtime.scaffold
 
 /**

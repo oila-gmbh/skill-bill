@@ -7,8 +7,8 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.choice
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.model.UpdateCheckResult
-import skillbill.application.model.UpdateCheckStatus
+import skillbill.application.updatecheck.model.UpdateCheckResult
+import skillbill.application.updatecheck.model.UpdateCheckStatus
 import skillbill.application.system.SystemService
 import skillbill.application.updatecheck.UpdateCheckService
 import skillbill.cli.core.CliRunState

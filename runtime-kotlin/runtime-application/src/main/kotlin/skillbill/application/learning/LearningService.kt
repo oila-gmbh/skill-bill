@@ -1,19 +1,19 @@
 package skillbill.application.learning
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.model.AddLearningInput
-import skillbill.application.model.EditLearningInput
-import skillbill.application.model.LearningDeleteResult
-import skillbill.application.model.LearningListResult
-import skillbill.application.model.LearningRecordResult
-import skillbill.application.model.LearningResolveResult
+import skillbill.application.learning.model.AddLearningInput
+import skillbill.application.learning.model.EditLearningInput
+import skillbill.application.learning.model.LearningDeleteResult
+import skillbill.application.learning.model.LearningListResult
+import skillbill.application.learning.model.LearningRecordResult
+import skillbill.application.learning.model.LearningResolveResult
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.learningEntry
 import skillbill.learnings.learningEntrySessionJson
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.UpdateLearningRequest
-import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.db.DatabaseSessionFactory
 
 @Inject
 class LearningService(private val database: DatabaseSessionFactory) {

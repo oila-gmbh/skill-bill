@@ -1,7 +1,7 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceDeriver
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort

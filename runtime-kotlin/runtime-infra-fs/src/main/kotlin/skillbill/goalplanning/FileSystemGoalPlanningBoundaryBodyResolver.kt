@@ -2,11 +2,11 @@ package skillbill.goalplanning
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.GoalVerificationBoundaryCapExceededError
-import skillbill.ports.goalrunner.GoalPlanningBoundaryBodyResolver
-import skillbill.ports.goalrunner.model.GoalPlanningBoundaryBody
-import skillbill.ports.goalrunner.model.GoalPlanningBoundaryBodyResolutionCaps
-import skillbill.ports.goalrunner.model.GoalPlanningContext
-import skillbill.ports.goalrunner.model.GoalPlanningResolvedBoundaryBodies
+import skillbill.ports.goalrunner.planning.GoalPlanningBoundaryBodyResolver
+import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBody
+import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBodyResolutionCaps
+import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
+import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
 import java.nio.file.Path
 
 @Inject

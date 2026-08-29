@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.application.decomposition.parentSpecPath
-import skillbill.application.model.DecompositionManifestWriteRequest
+import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import java.nio.file.Files

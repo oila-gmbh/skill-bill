@@ -3,8 +3,8 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
-import skillbill.ports.persistence.FeatureTaskPhaseSettlementRepository
-import skillbill.ports.persistence.model.FeatureTaskPhaseSettlement
+import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
+import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
 import skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest

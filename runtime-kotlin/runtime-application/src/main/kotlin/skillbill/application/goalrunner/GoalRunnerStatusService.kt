@@ -6,29 +6,31 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.agentAttributionFromPhaseState
 import skillbill.application.featuretask.pruneResetSubtaskCheckpointRefs
-import skillbill.application.model.FeatureTaskRuntimeStatusRequest
-import skillbill.application.model.GoalPlanningStatusAlignRequest
-import skillbill.application.model.GoalRunnerAcceptRequest
-import skillbill.application.model.GoalRunnerAcceptResult
-import skillbill.application.model.GoalRunnerAcceptanceEvidence
-import skillbill.application.model.GoalRunnerAppliedRepair
-import skillbill.application.model.GoalRunnerChildRecoveryDiagnostic
-import skillbill.application.model.GoalRunnerChildWedgeDiagnosis
-import skillbill.application.model.GoalRunnerPauseResult
-import skillbill.application.model.GoalRunnerRepairRequest
-import skillbill.application.model.GoalRunnerRepairResult
-import skillbill.application.model.GoalRunnerRepairStatus
-import skillbill.application.model.GoalRunnerReplanRequest
-import skillbill.application.model.GoalRunnerReplanResult
-import skillbill.application.model.GoalRunnerReplanSnapshot
-import skillbill.application.model.GoalRunnerResetRequest
-import skillbill.application.model.GoalRunnerResetResult
-import skillbill.application.model.GoalRunnerResetSnapshot
-import skillbill.application.model.GoalRunnerResetSubtaskSnapshot
-import skillbill.application.model.GoalRunnerResumeResult
-import skillbill.application.model.GoalRunnerStatusRequest
-import skillbill.application.model.GoalRunnerStopStatus
-import skillbill.application.model.GoalRunnerStopVerbResult
+import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.goalrunner.planning.GoalPlanningStatusReasonCoherence
+import skillbill.application.goalrunner.planning.goalPlanningHardResetRemedy
+import skillbill.application.goalrunner.planning.model.GoalPlanningStatusAlignRequest
+import skillbill.application.goalrunner.model.GoalRunnerAcceptRequest
+import skillbill.application.goalrunner.model.GoalRunnerAcceptResult
+import skillbill.application.goalrunner.model.GoalRunnerAcceptanceEvidence
+import skillbill.application.goalrunner.model.GoalRunnerAppliedRepair
+import skillbill.application.goalrunner.model.GoalRunnerChildRecoveryDiagnostic
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
+import skillbill.application.goalrunner.model.GoalRunnerPauseResult
+import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
+import skillbill.application.goalrunner.model.GoalRunnerRepairResult
+import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
+import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
+import skillbill.application.goalrunner.model.GoalRunnerReplanResult
+import skillbill.application.goalrunner.model.GoalRunnerReplanSnapshot
+import skillbill.application.goalrunner.model.GoalRunnerResetRequest
+import skillbill.application.goalrunner.model.GoalRunnerResetResult
+import skillbill.application.goalrunner.model.GoalRunnerResetSnapshot
+import skillbill.application.goalrunner.model.GoalRunnerResetSubtaskSnapshot
+import skillbill.application.goalrunner.model.GoalRunnerResumeResult
+import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
+import skillbill.application.goalrunner.model.GoalRunnerStopStatus
+import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
 import skillbill.application.workflow.repoRoot
 import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.ExecutionLiveness
@@ -39,26 +41,26 @@ import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
-import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.NoopGoalRunnerAttemptLedgerStore
-import skillbill.ports.goalrunner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
-import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions
-import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.runner.NoopGoalRunnerAttemptLedgerStore
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.io.IOException
 import java.nio.file.Path
 import java.time.Clock
@@ -593,7 +595,7 @@ class GoalRunnerStatusService(
       null
     }
     val planningIdentity = if (request.includeSharedPreplan && expectedSharedDigest != null) {
-      skillbill.ports.persistence.model.GoalPlanningIdentity(
+      skillbill.ports.goalrunner.model.GoalPlanningIdentity(
         parentGoalWorkflowId = loaded.parentWorkflowId,
         normalizedIssueKey = loaded.manifest.issueKey.trim().uppercase(),
         repositoryIdentity = goalRepositoryIdentity(
@@ -709,7 +711,7 @@ class GoalRunnerStatusService(
 
   private fun deleteIncompatibleChildWorkflow(
     request: GoalRunnerResetRequest,
-    authoritativeState: skillbill.ports.goalrunner.model.GoalRunnerManifestState,
+    authoritativeState: skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState,
   ): GoalRunnerResetResult {
     val subtaskId = requireNotNull(request.subtaskId)
     val selected = authoritativeState.manifest.subtasks.singleOrNull { it.id == subtaskId }
@@ -1063,7 +1065,7 @@ private fun DecompositionManifest.toResetSnapshot(): GoalRunnerResetSnapshot = G
   },
 )
 
-private fun skillbill.ports.goalrunner.model.GoalObservabilityProgressEvent.toStatusMap(): Map<String, Any?> =
+private fun skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent.toStatusMap(): Map<String, Any?> =
   linkedMapOf(
     "issue_key" to issueKey,
     "subtask_id" to subtaskId,

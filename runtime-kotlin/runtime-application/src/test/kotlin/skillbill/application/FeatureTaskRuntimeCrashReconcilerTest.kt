@@ -2,9 +2,9 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
@@ -133,7 +133,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
           startedAt = null,
           updatedAt = null,
           finishedAt = null,
-          mode = skillbill.ports.persistence.model.FeatureTaskWorkflowMode.RUNTIME,
+          mode = skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME,
         ),
       )
       seedWorkerOwnership(

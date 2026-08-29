@@ -3,11 +3,11 @@ package skillbill.application
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.toRecord
-import skillbill.application.model.GoalFinishedRequest
-import skillbill.application.model.GoalIssueFinishedRequest
-import skillbill.application.model.GoalRunnerEventSink
-import skillbill.application.model.GoalStartedRequest
-import skillbill.application.model.GoalSubtaskFinishedRequest
+import skillbill.application.telemetry.model.GoalFinishedRequest
+import skillbill.application.telemetry.model.GoalIssueFinishedRequest
+import skillbill.application.goalrunner.model.GoalRunnerEventSink
+import skillbill.application.telemetry.model.GoalStartedRequest
+import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import java.nio.file.Path
 import java.time.Clock
@@ -123,8 +123,8 @@ class GoalModeAttributionUnitTest {
     launchFacts()
   }
 
-  private fun runRequest(): skillbill.application.model.GoalRunnerRunRequest =
-    skillbill.application.model.GoalRunnerRunRequest(
+  private fun runRequest(): skillbill.application.goalrunner.model.GoalRunnerRunRequest =
+    skillbill.application.goalrunner.model.GoalRunnerRunRequest(
       issueKey = "SKILL-56",
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       invokedAgentId = "claude",

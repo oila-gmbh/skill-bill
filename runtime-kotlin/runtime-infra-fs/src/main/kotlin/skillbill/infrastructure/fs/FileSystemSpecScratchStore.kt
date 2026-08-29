@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.workflow.SpecScratchStore
+import skillbill.ports.workflow.specscratch.SpecScratchStore
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator

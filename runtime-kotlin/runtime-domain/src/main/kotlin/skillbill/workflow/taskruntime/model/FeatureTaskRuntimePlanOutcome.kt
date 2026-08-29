@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.workflow.model.SpecSource
+import skillbill.workflow.decomposition.model.SpecSource
 
 private const val DECOMPOSE_MODE: String = "decompose"
 

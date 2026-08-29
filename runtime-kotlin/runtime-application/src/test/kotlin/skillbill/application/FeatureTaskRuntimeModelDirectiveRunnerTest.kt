@@ -1,9 +1,9 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
-import skillbill.application.model.FeatureTaskRuntimeModelAssignment
-import skillbill.application.model.FeatureTaskRuntimeRunEvent
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
+import skillbill.application.featuretask.model.FeatureTaskRuntimeModelAssignment
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.config.model.ExecutionMatrix
 import skillbill.config.model.ExecutionTier
 import skillbill.config.model.PhaseModelDirective

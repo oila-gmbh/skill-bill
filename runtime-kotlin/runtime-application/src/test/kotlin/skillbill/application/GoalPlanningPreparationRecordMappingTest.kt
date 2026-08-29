@@ -2,9 +2,9 @@ package skillbill.application
 
 import skillbill.application.workflow.toEnvelopeMap
 import skillbill.application.workflow.toGoalPlanningPreparationRecord
-import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
-import skillbill.ports.persistence.model.GoalPlanningPreparationState
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -3,10 +3,10 @@ package skillbill.application
 import skillbill.application.decomposition.intentFor
 import skillbill.application.decomposition.statusFromUpdate
 import skillbill.application.decomposition.withRuntimeFields
-import skillbill.application.model.DecompositionManifestRuntimeUpdate
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

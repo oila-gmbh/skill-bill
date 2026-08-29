@@ -2,7 +2,7 @@ package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.policy.renderPlatformPackManifest
+import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
 import skillbill.scaffold.rendering.inferSkillDescription
 import skillbill.scaffold.rendering.renderContentBody
 import skillbill.scaffold.runtime.TemplateContext

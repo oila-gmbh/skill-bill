@@ -1,6 +1,6 @@
 package skillbill.telemetry.config
 
-import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.telemetry.writeTelemetryLevel

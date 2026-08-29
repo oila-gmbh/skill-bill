@@ -7,14 +7,14 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.long
 import skillbill.application.config.ConfigResolutionService
-import skillbill.application.model.DiffResolutionException
-import skillbill.application.model.ParallelCodeReviewRequest
-import skillbill.application.model.ParallelCodeReviewResult
-import skillbill.application.model.ParallelReviewLaneStatus
-import skillbill.application.model.ParallelReviewScope
-import skillbill.application.model.ReviewPrelaunchExpansion
-import skillbill.application.model.StackDetectionException
-import skillbill.application.model.UsageValidationException
+import skillbill.application.review.model.DiffResolutionException
+import skillbill.application.review.model.ParallelCodeReviewRequest
+import skillbill.application.review.model.ParallelCodeReviewResult
+import skillbill.application.review.model.ParallelReviewLaneStatus
+import skillbill.application.review.model.ParallelReviewScope
+import skillbill.application.review.model.ReviewPrelaunchExpansion
+import skillbill.application.review.model.StackDetectionException
+import skillbill.application.review.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.RequestedReviewMode
 import skillbill.application.review.toBoundedPayload
@@ -26,7 +26,7 @@ import skillbill.cli.model.CliExecutionResult
 import skillbill.contracts.JsonSupport
 import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.error.ShellContentContractException
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 

@@ -2,12 +2,14 @@ package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
-import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.model.ReviewIssueCategory
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
@@ -16,7 +18,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
-import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
+import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
 
 /**
  * Pure composer of the full prompt a feature-task-runtime phase agent receives. The persisted

@@ -5,8 +5,8 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.databaseAccessError
 import skillbill.error.DatabaseAccessOperation
 import skillbill.model.EnvironmentContext
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection

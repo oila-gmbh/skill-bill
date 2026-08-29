@@ -14,7 +14,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateProgress
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
 import skillbill.application.featuretask.validation.model.requiresUnparseableGateTriage
-import skillbill.application.model.FeatureTaskRuntimeRunEvent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.config.model.applyValidationGateGradleWrapper
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION

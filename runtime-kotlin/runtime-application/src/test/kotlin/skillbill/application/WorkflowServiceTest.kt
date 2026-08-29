@@ -11,13 +11,13 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
-import skillbill.application.model.GoalRunnerStatusRequest
-import skillbill.application.model.WorkflowContinueResult
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowGetResult
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowUpdateRequest
-import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowGetResult
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.application.workflow.ContinuationStepResult
 import skillbill.application.workflow.DecompositionWorkflowContinuation
 import skillbill.application.workflow.WorkflowFamily
@@ -47,57 +47,57 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
-import skillbill.ports.goalrunner.model.GoalChildPlanningHydrationRequest
-import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
-import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
-import skillbill.ports.goalrunner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
-import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.GoalPlanningPreparationRepository
-import skillbill.ports.persistence.GoalRunnerControlRepository
-import skillbill.ports.persistence.LearningRepository
-import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.ports.persistence.ReviewRepository
-import skillbill.ports.persistence.TelemetryOutboxRepository
-import skillbill.ports.persistence.TelemetryReconciliationRepository
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.FeatureImplementSessionSummary
-import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.persistence.model.FeatureVerifySessionSummary
-import skillbill.ports.persistence.model.GoalChildWorkflowDeletionScope
-import skillbill.ports.persistence.model.GoalPlanningContractProvenance
-import skillbill.ports.persistence.model.GoalPlanningIdentity
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
-import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
-import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
-import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
-import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
-import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.GoalObservabilityEventValidator
-import skillbill.workflow.GoalProgressEventValidator
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionExecutionModel
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
-import skillbill.workflow.model.GoalProgressEvent
-import skillbill.workflow.model.GoalProgressEventKind
+import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.GoalRunnerControlRepository
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.goalrunner.model.GoalChildWorkflowDeletionScope
+import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningIdentity
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
+import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.goal.GoalProgressEventValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionExecutionModel
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Files
 import java.nio.file.Path
@@ -1157,7 +1157,7 @@ class WorkflowServiceTest {
       state = scopedReplanState(before, "skillbill-scoped-replan-child"),
       subtaskId = 2,
       dbPathOverride = null,
-      options = skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions(),
+      options = skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions(),
     )
 
     assertEquals(listOf(2), result.clearedChildSubtaskIds)
@@ -1196,7 +1196,7 @@ class WorkflowServiceTest {
       state = scopedReplanState(before, "skillbill-scoped-replan-live-child"),
       subtaskId = 1,
       dbPathOverride = null,
-      options = skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions(),
+      options = skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions(),
     )
 
     assertEquals(emptyList(), result.clearedChildSubtaskIds)
@@ -1418,7 +1418,7 @@ class WorkflowGoalStatusProjectionTest {
     val running = testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
@@ -1439,7 +1439,7 @@ class WorkflowGoalStatusProjectionTest {
     val complete = testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
@@ -1486,7 +1486,7 @@ class WorkflowGoalStatusProjectionTest {
 
   private fun newGoalStatusService(
     workflows: InMemoryWorkflowStates,
-    controls: GoalRunnerControlRepository = skillbill.ports.persistence.EmptyGoalRunnerControlRepository,
+    controls: GoalRunnerControlRepository = skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository,
   ): GoalRunnerStatusService {
     val database = FakeDatabaseSessionFactory(workflows, goalRunnerControls = controls)
     return GoalRunnerStatusService(
@@ -1737,7 +1737,7 @@ class GoalRunnerCommitShaRecoveryTest {
     val completed = testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
@@ -1764,7 +1764,7 @@ class GoalRunnerCommitShaRecoveryTest {
     return testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "blocked",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "blocked", "attempt_count" to 1)),
@@ -1802,7 +1802,7 @@ class GoalRunnerCommitShaRecoveryTest {
     val completed = testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
@@ -1963,7 +1963,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val staleRunning = testWorkflowEngine.updateRecord(
       definition,
       staleOpened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -1984,7 +1984,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val authoritative = testWorkflowEngine.updateRecord(
       definition,
       authoritativeOpened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(
@@ -2034,7 +2034,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2074,7 +2074,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2113,7 +2113,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val blocked = testWorkflowEngine.updateRecord(
       definition,
       blockedOpened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "blocked",
         currentStepId = "review",
         stepUpdates = listOf(
@@ -2133,7 +2133,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val active = testWorkflowEngine.updateRecord(
       definition,
       activeOpened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2176,7 +2176,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2222,7 +2222,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val crashed = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "plan",
         stepUpdates = listOf(
@@ -2281,7 +2281,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val crashed = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "audit",
         stepUpdates = listOf(
@@ -2330,7 +2330,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val crashed = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement_fix",
         stepUpdates = listOf(
@@ -2544,7 +2544,7 @@ class WorkflowGoalRunnerProgressStoreTest {
 
     // Append more than the bounded history limit, deliberately out of order, to
     // assert sequence-ordered retention that drops the OLDEST (lowest sequence).
-    val total = skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT + 5
+    val total = skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT + 5
     (total - 1 downTo 0).forEach { sequence ->
       store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = sequence))
     }
@@ -2553,7 +2553,7 @@ class WorkflowGoalRunnerProgressStoreTest {
       requireNotNull(workflows.getFeatureTaskWorkflow("wfl-child")).toSnapshot().artifactsJson,
     )
     val history = artifacts["goal_progress_run_history"] as List<*>
-    assertEquals(skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT, history.size)
+    assertEquals(skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT, history.size)
     val sequences = history.map { (it as Map<*, *>)["sequence_number"] }
     assertEquals(5, sequences.first())
     assertEquals(total - 1, sequences.last())
@@ -2666,7 +2666,7 @@ class WorkflowGoalRunnerProgressStoreTest {
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
+      skillbill.workflow.engine.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2841,7 +2841,7 @@ private fun workflowRecord(
   return testWorkflowEngine.updateRecord(
     definition,
     opened,
-    skillbill.workflow.model.WorkflowUpdateInput(
+    skillbill.workflow.engine.model.WorkflowUpdateInput(
       workflowStatus = workflowStatus,
       currentStepId = "plan",
       stepUpdates = null,
@@ -3411,7 +3411,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         "conflict" -> it.copy(provenance = it.provenance.copy(parentSpecHash = "f".repeat(64)))
         "projection_invalid" -> it.copy(
           planPayload = EMPTY_VALUE_PLAN_PAYLOAD,
-          payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(EMPTY_VALUE_PLAN_PAYLOAD),
+          payloadSha256 = skillbill.application.goalrunner.planning.sha256HexUtf8(EMPTY_VALUE_PLAN_PAYLOAD),
         )
         else -> it
       }
@@ -3479,7 +3479,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
   private companion object {
     val NoWriteDecompositionManifestFileStore = object :
-      skillbill.ports.workflow.DecompositionManifestFileStore by TestDecompositionManifestFileStore {
+      skillbill.ports.workflow.decomposition.DecompositionManifestFileStore by TestDecompositionManifestFileStore {
       override fun writeTextAtomically(target: Path, content: String) = Unit
     }
 
@@ -3529,7 +3529,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     fun sharedCheckpoint() = SharedGoalPreplanCheckpoint(
       identity = identity(),
       provenance = provenance(),
-      payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(PREPLAN_PAYLOAD),
+      payloadSha256 = skillbill.application.goalrunner.planning.sha256HexUtf8(PREPLAN_PAYLOAD),
       preplanPayload = PREPLAN_PAYLOAD,
     )
     fun planCheckpoint(id: Int): GoalSubtaskPlanCheckpoint {
@@ -3542,7 +3542,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         governedSubSpecPath = descriptor.governedSubSpecPath,
         subSpecHash = descriptor.subSpecHash,
         provenance = provenance(),
-        payloadSha256 = skillbill.application.featuretask.sha256HexUtf8(payload),
+        payloadSha256 = skillbill.application.goalrunner.planning.sha256HexUtf8(payload),
         planPayload = payload,
       )
     }
@@ -3595,9 +3595,9 @@ internal class FakeDatabaseSessionFactory(
   private val workflowStates: WorkflowStateRepository,
   private val fakeDbPath: Path = Path.of("/fake/metrics.db"),
   private val planningPreparations: GoalPlanningPreparationRepository =
-    skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository,
+    skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository,
   private val goalRunnerControls: GoalRunnerControlRepository =
-    skillbill.ports.persistence.EmptyGoalRunnerControlRepository,
+    skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository,
 ) : DatabaseSessionFactory {
   override fun resolveDbPath(dbOverride: String?): Path = fakeDbPath
   override fun databaseExists(dbOverride: String?): Boolean = true
@@ -3619,7 +3619,7 @@ internal class FakeDatabaseSessionFactory(
       get() = error("TelemetryReconciliationRepository is not exercised in WorkflowServiceTest.")
     override val telemetryOutbox: TelemetryOutboxRepository
       get() = error("TelemetryOutboxRepository is not exercised in WorkflowServiceTest.")
-    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
+    override val workList = skillbill.ports.work.EmptyWorkListRepository
     override val goalPlanningPreparations = planningPreparations
     override val goalRunnerControls = this@FakeDatabaseSessionFactory.goalRunnerControls
   }

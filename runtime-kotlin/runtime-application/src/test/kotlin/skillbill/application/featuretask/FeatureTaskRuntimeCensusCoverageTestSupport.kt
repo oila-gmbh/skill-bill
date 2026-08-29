@@ -3,7 +3,7 @@ package skillbill.application.featuretask
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage
 import kotlin.test.assertTrue

@@ -1,9 +1,9 @@
 package skillbill.application.learning
 
-import skillbill.application.model.LearningDeleteResult
-import skillbill.application.model.LearningListResult
-import skillbill.application.model.LearningRecordResult
-import skillbill.application.model.LearningResolveResult
+import skillbill.application.learning.model.LearningDeleteResult
+import skillbill.application.learning.model.LearningListResult
+import skillbill.application.learning.model.LearningRecordResult
+import skillbill.application.learning.model.LearningResolveResult
 import skillbill.contracts.learning.LearningDeleteContract
 import skillbill.contracts.learning.LearningEntryDto
 import skillbill.contracts.learning.LearningListContract

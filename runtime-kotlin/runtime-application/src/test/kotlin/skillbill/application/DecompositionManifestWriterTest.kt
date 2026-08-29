@@ -5,14 +5,14 @@ import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.parseStackBranches
-import skillbill.application.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.model.DecompositionManifestWriteRequest
+import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.DecompositionExecutionModel
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.decomposition.model.DecompositionExecutionModel
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.toWireMap
 import java.nio.file.Files
 import kotlin.test.Test
@@ -623,7 +623,7 @@ class DecompositionManifestWriterTest {
       """"branch":{"branch":"feature/SKILL-51-decomposition"}}"""
 
   private fun durableRuntimeArtifactsJson(
-    manifest: skillbill.workflow.model.DecompositionManifest,
+    manifest: skillbill.workflow.decomposition.model.DecompositionManifest,
     subtaskSpec: java.nio.file.Path,
   ): String = JsonSupport.mapToJsonString(
     mapOf(

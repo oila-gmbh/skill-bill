@@ -11,7 +11,7 @@ import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.goalrunner.model.toOutcomeRecord
-import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.db.UnitOfWork
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.context.model.requireRepositoryRelativePath
@@ -22,12 +22,12 @@ import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.text.Utf8Text
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
-import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
-import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
-import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
-import skillbill.workflow.taskruntime.model.reviewStateError
+import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
+import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.goal.model.GoalSubtaskBlockerDispositionVerdict
+import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
+import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.goal.model.reviewStateError
 import skillbill.workflow.taskruntime.model.withStableFindingRefs
 
 internal data class StructuredGoalReviewFinding(

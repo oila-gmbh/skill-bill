@@ -24,9 +24,9 @@ import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.workflow.model.GoalProgressEvent
-import skillbill.workflow.model.GoalProgressEventKind
-import skillbill.workflow.model.GoalProgressOutcome
+import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.goal.model.GoalProgressEventKind
+import skillbill.workflow.goal.model.GoalProgressOutcome
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Collections

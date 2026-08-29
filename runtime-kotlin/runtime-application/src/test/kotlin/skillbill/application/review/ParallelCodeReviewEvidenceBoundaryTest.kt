@@ -14,7 +14,7 @@ import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.scaffold.model.ReviewLaneCondition
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test

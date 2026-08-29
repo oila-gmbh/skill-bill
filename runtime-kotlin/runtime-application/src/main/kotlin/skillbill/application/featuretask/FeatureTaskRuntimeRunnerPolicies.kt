@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration

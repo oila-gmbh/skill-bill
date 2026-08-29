@@ -1,7 +1,7 @@
 package skillbill.application
 
-import skillbill.application.featuretask.GoalPlanningPreparationValidator
-import skillbill.application.featuretask.sha256HexUtf8
+import skillbill.application.goalrunner.planning.GoalPlanningPreparationValidator
+import skillbill.application.goalrunner.planning.sha256HexUtf8
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION
@@ -9,9 +9,9 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
-import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
-import skillbill.ports.persistence.model.GoalPlanningPreparationState
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

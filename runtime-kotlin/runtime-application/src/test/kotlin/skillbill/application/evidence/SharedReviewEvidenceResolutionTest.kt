@@ -1,6 +1,6 @@
 package skillbill.application.evidence
 
-import skillbill.application.model.ParallelReviewScope
+import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.ReviewCommitRange
 import skillbill.application.review.ReviewDiffEvidence
 import skillbill.ports.diff.DiffResolverPort

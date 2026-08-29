@@ -4,7 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.http.HttpTelemetryClient
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.model.HttpResponse

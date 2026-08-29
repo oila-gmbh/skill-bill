@@ -314,7 +314,7 @@ internal data class ParallelReviewPreparationInput(
   val reviewRunId: String? = null,
   val baseRevision: String,
   val headRevision: String,
-  val prelaunchExpansions: List<skillbill.application.model.ReviewPrelaunchExpansion> = emptyList(),
+  val prelaunchExpansions: List<skillbill.application.review.model.ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
   val specIntentResolution: SpecIntentResolution =
     SpecIntentResolution.None(

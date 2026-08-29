@@ -1,6 +1,6 @@
 package skillbill.application.telemetry
 
-import skillbill.application.model.TelemetryMutationResult
+import skillbill.application.telemetry.model.TelemetryMutationResult
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.telemetry.model.TelemetrySettings

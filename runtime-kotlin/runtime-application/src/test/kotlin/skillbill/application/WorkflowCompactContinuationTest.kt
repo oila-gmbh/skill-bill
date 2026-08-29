@@ -1,14 +1,14 @@
 package skillbill.application
 
-import skillbill.application.model.WorkflowContinueResult
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
-import skillbill.workflow.WorkflowEngine
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.workflow.engine.WorkflowEngine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,7 +1,7 @@
 package skillbill.goalrunner.model
 
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 
 data class GoalRunnerWorkerSubtaskRequest(
   val name: String,

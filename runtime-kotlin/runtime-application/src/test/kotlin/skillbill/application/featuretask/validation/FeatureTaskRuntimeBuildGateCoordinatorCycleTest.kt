@@ -29,7 +29,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
+        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -58,7 +58,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
+        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -84,7 +84,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
+        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
         changedPaths = listOf("skills/bill-feature/content.md"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -110,7 +110,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
+        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -145,7 +145,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
+        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentTriageLauncher = skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher {

@@ -4,7 +4,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateAgentRep
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.contracts.JsonSupport
 import skillbill.error.ContractVersionMismatchError
 import skillbill.ports.diagnostics.RuntimeDiagnostics
@@ -22,7 +22,7 @@ import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
 import skillbill.scaffold.model.ValidationGateFindingsFormat
 import skillbill.scaffold.model.ValidationGateFindingsLocator
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants

@@ -5,11 +5,11 @@ import skillbill.cli.core.ProcessExternalCommandRunner
 import skillbill.model.RuntimeContext
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
-import skillbill.ports.goalrunner.GoalPullRequestPort
+import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.nio.file.Path
 
 data class CliRuntimeContext(

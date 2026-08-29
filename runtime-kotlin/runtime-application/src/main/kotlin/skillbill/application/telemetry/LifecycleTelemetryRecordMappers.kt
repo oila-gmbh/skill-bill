@@ -1,12 +1,12 @@
 package skillbill.application.telemetry
 
-import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
-import skillbill.application.model.FeatureTaskRuntimeStartedRequest
-import skillbill.application.model.FeatureVerifyFinishedRequest
-import skillbill.application.model.FeatureVerifyStartedRequest
-import skillbill.application.model.PrDescriptionGeneratedRequest
-import skillbill.application.model.QualityCheckFinishedRequest
-import skillbill.application.model.QualityCheckStartedRequest
+import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
+import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
+import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
+import skillbill.application.telemetry.model.FeatureVerifyStartedRequest
+import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
+import skillbill.application.telemetry.model.QualityCheckFinishedRequest
+import skillbill.application.telemetry.model.QualityCheckStartedRequest
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord

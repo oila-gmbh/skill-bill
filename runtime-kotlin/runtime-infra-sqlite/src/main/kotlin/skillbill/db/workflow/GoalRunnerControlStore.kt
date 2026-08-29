@@ -7,10 +7,10 @@ import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
-import skillbill.ports.persistence.GoalRunnerControlRepository
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.GoalRunnerControlRepository
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.sql.Connection
 
 internal class GoalRunnerControlStore(

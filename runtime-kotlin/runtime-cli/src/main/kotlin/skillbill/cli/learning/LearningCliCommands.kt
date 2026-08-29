@@ -8,8 +8,8 @@ import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.learning.LearningService
-import skillbill.application.model.AddLearningInput
-import skillbill.application.model.EditLearningInput
+import skillbill.application.learning.model.AddLearningInput
+import skillbill.application.learning.model.EditLearningInput
 import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand

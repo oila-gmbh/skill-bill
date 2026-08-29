@@ -1,0 +1,229 @@
+package skillbill.scaffold.policy.scaffold
+
+import skillbill.error.RetiredScaffoldKindError
+import skillbill.scaffold.policy.scaffold.model.PlatformPackPreset
+
+/**
+ * SKILL-52.1 subtask 2: pure-policy constants extracted from `runtime-infra-fs` scaffold service.
+ *
+ * These values are configuration of the scaffold contract — they have no IO and no platform-pack
+ * filesystem layout knowledge. The pure-policy callers in `runtime-domain` are the source of
+ * truth; the adapter wrappers in `runtime-infra-fs` and the `ScaffoldCatalog` projection in
+ * `runtime-infra-fs` re-export these so wizards and gateways stay consistent.
+ */
+
+/** Wire-version sentinel for scaffold payloads (CLI / MCP `scaffold_payload_version`). */
+const val SCAFFOLD_PAYLOAD_VERSION: String = "1.0"
+
+const val SKILL_KIND_HORIZONTAL: String = "horizontal"
+const val SKILL_KIND_PLATFORM_OVERRIDE_PILOTED: String = "platform-override-piloted"
+const val SKILL_KIND_PLATFORM_PACK: String = "platform-pack"
+const val SKILL_KIND_CODE_REVIEW_AREA: String = "code-review-area"
+const val SKILL_KIND_ADD_ON: String = "add-on"
+const val SKILL_KIND_AGENT_ADDON: String = "agent-addon"
+
+/**
+ * Closed set of legacy scaffold kinds still understood by compatibility internals and typed
+ * models. New creation surfaces must use [ACTIVE_CREATION_SKILL_KINDS] instead.
+ */
+val SUPPORTED_SKILL_KINDS: Set<String> =
+  setOf(
+    SKILL_KIND_HORIZONTAL,
+    SKILL_KIND_PLATFORM_OVERRIDE_PILOTED,
+    SKILL_KIND_PLATFORM_PACK,
+    SKILL_KIND_CODE_REVIEW_AREA,
+    SKILL_KIND_ADD_ON,
+    SKILL_KIND_AGENT_ADDON,
+  )
+
+/** Kinds that can be created through current scaffold entry points. */
+val ACTIVE_CREATION_SKILL_KINDS: Set<String> =
+  setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_PACK, SKILL_KIND_ADD_ON, SKILL_KIND_AGENT_ADDON)
+
+val RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES: Set<String> =
+  setOf("platform-override", SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, "override")
+
+val RETIRED_CODE_REVIEW_AREA_KIND_ALIASES: Set<String> =
+  setOf(SKILL_KIND_CODE_REVIEW_AREA, "area", "specialist")
+
+val RETIRED_PARTIAL_SCAFFOLD_KIND_ALIASES: Set<String> =
+  RETIRED_PLATFORM_OVERRIDE_KIND_ALIASES + RETIRED_CODE_REVIEW_AREA_KIND_ALIASES
+
+/** Kinds that orchestrate specialist subagents (and therefore accept `subagent_specialists`). */
+val ORCHESTRATOR_KINDS_FOR_SUBAGENTS: Set<String> =
+  setOf(SKILL_KIND_HORIZONTAL, SKILL_KIND_PLATFORM_OVERRIDE_PILOTED, SKILL_KIND_PLATFORM_PACK)
+
+/** Naming pattern accepted for specialist subagent names. */
+val SUBAGENT_NAME_PATTERN: Regex = Regex("^[a-z][a-z0-9-]*$")
+
+/** Approved set of platform-pack code-review areas. */
+val APPROVED_CODE_REVIEW_AREAS: Set<String> =
+  setOf(
+    "architecture",
+    "performance",
+    "platform-correctness",
+    "security",
+    "testing",
+    "api-contracts",
+    "persistence",
+    "reliability",
+    "ui",
+    "ux-accessibility",
+  )
+
+/**
+ * Built-in descriptor table keyed by platform slug. The slugs MUST match the keys of the simpler
+ * wizard projection that `ScaffoldCatalog` (in `runtime-infra-fs`) exposes; the runtime is the
+ * single source of truth for both. `PlatformPackPreset` lives in
+ * `skillbill.scaffold.policy.scaffold.model` per the domain `model` rule.
+ */
+val PLATFORM_PACK_PRESET_DESCRIPTORS: Map<String, PlatformPackPreset> =
+  mapOf(
+    "java" to PlatformPackPreset(
+      displayName = "Java",
+      strongSignals = listOf("pom.xml", "build.gradle", "src/main/java"),
+      tieBreakers = listOf(
+        "Prefer Java when Maven metadata or first-party Java source markers dominate generic JVM signals.",
+        "Do not prefer Java when it appears only as generated bindings, build tooling, or an adjacent JVM layer.",
+        "Exclude generated sources, build outputs, and vendored dependencies from dominance scoring.",
+      ),
+    ),
+    "python" to PlatformPackPreset(
+      displayName = "Python",
+      strongSignals = listOf(
+        "pyproject.toml",
+        "requirements.txt",
+        "setup.py",
+        "setup.cfg",
+        "Pipfile",
+        "poetry.lock",
+        "uv.lock",
+        "tox.ini",
+        "pytest.ini",
+        ".py",
+        "*.py",
+      ),
+      tieBreakers = listOf(
+        "Prefer Python when pyproject metadata, dependency lockfiles, or first-party .py source files " +
+          "dominate the changed product surface.",
+        "Do not prefer Python for mixed repositories where Python appears only as tooling, one-off " +
+          "scripts, generated clients, or CI glue around another dominant stack.",
+        "Exclude virtual environments, site-packages, build and dist outputs, generated protobuf or " +
+          "OpenAPI clients, and vendored dependency trees from dominance scoring.",
+      ),
+    ),
+    "php" to PlatformPackPreset(
+      displayName = "PHP",
+      strongSignals = listOf(
+        "composer.json",
+        "composer.lock",
+        ".php",
+        "*.php",
+        "phpunit.xml",
+        "phpunit.xml.dist",
+        "pest.php",
+        "phpstan.neon",
+        "phpstan.neon.dist",
+        "psalm.xml",
+        "psalm.xml.dist",
+      ),
+      tieBreakers = listOf(
+        "Prefer PHP when Composer metadata or first-party .php source files dominate mixed backend signals.",
+        "Do not prefer PHP for mixed repositories where PHP appears only as generated code, vendor code, " +
+          "deployment scripts, or tooling around another dominant stack.",
+        "Exclude vendor directories, generated clients, cache/build outputs, and compiled artifacts from " +
+          "dominance scoring.",
+      ),
+    ),
+    "go" to PlatformPackPreset(
+      displayName = "Go",
+      strongSignals = listOf(
+        "go.mod",
+        "go.sum",
+        "go.work",
+        "go.work.sum",
+        ".go",
+        "*.go",
+        "Gopkg.toml",
+        "Gopkg.lock",
+        "golangci.yml",
+        ".golangci.yml",
+        "staticcheck.conf",
+      ),
+      tieBreakers = listOf(
+        "Prefer Go when module/workspace metadata, Go source files, or Go test files dominate the " +
+          "changed product surface.",
+        "Do not prefer Go for mixed repositories where Go appears only as generated clients, tooling, " +
+          "one-off scripts, or vendored dependencies around another dominant stack.",
+        "Exclude vendor directories, generated protobuf/OpenAPI clients, build outputs, and generated " +
+          "mocks from dominance scoring unless the generator or generated contract is intentionally changed.",
+      ),
+    ),
+    "rust" to PlatformPackPreset(
+      displayName = "Rust",
+      strongSignals = listOf(
+        "Cargo.toml",
+        "Cargo.lock",
+        ".rs",
+        "*.rs",
+        "build.rs",
+        "rust-toolchain.toml",
+        "rustfmt.toml",
+        "clippy.toml",
+        "deny.toml",
+        ".cargo/config.toml",
+      ),
+      tieBreakers = listOf(
+        "Prefer Rust when Cargo workspace or package metadata and first-party Rust source files dominate the " +
+          "changed product surface.",
+        "Do not prefer Rust where it appears only as FFI bindings, wasm build tooling or artifacts, generated " +
+          "code, or vendored crates around another dominant stack.",
+        "Exclude target/ build output and vendored dependency trees from dominance scoring.",
+      ),
+    ),
+    "typescript" to PlatformPackPreset(
+      displayName = "TypeScript",
+      strongSignals = listOf(
+        "tsconfig.json",
+        "tsconfig.*.json",
+        ".ts",
+        "*.ts",
+        ".tsx",
+        "*.tsx",
+        ".mts",
+        "*.mts",
+        ".cts",
+        "*.cts",
+      ),
+      tieBreakers = listOf(
+        "Prefer TypeScript only when tsconfig metadata or first-party TypeScript source files dominate the changed " +
+          "product surface. Treat package.json, package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb, biome.json, " +
+          "ESLint configuration, and Prettier configuration as contextual metadata only; individually or combined, " +
+          "they are not TypeScript evidence without TypeScript ownership.",
+        "Do not prefer TypeScript where it appears only as generated API clients, ambient declaration files, " +
+          "or build tooling around another dominant stack.",
+        "Exclude node_modules, dist, build and coverage output, generated clients, and generated declaration " +
+          "files from dominance scoring.",
+      ),
+    ),
+  )
+
+/**
+ * Wizard-facing platform-pack preset projection (slug -> displayName) derived from
+ * [PLATFORM_PACK_PRESET_DESCRIPTORS]. Kept as a stable, immutable map so the desktop wizard
+ * catalog can re-export it verbatim without depending on the richer descriptor type.
+ */
+val PLATFORM_PACK_PRESETS: Map<String, String> =
+  PLATFORM_PACK_PRESET_DESCRIPTORS.mapValues { (_, preset) -> preset.displayName }
+
+fun isRetiredPartialScaffoldKindAlias(kind: String): Boolean =
+  kind.trim().lowercase() in RETIRED_PARTIAL_SCAFFOLD_KIND_ALIASES
+
+fun retiredPartialScaffoldKindError(kind: String): RetiredScaffoldKindError = RetiredScaffoldKindError(
+  "Scaffold kind '$kind' is retired for new partial scaffold creation. " +
+    "Create a full platform pack with kind '$SKILL_KIND_PLATFORM_PACK', or edit/remove existing " +
+    "platform-pack content through normal authoring and removal commands instead of creating " +
+    "partial scaffold pieces.",
+)
+
+fun rejectRetiredPartialScaffoldKind(kind: String): Nothing = throw retiredPartialScaffoldKindError(kind)

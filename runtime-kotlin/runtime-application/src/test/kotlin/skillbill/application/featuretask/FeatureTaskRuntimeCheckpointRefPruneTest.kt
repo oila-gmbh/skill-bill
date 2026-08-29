@@ -1,13 +1,13 @@
 package skillbill.application.featuretask
 
 import skillbill.application.goalrunner.pruneEligibleCheckpointRefsForManifest
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.deleteCheckpointRef
-import skillbill.ports.workflow.listCheckpointRefs
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.deleteCheckpointRef
+import skillbill.ports.workflow.gitops.listCheckpointRefs
 import skillbill.ports.workflow.updateCheckpointRef
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import java.nio.file.Files

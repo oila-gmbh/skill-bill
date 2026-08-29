@@ -2,10 +2,10 @@
 
 package skillbill.application.review
 
-import skillbill.application.model.FeatureTaskRuntimeStatsResult
-import skillbill.application.model.FeatureVerifyStatsResult
-import skillbill.application.model.GoalStatsResult
-import skillbill.application.model.ReviewStatsResult
+import skillbill.application.review.model.FeatureTaskRuntimeStatsResult
+import skillbill.application.review.model.FeatureVerifyStatsResult
+import skillbill.application.review.model.GoalStatsResult
+import skillbill.application.review.model.ReviewStatsResult
 import skillbill.application.workflow.toPayload
 import skillbill.contracts.JsonPayloadContract
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats

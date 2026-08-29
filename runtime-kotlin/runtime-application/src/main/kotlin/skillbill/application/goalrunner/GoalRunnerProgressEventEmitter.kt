@@ -1,13 +1,13 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
-import skillbill.workflow.model.GoalProgressEvent
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.workflow.goal.model.GoalProgressEvent
 import java.time.Instant
 
 /**

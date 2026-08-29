@@ -6,41 +6,41 @@ import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.goalrunner.GoalObservabilityArtifacts
-import skillbill.application.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.model.WorkflowContinueResult
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowGetResult
-import skillbill.application.model.WorkflowLatestResult
-import skillbill.application.model.WorkflowListResult
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowResumeResult
-import skillbill.application.model.WorkflowUpdateRequest
-import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowGetResult
+import skillbill.application.workflow.model.WorkflowLatestResult
+import skillbill.application.workflow.model.WorkflowListResult
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowResumeResult
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.application.normalizeIssueKey
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.repositoryFingerprint
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.GoalObservabilityEventValidator
-import skillbill.workflow.NoopGoalObservabilityEventValidator
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.model.WorkflowDefinition
-import skillbill.workflow.model.WorkflowSnapshotView
-import skillbill.workflow.model.WorkflowStateSnapshot
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.engine.model.WorkflowSnapshotView
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH
@@ -310,7 +310,7 @@ class WorkflowService(
 
   private fun abandonRuntimeFeatureTask(
     unitOfWork: UnitOfWork,
-    existing: skillbill.workflow.model.WorkflowStateSnapshot,
+    existing: skillbill.workflow.engine.model.WorkflowStateSnapshot,
     normalizedReason: String,
   ): WorkflowUpdateResult {
     val family = WorkflowFamily.TASK_RUNTIME
@@ -367,7 +367,7 @@ class WorkflowService(
     return WorkflowUpdateResult.Ok(
       workflowId = updated.workflowId,
       dbPath = unitOfWork.dbPath.toString(),
-      acknowledgement = skillbill.workflow.model.WorkflowUpdateAcknowledgementView(
+      acknowledgement = skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView(
         status = "ok",
         workflowId = updated.workflowId,
         workflowName = updated.workflowName,
@@ -910,7 +910,7 @@ private fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput =
   sessionId = sessionId,
 )
 
-internal fun skillbill.workflow.model.WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput =
+internal fun skillbill.workflow.engine.model.WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput =
   WorkflowUpdateInput(
     workflowStatus = "running",
     currentStepId = resumeStepId,
@@ -1045,7 +1045,7 @@ internal enum class WorkflowFamily(
   /**
    * SKILL-52.1 open-boundary: durable workflow session summary lookup.
    * Returns the raw repository-supplied map verbatim; the typed
-   * [skillbill.workflow.model.WorkflowContinueView.sessionSummary]
+   * [skillbill.workflow.engine.model.WorkflowContinueView.sessionSummary]
    * carries it through to the wire-shape map.
    */
   @OpenBoundaryMap("Durable workflow session summary passthrough")

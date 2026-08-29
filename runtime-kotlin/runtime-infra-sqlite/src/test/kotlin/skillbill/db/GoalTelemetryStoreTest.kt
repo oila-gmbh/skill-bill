@@ -6,7 +6,7 @@ import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.sqlite.review.InvalidGoalTelemetryRowError
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord

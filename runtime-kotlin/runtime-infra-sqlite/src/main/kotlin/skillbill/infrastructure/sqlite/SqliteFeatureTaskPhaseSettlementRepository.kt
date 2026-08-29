@@ -2,8 +2,8 @@ package skillbill.infrastructure.sqlite
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.db.core.DatabaseRuntime
-import skillbill.ports.persistence.FeatureTaskPhaseSettlementRepository
-import skillbill.ports.persistence.model.FeatureTaskPhaseSettlement
+import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
+import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 
 @Inject
 class SqliteFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRepository {

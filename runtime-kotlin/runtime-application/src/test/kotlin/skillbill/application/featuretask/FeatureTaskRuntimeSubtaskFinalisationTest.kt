@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit

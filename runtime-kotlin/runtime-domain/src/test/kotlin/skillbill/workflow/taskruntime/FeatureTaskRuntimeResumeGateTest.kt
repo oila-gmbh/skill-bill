@@ -1,10 +1,10 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.model.WorkflowDefinition
-import skillbill.workflow.model.WorkflowStateSnapshot
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import kotlin.test.Test
 import kotlin.test.assertEquals

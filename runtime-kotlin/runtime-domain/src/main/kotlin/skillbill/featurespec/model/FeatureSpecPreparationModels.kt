@@ -1,7 +1,7 @@
 package skillbill.featurespec.model
 
-import skillbill.workflow.model.DecompositionManifestRepairEvidence
-import skillbill.workflow.model.SpecSource
+import skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence
+import skillbill.workflow.decomposition.model.SpecSource
 
 enum class FeatureSpecPreparationMode(val wireValue: String) {
   SINGLE_SPEC("single_spec"),

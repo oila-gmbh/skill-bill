@@ -1,12 +1,12 @@
 package skillbill.cli
 
-import skillbill.application.model.IdeStatusFreshness
-import skillbill.application.model.IdeStatusLifecycleState
-import skillbill.application.model.IdeStatusPlanning
-import skillbill.application.model.IdeStatusProgress
-import skillbill.application.model.IdeStatusSnapshot
-import skillbill.application.model.IdeStatusStep
-import skillbill.application.model.IdeStatusWorkflowFamily
+import skillbill.application.idestatus.model.IdeStatusFreshness
+import skillbill.application.idestatus.model.IdeStatusLifecycleState
+import skillbill.application.idestatus.model.IdeStatusPlanning
+import skillbill.application.idestatus.model.IdeStatusProgress
+import skillbill.application.idestatus.model.IdeStatusSnapshot
+import skillbill.application.idestatus.model.IdeStatusStep
+import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport

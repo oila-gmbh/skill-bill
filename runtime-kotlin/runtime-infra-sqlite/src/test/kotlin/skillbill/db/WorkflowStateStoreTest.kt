@@ -8,11 +8,11 @@ import skillbill.db.workflow.WorkflowStateStore
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.ProseFeatureTaskWorkflowWriteRefusedError
-import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.DriverManager

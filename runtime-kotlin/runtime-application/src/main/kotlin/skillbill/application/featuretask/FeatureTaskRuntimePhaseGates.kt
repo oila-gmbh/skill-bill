@@ -8,9 +8,9 @@ import skillbill.application.review.SpecIntentProjectionResolver
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator
-import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 
 @Suppress("LongParameterList") // one gate seam; every parameter is a mandatory gate dependency
 @Inject

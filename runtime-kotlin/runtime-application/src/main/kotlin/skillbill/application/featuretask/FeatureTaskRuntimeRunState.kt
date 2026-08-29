@@ -2,7 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction

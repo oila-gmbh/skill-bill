@@ -2,7 +2,7 @@ package skillbill.application.goalrunner.model
 
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.GoalContinuationCandidate
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 
 data class GoalPreflightRequest(

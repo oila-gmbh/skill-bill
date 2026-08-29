@@ -483,7 +483,7 @@ private fun recordFindingOutcome(
 }
 
 private fun telemetryPayloads(
-  records: List<skillbill.ports.persistence.model.TelemetryOutboxRecord>,
+  records: List<skillbill.ports.telemetry.model.TelemetryOutboxRecord>,
   eventName: String,
 ): List<Map<String, Any?>> = records.filter { it.eventName == eventName }.map { record ->
   JsonSupport.parseObjectOrNull(record.payloadJson)

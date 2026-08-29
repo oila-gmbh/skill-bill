@@ -1,13 +1,13 @@
 package skillbill.cli.review
 
-import skillbill.application.model.FeatureTaskRuntimeStatsResult
-import skillbill.application.model.FeatureVerifyStatsResult
-import skillbill.application.model.GoalStatsResult
-import skillbill.application.model.ImportedReviewResult
-import skillbill.application.model.ReviewFeedbackResult
-import skillbill.application.model.ReviewPreviewResult
-import skillbill.application.model.ReviewStatsResult
-import skillbill.application.model.TriageResult
+import skillbill.application.review.model.FeatureTaskRuntimeStatsResult
+import skillbill.application.review.model.FeatureVerifyStatsResult
+import skillbill.application.review.model.GoalStatsResult
+import skillbill.application.review.model.ImportedReviewResult
+import skillbill.application.review.model.ReviewFeedbackResult
+import skillbill.application.review.model.ReviewPreviewResult
+import skillbill.application.review.model.ReviewStatsResult
+import skillbill.application.review.model.TriageResult
 import skillbill.application.review.toFeatureTaskRuntimeStatsPayload
 import skillbill.application.review.toFeatureVerifyStatsPayload
 import skillbill.application.review.toGoalStatsPayload

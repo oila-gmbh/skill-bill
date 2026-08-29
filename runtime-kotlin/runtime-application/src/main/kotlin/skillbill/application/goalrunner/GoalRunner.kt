@@ -9,10 +9,13 @@ import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.application.featuretask.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.application.featuretask.pruneCompletedSubtaskCheckpointRefs
-import skillbill.application.model.GoalPlanningSweepOutcome
-import skillbill.application.model.GoalRunPreparation
-import skillbill.application.model.GoalRunnerRunEvent
-import skillbill.application.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
+import skillbill.application.goalrunner.planning.GoalPlanningSweep
+import skillbill.application.goalrunner.planning.goalPlanningChildImportConflictBlockedReason
+import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
+import skillbill.application.goalrunner.model.GoalRunPreparation
+import skillbill.application.goalrunner.model.GoalRunnerRunEvent
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.generateWorkflowId
 import skillbill.application.workflow.repoRoot
@@ -45,34 +48,34 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.GoalPullRequestPort
-import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.model.GoalPullRequestRequest
-import skillbill.ports.goalrunner.model.GoalPullRequestResult
-import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
-import skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException
-import skillbill.ports.goalrunner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
-import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.SpecScratchStore
-import skillbill.ports.workflow.UnavailableSpecScratchStore
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.stagePaths
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionExecutionModel
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
-import skillbill.workflow.model.SpecSource
-import skillbill.workflow.model.ValidationDepth
+import skillbill.ports.goalrunner.runner.GoalPullRequestPort
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
+import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
+import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.specscratch.SpecScratchStore
+import skillbill.ports.workflow.specscratch.UnavailableSpecScratchStore
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.stagePaths
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionExecutionModel
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 
@@ -2122,7 +2125,7 @@ private fun supervisionEvent(
   lastOutputAt = liveness?.lastOutputAt,
 )
 
-private fun skillbill.workflow.model.DecompositionSubtask.progressToken(): String = listOf(
+private fun skillbill.workflow.decomposition.model.DecompositionSubtask.progressToken(): String = listOf(
   status,
   workflowId.orEmpty(),
   branch.orEmpty(),

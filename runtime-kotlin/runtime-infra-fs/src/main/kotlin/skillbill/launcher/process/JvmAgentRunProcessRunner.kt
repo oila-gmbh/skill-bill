@@ -14,9 +14,9 @@ import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
-import skillbill.workflow.model.GoalProgressEvent
-import skillbill.workflow.model.GoalProgressEventKind
-import skillbill.workflow.model.GoalProgressOutcome
+import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.goal.model.GoalProgressEventKind
+import skillbill.workflow.goal.model.GoalProgressOutcome
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream

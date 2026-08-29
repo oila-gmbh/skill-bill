@@ -20,10 +20,10 @@ const val REVIEW_SPEC_INTENT_PROJECTION_BUDGET: String = "spec_intent_projection
 enum class ResolvedReviewExecutionMode { INLINE, DELEGATED }
 
 /** A resolved depth is always a concrete tier, so it maps back onto the requested-mode vocabulary. */
-fun ResolvedReviewExecutionMode.toCodeReviewExecutionMode(): skillbill.workflow.model.CodeReviewExecutionMode =
+fun ResolvedReviewExecutionMode.toCodeReviewExecutionMode(): skillbill.workflow.goal.model.CodeReviewExecutionMode =
   when (this) {
-    ResolvedReviewExecutionMode.INLINE -> skillbill.workflow.model.CodeReviewExecutionMode.INLINE
-    ResolvedReviewExecutionMode.DELEGATED -> skillbill.workflow.model.CodeReviewExecutionMode.DELEGATED
+    ResolvedReviewExecutionMode.INLINE -> skillbill.workflow.goal.model.CodeReviewExecutionMode.INLINE
+    ResolvedReviewExecutionMode.DELEGATED -> skillbill.workflow.goal.model.CodeReviewExecutionMode.DELEGATED
   }
 
 private val SHA256_HEX = Regex("[a-f0-9]{64}")

@@ -6,8 +6,8 @@ import skillbill.db.telemetry.emitFeatureVerifyFinished
 import skillbill.db.telemetry.emitGoalIssueFinished
 import skillbill.db.telemetry.emitQualityCheckFinished
 import skillbill.db.telemetry.nextGoalStateEnteredAtSql
-import skillbill.ports.persistence.model.TelemetryReconciliationRequest
-import skillbill.ports.persistence.model.TelemetryReconciliationResult
+import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
+import skillbill.ports.telemetry.model.TelemetryReconciliationResult
 import java.sql.Connection
 import java.time.temporal.ChronoUnit
 

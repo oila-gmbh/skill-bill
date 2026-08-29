@@ -1,6 +1,6 @@
 package skillbill.mcp.core
 
-import skillbill.application.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.mcp.featuretask.featureTaskAuditSettle
 import skillbill.mcp.featuretask.featureTaskPhaseBlock
 import skillbill.mcp.featuretask.featureTaskPhaseComplete

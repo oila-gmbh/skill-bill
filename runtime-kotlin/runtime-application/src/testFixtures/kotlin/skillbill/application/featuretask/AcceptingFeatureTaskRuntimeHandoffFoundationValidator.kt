@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
 
 object AcceptingFeatureTaskRuntimeHandoffFoundationValidator : FeatureTaskRuntimeHandoffFoundationValidator {
   override fun validateDeclaration(payload: Map<String, Any?>, sourceLabel: String) = Unit

@@ -1,10 +1,10 @@
 package skillbill.application.review
 
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageReached
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission

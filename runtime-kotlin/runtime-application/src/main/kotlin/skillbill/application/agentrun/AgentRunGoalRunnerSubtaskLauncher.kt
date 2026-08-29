@@ -1,10 +1,10 @@
 package skillbill.application.agentrun
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.model.AgentRunStartRequest
+import skillbill.application.agentrun.model.AgentRunStartRequest
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 
 @Inject
 class AgentRunGoalRunnerSubtaskLauncher(

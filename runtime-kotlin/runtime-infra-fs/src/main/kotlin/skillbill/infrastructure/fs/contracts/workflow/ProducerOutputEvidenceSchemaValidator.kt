@@ -10,7 +10,7 @@ import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.contracts.workflow.PRODUCER_OUTPUT_EVIDENCE_CONTRACT_VERSION
 import skillbill.contracts.workflow.ProducerOutputEvidenceSchemaPaths
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
-import skillbill.ports.persistence.ProducerOutputEvidence
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 
 object ProducerOutputEvidenceSchemaValidator {
   private val mapper = ObjectMapper()

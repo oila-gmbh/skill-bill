@@ -1,7 +1,7 @@
 package skillbill.application.evidence
 
-import skillbill.application.model.DiffResolutionException
-import skillbill.application.model.ParallelReviewScope
+import skillbill.application.review.model.DiffResolutionException
+import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.RawCommitDiff
 import skillbill.application.review.ResolvedCommitSequence
 import skillbill.application.review.ReviewCommitRange

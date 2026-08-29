@@ -194,7 +194,7 @@ class WorkflowIssueKeyConflictError(
 /**
  * SKILL-175: surfaced by every resume/continue/update path that encounters a
  * `feature_task_workflows` row whose `mode` decoded to
- * [skillbill.ports.persistence.model.FeatureTaskWorkflowMode.PROSE]. The prose engine is retired;
+ * [skillbill.ports.workflow.model.FeatureTaskWorkflowMode.PROSE]. The prose engine is retired;
  * the in-flight prose row policy keeps such rows readable for history only, so a live path must
  * refuse loudly here instead of degrading or reinterpreting the row as a runtime row. The message
  * always names the one supported re-run path.

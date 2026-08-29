@@ -1,13 +1,13 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewSeverity
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains

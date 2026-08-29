@@ -86,7 +86,7 @@ class RuntimeEnforcementHardeningArchitectureTest {
       """
       package skillbill.application
 
-      import skillbill.application.model.Foo
+      import skillbill.application.featuretask.model.Foo
 
       /**
        * Doc: see skillbill.infrastructure.fs.Foo for the adapter wiring.

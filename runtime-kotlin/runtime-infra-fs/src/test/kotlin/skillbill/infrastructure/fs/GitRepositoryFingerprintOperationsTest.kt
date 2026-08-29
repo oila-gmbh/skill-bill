@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.workflow.taskruntime.model.MAX_REPOSITORY_FINGERPRINT_LENGTH
 import java.nio.file.Files

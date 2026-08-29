@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 
 /**
  * The production phase-output validator exposed through the application test-fixture seam.

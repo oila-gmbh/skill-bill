@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
-import skillbill.ports.persistence.model.FeatureTaskPhaseSettlement
+import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -1,10 +1,10 @@
 package skillbill.application.review
 
-import skillbill.application.model.ImportedReviewResult
-import skillbill.application.model.ReviewFeedbackResult
-import skillbill.application.model.ReviewPreviewResult
-import skillbill.application.model.TriageResult
-import skillbill.application.model.TriageResultKind
+import skillbill.application.review.model.ImportedReviewResult
+import skillbill.application.review.model.ReviewFeedbackResult
+import skillbill.application.review.model.ReviewPreviewResult
+import skillbill.application.review.model.TriageResult
+import skillbill.application.review.model.TriageResultKind
 import skillbill.contracts.JsonPayloadContract
 import skillbill.contracts.review.ImportedReviewContract
 import skillbill.contracts.review.NumberedFindingContract

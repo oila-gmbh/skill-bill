@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
+import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

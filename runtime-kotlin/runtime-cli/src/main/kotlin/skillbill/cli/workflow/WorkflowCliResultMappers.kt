@@ -1,18 +1,18 @@
 package skillbill.cli.workflow
 
-import skillbill.application.model.GoalContinuationOutcome
-import skillbill.application.model.WorkflowContinueResult
-import skillbill.application.model.WorkflowGetResult
-import skillbill.application.model.WorkflowLatestResult
-import skillbill.application.model.WorkflowListResult
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowResumeResult
-import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.workflow.model.GoalContinuationOutcome
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowGetResult
+import skillbill.application.workflow.model.WorkflowLatestResult
+import skillbill.application.workflow.model.WorkflowListResult
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowResumeResult
+import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRunState
 import skillbill.cli.scaffold.toWireMap
-import skillbill.workflow.GoalObservabilityEventValidator
-import skillbill.workflow.WorkflowEngine
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.engine.WorkflowEngine
 
 /**
  * SKILL-52.1 — Adapter-side mappers that convert typed
@@ -200,7 +200,7 @@ private fun GoalContinuationOutcome?.toWireMap(): Map<String, Any?> = this?.let 
 }.orEmpty()
 
 private fun standardContinueMap(
-  view: skillbill.workflow.model.WorkflowContinueView,
+  view: skillbill.workflow.engine.model.WorkflowContinueView,
   dbPath: String,
   decompositionExtras: Map<String, Any?>,
 ): Map<String, Any?> {

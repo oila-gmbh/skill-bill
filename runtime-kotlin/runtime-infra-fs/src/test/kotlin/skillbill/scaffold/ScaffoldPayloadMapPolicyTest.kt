@@ -12,11 +12,11 @@ import skillbill.scaffold.payload.rejectLeafSubagentSpecialists
 import skillbill.scaffold.payload.resolvePlatformPackDefaults
 import skillbill.scaffold.payload.resolvePlatformPackSelection
 import skillbill.scaffold.payload.validatePayloadVersion
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
-import skillbill.scaffold.policy.SKILL_KIND_ADD_ON
-import skillbill.scaffold.policy.SKILL_KIND_CODE_REVIEW_AREA
-import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
-import skillbill.scaffold.policy.SKILL_KIND_PLATFORM_PACK
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_CODE_REVIEW_AREA
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_HORIZONTAL
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
 import skillbill.scaffold.runtime.PRE_SHELL_FAMILIES
 import kotlin.test.Test
 import kotlin.test.assertEquals

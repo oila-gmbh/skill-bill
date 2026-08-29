@@ -2,7 +2,7 @@
 
 package skillbill.workflow.taskruntime.model
 
-import skillbill.workflow.model.SpecSource
+import skillbill.workflow.decomposition.model.SpecSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
