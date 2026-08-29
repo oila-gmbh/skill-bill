@@ -25,9 +25,9 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     val repairSets = mutableListOf<List<String>>()
     val runner = ScriptedGateRunner(listOf(failedWith(compiler, laterTest), passed(forced = true)))
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
-      cycle = fullCycle { findings, _ ->
+      cycle = fullCycle { findings, _, _ ->
         repairSets += findings.findings.map { it.ruleOrTestId }
-        completedRepair(findings.findings)
+        completedRepair()
       },
     )
     assertEquals(listOf(listOf("e: Unresolved reference", "LaterTest.fails")), repairSets)
@@ -58,9 +58,9 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     val launchSizes = mutableListOf<Int>()
     val runner = ScriptedGateRunner(listOf(failedWith(*findings.toTypedArray()), passed(forced = true)))
     val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
-      cycle = fullCycle { page, _ ->
+      cycle = fullCycle { page, _, _ ->
         launchSizes += page.findings.size
-        completedRepair(page.findings)
+        completedRepair()
       },
     )
     assertEquals(listOf(65), launchSizes)
@@ -81,9 +81,9 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     repeat(maxTurns) { runnerResults += failedWith(verifyFinding) }
     val runner = ScriptedGateRunner(runnerResults)
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
-      cycle = fullCycle { findings, _ ->
+      cycle = fullCycle { findings, _, _ ->
         repairIds += findings.findings.map { it.ruleOrTestId }
-        completedRepair(findings.findings)
+        completedRepair()
       },
     )
     val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(

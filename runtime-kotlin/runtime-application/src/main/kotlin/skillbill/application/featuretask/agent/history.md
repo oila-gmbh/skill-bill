@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-08-29] SKILL-219 subtask 2 — Briefing-only triage for unparseable gate blobs
+Areas: runtime-application/featuretask, runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime
+- When collect-all still yields exactly one `unparseable_gate_failure`, validate and build cycles insert one triage agent turn before repair turn 1; discrete finding sets skip triage.
+- Triage emits recommended-shape `validation_repair_plan` prose (not schema-gated). Soft-parse keeps `produced_outputs.value` / plan capture for repair briefing; repair-turn stdout still short-circuits without folding triage into that discard path.
+- Triage prompts forbid gate/quality-check runs with repair-prompt strength; missing or empty triage does not block repair. Gate verify remains the only repair proof.
+- Pattern: optional briefing-only triage ahead of the existing three-turn repair window, without durable triage artifacts or receipt/coverage gates. reusable
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-28] SKILL-217 subtask 1 — Retarget finalization consumers onto phase_prose
 Areas: runtime-domain/workflow/taskruntime, runtime-application/featuretask (tests)
 - Validate, build, write_history, commit_push, and pr take producer words through `phaseProseDeclaration` (`feature_task_runtime.phase_prose`). A value-only implement still launches those consumers; briefings carry `value` and optional `prompt`.

@@ -1,0 +1,10 @@
+> Task :harness-cursor:projectHealth FAILED
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':harness-cursor:projectHealth'.
+> Existing dependencies which should be modified to be as indicated:
+  api(project(":composition")) (was implementation)
+
+BUILD FAILED in 5s

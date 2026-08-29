@@ -1,0 +1,7 @@
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+A problem occurred evaluating root project 'skill-bill'.
+> Could not find method foo() for arguments [] on root project 'skill-bill'.
+
+BUILD FAILED in 2s

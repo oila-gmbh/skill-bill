@@ -1,5 +1,14 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-29] SKILL-219 subtask 1 — Discrete Gradle gate findings in collect-all parsing
+Areas: runtime-infra-fs/validation
+- COLLECT_ALL parsing now turns `:projectHealth` `incorrectConfiguration` advice, `:architectureCheck` forbidden project-dependency lines, and leftover `Execution failed for task ':…'` headers into separate `ValidationGateFinding` rows instead of one `unparseable_gate_failure` blob.
+- Pattern: union compiler + artifacts first, then the Gradle-specific parsers, then residual task headers. `coveredGradleTaskKeys` skips a header when a finer parser already emitted a row for that module/task (compiler maps to `compileKotlin`). reusable
+- `finalizeFindings` is unchanged: `unparseable_gate_failure` still only when the run failed and every parser returned empty. Identity stays `module|ruleOrTestId|message|location`.
+- Limitation: subtask 2 still owns the briefing-only triage turn when parsing still yields only `unparseable_gate_failure`. Coordinator and repair-turn limits were not changed.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-26] Git commit and push wait for hooks instead of dying at 30s
 Areas: runtime-infra-fs/GitProcessSupport
 - `git commit` and `git push` wait 10 minutes; every other git call stays at 30s.

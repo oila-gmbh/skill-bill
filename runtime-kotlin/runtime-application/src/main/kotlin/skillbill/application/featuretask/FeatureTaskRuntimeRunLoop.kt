@@ -15,10 +15,12 @@ import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateC
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
+import skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
+import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
@@ -1220,8 +1222,7 @@ internal class FeatureTaskRuntimeRunLoop(
       // Delete sources that share a move parent with owned/introduced destinations are absorbed so a
       // package move can stage both halves.
       paths = (seedOwned + deletedPaths)
-        .filterNot { path -> isFeatureSpecPathForIssue(path, request.issueKey) }
-        .filterNot { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) },
+        .filterNot { path -> isFeatureSpecPathForIssue(path, request.issueKey) },
     )
     persistOwnedInventory(ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
     checkpointOwnershipDecided = true
@@ -3215,7 +3216,17 @@ internal class FeatureTaskRuntimeRunLoop(
         validationDepth = validationDepth,
         changedPaths = changedPaths,
         repositoryCheckpoint = checkpoint,
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, repairIteration ->
+        agentTriageLauncher = ValidationGateAgentTriageLauncher { findings ->
+          launchValidationGateTriage(
+            run = run,
+            state = state,
+            iteration = iteration,
+            observability = observability,
+            phaseTokenAccumulator = phaseTokenAccumulator,
+            findings = findings,
+          )
+        },
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, repairIteration, triagePlan ->
           launchValidationGateRepair(
             run = run,
             state = state,
@@ -3224,6 +3235,7 @@ internal class FeatureTaskRuntimeRunLoop(
             phaseTokenAccumulator = phaseTokenAccumulator,
             findings = findings,
             repairTurn = repairIteration,
+            triagePlan = triagePlan,
           )
         },
       ),
@@ -3300,7 +3312,17 @@ internal class FeatureTaskRuntimeRunLoop(
         validationDepth = ValidationDepth.DEFAULT,
         changedPaths = changedPaths,
         repositoryCheckpoint = checkpoint,
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, repairIteration ->
+        agentTriageLauncher = ValidationGateAgentTriageLauncher { findings ->
+          launchValidationGateTriage(
+            run = run,
+            state = state,
+            iteration = iteration,
+            observability = observability,
+            phaseTokenAccumulator = phaseTokenAccumulator,
+            findings = findings,
+          )
+        },
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, repairIteration, triagePlan ->
           launchValidationGateRepair(
             run = run,
             state = state,
@@ -3309,6 +3331,7 @@ internal class FeatureTaskRuntimeRunLoop(
             phaseTokenAccumulator = phaseTokenAccumulator,
             findings = findings,
             repairTurn = repairIteration,
+            triagePlan = triagePlan,
           )
         },
       ),
@@ -3400,6 +3423,118 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   @Suppress("LongParameterList")
+  private fun launchValidationGateTriage(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    iteration: Int,
+    observability: FeatureTaskRuntimeRunObservability,
+    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
+    findings: ValidationFindingSetProjection,
+  ): ValidationGateTriageResult {
+    val triageRun = run.copy(validationGateFindings = findings, validationGateTriage = true)
+    val attempt = attemptOnce(
+      triageRun,
+      state,
+      iteration,
+      observability,
+      priorCorrection = null,
+      phaseTokenAccumulator,
+    )
+    val settled = attempt.settledOutcome
+    val completed = settled?.completedOutput
+    return when {
+      completed != null -> extractValidationGateTriagePlan(completed)
+      settled != null -> ValidationGateTriageResult.Empty
+      else -> ValidationGateTriageResult.Empty
+    }
+  }
+
+  private fun looseOutputEnvelope(outputText: String): Map<String, Any?>? {
+    val trimmed = outputText.trim()
+    JsonSupport.parseObjectOrNull(trimmed)?.let {
+      return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+    }
+    val start = trimmed.indexOf('{')
+    val end = trimmed.lastIndexOf('}')
+    if (start !in 0..<end) return null
+    return JsonSupport.parseObjectOrNull(trimmed.substring(start, end + 1))
+      ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
+  }
+
+  private fun gateTriageCapturedProducedOutputs(outputText: String): Map<String, Any?> {
+    val produced = looseOutputEnvelope(outputText)
+      ?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]) }
+      ?: return emptyMap()
+    return buildMap {
+      produced["value"]?.let { put("value", it) }
+      produced["validation_repair_plan"]?.let { put("validation_repair_plan", it) }
+    }
+  }
+
+  private fun gateRepairSegmentOutput(run: PhaseRun, iteration: Int): FeatureTaskRuntimePhaseOutput =
+    FeatureTaskRuntimePhaseOutput(
+      phaseId = run.phaseId,
+      iteration = iteration,
+      payload =
+      """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"${run.phaseId}",""" +
+        """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
+    )
+
+  private fun gateTriageSegmentOutput(
+    run: PhaseRun,
+    iteration: Int,
+    outputText: String,
+  ): FeatureTaskRuntimePhaseOutput {
+    val captured = gateTriageCapturedProducedOutputs(outputText)
+    val payload = mapOf(
+      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      "phase_id" to run.phaseId,
+      "status" to "completed",
+      "summary" to "Gate triage segment.",
+      "produced_outputs" to captured,
+    )
+    return FeatureTaskRuntimePhaseOutput(
+      phaseId = run.phaseId,
+      iteration = iteration,
+      payload = JsonSupport.mapToJsonString(payload),
+    )
+  }
+
+  private fun extractValidationGateTriagePlan(output: FeatureTaskRuntimePhaseOutput): ValidationGateTriageResult {
+    val envelope = outputEnvelopeOf(output) ?: return ValidationGateTriageResult.Empty
+    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])
+      ?: return ValidationGateTriageResult.Empty
+    planFromProducedValue(produced["value"])?.let { return it }
+    val directPlan = extractTriagePlanProse(produced["validation_repair_plan"])
+    return if (!directPlan.isNullOrBlank()) {
+      ValidationGateTriageResult.Captured(directPlan)
+    } else {
+      ValidationGateTriageResult.Empty
+    }
+  }
+
+  private fun planFromProducedValue(value: Any?): ValidationGateTriageResult? {
+    val valueText = value as? String ?: return null
+    if (valueText.isBlank()) return null
+    val inner = JsonSupport.parseObjectOrNull(valueText)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+    val planFromValue = inner?.let { extractTriagePlanProse(it["validation_repair_plan"]) }
+    if (!planFromValue.isNullOrBlank()) {
+      return ValidationGateTriageResult.Captured(planFromValue)
+    }
+    return if (inner == null) ValidationGateTriageResult.Captured(valueText) else null
+  }
+
+  private fun extractTriagePlanProse(raw: Any?): String? = when (raw) {
+    is String -> raw.takeIf { it.isNotBlank() }
+    null -> null
+    else -> JsonSupport.mapToJsonString(
+      JsonSupport.anyToStringAnyMap(raw) ?: mapOf("validation_repair_plan" to raw),
+    ).takeIf { it.isNotBlank() && it != "{}" && it != "[]" }
+  }
+
+  @Suppress("LongParameterList")
   private fun launchValidationGateRepair(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
@@ -3408,12 +3543,14 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
     findings: ValidationFindingSetProjection,
     repairTurn: Int,
+    triagePlan: String?,
   ): ValidationGateAgentRepairResult {
-    // Gate repair agents fix code from runtime-parsed findings. Their stdout is not a phase receipt
-    // (gateOutput skips schema for repairTurn > 0); the coordinator re-runs the pack command and mints
-    // the receipt. Do not charge the output-gate budget here — that budget is for schema/repair of
-    // ordinary phase envelopes, not this internal fix loop.
-    val repairRun = run.copy(validationGateFindings = findings, validationGateRepairTurn = repairTurn)
+    val repairRun = run.copy(
+      validationGateFindings = findings,
+      validationGateRepairTurn = repairTurn,
+      validationGateTriagePlan = triagePlan,
+      validationGateRepair = true,
+    )
     val attempt = attemptOnce(
       repairRun,
       state,
@@ -4437,15 +4574,12 @@ internal class FeatureTaskRuntimeRunLoop(
     // validation_receipt. Requiring schema here blocked honest fixes under the output-gate cap.
     if (run.validationGateRepairTurn > 0) {
       return AttemptResult.settled(
-        PhaseOutcome.completed(
-          FeatureTaskRuntimePhaseOutput(
-            phaseId = run.phaseId,
-            iteration = iteration,
-            payload =
-            """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"${run.phaseId}",""" +
-              """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
-          ),
-        ),
+        PhaseOutcome.completed(gateRepairSegmentOutput(run, iteration)),
+      )
+    }
+    if (run.validationGateTriage) {
+      return AttemptResult.settled(
+        PhaseOutcome.completed(gateTriageSegmentOutput(run, iteration, outputText)),
       )
     }
     return try {
@@ -6023,6 +6157,9 @@ internal class FeatureTaskRuntimeRunLoop(
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
       implementationContinuation = implementationContinuationFor(run),
       validationGateFindings = run.validationGateFindings,
+      validationGateTriagePlan = run.validationGateTriagePlan,
+      validationGateRepair = run.validationGateRepair,
+      validationGateTriage = run.validationGateTriage,
       agentRunValidateFallback = run.agentRunValidateFallback,
       packCollectAllCommand = packCollectAllCommand(run),
       packBuildCommand = packBuildCommand(run),
@@ -6513,6 +6650,9 @@ internal class FeatureTaskRuntimeRunLoop(
     val reentry: PendingReentry? = null,
     val goalReviewInput: GoalSubtaskReviewInput? = null,
     val validationGateFindings: ValidationFindingSetProjection? = null,
+    val validationGateTriagePlan: String? = null,
+    val validationGateRepair: Boolean = false,
+    val validationGateTriage: Boolean = false,
     /** True only when validate falls back because the pack declares no validation_gate. */
     val agentRunValidateFallback: Boolean = false,
     /**

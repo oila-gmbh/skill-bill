@@ -49,6 +49,7 @@ data class FeatureTaskRuntimeValidationGateProgress(
   val repairWindowPhase: FeatureTaskRuntimeValidationGateRepairWindowPhase =
     FeatureTaskRuntimeValidationGateRepairWindowPhase.NONE,
   val repairsUsed: Int = 0,
+  val capturedTriagePlan: String? = null,
 ) {
   init {
     require(gateRunCount >= 0) {
@@ -71,6 +72,7 @@ data class FeatureTaskRuntimeValidationGateProgress(
     "complete_findings" to completeFindings,
     "repair_window_phase" to repairWindowPhase.wireValue,
     "repairs_used" to repairsUsed,
+    "captured_triage_plan" to capturedTriagePlan,
   )
 
   companion object {
@@ -85,6 +87,7 @@ data class FeatureTaskRuntimeValidationGateProgress(
           raw["repair_window_phase"] as? String,
         ),
         repairsUsed = raw.asStarMap().gateProgressOptionalInt("repairs_used") ?: 0,
+        capturedTriagePlan = raw["captured_triage_plan"] as? String,
       )
 
     private fun decodeGateRuns(raw: Any?): List<FeatureTaskRuntimeValidationGateRunRecord> {

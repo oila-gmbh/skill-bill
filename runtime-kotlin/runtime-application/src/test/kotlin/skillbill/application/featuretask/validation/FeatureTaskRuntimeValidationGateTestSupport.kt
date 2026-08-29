@@ -63,7 +63,7 @@ internal fun outOfContractCycle(): ValidationGateCycleRequest = ValidationGateCy
   validationDepth = ValidationDepth.DEFAULT,
   changedPaths = listOf("runtime-kotlin/foo.kt"),
   repositoryCheckpoint = "checkpoint",
-  agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+  agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
     error("repair must not launch when platform packs are out of contract")
   },
 )
@@ -172,32 +172,8 @@ internal fun failedWith(vararg findings: ValidationGateFinding): ValidationGateR
   findings = findings.toList(),
 )
 
-internal fun completedRepair(
-  findings: List<ValidationGateFinding>,
-  receiptsFor: List<ValidationGateFinding> = findings,
-  grouped: Boolean = false,
-): ValidationGateAgentRepairResult {
-  val plan = if (grouped) {
-    listOf(mapOf("identities" to findings.map { it.identity() }))
-  } else {
-    findings.map { mapOf("identities" to listOf(it.identity())) }
-  }
-  val receipts = receiptsFor.map { finding ->
-    mapOf(
-      "identity" to finding.identity(),
-      "root_cause" to "root ${finding.ruleOrTestId}",
-      "changed_paths_or_symbols" to listOf(finding.location ?: finding.ruleOrTestId),
-      "rationale" to "fixed ${finding.ruleOrTestId}",
-    )
-  }
-  val payload = JsonSupport.mapToJsonString(
-    mapOf(
-      "produced_outputs" to mapOf(
-        "validation_repair_plan" to plan,
-        "substantiation_receipts" to receipts,
-      ),
-    ),
-  )
+internal fun completedRepair(): ValidationGateAgentRepairResult {
+  val payload = JsonSupport.mapToJsonString(mapOf("produced_outputs" to emptyMap<String, Any?>()))
   return ValidationGateAgentRepairResult.Completed(
     FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = payload),
   )

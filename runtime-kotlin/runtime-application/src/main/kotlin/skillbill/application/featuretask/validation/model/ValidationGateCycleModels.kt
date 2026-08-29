@@ -6,6 +6,7 @@ import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import java.nio.file.Path
 
@@ -40,9 +41,27 @@ data class ValidationFindingSetProjection(
   }
 }
 
+const val UNPARSEABLE_GATE_FAILURE_RULE_ID: String = "unparseable_gate_failure"
+
+fun requiresUnparseableGateTriage(findings: List<ValidationGateFinding>): Boolean =
+  findings.size == 1 && findings.single().ruleOrTestId == UNPARSEABLE_GATE_FAILURE_RULE_ID
+
+fun interface ValidationGateAgentTriageLauncher {
+  fun launch(findings: ValidationFindingSetProjection): ValidationGateTriageResult
+}
+
+sealed interface ValidationGateTriageResult {
+  data class Captured(val validationRepairPlan: String) : ValidationGateTriageResult
+  data object Empty : ValidationGateTriageResult
+}
+
 /** Agent repair launch within the runtime-owned validate gate cycle. */
 fun interface ValidationGateAgentRepairLauncher {
-  fun launch(findings: ValidationFindingSetProjection, repairIteration: Int): ValidationGateAgentRepairResult
+  fun launch(
+    findings: ValidationFindingSetProjection,
+    repairIteration: Int,
+    triagePlan: String?,
+  ): ValidationGateAgentRepairResult
 }
 
 sealed interface ValidationGateAgentRepairResult {
@@ -74,6 +93,29 @@ fun interface ValidationGateProgressStore {
   fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = null
 }
 
+data class ValidationGateProgressWrite(
+  val repairWindowPhase: FeatureTaskRuntimeValidationGateRepairWindowPhase,
+  val remainingFindings: ValidationFindingSetProjection?,
+  val completeFindings: List<ValidationGateFinding>,
+  val repairsUsed: Int,
+  val capturedTriagePlan: String?,
+) {
+  companion object {
+    fun findingsOpen(
+      completeFindings: List<ValidationGateFinding>,
+      repairsUsed: Int,
+      capturedTriagePlan: String?,
+      remainingFindings: ValidationFindingSetProjection? = null,
+    ): ValidationGateProgressWrite = ValidationGateProgressWrite(
+      repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
+      remainingFindings = remainingFindings,
+      completeFindings = completeFindings,
+      repairsUsed = repairsUsed,
+      capturedTriagePlan = capturedTriagePlan,
+    )
+  }
+}
+
 /** Inputs for one runtime-owned validate gate cycle. */
 data class ValidationGateCycleRequest(
   val repoRoot: Path,
@@ -82,4 +124,7 @@ data class ValidationGateCycleRequest(
   val changedPaths: List<String>,
   val repositoryCheckpoint: String,
   val agentRepairLauncher: ValidationGateAgentRepairLauncher,
+  val agentTriageLauncher: ValidationGateAgentTriageLauncher = ValidationGateAgentTriageLauncher {
+    ValidationGateTriageResult.Empty
+  },
 )

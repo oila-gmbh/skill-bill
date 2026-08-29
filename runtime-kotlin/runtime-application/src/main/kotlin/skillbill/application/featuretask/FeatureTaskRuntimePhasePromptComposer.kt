@@ -15,7 +15,6 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
@@ -55,6 +54,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
     validationGateFindings: ValidationFindingSetProjection? = null,
+    validationGateTriagePlan: String? = null,
+    validationGateRepair: Boolean = false,
+    validationGateTriage: Boolean = false,
     agentRunValidateFallback: Boolean = false,
     packCollectAllCommand: String? = null,
     packBuildCommand: String? = null,
@@ -80,7 +82,8 @@ object FeatureTaskRuntimePhasePromptComposer {
         packCollectAllCommand,
         packBuildCommand,
         briefing.priorGapMemory,
-        validationGateFindings != null,
+        validationGateRepair = validationGateRepair,
+        validationGateTriage = validationGateTriage,
       ),
       installedRuntimeAuthorityDirective(),
       ceremonyDirective(briefing),
@@ -92,7 +95,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       priorGapMemoryRemediationDirective(briefing.phaseId, briefing.priorGapMemory),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       absentValidationGateDegradationDirective(briefing.phaseId, agentRunValidateFallback),
-      validationGateFindingsDirective(briefing.phaseId, validationGateFindings),
+      validationGateFindingsDirective(
+        briefing.phaseId,
+        validationGateFindings,
+        validationGateTriagePlan,
+      ),
       reviewExecutionDirective(
         briefing.phaseId,
         ReviewExecutionDirectiveInputs(
@@ -116,7 +123,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       terminalRetryDirective(priorTerminalFailure),
       findingCoverageDirective(priorFindingCoverage),
       if (validationGateFindings != null) {
-        gateRepairNoOutputSchemaDirective(briefing.phaseId)
+        gateRepairNoOutputSchemaDirective(briefing.phaseId, validationGateTriage)
       } else {
         outputContract(briefing, agentRunValidateFallback)
       },
@@ -145,32 +152,6 @@ object FeatureTaskRuntimePhasePromptComposer {
         "carried findings or rejected, never both in one correction."
     }
   }
-
-  /**
-   * Gate-repair launches fix code from runtime-parsed findings in prose. The phase receipt is minted
-   * by the coordinator after it re-runs the pack command — no schema envelope, no structured plan
-   * object, and no subagents that need structured input.
-   */
-  private fun gateRepairNoOutputSchemaDirective(phaseId: String): String = """
-    ## Gate repair — prose only, no phase-output schema
-    This launch is a repair turn for the runtime-owned `$phaseId` gate. Do not emit a Required final
-    output JSON object, build_receipt, validation_receipt, gate_run_count, or any other phase envelope.
-    Do not spawn delegated subagents. Work in this single agent session in ordinary prose.
-
-    The runtime already ran the pack command and parsed the failures listed in this briefing. It will
-    re-run that command after you stop, and it may give you up to three repair turns against whatever
-    remains. Address every open finding in this turn — all at once, not one finding per turn.
-
-    Before editing, do brief reasoned planning in prose for each finding (or for a shared root cause
-    that covers several). Scale the plan to the finding:
-    - Small / obvious: a few lines of due diligence, then fix.
-    - Complex: a real short plan — blast radius, surrounding callers/contracts you checked, whether
-      the change can introduce new bugs, and how you will keep the fix local.
-
-    No defined plan schema. Do the thinking, then edit. When you are done fixing, stop.
-    Never silence findings with @Suppress, @file:Suppress, baselines, disabled rules, weakened
-    configuration, or skipped tests — fix the root cause instead.
-  """.trimIndent()
 
   /**
    * Applies the add-on content budget before hydrated content reaches the prompt.
@@ -359,6 +340,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     packBuildCommand: String? = null,
     priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
     validationGateRepair: Boolean = false,
+    validationGateTriage: Boolean = false,
   ): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
     val directive = phaseTaskDirective(
@@ -369,6 +351,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         packBuildCommand = packBuildCommand,
         priorGapMemory = priorGapMemory,
         validationGateRepair = validationGateRepair,
+        validationGateTriage = validationGateTriage,
       ),
     )
     // Composed directly rather than as an indented raw string with trimIndent(). trimIndent() runs
@@ -616,75 +599,4 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      implementation; when no such defect is evidenced, emit satisfied even if test coverage is\n" +
       "      absent or inadequate." +
       auditRoundScopeAddendum(briefing)
-
-  // The blank-slate line in the audit output addendum. Subordinated for a memory-carrying audit (which
-  // must account for the earlier audit's claims) while staying byte-identical for a first or forward audit.
-  private fun auditNoEarlierAuditLine(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
-    if (briefing.priorGapMemory == null) {
-      "      Every audit re-checks every listed criterion from scratch against the tree, so there is no\n" +
-        "      earlier audit to account for and nothing to carry forward except the notes you emit now.\n"
-    } else {
-      "      Every audit re-checks every listed criterion from scratch against the tree; when this\n" +
-        "      briefing carries prior-gap memory, earlier audit value strings in prior_audit_values are\n" +
-        "      context you must account for, and a repeated criterion needs an explicit re-justification (below).\n"
-    }
-
-  private fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
-    val memoryBlock = briefing.priorGapMemory?.let { memory ->
-      buildString {
-        append("\n      Prior-gap memory (round ${memory.round}): prior audit value strings:\n")
-        memory.priorAuditValues.forEach { value -> append("        - $value\n") }
-        append("      When a gap repeats a criterion already named in a prior audit value, require explicit\n")
-        append("      re-justification: name what the prior implement claimed and why the tree still fails it.\n")
-      }
-    }.orEmpty()
-    val auditProse = briefing.handoffEnvelope.projections
-      .firstOrNull { it.projectionName == "audit_prose" }
-      ?.fields
-      ?.firstOrNull { it.name == "value" }
-      ?.value
-      ?.let { (it as? FeatureTaskRuntimeHandoffProjectionValue.Text)?.text }
-    val scopeBlock = if (auditProse.isNullOrBlank()) {
-      ""
-    } else {
-      "\n      The previous audit value reported gaps in structured prose. Start there, then still decide " +
-        "every listed criterion from the tree: a repair can regress a criterion an earlier audit passed, " +
-        "and a narrow patch can open a new sibling gap."
-    }
-    return memoryBlock + scopeBlock
-  }
-
-  private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
-    if (findings == null) return ""
-    val (sectionTitle, preamble) = when (phaseId) {
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> Pair(
-        "## Runtime validation gate findings",
-        "A prior gate run parsed these items. They are the full open set for this repair turn — fix " +
-          "every one in this session (shared root causes may collapse several into one change). Do not " +
-          "run `skill-bill validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, " +
-          "or the pack collect_all_full_gate_command. $VALIDATE_REPAIR_ALLOWED_TASKS" +
-          "Do not spawn delegated subagents.",
-      )
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> Pair(
-        "## Runtime build gate findings",
-        "A prior gate run parsed these items. They are the full open set for this repair turn — fix " +
-          "every one in this session (shared root causes may collapse several into one change). Run only " +
-          "the pack-declared build command when you need console detail. Do not run `skill-bill " +
-          "validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, or the pack " +
-          "collect_all_full_gate_command. Do not spawn delegated subagents.",
-      )
-      else -> return ""
-    }
-    val lines = buildList {
-      add(sectionTitle)
-      add(preamble)
-      findings.findings.forEachIndexed { index, finding ->
-        add(
-          "${index + 1}. module=${finding.module} id=${finding.ruleOrTestId} " +
-            "location=${finding.location ?: "<unknown>"} message=${finding.message}",
-        )
-      }
-    }
-    return lines.joinToString("\n")
-  }
 }
