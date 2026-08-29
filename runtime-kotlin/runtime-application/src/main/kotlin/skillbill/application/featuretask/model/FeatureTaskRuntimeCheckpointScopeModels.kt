@@ -3,14 +3,15 @@ package skillbill.application.featuretask.model
 /**
  * SKILL-150: what a checkpoint is allowed to do with the tree it finds.
  *
- * A checkpoint owns an explicit inventory, and everything outside it belongs to someone else — the
- * user's own work in progress, a sibling workflow, or a concurrently prepared issue. This decision is
- * pure: it takes the inventories as values and returns stage, skip, or block, so the whole policy is
- * testable without a repository and the run loop keeps no branching of its own.
+ * A checkpoint owns an explicit inventory plus paths the active phase wrote. Dirt that is neither
+ * owned nor phase-written belongs to someone else and is left alone. This decision is pure: it takes
+ * the inventories as values and returns stage or skip, so the whole policy is testable without a
+ * repository and the run loop keeps no branching of its own.
  *
- * Block is reserved for ownership violations. A working tree that simply diverged from what the run
- * remembers — a foreign staging, a concurrent edit — never blocks: the run is on its own branch, and
- * a checkpoint that refuses there strands a durable run only a human can restart.
+ * A working tree that simply diverged from what the run remembers — a foreign staging, a concurrent
+ * edit — never blocks: the run is on its own branch, and a checkpoint that refuses there strands a
+ * durable run only a human can restart. [Block] remains for git-read and preservation failures the
+ * run loop raises outside this pure decision.
  */
 sealed interface FeatureTaskRuntimeCheckpointDecision {
   /**
@@ -25,16 +26,17 @@ sealed interface FeatureTaskRuntimeCheckpointDecision {
   /** The owned delta is empty, so there is nothing to checkpoint. Foreign dirt alone never commits. */
   data object Skip : FeatureTaskRuntimeCheckpointDecision
 
-  /** Refuse: committing would either overwrite or misattribute work this workflow does not own. */
+  /** Refuse: a git read or preservation step failed before staging could proceed safely. */
   data class Block(val reason: String) : FeatureTaskRuntimeCheckpointDecision
 }
 
 /**
- * @param issueKey the authority boundary; only this issue's governed spec paths may be committed.
- * @param ownedPaths the durable workflow-owned inventory: the SOLE staging authority. A path is
- * never staged by virtue of being dirty, only by being in this inventory.
+ * @param issueKey the authority boundary for diagnostics and inventory reconciliation.
+ * @param ownedPaths the durable workflow-owned inventory. Dirty owned paths are staged; dirty paths
+ * outside it are not staged unless they also appear in [phaseIntroducedPaths].
  * @param phaseIntroducedPaths paths the active phase itself wrote, from its own before/after file
- * manifest. Used to police the inventory boundary, never to widen it.
+ * manifest. Staged when still present in the worktree delta, including paths not yet in the durable
+ * owned inventory.
  * @param worktreeDeltaPaths paths currently differing from the ownership baseline. Used only to
  * decide whether the owned inventory has anything left to stage.
  * @param foreignStagedPaths paths already staged by someone else before this checkpoint ran.

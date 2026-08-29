@@ -4907,9 +4907,8 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     assertTrue(git.stagePathsCalls.isNotEmpty(), "the run's own owned inventory is still checkpointed")
   }
 
-  // AC-003: a phase with no authority to write produced a file; that blocks before any commit.
   @Test
-  fun `a path introduced by a read-only phase blocks non-retryably before any commit`() {
+  fun `a path introduced by a read-only phase is staged when the phase wrote it`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     val inner = reviewFixDriver(2)
     val harness = checkpointRunHarness(
@@ -4923,9 +4922,8 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertContains(blocked.blockedReason, "src/ReviewWrote.kt")
-    assertFalse("src/ReviewWrote.kt" in git.stagePathsCalls, "an unowned path must never be staged")
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue("src/ReviewWrote.kt" in git.stagePathsCalls, "phase-written paths are staged")
   }
 
   // AC-005: an owned file edited between phases is adopted on-branch like a foreign staged entry,

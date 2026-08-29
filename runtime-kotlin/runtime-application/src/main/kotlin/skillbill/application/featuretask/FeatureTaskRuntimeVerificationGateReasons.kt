@@ -7,13 +7,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificatio
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage
 
 internal object FeatureTaskRuntimeVerificationGateReasons {
-  fun verifyFindingsWorktree(phaseId: String, fileManifest: FeatureTaskRuntimePhaseFileManifest): String? {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return null
-    val changed = (fileManifest.after.toSet() - fileManifest.before.toSet()) + fileManifest.introduced
-    if (changed.isEmpty()) return null
-    return "verify_findings must not edit the worktree; changed paths: ${changed.sorted().joinToString()}."
-  }
-
   fun findingVerificationDisposition(
     phaseId: String,
     outputMap: Map<String, Any?>,

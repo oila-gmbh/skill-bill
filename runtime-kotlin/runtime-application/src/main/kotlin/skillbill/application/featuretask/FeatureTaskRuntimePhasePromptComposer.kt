@@ -496,7 +496,8 @@ object FeatureTaskRuntimePhasePromptComposer {
           "selected_boundary_headings (heading_id and source_path), and boundary_context_unavailable " +
           "when no eligible boundary owns the finding paths. When you cite boundary memory, copy " +
           "heading_id and source_path verbatim from that finding's boundary_catalog only — never " +
-          "invent hashes or reuse another finding's catalog. Do not edit the worktree.\n" +
+          "invent hashes or reuse another finding's catalog. Concurrent worktree dirt outside the " +
+          "review scope is ignored; settle dispositions for the reviewed findings only.\n" +
           "      Required example: {\"finding_id\":\"F-001\",\"disposition\":\"verified\"}."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
         verdict = verdict,

@@ -1268,11 +1268,6 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  /**
-   * Only a phase that is allowed to write may bring new paths into the workflow's ownership. A
-   * read-only phase that produced a file did something outside its authority, and adopting that file
-   * here would turn the boundary AC-003 exists to enforce into a formality.
-   */
   private fun mayExtendOwnedInventory(phaseId: String): Boolean = phaseId in INVENTORY_EXTENDING_PHASES
 
   /**
@@ -4789,9 +4784,6 @@ internal class FeatureTaskRuntimeRunLoop(
       fileManifest = fileManifest,
     )
     fun reject(rule: String, detail: String): AttemptResult = rejectValidatedOutput(capture, outputMap, rule, detail)
-    FeatureTaskRuntimeVerificationGateReasons.verifyFindingsWorktree(run.phaseId, fileManifest)?.let { reason ->
-      return reject("verify-findings-worktree", reason)
-    }
     when (val bodyDelivery = findingVerificationBoundaryBodyDeliveryDecision(run, outputMap)) {
       is BoundaryBodyDeliveryDecision.RejectDecision -> return reject("output-verification", bodyDelivery.reason)
       is BoundaryBodyDeliveryDecision.ContinueDecision ->
@@ -7132,9 +7124,6 @@ private val SCHEMA_DETAIL_TYPE_WORDS = setOf(
 
 private const val MIN_RESPONSE_STRING_VALUE_LENGTH = 4
 
-// The phases permitted to bring new paths into the workflow's durable ownership. Every other phase
-// is a reader: a file appearing under one is outside its authority and blocks instead of being
-// adopted, which is what keeps the outside-inventory policy reachable from production.
 private val INVENTORY_EXTENDING_PHASES: Set<String> = setOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,

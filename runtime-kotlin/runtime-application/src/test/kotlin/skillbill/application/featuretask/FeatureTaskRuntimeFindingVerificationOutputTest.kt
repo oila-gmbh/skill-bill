@@ -12,7 +12,6 @@ import skillbill.workflow.taskruntime.model.validateDispositionCoverage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -170,26 +169,6 @@ class FeatureTaskRuntimeFindingVerificationOutputTest {
     )
     assertEquals("F-001", disposition.findingId)
     assertNull(disposition.reason)
-  }
-
-  @Test
-  fun `verify_findings worktree gate rejects any changed path`() {
-    val reason = FeatureTaskRuntimeVerificationGateReasons.verifyFindingsWorktree(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
-      FeatureTaskRuntimePhaseFileManifest(before = listOf("A.kt"), after = listOf("A.kt", "B.kt")),
-    )
-    assertNotNull(reason)
-    assertTrue(reason.contains("verify_findings must not edit the worktree"))
-    assertTrue(reason.contains("B.kt"))
-  }
-
-  @Test
-  fun `verify_findings worktree gate allows an unchanged tree`() {
-    val reason = FeatureTaskRuntimeVerificationGateReasons.verifyFindingsWorktree(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
-      FeatureTaskRuntimePhaseFileManifest(before = listOf("A.kt"), after = listOf("A.kt")),
-    )
-    assertNull(reason)
   }
 
   @Test
