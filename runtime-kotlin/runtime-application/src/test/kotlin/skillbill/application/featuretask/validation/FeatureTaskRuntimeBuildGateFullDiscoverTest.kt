@@ -10,6 +10,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProg
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 
 class FeatureTaskRuntimeBuildGateFullDiscoverTest {
   @Test
@@ -35,7 +36,7 @@ class FeatureTaskRuntimeBuildGateFullDiscoverTest {
         load = { _, _ -> progress.lastOrNull() },
       ),
       repoLocalConfig(),
-      skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
+      NoopRuntimeDiagnostics,
     ).execute(
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,

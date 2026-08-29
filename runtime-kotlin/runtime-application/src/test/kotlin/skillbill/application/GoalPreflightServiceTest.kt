@@ -15,7 +15,7 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.install.model.ExternalAgentAddonSource
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
-import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
+import ExternalAgentAddonSourceConfigRequest
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigResult
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
@@ -33,6 +33,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import skillbill.agentaddon.model.AgentAddonSelection
 
 class GoalPreflightServiceTest {
   @Test
@@ -355,7 +356,7 @@ private class TestManifestStore(
 
 private object EmptyExternalAgentAddonSourceConfigPort : ExternalAgentAddonSourceConfigPort {
   override fun readExternalAgentAddonSources(
-    request: skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest,
+    request: ExternalAgentAddonSourceConfigRequest,
   ): ExternalAgentAddonSourceConfigResult = ExternalAgentAddonSourceConfigResult()
 }
 
@@ -374,7 +375,7 @@ private object TestAgentAddonSelectionPort : AgentAddonSelectionPort {
   }
 
   override fun verifyPersisted(
-    selection: skillbill.agentaddon.model.AgentAddonSelection,
+    selection: AgentAddonSelection,
     consumer: AgentAddonConsumer,
     receivingAgentIds: List<String>,
   ): HydratedAgentAddonSelection = hydrated(selection.entries.map { it.slug })

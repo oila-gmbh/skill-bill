@@ -16,6 +16,7 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
+import java.nio.file.AtomicMoveNotSupportedException
 
 private const val NATIVE_AGENT_CACHE_KEY_BYTES = 8
 private const val NATIVE_AGENT_SLUG_MAX_CHARS = 32
@@ -206,7 +207,7 @@ object NativeAgentOperations {
           StandardCopyOption.REPLACE_EXISTING,
           StandardCopyOption.ATOMIC_MOVE,
         )
-      } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+      } catch (_: AtomicMoveNotSupportedException) {
         Files.move(
           source,
           target,

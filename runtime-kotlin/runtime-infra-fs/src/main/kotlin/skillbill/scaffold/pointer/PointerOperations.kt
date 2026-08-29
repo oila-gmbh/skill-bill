@@ -11,6 +11,7 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.AtomicMoveNotSupportedException
 
 data class PointerRegenerationResult(
   val regeneratedFiles: List<Path>,
@@ -148,7 +149,7 @@ private fun atomicWrite(target: Path, bytes: ByteArray) {
     Files.write(tmp, bytes)
     try {
       Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-    } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+    } catch (_: AtomicMoveNotSupportedException) {
       // Some filesystems (notably tmpfs/overlayfs in CI) refuse ATOMIC_MOVE; fall back to a
       // best-effort replace which is still safer than a non-staged write.
       Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING)

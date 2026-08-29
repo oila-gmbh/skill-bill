@@ -8,6 +8,7 @@ import java.sql.PreparedStatement
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import skillbill.error.InvalidWorkflowStateSchemaError
 
 private val terminalWorkflowStatuses: Set<String> = setOf("completed", "failed", "abandoned")
 private const val SQLITE_TIMESTAMP_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"
@@ -150,7 +151,7 @@ internal fun Connection.terminalizeLegacyProseFeatureTaskWorkflowRow(row: Workfl
     parameters.text(row.workflowId)
     val updated = statement.executeUpdate()
     if (updated != 1) {
-      throw skillbill.error.InvalidWorkflowStateSchemaError(
+      throw InvalidWorkflowStateSchemaError(
         "Legacy prose feature-task workflow '${row.workflowId}' was not terminalized " +
           "(missing row or mode is not prose).",
       )

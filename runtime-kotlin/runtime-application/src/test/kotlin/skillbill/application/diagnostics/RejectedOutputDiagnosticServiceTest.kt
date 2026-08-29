@@ -16,6 +16,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 
 class RejectedOutputDiagnosticServiceTest {
   private val now = Instant.parse("2026-07-28T10:00:00Z")
@@ -130,7 +131,7 @@ class RejectedOutputDiagnosticServiceTest {
       clock = Clock.fixed(now, ZoneOffset.UTC),
     )
     service.retainProducerOutput(
-      skillbill.ports.diagnostics.model.ProducerOutputEvidence(
+      ProducerOutputEvidence(
         "workflow-1", "plan", 1, "codex", "gpt", now, 1, "a".repeat(64), byteArrayOf(1),
       ),
     )
@@ -204,7 +205,7 @@ class RejectedOutputDiagnosticServiceTest {
 
 private class MemoryRepository : RejectedOutputDiagnosticRepository {
   val records = linkedMapOf<String, RejectedOutputDiagnosticRecord>()
-  val producerEvidence = linkedMapOf<List<Any>, skillbill.ports.diagnostics.model.ProducerOutputEvidence>()
+  val producerEvidence = linkedMapOf<List<Any>, ProducerOutputEvidence>()
   var expiryCalls: Int = 0
   var producerOutputs: Int = 0
 
@@ -230,7 +231,7 @@ private class MemoryRepository : RejectedOutputDiagnosticRepository {
 
   // Mirrors the SQLite write-once semantics: insert-if-absent by (workflow, phase, generation,
   // attempt, agent), then a read-back equality guard that raises Conflict on a divergent write.
-  override fun retainProducerOutput(evidence: skillbill.ports.diagnostics.model.ProducerOutputEvidence) {
+  override fun retainProducerOutput(evidence: ProducerOutputEvidence) {
     producerOutputs += 1
     val key = listOf(
       evidence.workflowId,
@@ -256,7 +257,7 @@ private class MemoryRepository : RejectedOutputDiagnosticRepository {
     attempt: Int,
     agentId: String,
     generation: Int,
-  ): skillbill.ports.diagnostics.model.ProducerOutputEvidence? = producerEvidence.values
+  ): ProducerOutputEvidence? = producerEvidence.values
     .filter {
       it.workflowId == workflowId && it.phaseId == phaseId &&
         it.attempt == attempt && it.agentId == agentId && it.generation <= generation

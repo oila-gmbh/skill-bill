@@ -23,6 +23,7 @@ import java.nio.file.attribute.PosixFilePermissions
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
+import java.security.MessageDigest
 
 private const val TOKEN_BYTES = 24
 private const val UNIX_SOCKET_PATH_LIMIT = 103
@@ -121,7 +122,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
     val frame = handshake?.let(JsonSupport::parseObjectOrNull) ?: return false
     val params = JsonSupport.anyToStringAnyMap(frame["params"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
     val presented = params["token"]?.toString().orEmpty()
-    return java.security.MessageDigest.isEqual(
+    return MessageDigest.isEqual(
       presented.toByteArray(Charsets.UTF_8),
       descriptor.token.toByteArray(Charsets.UTF_8),
     )

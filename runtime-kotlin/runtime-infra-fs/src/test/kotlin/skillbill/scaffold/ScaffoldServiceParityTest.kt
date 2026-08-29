@@ -34,6 +34,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.error.InvalidAgentAddonSchemaError
+import skillbill.testsupport.SkillClassFixtures
 
 class ScaffoldServiceParityTest {
   @Test
@@ -734,7 +736,7 @@ class ScaffoldAuthoringParityTest {
     seedBaseSkill(repo, "bill-feature")
     val before = snapshotTree(repo)
 
-    assertFailsWith<skillbill.error.InvalidAgentAddonSchemaError> {
+    assertFailsWith<InvalidAgentAddonSchemaError> {
       scaffold(
         payload(
           repo,
@@ -778,7 +780,7 @@ internal fun reviewStructurePayload(repo: Path, kind: String, vararg pairs: Pair
 
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-scaffold-repo")
-  skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
+  SkillClassFixtures.seedShippedSkillClasses(repo)
   supportingFileTargets(repo).values.forEach { target ->
     Files.createDirectories(target.parent)
     Files.writeString(target, "# ${target.fileName}\n")
@@ -913,7 +915,7 @@ private fun locateTestRepoRoot(skillDir: Path): Path {
       val rootCandidate = current
       val classesDir = rootCandidate.resolve("orchestration/skill-classes")
       if (!Files.isDirectory(classesDir)) {
-        skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(rootCandidate)
+        SkillClassFixtures.seedShippedSkillClasses(rootCandidate)
       }
       return rootCandidate
     }

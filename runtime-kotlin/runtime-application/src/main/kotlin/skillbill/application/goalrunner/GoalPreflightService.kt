@@ -30,6 +30,8 @@ import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.workflow.decomposition.model.SpecSource.LINEAR
 
 @Inject
 @Suppress("LongMethod", "CyclomaticComplexMethod", "ThrowsCount", "LongParameterList")
@@ -147,7 +149,7 @@ class GoalPreflightService(
   private fun goalContinuationResult(
     issueKey: String,
     candidate: GoalContinuationCandidate,
-    manifestState: skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState?,
+    manifestState: GoalRunnerManifestState?,
     request: GoalPreflightRequest,
     selection: HydratedAgentAddonSelection,
     root: Path,
@@ -271,7 +273,7 @@ class GoalPreflightService(
   )
 
   private fun rehydrateTargets(root: Path, manifest: DecompositionManifest): List<GoalPreflightRehydrateTarget> {
-    if (manifest.specSource != skillbill.workflow.decomposition.model.SpecSource.LINEAR) return emptyList()
+    if (manifest.specSource != LINEAR) return emptyList()
     val targets = buildList {
       add(
         GoalPreflightRehydrateTarget(

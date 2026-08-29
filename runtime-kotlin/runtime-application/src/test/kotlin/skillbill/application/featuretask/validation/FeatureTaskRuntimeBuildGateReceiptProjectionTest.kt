@@ -3,6 +3,7 @@ package skillbill.application.featuretask.validation
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FeatureTaskRuntimeBuildReceiptSchemaValidator
 import kotlin.test.Test
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 
 class FeatureTaskRuntimeBuildGateReceiptProjectionTest {
   @Test
@@ -10,7 +11,7 @@ class FeatureTaskRuntimeBuildGateReceiptProjectionTest {
     val output = FeatureTaskRuntimeBuildGateCoordinator.runtimeOwnedBuildOutput(
       repositoryCheckpoint = "checkpoint-fp",
       measurements = listOf(
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord(
+        FeatureTaskRuntimeValidationGateRunRecord(
           durationMs = 12,
           outcome = "passed",
           cacheMode = "cache_eligible",

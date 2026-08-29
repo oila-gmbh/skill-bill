@@ -5,6 +5,7 @@ import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 
 /**
  * SKILL-48 Subtask 2a: `toSnapshot` is a pure record-to-snapshot
@@ -53,7 +54,7 @@ internal fun WorkflowStateSnapshot.toRecord(): WorkflowStateRecord = WorkflowSta
   startedAt = startedAt,
   updatedAt = updatedAt,
   finishedAt = finishedAt,
-  mode = mode?.let(skillbill.ports.workflow.model.FeatureTaskWorkflowMode::fromWireValue),
+  mode = mode?.let(FeatureTaskWorkflowMode::fromWireValue),
 )
 
 internal fun FeatureImplementSessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(

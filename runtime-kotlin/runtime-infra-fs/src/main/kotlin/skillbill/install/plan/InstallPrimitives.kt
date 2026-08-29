@@ -20,6 +20,7 @@ import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
 import java.nio.file.Path
+import java.io.FileNotFoundException
 
 internal val SUPPORTED_AGENTS: List<String> = InstallAgent.supportedIds
 internal const val CODEX_AGENTS_KIND: String = "codex-agents"
@@ -100,7 +101,7 @@ internal fun installSkill(
 ): List<Path> {
   val resolvedSkill = skillPath.toAbsolutePath().normalize()
   if (!Files.isDirectory(resolvedSkill)) {
-    throw java.io.FileNotFoundException("Skill directory '$resolvedSkill' does not exist.")
+    throw FileNotFoundException("Skill directory '$resolvedSkill' does not exist.")
   }
   parseInternalForFrontmatter(resolvedSkill.resolve("content.md"))?.let { declaredParent ->
     throw InvalidInternalSkillClassificationError(

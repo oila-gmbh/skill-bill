@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import com.fasterxml.jackson.databind.JsonNode
 
 /**
  * SKILL-48 Subtask 2a AC5: per-violation loud-fail coverage for the
@@ -109,7 +110,7 @@ class WorkflowStateSchemaViolationsTest {
         ),
       )
     }
-    val instance = ObjectMapper().valueToTree<com.fasterxml.jackson.databind.JsonNode>(snapshot)
+    val instance = ObjectMapper().valueToTree<JsonNode>(snapshot)
     val offendingValue = extractOffendingValueFromInstance(instance, "/steps/0/status")
     assertEquals("frobnicated", offendingValue)
   }

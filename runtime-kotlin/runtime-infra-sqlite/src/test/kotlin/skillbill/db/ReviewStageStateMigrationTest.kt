@@ -8,6 +8,7 @@ import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import java.sql.Connection
 
 class ReviewStageStateMigrationTest {
   @Test
@@ -68,7 +69,7 @@ class ReviewStageStateMigrationTest {
     }
   }
 
-  private fun sqliteObjects(connection: java.sql.Connection, type: String): Set<String> =
+  private fun sqliteObjects(connection: Connection, type: String): Set<String> =
     connection.prepareStatement("SELECT name FROM sqlite_master WHERE type = ?").use { statement ->
       statement.setString(1, type)
       statement.executeQuery().use { resultSet ->

@@ -23,6 +23,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import java.nio.file.Path
 
 class GoalRunnerExecutionCoordinatorTest {
   @Test
@@ -209,7 +210,7 @@ private class InMemoryExecutionLeaseStore(
   override fun loadByIssueKey(
     issueKey: String,
     dbPathOverride: String?,
-    repoRoot: java.nio.file.Path?,
+    repoRoot: Path?,
   ): GoalRunnerManifestState? = null
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state

@@ -13,6 +13,7 @@ import skillbill.cli.core.CliRunState
 import skillbill.cli.scaffold.toWireMap
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowContinueView
 
 /**
  * SKILL-52.1 — Adapter-side mappers that convert typed
@@ -200,7 +201,7 @@ private fun GoalContinuationOutcome?.toWireMap(): Map<String, Any?> = this?.let 
 }.orEmpty()
 
 private fun standardContinueMap(
-  view: skillbill.workflow.engine.model.WorkflowContinueView,
+  view: WorkflowContinueView,
   dbPath: String,
   decompositionExtras: Map<String, Any?>,
 ): Map<String, Any?> {

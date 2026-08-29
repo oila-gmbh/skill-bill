@@ -75,6 +75,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 
 /**
  * SKILL-148 Subtask 1: application-layer coverage for read-only IDE status selection,
@@ -1768,15 +1770,15 @@ private object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
 
   override fun recordWorkerSubtaskRequestOutcomes(
     workflowId: String,
-    outcomes: List<skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome>,
+    outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
     dbPathOverride: String?,
   ): Boolean = false
 
   override fun ledgerSequenceWatermarks(
     issueKey: String,
     dbPathOverride: String?,
-  ): skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks =
-    skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks()
+  ): GoalRunnerLedgerSequenceWatermarks =
+    GoalRunnerLedgerSequenceWatermarks()
 
   override fun reopenBlockedPhaseForOperatorResume(
     workflowId: String,

@@ -26,6 +26,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import java.io.File
 
 class InstallPlanContractCoverageTest {
   private val tempDirs = mutableListOf<Path>()
@@ -234,7 +235,7 @@ class InstallPlanContractCoverageTest {
         .associate { path ->
           val relative = root.relativize(path)
             .toString()
-            .replace(java.io.File.separatorChar, '/')
+            .replace(File.separatorChar, '/')
             .ifEmpty { "." }
           val value = when {
             Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) -> "<DIR>"

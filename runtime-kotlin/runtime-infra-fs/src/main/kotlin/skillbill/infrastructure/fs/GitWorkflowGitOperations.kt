@@ -34,6 +34,7 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import java.io.BufferedReader
 
 @Inject
 class GitWorkflowGitOperations :
@@ -758,7 +759,7 @@ private data class BoundedDiffLine(
   }
 }
 
-private fun java.io.BufferedReader.readBoundedDiffLine(maxBytes: Int): BoundedDiffLine? {
+private fun BufferedReader.readBoundedDiffLine(maxBytes: Int): BoundedDiffLine? {
   val line = StringBuilder()
   var bytes = 0
   var sawContent = false

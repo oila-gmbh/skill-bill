@@ -23,6 +23,9 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.atomic.AtomicInteger
+import dev.skillbill.intellij.domain.CachedDisplaySnapshot
+import dev.skillbill.intellij.domain.LastKnownDisplayCache
 
 class StatusRefreshCoordinatorTest {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -86,8 +89,8 @@ class StatusRefreshCoordinatorTest {
         val observed = Instant.parse("2026-08-06T09:00:00Z")
         val prefs = FakePreferenceCache(
             refreshIntervalSeconds = 60,
-            cache = dev.skillbill.intellij.domain.LastKnownDisplayCache(
-                display = dev.skillbill.intellij.domain.CachedDisplaySnapshot(
+            cache = LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(
                     summary = "cached implement",
                     currentStepLabel = "Implement",
                 ),
@@ -316,7 +319,7 @@ class StatusRefreshCoordinatorTest {
     }
 
     private fun scripted(vararg outcomes: SkillBillStatusOutcome): FakeStatusRepository {
-        val index = java.util.concurrent.atomic.AtomicInteger(0)
+        val index = AtomicInteger(0)
         return FakeStatusRepository { outcomes[minOf(index.getAndIncrement(), outcomes.size - 1)] }
     }
 

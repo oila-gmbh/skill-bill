@@ -29,6 +29,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 
 class TelemetryLevelMutationServiceTest {
   @Test
@@ -297,7 +298,7 @@ private class FakeTelemetryDatabaseSessionFactory(
     override val workflowStates: WorkflowStateRepository
       get() = error("Unexpected workflowStates")
     override val workList = EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 

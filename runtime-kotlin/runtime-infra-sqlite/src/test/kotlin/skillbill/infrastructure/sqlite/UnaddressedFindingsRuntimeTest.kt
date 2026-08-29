@@ -9,6 +9,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.review.model.ReviewClaimVerdict.REFUTED
+import skillbill.review.model.ReviewFindingCitation
 
 class UnaddressedFindingsRuntimeTest {
   @Test
@@ -126,8 +128,8 @@ class UnaddressedFindingsRuntimeTest {
       val keyed = finding(1, "blocker", "src/First.kt:7").copy(
         reviewRunId = "rvw-1",
         findingId = "F-001",
-        claimVerdict = skillbill.review.model.ReviewClaimVerdict.REFUTED,
-        citations = listOf(skillbill.review.model.ReviewFindingCitation("src/First.kt", 7)),
+        claimVerdict = REFUTED,
+        citations = listOf(ReviewFindingCitation("src/First.kt", 7)),
       )
       val unkeyed = finding(2, "minor", "src/Second.kt:9")
 

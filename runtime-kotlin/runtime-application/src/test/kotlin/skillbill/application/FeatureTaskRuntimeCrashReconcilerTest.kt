@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME
 
 class FeatureTaskRuntimeCrashReconcilerTest {
   @Test
@@ -133,7 +134,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
           startedAt = null,
           updatedAt = null,
           finishedAt = null,
-          mode = skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME,
+          mode = RUNTIME,
         ),
       )
       seedWorkerOwnership(

@@ -9,6 +9,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import skillbill.install.identity.routeInstalledSkillBody
 
 class SkillContentIdentityTest {
   @Test
@@ -69,7 +70,7 @@ class SkillContentIdentityTest {
     Files.writeString(staging.resolve(SKILL_CONTENT_IDENTITY_FILENAME), supplied.compact())
     assertFalse(Files.exists(staging.resolve("SKILL.md")))
 
-    skillbill.install.identity.routeInstalledSkillBody(
+    routeInstalledSkillBody(
       suppliedCompactIdentity = supplied.compact(),
       installedStagingDir = staging,
     )
@@ -95,7 +96,7 @@ class SkillContentIdentityTest {
     val staging = root.resolve("staged").also(Files::createDirectories)
     Files.writeString(staging.resolve(SKILL_CONTENT_IDENTITY_FILENAME), installed.compact())
     val error = assertFailsWith<SkillContentIdentityMismatchError> {
-      skillbill.install.identity.routeInstalledSkillBody(
+      routeInstalledSkillBody(
         suppliedCompactIdentity = supplied.compact(),
         installedStagingDir = staging,
       )

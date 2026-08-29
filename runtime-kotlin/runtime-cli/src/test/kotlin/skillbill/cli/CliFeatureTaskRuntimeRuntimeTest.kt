@@ -47,6 +47,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.error.InvalidAgentAddonSelectionError
 
 @Suppress("LargeClass")
 class CliFeatureTaskRuntimeRuntimeTest {
@@ -175,7 +177,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     val unsupportedFixture = runtimeFixture().also { writeExecutionBudgetAddon(it.tempDir) }
     val unsupportedSelection = resolvedSelectionJson(unsupportedFixture, "codex")
     val unsupportedLauncher = RecordingPhaseLauncher()
-    val unsupported = assertFailsWith<skillbill.error.InvalidAgentAddonSelectionError> {
+    val unsupported = assertFailsWith<InvalidAgentAddonSelectionError> {
       CliRuntime.run(
         unsupportedFixture.runCommand(
           extra = listOf("--agent", "claude", "--agent-addon-selection-json", unsupportedSelection),
@@ -233,7 +235,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
       val selection = resolvedSelectionJson(fixture, "codex")
       val launcher = RecordingPhaseLauncher()
 
-      val failure = assertFailsWith<skillbill.error.InvalidAgentAddonSelectionError>(case) {
+      val failure = assertFailsWith<InvalidAgentAddonSelectionError>(case) {
         CliRuntime.run(
           fixture.runCommand(
             extra = listOf("--agent", "codex", "--agent-addon-selection-json", selection) + overrideArgs,
@@ -2321,7 +2323,7 @@ private class FakeRuntimeGitOperations(
 
       override fun recoverBaseline(
         repoRoot: Path,
-        request: skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest,
+        request: GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
         status = "error",

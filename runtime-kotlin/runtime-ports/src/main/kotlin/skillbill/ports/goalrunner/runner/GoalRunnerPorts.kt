@@ -31,6 +31,7 @@ import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import java.nio.file.Path
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 
 interface GoalRunnerManifestLookup {
   fun loadByIssueKey(
@@ -63,7 +64,7 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
     blockedSubtaskId: Int? = null,
     blockedReason: String? = null,
     dbPathOverride: String? = null,
-  ): skillbill.goalrunner.model.GoalPlanningStatusSnapshot? = null
+  ): GoalPlanningStatusSnapshot? = null
 
   fun save(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
 

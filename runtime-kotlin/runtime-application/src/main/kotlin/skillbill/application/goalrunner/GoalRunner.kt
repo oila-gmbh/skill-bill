@@ -78,6 +78,10 @@ import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
+import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
+import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
+import java.time.Clock
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 
 private val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 
@@ -129,7 +133,7 @@ class GoalRunner(
   private val specScratchStore: SpecScratchStore = UnavailableSpecScratchStore,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   private val telemetry: GoalLifecycleTelemetryEmitter = GoalLifecycleTelemetryEmitter.NONE,
-  private val clock: java.time.Clock = java.time.Clock.systemUTC(),
+  private val clock: Clock = Clock.systemUTC(),
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
   private val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService? = null,
   private val executionCoordinator: GoalRunnerExecutionCoordinator = GoalRunnerExecutionCoordinator.NONE,
@@ -793,7 +797,7 @@ class GoalRunner(
     request: GoalRunnerRunRequest,
   ): GoalRunnerIterationResult {
     val (targetSubtaskId, reason) = when (error) {
-      is skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError ->
+      is IncompatibleGoalPlanningPreparationRecoveryError ->
         error.subtaskId to goalPlanningChildImportConflictBlockedReason(
           state.manifest.issueKey,
           error.subtaskId,
@@ -1682,7 +1686,7 @@ class GoalRunner(
     if (manifest.specSource != SpecSource.LINEAR) return
     val specPath = manifest.subtasks.firstOrNull { it.id == subtaskId }?.specPath?.takeIf(String::isNotBlank)
       ?: return
-    val resolved = resolvedParentSpecPath(request.repoRoot, java.nio.file.Path.of(specPath))
+    val resolved = resolvedParentSpecPath(request.repoRoot, Path.of(specPath))
     runCatching { specScratchStore.deleteFileIfExists(resolved) }
       .onFailure { error ->
         diagnostics.warning(
@@ -1698,7 +1702,7 @@ class GoalRunner(
   // final commit, and is a no-op when already deleted.
   private fun deleteGoalSpecScratchOnSuccess(manifest: DecompositionManifest, request: GoalRunnerRunRequest) {
     if (manifest.specSource != SpecSource.LINEAR) return
-    val parentSpec = resolvedParentSpecPath(request.repoRoot, java.nio.file.Path.of(manifest.parentSpecPath))
+    val parentSpec = resolvedParentSpecPath(request.repoRoot, Path.of(manifest.parentSpecPath))
     val specDir = parentSpec.parent ?: return
     runCatching { specScratchStore.deleteDirectoryIfExists(specDir) }
       .onFailure { error ->
@@ -2125,7 +2129,7 @@ private fun supervisionEvent(
   lastOutputAt = liveness?.lastOutputAt,
 )
 
-private fun skillbill.workflow.decomposition.model.DecompositionSubtask.progressToken(): String = listOf(
+private fun DecompositionSubtask.progressToken(): String = listOf(
   status,
   workflowId.orEmpty(),
   branch.orEmpty(),
@@ -2208,20 +2212,20 @@ private class GoalRunnerWorkflowProgressProbe(
 
 private fun declaredProgressProbe(
   reader: GoalRunnerTickProgressReader,
-): skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe =
-  skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe {
+): AgentRunDeclaredProgressProbe =
+  AgentRunDeclaredProgressProbe {
     reader.progressState()
       ?.childProgress
       ?.latestDeclaredProgressEvent
       ?.let { event ->
-        skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot(
+        AgentRunDeclaredProgressSnapshot(
           latestEvent = event,
           processAlive = event.processAlive,
         )
       }
   }
 
-private fun skillbill.ports.agentrun.model.AgentRunLaunchOutcome.toGoalRunnerLaunchFacts(): GoalRunnerLaunchFacts =
+private fun AgentRunLaunchOutcome.toGoalRunnerLaunchFacts(): GoalRunnerLaunchFacts =
   when (this) {
     is AgentRunLaunchFacts -> GoalRunnerLaunchFacts(
       timedOut = timedOut,
@@ -2392,7 +2396,7 @@ private fun DecompositionManifest.withBlockedSelection(subtaskId: Int, reason: S
   },
 )
 
-private fun DecompositionManifest.toPullRequestRequest(repoRoot: java.nio.file.Path): GoalPullRequestRequest {
+private fun DecompositionManifest.toPullRequestRequest(repoRoot: Path): GoalPullRequestRequest {
   val title = "$issueKey: $featureName"
   val body = buildString {
     appendLine("Goal: $featureName")

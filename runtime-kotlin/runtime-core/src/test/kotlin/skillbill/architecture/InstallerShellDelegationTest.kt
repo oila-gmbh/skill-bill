@@ -7,6 +7,10 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.Assumptions
+import org.junit.jupiter.api.BeforeEach
+import java.io.File
+import java.security.MessageDigest
 
 @Suppress("LargeClass")
 class InstallerShellDelegationTest {
@@ -15,9 +19,9 @@ class InstallerShellDelegationTest {
   // install.sh legitimately diverges (BSD `script`), so the suite runs on the Linux
   // CI leg and skips elsewhere; macOS install behavior is covered by
   // scripts/install_smoke_test.sh.
-  @org.junit.jupiter.api.BeforeEach
+  @BeforeEach
   fun assumeLinuxHost() {
-    org.junit.jupiter.api.Assumptions.assumeTrue(
+    Assumptions.assumeTrue(
       System.getProperty("os.name").lowercase().startsWith("linux"),
       "installer-shell suite assumes Linux host behavior; skipping on ${System.getProperty("os.name")}",
     )
@@ -576,7 +580,7 @@ class InstallerShellDelegationTest {
     if (options.interactiveTty) {
       // `script` allocates a PTY; gate the test on its presence so it skips cleanly
       // rather than failing on hosts without util-linux.
-      org.junit.jupiter.api.Assumptions.assumeTrue(
+      Assumptions.assumeTrue(
         PrebuiltReleaseStager.toolOnPath("script"),
         "interactive-TTY install test requires `script` (util-linux) on PATH",
       )
@@ -1113,14 +1117,14 @@ private object PrebuiltReleaseStager {
   // fail) the prebuilt-path tests when that tooling is missing so `./gradlew check`
   // stays green for contributors without libarchive-tools (bsdtar).
   fun assumeReleaseStagingTools() {
-    org.junit.jupiter.api.Assumptions.assumeTrue(
+    Assumptions.assumeTrue(
       toolOnPath("bsdtar"),
       "staged-release runtime image zips require bsdtar on PATH",
     )
   }
 
   fun toolOnPath(tool: String): Boolean = (System.getenv("PATH") ?: "")
-    .split(java.io.File.pathSeparatorChar)
+    .split(File.pathSeparatorChar)
     .filter { it.isNotEmpty() }
     .any { dir -> Files.isExecutable(Path.of(dir).resolve(tool)) }
 
@@ -1171,7 +1175,7 @@ private object PrebuiltReleaseStager {
   }
 
   private fun writeChecksumSibling(asset: Path, corrupt: Boolean) {
-    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    val digest = MessageDigest.getInstance("SHA-256")
     val hexReal = digest.digest(Files.readAllBytes(asset)).joinToString("") { "%02x".format(it) }
     val hex = if (corrupt) "0".repeat(64) else hexReal
     Files.writeString(asset.resolveSibling("${asset.fileName}.sha256"), "$hex  ${asset.fileName}\n")

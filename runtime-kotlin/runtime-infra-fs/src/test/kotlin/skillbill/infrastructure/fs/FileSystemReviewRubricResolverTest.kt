@@ -12,6 +12,7 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import java.nio.file.Path
 
 class FileSystemReviewRubricResolverTest {
   @Test
@@ -290,9 +291,9 @@ class FileSystemReviewRubricResolverTest {
   }
 
   private fun manifest(
-    root: java.nio.file.Path,
-    baseline: java.nio.file.Path,
-    areas: Map<String, java.nio.file.Path> = emptyMap(),
+    root: Path,
+    baseline: Path,
+    areas: Map<String, Path> = emptyMap(),
   ) = PlatformManifest(
     slug = "kotlin",
     packRoot = root,

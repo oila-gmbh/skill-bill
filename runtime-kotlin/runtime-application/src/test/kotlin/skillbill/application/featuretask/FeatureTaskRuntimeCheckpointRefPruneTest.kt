@@ -20,10 +20,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 
 class FeatureTaskRuntimeCheckpointRefPruneTest {
   private lateinit var repo: Path
-  private val git: WorkflowGitOperations = skillbill.infrastructure.fs.GitWorkflowGitOperations()
+  private val git: WorkflowGitOperations = GitWorkflowGitOperations()
 
   @BeforeTest
   fun setUp() {

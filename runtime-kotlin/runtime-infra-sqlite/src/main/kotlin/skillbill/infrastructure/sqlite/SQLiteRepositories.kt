@@ -49,6 +49,12 @@ import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import java.nio.file.Path
 import java.sql.Connection
+import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
+import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationStore
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
+import skillbill.db.workflow.GoalPlanningPreparationStore
+import skillbill.ports.goalrunner.GoalRunnerControlRepository
+import skillbill.db.workflow.GoalRunnerControlStore
 
 class SQLiteUnitOfWork(
   private val connection: Connection,
@@ -63,14 +69,14 @@ class SQLiteUnitOfWork(
   override val telemetryOutbox: TelemetryOutboxRepository = TelemetryOutboxStore(connection)
   override val workflowStates: WorkflowStateRepository = WorkflowStateStore(connection)
   override val workList: WorkListRepository = SQLiteWorkListRepository(connection)
-  override val goalPlanningPreparations: skillbill.ports.goalrunner.GoalPlanningPreparationRepository =
-    skillbill.db.workflow.GoalPlanningPreparationStore(connection)
-  override val goalRunnerControls: skillbill.ports.goalrunner.GoalRunnerControlRepository =
-    skillbill.db.workflow.GoalRunnerControlStore(connection)
+  override val goalPlanningPreparations: GoalPlanningPreparationRepository =
+    GoalPlanningPreparationStore(connection)
+  override val goalRunnerControls: GoalRunnerControlRepository =
+    GoalRunnerControlStore(connection)
   override val unaddressedFindings: UnaddressedFindingsRepository = SQLiteUnaddressedFindingsRepository(connection)
   override val featureTaskRuntimeAuditGenerations:
-    skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository =
-    skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationStore(connection)
+    FeatureTaskRuntimeAuditGenerationRepository =
+    FeatureTaskRuntimeAuditGenerationStore(connection)
   override val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository =
     SqliteRejectedOutputDiagnosticRepository(connection)
   override val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions =

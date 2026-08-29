@@ -30,6 +30,8 @@ import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
+import skillbill.ports.validation.model.ValidationGateFinding
 
 @Suppress("LargeClass") // single suite over one composer; splitting would scatter the per-phase prompt contract
 class FeatureTaskRuntimePhasePromptComposerTest {
@@ -371,8 +373,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
   @Test
   fun `FULL and default runtime-owned validate prompts name the complete finding set`() {
-    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
-    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+    val finding = ValidationGateFinding("m", "t", "broken", "loc")
+    val page = ValidationFindingSetProjection(
       findings = listOf(finding),
     )
     val fullPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -408,8 +410,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
   @Test
   fun `runtime-owned build prompt names the complete finding set`() {
-    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
-    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+    val finding = ValidationGateFinding("m", "t", "broken", "loc")
+    val page = ValidationFindingSetProjection(
       findings = listOf(finding),
     )
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -434,8 +436,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
   @Test
   fun `validate triage prompt forbids gate argv with same strength as repair prompt`() {
-    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
-    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+    val finding = ValidationGateFinding("m", "t", "broken", "loc")
+    val page = ValidationFindingSetProjection(
       findings = listOf(finding),
     )
     val triagePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -466,8 +468,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
   @Test
   fun `repair prompt includes triage working notes when plan captured`() {
-    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
-    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+    val finding = ValidationGateFinding("m", "t", "broken", "loc")
+    val page = ValidationFindingSetProjection(
       findings = listOf(finding),
     )
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -483,8 +485,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
   @Test
   fun `repair prompt omits triage section when plan empty`() {
-    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
-    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+    val finding = ValidationGateFinding("m", "t", "broken", "loc")
+    val page = ValidationFindingSetProjection(
       findings = listOf(finding),
     )
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(

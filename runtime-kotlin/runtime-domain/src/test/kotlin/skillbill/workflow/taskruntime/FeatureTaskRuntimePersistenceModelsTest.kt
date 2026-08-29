@@ -29,6 +29,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
 
 class FeatureTaskRuntimePersistenceModelsTest {
   @Test
@@ -717,7 +719,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
       suppressPr = true,
       goalBranch = "feat/SKILL-204",
       codeReviewMode = CodeReviewExecutionMode.INLINE,
-      qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+      qualityGateSelection = BUILD,
     )
     assertEquals("build", build.toArtifactMap()["quality_gate_selection"])
     assertEquals(
@@ -734,7 +736,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
     )
     assertNull(absent.toArtifactMap()["quality_gate_selection"])
     assertEquals(
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+      VALIDATE,
       FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(
         absent.toArtifactMap() + ("quality_gate_selection" to "validate"),
       ).qualityGateSelection,

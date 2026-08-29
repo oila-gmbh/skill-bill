@@ -9,6 +9,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.security.MessageDigest
+import skillbill.contracts.JsonSupport
 
 class GoalPlanningPreparationValidator(
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
@@ -32,8 +33,8 @@ class GoalPlanningPreparationValidator(
     requireCompleted(plan, PLAN_PHASE_ID, label)
     requireValidProjection(plan, PLAN_PHASE_ID, label)
     return record.copy(
-      preplanPayload = skillbill.contracts.JsonSupport.mapToJsonString(preplan),
-      planPayload = skillbill.contracts.JsonSupport.mapToJsonString(plan),
+      preplanPayload = JsonSupport.mapToJsonString(preplan),
+      planPayload = JsonSupport.mapToJsonString(plan),
       preplanRepairEvidence = acceptedPreplan.repairEvidence ?: record.preplanRepairEvidence,
       planRepairEvidence = acceptedPlan.repairEvidence ?: record.planRepairEvidence,
     )

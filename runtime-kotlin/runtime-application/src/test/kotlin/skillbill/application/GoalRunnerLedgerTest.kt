@@ -16,6 +16,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
+import skillbill.goalrunner.model.GoalRunnerLaunchFacts.DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL
+import skillbill.goalrunner.model.GoalRunnerLivenessState.IDLE
+import skillbill.goalrunner.model.GoalRunnerLivenessState.PROGRESSING
+import skillbill.goalrunner.model.GoalRunnerLivenessState.WORKING
 
 /**
  * SKILL-64 Subtask 4 (AC4, AC5): the attempt/event ledger must explain every
@@ -274,11 +279,11 @@ class GoalRunnerLedgerTest {
       val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts(timedOut = true).copy(
-        liveness = skillbill.ports.agentrun.model.AgentRunLivenessSnapshot(
+        liveness = AgentRunLivenessSnapshot(
           phase = "review",
           reason = "idle_timeout",
           processState = "confirmed_alive",
-          livenessState = skillbill.goalrunner.model.GoalRunnerLivenessState.WORKING,
+          livenessState = WORKING,
         ),
       )
     }
@@ -289,7 +294,7 @@ class GoalRunnerLedgerTest {
 
     val timeoutEntry = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "timeout" }.entry
     assertEquals(
-      skillbill.goalrunner.model.GoalRunnerLaunchFacts.DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
+      DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
       timeoutEntry.diagnosticClass,
       "a kill of a confirmed-alive process must emit the distinct supervisor_killed_confirmed_alive class",
     )
@@ -303,11 +308,11 @@ class GoalRunnerLedgerTest {
       val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts(timedOut = true).copy(
-        liveness = skillbill.ports.agentrun.model.AgentRunLivenessSnapshot(
+        liveness = AgentRunLivenessSnapshot(
           phase = "implement",
           reason = "idle_timeout",
           processState = "progressing",
-          livenessState = skillbill.goalrunner.model.GoalRunnerLivenessState.PROGRESSING,
+          livenessState = PROGRESSING,
         ),
       )
     }
@@ -318,7 +323,7 @@ class GoalRunnerLedgerTest {
 
     val timeoutEntry = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "timeout" }.entry
     assertEquals(
-      skillbill.goalrunner.model.GoalRunnerLaunchFacts.DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
+      DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
       timeoutEntry.diagnosticClass,
       "a kill of a PROGRESSING process must also emit the supervisor_killed_confirmed_alive class",
     )
@@ -332,11 +337,11 @@ class GoalRunnerLedgerTest {
       val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts(timedOut = true).copy(
-        liveness = skillbill.ports.agentrun.model.AgentRunLivenessSnapshot(
+        liveness = AgentRunLivenessSnapshot(
           phase = "preplan",
           reason = "idle_timeout",
           processState = "idle",
-          livenessState = skillbill.goalrunner.model.GoalRunnerLivenessState.IDLE,
+          livenessState = IDLE,
         ),
       )
     }

@@ -23,6 +23,7 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 
 internal class DecompositionWorkflowContinuation(
   private val engine: WorkflowEngine,
@@ -390,7 +391,7 @@ private fun terminalSubtaskResult(
   outcome = selection.subtask.toGoalContinuationOutcome(manifest.issueKey),
 )
 
-private fun skillbill.workflow.decomposition.model.DecompositionSubtask.toGoalContinuationOutcome(
+private fun DecompositionSubtask.toGoalContinuationOutcome(
   issueKey: String,
 ): GoalContinuationOutcome = GoalContinuationOutcome(
   issueKey = issueKey,

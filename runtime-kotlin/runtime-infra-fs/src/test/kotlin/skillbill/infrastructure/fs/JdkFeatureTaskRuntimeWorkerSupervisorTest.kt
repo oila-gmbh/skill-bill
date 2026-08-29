@@ -16,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 
 private class RecordingDiagnostics : RuntimeDiagnostics {
   val warnings = CopyOnWriteArrayList<String>()
@@ -114,7 +115,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
   }
 
   private fun ownershipFor(
-    current: skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity,
+    current: FeatureTaskRuntimeProcessIdentity,
     bootIdentity: String,
     processBirthToken: String = current.processBirthToken,
   ) = FeatureTaskRuntimeWorkerOwnership(

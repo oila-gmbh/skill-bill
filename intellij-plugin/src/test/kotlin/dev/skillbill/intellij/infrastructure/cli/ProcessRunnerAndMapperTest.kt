@@ -20,6 +20,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Instant
 
 class ProcessRunnerTest {
     @Test
@@ -115,7 +116,7 @@ private const val VALID_PLANNING =
        "current_planning_subtask_id": "subtask-2"}"""
 
 class IdeStatusJsonMapperTest {
-    private val now = java.time.Instant.parse("2026-08-06T10:00:00Z")
+    private val now = Instant.parse("2026-08-06T10:00:00Z")
 
     @Test
     fun `maps schema-valid active runtime fixture`() {
@@ -134,7 +135,7 @@ class IdeStatusJsonMapperTest {
         assertTrue(outcome is SkillBillStatusOutcome.Active)
         outcome as SkillBillStatusOutcome.Active
         assertEquals("2", outcome.currentSubtaskId)
-        assertEquals(java.time.Instant.parse("2026-08-06T09:00:00Z"), outcome.subtaskStartedAt)
+        assertEquals(Instant.parse("2026-08-06T09:00:00Z"), outcome.subtaskStartedAt)
     }
 
     @Test
@@ -412,7 +413,7 @@ class IdeStatusJsonMapperTest {
             ",\"pause_requested\":true,\"paused_at\":\"2026-08-06T09:30:00Z\"}"
         val parsed = IdeStatusJsonMapper.map(withSignals, now, 0) as SkillBillStatusOutcome.Active
         assertEquals(true, parsed.pauseRequested)
-        assertEquals(java.time.Instant.parse("2026-08-06T09:30:00Z"), parsed.pausedAt)
+        assertEquals(Instant.parse("2026-08-06T09:30:00Z"), parsed.pausedAt)
 
         // Omitting both keys must stay absent — not coerced to false — and must not
         // turn a valid payload into a malformed outcome.
@@ -428,7 +429,7 @@ class IdeStatusJsonMapperTest {
             "\"active_duration_ms\":45000,\"active_duration_as_of\":\"2026-08-06T10:10:00Z\"}}"
         val parsed = IdeStatusJsonMapper.map(withDuration, now, 0) as SkillBillStatusOutcome.Active
         assertEquals(45_000L, parsed.subtaskActiveDurationMs)
-        assertEquals(java.time.Instant.parse("2026-08-06T10:10:00Z"), parsed.subtaskActiveDurationAsOf)
+        assertEquals(Instant.parse("2026-08-06T10:10:00Z"), parsed.subtaskActiveDurationAsOf)
 
         val without = IdeStatusJsonMapper.map(goalPayload(null), now, 0) as SkillBillStatusOutcome.Active
         assertNull(without.subtaskActiveDurationMs)
@@ -441,7 +442,7 @@ class IdeStatusJsonMapperTest {
             ",\"active_duration_ms\":1380000,\"active_duration_as_of\":\"2026-08-06T09:59:00Z\"}"
         val parsed = IdeStatusJsonMapper.map(withDuration, now, 0) as SkillBillStatusOutcome.Active
         assertEquals(1_380_000L, parsed.activeDurationMs)
-        assertEquals(java.time.Instant.parse("2026-08-06T09:59:00Z"), parsed.activeDurationAsOf)
+        assertEquals(Instant.parse("2026-08-06T09:59:00Z"), parsed.activeDurationAsOf)
 
         // Absent must stay null rather than becoming zero: null falls back to the wall clock,
         // whereas zero would render "0s" as a measurement.

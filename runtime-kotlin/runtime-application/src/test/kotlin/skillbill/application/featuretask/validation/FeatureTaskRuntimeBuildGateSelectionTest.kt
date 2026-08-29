@@ -9,6 +9,8 @@ import skillbill.scaffold.model.ValidationGateFindingsLocator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
 
 class FeatureTaskRuntimeBuildGateSelectionTest {
   private val declaration = ValidationGateDeclaration(
@@ -21,8 +23,8 @@ class FeatureTaskRuntimeBuildGateSelectionTest {
     findings = ValidationGateFindingsLocator(
       format = ValidationGateFindingsFormat.JUNIT_XML,
       artifactGlobs = listOf("**/*.xml"),
-      compilerDiagnostics = skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator(
-        skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT,
+      compilerDiagnostics = ValidationGateCompilerDiagnosticsLocator(
+        GRADLE_KOTLIN_COMPILER_STDOUT,
       ),
       executedWork = ValidationGateExecutedWorkSignal(ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY),
     ),

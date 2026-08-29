@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import dev.skillbill.intellij.domain.UnavailableReason.TIMEOUT
 
 class StatusUiMapperTest {
     private val now = Instant.parse("2026-08-06T12:00:00Z")
@@ -518,7 +519,7 @@ class StatusUiMapperTest {
     fun `every other outcome type carries no goal-control inputs`() {
         val outcomes = listOf(
             SkillBillStatusOutcome.Idle(now, "idle"),
-            SkillBillStatusOutcome.Unavailable(now, "gone", dev.skillbill.intellij.domain.UnavailableReason.TIMEOUT),
+            SkillBillStatusOutcome.Unavailable(now, "gone", TIMEOUT),
             SkillBillStatusOutcome.Incompatible(now, "mismatch", "0.9"),
         )
         for (outcome in outcomes) {

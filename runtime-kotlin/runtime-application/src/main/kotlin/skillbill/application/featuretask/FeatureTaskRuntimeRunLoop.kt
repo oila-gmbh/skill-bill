@@ -137,6 +137,22 @@ import skillbill.workflow.taskruntime.model.upsertRepairReceipt
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.application.review.model.DiffResolutionException
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
+import java.time.Instant
+import skillbill.error.InvalidReviewContextSchemaError
+import skillbill.review.context.model.ReviewContextBudgetExceededException
+import skillbill.application.review.RuntimeOwnedReviewMode
+import skillbill.application.review.model.StackDetectionException
+import skillbill.application.goalrunner.StructuredGoalReviewFinding
+import skillbill.workflow.taskruntime.model.UNPROVEN_REPOSITORY_FINGERPRINT
+import skillbill.error.UnreadableSpecIntentProjectionError
+import skillbill.application.review.model.UsageValidationException
+import skillbill.workflow.taskruntime.model
 
 internal data class FeatureTaskRuntimeRunLoopDependencies(
   val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -546,7 +562,7 @@ internal class FeatureTaskRuntimeRunLoop(
   )
 
   private fun settleCarriedForwardGoalReview(
-    reviewState: skillbill.workflow.goal.model.GoalSubtaskReviewState,
+    reviewState: GoalSubtaskReviewState,
     reentry: PendingReentry?,
   ): PhaseSettlement =
     runCatching { goalContinuationRecorder.lastGoalReviewResult(request.workflowId, request.dbPathOverride) }.fold(
@@ -559,7 +575,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun validateCarriedForwardGoalReview(
     rawResult: String,
-    reviewState: skillbill.workflow.goal.model.GoalSubtaskReviewState,
+    reviewState: GoalSubtaskReviewState,
     reentry: PendingReentry?,
   ): PhaseSettlement = runCatching {
     val acceptedOutput = outputValidator
@@ -582,7 +598,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun recordCarriedForwardGoalReview(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
     reentry: PendingReentry?,
   ) {
     val phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
@@ -718,7 +734,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun recordCarriedForwardAudit(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
   ) {
     val phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
     if (state.isComplete(phaseId)) {
@@ -2198,7 +2214,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
       state.copy(
-        resolvedTier = skillbill.application.review.RuntimeOwnedReviewMode.execute(resolution.resolvedTier),
+        resolvedTier = RuntimeOwnedReviewMode.execute(resolution.resolvedTier),
         decidingRule = resolution.decidingRule,
       )
     }
@@ -2878,7 +2894,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private data class RuntimeOwnedReviewLaunch(
     val iteration: Int,
     val passNumber: Int,
-    val resolvedTier: skillbill.workflow.goal.model.CodeReviewExecutionMode,
+    val resolvedTier: CodeReviewExecutionMode,
     val reviewRunId: String,
     val checkpoint: String,
   )
@@ -2918,7 +2934,7 @@ internal class FeatureTaskRuntimeRunLoop(
       launch = RuntimeOwnedReviewLaunch(
         iteration = iteration,
         passNumber = passNumber,
-        resolvedTier = skillbill.application.review.RuntimeOwnedReviewMode.execute(resolution.resolvedTier),
+        resolvedTier = RuntimeOwnedReviewMode.execute(resolution.resolvedTier),
         reviewRunId = reviewRunId,
         checkpoint = checkpoint,
       ),
@@ -3009,29 +3025,29 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun invokeReviewDriver(request: ParallelCodeReviewRequest): ReviewDriverAttempt = try {
     ReviewDriverReady(phaseGates.reviewDriver.run(request))
-  } catch (error: skillbill.application.review.model.DiffResolutionException) {
+  } catch (error: DiffResolutionException) {
     ReviewDriverFailed(
       "Runtime-owned review could not resolve the child-owned diff: ${error.message.orEmpty()}",
     )
-  } catch (error: skillbill.application.review.model.UsageValidationException) {
+  } catch (error: UsageValidationException) {
     ReviewDriverFailed(
       "Runtime-owned review failed: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
     )
-  } catch (error: skillbill.application.review.model.StackDetectionException) {
+  } catch (error: StackDetectionException) {
     ReviewDriverFailed(
       "Runtime-owned review failed: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
     )
-  } catch (error: skillbill.review.context.model.ReviewContextBudgetExceededException) {
+  } catch (error: ReviewContextBudgetExceededException) {
     ReviewDriverFailed(
       "Runtime-owned review exceeded a review-context budget: ${error.message.orEmpty()}",
     )
-  } catch (error: skillbill.error.UnreadableSpecIntentProjectionError) {
+  } catch (error: UnreadableSpecIntentProjectionError) {
     ReviewDriverFailed(
       "Runtime-owned review could not read the spec intent projection: ${error.message.orEmpty()}",
     )
-  } catch (error: skillbill.error.InvalidReviewContextSchemaError) {
+  } catch (error: InvalidReviewContextSchemaError) {
     ReviewDriverFailed(
       "Runtime-owned review produced an invalid review-context envelope: ${error.message.orEmpty()}",
     )
@@ -3102,7 +3118,7 @@ internal class FeatureTaskRuntimeRunLoop(
     passNumber: Int,
     result: ParallelCodeReviewResult,
     reviewRunId: String,
-    resolvedTier: skillbill.workflow.goal.model.CodeReviewExecutionMode,
+    resolvedTier: CodeReviewExecutionMode,
   ): List<GoalSubtaskBlockerDisposition> {
     if (passNumber < 2) return emptyList()
     val prior = recorder.fetchUnaddressedLedger(run.request.workflowId, run.request.dbPathOverride)
@@ -3159,7 +3175,7 @@ internal class FeatureTaskRuntimeRunLoop(
         attempt = iteration,
         agentId = run.resolvedAgent.resolvedAgentId,
         model = run.modelDirective?.model ?: "unspecified",
-        recordedAt = java.time.Instant.now(),
+        recordedAt = Instant.now(),
         byteSize = outputBytes.size.toLong(),
         sha256 = RejectedOutputDiagnosticService.sha256(outputBytes),
         payload = outputBytes,
@@ -4016,7 +4032,7 @@ internal class FeatureTaskRuntimeRunLoop(
       it.phaseId == run.phaseId &&
         it.loopId == run.reentry?.loopId &&
         it.edgeIteration == run.reentry?.edgeIteration &&
-        it.status == skillbill.workflow.taskruntime.model
+        it.status == model
           .FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
     }
   }
@@ -4062,7 +4078,7 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     outputArtifact: String? = null,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     rejectedOutput: String? = null,
     childNeverLaunched: Boolean = false,
   ): PhaseOutcome {
@@ -4160,7 +4176,7 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     outputArtifact: String? = null,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     rejectedOutput: String? = null,
     childNeverLaunched: Boolean = false,
   ): PhaseOutcome = blockAndPersist(
@@ -4672,7 +4688,7 @@ internal class FeatureTaskRuntimeRunLoop(
     rejectionPath: String,
     payloadFreeConstraint: String,
     acceptedAfterStructuralRepair: Boolean = false,
-    structuralRepairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? =
+    structuralRepairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? =
       null,
   ): FeatureTaskRuntimeCorrectiveRepairContext {
     val utf8ByteCount = outputByteSize.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
@@ -4796,7 +4812,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     outputText: String,
@@ -4923,7 +4939,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val outputTruncated: Boolean,
     val outputByteSize: Long,
     val outputSha256: String,
-    val repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
     val fileManifest: FeatureTaskRuntimePhaseFileManifest,
   )
 
@@ -4981,7 +4997,7 @@ internal class FeatureTaskRuntimeRunLoop(
         attempt = capture.iteration,
         agentId = run.resolvedAgent.resolvedAgentId,
         model = run.modelDirective?.model ?: "unspecified",
-        recordedAt = java.time.Instant.now(),
+        recordedAt = Instant.now(),
         byteSize = capture.outputByteSize,
         sha256 = capture.outputSha256,
         payload = capture.outputBytes.takeUnless { capture.outputTruncated },
@@ -5207,7 +5223,7 @@ internal class FeatureTaskRuntimeRunLoop(
     iteration: Int,
     outputMap: Map<String, Any?>,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
     repositoryFingerprint: String?,
   ): Pair<String, String>? = producerProjectionGateReason(
     run.phaseId,
@@ -5235,7 +5251,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
     repositoryFingerprint: String?,
   ): String? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) return null
@@ -5520,7 +5536,7 @@ internal class FeatureTaskRuntimeRunLoop(
     reason: String,
     outputMap: Map<String, Any?>,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult {
@@ -5583,7 +5599,7 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }.orEmpty()
     val findings = reviewOutput?.let {
-      skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer.structuredFindings(it, recordedVerdicts)
+      GoalSubtaskReviewSummaryReducer.structuredFindings(it, recordedVerdicts)
     }.orEmpty()
     return phaseGates.findingVerificationBoundaryMemory.sectionsForFindings(
       run.request.repoRoot,
@@ -5703,7 +5719,7 @@ internal class FeatureTaskRuntimeRunLoop(
    */
   private fun structuralRepairEvidenceFromSchemaError(
     error: InvalidFeatureTaskRuntimePhaseOutputSchemaError,
-  ): skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? {
+  ): FeatureTaskRuntimePhaseOutputRepairEvidence? {
     val originalDigest = error.structuralRepairOriginalDigest
     val repairedDigest = error.structuralRepairRepairedDigest
     val format = error.structuralRepairFormat
@@ -5726,16 +5742,16 @@ internal class FeatureTaskRuntimeRunLoop(
     ) {
       return null
     }
-    return skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence(
-      format = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat.fromWire(
+    return FeatureTaskRuntimePhaseOutputRepairEvidence(
+      format = FeatureTaskRuntimePhaseOutputFormat.fromWire(
         requireNotNull(format),
       ),
       originalDigest = requireNotNull(originalDigest),
       repairedDigest = requireNotNull(repairedDigest),
-      operation = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation.fromWire(
+      operation = FeatureTaskRuntimePhaseOutputRepairOperation.fromWire(
         requireNotNull(operation),
       ),
-      sourceLocation = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation(
+      sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation(
         sourceLabel = requireNotNull(sourceLabel),
         offset = requireNotNull(sourceOffset),
         line = requireNotNull(sourceLine),
@@ -5748,7 +5764,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     repositoryFingerprint: String?,
@@ -5908,7 +5924,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     iteration: Int,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): PhaseOutcome? {
@@ -6022,7 +6038,7 @@ internal class FeatureTaskRuntimeRunLoop(
     outputArtifact: String?,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
-    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+    repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     repositoryFingerprint: String? = null,
     launched: LaunchedModelDirective? = null,
     reviewRunId: String? = null,
@@ -6140,7 +6156,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val depthResolution = passNumber?.let { pass ->
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(run.request.runInvariants.codeReviewMode, pass)
     }
-    val executedTier = skillbill.application.review.RuntimeOwnedReviewMode.execute(
+    val executedTier = RuntimeOwnedReviewMode.execute(
       depthResolution?.resolvedTier ?: run.request.runInvariants.codeReviewMode,
     )
     depthResolution?.let { resolution -> persistResolvedReviewTier(run, resolution) }
@@ -6202,8 +6218,8 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun findingPathsForBoundaryMemory(
-    finding: skillbill.application.goalrunner.StructuredGoalReviewFinding,
-  ): List<String> = skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
+    finding: StructuredGoalReviewFinding,
+  ): List<String> = GoalSubtaskReviewSummaryReducer
     .verificationBoundaryFindingPaths(finding)
 
   private fun verifyFindingsSpecIntentSection(run: PhaseRun): String {
@@ -6218,7 +6234,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val resolution = phaseGates.specIntentProjectionResolver.resolve(
       SpecIntentProjectionResolveRequest(
         repoRoot = run.request.repoRoot,
-        explicitSpecPath = java.nio.file.Path.of(run.request.runInvariants.specReference),
+        explicitSpecPath = Path.of(run.request.runInvariants.specReference),
         branchName = resolvedBranch ?: "HEAD",
         changedPaths = emptyList(),
         budget = ReviewContextBudgetPolicy.DEFAULT,
@@ -6284,7 +6300,9 @@ internal class FeatureTaskRuntimeRunLoop(
     val prepared = when (val preparation = prepareLaunchForCapture(run, state, priorCorrection)) {
       is PreparedLaunchReady -> preparation.value
       is LaunchPreparationRejected -> return preparation.result
-      else -> error("Unexpected launch preparation result.")
+      is LaunchMeasurementContextReady,
+      is ClosedCriterionRefsReady,
+      -> error("Unexpected launch preparation result.")
     }
     val briefing = prepared.briefing
     val isReviewPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
@@ -6384,14 +6402,18 @@ internal class FeatureTaskRuntimeRunLoop(
     val measurementContext = when (val resolution = resolveLaunchMeasurementContext(run, state)) {
       is LaunchMeasurementContextReady -> resolution.value
       is LaunchPreparationRejected -> return resolution
-      else -> error("Unexpected launch measurement result.")
+      is PreparedLaunchReady,
+      is ClosedCriterionRefsReady,
+      -> error("Unexpected launch measurement result.")
     }
     val durablyClosedCriterionRefs = when (
       val resolution = resolveDurablyClosedCriterionRefs(run, state, measurementContext)
     ) {
       is ClosedCriterionRefsReady -> resolution.value
       is LaunchPreparationRejected -> return resolution
-      else -> error("Unexpected closed-criterion result.")
+      is PreparedLaunchReady,
+      is LaunchMeasurementContextReady,
+      -> error("Unexpected closed-criterion result.")
     }
     return prepareDeclaredLaunch(
       run,
@@ -7101,7 +7123,7 @@ private const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 // Stands in for a repository fingerprint that could not be computed. Comparing it against itself
 // yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.
 private const val UNPROVEN_REPOSITORY_FINGERPRINT =
-  skillbill.workflow.taskruntime.model.UNPROVEN_REPOSITORY_FINGERPRINT
+  UNPROVEN_REPOSITORY_FINGERPRINT
 
 // The block reason a pre-quarantine build persisted when a launch seam rejected an upstream bounded
 // planning projection. The current seam quarantines the record and regenerates its producer instead,

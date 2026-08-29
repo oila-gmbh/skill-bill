@@ -29,6 +29,9 @@ import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.sql.Connection
 import java.time.Instant
 import java.time.format.DateTimeParseException
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
+import java.sql.PreparedStatement
+import java.sql.ResultSet
 
 typealias WorkflowStateRow = WorkflowStateRecord
 
@@ -466,7 +469,7 @@ private fun Connection.insertWorkerOwnership(ownership: FeatureTaskRuntimeWorker
   }
 }
 
-private fun java.sql.PreparedStatement.bindOwnership(
+private fun PreparedStatement.bindOwnership(
   ownership: FeatureTaskRuntimeWorkerOwnership,
   includeWorkflowId: Boolean,
 ): Int {
@@ -513,7 +516,7 @@ private fun Connection.featureTaskRuntimeWorkerOwnership(workflowId: String): Fe
     }
   }
 
-private fun java.sql.ResultSet.requiredWorkerOwnershipString(workflowId: String, column: String): String =
+private fun ResultSet.requiredWorkerOwnershipString(workflowId: String, column: String): String =
   getString(column) ?: throw InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError(
     workflowId,
     "$column is required",
@@ -530,7 +533,7 @@ private fun validateWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership
   val heartbeatAt = parseOwnershipInstant(ownership, "heartbeat_at", ownership.heartbeatAt)
   val expiresAt = parseOwnershipInstant(ownership, "expires_at", ownership.expiresAt)
   val failure = when {
-    ownership.contractVersion != skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION ->
+    ownership.contractVersion != FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION ->
       "unsupported contract_version '${ownership.contractVersion}'"
     ownership.generation < 1 -> "generation must be positive"
     ownership.ownerToken.length < MINIMUM_OWNER_TOKEN_LENGTH ->
@@ -956,7 +959,7 @@ private fun Connection.listFeatureTaskWorkflowRows(
   }
 }
 
-private fun java.sql.ResultSet.toWorkflowStateRecord(): WorkflowStateRecord = WorkflowStateRecord(
+private fun ResultSet.toWorkflowStateRecord(): WorkflowStateRecord = WorkflowStateRecord(
   workflowId = getString("workflow_id"),
   sessionId = getString("session_id"),
   workflowName = getString("workflow_name"),
@@ -973,7 +976,7 @@ private fun java.sql.ResultSet.toWorkflowStateRecord(): WorkflowStateRecord = Wo
   finishedAt = getString("finished_at"),
 )
 
-private fun java.sql.ResultSet.toFeatureTaskWorkflowStateRecord(): WorkflowStateRecord {
+private fun ResultSet.toFeatureTaskWorkflowStateRecord(): WorkflowStateRecord {
   val workflowId = getString("workflow_id")
   val workflowName = getString("workflow_name")
   if (workflowName != "bill-feature-task") {

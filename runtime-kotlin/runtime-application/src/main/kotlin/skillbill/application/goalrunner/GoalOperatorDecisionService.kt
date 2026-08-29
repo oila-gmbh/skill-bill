@@ -8,6 +8,7 @@ import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 
 @Inject
 class GoalOperatorDecisionService(
@@ -48,7 +49,7 @@ class GoalOperatorDecisionService(
     request: GoalRunnerOperatorDecisionRequest,
     parentWorkflowId: String,
     childWorkflowId: String,
-    pause: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause,
+    pause: FeatureTaskRuntimeAuditGapPause,
   ): GoalRunnerOperatorDecisionResult {
     if (pause.grantConsumed) {
       return GoalRunnerOperatorDecisionResult.Rejected(

@@ -18,6 +18,8 @@ import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.DocumentedNoOpCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.contracts.JsonSupport
+import skillbill.application.workflow.model.WorkflowLatestResult.Error
+import skillbill.application.workflow.model.WorkflowLatestResult.Ok
 
 @Inject
 class WorkflowTopLevelCommands(
@@ -310,9 +312,9 @@ private fun resolveWorkflowId(
   workflowId?.let { return WorkflowIdResolution(workflowId = it) }
   require(latest) { "Provide a workflow_id or pass --latest." }
   return when (val latestResult = service.latest(kind, state.dbOverride)) {
-    is skillbill.application.workflow.model.WorkflowLatestResult.Ok ->
+    is Ok ->
       WorkflowIdResolution(workflowId = latestResult.summary.workflowId)
-    is skillbill.application.workflow.model.WorkflowLatestResult.Error ->
+    is Error ->
       WorkflowIdResolution(workflowId = null, errorPayload = latestResult.toCliMap())
   }
 }

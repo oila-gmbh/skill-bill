@@ -39,7 +39,7 @@ import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowSnapshotView
-import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
@@ -55,6 +55,8 @@ import java.nio.file.Path
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlin.random.Random
+import skillbill.workflow.engine.model.WorkflowContinueDecision
+import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 
 private val resolveEffectiveSessionId =
   { kind: WorkflowFamilyKind, sessionId: String, definition: WorkflowDefinition, workflowId: String ->
@@ -310,7 +312,7 @@ class WorkflowService(
 
   private fun abandonRuntimeFeatureTask(
     unitOfWork: UnitOfWork,
-    existing: skillbill.workflow.engine.model.WorkflowStateSnapshot,
+    existing: WorkflowStateSnapshot,
     normalizedReason: String,
   ): WorkflowUpdateResult {
     val family = WorkflowFamily.TASK_RUNTIME
@@ -367,7 +369,7 @@ class WorkflowService(
     return WorkflowUpdateResult.Ok(
       workflowId = updated.workflowId,
       dbPath = unitOfWork.dbPath.toString(),
-      acknowledgement = skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView(
+      acknowledgement = WorkflowUpdateAcknowledgementView(
         status = "ok",
         workflowId = updated.workflowId,
         workflowName = updated.workflowName,
@@ -910,7 +912,7 @@ private fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput =
   sessionId = sessionId,
 )
 
-internal fun skillbill.workflow.engine.model.WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput =
+internal fun WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput =
   WorkflowUpdateInput(
     workflowStatus = "running",
     currentStepId = resumeStepId,

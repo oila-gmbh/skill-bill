@@ -14,6 +14,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.sql.ResultSet
 
 class SQLiteWorkListRepository(
   private val connection: Connection,
@@ -91,7 +92,7 @@ private fun fractionalSecondsSql(columnName: String): String = """
   END
 """.trimIndent()
 
-private fun java.sql.ResultSet.toWorkItem(): WorkItem {
+private fun ResultSet.toWorkItem(): WorkItem {
   val workflowId = required("workflow_id")
   val kindValue = required("workflow_kind")
   val kind = WorkItemKind.entries.firstOrNull { it.wireValue == kindValue }
@@ -121,7 +122,7 @@ private val validWorkStates: Set<String> =
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses +
     FeatureVerifyWorkflowDefinition.definition.workflowStatuses
 
-private fun java.sql.ResultSet.required(column: String): String {
+private fun ResultSet.required(column: String): String {
   val value = getString(column) ?: invalid(getString("workflow_id").orEmpty(), "missing $column")
   if (value.isBlank()) invalid(getString("workflow_id").orEmpty(), "missing $column")
   if (value != value.trim()) invalid(getString("workflow_id").orEmpty(), "invalid $column '$value'")

@@ -5,6 +5,8 @@ import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import java.time.Duration
+import java.time.Instant
 
 /**
  * Durable parent-owned goal controls. These records are authoritative runtime state and must not
@@ -103,7 +105,7 @@ private fun GoalRunnerControlState.advancedBy(heartbeatAt: String): GoalRunnerCo
 private fun advanceAccumulator(accumulatedMs: Long, asOf: String?, heartbeatAt: String): Pair<Long, String?> {
   val previous = asOf ?: return accumulatedMs to heartbeatAt
   val elapsedMs = runCatching {
-    java.time.Duration.between(java.time.Instant.parse(previous), java.time.Instant.parse(heartbeatAt)).toMillis()
+    Duration.between(Instant.parse(previous), Instant.parse(heartbeatAt)).toMillis()
   }.getOrNull() ?: return accumulatedMs to heartbeatAt
   val counted = elapsedMs.coerceIn(0, GOAL_ACTIVE_HEARTBEAT_GAP_LIMIT_MS)
   return accumulatedMs + counted to heartbeatAt

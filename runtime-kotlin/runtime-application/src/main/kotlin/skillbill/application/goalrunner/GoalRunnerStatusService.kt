@@ -45,7 +45,7 @@ import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.NoopGoalRunnerAttemptLedgerStore
-import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
@@ -67,6 +67,8 @@ import java.time.Clock
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent
+import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 
 private const val NO_CURRENT_SUBTASK_ID = 0
 private const val NO_CURRENT_SUBTASK_ACTION = "none"
@@ -595,7 +597,7 @@ class GoalRunnerStatusService(
       null
     }
     val planningIdentity = if (request.includeSharedPreplan && expectedSharedDigest != null) {
-      skillbill.ports.goalrunner.model.GoalPlanningIdentity(
+      GoalPlanningIdentity(
         parentGoalWorkflowId = loaded.parentWorkflowId,
         normalizedIssueKey = loaded.manifest.issueKey.trim().uppercase(),
         repositoryIdentity = goalRepositoryIdentity(
@@ -711,7 +713,7 @@ class GoalRunnerStatusService(
 
   private fun deleteIncompatibleChildWorkflow(
     request: GoalRunnerResetRequest,
-    authoritativeState: skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState,
+    authoritativeState: GoalRunnerManifestState,
   ): GoalRunnerResetResult {
     val subtaskId = requireNotNull(request.subtaskId)
     val selected = authoritativeState.manifest.subtasks.singleOrNull { it.id == subtaskId }
@@ -1065,7 +1067,7 @@ private fun DecompositionManifest.toResetSnapshot(): GoalRunnerResetSnapshot = G
   },
 )
 
-private fun skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent.toStatusMap(): Map<String, Any?> =
+private fun GoalObservabilityProgressEvent.toStatusMap(): Map<String, Any?> =
   linkedMapOf(
     "issue_key" to issueKey,
     "subtask_id" to subtaskId,

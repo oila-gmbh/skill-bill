@@ -33,6 +33,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 
 private const val EXPANSION_ID_HEX_LENGTH = 24
 
@@ -447,7 +448,7 @@ private fun resolveRepositoryFile(root: Path, normalized: String): Path? {
   var component = root
   root.relativize(candidate).forEach { segment ->
     component = component.resolve(segment)
-    if (!Files.exists(component, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return null
+    if (!Files.exists(component, NOFOLLOW_LINKS)) return null
     require(!Files.isSymbolicLink(component)) { "Evidence paths must not contain symbolic links." }
   }
   val real = candidate.toRealPath()

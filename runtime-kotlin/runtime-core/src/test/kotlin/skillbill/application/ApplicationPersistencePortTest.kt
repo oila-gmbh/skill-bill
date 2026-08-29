@@ -51,8 +51,8 @@ import skillbill.ports.review.ReviewRunCompletenessRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.review.UnavailableReviewRunCompletenessRepository
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.workflow.WorkflowStateRepository
+import UnitOfWork
+import WorkflowStateRepository
 import skillbill.ports.workflow.WorkflowStatsRepository
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
@@ -129,10 +129,15 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
+import assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 
 internal fun WorkflowService.openTestFeatureTask(
   kind: WorkflowFamilyKind,
@@ -207,7 +212,7 @@ class ApplicationPersistencePortTest {
     val database = FakeDatabaseSessionFactory(reviews = FakeReviewRepository(sourceFindingExists = true))
     val service = LearningService(database)
 
-    kotlin.test.assertFailsWith<IllegalArgumentException> {
+    assertFailsWith<IllegalArgumentException> {
       service.add(
         AddLearningInput(
           scope = LearningScope.SKILL,
@@ -1932,8 +1937,8 @@ class ApplicationPersistencePortTest {
 
   @Test
   fun `goal planning preparation is a separate port unreachable from standalone feature-task persistence`() {
-    val goalPlanningPort = skillbill.ports.goalrunner.GoalPlanningPreparationRepository::class.java
-    val workflowStatePort = skillbill.ports.workflow.WorkflowStateRepository::class.java
+    val goalPlanningPort = GoalPlanningPreparationRepository::class.java
+    val workflowStatePort = WorkflowStateRepository::class.java
 
     assertTrue(
       goalPlanningPort !in workflowStatePort.interfaces,
@@ -1966,10 +1971,10 @@ class ApplicationPersistencePortTest {
       "GoalPlanningPreparationRepository must not expose java.sql types: ${sqlTypedMembers.map { it.name }}",
     )
     assertTrue(
-      goalPlanningPort.isAssignableFrom(skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository::class.java),
+      goalPlanningPort.isAssignableFrom(EmptyGoalPlanningPreparationRepository::class.java),
       "EmptyGoalPlanningPreparationRepository must satisfy the goal-planning port for test fakes.",
     )
-    val unitOfWorkClass = skillbill.ports.db.UnitOfWork::class.java
+    val unitOfWorkClass = UnitOfWork::class.java
     val unitOfWorkGetter =
       unitOfWorkClass.declaredMethods.single { method -> method.name == "getGoalPlanningPreparations" }
     assertTrue(
@@ -2015,8 +2020,8 @@ private class FakeDatabaseSessionFactory(
       this@FakeDatabaseSessionFactory.telemetryReconciliation
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
-    override val workList = skillbill.ports.work.EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+    override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 
@@ -2460,10 +2465,10 @@ private class FakeTelemetryClient : TelemetryClient {
 
 private object NoopWorkflowStateRepository : WorkflowStateRepository {
   override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity,
+    identity: FeatureTaskExecutionIdentity,
   ) = Unit
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate>()
+    emptyList<FeatureTaskWorkflowCandidate>()
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
 
   override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) = Unit
@@ -2826,10 +2831,10 @@ private class InMemoryWorkflowStateRepository(
   private val verifySessionSummary: FeatureVerifySessionSummary? = null,
 ) : WorkflowStateRepository {
   override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity,
+    identity: FeatureTaskExecutionIdentity,
   ) = Unit
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate>()
+    emptyList<FeatureTaskWorkflowCandidate>()
   private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
   private val verifyRows = linkedMapOf<String, WorkflowStateRecord>()
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()

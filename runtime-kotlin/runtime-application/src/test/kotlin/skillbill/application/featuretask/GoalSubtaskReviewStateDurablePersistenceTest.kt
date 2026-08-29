@@ -40,6 +40,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 
 /**
  * AC-014 and AC-016: the pause data is only useful if it survives the process that wrote it. These
@@ -242,7 +243,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
 
   // Real adapter keeps ancestry/recovery proofs honest; FQN avoids an infrastructure import that
   // RuntimeArchitectureTest bans from application test sources.
-  private fun realGitOps(): WorkflowGitOperations = skillbill.infrastructure.fs.GitWorkflowGitOperations()
+  private fun realGitOps(): WorkflowGitOperations = GitWorkflowGitOperations()
 
   private fun pausedState(): GoalSubtaskReviewState {
     val initial = GoalSubtaskReviewState.initial(

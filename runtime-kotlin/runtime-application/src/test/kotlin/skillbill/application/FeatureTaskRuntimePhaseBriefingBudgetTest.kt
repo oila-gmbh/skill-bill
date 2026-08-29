@@ -14,13 +14,15 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 
 class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
   @Test
   fun `an oversized upstream projection is delivered whole rather than truncated`() {
     val oversizedBytes = 400_000
-    val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
       "fixture-checkpoint",
     )
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
@@ -41,7 +43,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     val planBody = "p".repeat(4000)
     val implementBody = "i".repeat(4000)
     val reviewBody = "r".repeat(4000)
-    val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
       "fixture-checkpoint",
     )
     val recordedOutputs = listOf(
@@ -181,7 +183,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   @Test
   fun `shared evidence projection size is independent of branch diff size for review and audit`() {
     fun evidence(hunksPerFile: Int) =
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference(
+      FeatureTaskRuntimeSharedReviewEvidenceReference(
         storePath = ".skill-bill/run-evidence/wf/fp",
         checkpointFingerprint = "fp",
         baseRef = "base",
@@ -203,7 +205,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         projectionDeclarations = listOf(
           FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseId),
         ),
-        repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+        repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(
           fingerprint = "fp",
         ),
       )

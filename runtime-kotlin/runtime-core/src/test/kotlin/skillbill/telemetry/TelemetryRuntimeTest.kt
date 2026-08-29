@@ -19,6 +19,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import java.nio.file.Path
 
 class TelemetryRuntimeTest {
   @Test
@@ -255,7 +256,7 @@ private fun remoteStatsResponseWithNullCapabilities(): HttpResponse = HttpRespon
 )
 
 private fun telemetrySettings(
-  configPath: java.nio.file.Path,
+  configPath: Path,
   proxyUrl: String = "https://telemetry.example.dev/ingest",
   customProxyUrl: String? = proxyUrl,
 ): TelemetrySettings = TelemetrySettings(

@@ -29,6 +29,10 @@ import java.time.ZoneOffset
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 
 /**
  * Covers ChildAwareGoalPlanningRefreshLiveness: parent-lease absence is IDLE for the owning
@@ -184,8 +188,8 @@ private class SeedableRefreshLivenessDatabase(
       get() = error("unused by refresh liveness tests")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by refresh liveness tests")
     override val workflowStates: WorkflowStateRepository = repository
-    override val workList = skillbill.ports.work.EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+    override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 
@@ -211,11 +215,11 @@ private class SeedableRefreshLivenessWorkflowStates : WorkflowStateRepository {
   }
 
   override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity,
+    identity: FeatureTaskExecutionIdentity,
   ) = Unit
 
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate>()
+    emptyList<FeatureTaskWorkflowCandidate>()
 
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
 

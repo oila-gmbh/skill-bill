@@ -10,6 +10,8 @@ import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
+import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
+import java.security.MessageDigest
 
 interface AgentRunAdapter {
   val agent: InstallAgent
@@ -158,7 +160,7 @@ class ProcessAgentRunAdapter(
 }
 
 private fun sha256(bytes: ByteArray): String =
-  java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+  MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
 data class DecodedAgentRunOutput(
   val text: String,
@@ -192,7 +194,7 @@ interface AgentRunOutputDecoder {
        * remaining envelopes carry no answer we can read, so the launch is an empty harvest.
        */
       override fun undecodable(error: Throwable): Boolean =
-        error is skillbill.infrastructure.fs.CursorReviewStreamMalformedError
+        error is CursorReviewStreamMalformedError
     }
 
     private fun decoder(body: (String) -> DecodedAgentRunOutput): AgentRunOutputDecoder =

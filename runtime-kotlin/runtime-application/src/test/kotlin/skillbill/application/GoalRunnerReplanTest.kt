@@ -13,6 +13,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED
 
 class GoalRunnerReplanTest {
   private val idleClock: Clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC)
@@ -343,7 +347,7 @@ class GoalRunnerReplanTest {
       forceSharedDigestMismatchOnReplan = true
       seedIdleLease()
     }
-    val failure = assertFailsWith<skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError> {
+    val failure = assertFailsWith<IncompatibleGoalPlanningPreparationRecoveryError> {
       GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
         .replan(GoalRunnerReplanRequest("SKILL-56", 3, includeSharedPreplan = true))
     }
@@ -377,7 +381,7 @@ class GoalRunnerReplanTest {
 
     val status = requireNotNull(
       service.status(
-        skillbill.application.goalrunner.model.GoalRunnerStatusRequest(
+        GoalRunnerStatusRequest(
           issueKey = "SKILL-56",
           invokedAgentId = "codex",
         ),
@@ -385,7 +389,7 @@ class GoalRunnerReplanTest {
     )
     val planning = requireNotNull(status.planning)
     assertTrue(!planning.sharedPreplanPrepared)
-    assertEquals(skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED, planning.state)
+    assertEquals(NOT_STARTED, planning.state)
     assertTrue(
       planning.reason!!.contains("not started") || planning.reason!!.contains("preplan"),
       planning.reason,
@@ -407,7 +411,7 @@ class GoalRunnerReplanTest {
   )
 
   private fun refusalBaseStore(
-    base: skillbill.workflow.decomposition.model.DecompositionManifest = refusalBaseManifest(),
+    base: DecompositionManifest = refusalBaseManifest(),
   ): InMemoryGoalManifestStore = InMemoryGoalManifestStore(base).apply {
     plannedSubtaskIds = mutableSetOf(1, 2)
   }

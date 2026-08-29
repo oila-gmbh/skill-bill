@@ -32,6 +32,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 
 class RemediationBaseReconciliationUnderAmendTest {
   private val workflowId = "wftr-skill190-reconcile"
@@ -392,5 +393,5 @@ class RemediationBaseReconciliationUnderAmendTest {
     return output
   }
 
-  private fun realGitOps(): WorkflowGitOperations = skillbill.infrastructure.fs.GitWorkflowGitOperations()
+  private fun realGitOps(): WorkflowGitOperations = GitWorkflowGitOperations()
 }

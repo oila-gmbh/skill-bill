@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
 
 class FeatureTaskRuntimeAuditGenerationStoreTest {
   private val opened = mutableListOf<Connection>()
@@ -71,7 +72,7 @@ class FeatureTaskRuntimeAuditGenerationStoreTest {
 
   @Test
   fun `the port exposes no update or delete of an existing generation outside quarantine`() {
-    val members = skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository::class.java
+    val members = FeatureTaskRuntimeAuditGenerationRepository::class.java
       .declaredMethods
       .map { it.name }
       .toSet()

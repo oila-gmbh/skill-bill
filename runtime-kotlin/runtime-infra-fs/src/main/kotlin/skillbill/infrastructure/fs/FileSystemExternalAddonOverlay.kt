@@ -26,6 +26,9 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.io.IOException
+import skillbill.scaffold.model.PlatformManifest
+import org.yaml.snakeyaml.error.YAMLException
 
 private const val ADDONS_DIR = "addons"
 private const val MANIFEST_FILE = "platform.yaml"
@@ -84,7 +87,7 @@ class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
 
   private fun validateAndPlan(
     source: ExternalAddonSource,
-    installed: skillbill.scaffold.model.PlatformManifest,
+    installed: PlatformManifest,
     collisionIndex: CollisionIndex,
   ): SourcePlan {
     val slug = source.platform
@@ -187,7 +190,7 @@ class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
     }
     val raw = try {
       Yaml().load<Any?>(Files.readString(manifestPath))
-    } catch (error: org.yaml.snakeyaml.error.YAMLException) {
+    } catch (error: YAMLException) {
       throw ExternalAddonOverlayError(
         "External addon source for platform '$slug': manifest '$manifestPath' is not valid YAML: ${error.message}",
         error,
@@ -405,7 +408,7 @@ class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
     Files.writeString(tempFile, Yaml().dump(root))
     try {
       atomicMove(tempFile, manifestPath)
-    } catch (error: java.io.IOException) {
+    } catch (error: IOException) {
       Files.deleteIfExists(tempFile)
       throw error
     }

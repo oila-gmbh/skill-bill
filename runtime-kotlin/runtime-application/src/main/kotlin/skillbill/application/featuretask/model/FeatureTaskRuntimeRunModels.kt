@@ -13,6 +13,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclarat
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration
+import skillbill.agentaddon.model.AgentAddonSelection
 
 /**
  * The request that drives one deterministic phase-loop run. It carries only inert values; the
@@ -71,8 +72,8 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
   val subtaskName: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
-  val agentAddonSelection: skillbill.agentaddon.model.AgentAddonSelection =
-    skillbill.agentaddon.model.AgentAddonSelection(),
+  val agentAddonSelection: AgentAddonSelection =
+    AgentAddonSelection(),
 ) {
   init {
     require(parentIssueKey.isNotBlank()) { "parentIssueKey is required." }

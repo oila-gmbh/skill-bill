@@ -18,6 +18,7 @@ import skillbill.tempDbConnection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import skillbill.db.core.DatabaseRuntime
 
 class ReviewStageStatePersistenceTest {
   @Test
@@ -35,7 +36,7 @@ class ReviewStageStatePersistenceTest {
       assertEquals(2, repository.fetchFindingVerdicts(RUN_ID).size)
     }
 
-    skillbill.db.core.DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteReviewRunCompletenessRepository(connection)
       assertEquals(
         listOf(fixtures.adjudication, fixtures.verification),

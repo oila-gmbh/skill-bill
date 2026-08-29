@@ -9,6 +9,9 @@ import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpStdioServer
 import skillbill.mcp.core.McpToolSpec
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
+import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
@@ -593,7 +596,7 @@ private fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
   DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
     val store = LifecycleTelemetryStore(connection)
     store.goalStarted(
-      skillbill.telemetry.model.GoalStartedRecord(
+      GoalStartedRecord(
         issueKey = "SKILL-66",
         featureName = "goal telemetry",
         workflowId = workflowId,
@@ -605,7 +608,7 @@ private fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
       level = "full",
     )
     store.goalSubtaskFinished(
-      skillbill.telemetry.model.GoalSubtaskFinishedRecord(
+      GoalSubtaskFinishedRecord(
         issueKey = "SKILL-66",
         workflowId = workflowId,
         subtaskId = 1,
@@ -620,7 +623,7 @@ private fun seedGoalBlockedRun(dbPath: Path, workflowId: String) {
       "full",
     )
     store.goalFinished(
-      skillbill.telemetry.model.GoalFinishedRecord(
+      GoalFinishedRecord(
         issueKey = "SKILL-66",
         workflowId = workflowId,
         status = "blocked",

@@ -16,6 +16,7 @@ import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 
 object GoalRunnerQualityGateSelectionResolver {
   fun resolve(manifest: DecompositionManifest, subtaskId: Int): FeatureTaskRuntimeQualityGateSelection {
@@ -105,7 +106,7 @@ object GoalRunnerWorkerSubtaskScheduler {
     return GoalRunnerWorkerSubtaskSchedulingResult(nextManifest.withParentStatusForWorkerRequests(), scheduledOutcomes)
   }
 
-  private fun skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest.toSubtask(
+  private fun GoalRunnerWorkerSubtaskRequest.toSubtask(
     manifest: DecompositionManifest,
   ): DecompositionSubtask {
     val id = manifest.nextSubtaskId()
@@ -119,7 +120,7 @@ object GoalRunnerWorkerSubtaskScheduler {
     )
   }
 
-  private fun skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest.normalizedDependencies(
+  private fun GoalRunnerWorkerSubtaskRequest.normalizedDependencies(
     manifest: DecompositionManifest,
   ): List<Int> {
     val requestedDependencies = dependsOnSubtaskIds.ifEmpty {

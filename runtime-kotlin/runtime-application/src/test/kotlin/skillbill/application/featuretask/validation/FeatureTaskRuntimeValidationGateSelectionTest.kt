@@ -23,6 +23,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.scaffold.model.RoutingSignals
 
 class FeatureTaskRuntimeValidationGateSelectionTest {
   @Test
@@ -173,7 +174,7 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
     // generic. Catalog order lists generic first — the old selector blocked build on that.
     val generic = reviewFallbackPackWithoutGate()
     val kotlin = kotlinPackWithoutGate().copy(
-      routingSignals = skillbill.scaffold.model.RoutingSignals(
+      routingSignals = RoutingSignals(
         strong = listOf(".kt"),
         tieBreakers = emptyList(),
         path = listOf(".kt"),

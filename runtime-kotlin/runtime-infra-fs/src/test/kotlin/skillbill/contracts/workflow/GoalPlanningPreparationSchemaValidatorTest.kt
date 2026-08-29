@@ -3,6 +3,7 @@ package skillbill.contracts.workflow
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
+import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 
 class GoalPlanningPreparationSchemaValidatorTest {
   @Test
@@ -18,7 +19,7 @@ class GoalPlanningPreparationSchemaValidatorTest {
       sharedEnvelope() + ("unexpected" to true),
       planEnvelope() + ("record_type" to "shared_preplan"),
     ).forEach { envelope ->
-      assertFailsWith<skillbill.error.InvalidGoalPlanningPreparationSchemaError> {
+      assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
         GoalPlanningPreparationSchemaValidator.validate(envelope, "fixture")
       }
     }
@@ -32,7 +33,7 @@ class GoalPlanningPreparationSchemaValidatorTest {
       sharedEnvelope() + ("payload_sha256" to "not-a-hash"),
       planEnvelope() + ("plan_payload" to ""),
     ).forEach { envelope ->
-      assertFailsWith<skillbill.error.InvalidGoalPlanningPreparationSchemaError> {
+      assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
         GoalPlanningPreparationSchemaValidator.validate(envelope, "fixture")
       }
     }
@@ -41,7 +42,7 @@ class GoalPlanningPreparationSchemaValidatorTest {
   @Test
   fun `legacy phase output provenance tells operators to hard reset`() {
     val legacyProvenance = provenance() + ("phase_output_contract_version" to "0.2")
-    val error = assertFailsWith<skillbill.error.InvalidGoalPlanningPreparationSchemaError> {
+    val error = assertFailsWith<InvalidGoalPlanningPreparationSchemaError> {
       GoalPlanningPreparationSchemaValidator.validate(
         sharedEnvelope() + ("provenance" to legacyProvenance),
         "goal-1",

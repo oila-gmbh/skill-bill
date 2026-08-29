@@ -5,6 +5,9 @@ package skillbill.review.context.model
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode.DELEGATED
+import skillbill.workflow.goal.model.CodeReviewExecutionMode.INLINE
 
 const val REVIEW_CONTEXT_BUDGET_EXCEEDED: String = "review_context_budget_exceeded"
 
@@ -20,10 +23,10 @@ const val REVIEW_SPEC_INTENT_PROJECTION_BUDGET: String = "spec_intent_projection
 enum class ResolvedReviewExecutionMode { INLINE, DELEGATED }
 
 /** A resolved depth is always a concrete tier, so it maps back onto the requested-mode vocabulary. */
-fun ResolvedReviewExecutionMode.toCodeReviewExecutionMode(): skillbill.workflow.goal.model.CodeReviewExecutionMode =
+fun ResolvedReviewExecutionMode.toCodeReviewExecutionMode(): CodeReviewExecutionMode =
   when (this) {
-    ResolvedReviewExecutionMode.INLINE -> skillbill.workflow.goal.model.CodeReviewExecutionMode.INLINE
-    ResolvedReviewExecutionMode.DELEGATED -> skillbill.workflow.goal.model.CodeReviewExecutionMode.DELEGATED
+    ResolvedReviewExecutionMode.INLINE -> INLINE
+    ResolvedReviewExecutionMode.DELEGATED -> DELEGATED
   }
 
 private val SHA256_HEX = Regex("[a-f0-9]{64}")

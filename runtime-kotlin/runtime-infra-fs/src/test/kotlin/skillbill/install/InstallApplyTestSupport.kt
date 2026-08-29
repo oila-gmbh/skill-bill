@@ -27,6 +27,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import java.io.File
 
 open class InstallApplyTestSupport {
   protected val tempDirs = mutableListOf<Path>()
@@ -59,7 +60,7 @@ open class InstallApplyTestSupport {
       .sorted()
       .toList()
       .associate { path ->
-        root.relativize(path).toString().replace(java.io.File.separatorChar, '/') to Files.readString(path)
+        root.relativize(path).toString().replace(File.separatorChar, '/') to Files.readString(path)
       }
       // SKILL-71: install legitimately scaffolds repo-local config outputs under
       // `.skill-bill/` and the root `.gitignore`. snapshotSource still guards the

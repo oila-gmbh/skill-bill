@@ -16,6 +16,8 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 
 class FeatureTaskRuntimePlanningProjectionEdgeTest {
   @Test
@@ -152,7 +154,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
 
   @Test
   fun `diff and current_unit_of_work name the delivered shared evidence projection instead of self-read`() {
-    val evidence = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference(
+    val evidence = FeatureTaskRuntimeSharedReviewEvidenceReference(
       storePath = ".skill-bill/run-evidence/wf/fp",
       checkpointFingerprint = "fp",
       baseRef = "base",
@@ -395,9 +397,9 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     declarations: List<PhaseHandoffProjectionDeclaration>,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
     derivedContextKeys: List<String> = emptyList(),
-    sharedReviewEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
-    checkpoint: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint =
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+    sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
+    checkpoint: FeatureTaskRuntimeRepositoryCheckpoint =
+      FeatureTaskRuntimeRepositoryCheckpoint(
         fingerprint = "fixture-checkpoint-1",
       ),
   ) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(

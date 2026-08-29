@@ -32,6 +32,11 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.thread
 import kotlin.math.min
 import kotlin.time.DurationUnit
+import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
+import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import java.nio.charset.CoderResult
+import java.util.concurrent.ConcurrentHashMap
+import java.security.MessageDigest
 
 @Inject
 class JvmAgentRunProcessRunner : AgentRunProcessRunner {
@@ -66,9 +71,9 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
   }
 
   companion object {
-    private val liveProcesses = java.util.concurrent.ConcurrentHashMap.newKeySet<Process>()
+    private val liveProcesses = ConcurrentHashMap.newKeySet<Process>()
     private val liveEndpoints =
-      java.util.concurrent.ConcurrentHashMap.newKeySet<GovernedReviewEvidenceEndpointHandle>()
+      ConcurrentHashMap.newKeySet<GovernedReviewEvidenceEndpointHandle>()
 
     init {
       Runtime.getRuntime().addShutdownHook(object : Thread("skill-bill-agent-run-shutdown") {
@@ -733,17 +738,17 @@ private class ProcessLifecycleEmitter(private val request: AgentRunProcessReques
   }
 }
 
-private fun skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe.safeDeclaredProgress():
+private fun AgentRunDeclaredProgressProbe.safeDeclaredProgress():
   AgentRunDeclaredProgressSnapshot? =
   runCatching { latestDeclaredProgress() }.getOrNull()
 
 private fun AgentRunMcpStartupProbe.safeStartupObserved(): Boolean =
   runCatching { startupObserved() }.getOrDefault(false)
 
-private fun skillbill.ports.agentrun.model.AgentRunProgressProbe.safeProgressToken(): String? =
+private fun AgentRunProgressProbe.safeProgressToken(): String? =
   runCatching { progressToken() }.getOrNull()
 
-private fun skillbill.ports.agentrun.model.AgentRunProgressProbe.safeProgressLabel(): String? =
+private fun AgentRunProgressProbe.safeProgressLabel(): String? =
   runCatching { progressLabel() }.getOrNull()
 
 private fun AgentRunActivityProbe.safeActivityToken(): String? = runCatching { activityToken() }.getOrNull()
@@ -809,7 +814,7 @@ private class CappedUtf8Drain(
 
   @Volatile private var truncated = false
   private var totalByteSize = 0L
-  private val digest = java.security.MessageDigest.getInstance("SHA-256")
+  private val digest = MessageDigest.getInstance("SHA-256")
   private val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
     try {
       input.use { stream ->
@@ -881,7 +886,7 @@ private class CappedUtf8Drain(
     return if (newline < 0) bytes else bytes.copyOfRange(newline + 1, bytes.size)
   }
 
-  private fun decodeAvailable(decoded: CharBuffer, forwardToSink: Boolean, decode: () -> java.nio.charset.CoderResult) {
+  private fun decodeAvailable(decoded: CharBuffer, forwardToSink: Boolean, decode: () -> CoderResult) {
     while (true) {
       val result = decode()
       decoded.flip()

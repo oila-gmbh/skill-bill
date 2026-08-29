@@ -20,6 +20,8 @@ import java.nio.file.attribute.DosFileAttributeView
 import java.nio.file.attribute.PosixFileAttributeView
 import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 data class NativeAgentLinkOutcome(
   val linked: List<Path>,
@@ -292,7 +294,7 @@ object InstallNativeAgentOperations {
           "Installed review catalog source must be a regular manifest-declared file: '$path'."
         }
         target.parent?.let(Files::createDirectories)
-        Files.copy(path, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        Files.copy(path, target, REPLACE_EXISTING)
       }
     }
 
@@ -309,9 +311,9 @@ object InstallNativeAgentOperations {
     }
 
     if (Files.exists(catalogRoot, LinkOption.NOFOLLOW_LINKS)) {
-      Files.move(catalogRoot, superseded, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+      Files.move(catalogRoot, superseded, ATOMIC_MOVE)
     }
-    Files.move(staging, catalogRoot, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+    Files.move(staging, catalogRoot, ATOMIC_MOVE)
     deleteRecursively(superseded)
   }
 

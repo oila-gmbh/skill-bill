@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import java.sql.SQLException
 
 class GoalPlanningPhaseOutputMigrationTest {
   @Test
@@ -56,7 +57,7 @@ class GoalPlanningPhaseOutputMigrationTest {
         "legacy-plan-repair-evidence",
         textScalar(connection, "SELECT plan_repair_evidence_json FROM goal_planning_preparations"),
       )
-      assertFailsWith<java.sql.SQLException> {
+      assertFailsWith<SQLException> {
         seedPlanningRow(connection, phaseOutputContractVersion = "0.1", workflowId = "wfl-incompatible")
       }
     }

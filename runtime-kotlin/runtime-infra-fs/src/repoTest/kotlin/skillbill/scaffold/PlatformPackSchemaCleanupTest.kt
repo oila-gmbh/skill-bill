@@ -26,6 +26,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
+import skillbill.testing.repoRootFromTest
 
 /**
  * SKILL-48 cleanup acceptance tests covering C2, C4, C7, and C8. Each test below pins one
@@ -77,7 +78,7 @@ class PlatformPackSchemaCleanupTest {
   fun `C7 canonical schema on disk passes identity assertion`() {
     // Pin the happy path: the bundled canonical schema MUST satisfy both halves of the
     // assertion. If the schema is reshape mid-flight this catches the drift immediately.
-    val schemaPath: Path = skillbill.testing.repoRootFromTest()
+    val schemaPath: Path = repoRootFromTest()
       .resolve(PlatformPackSchemaPaths.REPO_RELATIVE_PATH)
     val node = YAMLMapper().readTree(Files.readString(schemaPath))
     // Must not throw.
@@ -126,7 +127,7 @@ class PlatformPackSchemaCleanupTest {
 
   @Test
   fun `workflow-state canonical schema on disk passes identity assertion`() {
-    val schemaPath: Path = skillbill.testing.repoRootFromTest()
+    val schemaPath: Path = repoRootFromTest()
       .resolve(WorkflowStateSchemaPaths.REPO_RELATIVE_PATH)
     val node = YAMLMapper().readTree(Files.readString(schemaPath))
     // Must not throw.
@@ -177,7 +178,7 @@ class PlatformPackSchemaCleanupTest {
 
   @Test
   fun `install-plan canonical schema on disk passes identity assertion`() {
-    val schemaPath: Path = skillbill.testing.repoRootFromTest()
+    val schemaPath: Path = repoRootFromTest()
       .resolve(InstallPlanSchemaPaths.REPO_RELATIVE_PATH)
     val yamlText = Files.readString(schemaPath)
     // Must not throw.
@@ -227,7 +228,7 @@ class PlatformPackSchemaCleanupTest {
 
   @Test
   fun `native-agent composition canonical schema on disk passes identity assertion`() {
-    val schemaPath: Path = skillbill.testing.repoRootFromTest()
+    val schemaPath: Path = repoRootFromTest()
       .resolve(NativeAgentCompositionSchemaPaths.REPO_RELATIVE_PATH)
     val yamlText = Files.readString(schemaPath)
     // Must not throw.
@@ -266,7 +267,7 @@ class PlatformPackSchemaCleanupTest {
 
   @Test
   fun `C8 no migrated test still declares a private repoRootFromTest function`() {
-    val repoRoot = skillbill.testing.repoRootFromTest()
+    val repoRoot = repoRootFromTest()
     val migratedSources = listOf(
       repoRoot.resolve(
         "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/scaffold/" +
@@ -293,7 +294,7 @@ class PlatformPackSchemaCleanupTest {
       val nearIdenticalRedeclared = Regex("""private\s+fun\s+repoRoot\s*\(""").containsMatchIn(text)
       check(!nearIdenticalRedeclared) {
         "SKILL-48 C8 regression: $source still declares a private repoRoot() helper that duplicates " +
-          "skillbill.testing.repoRootFromTest()."
+          "repoRootFromTest()."
       }
     }
   }

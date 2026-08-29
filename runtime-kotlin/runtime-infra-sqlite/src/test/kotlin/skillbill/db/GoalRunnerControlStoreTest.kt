@@ -1,6 +1,7 @@
 package skillbill.db
 
 import skillbill.db.core.DatabaseRuntime
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.db.workflow.GoalRunnerControlStore
 import skillbill.db.workflow.LEGACY_UNKNOWN_PAUSED_AT
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -13,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import java.sql.Connection
 
 class GoalRunnerControlStoreTest {
   @Test
@@ -75,7 +77,7 @@ class GoalRunnerControlStoreTest {
         statement.setString(2, "parent-1")
         statement.executeUpdate()
       }
-      assertFailsWith<IllegalArgumentException> { store.controlState("parent-1") }
+      assertFailsWith<InvalidWorkflowStateSchemaError> { store.controlState("parent-1") }
     }
   }
 
@@ -143,7 +145,7 @@ class GoalRunnerControlStoreTest {
     }
   }
 
-  private fun writeRawControlState(connection: java.sql.Connection, parentWorkflowId: String, json: String) {
+  private fun writeRawControlState(connection: Connection, parentWorkflowId: String, json: String) {
     connection.prepareStatement(
       "UPDATE goal_runner_controls SET control_state_json = ? WHERE parent_workflow_id = ?",
     ).use { statement ->

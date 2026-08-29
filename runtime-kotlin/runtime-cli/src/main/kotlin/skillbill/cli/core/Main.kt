@@ -1,6 +1,7 @@
 package skillbill.cli.core
 
 import skillbill.cli.model.CliRuntimeContext
+import kotlin.system.exitProcess
 
 fun main(args: Array<String>) {
   val stdinText =
@@ -21,5 +22,5 @@ fun main(args: Array<String>) {
   if (result.stdout.isNotEmpty() && !result.stdout.endsWith("\n")) {
     println()
   }
-  kotlin.system.exitProcess(result.exitCode)
+  exitProcess(result.exitCode)
 }

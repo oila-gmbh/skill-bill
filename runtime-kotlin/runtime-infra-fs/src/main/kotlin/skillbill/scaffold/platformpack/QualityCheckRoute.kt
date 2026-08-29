@@ -3,6 +3,7 @@ package skillbill.scaffold.platformpack
 import skillbill.scaffold.validation.parseSkillFrontmatter
 import java.nio.file.Files
 import java.nio.file.Path
+import skillbill.scaffold.model.PlatformManifest
 
 data class QualityCheckRoute(
   val detectedStack: String,
@@ -56,7 +57,7 @@ private data class RoutingRank(
 }
 
 private data class RoutingCandidate(
-  val pack: skillbill.scaffold.model.PlatformManifest,
+  val pack: PlatformManifest,
   val matchedSignals: List<String>,
 ) {
   fun rank(): RoutingRank {

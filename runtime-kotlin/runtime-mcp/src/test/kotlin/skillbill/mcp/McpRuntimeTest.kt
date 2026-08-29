@@ -41,6 +41,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.cli.model.CliExecutionResult
 
 class McpRuntimeTest {
   @Test
@@ -944,7 +945,7 @@ private fun seedLearningScenario(tempDir: Path, env: Map<String, String>) {
   )
 }
 
-private fun assertMcpCliSuccess(result: skillbill.cli.model.CliExecutionResult) {
+private fun assertMcpCliSuccess(result: CliExecutionResult) {
   assertEquals(0, result.exitCode, result.stdout)
 }
 

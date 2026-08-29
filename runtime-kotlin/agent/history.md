@@ -1,3 +1,12 @@
+## [2026-08-29] SKILL-220 subtask 2 — Inline FQN sweep
+Areas: runtime-kotlin/{application,domain,ports,cli,mcp,core,infra-fs,infra-sqlite,build-logic}, intellij-plugin
+- Replaced inline fully-qualified type/callable references across scoped Kotlin trees with `import` plus simple name (~234 files); extension receivers (e.g. `PreparedStatement.bindOwnership`) follow the same rule.
+- Keep list unchanged: `package`/`import` lines, string literals (architecture allow-lists), generated sources, and compiler-required disambiguation after an alias fails.
+- Pattern: one qualification style — declare once via import, reference by simple name; collide with `import a.Foo as FooA` rather than leaving an inline FQN. reusable
+- Limitation: KDoc/comment FQNs optional; architecture-test string fixtures and `ARCHITECTURE.md` inventories left as documentation of names; Subtask 7 adds the enforcement scanner.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-29] SKILL-220 subtask 1 — Package clustering
 Areas: runtime-kotlin/{application,domain,ports,cli,mcp,core,infra-fs,infra-sqlite,infra-http}, orchestration/contracts, intellij-plugin/architecture
 - Dissolved catch-all `application.model` and multi-area `ports.persistence` into area-owned packages (featuretask, goalrunner/planning, review, telemetry, learning, workflow, work, diagnostics, updatecheck).

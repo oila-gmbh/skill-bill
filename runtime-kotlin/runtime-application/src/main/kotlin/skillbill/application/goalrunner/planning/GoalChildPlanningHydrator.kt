@@ -24,6 +24,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.time.Instant
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 
 internal data class GoalChildPlanningHydration(
   val currentStepId: String,
@@ -150,7 +151,7 @@ internal class GoalChildPlanningHydrator(
 
   private fun AcceptedFeatureTaskRuntimePhaseOutput.forPlanningImport(
     storedPayload: String,
-    storedEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    storedEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
   ): AcceptedFeatureTaskRuntimePhaseOutput = copy(
     normalizedOutput = if (repairEvidence == null) {
       normalizedOutput.copy(canonicalJson = storedPayload)
@@ -455,7 +456,7 @@ private fun completedStep(phaseId: String): Map<String, Any?> = linkedMapOf(
 private fun importedRecord(
   phaseId: String,
   payload: String,
-  repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
   importedAt: String,
 ): FeatureTaskRuntimePhaseRecord = FeatureTaskRuntimePhaseRecord(
   phaseId = phaseId,

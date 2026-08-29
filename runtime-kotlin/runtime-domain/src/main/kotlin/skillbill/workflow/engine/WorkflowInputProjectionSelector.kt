@@ -6,6 +6,7 @@ import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowInputProjection
 import skillbill.workflow.engine.model.WorkflowInputProjectionDeclaration
 import skillbill.workflow.engine.model.WorkflowSnapshotView
+import kotlinx.serialization.json.JsonObject
 
 const val RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY = "repository_evidence"
 
@@ -124,7 +125,7 @@ object WorkflowInputProjectionSelector {
       reject(definition, "projection for step '$stepId' exceeds its collection-item budget")
     }
     val bytes = JsonSupport.json.encodeToString(
-      kotlinx.serialization.json.JsonObject.serializer(),
+      JsonObject.serializer(),
       JsonSupport.mapToJsonObject(selected),
     ).toByteArray(Charsets.UTF_8).size
     if (bytes > declaration.maxUtf8Bytes) {

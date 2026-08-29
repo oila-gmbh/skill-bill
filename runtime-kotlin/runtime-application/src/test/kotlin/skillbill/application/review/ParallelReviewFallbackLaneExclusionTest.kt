@@ -11,6 +11,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import skillbill.review.plan.model.ReviewRootLanes
 
 class ParallelReviewFallbackLaneExclusionTest {
   private val genericAreas = listOf(
@@ -134,7 +135,7 @@ class ParallelReviewFallbackLaneExclusionTest {
   private fun rootLanesFromRouting(
     packs: List<PlatformManifest>,
     diff: String,
-  ): List<skillbill.review.plan.model.ReviewRootLanes> {
+  ): List<ReviewRootLanes> {
     val evidenceFiles = diff.lines()
       .filter { it.startsWith("+++ b/") }
       .map { it.removePrefix("+++ b/") }
@@ -155,7 +156,7 @@ class ParallelReviewFallbackLaneExclusionTest {
           )
         }
         .filter { it.ownedPaths.isNotEmpty() }
-      skillbill.review.plan.model.ReviewRootLanes(depthOffsets[root.slug] ?: 0, lanes)
+      ReviewRootLanes(depthOffsets[root.slug] ?: 0, lanes)
     }
     return rootLanes
   }

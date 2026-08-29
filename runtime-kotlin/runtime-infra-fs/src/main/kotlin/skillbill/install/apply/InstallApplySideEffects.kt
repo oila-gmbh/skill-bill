@@ -21,6 +21,8 @@ import skillbill.telemetry.parseTelemetryLevelValue
 import skillbill.telemetry.telemetryLevels
 import java.nio.file.Files
 import java.nio.file.Path
+import skillbill.install.model.McpMutationResult
+import skillbill.install.model.McpProfileOutcome
 
 internal fun applyTelemetryIntent(
   plan: InstallPlan,
@@ -188,7 +190,7 @@ private fun registerMcpAgent(
   )
 }
 
-private fun mcpRegistrationMessage(result: skillbill.install.model.McpMutationResult): String {
+private fun mcpRegistrationMessage(result: McpMutationResult): String {
   val base = if (result.changed) "MCP registration updated." else "MCP registration already up to date."
   if (result.profiles.size <= 1) {
     return base
@@ -202,7 +204,7 @@ private fun failedMcpRegistrationOutcome(
   message: String,
   warnings: MutableList<InstallApplyIssue>,
   error: Throwable? = null,
-  profiles: List<skillbill.install.model.McpProfileOutcome> = emptyList(),
+  profiles: List<McpProfileOutcome> = emptyList(),
 ): McpRegistrationApplyOutcome {
   val issue = InstallApplyIssue(
     kind = InstallApplyIssueKind.MCP_REGISTRATION_FAILED,

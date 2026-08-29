@@ -29,6 +29,10 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.name
 import kotlin.io.path.relativeTo
+import java.nio.file.StandardOpenOption.APPEND
+import java.nio.file.StandardOpenOption.CREATE
+import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.platformpack.discoverSkillClasses
 
 data class RepoValidationReport(
   val issues: List<String>,
@@ -369,8 +373,8 @@ object RepoValidationRuntime {
         appendLine("version=${metadata.version}")
         appendLine("prerelease=${if (metadata.prerelease) "true" else "false"}")
       },
-      java.nio.file.StandardOpenOption.CREATE,
-      java.nio.file.StandardOpenOption.APPEND,
+      CREATE,
+      APPEND,
     )
   }
 
@@ -747,7 +751,7 @@ object RepoValidationRuntime {
 
   private fun validateFeatureAddonDeclarations(root: Path, issues: MutableList<String>) {
     val staticTargets = supportingFileTargets(root).keys
-    val classes = runCatching { skillbill.scaffold.platformpack.discoverSkillClasses(root) }.getOrDefault(emptyList())
+    val classes = runCatching { discoverSkillClasses(root) }.getOrDefault(emptyList())
     val featureClassPointers = resolveSkillClass("bill-feature", classes)
       ?.pointers
       ?.map { pointer -> "$pointer.md" }
@@ -777,12 +781,12 @@ object RepoValidationRuntime {
     }
   }
 
-  private fun loadFeatureAddonValidationPacks(root: Path): List<skillbill.scaffold.model.PlatformManifest> {
+  private fun loadFeatureAddonValidationPacks(root: Path): List<PlatformManifest> {
     val packsRoot = root.resolve("platform-packs")
     if (!Files.isDirectory(packsRoot)) {
       return emptyList()
     }
-    val packs = mutableListOf<skillbill.scaffold.model.PlatformManifest>()
+    val packs = mutableListOf<PlatformManifest>()
     Files.list(packsRoot).use { stream ->
       stream
         .filter { it.isDirectory() && !it.name.startsWith(".") }
@@ -962,7 +966,7 @@ object RepoValidationRuntime {
     if (!Files.isDirectory(packsRoot)) {
       return emptyList()
     }
-    val packs = mutableListOf<skillbill.scaffold.model.PlatformManifest>()
+    val packs = mutableListOf<PlatformManifest>()
     Files.list(packsRoot).use { stream ->
       stream
         .filter { it.isDirectory() && !it.name.startsWith(".") }

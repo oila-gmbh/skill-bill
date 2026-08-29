@@ -52,6 +52,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import skillbill.review.context.model.ReviewContextBudgetExceededException
 
 private fun focusedMatrix(scope: ReviewScopeFacts, lanes: List<String>) = ReviewCommitLaneRoutingMatrix(
   scope.commitUnits.sortedBy { it.orderIndex }.map { it.commitSha },
@@ -477,7 +478,7 @@ class ReviewPreparationServiceTest {
         expansion(assignment.digest, id = "exp-2", sequence = 1),
       ),
     )
-    val failure = assertFailsWith<skillbill.review.context.model.ReviewContextBudgetExceededException> {
+    val failure = assertFailsWith<ReviewContextBudgetExceededException> {
       bounded.validateAgainstPacket(prepared.packet, listOf(overBound) + prepared.assignments.drop(1))
     }
     assertEquals("assignment_expansions", failure.outcome.budgetKind)
@@ -495,7 +496,7 @@ class ReviewPreparationServiceTest {
       RecordingValidator(),
       ReviewContextBudgetPolicy(maxParentPacketBytes = observedBytes - 1, maxLaneLaunchBytes = observedBytes - 1),
     )
-    val failure = assertFailsWith<skillbill.review.context.model.ReviewContextBudgetExceededException> {
+    val failure = assertFailsWith<ReviewContextBudgetExceededException> {
       bounded.prepare(request())
     }
     assertEquals("parent_packet_bytes", failure.outcome.budgetKind)

@@ -35,6 +35,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import skillbill.install.model.InstallPlanRequest
 
 class InstallPlanPolicyTest {
   @Test
@@ -437,7 +438,7 @@ class InstallPlanPolicyTest {
   }
 
   private fun policyInput(
-    request: skillbill.install.model.InstallPlanRequest = request(),
+    request: InstallPlanRequest = request(),
     baseSkills: List<InstallPlanSkill> = listOf(baseSkill("bill-code-review")),
     platformPacks: List<InstallPlatformPackSnapshot> = listOf(platformPack()),
     detectedAgentTargets: List<InstallAgentTarget> = emptyList(),
@@ -468,7 +469,7 @@ class InstallPlanPolicyTest {
       register = true,
       runtimeMcpBin = path("/runtime-mcp"),
     ),
-  ): skillbill.install.model.InstallPlanRequest = skillbill.install.model.InstallPlanRequest(
+  ): InstallPlanRequest = InstallPlanRequest(
     repoRoot = path("/repo"),
     home = path("/home"),
     agentSelection = agentSelection,

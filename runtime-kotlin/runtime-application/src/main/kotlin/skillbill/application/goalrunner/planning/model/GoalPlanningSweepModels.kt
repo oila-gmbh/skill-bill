@@ -11,6 +11,7 @@ import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOut
 import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
 
 sealed interface GoalPlanningSweepOutcome {
   data class PreparedAll(
@@ -21,7 +22,7 @@ sealed interface GoalPlanningSweepOutcome {
     fun hydrationFor(subtaskId: Int) = identity?.let { expectedIdentity ->
       val expectedProvenance = requireNotNull(provenance)
       val descriptor = descriptors.singleOrNull { it.subtaskId == subtaskId } ?: return@let null
-      skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest(
+      GoalChildPlanningHydrationRequest(
         expectedIdentity,
         expectedProvenance,
         descriptor,

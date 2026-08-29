@@ -26,6 +26,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import java.nio.file.Path
 
 @Suppress("LargeClass") // cohesive SQLite workflow-store test suite
 class WorkflowStateStoreTest {
@@ -567,7 +568,7 @@ class WorkflowStateStoreTest {
     assertEquals(false, verifyTransitioned.stateEnteredAtEstimated)
   }
 
-  private fun prepareConcurrentWorkflowTransitions(dbPath: java.nio.file.Path, initial: WorkflowStateRow) {
+  private fun prepareConcurrentWorkflowTransitions(dbPath: Path, initial: WorkflowStateRow) {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       WorkflowStateStore(connection).saveFeatureTaskRuntimeWorkflow(initial)
       connection.createStatement().use { statement ->

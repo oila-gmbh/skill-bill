@@ -8,6 +8,8 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
+import skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED
 
 @Suppress("TooManyFunctions") // single cohesive boundary: shared preplan, subtask plans, and planning status
 interface NormalizedGoalPlanningPreparationRepository {
@@ -18,9 +20,9 @@ interface NormalizedGoalPlanningPreparationRepository {
     blockedReason: String? = null,
   ): GoalPlanningStatusSnapshot = GoalPlanningStatusSnapshot(
     if (blockedReason == null) {
-      skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED
+      NOT_STARTED
     } else {
-      skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
+      BLOCKED
     },
     false,
     0,

@@ -19,6 +19,7 @@ import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import java.nio.file.Path
 import kotlin.time.Duration
+import java.security.MessageDigest
 
 data class SkillRunRequest(
   val issueKey: String,
@@ -269,7 +270,7 @@ data class AgentRunLaunchFacts(
   /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
   val stdoutTruncated: Boolean = false,
   val stdoutByteSize: Long = stdoutBytes.size.toLong(),
-  val stdoutSha256: String = java.security.MessageDigest.getInstance("SHA-256")
+  val stdoutSha256: String = MessageDigest.getInstance("SHA-256")
     .digest(stdoutBytes).joinToString("") { "%02x".format(it) },
 ) : AgentRunLaunchOutcome {
   init {

@@ -16,6 +16,7 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionManifestPlan
 import java.io.IOException
 import java.nio.file.Path
+import skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence
 
 private const val DECOMPOSITION_MODE: String = "decompose"
 internal const val DECOMPOSITION_RUNTIME_ARTIFACT_KEY: String = "decomposition_runtime"
@@ -260,7 +261,7 @@ internal data class PreparedDecompositionManifestWrite(
   val manifestPath: Path,
   val manifest: DecompositionManifest,
   val yaml: String,
-  val repairEvidence: List<skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence> = emptyList(),
+  val repairEvidence: List<DecompositionManifestRepairEvidence> = emptyList(),
 )
 
 private fun assertParentSpecIsNotDecomposedSubtask(

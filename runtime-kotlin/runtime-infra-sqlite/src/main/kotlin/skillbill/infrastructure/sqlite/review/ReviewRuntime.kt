@@ -7,6 +7,7 @@ import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
+import java.sql.SQLException
 
 object ReviewRuntime {
   fun parseReview(text: String): ImportedReview = ReviewParser.parseReview(text)
@@ -16,7 +17,7 @@ object ReviewRuntime {
     try {
       persistImportedReview(connection, review, sourcePath)
       connection.commit()
-    } catch (error: java.sql.SQLException) {
+    } catch (error: SQLException) {
       connection.rollback()
       throw error
     } finally {

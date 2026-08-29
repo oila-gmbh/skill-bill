@@ -5,6 +5,7 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.contracts.JsonSupport
 
 /**
  * Domain port for validating a phase's output payload; the concrete JSON-Schema
@@ -26,11 +27,7 @@ interface FeatureTaskRuntimePhaseOutputValidator {
     )
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
     FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
-      code = if (error.failureKind == skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED) {
-        FeatureTaskRuntimePhaseOutputFailureCode.MALFORMED
-      } else {
-        FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode)
-      },
+      code = FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode),
       reason = error.payloadFreeReason ?: "Phase output was rejected by the phase-output contract.",
       diagnosticReason = error.reason,
       payloadFreeReason = error.payloadFreeReason,
@@ -54,16 +51,16 @@ interface FeatureTaskRuntimePhaseOutputValidator {
   @OpenBoundaryMap("Feature-task-runtime phase-output schema gate returns the validated wire map for typed projection")
   fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> {
     validatePhaseOutputText(phaseOutputText, sourceLabel)
-    return skillbill.contracts.JsonSupport.parseObjectOrNull(phaseOutputText)
-      ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
-      ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+    return JsonSupport.parseObjectOrNull(phaseOutputText)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       ?: emptyMap()
   }
 
   fun normalizePhaseOutput(phaseOutputText: String, sourceLabel: String): NormalizedFeatureTaskRuntimePhaseOutput {
     val envelope = validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
     return NormalizedFeatureTaskRuntimePhaseOutput(
-      canonicalJson = skillbill.contracts.JsonSupport.mapToJsonString(envelope),
+      canonicalJson = JsonSupport.mapToJsonString(envelope),
       envelope = envelope,
     )
   }

@@ -17,6 +17,8 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.db.UnitOfWork
 
 @Inject
 class FeatureTaskContinuationLookupService(
@@ -80,7 +82,7 @@ class FeatureTaskContinuationLookupService(
     routeScope: FeatureTaskRouteScope,
     readIfPresent: Boolean = false,
   ): FeatureTaskContinuationLookupResult {
-    val lookup = fun(unitOfWork: skillbill.ports.db.UnitOfWork): FeatureTaskContinuationLookupResult {
+    val lookup = fun(unitOfWork: UnitOfWork): FeatureTaskContinuationLookupResult {
       val normalizedIssueKey = FeatureTaskExecutionIdentityPolicy.validateLookupRequest(issueKey, repositoryIdentity)
       val candidates = when (routeScope) {
         FeatureTaskRouteScope.STANDALONE -> unitOfWork.workflowStates.findStandaloneFeatureTaskCandidates(
@@ -197,7 +199,7 @@ class FeatureTaskContinuationLookupService(
   }
 
   private fun identityConflictsWithWorkflow(
-    identity: skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity,
+    identity: FeatureTaskExecutionIdentity,
     candidate: FeatureTaskWorkflowCandidate,
   ): Boolean {
     val workflow = candidate.workflow

@@ -25,6 +25,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
 
 /**
  * Starts polling only while a project service/widget consumer is active.
@@ -103,7 +104,7 @@ class StatusRefreshCoordinator(
             if (disposed.get()) return
             val outcome = try {
                 statusRepository.fetchStatus(projectRoot)
-            } catch (_: kotlinx.coroutines.CancellationException) {
+            } catch (_: CancellationException) {
                 return
             } catch (_: Exception) {
                 emit(transportFailureFallback(UnavailableReason.PROCESS_FAILURE) ?: return)

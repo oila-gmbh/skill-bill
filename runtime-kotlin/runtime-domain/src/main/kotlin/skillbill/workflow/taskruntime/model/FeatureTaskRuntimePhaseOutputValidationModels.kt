@@ -5,6 +5,10 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_OUTPUT_VALIDATION
 import skillbill.error.FeatureTaskRuntimePhaseOutputStructuralRepair
 import skillbill.error.FeatureTaskRuntimePhaseOutputStructuralRepairSource
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.error.FailureWireCode
+import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
+import skillbill.error.coarseFailureKindForPhaseOutputWireCode
+import skillbill.error.failureWireByValue
 
 /** Stable contract version for the typed phase-output validation result. */
 const val FEATURE_TASK_RUNTIME_PHASE_OUTPUT_VALIDATION_VERSION: String =
@@ -19,7 +23,11 @@ enum class FeatureTaskRuntimePhaseOutputFormat(val wireValue: String) {
 
   companion object {
     fun fromWire(value: String): FeatureTaskRuntimePhaseOutputFormat = entries.firstOrNull { it.wireValue == value }
-      ?: throw IllegalArgumentException("Unsupported phase-output repair format '$value'.")
+      ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = "<wire>",
+        reason = "Unrecognized phase-output format wire value '$value'.",
+        payloadFreeReason = "Unrecognized phase-output format wire value.",
+      )
   }
 }
 
@@ -35,12 +43,18 @@ enum class FeatureTaskRuntimePhaseOutputRepairOperation(val wireValue: String) {
   companion object {
     fun fromWire(value: String): FeatureTaskRuntimePhaseOutputRepairOperation =
       entries.firstOrNull { it.wireValue == value }
-        ?: throw IllegalArgumentException("Unsupported phase-output repair operation '$value'.")
+        ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+          sourceLabel = "<wire>",
+          reason = "Unrecognized phase-output repair-operation wire value '$value'.",
+          payloadFreeReason = "Unrecognized phase-output repair-operation wire value.",
+        )
   }
 }
 
 /** Stable, payload-free rejection codes for callers and retry policy. */
-enum class FeatureTaskRuntimePhaseOutputFailureCode(val wireValue: String) {
+enum class FeatureTaskRuntimePhaseOutputFailureCode(
+  override val wireValue: String,
+) : FailureWireCode {
   MALFORMED("malformed"),
   ROOT_NOT_OBJECT("root_not_object"),
   DUPLICATE_KEY("duplicate_key"),
@@ -54,9 +68,14 @@ enum class FeatureTaskRuntimePhaseOutputFailureCode(val wireValue: String) {
   MULTIPLE_OUTPUT_CANDIDATES("multiple_output_candidates"),
   ;
 
+  val coarseFailureKind: FeatureTaskRuntimePhaseOutputFailureKind
+    get() = coarseFailureKindForPhaseOutputWireCode(wireValue)
+
   companion object {
+    private const val HIERARCHY = "FeatureTaskRuntimePhaseOutputFailureCode"
+
     fun fromWire(value: String): FeatureTaskRuntimePhaseOutputFailureCode =
-      entries.firstOrNull { it.wireValue == value } ?: SCHEMA_INVALID
+      entries.failureWireByValue(value, HIERARCHY)
   }
 }
 

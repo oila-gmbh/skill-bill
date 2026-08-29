@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Decomposition continue lives on WorkflowService for TASK_RUNTIME; these tests
@@ -144,7 +145,7 @@ private fun cliDecompositionFixture(): CliDecompositionFixture {
 }
 
 private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
-  kotlinx.serialization.json.JsonElement.serializer(),
+  JsonElement.serializer(),
   JsonSupport.valueToJsonElement(value),
 )
 

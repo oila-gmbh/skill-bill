@@ -54,6 +54,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import kotlinx.serialization.json.JsonElement
+import skillbill.ports.agentrun.model.SkillRunRequest
 
 @Suppress("LargeClass") // one CLI surface per suite; splitting would scatter goal-verb coverage
 class CliGoalRuntimeTest {
@@ -1830,7 +1833,7 @@ internal class GoalFixtureAgentRunLauncher(
   }
 
   private fun planningLaunchOutcome(
-    skillRequest: skillbill.ports.agentrun.model.SkillRunRequest,
+    skillRequest: SkillRunRequest,
   ): AgentRunLaunchOutcome {
     val phaseId = Regex("""Phase: (\w+) \(""")
       .find(skillRequest.promptOverride.orEmpty())
@@ -1847,7 +1850,7 @@ internal class GoalFixtureAgentRunLauncher(
   }
 
   private fun startSubtaskWorkflow(
-    skillRequest: skillbill.ports.agentrun.model.SkillRunRequest,
+    skillRequest: SkillRunRequest,
     dbPath: String,
   ): String {
     val continuation = requireNotNull(skillRequest.goalContinuation) {
@@ -2050,7 +2053,7 @@ private fun runtimeWorkflowUpdate(
 )
 
 private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
-  kotlinx.serialization.json.JsonElement.serializer(),
+  JsonElement.serializer(),
   JsonSupport.valueToJsonElement(value),
 )
 
@@ -2127,7 +2130,7 @@ private object GoalTestWorkflowGitOperations :
 
       override fun recoverBaseline(
         repoRoot: Path,
-        request: skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest,
+        request: GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
         status = "error",

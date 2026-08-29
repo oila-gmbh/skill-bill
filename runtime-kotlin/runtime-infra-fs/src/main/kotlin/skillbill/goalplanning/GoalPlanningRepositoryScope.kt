@@ -4,6 +4,7 @@ import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.review.context.model.requireRepositoryRelativePath
 import java.nio.file.Files
 import java.nio.file.Path
+import skillbill.text.Utf8Text
 
 /**
  * File content, plus whether the read stopped at its cap. A cut file parses into fewer entries than
@@ -117,9 +118,9 @@ internal object GoalPlanningRepositoryScope {
   }
 
   fun truncateToUtf8Bytes(text: String, maxBytes: Int): String =
-    skillbill.text.Utf8Text.truncateToUtf8Bytes(text, maxBytes)
+    Utf8Text.truncateToUtf8Bytes(text, maxBytes)
 
-  fun utf8Size(text: String): Int = skillbill.text.Utf8Text.utf8Size(text)
+  fun utf8Size(text: String): Int = Utf8Text.utf8Size(text)
 
   /** Null distinguishes an unlistable directory from a genuinely empty one. */
   private fun sortedChildDirectories(directory: Path): List<Path>? = runCatching {

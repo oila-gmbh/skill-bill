@@ -7,13 +7,14 @@ import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
-import java.nio.file.Path
+import Path
 import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.testsupport.SkillClassFixtures
 
 @Suppress("LargeClass")
 class RepoValidationRuntimeTest {
@@ -1157,7 +1158,7 @@ class RepoValidationRuntimeTest {
     )
   }
 
-  private fun seedInternalSkill(repoRoot: java.nio.file.Path, name: String, internalFor: String?) {
+  private fun seedInternalSkill(repoRoot: Path, name: String, internalFor: String?) {
     val skillDir = repoRoot.resolve("skills/$name")
     Files.createDirectories(skillDir)
     val frontmatter = buildString {
@@ -1172,7 +1173,7 @@ class RepoValidationRuntimeTest {
     Files.writeString(skillDir.resolve("content.md"), frontmatter + "\nAuthored body.\n")
   }
 
-  private fun seedPlatformReviewPack(repoRoot: java.nio.file.Path, slug: String, body: String) {
+  private fun seedPlatformReviewPack(repoRoot: Path, slug: String, body: String) {
     val skillName = "bill-$slug-code-review"
     val contentFile = repoRoot.resolve("platform-packs/$slug/code-review/$skillName/content.md")
     Files.createDirectories(contentFile.parent)
@@ -1209,13 +1210,13 @@ class RepoValidationRuntimeTest {
   }
 
   private fun createRepoValidationSkillFixture(
-    repoRoot: java.nio.file.Path,
+    repoRoot: Path,
     skipSidecar: String? = null,
-    overrideTargets: Map<String, java.nio.file.Path> = emptyMap(),
+    overrideTargets: Map<String, Path> = emptyMap(),
     sidecarMode: SidecarMode = SidecarMode.SymbolicLink,
     writeSidecars: Boolean = false,
   ) {
-    skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repoRoot)
+    SkillClassFixtures.seedShippedSkillClasses(repoRoot)
     supportingFileTargets(repoRoot).values.forEach { target ->
       Files.createDirectories(target.parent)
       Files.writeString(target, "contract\n")
@@ -1244,13 +1245,13 @@ class RepoValidationRuntimeTest {
       val target = overrideTargets[fileName] ?: targets.getValue(fileName)
       val relativeTarget = sidecar.parent.relativize(target).toString()
       when (sidecarMode) {
-        SidecarMode.SymbolicLink -> Files.createSymbolicLink(sidecar, java.nio.file.Path.of(relativeTarget))
+        SidecarMode.SymbolicLink -> Files.createSymbolicLink(sidecar, Path.of(relativeTarget))
         SidecarMode.GitPlaceholder -> Files.writeString(sidecar, relativeTarget)
       }
     }
   }
 
-  private fun writeNativeAgentFixture(skillDir: java.nio.file.Path, name: String) {
+  private fun writeNativeAgentFixture(skillDir: Path, name: String) {
     val source = NativeAgentSource(name = name, description = "Review changed code.", body = "# Worker\n\nReview it.")
     val sourcePath = skillDir.resolve("native-agents/$name.md")
     Files.createDirectories(sourcePath.parent)

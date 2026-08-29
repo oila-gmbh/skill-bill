@@ -66,6 +66,8 @@ import skillbill.scaffold.payload.validatePayloadVersion as policyValidatePayloa
 import skillbill.scaffold.policy.scaffold.buildPlatformPackInstallPaths as policyBuildPlatformPackInstallPaths
 import skillbill.scaffold.policy.scaffold.platformPackNotes as policyPlatformPackNotes
 import skillbill.scaffold.policy.platformpack.renderPlatformPackManifestContent as policyRenderPlatformPackManifestContent
+import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.payload.requireStringListPayload
 
 private data class ManifestSnapshot(
   val manifestPath: Path,
@@ -168,7 +170,7 @@ internal data class ScaffoldAdapterSeams(
   val resolveAddonConsumerSkillDirs: (
     Map<String, Any?>,
     Path,
-    skillbill.scaffold.model.PlatformManifest,
+    PlatformManifest,
   ) -> List<String>,
 )
 
@@ -524,8 +526,8 @@ private fun planAddOn(payload: Map<String, Any?>, repoRoot: Path, adapters: Scaf
 private fun planAgentAddon(payload: Map<String, Any?>, repoRoot: Path): ScaffoldPlan {
   val slug = requireString(payload, "slug")
   val description = requireString(payload, "description")
-  val agentIds = skillbill.scaffold.payload.requireStringListPayload(payload["agent_ids"], "agent_ids")
-  val consumers = skillbill.scaffold.payload.requireStringListPayload(payload["consumers"], "consumers")
+  val agentIds = requireStringListPayload(payload["agent_ids"], "agent_ids")
+  val consumers = requireStringListPayload(payload["consumers"], "consumers")
   AgentAddonSchemaValidator().validate(
     mapOf(
       "contract_version" to "1.0",

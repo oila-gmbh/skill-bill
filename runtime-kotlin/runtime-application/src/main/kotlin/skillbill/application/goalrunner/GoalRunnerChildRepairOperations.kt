@@ -34,6 +34,7 @@ import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_K
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 import java.nio.file.Path
 import java.time.Instant
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 /** Append-only operator repair evidence; additionalProperties:true so no workflow-state schema bump. */
 internal const val GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY: String = "goal_child_repair_evidence"
@@ -439,7 +440,7 @@ internal class GoalRunnerChildRepairOperations(
 
   @Suppress("LongParameterList") // diagnosis accumulators plus identity context; bundling would hide the seam
   private fun diagnoseStaleBlockedOutcome(
-    record: skillbill.workflow.engine.model.WorkflowStateSnapshot,
+    record: WorkflowStateSnapshot,
     artifacts: Map<String, Any?>,
     issueKey: String,
     subtaskId: Int,

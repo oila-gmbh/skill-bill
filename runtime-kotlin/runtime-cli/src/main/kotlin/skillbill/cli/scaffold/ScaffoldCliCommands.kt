@@ -803,10 +803,9 @@ private fun addOnWizardPayload(state: CliRunState): Map<String, Any?> = buildMap
   putScaffoldBase("add-on")
   put("platform", promptRequired(state, "Platform slug"))
   put("name", promptRequired(state, "Add-on name"))
-  when (normalizeAddOnLocationMode(promptDefault(state, "Add-on source (native/external)", "native"))) {
+  when (val mode = normalizeAddOnLocationMode(promptDefault(state, "Add-on source (native/external)", "native"))) {
     "native" -> Unit
     "external" -> put("addon_location_path", promptRequired(state, "External add-on source path"))
-    else -> error("unreachable")
   }
   promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
 }

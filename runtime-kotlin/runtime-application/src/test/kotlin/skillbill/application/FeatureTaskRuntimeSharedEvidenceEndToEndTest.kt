@@ -25,6 +25,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 
 /**
  * End-to-end coverage for SKILL-164 shared evidence: one derivation shared by audit, review, and
@@ -243,7 +244,7 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
   )
 
   private fun fixedDeriver(baseRef: String) = FeatureTaskRuntimeSharedEvidenceDeriver {
-    skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation(
+    FeatureTaskRuntimeSharedEvidenceDerivation(
       baseRef = baseRef,
       headRef = "head",
       files = listOf(FeatureTaskRuntimeSharedEvidenceFileEntry("src/A.kt", "modified")),

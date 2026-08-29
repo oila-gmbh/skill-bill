@@ -33,6 +33,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import java.io.IOException
 
 /**
  * SKILL-102 (PD2/PD6): internal-skill install staging.
@@ -810,7 +811,7 @@ class InternalSkillStagingTest {
     Files.createDirectories(finalDir)
     Files.writeString(finalDir.resolve("SKILL.md"), "healthy\n")
 
-    assertFailsWith<java.io.IOException> {
+    assertFailsWith<IOException> {
       promoteInstallStagingDir(root.resolve("missing-temp"), finalDir)
     }
 

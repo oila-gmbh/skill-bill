@@ -7,6 +7,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 
 class GoalRunnerDirectRuntimeContinuationTest {
   @Test
@@ -55,8 +56,8 @@ class GoalRunnerDirectRuntimeContinuationTest {
     assertEquals("wftr-fresh-assigned", context.assignedWorkflowId)
   }
 
-  private fun wiringRunRequest(): skillbill.application.goalrunner.model.GoalRunnerRunRequest =
-    skillbill.application.goalrunner.model.GoalRunnerRunRequest(
+  private fun wiringRunRequest(): GoalRunnerRunRequest =
+    GoalRunnerRunRequest(
       issueKey = "SKILL-56",
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       invokedAgentId = "claude",

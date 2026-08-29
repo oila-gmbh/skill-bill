@@ -22,7 +22,7 @@ import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.resolveCheckpointRef
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
@@ -48,6 +48,9 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 import java.time.Instant
+import skillbill.agentaddon.model.AgentAddonSelection
+import java.nio.file.Path
+import skillbill.ports.workflow.WorkflowStateRepository
 
 @Inject
 @Suppress(
@@ -307,7 +310,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   internal fun buildGoalReviewInput(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
-    repoRoot: java.nio.file.Path,
+    repoRoot: Path,
     scope: GoalReviewInputScope = GoalReviewInputScope(),
   ): GoalSubtaskReviewInputPreparation {
     val durable = database.read(scope.dbOverride) { unitOfWork ->
@@ -483,7 +486,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   internal fun reconcileRemediationBaseCoherence(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
-    repoRoot: java.nio.file.Path,
+    repoRoot: Path,
     dbOverride: String? = null,
   ): RemediationBaseCoherenceResult =
     remediationBaseReconciler.reconcileRemediationBaseCoherence(workflowId, gitOperations, repoRoot, dbOverride)
@@ -498,8 +501,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
 
   private val savePatch =
     fun(
-      record: skillbill.workflow.engine.model.WorkflowStateSnapshot,
-      workflowStates: skillbill.ports.workflow.WorkflowStateRepository,
+      record: WorkflowStateSnapshot,
+      workflowStates: WorkflowStateRepository,
       patch: Map<String, Any?>,
     ) {
       val updated = engine.updateRecord(
@@ -540,8 +543,8 @@ private const val CHECKPOINT_IDENTITY_QUARANTINE_ARTIFACT_KEY: String =
 private class RemediationBaseReconciler(
   private val database: DatabaseSessionFactory,
   private val savePatch: (
-    skillbill.workflow.engine.model.WorkflowStateSnapshot,
-    skillbill.ports.workflow.WorkflowStateRepository,
+    WorkflowStateSnapshot,
+    WorkflowStateRepository,
     Map<String, Any?>,
   ) -> Unit,
 ) {
@@ -549,7 +552,7 @@ private class RemediationBaseReconciler(
   internal fun reconcileRemediationBaseCoherence(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
-    repoRoot: java.nio.file.Path,
+    repoRoot: Path,
     dbOverride: String? = null,
   ): RemediationBaseCoherenceResult {
     val snapshot = try {
@@ -630,7 +633,7 @@ private class RemediationBaseReconciler(
       >,
     workflowId: String,
     gitOperations: WorkflowGitOperations,
-    repoRoot: java.nio.file.Path,
+    repoRoot: Path,
     dbOverride: String?,
   ): RemediationBaseCoherenceResult {
     val (state, continuation, checkpoints) = snapshot
@@ -779,7 +782,7 @@ private class RemediationBaseReconciler(
   private fun latestResolvedReviewFixCheckpointCommit(
     checkpoints: List<FeatureTaskRuntimeCheckpointIdentity>,
     gitOperations: WorkflowGitOperations,
-    repoRoot: java.nio.file.Path,
+    repoRoot: Path,
   ): ResolvedReviewFixCheckpoint? = checkpoints
     .asReversed()
     .firstNotNullOfOrNull { identity ->
@@ -792,7 +795,7 @@ private class RemediationBaseReconciler(
 
   private fun resolveCheckpointRefCommit(
     gitOperations: WorkflowGitOperations,
-    repoRoot: java.nio.file.Path,
+    repoRoot: Path,
     checkpointRef: String,
   ): String? {
     val resolved = gitOperations.resolveCheckpointRef(
@@ -806,7 +809,7 @@ private class RemediationBaseReconciler(
 
   private fun resolvesCommit(
     gitOperations: WorkflowGitOperations,
-    repoRoot: java.nio.file.Path,
+    repoRoot: Path,
     sha: String,
   ): Boolean {
     val resolved = gitOperations.resolveCommit(repoRoot, sha.trim())
@@ -962,7 +965,7 @@ private sealed interface GoalReviewInputRecovery {
 
 private data class GoalReviewInputRecoveryExecution(
   val gitOperations: WorkflowGitOperations,
-  val repoRoot: java.nio.file.Path,
+  val repoRoot: Path,
   val dbOverride: String?,
 )
 
@@ -991,13 +994,13 @@ private fun FeatureTaskRuntimeGoalContinuationArtifact?.compatibleWith(
   // healed to the launcher-supplied value in the same write; a recorded depth remains immutable.
   // Legacy rows missing quality_gate_selection always resolve to validate; non-null stamps stay immutable.
   val healed = copy(
-    agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection(),
+    agentAddonSelection = AgentAddonSelection(),
     validationDepth = validationDepth ?: supplied.validationDepth,
     qualityGateSelection = qualityGateSelection ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE,
     parallelReviewAgent = null,
   )
   return healed == supplied.copy(
-    agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection(),
+    agentAddonSelection = AgentAddonSelection(),
     parallelReviewAgent = null,
   )
 }

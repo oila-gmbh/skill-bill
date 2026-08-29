@@ -2,10 +2,11 @@ package skillbill.application.review
 
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewCommitUnit
+import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 
 internal fun String.normalizeLineEndings(): String = replace("\r\n", "\n")
 
-internal fun skillbill.review.context.model.ReviewBaselineUntrackedPolicy.toEnvelope() = linkedMapOf(
+internal fun ReviewBaselineUntrackedPolicy.toEnvelope() = linkedMapOf(
   "included_paths" to includedPaths.sorted(),
   "excluded_paths" to excludedPaths.sorted(),
 )

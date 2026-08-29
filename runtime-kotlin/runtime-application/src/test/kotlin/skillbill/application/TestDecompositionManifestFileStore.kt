@@ -16,6 +16,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 
 internal fun seedHarnessSpecIntentProjection(repoRoot: Path, specReference: String) {
   val specPath = repoRoot.resolve(specReference)
@@ -74,7 +75,7 @@ internal object TestDecompositionManifestFileStore : DecompositionManifestFileSt
   }
 
   override fun encodeManifestYaml(wireMap: Map<String, Any?>): String =
-    com.fasterxml.jackson.dataformat.yaml.YAMLMapper().writeValueAsString(wireMap)
+    YAMLMapper().writeValueAsString(wireMap)
 }
 
 /**
@@ -93,7 +94,7 @@ internal val testDecompositionManifestValidator: DecompositionManifestValidator 
 
     @Suppress("UNCHECKED_CAST")
     override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-      com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
+      YAMLMapper()
         .readValue(yamlText, Map::class.java) as Map<String, Any?>
   }
 

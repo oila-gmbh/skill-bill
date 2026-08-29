@@ -30,6 +30,11 @@ import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutedLane
 import java.nio.file.Path
 import java.security.MessageDigest
+import skillbill.review.context.model.ReviewBuildTestFact
+import skillbill.review.context.model.ReviewLearningsReference
+import skillbill.application.review.model.ReviewPrelaunchExpansion
+import skillbill.application.review.model.ReviewPreparationResult
+import skillbill.review.context.model.ReviewRuleReference
 
 /** Compiles the already-resolved parallel-review facts into validated assignment-owned launches. */
 internal object ParallelReviewPreparationCompiler {
@@ -189,15 +194,15 @@ internal object ParallelReviewPreparationCompiler {
       },
       guidance = object : ReviewGuidancePort {
         override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
-          emptyList<skillbill.review.context.model.ReviewRuleReference>()
+          emptyList<ReviewRuleReference>()
       },
       learnings = object : ReviewLearningsPort {
         override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
-          emptyList<skillbill.review.context.model.ReviewLearningsReference>()
+          emptyList<ReviewLearningsReference>()
       },
       buildTestFacts = object : ReviewBuildTestFactsPort {
         override fun resolveBuildTestFacts(scope: ReviewScopeFacts) =
-          emptyList<skillbill.review.context.model.ReviewBuildTestFact>()
+          emptyList<ReviewBuildTestFact>()
       },
       laneSelection = object : ReviewLaneSelectionPort {
         override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = selection
@@ -207,7 +212,7 @@ internal object ParallelReviewPreparationCompiler {
 
   private fun launchRequests(
     input: ParallelReviewPreparationInput,
-    preparation: skillbill.application.review.model.ReviewPreparationResult,
+    preparation: ReviewPreparationResult,
     routes: List<SpecialistRoute>,
     budget: ReviewContextBudgetPolicy,
     specialistContract: String,
@@ -314,7 +319,7 @@ internal data class ParallelReviewPreparationInput(
   val reviewRunId: String? = null,
   val baseRevision: String,
   val headRevision: String,
-  val prelaunchExpansions: List<skillbill.application.review.model.ReviewPrelaunchExpansion> = emptyList(),
+  val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
   val specIntentResolution: SpecIntentResolution =
     SpecIntentResolution.None(

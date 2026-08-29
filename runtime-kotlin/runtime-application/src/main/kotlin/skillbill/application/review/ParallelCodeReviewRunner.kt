@@ -125,6 +125,7 @@ import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.coroutines.cancellation.CancellationException
+import skillbill.application.review.model.ReviewWorkerKind.GENERIC
 
 @Inject
 @Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
@@ -334,7 +335,7 @@ class ParallelCodeReviewRunner(
     manifests: List<PlatformManifest>,
     ownedPathsBySlug: Map<String, Set<String>>,
     agentIds: List<String>,
-    budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
+    budget: ReviewContextBudgetPolicy,
     evidenceStorePath: String?,
   ): CompiledLaunches {
     if (
@@ -1164,7 +1165,7 @@ class ParallelCodeReviewRunner(
           changedHunkIds = evidence.hunks.map { it.hunkId },
         ),
         ReviewRubricProjection(rubric.rubricId, rubric.body, rubric.area),
-        workerKind = skillbill.application.review.model.ReviewWorkerKind.GENERIC,
+        workerKind = GENERIC,
       ),
     )
   }
@@ -2020,7 +2021,7 @@ class ParallelCodeReviewRunner(
 @Suppress("LongParameterList") // assembles the full result record; every part is required
 private fun parallelResult(
   agent1Id: String,
-  outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+  outcomes: ParallelReviewLaneRunResult,
   integration: ReviewIntegrationPassOutcome,
   coverage: ReviewCoverageReport?,
   packet: ReviewContextPacket?,
@@ -2065,7 +2066,7 @@ private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReview
 )
 
 private fun parallelAccountingSummary(
-  outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+  outcomes: ParallelReviewLaneRunResult,
 ): ReviewAccountingSummary? {
   val accountedLanes = listOf(outcomes.lane1)
   val specialists = accountedLanes.flatMap { it.specialistAccounting }

@@ -49,6 +49,7 @@ import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import java.nio.file.Path
+import skillbill.install.model.SharedInstallSelection
 
 private const val GOAL_CONTINUATION_ENV = "SKILL_BILL_GOAL_CONTINUATION"
 private const val GOAL_CONTINUATION_INSTALL_REFUSAL_EXIT_CODE = 64
@@ -290,7 +291,7 @@ class InstallReplayLastSelectionCommand(
     environment = state.environment,
   )
 
-  private fun skillbill.install.model.SharedInstallSelection.toReplayText(): String = buildString {
+  private fun SharedInstallSelection.toReplayText(): String = buildString {
     selectedAgents.map(InstallAgent::id).sorted().forEach { agentId ->
       append("agent\t")
       append(agentId)

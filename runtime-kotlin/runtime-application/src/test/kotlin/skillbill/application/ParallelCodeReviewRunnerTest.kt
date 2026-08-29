@@ -47,7 +47,7 @@ import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
-import skillbill.review.ParallelReviewFindingParser
+import ParallelReviewFindingParser
 import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -75,6 +75,24 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
+import skillbill.telemetry.model.FeatureVerifyFinishedRecord
+import skillbill.telemetry.model.FeatureVerifyStartedRecord
+import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
+import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
+import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.telemetry.model.GoalSubtaskFinishedRecord
+import skillbill.review.model.ParallelReviewParseResult
+import skillbill.telemetry.model.PrDescriptionGeneratedRecord
+import skillbill.telemetry.model.QualityCheckFinishedRecord
+import skillbill.telemetry.model.QualityCheckStartedRecord
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.model.ReviewFindingVerdict
+import skillbill.review.model.ReviewStageBoundary
+import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
 
 class ParallelCodeReviewRunnerTest {
   @Test
@@ -1355,8 +1373,8 @@ internal data class RunnerFixtureConfig(
   val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
   val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort = ReviewLaunchAgentStagingPort.NONE,
   val evidenceEndpointRoot: Path? = null,
-  val registerParse: (String) -> skillbill.review.model.ParallelReviewParseResult =
-    skillbill.review.ParallelReviewFindingParser::parse,
+  val registerParse: (String) -> ParallelReviewParseResult =
+    ParallelReviewFindingParser::parse,
 ) {
   val installedPackCatalog: InstalledPlatformPackCatalogPort =
     InstalledPlatformPackCatalogPort { catalogGateway.discoverPlatformManifests(Path.of(".")) }
@@ -1384,10 +1402,10 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
     parentReviewLauncher = launcher,
     diffResolver = config.diffResolver,
     repoLocalConfig = object : RepoLocalConfigPort {
-      override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
+      override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
         ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
     },
-    reviewContextEnvelopeValidator = object : skillbill.review.context.ReviewContextEnvelopeValidator {
+    reviewContextEnvelopeValidator = object : ReviewContextEnvelopeValidator {
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
     reviewRubricResolver = config.rubricResolver,
@@ -1398,7 +1416,7 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
       TestDecompositionManifestFileStore,
       testDecompositionManifestValidator,
       SpecIntentProjectionExtractor(
-        object : skillbill.review.context.ReviewContextEnvelopeValidator {
+        object : ReviewContextEnvelopeValidator {
           override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
         },
         TestDecompositionManifestFileStore,
@@ -1406,8 +1424,8 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
     ),
     nativeAgentPreflight = config.nativeAgentPreflight,
     reviewLaunchAgentStaging = config.reviewLaunchAgentStaging,
-    reviewEvidenceBrokerFactory = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
-    governedEvidenceEndpointBinder = skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder(endpointRoot),
+    reviewEvidenceBrokerFactory = FileSystemReviewEvidenceBrokerFactory(),
+    governedEvidenceEndpointBinder = stubGovernedReviewEvidenceEndpointBinder(endpointRoot),
     registerParse = config.registerParse,
   )
 }
@@ -1442,9 +1460,9 @@ internal class RecordingReviewDatabase : DatabaseSessionFactory {
         @Suppress("UNCHECKED_CAST")
         passClaims = ReviewPassClaimSnapshot(args[1] as List<ParallelReviewMergedFinding>)
       }
-      "fetchFindingVerdicts" -> emptyList<skillbill.review.model.ReviewFindingVerdict>()
+      "fetchFindingVerdicts" -> emptyList<ReviewFindingVerdict>()
       "fetchReviewPassClaims" -> passClaims
-      "fetchStageBoundaries" -> emptyList<skillbill.review.model.ReviewStageBoundary>()
+      "fetchStageBoundaries" -> emptyList<ReviewStageBoundary>()
       "fetchSpecProjectionReference" -> specProjection
       else -> error("Unexpected review repository call: ${method.name}")
     }
@@ -1471,34 +1489,34 @@ internal class RecordingReviewDatabase : DatabaseSessionFactory {
 
 private object NoopReviewLifecycleTelemetry : LifecycleTelemetryRepository {
   override fun featureTaskRuntimeStarted(
-    record: skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord,
+    record: FeatureTaskRuntimeStartedRecord,
     level: String,
   ) = Unit
 
   override fun featureTaskRuntimeFinished(
-    record: skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord,
+    record: FeatureTaskRuntimeFinishedRecord,
     level: String,
   ) = Unit
 
-  override fun qualityCheckStarted(record: skillbill.telemetry.model.QualityCheckStartedRecord, level: String) = Unit
+  override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) = Unit
 
-  override fun qualityCheckFinished(record: skillbill.telemetry.model.QualityCheckFinishedRecord, level: String) = Unit
+  override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) = Unit
 
-  override fun featureVerifyStarted(record: skillbill.telemetry.model.FeatureVerifyStartedRecord, level: String) = Unit
+  override fun featureVerifyStarted(record: FeatureVerifyStartedRecord, level: String) = Unit
 
-  override fun featureVerifyFinished(record: skillbill.telemetry.model.FeatureVerifyFinishedRecord, level: String) =
+  override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) =
     Unit
 
-  override fun prDescriptionGenerated(record: skillbill.telemetry.model.PrDescriptionGeneratedRecord, level: String) =
+  override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) =
     Unit
 
-  override fun goalStarted(record: skillbill.telemetry.model.GoalStartedRecord, level: String) = Unit
+  override fun goalStarted(record: GoalStartedRecord, level: String) = Unit
 
-  override fun goalSubtaskFinished(record: skillbill.telemetry.model.GoalSubtaskFinishedRecord, level: String) = Unit
+  override fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String) = Unit
 
-  override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = Unit
+  override fun goalFinished(record: GoalFinishedRecord, level: String) = Unit
 
-  override fun goalIssueFinished(record: skillbill.telemetry.model.GoalIssueFinishedRecord, level: String) = Unit
+  override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) = Unit
 }
 
 private const val STAGE_ADDON_FINDING: String =

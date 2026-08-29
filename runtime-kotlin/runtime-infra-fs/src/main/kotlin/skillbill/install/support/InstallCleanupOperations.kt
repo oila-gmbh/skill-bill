@@ -5,6 +5,9 @@ import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.stream.Collectors
+import java.nio.file.FileVisitResult.CONTINUE
+import java.nio.file.FileVisitResult
+import java.io.IOException
 
 object InstallCleanupOperations {
   fun cleanupAgentTarget(
@@ -49,7 +52,7 @@ object InstallCleanupOperations {
       val target = Files.readSymbolicLink(path)
       val resolved = (if (target.isAbsolute) target else path.parent.resolve(target)).normalize()
       resolved.startsWith(root)
-    } catch (_: java.io.IOException) {
+    } catch (_: IOException) {
       false
     }
   }
@@ -75,15 +78,15 @@ object InstallCleanupOperations {
     Files.walkFileTree(
       target,
       object : SimpleFileVisitor<Path>() {
-        override fun visitFile(file: Path, attrs: BasicFileAttributes): java.nio.file.FileVisitResult {
+        override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
           Files.delete(file)
-          return java.nio.file.FileVisitResult.CONTINUE
+          return CONTINUE
         }
 
-        override fun postVisitDirectory(dir: Path, exc: java.io.IOException?): java.nio.file.FileVisitResult {
+        override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
           if (exc != null) throw exc
           Files.delete(dir)
-          return java.nio.file.FileVisitResult.CONTINUE
+          return CONTINUE
         }
       },
     )

@@ -10,6 +10,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.text.Utf8Text
 
 class GoalSubtaskReviewSummaryReducerTest {
   @Test
@@ -393,7 +394,7 @@ class GoalSubtaskReviewSummaryReducerTest {
     assertEquals(1, rejected.size)
     assertEquals(
       GoalSubtaskReviewSummaryReducer.REJECTED_VERIFICATION_REASON_MAX_UTF8_BYTES,
-      skillbill.text.Utf8Text.utf8Size(requireNotNull(rejected.single().verificationReason)),
+      Utf8Text.utf8Size(requireNotNull(rejected.single().verificationReason)),
     )
     assertEquals(1, truncationRecords.size)
     assertTrue(truncationRecords.single().contains("F-001"))

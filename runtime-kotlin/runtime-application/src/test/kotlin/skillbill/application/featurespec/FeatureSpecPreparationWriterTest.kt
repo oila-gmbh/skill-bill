@@ -25,6 +25,8 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import java.nio.file.Path
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 
 class FeatureSpecPreparationWriterTest {
   private val writer = FeatureSpecPreparationWriter(
@@ -248,7 +250,7 @@ class FeatureSpecPreparationWriterTest {
           throw InvalidDecompositionManifestSchemaError(sourceLabel, "read-back rejection", "schema_invalid")
         }
         @Suppress("UNCHECKED_CAST")
-        return com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
+        return YAMLMapper()
           .readValue(yamlText, Map::class.java) as Map<String, Any?>
       }
     }
@@ -294,7 +296,7 @@ class FeatureSpecPreparationWriterTest {
           throw InvalidDecompositionManifestSchemaError(sourceLabel, "read-back rejection", "schema_invalid")
         }
         @Suppress("UNCHECKED_CAST")
-        return com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
+        return YAMLMapper()
           .readValue(yamlText, Map::class.java) as Map<String, Any?>
       }
     }
@@ -332,7 +334,7 @@ class FeatureSpecPreparationWriterTest {
 
       @Suppress("UNCHECKED_CAST")
       override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-        com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
+        YAMLMapper()
           .readValue(yamlText, Map::class.java) as Map<String, Any?>
 
       override fun validateYamlTextResult(
@@ -387,7 +389,7 @@ class FeatureSpecPreparationWriterTest {
 
       @Suppress("UNCHECKED_CAST")
       override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-        com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
+        YAMLMapper()
           .readValue(yamlText, Map::class.java) as Map<String, Any?>
 
       override fun validateYamlTextResult(
@@ -494,7 +496,7 @@ private class PreparationCountingManifestFileStore :
   DecompositionManifestFileStore by TestDecompositionManifestFileStore {
   var writeCount: Int = 0
 
-  override fun writeTextAtomically(target: java.nio.file.Path, content: String) {
+  override fun writeTextAtomically(target: Path, content: String) {
     writeCount += 1
     TestDecompositionManifestFileStore.writeTextAtomically(target, content)
   }

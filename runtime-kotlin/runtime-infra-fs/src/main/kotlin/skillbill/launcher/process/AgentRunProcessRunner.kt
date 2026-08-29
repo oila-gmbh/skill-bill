@@ -15,6 +15,7 @@ import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import java.security.MessageDigest
 
 internal const val AGENT_RUN_OUTPUT_LIMIT_BYTES: Int = 1024 * 1024
 
@@ -136,7 +137,7 @@ data class AgentRunProcessResult(
   /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
   val stdoutTruncated: Boolean = false,
   val stdoutByteSize: Long = stdoutBytes.size.toLong(),
-  val stdoutSha256: String = java.security.MessageDigest.getInstance("SHA-256")
+  val stdoutSha256: String = MessageDigest.getInstance("SHA-256")
     .digest(stdoutBytes).joinToString("") { "%02x".format(it) },
 )
 

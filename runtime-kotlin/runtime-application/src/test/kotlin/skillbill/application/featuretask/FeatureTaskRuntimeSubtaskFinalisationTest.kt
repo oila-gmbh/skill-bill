@@ -10,6 +10,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 
 /**
  * Every assertion reads the git objects and the remote, never the message builder's return string:
@@ -501,5 +502,5 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     ),
   )
 
-  private fun realGitOps(): WorkflowGitOperations = skillbill.infrastructure.fs.GitWorkflowGitOperations()
+  private fun realGitOps(): WorkflowGitOperations = GitWorkflowGitOperations()
 }

@@ -4,6 +4,7 @@ import skillbill.contracts.JsonSupport
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.Locale
+import java.sql.ResultSet
 
 fun rate(count: Int, total: Int): Double = if (total == 0) {
   0.0
@@ -33,7 +34,7 @@ fun durationSeconds(row: Map<String, Any?>): Int {
   }.getOrDefault(0)
 }
 
-fun collectRows(resultSet: java.sql.ResultSet): List<Map<String, Any?>> {
+fun collectRows(resultSet: ResultSet): List<Map<String, Any?>> {
   val metadata = resultSet.metaData
   val columnNames = (1..metadata.columnCount).map(metadata::getColumnLabel)
   return buildList {

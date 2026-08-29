@@ -6,6 +6,7 @@ import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 
 class GoalRunnerLedgerRecorderBackwardEdgeTest {
   private fun recorder(outcomes: RecordingOutcomeStore): GoalRunnerLedgerRecorder = GoalRunnerLedgerRecorder(
@@ -59,7 +60,7 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
   fun `watermark seed composes with the child edge iteration on resume`() {
     val outcomes = RecordingOutcomeStore()
     outcomes.ledgerSequenceWatermarks =
-      skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks(
+      GoalRunnerLedgerSequenceWatermarks(
         backwardEdgeCounts = mapOf("1:regenerate_implement" to 3),
       )
     val recorder = recorder(outcomes)

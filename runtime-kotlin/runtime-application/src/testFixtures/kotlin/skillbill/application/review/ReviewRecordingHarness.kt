@@ -56,6 +56,24 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Collections
 import kotlin.time.Duration
+import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
+import skillbill.telemetry.model.FeatureVerifyFinishedRecord
+import skillbill.telemetry.model.FeatureVerifyStartedRecord
+import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
+import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
+import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.telemetry.model.GoalSubtaskFinishedRecord
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
+import skillbill.telemetry.model.PrDescriptionGeneratedRecord
+import skillbill.telemetry.model.QualityCheckFinishedRecord
+import skillbill.telemetry.model.QualityCheckStartedRecord
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewOwnedFileEvidence
+import skillbill.review.model.ReviewStageDegradationMeasurement
 
 /**
  * A recording harness around the production [ParallelCodeReviewRunner]. It records what the
@@ -91,7 +109,7 @@ class ReviewRecorder {
 
   @Volatile var durableSpecProjection: ReviewSpecProjectionReference? = null
 
-  val stageDegradations: MutableList<skillbill.review.model.ReviewStageDegradationMeasurement> =
+  val stageDegradations: MutableList<ReviewStageDegradationMeasurement> =
     Collections.synchronizedList(mutableListOf())
 
   /** The prompts the inline parent lanes were actually launched with. */
@@ -119,12 +137,12 @@ data class ReviewHarnessConfig(
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val rubricBody: (String) -> String = { "governed rubric body for $it" },
   val response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse() },
-  val evidenceBrokerFactory: skillbill.ports.review.ReviewEvidenceBrokerFactory =
-    skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
+  val evidenceBrokerFactory: ReviewEvidenceBrokerFactory =
+    FileSystemReviewEvidenceBrokerFactory(),
   val parentLaunch: ((GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome)? = null,
   /** Set false to model a worker that answered without reading its assigned evidence. */
   val simulateEvidenceReads: Boolean = true,
-  val evidenceEndpointBinder: skillbill.ports.review.GovernedReviewEvidenceEndpointBinder =
+  val evidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder =
     stubGovernedReviewEvidenceEndpointBinder(Files.createTempDirectory("review-endpoint")),
   /**
    * Commit range the fixture enumerates. Empty keeps the default single synthetic unit; the last
@@ -225,7 +243,7 @@ private fun recordingRubricResolver(recorder: ReviewRecorder, rubricBody: (Strin
 
     override fun resolve(
       manifest: PlatformManifest?,
-      evidence: List<skillbill.ports.review.model.ReviewOwnedFileEvidence>,
+      evidence: List<ReviewOwnedFileEvidence>,
       specialistSkillName: String,
     ): ResolvedReviewRubric {
       recorder.rubricResolutions += specialistSkillName
@@ -318,41 +336,41 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
 
 private fun recordingLifecycleTelemetry(recorder: ReviewRecorder): LifecycleTelemetryRepository =
   object : LifecycleTelemetryRepository {
-    override fun reviewStageDegradation(record: skillbill.review.model.ReviewStageDegradationMeasurement) {
+    override fun reviewStageDegradation(record: ReviewStageDegradationMeasurement) {
       recorder.stageDegradations += record
     }
 
     override fun featureTaskRuntimeStarted(
-      record: skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord,
+      record: FeatureTaskRuntimeStartedRecord,
       level: String,
     ) = Unit
 
     override fun featureTaskRuntimeFinished(
-      record: skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord,
+      record: FeatureTaskRuntimeFinishedRecord,
       level: String,
     ) = Unit
 
-    override fun qualityCheckStarted(record: skillbill.telemetry.model.QualityCheckStartedRecord, level: String) = Unit
+    override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) = Unit
 
-    override fun qualityCheckFinished(record: skillbill.telemetry.model.QualityCheckFinishedRecord, level: String) =
+    override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) =
       Unit
 
-    override fun featureVerifyStarted(record: skillbill.telemetry.model.FeatureVerifyStartedRecord, level: String) =
+    override fun featureVerifyStarted(record: FeatureVerifyStartedRecord, level: String) =
       Unit
 
-    override fun featureVerifyFinished(record: skillbill.telemetry.model.FeatureVerifyFinishedRecord, level: String) =
+    override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) =
       Unit
 
-    override fun prDescriptionGenerated(record: skillbill.telemetry.model.PrDescriptionGeneratedRecord, level: String) =
+    override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) =
       Unit
 
-    override fun goalStarted(record: skillbill.telemetry.model.GoalStartedRecord, level: String) = Unit
+    override fun goalStarted(record: GoalStartedRecord, level: String) = Unit
 
-    override fun goalSubtaskFinished(record: skillbill.telemetry.model.GoalSubtaskFinishedRecord, level: String) = Unit
+    override fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String) = Unit
 
-    override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = Unit
+    override fun goalFinished(record: GoalFinishedRecord, level: String) = Unit
 
-    override fun goalIssueFinished(record: skillbill.telemetry.model.GoalIssueFinishedRecord, level: String) = Unit
+    override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) = Unit
   }
 
 private fun recordingCatalogGateway(manifests: List<PlatformManifest>): ScaffoldCatalogGateway =
@@ -490,14 +508,14 @@ private val OWNED_PATH = Regex("\"([^\"]+)\"")
  * The harness broker with one lane-evidence denial injected where the runner reads it. A fixture
  * packet carries no materializable hunk bodies, so a byte-driven refusal cannot be provoked here.
  */
-fun brokerDenyingUnit(deniedPath: String): skillbill.ports.review.ReviewEvidenceBrokerFactory =
-  skillbill.ports.review.ReviewEvidenceBrokerFactory { binding ->
-    val delegate = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory().brokerFor(binding)
+fun brokerDenyingUnit(deniedPath: String): ReviewEvidenceBrokerFactory =
+  ReviewEvidenceBrokerFactory { binding ->
+    val delegate = FileSystemReviewEvidenceBrokerFactory().brokerFor(binding)
     val hunkId = binding.projectedHunks.first { it.path == deniedPath }.hunkId
     val commitSha = binding.assignment.assignedBundle.entries.first { hunkId in it.hunkIds }.commitSha
     val deniedUnit = "$commitSha@$deniedPath"
-    object : skillbill.ports.review.ReviewEvidenceBroker by delegate {
-      override fun accounting(): skillbill.ports.review.model.ReviewLaneAccounting = delegate.accounting().copy(
+    object : ReviewEvidenceBroker by delegate {
+      override fun accounting(): ReviewLaneAccounting = delegate.accounting().copy(
         budgetDimension = LANE_EVIDENCE_BYTES_DIMENSION,
         unreviewedUnits = listOf(deniedUnit),
       )

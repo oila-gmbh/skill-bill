@@ -5,6 +5,7 @@ package skillbill.scaffold.validation
 import skillbill.scaffold.platformpack.resolveSkillClassForSkill
 import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Path
+import skillbill.scaffold.model.SkillClassManifest
 
 private val UNRESOLVED_PLACEHOLDER_PATTERN = Regex("""(?m)^\s*(?:[-*]\s*)?(?:TODO|FIXME)\b""")
 private val GOVERNED_SCAFFOLD_PROMPT_PATTERN = Regex(
@@ -230,7 +231,7 @@ private fun classSectionHeadingClashes(body: String, classHeadings: List<String>
  * loader as the renderer. Returns null when no class manifest matches — that path lets the
  * validator stay permissive for non-governed test fixtures and ad-hoc repos.
  */
-private fun resolveSkillClassForPath(contentFile: Path): skillbill.scaffold.model.SkillClassManifest? {
+private fun resolveSkillClassForPath(contentFile: Path): SkillClassManifest? {
   val skillName = contentFile.parent?.fileName?.toString() ?: return null
   return runCatching { resolveSkillClassForSkill(skillName, contentFile) }.getOrNull()
 }

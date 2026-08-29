@@ -11,6 +11,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
+import IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -40,11 +41,11 @@ import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
-import skillbill.ports.goalrunner.model.GoalPlanningIdentity
+import GoalPlanningContractProvenance
+import GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
-import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import SharedGoalPreplanCheckpoint
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.time.NoopRuntimeTimingPort
 import skillbill.ports.time.RuntimeTimingPort
@@ -80,6 +81,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
+import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 
 @Suppress("LargeClass") // one suite over the sweep's recovery, gate, and stop paths; they share a harness
 class GoalPlanningSweepTest {
@@ -742,7 +745,7 @@ class GoalPlanningSweepTest {
     val harness: SweepHarness,
     val store: InMemoryGoalManifestStore,
     val resumeManifest: DecompositionManifest,
-    val plan1Before: skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint,
+    val plan1Before: GoalSubtaskPlanCheckpoint,
     val launchCount: Int,
   )
 
@@ -2410,10 +2413,10 @@ private class InMemoryPreparationRepository(
   private val planCheckpointThrows: Boolean = false,
 ) : GoalPlanningPreparationRepository {
   private val records = linkedMapOf<Int, GoalPlanningPreparationRecord>()
-  private var sharedPreplan: skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint? = null
-  private val plans = linkedMapOf<Int, skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint>()
+  private var sharedPreplan: SharedGoalPreplanCheckpoint? = null
+  private val plans = linkedMapOf<Int, GoalSubtaskPlanCheckpoint>()
 
-  override fun checkpointSharedPreplan(checkpoint: skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint) {
+  override fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
     sharedPreplan = checkpoint
     if (markPreparedThrows) {
       sharedPreplan = null
@@ -2422,13 +2425,13 @@ private class InMemoryPreparationRepository(
   }
 
   override fun replaceSharedPreplan(
-    checkpoint: skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint,
+    checkpoint: SharedGoalPreplanCheckpoint,
     expectedPayloadSha256: String,
     cascadePlanSubtaskIds: List<Int>,
   ) {
     val shared = sharedPreplan
     if (shared == null || shared.payloadSha256 != expectedPayloadSha256) {
-      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
         checkpoint.identity.parentGoalWorkflowId,
         0,
         "shared preplan changed after it was validated for regeneration",
@@ -2445,9 +2448,9 @@ private class InMemoryPreparationRepository(
   }
 
   override fun advanceSharedPreplanProvenance(
-    identity: skillbill.ports.goalrunner.model.GoalPlanningIdentity,
+    identity: GoalPlanningIdentity,
     expectedPayloadSha256: String,
-    provenance: skillbill.ports.goalrunner.model.GoalPlanningContractProvenance,
+    provenance: GoalPlanningContractProvenance,
   ) {
     if (skipProvenanceAdvance) return
     val shared = sharedPreplan
@@ -2455,7 +2458,7 @@ private class InMemoryPreparationRepository(
       shared.identity.parentGoalWorkflowId != identity.parentGoalWorkflowId ||
       shared.payloadSha256 != expectedPayloadSha256
     ) {
-      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
         identity.parentGoalWorkflowId,
         0,
         "shared preplan changed after it was validated for provenance advance",
@@ -2486,7 +2489,7 @@ private class InMemoryPreparationRepository(
 
   override fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = plans.keys.toList()
 
-  override fun replaceSubtaskPlan(checkpoint: skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint) {
+  override fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
     plans[checkpoint.subtaskId] = checkpoint
   }
 
@@ -2497,7 +2500,7 @@ private class InMemoryPreparationRepository(
   }
 
   override fun deleteSharedPreplan(
-    identity: skillbill.ports.goalrunner.model.GoalPlanningIdentity,
+    identity: GoalPlanningIdentity,
     expectedPayloadSha256: String,
   ): Int {
     val shared = sharedPreplan
@@ -2505,7 +2508,7 @@ private class InMemoryPreparationRepository(
       shared.identity.parentGoalWorkflowId != identity.parentGoalWorkflowId ||
       shared.payloadSha256 != expectedPayloadSha256
     ) {
-      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
         identity.parentGoalWorkflowId,
         0,
         "shared preplan changed after it was observed for discard",
@@ -2518,7 +2521,7 @@ private class InMemoryPreparationRepository(
   }
 
   override fun invalidateSharedPreplan(
-    identity: skillbill.ports.goalrunner.model.GoalPlanningIdentity,
+    identity: GoalPlanningIdentity,
     expectedPayloadSha256: String,
   ): Int {
     val shared = sharedPreplan
@@ -2526,7 +2529,7 @@ private class InMemoryPreparationRepository(
       shared.identity.parentGoalWorkflowId != identity.parentGoalWorkflowId ||
       shared.payloadSha256 != expectedPayloadSha256
     ) {
-      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
         identity.parentGoalWorkflowId,
         0,
         "shared preplan changed after it was observed for discard",
@@ -2565,10 +2568,10 @@ private class InMemoryPreparationRepository(
     )
   }
 
-  override fun findSharedPreplan(expectedIdentity: skillbill.ports.goalrunner.model.GoalPlanningIdentity) =
+  override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity) =
     sharedPreplan?.takeIf { it.identity == expectedIdentity }
 
-  override fun checkpointSubtaskPlan(checkpoint: skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint) {
+  override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
     plans[checkpoint.subtaskId] = checkpoint
     val shared = requireNotNull(sharedPreplan)
     records[checkpoint.subtaskId] = GoalPlanningPreparationRecord(
@@ -2578,7 +2581,7 @@ private class InMemoryPreparationRepository(
       subtaskId = checkpoint.subtaskId,
       governedSubSpecPath = checkpoint.governedSubSpecPath,
       preparationStatus = checkpoint.preparationStatus,
-      provenance = skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance(
+      provenance = GoalPlanningPreparationProvenance(
         parentSpecHash = checkpoint.provenance.parentSpecHash,
         subSpecHash = checkpoint.subSpecHash,
         decompositionManifestHash = checkpoint.provenance.decompositionManifestHash,
@@ -2601,42 +2604,42 @@ private class InMemoryPreparationRepository(
   }
 
   override fun findSubtaskPlan(
-    expectedIdentity: skillbill.ports.goalrunner.model.GoalPlanningIdentity,
+    expectedIdentity: GoalPlanningIdentity,
     subtaskId: Int,
     governedSubSpecPath: String,
   ) = plans[subtaskId]?.takeIf { it.identity == expectedIdentity && it.governedSubSpecPath == governedSubSpecPath }
 
   override fun listSubtaskPlansOrdered(
-    expectedIdentity: skillbill.ports.goalrunner.model.GoalPlanningIdentity,
-    orderedDescriptors: List<skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor>,
+    expectedIdentity: GoalPlanningIdentity,
+    orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
   ) = plans.values.filter { it.identity == expectedIdentity }.sortedBy { it.manifestOrder }
 
   override fun markPrepared(record: GoalPlanningPreparationRecord) {
     records[record.subtaskId] = record
-    val identity = skillbill.ports.goalrunner.model.GoalPlanningIdentity(
+    val identity = GoalPlanningIdentity(
       record.parentGoalWorkflowId,
       record.normalizedIssueKey,
       record.repositoryIdentity,
     )
-    val provenance = skillbill.ports.goalrunner.model.GoalPlanningContractProvenance(
+    val provenance = GoalPlanningContractProvenance(
       record.provenance.parentSpecHash,
       record.provenance.decompositionManifestHash,
-      skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+      GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
     )
-    sharedPreplan = skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint(
+    sharedPreplan = SharedGoalPreplanCheckpoint(
       identity = identity,
       provenance = provenance,
-      payloadSha256 = skillbill.application.goalrunner.planning.sha256HexUtf8(record.preplanPayload),
+      payloadSha256 = sha256HexUtf8(record.preplanPayload),
       preplanPayload = record.preplanPayload,
     )
-    plans[record.subtaskId] = skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint(
+    plans[record.subtaskId] = GoalSubtaskPlanCheckpoint(
       identity = identity,
       subtaskId = record.subtaskId,
       manifestOrder = record.subtaskId - 1,
       governedSubSpecPath = record.governedSubSpecPath,
       subSpecHash = record.provenance.subSpecHash,
       provenance = provenance,
-      payloadSha256 = skillbill.application.goalrunner.planning.sha256HexUtf8(record.planPayload),
+      payloadSha256 = sha256HexUtf8(record.planPayload),
       planPayload = record.planPayload,
     )
     if (markPreparedThrows) {
@@ -2875,7 +2878,7 @@ private val fakeContextDiscovery = object : GoalPlanningContextDiscovery {
   )
 
   override fun discoverForFindingPaths(repoRoot: Path, findingPaths: List<String>, loudFailOnCapExceeded: Boolean) =
-    skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery(
+    GoalVerificationBoundaryDiscovery(
       boundaryCatalog = discover(repoRoot).boundaryCatalog,
       boundaryCatalogTruncated = false,
       boundaryContextUnavailable = findingPaths.isEmpty(),
@@ -2997,7 +3000,7 @@ private class MutableContextDiscovery : GoalPlanningContextDiscovery {
   }
 
   override fun discoverForFindingPaths(repoRoot: Path, findingPaths: List<String>, loudFailOnCapExceeded: Boolean) =
-    skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery(
+    GoalVerificationBoundaryDiscovery(
       boundaryCatalog = catalog,
       boundaryCatalogTruncated = false,
       boundaryContextUnavailable = findingPaths.isEmpty(),

@@ -25,6 +25,8 @@ import skillbill.tempDbConnection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import java.sql.Connection
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 
 class ReviewStatsRuntimeTest {
   @Test
@@ -454,7 +456,7 @@ class ReviewStatsRuntimeTest {
   }
 }
 
-private fun importReviewedSample(connection: java.sql.Connection): ImportedReview {
+private fun importReviewedSample(connection: Connection): ImportedReview {
   val review = ReviewParser.parseReview(SAMPLE_REVIEW.trimIndent())
   ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
   recordFindingOutcome(connection, review.reviewRunId, "F-001", "finding_accepted", "")
@@ -463,7 +465,7 @@ private fun importReviewedSample(connection: java.sql.Connection): ImportedRevie
 }
 
 private fun recordFindingOutcome(
-  connection: java.sql.Connection,
+  connection: Connection,
   reviewRunId: String,
   findingId: String,
   eventType: String,
@@ -483,7 +485,7 @@ private fun recordFindingOutcome(
 }
 
 private fun telemetryPayloads(
-  records: List<skillbill.ports.telemetry.model.TelemetryOutboxRecord>,
+  records: List<TelemetryOutboxRecord>,
   eventName: String,
 ): List<Map<String, Any?>> = records.filter { it.eventName == eventName }.map { record ->
   JsonSupport.parseObjectOrNull(record.payloadJson)
@@ -515,7 +517,7 @@ private fun assertSerializedReviewFinishedPayloads(
   assertEquals("Intentional wording", fullRejectedFinding["note"])
 }
 
-private fun cacheSkillLearning(connection: java.sql.Connection, reviewRunId: String, reviewSessionId: String) {
+private fun cacheSkillLearning(connection: Connection, reviewRunId: String, reviewSessionId: String) {
   val learningId =
     SQLiteLearningStore.addLearning(
       connection = connection,
@@ -566,7 +568,7 @@ private const val ZERO_FINDING_REVIEW: String =
   No findings.
   """
 
-private fun seedMixedReviewHealth(connection: java.sql.Connection, reviewRunId: String) {
+private fun seedMixedReviewHealth(connection: Connection, reviewRunId: String) {
   ReviewStatsRuntime.updateReviewFinishedTelemetryState(connection, reviewRunId, enabled = true, level = "full")
   insertFeatureImplementSessionWithChildSteps(
     connection,
@@ -612,7 +614,7 @@ private data class FeatureImplementSessionFixture(
 )
 
 private fun insertFeatureImplementSessionWithChildSteps(
-  connection: java.sql.Connection,
+  connection: Connection,
   fixture: FeatureImplementSessionFixture,
 ) {
   connection.prepareStatement(
@@ -637,7 +639,7 @@ private fun insertFeatureImplementSessionWithChildSteps(
   }
 }
 
-private fun insertMalformedFeatureImplementChildSteps(connection: java.sql.Connection, sessionId: String) {
+private fun insertMalformedFeatureImplementChildSteps(connection: Connection, sessionId: String) {
   connection.createStatement().use { statement ->
     statement.executeUpdate(
       """
@@ -652,7 +654,7 @@ private fun insertMalformedFeatureImplementChildSteps(connection: java.sql.Conne
   }
 }
 
-private fun insertFeatureVerifySession(connection: java.sql.Connection) {
+private fun insertFeatureVerifySession(connection: Connection) {
   connection.createStatement().use { statement ->
     statement.executeUpdate(
       """

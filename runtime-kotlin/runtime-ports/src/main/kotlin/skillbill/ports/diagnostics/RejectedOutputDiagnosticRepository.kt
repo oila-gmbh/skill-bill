@@ -2,12 +2,17 @@ package skillbill.ports.diagnostics
 
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import java.time.Instant
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
+import skillbill.ports.diagnostics.model.RejectedOutputLifecycle
 
-typealias RejectedOutputLifecycle = skillbill.ports.diagnostics.model.RejectedOutputLifecycle
-typealias RejectedOutputDiagnostic = skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
-typealias RejectedOutputDiagnosticSelector = skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
-typealias RejectedOutputDiagnosticRecord = skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
-typealias ProducerOutputEvidence = skillbill.ports.diagnostics.model.ProducerOutputEvidence
+typealias RejectedOutputLifecycle = RejectedOutputLifecycle
+typealias RejectedOutputDiagnostic = RejectedOutputDiagnostic
+typealias RejectedOutputDiagnosticSelector = RejectedOutputDiagnosticSelector
+typealias RejectedOutputDiagnosticRecord = RejectedOutputDiagnosticRecord
+typealias ProducerOutputEvidence = ProducerOutputEvidence
 
 interface RejectedOutputDiagnosticRepository {
   fun insert(record: RejectedOutputDiagnosticRecord): RejectedOutputDiagnosticRecord

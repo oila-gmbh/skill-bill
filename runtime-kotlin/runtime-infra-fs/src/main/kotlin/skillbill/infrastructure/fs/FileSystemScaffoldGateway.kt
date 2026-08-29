@@ -40,6 +40,8 @@ import skillbill.nativeagent.discovery.discoverNativeAgentSourceFiles as discove
 import skillbill.ports.scaffold.model.GeneratedArtifactFile as PortGeneratedArtifactFile
 import skillbill.scaffold.platformpack.discoverGovernedAddonFiles as discoverFsGovernedAddonFiles
 import skillbill.scaffold.pointer.discoverGeneratedArtifactFiles as discoverFsGeneratedArtifactFiles
+import java.nio.file.Files
+import skillbill.error.MissingAgentAddonDeclarationError
 
 private const val CONTENT_PREVIEW_MAX_CHARS = 500
 
@@ -197,13 +199,13 @@ private const val AGENT_ADDON_PREFIX = "agent-addon:"
 
 private fun requireAgentAddonEntry(repoRoot: Path, identity: String): AgentAddonCatalogueEntry =
   AgentAddonDeliveryResolver().catalogue(repoRoot).firstOrNull { it.identity == identity }
-    ?: throw skillbill.error.MissingAgentAddonDeclarationError(
+    ?: throw MissingAgentAddonDeclarationError(
       identity.removePrefix(AGENT_ADDON_PREFIX),
       repoRoot.resolve("agent-addons").toString(),
     )
 
 private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: String): ScaffoldSkillStatus {
-  val contentText = java.nio.file.Files.readString(contentPath)
+  val contentText = Files.readString(contentPath)
   return ScaffoldSkillStatus(
     skillName = identity,
     packageName = "agent-addons",

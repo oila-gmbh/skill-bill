@@ -48,6 +48,13 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 
 /**
  * F-001 / F-008: unit coverage for [FeatureTaskRuntimeStatusService]'s projection
@@ -448,7 +455,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     harness.recorder.recordResolvedBranch(
       WORKFLOW_ID,
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch(
+      FeatureTaskRuntimeResolvedBranch(
         branch = "feat/SKILL-65-runtime-feature-task-parity",
         baseBranch = "main",
         created = true,
@@ -482,7 +489,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     harness.decomposeTerminalRecorder.recordDecomposeTerminal(
       WORKFLOW_ID,
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal(
+      FeatureTaskRuntimeDecomposeTerminal(
         reason = "Plan needs ordered subtasks.",
         parentSpecPath = ".feature-specs/SKILL-65-runtime/spec.md",
         decompositionManifestPath = ".feature-specs/SKILL-65-runtime/decomposition-manifest.yaml",
@@ -1207,20 +1214,20 @@ private class StatusFakeDatabaseSessionFactory(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused")
     override val workflowStates: WorkflowStateRepository = repository
-    override val workList = skillbill.ports.work.EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+    override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
     override val featureTaskRuntimeAuditGenerations =
-      skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
+      EmptyFeatureTaskRuntimeAuditGenerationRepository
   }
 }
 
 private class StatusInMemoryWorkflowRepository : WorkflowStateRepository {
   override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity,
+    identity: FeatureTaskExecutionIdentity,
   ) = Unit
 
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate>()
+    emptyList<FeatureTaskWorkflowCandidate>()
 
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 

@@ -15,6 +15,7 @@ import skillbill.scaffold.validation.ReviewSkillStructureValidator
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.io.FileNotFoundException
 
 internal fun discoverPlatformManifests(
   platformPacksRoot: Path,
@@ -27,7 +28,7 @@ internal fun discoverPlatformManifests(
 
 internal fun discoverBaseSkills(skillsRoot: Path): List<InstallPlanSkill> {
   if (!Files.isDirectory(skillsRoot)) {
-    throw java.io.FileNotFoundException("Base skills root '$skillsRoot' does not exist or is not a directory.")
+    throw FileNotFoundException("Base skills root '$skillsRoot' does not exist or is not a directory.")
   }
   val candidateSkillDirs = Files.list(skillsRoot).use { stream ->
     stream

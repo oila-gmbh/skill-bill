@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import java.nio.file.Path
 
 class PlatformPackSubstanceAuditTest {
   @Test
@@ -258,7 +259,7 @@ class PlatformPackSubstanceAuditTest {
     assertTrue(report.violations.any { it.areaOrRole == "quality-check" })
   }
 
-  private fun appendComposition(root: java.nio.file.Path, pack: String, target: String) {
+  private fun appendComposition(root: Path, pack: String, target: String) {
     Files.writeString(
       root.resolve("platform-packs/$pack/platform.yaml"),
       """

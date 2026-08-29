@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import skillbill.domain.skillremove.SkillRemove
 
 /**
  * Regression coverage for the on-disk cascade discovery the desktop dialog and CLI consume.
@@ -165,7 +166,7 @@ class SkillRemoveJvmFileSystemTest {
   fun `applyCascade rewrites platform yaml removing baseline and pointer entries`() {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
-    val service = skillbill.domain.skillremove.SkillRemove(fs)
+    val service = SkillRemove(fs)
     val request = SkillRemovalRequest(
       // SKILL-49: `bill-code-review` is a horizontal product skill; cascade-removal tests
       // exercise the maintainer path (`--allow-shipped`). The desktop UI never offers this.
@@ -195,7 +196,7 @@ class SkillRemoveJvmFileSystemTest {
   fun `applyCascade leaves platform packs in a state the schema accepts on reload`() {
     val repoRoot = seedRepo()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
-    val service = skillbill.domain.skillremove.SkillRemove(fs)
+    val service = SkillRemove(fs)
     val request = SkillRemovalRequest(
       // SKILL-49: `bill-code-review` is a horizontal product skill; cascade-removal tests
       // exercise the maintainer path (`--allow-shipped`). The desktop UI never offers this.
@@ -226,7 +227,7 @@ class SkillRemoveJvmFileSystemTest {
     val packRoot = repoRoot.resolve("platform-packs/kotlin")
     val otherPackRoot = repoRoot.resolve("platform-packs/kmp")
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
-    val service = skillbill.domain.skillremove.SkillRemove(fs)
+    val service = SkillRemove(fs)
     val request = SkillRemovalRequest(
       target = SkillRemovalTarget.PlatformPack(platform = "kotlin"),
       repoRootAbsolutePath = repoRoot.toString(),
@@ -262,7 +263,7 @@ class SkillRemoveJvmFileSystemTest {
   fun `executeRemoval AddOn removes platform and skill-class references`() {
     val (repoRoot, addon) = seedRepoWithAddonReferences()
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
-    val service = skillbill.domain.skillremove.SkillRemove(fs)
+    val service = SkillRemove(fs)
     val request = SkillRemovalRequest(
       target = SkillRemovalTarget.AddOn("platform-packs/kmp/addons/android-compose-edge-to-edge.md"),
       repoRootAbsolutePath = repoRoot.toString(),
@@ -304,7 +305,7 @@ class SkillRemoveJvmFileSystemTest {
       """.trimMargin(),
     )
     val fs = SkillRemoveJvmFileSystem(home = Files.createTempDirectory("home").also(tempDirs::add))
-    val service = skillbill.domain.skillremove.SkillRemove(fs)
+    val service = SkillRemove(fs)
     val request = SkillRemovalRequest(
       target = SkillRemovalTarget.ExternalAddOn(
         sourceRootAbsolutePath = externalDir.toString(),

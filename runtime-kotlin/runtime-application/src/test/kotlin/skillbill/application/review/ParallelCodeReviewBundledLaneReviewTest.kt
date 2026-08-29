@@ -34,6 +34,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.application.review.model.ReviewPreparationResult
 
 /** Six-commit bundled lane review over preparation, launch projection, and a fake lane worker. */
 class ParallelCodeReviewBundledLaneReviewTest {
@@ -142,7 +143,7 @@ class ParallelCodeReviewBundledLaneReviewTest {
     }
   }
 
-  private fun governed(lane: String, prepared: skillbill.application.review.model.ReviewPreparationResult) =
+  private fun governed(lane: String, prepared: ReviewPreparationResult) =
     GovernedReviewLaunch(
       prepared.assignments.single { it.lane == lane },
       prepared.packet,

@@ -10,6 +10,7 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import kotlinx.serialization.json.JsonElement
 
 /**
  * SKILL-52.1 — Internal continuation-step result. Wraps a typed
@@ -133,6 +134,6 @@ internal fun decompositionRuntimeArtifactsJson(
 )
 
 private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
-  kotlinx.serialization.json.JsonElement.serializer(),
+  JsonElement.serializer(),
   JsonSupport.valueToJsonElement(value),
 )

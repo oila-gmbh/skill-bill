@@ -17,6 +17,9 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE
 
 /**
  * Application-layer resolve seam for the shared review evidence projection. Reuse and re-derivation
@@ -58,14 +61,14 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolverTest {
     ): FeatureTaskRuntimeSharedEvidenceResolution {
       val fingerprint = request.checkpoint.fingerprint
       stored[fingerprint]?.let {
-        return it.copy(outcome = skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE)
+        return it.copy(outcome = REUSE)
       }
       derivations++
       val derivation = deriver.derive(request.checkpoint)
       val outcome = if (stored.isNotEmpty()) {
-        skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION
+        CHECKPOINT_CHANGE_REDERIVATION
       } else {
-        skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION
+        DERIVATION
       }
       val resolution = FeatureTaskRuntimeSharedEvidenceResolution(
         artifact = FeatureTaskRuntimeSharedEvidenceArtifact(

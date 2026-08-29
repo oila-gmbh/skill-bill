@@ -112,6 +112,17 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import java.time.Clock
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT
+import java.time.ZoneOffset.UTC
+import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.contracts.JsonSupport.json.parseToJsonElement
+import skillbill.application.goalrunner.planning.sha256HexUtf8
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 
 private fun WorkflowService.openTestRuntime(sessionId: String = "", currentStepId: String? = null): WorkflowOpenResult =
   openFeatureTask(
@@ -1157,7 +1168,7 @@ class WorkflowServiceTest {
       state = scopedReplanState(before, "skillbill-scoped-replan-child"),
       subtaskId = 2,
       dbPathOverride = null,
-      options = skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions(),
+      options = GoalRunnerScopedReplanOptions(),
     )
 
     assertEquals(listOf(2), result.clearedChildSubtaskIds)
@@ -1196,7 +1207,7 @@ class WorkflowServiceTest {
       state = scopedReplanState(before, "skillbill-scoped-replan-live-child"),
       subtaskId = 1,
       dbPathOverride = null,
-      options = skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions(),
+      options = GoalRunnerScopedReplanOptions(),
     )
 
     assertEquals(emptyList(), result.clearedChildSubtaskIds)
@@ -1341,7 +1352,7 @@ class WorkflowGoalStatusProjectionTest {
         workflowStatus = "paused",
         currentStepId = "assess",
         stepsJson = """[{"step_id":"assess","status":"completed"},{"step_id":"create_branch","status":"pending"}]""",
-        artifactsJson = skillbill.contracts.JsonSupport.mapToJsonString(
+        artifactsJson = JsonSupport.mapToJsonString(
           mapOf(
             "plan" to mapOf("mode" to "decompose"),
             DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
@@ -1418,7 +1429,7 @@ class WorkflowGoalStatusProjectionTest {
     val running = testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
@@ -1439,7 +1450,7 @@ class WorkflowGoalStatusProjectionTest {
     val complete = testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
@@ -1486,7 +1497,7 @@ class WorkflowGoalStatusProjectionTest {
 
   private fun newGoalStatusService(
     workflows: InMemoryWorkflowStates,
-    controls: GoalRunnerControlRepository = skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository,
+    controls: GoalRunnerControlRepository = EmptyGoalRunnerControlRepository,
   ): GoalRunnerStatusService {
     val database = FakeDatabaseSessionFactory(workflows, goalRunnerControls = controls)
     return GoalRunnerStatusService(
@@ -1737,7 +1748,7 @@ class GoalRunnerCommitShaRecoveryTest {
     val completed = testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
@@ -1764,7 +1775,7 @@ class GoalRunnerCommitShaRecoveryTest {
     return testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "blocked",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "blocked", "attempt_count" to 1)),
@@ -1802,7 +1813,7 @@ class GoalRunnerCommitShaRecoveryTest {
     val completed = testWorkflowEngine.updateRecord(
       FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
@@ -1870,7 +1881,7 @@ class WorkflowUpdateAcknowledgementBudgetTest {
     // assert it stays under the ceiling. A regression that echoes the full
     // durable artifacts map back in the ack would blow past it.
     val ackMap = WorkflowEngine.updateAcknowledgementMap(ack) + mapOf("db_path" to ok.dbPath)
-    val serialized = skillbill.contracts.JsonSupport.mapToJsonString(ackMap)
+    val serialized = JsonSupport.mapToJsonString(ackMap)
     val byteSize = serialized.toByteArray(Charsets.UTF_8).size
     assertTrue(
       byteSize < COMPACT_UPDATE_ACK_PAYLOAD_BYTE_CEILING,
@@ -1963,7 +1974,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val staleRunning = testWorkflowEngine.updateRecord(
       definition,
       staleOpened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -1984,7 +1995,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val authoritative = testWorkflowEngine.updateRecord(
       definition,
       authoritativeOpened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(
@@ -2034,7 +2045,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2074,7 +2085,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2113,7 +2124,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val blocked = testWorkflowEngine.updateRecord(
       definition,
       blockedOpened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "blocked",
         currentStepId = "review",
         stepUpdates = listOf(
@@ -2133,7 +2144,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val active = testWorkflowEngine.updateRecord(
       definition,
       activeOpened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2176,7 +2187,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2222,7 +2233,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val crashed = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "plan",
         stepUpdates = listOf(
@@ -2281,7 +2292,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val crashed = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "audit",
         stepUpdates = listOf(
@@ -2330,7 +2341,7 @@ class WorkflowGoalRunnerReconciliationTest {
     val crashed = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement_fix",
         stepUpdates = listOf(
@@ -2544,7 +2555,7 @@ class WorkflowGoalRunnerProgressStoreTest {
 
     // Append more than the bounded history limit, deliberately out of order, to
     // assert sequence-ordered retention that drops the OLDEST (lowest sequence).
-    val total = skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT + 5
+    val total = GOAL_PROGRESS_HISTORY_LIMIT + 5
     (total - 1 downTo 0).forEach { sequence ->
       store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = sequence))
     }
@@ -2553,7 +2564,7 @@ class WorkflowGoalRunnerProgressStoreTest {
       requireNotNull(workflows.getFeatureTaskWorkflow("wfl-child")).toSnapshot().artifactsJson,
     )
     val history = artifacts["goal_progress_run_history"] as List<*>
-    assertEquals(skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT, history.size)
+    assertEquals(GOAL_PROGRESS_HISTORY_LIMIT, history.size)
     val sequences = history.map { (it as Map<*, *>)["sequence_number"] }
     assertEquals(5, sequences.first())
     assertEquals(total - 1, sequences.last())
@@ -2666,7 +2677,7 @@ class WorkflowGoalRunnerProgressStoreTest {
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
-      skillbill.workflow.engine.model.WorkflowUpdateInput(
+      WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(
@@ -2753,8 +2764,8 @@ class WorkflowGoalRunnerProgressStoreTest {
 private const val COMPACT_UPDATE_ACK_PAYLOAD_BYTE_CEILING = 1024
 
 private fun decodeWorkflowStepsForTest(stepsJson: String): Map<String, String> {
-  val element = skillbill.contracts.JsonSupport.json.parseToJsonElement(stepsJson)
-  val value = skillbill.contracts.JsonSupport.jsonElementToValue(element) as List<*>
+  val element = parseToJsonElement(stepsJson)
+  val value = JsonSupport.jsonElementToValue(element) as List<*>
   return value.associate { raw ->
     val item = raw as Map<*, *>
     item["step_id"].toString() to item["status"].toString()
@@ -2762,10 +2773,10 @@ private fun decodeWorkflowStepsForTest(stepsJson: String): Map<String, String> {
 }
 
 private fun decodeWorkflowArtifactsForTest(artifactsJson: String): Map<String, Any?> {
-  val element = skillbill.contracts.JsonSupport.json.parseToJsonElement(artifactsJson)
+  val element = parseToJsonElement(artifactsJson)
   return requireNotNull(
-    skillbill.contracts.JsonSupport.anyToStringAnyMap(
-      skillbill.contracts.JsonSupport.jsonElementToValue(element),
+    JsonSupport.anyToStringAnyMap(
+      JsonSupport.jsonElementToValue(element),
     ),
   )
 }
@@ -2841,7 +2852,7 @@ private fun workflowRecord(
   return testWorkflowEngine.updateRecord(
     definition,
     opened,
-    skillbill.workflow.engine.model.WorkflowUpdateInput(
+    WorkflowUpdateInput(
       workflowStatus = workflowStatus,
       currentStepId = "plan",
       stepUpdates = null,
@@ -3411,7 +3422,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         "conflict" -> it.copy(provenance = it.provenance.copy(parentSpecHash = "f".repeat(64)))
         "projection_invalid" -> it.copy(
           planPayload = EMPTY_VALUE_PLAN_PAYLOAD,
-          payloadSha256 = skillbill.application.goalrunner.planning.sha256HexUtf8(EMPTY_VALUE_PLAN_PAYLOAD),
+          payloadSha256 = sha256HexUtf8(EMPTY_VALUE_PLAN_PAYLOAD),
         )
         else -> it
       }
@@ -3445,7 +3456,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
       decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
       phaseOutputValidator = phaseOutputValidator,
       planningProjectionValidator = realPlanningProjectionValidator,
-      clock = java.time.Clock.fixed(java.time.Instant.parse(instant), java.time.ZoneOffset.UTC),
+      clock = Clock.fixed(Instant.parse(instant), UTC),
     )
 
     fun newStore() = WorkflowGoalRunnerManifestStore(
@@ -3479,7 +3490,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
   private companion object {
     val NoWriteDecompositionManifestFileStore = object :
-      skillbill.ports.workflow.decomposition.DecompositionManifestFileStore by TestDecompositionManifestFileStore {
+      DecompositionManifestFileStore by TestDecompositionManifestFileStore {
       override fun writeTextAtomically(target: Path, content: String) = Unit
     }
 
@@ -3529,7 +3540,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     fun sharedCheckpoint() = SharedGoalPreplanCheckpoint(
       identity = identity(),
       provenance = provenance(),
-      payloadSha256 = skillbill.application.goalrunner.planning.sha256HexUtf8(PREPLAN_PAYLOAD),
+      payloadSha256 = sha256HexUtf8(PREPLAN_PAYLOAD),
       preplanPayload = PREPLAN_PAYLOAD,
     )
     fun planCheckpoint(id: Int): GoalSubtaskPlanCheckpoint {
@@ -3542,7 +3553,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         governedSubSpecPath = descriptor.governedSubSpecPath,
         subSpecHash = descriptor.subSpecHash,
         provenance = provenance(),
-        payloadSha256 = skillbill.application.goalrunner.planning.sha256HexUtf8(payload),
+        payloadSha256 = sha256HexUtf8(payload),
         planPayload = payload,
       )
     }
@@ -3595,9 +3606,9 @@ internal class FakeDatabaseSessionFactory(
   private val workflowStates: WorkflowStateRepository,
   private val fakeDbPath: Path = Path.of("/fake/metrics.db"),
   private val planningPreparations: GoalPlanningPreparationRepository =
-    skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository,
+    EmptyGoalPlanningPreparationRepository,
   private val goalRunnerControls: GoalRunnerControlRepository =
-    skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository,
+    EmptyGoalRunnerControlRepository,
 ) : DatabaseSessionFactory {
   override fun resolveDbPath(dbOverride: String?): Path = fakeDbPath
   override fun databaseExists(dbOverride: String?): Boolean = true
@@ -3619,7 +3630,7 @@ internal class FakeDatabaseSessionFactory(
       get() = error("TelemetryReconciliationRepository is not exercised in WorkflowServiceTest.")
     override val telemetryOutbox: TelemetryOutboxRepository
       get() = error("TelemetryOutboxRepository is not exercised in WorkflowServiceTest.")
-    override val workList = skillbill.ports.work.EmptyWorkListRepository
+    override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = planningPreparations
     override val goalRunnerControls = this@FakeDatabaseSessionFactory.goalRunnerControls
   }

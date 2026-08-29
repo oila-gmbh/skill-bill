@@ -42,6 +42,8 @@ import skillbill.scaffold.validation.validateReviewSkillStructure
 import skillbill.scaffold.validation.validateSkillMdShape
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.InvalidPathException
+import skillbill.scaffold.validation.ReviewSkillStructureValidator
 
 internal fun loadPlatformManifest(packRoot: Path, enforceContractVersion: Boolean = true): PlatformManifest {
   val resolvedPackRoot = packRoot.toAbsolutePath().normalize()
@@ -62,7 +64,7 @@ internal fun loadPlatformPack(packRoot: Path, enforceGovernedReviewStructure: Bo
   validatePlatformPack(pack, SHELL_CONTRACT_VERSION)
   pack.declaredQualityCheckFile?.let { loadQualityCheckContent(pack) }
   if (enforceGovernedReviewStructure) {
-    skillbill.scaffold.validation.ReviewSkillStructureValidator.validate(pack.packRoot)
+    ReviewSkillStructureValidator.validate(pack.packRoot)
   }
   return pack
 }
@@ -1093,8 +1095,8 @@ private fun requireSafePointerSubpath(slug: String, value: String, label: String
     )
   }
   val asPath = try {
-    java.nio.file.Path.of(value)
-  } catch (error: java.nio.file.InvalidPathException) {
+    Path.of(value)
+  } catch (error: InvalidPathException) {
     throw InvalidManifestSchemaError(
       "Platform pack '$slug': $label '$value' is not a valid path: ${error.message}",
       error,
@@ -1125,8 +1127,8 @@ private fun requireSafePointerTarget(slug: String, skillRelativeDir: String, nam
     )
   }
   val asPath = try {
-    java.nio.file.Path.of(target)
-  } catch (error: java.nio.file.InvalidPathException) {
+    Path.of(target)
+  } catch (error: InvalidPathException) {
     throw InvalidManifestSchemaError(
       "Platform pack '$slug': pointer '$name' under '$skillRelativeDir' target '$target' is not a valid path: " +
         "${error.message}",

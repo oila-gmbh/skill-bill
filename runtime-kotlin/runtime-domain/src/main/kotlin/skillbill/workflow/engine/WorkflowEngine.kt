@@ -851,7 +851,7 @@ class WorkflowEngine(
     }
 
     private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
-      kotlinx.serialization.json.JsonElement.serializer(),
+      JsonElement.serializer(),
       JsonSupport.valueToJsonElement(value),
     )
 

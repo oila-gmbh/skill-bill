@@ -27,6 +27,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairE
 import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.SQLException
+import java.security.MessageDigest
 
 class GoalPlanningPreparationStore(
   private val connection: Connection,
@@ -774,7 +775,7 @@ internal fun Connection.restampSubtaskPlanProvenance(
 internal const val INVALIDATED_SHARED_PREPLAN_PAYLOAD = "shared-preplan-discarded"
 
 internal val INVALIDATED_SHARED_PREPLAN_PAYLOAD_SHA256: String =
-  java.security.MessageDigest.getInstance("SHA-256")
+  MessageDigest.getInstance("SHA-256")
     .digest(INVALIDATED_SHARED_PREPLAN_PAYLOAD.toByteArray(Charsets.UTF_8))
     .joinToString("") { byte -> "%02x".format(byte) }
 

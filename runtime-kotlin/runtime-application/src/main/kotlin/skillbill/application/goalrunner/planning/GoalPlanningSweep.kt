@@ -67,6 +67,7 @@ import java.nio.file.Path
 import java.time.Instant
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
+import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 
 fun interface GoalPlanningSweep {
   fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome
@@ -688,7 +689,7 @@ class DefaultGoalPlanningSweep(
   ): GoalPlanningPhaseProduction {
     val payload = finalizePayload(captured.payload)
     val accepted = if (payload == captured.payload) {
-      skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput(
+      AcceptedFeatureTaskRuntimePhaseOutput(
         normalizedOutput = captured.normalizedOutput,
         repairEvidence = captured.repairEvidence,
       )

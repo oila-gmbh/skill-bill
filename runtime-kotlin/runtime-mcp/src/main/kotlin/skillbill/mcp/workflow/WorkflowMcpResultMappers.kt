@@ -10,6 +10,7 @@ import skillbill.application.workflow.model.WorkflowResumeResult
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowContinueView
 
 /**
  * SKILL-52.1 — Adapter-side mappers that convert typed
@@ -199,7 +200,7 @@ private fun GoalContinuationOutcome?.toWireMap(): Map<String, Any?> = this?.let 
 }.orEmpty()
 
 private fun standardMcpContinueMap(
-  view: skillbill.workflow.engine.model.WorkflowContinueView,
+  view: WorkflowContinueView,
   dbPath: String,
   decompositionExtras: Map<String, Any?>,
 ): Map<String, Any?> {

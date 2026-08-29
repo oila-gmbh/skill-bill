@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.application.install.InstallPlanningPorts
-import skillbill.application.install.InstallReconcilePorts
+import InstallReconcilePorts
 import skillbill.application.install.InstallService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
@@ -67,6 +67,18 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
+import skillbill.ports.install.baseline.BaselineManifestPersistencePort
+import skillbill.install.model.InstallPlan
+import skillbill.ports.install.reconcile.InstallReconcileApplyPort
+import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileApplyResult
+import skillbill.ports.install.reconcile.InstallReconcilePort
+import skillbill.ports.install.reconcile.model.InstallReconcileRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileResult
+import skillbill.ports.install.baseline.model.ReadBaselineManifestRequest
+import skillbill.ports.install.baseline.model.ReadBaselineManifestResult
+import skillbill.ports.install.baseline.model.WriteBaselineManifestRequest
+import skillbill.ports.install.baseline.model.WriteBaselineManifestResult
 
 class InstallServiceTest {
   @Test
@@ -265,7 +277,7 @@ class InstallServiceTest {
       InstallAgentTarget(InstallAgent.CODEX, request.home.resolve(".codex/skills"), InstallAgentTargetSource.MANUAL),
     ),
     selectedPlatformSlugs: List<String> = emptyList(),
-  ): skillbill.install.model.InstallPlan = skillbill.install.model.InstallPlan(
+  ): InstallPlan = InstallPlan(
     request = request,
     agents = agents,
     discoveredPlatformPacks = emptyList(),
@@ -309,7 +321,7 @@ class InstallServiceTest {
   )
 
   private fun successfulApplyResult(
-    plan: skillbill.install.model.InstallPlan,
+    plan: InstallPlan,
     resolvedAgent: InstallAgent?,
   ): InstallApplyResult = InstallApplyResult(
     status = InstallApplyStatus.SUCCESS,
@@ -351,7 +363,7 @@ class InstallServiceTest {
     mcpRegistrationIntent = plan.mcpRegistrationIntent,
   )
 
-  private fun failedApplyResult(plan: skillbill.install.model.InstallPlan): InstallApplyResult = InstallApplyResult(
+  private fun failedApplyResult(plan: InstallPlan): InstallApplyResult = InstallApplyResult(
     status = InstallApplyStatus.FAILURE,
     skills = emptyList(),
     nativeAgents = emptyList(),
@@ -513,34 +525,34 @@ class InstallServiceTest {
       InstallApplyExecutionResult(result)
   }
 
-  private object UnsupportedInstallReconcilePort : skillbill.ports.install.reconcile.InstallReconcilePort {
+  private object UnsupportedInstallReconcilePort : InstallReconcilePort {
     override fun reconcile(
-      request: skillbill.ports.install.reconcile.model.InstallReconcileRequest,
-    ): skillbill.ports.install.reconcile.model.InstallReconcileResult = error("reconcile is not part of this test")
+      request: InstallReconcileRequest,
+    ): InstallReconcileResult = error("reconcile is not part of this test")
   }
 
-  private object UnsupportedInstallReconcileApplyPort : skillbill.ports.install.reconcile.InstallReconcileApplyPort {
+  private object UnsupportedInstallReconcileApplyPort : InstallReconcileApplyPort {
     override fun apply(
-      request: skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest,
-    ): skillbill.ports.install.reconcile.model.InstallReconcileApplyResult =
+      request: InstallReconcileApplyRequest,
+    ): InstallReconcileApplyResult =
       error("reconcile apply is not part of this test")
   }
 
   private object UnsupportedBaselineManifestPersistencePort :
-    skillbill.ports.install.baseline.BaselineManifestPersistencePort {
+    BaselineManifestPersistencePort {
     override fun readBaseline(
-      request: skillbill.ports.install.baseline.model.ReadBaselineManifestRequest,
-    ): skillbill.ports.install.baseline.model.ReadBaselineManifestResult =
+      request: ReadBaselineManifestRequest,
+    ): ReadBaselineManifestResult =
       error("readBaseline is not part of this test")
 
     override fun writeBaseline(
-      request: skillbill.ports.install.baseline.model.WriteBaselineManifestRequest,
-    ): skillbill.ports.install.baseline.model.WriteBaselineManifestResult =
+      request: WriteBaselineManifestRequest,
+    ): WriteBaselineManifestResult =
       error("writeBaseline is not part of this test")
   }
 
   private companion object {
-    val unsupportedReconcilePorts = skillbill.application.install.InstallReconcilePorts(
+    val unsupportedReconcilePorts = InstallReconcilePorts(
       reconcilePort = UnsupportedInstallReconcilePort,
       reconcileApplyPort = UnsupportedInstallReconcileApplyPort,
       baselineManifestPersistencePort = UnsupportedBaselineManifestPersistencePort,

@@ -9,6 +9,7 @@ import skillbill.scaffold.manifest.removeCodeReviewArea
 import skillbill.scaffold.manifest.removeDeclaredQualityCheckFile
 import skillbill.scaffold.manifest.removeSkillClassPointer
 import java.nio.file.Path
+import org.junit.jupiter.api.Assertions
 
 /**
  * SKILL-46 AC9: round-trip coverage of [removeCodeReviewArea] and [removeDeclaredQualityCheckFile].
@@ -56,7 +57,7 @@ class ScaffoldManifestEditsRemoveTest {
     assertFalse(updated.contains("ui: \"code-review/bill-foo-code-review-ui/content.md\""))
     assertFalse(updated.contains("focus: \"UI review\""))
     // 'perf' is left intact.
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("\"perf\""))
+    Assertions.assertTrue(updated.contains("\"perf\""))
   }
 
   @Test
@@ -149,9 +150,9 @@ class ScaffoldManifestEditsRemoveTest {
 
     val updated = manifest.toFile().readText()
     assertFalse(updated.contains("android-compose-edge-to-edge.md"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("android-compose-review.md"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("android-navigation-review.md"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("shell-ceremony.md"))
+    Assertions.assertTrue(updated.contains("android-compose-review.md"))
+    Assertions.assertTrue(updated.contains("android-navigation-review.md"))
+    Assertions.assertTrue(updated.contains("shell-ceremony.md"))
   }
 
   @Test
@@ -173,7 +174,7 @@ class ScaffoldManifestEditsRemoveTest {
 
     val updated = manifest.toFile().readText()
     assertFalse(updated.contains("android-compose-implementation"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("shell-ceremony"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("android-navigation-implementation"))
+    Assertions.assertTrue(updated.contains("shell-ceremony"))
+    Assertions.assertTrue(updated.contains("android-navigation-implementation"))
   }
 }

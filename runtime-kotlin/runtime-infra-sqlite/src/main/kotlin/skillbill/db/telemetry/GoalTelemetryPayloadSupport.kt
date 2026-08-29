@@ -5,6 +5,7 @@ import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.logging.Logger
+import java.time.Duration
 
 private const val MILLIS_PER_SECOND = 1000L
 
@@ -111,7 +112,7 @@ fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String, salt: Stri
 private fun secondsFromMillis(durationMs: Long): Long = durationMs.coerceAtLeast(0) / MILLIS_PER_SECOND
 
 private fun durationBetweenSeconds(startedAt: String, finishedAt: String): Long = runCatching {
-  java.time.Duration.between(parseTelemetryTimestamp(startedAt), parseTelemetryTimestamp(finishedAt))
+  Duration.between(parseTelemetryTimestamp(startedAt), parseTelemetryTimestamp(finishedAt))
     .seconds
     .coerceAtLeast(0)
 }.getOrDefault(0)

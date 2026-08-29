@@ -24,6 +24,8 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID
+import skillbill.db.workflow.INVALIDATED_SHARED_PREPLAN_PAYLOAD
 
 @Suppress("LargeClass")
 class GoalPlanningPreparationStoreTest {
@@ -729,7 +731,7 @@ class GoalPlanningPreparationStoreTest {
       )
       // Store still surfaces the row so relaunch can replace+restamp.
       assertEquals(
-        skillbill.db.workflow.INVALIDATED_SHARED_PREPLAN_PAYLOAD,
+        INVALIDATED_SHARED_PREPLAN_PAYLOAD,
         store.findSharedPreplan(identity())?.preplanPayload,
       )
     }
@@ -791,7 +793,7 @@ class GoalPlanningPreparationStoreTest {
   private fun provenance() = GoalPlanningContractProvenance(
     parentSpecHash = "a".repeat(64),
     decompositionManifestHash = "b".repeat(64),
-    planningContractId = skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+    planningContractId = EXPECTED_SCHEMA_ID,
   )
 
   private fun sharedCheckpoint() = SharedGoalPreplanCheckpoint(

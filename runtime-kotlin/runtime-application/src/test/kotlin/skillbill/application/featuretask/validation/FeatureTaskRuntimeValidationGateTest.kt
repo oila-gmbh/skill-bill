@@ -2,7 +2,7 @@ package skillbill.application.featuretask.validation
 
 import skillbill.application.featuretask.validation.model.UNPARSEABLE_GATE_FAILURE_RULE_ID
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
-import skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher
+import ValidationGateAgentTriageLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
@@ -18,6 +18,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Captured
 
 class FeatureTaskRuntimeValidationGateTest {
   @Test
@@ -134,8 +135,8 @@ class FeatureTaskRuntimeValidationGateTest {
         validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentTriageLauncher = skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher {
-          skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Captured("plan prose")
+        agentTriageLauncher = ValidationGateAgentTriageLauncher {
+          Captured("plan prose")
         },
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _, _ ->
           completedRepair()

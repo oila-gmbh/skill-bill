@@ -7,7 +7,7 @@ import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.identity.SkillContentIdentity
 import skillbill.install.identity.routeInstalledSkillBody
 import skillbill.install.identity.suppliedSkillContentIdentity
-import skillbill.install.model.InstallPlanSkill
+import InstallPlanSkill
 import skillbill.install.model.RenderedSkill
 import skillbill.install.support.writeRenderedSupportPointerFiles
 import skillbill.scaffold.authoring.AuthoringTarget
@@ -154,7 +154,7 @@ internal fun stageInstalledSkill(
   home: Path,
   manifests: List<PlatformManifest>? = null,
   skillsRoot: Path? = null,
-  selectedPackSkills: List<skillbill.install.model.InstallPlanSkill> = emptyList(),
+  selectedPackSkills: List<InstallPlanSkill> = emptyList(),
   selectedPlatformSlugs: Set<String> = emptySet(),
   suppliedCompactIdentity: String? = null,
 ): RenderedSkill {

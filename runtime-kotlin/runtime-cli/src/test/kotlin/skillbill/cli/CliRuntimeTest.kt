@@ -28,6 +28,10 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
+import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 
 @Suppress("LargeClass")
 class CliRuntimeTest {
@@ -668,7 +672,7 @@ class CliRuntimeTest {
         "json",
       )
     val workflowId = opened["workflow_id"] as String
-    val checkpoint = skillbill.infrastructure.fs.GitWorkflowGitOperations()
+    val checkpoint = GitWorkflowGitOperations()
       .repositoryFingerprint(Path.of("").toAbsolutePath()).value
     val steps = opened.steps()
     assertEquals("completed", steps.single { it["step_id"] == "gather_diff" }["status"])
@@ -959,7 +963,7 @@ class CliRuntimeTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = LifecycleTelemetryStore(connection)
       store.goalStarted(
-        skillbill.telemetry.model.GoalStartedRecord(
+        GoalStartedRecord(
           issueKey = "SKILL-66",
           featureName = "goal telemetry",
           workflowId = "wf-cli-human",
@@ -971,7 +975,7 @@ class CliRuntimeTest {
         level = "full",
       )
       store.goalFinished(
-        skillbill.telemetry.model.GoalFinishedRecord(
+        GoalFinishedRecord(
           issueKey = "SKILL-66",
           workflowId = "wf-cli-human",
           status = "completed",
@@ -1138,7 +1142,7 @@ private fun seedGoalStatsDb(dbPath: Path) {
   DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
     val store = LifecycleTelemetryStore(connection)
     store.goalStarted(
-      skillbill.telemetry.model.GoalStartedRecord(
+      GoalStartedRecord(
         issueKey = "SKILL-66",
         featureName = "goal telemetry",
         workflowId = "wf-cli-1",
@@ -1150,7 +1154,7 @@ private fun seedGoalStatsDb(dbPath: Path) {
       level = "full",
     )
     store.goalSubtaskFinished(
-      skillbill.telemetry.model.GoalSubtaskFinishedRecord(
+      GoalSubtaskFinishedRecord(
         issueKey = "SKILL-66",
         workflowId = "wf-cli-1",
         subtaskId = 1,
@@ -1165,7 +1169,7 @@ private fun seedGoalStatsDb(dbPath: Path) {
       "full",
     )
     store.goalFinished(
-      skillbill.telemetry.model.GoalFinishedRecord(
+      GoalFinishedRecord(
         issueKey = "SKILL-66",
         workflowId = "wf-cli-1",
         status = "blocked",

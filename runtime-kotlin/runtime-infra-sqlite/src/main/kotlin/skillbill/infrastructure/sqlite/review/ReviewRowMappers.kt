@@ -8,8 +8,9 @@ import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.review.model.ReviewSeverityAdjustmentDirection
 import skillbill.review.model.ReviewSummary
+import java.sql.ResultSet
 
-fun java.sql.ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
+fun ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
   findingId = getString("finding_id"),
   severity = getString("severity"),
   confidence = getString("confidence"),
@@ -20,7 +21,7 @@ fun java.sql.ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
   laneSkillName = getString("lane_skill_name"),
 )
 
-fun java.sql.ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(
+fun ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(
   reviewRunId = getString("review_run_id"),
   reviewSessionId = getString("review_session_id"),
   routedSkill = getString("routed_skill"),
@@ -37,7 +38,7 @@ fun java.sql.ResultSet.toReviewSummary(): ReviewSummary = ReviewSummary(
   detectedScopeDetail = getString("detected_scope_detail"),
 )
 
-fun java.sql.ResultSet.toNumberedFinding(number: Int): NumberedFinding = NumberedFinding(
+fun ResultSet.toNumberedFinding(number: Int): NumberedFinding = NumberedFinding(
   number = number,
   findingId = getString("finding_id"),
   severity = getString("severity"),

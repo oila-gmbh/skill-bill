@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 
 class GoalModeAttributionUnitTest {
 
@@ -123,8 +124,8 @@ class GoalModeAttributionUnitTest {
     launchFacts()
   }
 
-  private fun runRequest(): skillbill.application.goalrunner.model.GoalRunnerRunRequest =
-    skillbill.application.goalrunner.model.GoalRunnerRunRequest(
+  private fun runRequest(): GoalRunnerRunRequest =
+    GoalRunnerRunRequest(
       issueKey = "SKILL-56",
       repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       invokedAgentId = "claude",

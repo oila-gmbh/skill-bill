@@ -16,6 +16,7 @@ import skillbill.install.support.InstallSymlinkException
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Path
+import skillbill.install.model.InstallPlanSkill
 
 internal fun applyNativeAgents(
   plan: InstallPlan,
@@ -160,7 +161,7 @@ private fun nativeAgentLegacyCacheRoot(plan: InstallPlan): Path = NativeAgentOpe
 // bundle hosted in an internal skill's dir installs exactly as it does for a listed skill
 // (native-agent parity). Do not add an internalFor filter.
 internal fun nativeAgentSourceRoots(
-  skills: List<skillbill.install.model.InstallPlanSkill>,
+  skills: List<InstallPlanSkill>,
   selectedPlatformSlugs: Set<String>,
 ): List<Path> = skills
   .filter { skill -> skill.platformSlug == null || skill.platformSlug in selectedPlatformSlugs }

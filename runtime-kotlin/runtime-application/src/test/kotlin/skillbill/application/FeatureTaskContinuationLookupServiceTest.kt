@@ -25,6 +25,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.contracts.JsonSupport
+import skillbill.ports.workflow.model.WorkflowStateRecord
 
 class FeatureTaskContinuationLookupServiceTest {
   @Test
@@ -342,7 +345,7 @@ class FeatureTaskContinuationLookupServiceTest {
           ),
         ),
       )
-      val definition = skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.definition
+      val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
       val engine = WorkflowEngine(testWorkflowSnapshotValidator)
       val opened = engine.openRecord(definition, "wfl-goal-parent", "ftr-goal", "preplan")
       states.saveFeatureTaskRuntimeWorkflow(
@@ -389,7 +392,7 @@ class FeatureTaskContinuationLookupServiceTest {
           encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
       )
       states.saveFeatureTaskWorkflow(
-        skillbill.ports.workflow.model.WorkflowStateRecord(
+        WorkflowStateRecord(
           workflowId = "wfl-prose-goal-parent",
           sessionId = "fis-prose-goal",
           workflowName = "bill-feature-task",
@@ -399,7 +402,7 @@ class FeatureTaskContinuationLookupServiceTest {
           currentStepId = "assess",
           stepsJson =
           """[{"step_id":"assess","status":"completed"},{"step_id":"create_branch","status":"pending"}]""",
-          artifactsJson = skillbill.contracts.JsonSupport.mapToJsonString(artifacts),
+          artifactsJson = JsonSupport.mapToJsonString(artifacts),
           startedAt = null,
           updatedAt = null,
           finishedAt = null,

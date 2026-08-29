@@ -22,8 +22,8 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
-import skillbill.ports.review.model.ReviewEvidenceBatchRequest
-import skillbill.ports.review.model.ReviewToolCall
+import ReviewEvidenceBatchRequest
+import ReviewToolCall
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.test.Test
@@ -35,6 +35,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
+import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
 
 @Suppress("LargeClass") // cohesive builder-matrix suite across claude/codex/junie/cursor launches
 class AgentRunCommandBuildersTest {
@@ -438,7 +441,7 @@ class AgentRunCommandBuildersTest {
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
       reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
     )
-    val governedOperations = skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
+    val governedOperations = OPERATIONS
 
     listOf(false to emptyList<String>(), true to listOf("Agent", "Task")).forEach { (fanOut, delegation) ->
       val command = ClaudeAgentRunCommandBuilder().build(isolated.copy(reviewFanOut = fanOut)).command
@@ -620,11 +623,11 @@ class AgentRunCommandBuildersTest {
     nativeReviewWorkerName = nativeReviewWorkerName,
   )
 
-  private object StubReviewEvidenceEndpoint : skillbill.ports.review.GovernedReviewEvidenceEndpointHandle {
-    override val descriptor = skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor(
+  private object StubReviewEvidenceEndpoint : GovernedReviewEvidenceEndpointHandle {
+    override val descriptor = GovernedReviewEvidenceEndpointDescriptor(
       lane = "architecture",
-      socketPath = java.nio.file.Path.of("/tmp/skill-bill-review/evidence.sock"),
-      mcpConfigPath = java.nio.file.Path.of("/tmp/skill-bill-review/mcp.json"),
+      socketPath = Path.of("/tmp/skill-bill-review/evidence.sock"),
+      mcpConfigPath = Path.of("/tmp/skill-bill-review/mcp.json"),
       token = "launch-token",
     )
 
@@ -632,8 +635,8 @@ class AgentRunCommandBuildersTest {
   }
 
   private object NoOpReviewEvidenceBroker : ReviewEvidenceBroker {
-    override fun readBatch(request: skillbill.ports.review.model.ReviewEvidenceBatchRequest) = error("unused")
-    override fun recordToolCall(call: skillbill.ports.review.model.ReviewToolCall) = error("unused")
+    override fun readBatch(request: ReviewEvidenceBatchRequest) = error("unused")
+    override fun recordToolCall(call: ReviewToolCall) = error("unused")
     override fun recordModelTurn() = error("unused")
     override fun validateLaneResult(result: String) = error("unused")
     override fun observeLaneResultChunk(chunk: String) = error("unused")

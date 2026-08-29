@@ -11,6 +11,12 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValida
 import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.goal.model.ValidationDepth
 
+private fun unrecognizedHandoffWireValue(field: String, value: String): Nothing =
+  throw InvalidFeatureTaskRuntimePhaseHandoffSchemaError(
+    sourceLabel = "<wire>",
+    reason = "Unrecognized feature-task-runtime handoff $field wire value '$value'.",
+  )
+
 /**
  * Typed handoff-projection primitives. Together they replace the generic upstream-payload map with a
  * four-part boundary: private evidence stays in the durable phase record, the consumer projection is
@@ -100,7 +106,7 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
           FeatureTaskRuntimeRunInvariantPromptField.fromWire(value.removePrefix(RUN_INVARIANT_FIELD_PREFIX)),
         )
       value.startsWith(ADDON_CONTENT_PREFIX) -> AddonContentRef(value.removePrefix(ADDON_CONTENT_PREFIX))
-      else -> throw IllegalArgumentException("Unknown feature-task-runtime handoff source ref '$value'.")
+      else -> unrecognizedHandoffWireValue("source ref", value)
     }
   }
 
@@ -147,7 +153,7 @@ enum class FeatureTaskRuntimeRunInvariantPromptField(
   companion object {
     fun fromWire(value: String): FeatureTaskRuntimeRunInvariantPromptField =
       entries.firstOrNull { it.wireValue == value }
-        ?: throw IllegalArgumentException("Unknown feature-task-runtime run-invariant prompt field '$value'.")
+        ?: unrecognizedHandoffWireValue("run-invariant prompt field", value)
   }
 }
 
@@ -159,7 +165,7 @@ enum class FeatureTaskRuntimeHandoffPromptVisibility(val wireValue: String) {
   companion object {
     fun fromWire(value: String): FeatureTaskRuntimeHandoffPromptVisibility =
       entries.firstOrNull { it.wireValue == value }
-        ?: throw IllegalArgumentException("Unknown feature-task-runtime handoff prompt visibility '$value'.")
+        ?: unrecognizedHandoffWireValue("handoff prompt visibility", value)
   }
 }
 
@@ -244,7 +250,7 @@ enum class FeatureTaskRuntimeRepositoryCheckpointPolicy(val wireValue: String) {
   companion object {
     fun fromWire(value: String): FeatureTaskRuntimeRepositoryCheckpointPolicy =
       entries.firstOrNull { it.wireValue == value }
-        ?: throw IllegalArgumentException("Unknown feature-task-runtime repository checkpoint policy '$value'.")
+        ?: unrecognizedHandoffWireValue("repository checkpoint policy", value)
   }
 }
 
@@ -296,7 +302,7 @@ enum class FeatureTaskRuntimeCompactReferenceKind(val wireValue: String, val run
 
   companion object {
     fun fromWire(value: String): FeatureTaskRuntimeCompactReferenceKind = entries.firstOrNull { it.wireValue == value }
-      ?: throw IllegalArgumentException("Unknown feature-task-runtime compact reference kind '$value'.")
+      ?: unrecognizedHandoffWireValue("compact reference kind", value)
   }
 }
 
@@ -703,7 +709,7 @@ data class FeatureTaskRuntimeHandoffEnvelope(
     }
 
     private fun decodeError(detail: String): Nothing =
-      throw IllegalArgumentException("Feature-task-runtime handoff envelope is malformed: $detail")
+      throw InvalidFeatureTaskRuntimePhaseHandoffSchemaError(sourceLabel = "<wire>", reason = detail)
 
     private fun Map<*, *>.requireString(key: String): String = (this[key] as? String)?.takeIf(String::isNotBlank)
       ?: decodeError("field '$key' must decode to a non-blank string.")

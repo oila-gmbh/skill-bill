@@ -25,6 +25,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
 
 class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
   private val workflowId = "wftr-skill176-adopt-1"
@@ -69,13 +72,13 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       harness.preparation.prepare(
         resumeRequest(
           validationDepth = ValidationDepth.FULL,
-          qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+          qualityGateSelection = BUILD,
         ),
       ),
     )
 
     assertEquals(
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+      VALIDATE,
       prepared.request.goalContinuation?.qualityGateSelection,
     )
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
@@ -126,13 +129,13 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       harness.preparation.prepare(
         resumeRequest(
           validationDepth = ValidationDepth.FULL,
-          qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+          qualityGateSelection = BUILD,
         ),
       ),
     )
 
     assertEquals(
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+      BUILD,
       prepared.request.goalContinuation?.qualityGateSelection,
     )
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
@@ -159,8 +162,8 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
 
   private fun resumeRequest(
     validationDepth: ValidationDepth,
-    qualityGateSelection: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection =
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+    qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
+      VALIDATE,
   ): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
     issueKey = "SKILL-176",
     workflowId = workflowId,

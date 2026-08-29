@@ -28,6 +28,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import java.nio.file.Path
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.ports.config.model.ReadRepoLocalConfigResult
+import skillbill.config.model.RepoLocalConfig
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
+import skillbill.config.model.ValidationGateRepoConfig
 
 internal val validationGateTestRepoRoot: Path = Path.of(".").toAbsolutePath().normalize()
 
@@ -39,8 +47,8 @@ internal val validationGateTestDeclaration: ValidationGateDeclaration = Validati
   findings = ValidationGateFindingsLocator(
     format = ValidationGateFindingsFormat.JUNIT_XML,
     artifactGlobs = listOf("**/*.xml"),
-    compilerDiagnostics = skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator(
-      skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT,
+    compilerDiagnostics = ValidationGateCompilerDiagnosticsLocator(
+      GRADLE_KOTLIN_COMPILER_STDOUT,
     ),
     executedWork = ValidationGateExecutedWorkSignal(ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY),
   ),
@@ -73,7 +81,7 @@ internal fun coordinator(
   runner: ValidationGateRunner,
   progress: MutableList<FeatureTaskRuntimeValidationGateProgress>,
   gradleWrapper: String? = null,
-  diagnostics: RuntimeDiagnostics = skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
+  diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
   resolver,
   runner,
@@ -91,7 +99,7 @@ internal fun coordinator(
   runner,
   FeatureTaskRuntimeValidationGateProgressStore(progressStore),
   repoLocalConfig(),
-  skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
+  NoopRuntimeDiagnostics,
 )
 
 internal fun findingRow(finding: ValidationGateFinding): Map<String, String?> = linkedMapOf(
@@ -115,12 +123,12 @@ internal class RecordingProgressStore(
   override fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = loaded
 }
 
-internal fun repoLocalConfig(gradleWrapper: String? = null): skillbill.ports.config.RepoLocalConfigPort =
-  object : skillbill.ports.config.RepoLocalConfigPort {
-    override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
-      skillbill.ports.config.model.ReadRepoLocalConfigResult(
-        skillbill.config.model.RepoLocalConfig.defaults().copy(
-          validationGate = skillbill.config.model.ValidationGateRepoConfig(gradleWrapper = gradleWrapper),
+internal fun repoLocalConfig(gradleWrapper: String? = null): RepoLocalConfigPort =
+  object : RepoLocalConfigPort {
+    override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
+      ReadRepoLocalConfigResult(
+        RepoLocalConfig.defaults().copy(
+          validationGate = ValidationGateRepoConfig(gradleWrapper = gradleWrapper),
         ),
       )
   }

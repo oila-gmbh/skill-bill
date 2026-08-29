@@ -6,6 +6,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import java.nio.file.Files
+import java.nio.file.Path
 
 class AuthoredContentValidatorTest {
   private val contentFile = Paths.get("skills/example/content.md")
@@ -173,9 +175,9 @@ class AuthoredContentValidatorTest {
       repoRoot.resolve("platform-packs"),
     )
     val contentFiles = sources
-      .filter { java.nio.file.Files.isDirectory(it) }
+      .filter { Files.isDirectory(it) }
       .flatMap { root ->
-        java.nio.file.Files.walk(root).use { stream ->
+        Files.walk(root).use { stream ->
           stream
             .filter { path -> path.fileName?.toString() == "content.md" }
             .toList()
@@ -183,7 +185,7 @@ class AuthoredContentValidatorTest {
       }
     assertFalse(contentFiles.isEmpty(), "no content.md files were discovered under skills/ or platform-packs/")
     val violations = contentFiles.flatMap { contentFile ->
-      validateAuthoredContent(contentFile, java.nio.file.Files.readString(contentFile))
+      validateAuthoredContent(contentFile, Files.readString(contentFile))
         .filter { issue ->
           issue.contains("generated support pointer") ||
             issue.contains("auto-generated subagent runtime notes heading")
@@ -192,12 +194,12 @@ class AuthoredContentValidatorTest {
     assertTrue(violations.isEmpty(), "ceremony leaked back into authored content.md:\n${violations.joinToString("\n")}")
   }
 
-  private fun currentRepoRootForValidator(): java.nio.file.Path {
-    var current: java.nio.file.Path? = java.nio.file.Paths.get("").toAbsolutePath().normalize()
+  private fun currentRepoRootForValidator(): Path {
+    var current: Path? = Paths.get("").toAbsolutePath().normalize()
     while (current != null) {
-      if (java.nio.file.Files.isRegularFile(current.resolve("runtime-kotlin/settings.gradle.kts")) &&
-        java.nio.file.Files.isDirectory(current.resolve("skills")) &&
-        java.nio.file.Files.isDirectory(current.resolve("platform-packs"))
+      if (Files.isRegularFile(current.resolve("runtime-kotlin/settings.gradle.kts")) &&
+        Files.isDirectory(current.resolve("skills")) &&
+        Files.isDirectory(current.resolve("platform-packs"))
       ) {
         return current
       }

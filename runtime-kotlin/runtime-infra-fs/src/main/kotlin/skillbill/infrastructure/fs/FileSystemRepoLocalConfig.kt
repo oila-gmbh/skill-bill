@@ -22,6 +22,7 @@ import skillbill.review.context.model.ReviewContextBudgetPolicy
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.math.BigInteger
 
 @Inject
 class FileSystemRepoLocalConfig(
@@ -197,7 +198,7 @@ private fun budgetLong(
   val rawValue = source[key] ?: malformedBudget(path, "$prefix.$key", null, "must be an integer, not null.")
   return when (rawValue) {
     is Byte, is Short, is Int, is Long -> (rawValue as Number).toLong()
-    is java.math.BigInteger -> rawValue.longValueExactOrNull()
+    is BigInteger -> rawValue.longValueExactOrNull()
       ?: malformedBudget(path, "$prefix.$key", rawValue, "is outside the signed 64-bit integer range.")
     else -> malformedBudget(path, "$prefix.$key", rawValue, "must be an exact integer.")
   }
@@ -227,7 +228,7 @@ private val REVIEW_CONTEXT_BUDGET_KEYS = setOf(
   "max_routing_analysis_bytes",
 )
 
-private fun java.math.BigInteger.longValueExactOrNull(): Long? = try {
+private fun BigInteger.longValueExactOrNull(): Long? = try {
   longValueExact()
 } catch (@Suppress("SwallowedException") ignored: ArithmeticException) {
   null

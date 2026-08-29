@@ -13,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
+import skillbill.launcher.agentrun.PathExecutableLookup
 
 class AgentLauncherPreflightTest {
   private fun request(): SkillRunRequest = SkillRunRequest(
@@ -98,7 +99,7 @@ class PathExecutableLookupTest {
     val binary = Files.createFile(directory.resolve("agent"))
     binary.toFile().setExecutable(true)
 
-    val lookup = skillbill.launcher.agentrun.PathExecutableLookup { directory.toString() }
+    val lookup = PathExecutableLookup { directory.toString() }
 
     assertTrue(lookup.onPath("agent"))
   }
@@ -109,14 +110,14 @@ class PathExecutableLookupTest {
     val binary = Files.createFile(directory.resolve("agent"))
     binary.toFile().setExecutable(false)
 
-    val lookup = skillbill.launcher.agentrun.PathExecutableLookup { directory.toString() }
+    val lookup = PathExecutableLookup { directory.toString() }
 
     assertFalse(lookup.onPath("agent"))
   }
 
   @Test
   fun `an unset PATH resolves nothing rather than throwing`() {
-    val lookup = skillbill.launcher.agentrun.PathExecutableLookup { null }
+    val lookup = PathExecutableLookup { null }
 
     assertFalse(lookup.onPath("agent"))
   }
@@ -127,7 +128,7 @@ class PathExecutableLookupTest {
     val directory = Files.createTempDirectory("skillbill-path-lookup-second")
     Files.createFile(directory.resolve("codex")).toFile().setExecutable(true)
 
-    val lookup = skillbill.launcher.agentrun.PathExecutableLookup { "$empty:$directory" }
+    val lookup = PathExecutableLookup { "$empty:$directory" }
 
     assertTrue(lookup.onPath("codex"))
     assertFalse(lookup.onPath("claude"))

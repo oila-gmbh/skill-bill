@@ -128,6 +128,15 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import skillbill.agentaddon.model.AgentAddonSelection
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.GoalObservabilityEvent
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
+import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 
 // SKILL-87: under requireStalenessEvidence, a running candidate counts as alive (not stale) when any
 // declared-liveness or snapshot-update signal lands within this window. Generous enough that a long
@@ -410,7 +419,7 @@ class WorkflowGoalRunnerManifestStore(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String?,
-    options: skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions,
+    options: GoalRunnerScopedReplanOptions,
   ): GoalRunnerScopedReplanWriteResult {
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
       executeScopedReplan(unitOfWork, state, subtaskId, options)
@@ -428,7 +437,7 @@ class WorkflowGoalRunnerManifestStore(
     unitOfWork: UnitOfWork,
     state: GoalRunnerManifestState,
     subtaskId: Int,
-    options: skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions,
+    options: GoalRunnerScopedReplanOptions,
   ): Pair<GoalRunnerScopedReplanWriteResult, String> {
     val preparations = unitOfWork.goalPlanningPreparations
     val plannedBefore = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
@@ -468,10 +477,10 @@ class WorkflowGoalRunnerManifestStore(
   )
 
   private fun discardScopedReplanPlans(
-    preparations: skillbill.ports.goalrunner.GoalPlanningPreparationRepository,
+    preparations: GoalPlanningPreparationRepository,
     state: GoalRunnerManifestState,
     subtaskId: Int,
-    options: skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions,
+    options: GoalRunnerScopedReplanOptions,
     plannedBefore: List<Int>,
   ): ScopedReplanDiscard {
     if (!options.includeSharedPreplan) {
@@ -746,7 +755,7 @@ class WorkflowGoalRunnerManifestStore(
   override fun reviewMode(
     parentWorkflowId: String,
     dbPathOverride: String?,
-  ): skillbill.workflow.goal.model.CodeReviewExecutionMode? = database.read(dbPathOverride) { unitOfWork ->
+  ): CodeReviewExecutionMode? = database.read(dbPathOverride) { unitOfWork ->
     unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
       ?: featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
         ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson))?.codeReviewMode }
@@ -754,9 +763,9 @@ class WorkflowGoalRunnerManifestStore(
 
   override fun persistReviewMode(
     parentWorkflowId: String,
-    mode: skillbill.workflow.goal.model.CodeReviewExecutionMode,
+    mode: CodeReviewExecutionMode,
     dbPathOverride: String?,
-  ): skillbill.workflow.goal.model.CodeReviewExecutionMode = database.transaction(dbPathOverride) { unitOfWork ->
+  ): CodeReviewExecutionMode = database.transaction(dbPathOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     migrateLegacyGoalRunnerControls(unitOfWork, record)
@@ -1257,7 +1266,7 @@ private class GoalRunnerControlCoordinator(
         val controls = unitOfWork.goalRunnerControls.controlState(parent.workflowId)
         val manifest = parent.decompositionRuntime(decompositionManifestValidator) ?: state.manifest
         if (controls.requiresPauseBoundary(manifest)) {
-          throw skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException(controls)
+          throw GoalRunnerLaunchAuthorizationDeniedException(controls)
         }
         spawn()
       }
@@ -1271,7 +1280,7 @@ private class GoalRunnerControlCoordinator(
         val manifest = parent.decompositionRuntime(decompositionManifestValidator)
           ?: error("Goal parent '$parentWorkflowId' has no decomposition manifest.")
         if (controls.requiresPauseBoundary(manifest)) {
-          throw skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException(controls)
+          throw GoalRunnerLaunchAuthorizationDeniedException(controls)
         }
         spawn()
       }
@@ -1456,7 +1465,7 @@ private fun reviewPolicyFromLegacyArtifacts(artifacts: Map<String, Any?>): GoalR
   val mode = policy["code_review_mode"] as? String
     ?: error("Goal review policy artifact '$GOAL_REVIEW_POLICY_ARTIFACT_KEY' is missing code_review_mode.")
   val codeReviewMode = try {
-    skillbill.workflow.goal.model.CodeReviewExecutionMode.fromWire(mode)
+    CodeReviewExecutionMode.fromWire(mode)
   } catch (error: IllegalArgumentException) {
     throw IllegalStateException("Goal review policy artifact has invalid code_review_mode '$mode'.", error)
   }
@@ -1509,17 +1518,17 @@ private fun GoalRunnerControlState.pauseAtOperatorBoundary(
   else -> this
 }
 
-private fun decodeGoalAgentAddonSelection(raw: Any?): skillbill.agentaddon.model.AgentAddonSelection {
-  val values = raw ?: return skillbill.agentaddon.model.AgentAddonSelection()
+private fun decodeGoalAgentAddonSelection(raw: Any?): AgentAddonSelection {
+  val values = raw ?: return AgentAddonSelection()
   val entries = values as? List<*> ?: error("Goal review policy agent_addon_selection must be a list.")
-  return skillbill.agentaddon.model.AgentAddonSelection(
+  return AgentAddonSelection(
     entries.mapIndexed { index, value ->
       val entry = JsonSupport.anyToStringAnyMap(value)
         ?: error("Goal review policy agent_addon_selection entry $index must be a map.")
       check(entry.keys == setOf("slug", "source_identity", "content_sha256")) {
         "Goal review policy agent_addon_selection entry $index has invalid fields."
       }
-      skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry(
+      PersistedAgentAddonSelectionEntry(
         entry["slug"] as? String ?: error("Goal review policy add-on entry $index is missing slug."),
         entry["source_identity"] as? String
           ?: error("Goal review policy add-on entry $index is missing source_identity."),
@@ -1569,7 +1578,7 @@ class WorkflowGoalRunnerOutcomeStore(
     subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String?,
-  ): skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis = database.read(dbPathOverride) { unitOfWork ->
+  ): GoalRunnerChildWedgeDiagnosis = database.read(dbPathOverride) { unitOfWork ->
     childRepair.diagnose(
       workflowStates = unitOfWork.workflowStates,
       workflowId = workflowId,
@@ -1583,7 +1592,7 @@ class WorkflowGoalRunnerOutcomeStore(
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
-    wedgeClasses: List<skillbill.application.goalrunner.model.GoalRunnerWedgeClass>,
+    wedgeClasses: List<GoalRunnerWedgeClass>,
     repoRoot: Path,
     dbPathOverride: String?,
   ): GoalRunnerChildRepairApplyResult {
@@ -3096,7 +3105,7 @@ private fun GoalRunnerProgressEvent.summary(): String = buildString {
   }
 }
 
-private fun skillbill.workflow.goal.model.GoalObservabilityEvent.toProgressEvent(): GoalObservabilityProgressEvent =
+private fun GoalObservabilityEvent.toProgressEvent(): GoalObservabilityProgressEvent =
   GoalObservabilityProgressEvent(
     issueKey = issueKey,
     subtaskId = subtaskId,

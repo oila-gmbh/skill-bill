@@ -19,6 +19,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import java.nio.file.Path
 
 class CliWorkListRuntimeTest {
   @Test
@@ -138,7 +139,7 @@ class CliWorkListRuntimeTest {
 
   private fun RuntimeComponent.openWorkflow(
     kind: WorkflowFamilyKind,
-    dbPath: java.nio.file.Path,
+    dbPath: Path,
     issueKey: String,
   ): String = assertIs<WorkflowOpenResult.Ok>(
     workflowService.open(kind = kind, dbOverride = dbPath.toString(), issueKey = issueKey),

@@ -71,6 +71,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelecti
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME
 
 /**
  * Each command only validates input and delegates to an application service; the spec read goes
@@ -888,7 +890,7 @@ private fun verifyRuntimeResume(
       throw UsageError("Workflow '$workflowId' is terminal and cannot be resumed; no phase was launched.")
     else -> throw UsageError("Workflow '$workflowId' is not a resumable runtime workflow.")
   }
-  if (candidate.mode != skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME) {
+  if (candidate.mode != RUNTIME) {
     throw UsageError("Workflow '$workflowId' was persisted in ${candidate.mode.wireValue} mode.")
   }
   if (candidate.governedSpecPath != governedSpecPath(effectiveRoot, Path.of(specPath))) {
@@ -1098,7 +1100,7 @@ private fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?> 
 }
 
 private fun Map<String, Any?>.withSubtaskOutcome(
-  outcome: skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome?,
+  outcome: FeatureTaskRuntimeSubtaskOutcome?,
 ): Map<String, Any?> = if (outcome == null) {
   this
 } else {

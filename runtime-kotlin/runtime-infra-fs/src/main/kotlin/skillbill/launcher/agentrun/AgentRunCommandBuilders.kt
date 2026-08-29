@@ -17,11 +17,12 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import java.nio.file.Path
 import kotlin.time.DurationUnit
+import kotlin.time.Duration
 
 data class AgentRunCommand(
   val command: List<String>,
   val workingDirectory: Path,
-  val timeout: kotlin.time.Duration?,
+  val timeout: Duration?,
   val stdinText: String? = null,
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,

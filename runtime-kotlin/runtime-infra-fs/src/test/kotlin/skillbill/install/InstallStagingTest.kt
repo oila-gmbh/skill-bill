@@ -33,6 +33,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import java.io.File
+import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.PointerSpec
 
 /**
  * SKILL-40 subtask 2: install staging pipeline.
@@ -241,7 +244,7 @@ class InstallStagingTest {
     assertGeneratedArtifactsExcludedFromAuthoredCopy(rendered, fixture)
     assertGeneratedArtifactsExcludedFromAuthoredCopy(reused, fixture)
     val renderedPointers = reused.renderedPointerFiles
-      .map { path -> reused.stagingDir.relativize(path).toString().replace(java.io.File.separatorChar, '/') }
+      .map { path -> reused.stagingDir.relativize(path).toString().replace(File.separatorChar, '/') }
       .toSet()
     fixture.pointerNames.forEach { pointerName ->
       assertTrue(pointerName in renderedPointers, "cache-hit result must classify $pointerName as rendered pointer")
@@ -671,7 +674,7 @@ class InstallStagingTest {
 
   private fun assertGeneratedArtifactsExcludedFromAuthoredCopy(rendered: RenderedSkill, fixture: Fixture) {
     val copiedRelative = rendered.copiedAuthoredFiles
-      .map { path -> rendered.stagingDir.relativize(path).toString().replace(java.io.File.separatorChar, '/') }
+      .map { path -> rendered.stagingDir.relativize(path).toString().replace(File.separatorChar, '/') }
       .toSet()
     assertFalse("SKILL.md" in copiedRelative, "stale source SKILL.md must not be part of authored copy set")
     fixture.pointerNames.forEach { pointerName ->
@@ -690,7 +693,7 @@ class InstallStagingTest {
       .filter { it != root }
       .toList()
       .associate { path ->
-        val key = root.relativize(path).toString().replace(java.io.File.separatorChar, '/')
+        val key = root.relativize(path).toString().replace(File.separatorChar, '/')
         val entry: TreeEntry = when {
           Files.isSymbolicLink(path) -> TreeEntry.Symlink(Files.readSymbolicLink(path).toString())
           Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) -> TreeEntry.Directory
@@ -725,7 +728,7 @@ class InstallStagingTest {
     val home: Path,
     val skillDir: Path,
     val skillName: String,
-    val pointerSpecs: List<Pair<skillbill.scaffold.model.PlatformManifest, skillbill.scaffold.model.PointerSpec>>,
+    val pointerSpecs: List<Pair<PlatformManifest, PointerSpec>>,
     val pointerNames: Set<String>,
   )
 }

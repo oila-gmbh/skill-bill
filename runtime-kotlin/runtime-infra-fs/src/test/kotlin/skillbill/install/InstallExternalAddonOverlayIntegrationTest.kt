@@ -17,6 +17,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.install.model.InstallApplyResult
+import skillbill.install.model.InstallPlanRequest
 
 class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
 
@@ -137,7 +139,7 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     }
   }
 
-  private fun stagedSkillBody(result: skillbill.install.model.InstallApplyResult, name: String): String {
+  private fun stagedSkillBody(result: InstallApplyResult, name: String): String {
     val stagingDir = result.skills.first { it.skillName == "bill-code-review" }.staging.stagingDir
       ?: error("bill-code-review was not staged")
     return Files.readString(stagingDir.resolve("$name.md"))
@@ -214,7 +216,7 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     )
   }
 
-  private fun ApplyFixture.request(selectedPlatforms: Set<String>): skillbill.install.model.InstallPlanRequest =
+  private fun ApplyFixture.request(selectedPlatforms: Set<String>): InstallPlanRequest =
     request(
       selectedPlatforms = selectedPlatforms,
       agents = setOf(InstallAgent.CODEX),

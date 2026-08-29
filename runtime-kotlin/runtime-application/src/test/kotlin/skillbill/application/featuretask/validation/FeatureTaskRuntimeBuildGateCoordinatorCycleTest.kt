@@ -11,6 +11,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import java.util.concurrent.atomic.AtomicInteger
+import skillbill.workflow.goal.model.ValidationDepth.DEFAULT
+import skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Empty
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher
 
 class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
   @Test
@@ -22,20 +29,20 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
         passed(forced = true),
       ),
     )
-    val recorded = mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress>()
+    val recorded = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val progress = RecordingProgressStore(recorded, null)
     var repairLaunches = 0
     val cycle = buildCoordinator(declaredResolver(declarationWithBuild()), runner, progress).execute(
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
+        validationDepth = DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
           repairLaunches++
           ValidationGateAgentRepairResult.Completed(
-            skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
+            FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
           )
         },
       ),
@@ -58,7 +65,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
+        validationDepth = DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -79,12 +86,12 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
         load = { _, _ -> null },
       ),
       repoLocalConfig(),
-      skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
+      NoopRuntimeDiagnostics,
     ).execute(
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
+        validationDepth = DEFAULT,
         changedPaths = listOf("skills/bill-feature/content.md"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -103,20 +110,20 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
     val runnerResults = mutableListOf(failedWith(finding))
     repeat(maxTurns) { runnerResults += failedWith(finding) }
     val runner = ScriptedGateRunner(runnerResults)
-    val recorded = mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress>()
+    val recorded = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val progress = RecordingProgressStore(recorded, null)
     var repairLaunches = 0
     val cycle = buildCoordinator(declaredResolver(declarationWithBuild()), runner, progress).execute(
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
+        validationDepth = DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
           repairLaunches++
           ValidationGateAgentRepairResult.Completed(
-            skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
+            FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
           )
         },
       ),
@@ -134,28 +141,28 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
 
   @Test
   fun `build gate schedules triage for sole unparseable_gate_failure`() {
-    val triageLaunches = java.util.concurrent.atomic.AtomicInteger(0)
-    val repairLaunches = java.util.concurrent.atomic.AtomicInteger(0)
+    val triageLaunches = AtomicInteger(0)
+    val repairLaunches = AtomicInteger(0)
     val runner = ScriptedGateRunner(
       listOf(failedEmptyFindings("unparseable blob"), passed(forced = true)),
     )
-    val recorded = mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress>()
+    val recorded = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val progress = RecordingProgressStore(recorded, null)
     buildCoordinator(declaredResolver(declarationWithBuild()), runner, progress).execute(
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = skillbill.workflow.goal.model.ValidationDepth.DEFAULT,
+        validationDepth = DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentTriageLauncher = skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher {
+        agentTriageLauncher = ValidationGateAgentTriageLauncher {
           triageLaunches.incrementAndGet()
-          skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Empty
+          Empty
         },
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
           repairLaunches.incrementAndGet()
           ValidationGateAgentRepairResult.Completed(
-            skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
+            FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
           )
         },
       ),
@@ -182,6 +189,6 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       load = { _, _ -> progressStore.load("", null) },
     ),
     repoLocalConfig(),
-    skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
+    NoopRuntimeDiagnostics,
   )
 }

@@ -116,6 +116,27 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.ACTIVE
+import skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
+import skillbill.goalrunner.model.GoalPlanningStatusReasons
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED as GoalPlanningStatusStateNOT_STARTED
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.goalrunner.model.GoalPlanningStatusReasons.NOT_STARTED
+import skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED
+import skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED
+import skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 
 class GoalRunnerTest {
   @Test
@@ -1449,7 +1470,7 @@ class GoalRunnerHandoffTest {
 
       override fun recoverBaseline(
         repoRoot: Path,
-        request: skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest,
+        request: GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = error("Review baseline recovery is not used by this test.")
     }
@@ -3215,27 +3236,27 @@ internal class InMemoryGoalManifestStore(
     blockedSubtaskId: Int?,
     blockedReason: String?,
     dbPathOverride: String?,
-  ): skillbill.goalrunner.model.GoalPlanningStatusSnapshot {
+  ): GoalPlanningStatusSnapshot {
     val plannedIds = plannedSubtaskIds.sorted()
     val firstMissing = orderedSubtaskIds.firstOrNull { it !in plannedIds }
     val state = when {
-      blockedReason != null -> skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
-      !sharedPreplanPrepared -> skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED
-      firstMissing == null -> skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED
-      plannedIds.isEmpty() -> skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED
-      else -> skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED
+      blockedReason != null -> BLOCKED
+      !sharedPreplanPrepared -> GoalPlanningStatusStateNOT_STARTED
+      firstMissing == null -> PREPARED
+      plannedIds.isEmpty() -> PREPLANNED
+      else -> PARTIALLY_PLANNED
     }
     val reason = when (state) {
-      skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED ->
-        skillbill.goalrunner.model.GoalPlanningStatusReasons.NOT_STARTED
-      skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED ->
-        skillbill.goalrunner.model.GoalPlanningStatusReasons.preplannedResume(requireNotNull(firstMissing))
-      skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED ->
-        skillbill.goalrunner.model.GoalPlanningStatusReasons.partiallyPlannedResume(requireNotNull(firstMissing))
-      skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED -> blockedReason
-      skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED -> null
+      GoalPlanningStatusStateNOT_STARTED ->
+        NOT_STARTED
+      PREPLANNED ->
+        GoalPlanningStatusReasons.preplannedResume(requireNotNull(firstMissing))
+      PARTIALLY_PLANNED ->
+        GoalPlanningStatusReasons.partiallyPlannedResume(requireNotNull(firstMissing))
+      BLOCKED -> blockedReason
+      PREPARED -> null
     }
-    return skillbill.goalrunner.model.GoalPlanningStatusSnapshot(
+    return GoalPlanningStatusSnapshot(
       state,
       sharedPreplanPrepared,
       plannedIds.size,
@@ -3252,8 +3273,8 @@ internal class InMemoryGoalManifestStore(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     dbPathOverride: String?,
-    options: skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions,
-  ): skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult {
+    options: GoalRunnerScopedReplanOptions,
+  ): GoalRunnerScopedReplanWriteResult {
     scopedReplanCount += 1
     lastIncludeSharedPreplan = options.includeSharedPreplan
     val before = plannedSubtaskIds.sorted()
@@ -3270,7 +3291,7 @@ internal class InMemoryGoalManifestStore(
         if (forceSharedDigestMismatchOnReplan ||
           options.expectedSharedPayloadSha256 != sharedPreplanPayloadSha256ForTest
         ) {
-          throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+          throw IncompatibleGoalPlanningPreparationRecoveryError(
             state.parentWorkflowId,
             0,
             "shared preplan changed after it was observed for discard",
@@ -3294,7 +3315,7 @@ internal class InMemoryGoalManifestStore(
       deleted = if (plannedSubtaskIds.remove(subtaskId)) 1 else 0
     }
     val saved = save(state, dbPathOverride)
-    return skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult(
+    return GoalRunnerScopedReplanWriteResult(
       state = saved,
       deletedPlanCount = deleted,
       plannedSubtaskIdsBefore = before,
@@ -4019,7 +4040,7 @@ private fun readyGoalReviewOperations(baselineError: String? = null): GoalSubtas
 
     override fun recoverBaseline(
       repoRoot: Path,
-      request: skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest,
+      request: GoalSubtaskReviewBaselineRecoveryRequest,
       expectedBranch: String,
     ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
       status = "error",
@@ -4287,7 +4308,7 @@ private class GoalStatusPhaseLedgerHarness {
 
   fun recordCompletedPhase(workflowId: String, phaseId: String, resolvedAgentId: String) {
     recorder.recordPhaseState(
-      skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest(
+      FeatureTaskRuntimePhaseStateRequest(
         workflowId = workflowId,
         phaseId = phaseId,
         status = "completed",
@@ -4323,26 +4344,26 @@ private class GoalStatusSeedableDatabase(
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused by goal status tests")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = repository
-    override val workList = skillbill.ports.work.EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+    override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 
 private class GoalStatusSeedableWorkflowStateRepository : WorkflowStateRepository {
   override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity,
+    identity: FeatureTaskExecutionIdentity,
   ) = Unit
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate>()
+    emptyList<FeatureTaskWorkflowCandidate>()
 
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
   private val ownershipRows =
-    linkedMapOf<String, skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership>()
+    linkedMapOf<String, FeatureTaskRuntimeWorkerOwnership>()
   var failOwnershipReads = false
   var ownershipWriteCount = 0
 
   fun seedOwnership(workflowId: String, expiresAt: String) {
-    ownershipRows[workflowId] = skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership(
+    ownershipRows[workflowId] = FeatureTaskRuntimeWorkerOwnership(
       workflowId = workflowId,
       ownerToken = "owner-token-123456",
       generation = 1,
@@ -4350,7 +4371,7 @@ private class GoalStatusSeedableWorkflowStateRepository : WorkflowStateRepositor
       bootIdentity = "boot",
       pid = 1234,
       processBirthToken = "birth-1234",
-      leaseState = skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+      leaseState = ACTIVE,
       phaseId = "implement",
       phaseAttempt = 1,
       heartbeatAt = "2026-07-27T11:59:30Z",
@@ -4360,7 +4381,7 @@ private class GoalStatusSeedableWorkflowStateRepository : WorkflowStateRepositor
 
   override fun getFeatureTaskRuntimeWorkerOwnership(
     workflowId: String,
-  ): skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership? {
+  ): FeatureTaskRuntimeWorkerOwnership? {
     if (failOwnershipReads) error("lease read failed")
     return ownershipRows[workflowId]
   }
@@ -4389,7 +4410,7 @@ private class GoalStatusSeedableWorkflowStateRepository : WorkflowStateRepositor
   override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
 }
 
-private object GoalTestNoopSnapshotValidator : skillbill.workflow.engine.WorkflowSnapshotValidator {
+private object GoalTestNoopSnapshotValidator : WorkflowSnapshotValidator {
   override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
 }
 
@@ -4414,8 +4435,8 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
     override val telemetryReconciliation: TelemetryReconciliationRepository get() = error("unused by goal status tests")
     override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal status tests")
     override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
-    override val workList = skillbill.ports.work.EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+    override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 
@@ -4424,8 +4445,8 @@ private class GoalTestPlanningDatabase : DatabaseSessionFactory {
   val deletedParentGoalIds = mutableListOf<String>()
   val deletedChildWorkflowParentIds = mutableListOf<String>()
   val transactionDbOverrides = mutableListOf<String?>()
-  private val planningRepository = object : skillbill.ports.goalrunner.GoalPlanningPreparationRepository by
-  skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository {
+  private val planningRepository = object : GoalPlanningPreparationRepository by
+  EmptyGoalPlanningPreparationRepository {
     override fun deleteByGoal(parentGoalWorkflowId: String): Int {
       deletedParentGoalIds += parentGoalWorkflowId
       return 1
@@ -4456,17 +4477,17 @@ private class GoalTestPlanningDatabase : DatabaseSessionFactory {
         return 1
       }
     }
-    override val workList = skillbill.ports.work.EmptyWorkListRepository
+    override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = planningRepository
   }
 }
 
 private object GoalTestEmptyWorkflowStateRepository : WorkflowStateRepository {
   override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity,
+    identity: FeatureTaskExecutionIdentity,
   ) = Unit
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate>()
+    emptyList<FeatureTaskWorkflowCandidate>()
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
   override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = null
   override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()

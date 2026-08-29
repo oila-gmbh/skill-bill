@@ -18,6 +18,7 @@ import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.JSeparator
 import javax.swing.SwingConstants
+import java.awt.Font.BOLD
 
 /**
  * Builds the status details popup panel from an already-mapped presentation.
@@ -119,7 +120,7 @@ object StatusDetailsPopupContent {
     private fun statusBlock(presentation: SkillBillStatusBarPresentation.MappedPresentation): JPanel {
         val block = JPanel(GridBagLayout()).apply { isOpaque = false }
         val title = plainLabel("Skill Bill details").apply {
-            font = font.deriveFont(java.awt.Font.BOLD)
+            font = font.deriveFont(BOLD)
             border = JBUI.Borders.emptyBottom(4)
         }
         block.add(

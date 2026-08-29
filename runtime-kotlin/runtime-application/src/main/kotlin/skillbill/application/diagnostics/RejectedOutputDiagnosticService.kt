@@ -14,11 +14,8 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.time.Clock
 import java.time.Instant
-
-typealias RejectedOutputDiagnosticConfig =
-  skillbill.application.diagnostics.model.RejectedOutputDiagnosticConfig
-typealias RejectedOutputDiagnosticRequest =
-  skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.application.diagnostics.model.RejectedOutputDiagnosticConfig
+import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 
 class RejectedOutputDiagnosticService(
   private val repository: RejectedOutputDiagnosticRepository,

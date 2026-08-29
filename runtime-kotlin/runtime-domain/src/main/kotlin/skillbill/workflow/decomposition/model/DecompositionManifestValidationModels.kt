@@ -2,6 +2,8 @@ package skillbill.workflow.decomposition.model
 
 import skillbill.contracts.workflow.DECOMPOSITION_MANIFEST_VALIDATION_CONTRACT_VERSION
 import skillbill.error.InvalidDecompositionManifestSchemaError
+import skillbill.error.FailureWireCode
+import skillbill.error.failureWireByValue
 
 const val DECOMPOSITION_MANIFEST_VALIDATION_VERSION: String =
   DECOMPOSITION_MANIFEST_VALIDATION_CONTRACT_VERSION
@@ -16,7 +18,9 @@ enum class DecompositionManifestRepairOperation(val wireValue: String) {
   ADD_MISSING_CLOSING_DELIMITER("add_missing_closing_delimiter"),
 }
 
-enum class DecompositionManifestValidationFailureCode(val wireValue: String) {
+enum class DecompositionManifestValidationFailureCode(
+  override val wireValue: String,
+) : FailureWireCode {
   MALFORMED("malformed"),
   ROOT_NOT_OBJECT("root_not_object"),
   DUPLICATE_KEY("duplicate_key"),
@@ -30,8 +34,13 @@ enum class DecompositionManifestValidationFailureCode(val wireValue: String) {
   ;
 
   companion object {
+    private const val HIERARCHY = "DecompositionManifestValidationFailureCode"
+
     fun fromWire(value: String?): DecompositionManifestValidationFailureCode =
-      entries.firstOrNull { it.wireValue == value } ?: SCHEMA_INVALID
+      when {
+        value.isNullOrBlank() -> SCHEMA_INVALID
+        else -> entries.failureWireByValue(value, HIERARCHY)
+      }
   }
 }
 

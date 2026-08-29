@@ -26,6 +26,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
 
 private const val CONSUMER = "implement"
 private const val PRODUCER = "plan"
@@ -281,7 +284,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
       val declarations = def.phaseDeclarationForQualityGate(
         consumer,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+        VALIDATE,
       ).projectionDeclarations
       val upstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
         buildMap {
@@ -337,9 +340,9 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
 
     fun changedPathsFrom(consumer: String): List<String> {
       val gateSelection = if (consumer == def.PHASE_BUILD) {
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+        BUILD
       } else {
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
+        VALIDATE
       }
       val declarations = def.phaseDeclarationForQualityGate(
         consumer,
@@ -467,7 +470,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarationForQualityGate(
       consumer,
       FeatureTaskRuntimeFeatureSize.MEDIUM,
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+      BUILD,
     )
     assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimeHandoffProjectionValidator.validate(
@@ -488,7 +491,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
               ),
             ),
           ),
-          qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+          qualityGateSelection = BUILD,
         ),
       )
     }
@@ -858,9 +861,9 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   ) {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val gateSelection = if (consumer == def.PHASE_BUILD) {
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+      BUILD
     } else {
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
+      VALIDATE
     }
     val declarations = if (consumer == def.PHASE_VALIDATE || consumer == def.PHASE_BUILD) {
       def.phaseDeclaration(consumer, FeatureTaskRuntimeFeatureSize.MEDIUM).projectionDeclarations
@@ -962,8 +965,8 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
-    qualityGateSelection: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection =
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+    qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
+      VALIDATE,
     priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   ) = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = consumerPhaseId,

@@ -4,6 +4,7 @@ package skillbill.domain.skillremove
 
 import java.nio.file.InvalidPathException
 import java.nio.file.Paths
+import java.nio.file.Path
 
 /**
  * F-S04: removes absolute-path tokens from exception messages before they reach the dialog/CLI.
@@ -22,7 +23,7 @@ import java.nio.file.Paths
  */
 object SkillRemoveErrorSanitizer {
   fun sanitize(message: String, repoRootAbsolutePath: String): String {
-    val repoRoot: java.nio.file.Path? = if (message.isBlank()) null else parseRepoRoot(repoRootAbsolutePath)
+    val repoRoot: Path? = if (message.isBlank()) null else parseRepoRoot(repoRootAbsolutePath)
     if (repoRoot == null) return message
     val repoRootStr = repoRoot.toString()
     // Split on whitespace; rejoin with a single space so we don't widen newlines into noise.
@@ -39,7 +40,7 @@ object SkillRemoveErrorSanitizer {
       .joinToString(" ")
   }
 
-  private fun parseRepoRoot(repoRootAbsolutePath: String): java.nio.file.Path? = try {
+  private fun parseRepoRoot(repoRootAbsolutePath: String): Path? = try {
     Paths.get(repoRootAbsolutePath).toAbsolutePath().normalize()
   } catch (_: InvalidPathException) {
     null
@@ -51,7 +52,7 @@ object SkillRemoveErrorSanitizer {
     return token.substring(0, idx) to token.substring(idx)
   }
 
-  private fun sanitizeToken(token: String, repoRoot: java.nio.file.Path, repoRootStr: String): String? = try {
+  private fun sanitizeToken(token: String, repoRoot: Path, repoRootStr: String): String? = try {
     val parsed = Paths.get(token)
     if (!parsed.isAbsolute) return null
     val normalized = parsed.normalize()

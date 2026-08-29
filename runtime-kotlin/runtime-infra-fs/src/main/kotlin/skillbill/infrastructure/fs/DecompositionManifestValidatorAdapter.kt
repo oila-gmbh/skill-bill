@@ -85,7 +85,10 @@ class DecompositionManifestValidatorAdapter : DecompositionManifestValidator {
         DecompositionManifestValidationFailureCode.REPAIR_LIMIT_EXCEEDED
       FeatureTaskRuntimePhaseOutputFailureCode.UNSUPPORTED_REPAIR ->
         DecompositionManifestValidationFailureCode.UNSUPPORTED_REPAIR
-      else -> DecompositionManifestValidationFailureCode.SCHEMA_INVALID
+      FeatureTaskRuntimePhaseOutputFailureCode.SCHEMA_INVALID,
+      FeatureTaskRuntimePhaseOutputFailureCode.PHASE_ID_MISMATCH,
+      FeatureTaskRuntimePhaseOutputFailureCode.SEMANTIC_INVALID,
+      -> DecompositionManifestValidationFailureCode.SCHEMA_INVALID
     }
 
   private fun FeatureTaskRuntimePhaseOutputRepairEvidence.toManifestEvidence(): DecompositionManifestRepairEvidence =

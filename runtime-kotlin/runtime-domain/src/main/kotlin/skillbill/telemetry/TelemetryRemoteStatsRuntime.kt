@@ -4,6 +4,7 @@ import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetrySettings
 import java.time.LocalDate
+import skillbill.telemetry.parseRemoteStatsWindow
 
 object TelemetryRemoteStatsRuntime {
   fun parseRemoteStatsWindow(
@@ -11,7 +12,7 @@ object TelemetryRemoteStatsRuntime {
     dateFrom: String = "",
     dateTo: String = "",
     today: LocalDate,
-  ): Pair<String, String> = skillbill.telemetry.parseRemoteStatsWindow(since, dateFrom, dateTo, today)
+  ): Pair<String, String> = parseRemoteStatsWindow(since, dateFrom, dateTo, today)
 }
 
 fun parseRemoteStatsWindow(

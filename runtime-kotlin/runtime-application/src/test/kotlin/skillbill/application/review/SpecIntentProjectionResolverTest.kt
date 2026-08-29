@@ -33,6 +33,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import java.security.MessageDigest
 
 class SpecIntentProjectionResolverTest {
   @Test
@@ -502,6 +503,6 @@ private fun featureRepo(includeGlob: Boolean, includeManifest: Boolean): Path {
 }
 
 private fun sha256File(path: Path): String {
-  val digest = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path))
+  val digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path))
   return digest.joinToString("") { "%02x".format(it) }
 }

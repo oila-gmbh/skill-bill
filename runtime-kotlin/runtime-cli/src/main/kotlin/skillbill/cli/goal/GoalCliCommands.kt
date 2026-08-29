@@ -77,6 +77,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
+import skillbill.application.goalrunner.model.GoalRunnerEventSink
+import skillbill.application.goalrunner.model.GoalRunnerReplanSnapshot
+import skillbill.application.goalrunner.model.GoalRunnerResetSnapshot
 
 @Inject
 @Suppress("LongParameterList") // DI command bag; one subcommand per goal control verb
@@ -539,7 +543,7 @@ class GoalFindingsCommand(
     ledger: UnaddressedFindingsLedger,
     repairLedgers: Map<String, FeatureTaskRuntimeRepairLedger>,
     verificationDispositions:
-    List<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition>,
+    List<FeatureTaskRuntimeFindingVerificationDisposition>,
   ): LinkedHashMap<String, Any?> = linkedMapOf(
     "issue_key" to ledger.issueKey,
     "unaddressed_findings" to ledger.findings.size,
@@ -595,7 +599,7 @@ class GoalFindingsCommand(
     ledger: UnaddressedFindingsLedger,
     repairLedgers: Map<String, FeatureTaskRuntimeRepairLedger>,
     verificationDispositions:
-    List<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition>,
+    List<FeatureTaskRuntimeFindingVerificationDisposition>,
   ): String = buildString {
     appendLine("issue_key=${ledger.issueKey} unaddressed_findings=${ledger.findings.size}")
     ledger.findings.forEach { finding ->
@@ -1159,7 +1163,7 @@ private class GoalRunPresenter(
     )
   }
 
-  fun eventSink(): skillbill.application.goalrunner.model.GoalRunnerEventSink = skillbill.application.goalrunner.model.GoalRunnerEventSink { }
+  fun eventSink(): GoalRunnerEventSink = GoalRunnerEventSink { }
 
   fun outputSink(includeRawChildOutput: Boolean): AgentRunOutputSink = if (!liveOutput) {
     AgentRunOutputSink.NONE
@@ -1685,7 +1689,7 @@ private fun GoalRunnerReplanResult?.toGoalReplanCliMap(issueKey: String): Map<St
   "mode" to "scoped_replan",
 )
 
-private fun resetSnapshotMap(snapshot: skillbill.application.goalrunner.model.GoalRunnerResetSnapshot): Map<String, Any?> =
+private fun resetSnapshotMap(snapshot: GoalRunnerResetSnapshot): Map<String, Any?> =
   linkedMapOf(
     "status" to snapshot.status,
     "current_subtask" to snapshot.currentSubtaskId,
@@ -1703,7 +1707,7 @@ private fun resetSnapshotMap(snapshot: skillbill.application.goalrunner.model.Go
     },
   )
 
-private fun replanSnapshotMap(snapshot: skillbill.application.goalrunner.model.GoalRunnerReplanSnapshot): Map<String, Any?> =
+private fun replanSnapshotMap(snapshot: GoalRunnerReplanSnapshot): Map<String, Any?> =
   linkedMapOf(
     "status" to snapshot.status,
     "current_subtask" to snapshot.currentSubtaskId,

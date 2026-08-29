@@ -16,7 +16,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequ
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.workflow.model.WorkflowStateRecord
+import WorkflowStateRecord
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
@@ -48,6 +48,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.application.featuretask.phaseRecordsFrom
 
 @Suppress("LargeClass") // outcome-store task-runtime scenarios; each test is an independent fixture
 class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
@@ -384,7 +387,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val updated = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-torn-review"))
     assertEquals("running", updated.workflowStatus)
     assertEquals("review", updated.currentStepId)
-    val review = skillbill.application.featuretask.phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
+    val review = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
       .getValue("review")
     assertEquals("pending", review.status)
   }
@@ -729,7 +732,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   private fun runtimeCandidateRecordNoDeclaredEvent(
     workflowId: String,
     updatedAt: String?,
-  ): skillbill.ports.workflow.model.WorkflowStateRecord {
+  ): WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
@@ -758,7 +761,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     workflowId: String,
     state: GoalSubtaskReviewState,
     rawReviewResult: String,
-  ): skillbill.ports.workflow.model.WorkflowStateRecord {
+  ): WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
@@ -788,7 +791,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   private fun runtimeCandidateRecord(
     workflowId: String,
     declaredProgressTimestamp: Instant,
-  ): skillbill.ports.workflow.model.WorkflowStateRecord {
+  ): WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
@@ -825,7 +828,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     ).toRecord()
   }
 
-  private fun taskRuntimeWorkflowRecord(workflowId: String): skillbill.ports.workflow.model.WorkflowStateRecord {
+  private fun taskRuntimeWorkflowRecord(workflowId: String): WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
@@ -851,7 +854,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
-    val reviewRecord = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord(
+    val reviewRecord = FeatureTaskRuntimePhaseRecord(
       phaseId = "review",
       status = "running",
       attemptCount = 2,
@@ -868,7 +871,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
           mapOf("step_id" to "review", "status" to "blocked", "attempt_count" to 2),
         ),
         artifactsPatch = mapOf(
-          skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
             "review" to reviewRecord.toArtifactMap(),
           ),
           "goal_continuation" to mapOf(

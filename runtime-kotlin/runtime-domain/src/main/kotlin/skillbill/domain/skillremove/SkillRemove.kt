@@ -9,6 +9,7 @@ import skillbill.domain.skillremove.model.SkillRemovalResult
 import skillbill.domain.skillremove.model.SkillRemovalTarget
 import skillbill.error.SkillBillRuntimeException
 import java.nio.file.Paths
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Domain service that orchestrates skill removal (SKILL-46).
@@ -151,7 +152,7 @@ class SkillRemove(
    */
   private inline fun tryExecute(block: () -> SkillRemovalResult): SkillRemovalResult = try {
     block()
-  } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
+  } catch (cancellation: CancellationException) {
     throw cancellation
   } catch (error: SkillBillRuntimeException) {
     SkillRemovalResult.Failed(

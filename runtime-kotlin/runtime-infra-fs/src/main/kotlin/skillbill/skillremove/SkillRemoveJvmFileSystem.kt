@@ -43,6 +43,9 @@ import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.logging.Logger
+import java.nio.file.FileVisitResult.CONTINUE
+import kotlin.coroutines.cancellation.CancellationException
+import java.nio.file.FileVisitResult
 
 /**
  * JVM implementation of [SkillRemoveFileSystem] for SKILL-46. Reuses install primitives
@@ -275,7 +278,7 @@ class SkillRemoveJvmFileSystem(
         unlinkedSymlinks = unlinkedSymlinks,
         readmeWarnings = readmeWarnings,
       )
-    } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
+    } catch (cancellation: CancellationException) {
       // F-CANCEL-ROLLBACK: best-effort rollback before re-throwing; cancellation still propagates.
       log.info("skill-bill remove failed: exceptionName=${cancellation::class.simpleName.orEmpty()}")
       attemptRollback(rollbackStash)
@@ -568,7 +571,7 @@ class SkillRemoveJvmFileSystem(
     AgentSymlinkProvider.entries.forEach { provider ->
       try {
         unlinked += providerUnlink(provider)(baseRequest)
-      } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
+      } catch (cancellation: CancellationException) {
         throw cancellation
       } catch (error: IOException) {
         log.warning(
@@ -607,16 +610,16 @@ class SkillRemoveJvmFileSystem(
       Files.walkFileTree(
         root,
         object : SimpleFileVisitor<Path>() {
-          override fun visitFile(file: Path, attrs: BasicFileAttributes): java.nio.file.FileVisitResult {
+          override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
             if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
               stash += RollbackEntry(path = file, bytes = Files.readAllBytes(file), wasDirectory = false)
             }
-            return java.nio.file.FileVisitResult.CONTINUE
+            return CONTINUE
           }
 
-          override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): java.nio.file.FileVisitResult {
+          override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
             stash += RollbackEntry(path = dir, bytes = null, wasDirectory = true)
-            return java.nio.file.FileVisitResult.CONTINUE
+            return CONTINUE
           }
         },
       )
@@ -634,15 +637,15 @@ class SkillRemoveJvmFileSystem(
       Files.walkFileTree(
         target,
         object : SimpleFileVisitor<Path>() {
-          override fun visitFile(file: Path, attrs: BasicFileAttributes): java.nio.file.FileVisitResult {
+          override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
             Files.delete(file)
-            return java.nio.file.FileVisitResult.CONTINUE
+            return CONTINUE
           }
 
-          override fun postVisitDirectory(dir: Path, exc: IOException?): java.nio.file.FileVisitResult {
+          override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
             if (exc != null) throw exc
             Files.delete(dir)
-            return java.nio.file.FileVisitResult.CONTINUE
+            return CONTINUE
           }
         },
       )
@@ -666,7 +669,7 @@ class SkillRemoveJvmFileSystem(
       Files.write(entry.path, bytes)
     }
     true
-  } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
+  } catch (cancellation: CancellationException) {
     // F-CANCEL-ROLLBACK: cancellation must propagate even from inside rollback. We do not return
     // false here because the caller is going to rethrow `cancellation` regardless; rethrowing
     // makes the contract explicit.

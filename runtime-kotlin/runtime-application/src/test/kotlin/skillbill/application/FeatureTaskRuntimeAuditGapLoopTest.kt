@@ -14,6 +14,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import skillbill.ports.diff.DiffResolverPort
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
+import java.nio.file.Path
+import kotlin.io.path.createTempDirectory
 
 // The audit-gap context-reuse loop exercised over the production transition topology
 // (audit --gaps_found--> implement -> review -> audit), with a
@@ -112,9 +117,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       launcher = launcher,
       runtimeConfig = RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
-        reviewDriver = skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+        reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           commitMessagesObservedAtReview = git.createCommitMessages + git.amendCommitMessages
-          skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+          EMPTY.run(request)
         },
       ),
     )
@@ -766,10 +771,10 @@ class FeatureTaskRuntimeAuditGapSharedEvidenceTest {
     val harness = runnerHarness(
       launcher = auditGapLauncher(convergeOnAudit = 2),
       runtimeConfig = RuntimeHarnessConfig(
-        repoRoot = kotlin.io.path.createTempDirectory("audit-gap-shared-evidence"),
+        repoRoot = createTempDirectory("audit-gap-shared-evidence"),
         sharedEvidenceResolver = store,
-        diffResolver = object : skillbill.ports.diff.DiffResolverPort {
-          override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String =
+        diffResolver = object : DiffResolverPort {
+          override fun runProcess(args: List<String>, workDir: Path): String =
             "diff --git a/src/A.kt b/src/A.kt\n@@ -1 +1 @@\n+x\n"
         },
       ),

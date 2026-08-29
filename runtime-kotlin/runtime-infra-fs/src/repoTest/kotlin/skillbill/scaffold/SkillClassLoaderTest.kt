@@ -20,6 +20,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.scaffold.model.SkillClassMatcher
 
 /**
  * Frozen golden table for the legacy `requiredSupportingFilesForSkill` behavior. The class YAMLs
@@ -318,8 +319,8 @@ class SkillClassLoaderTest {
       contractVersion = SHELL_CONTRACT_VERSION,
       matchers = matchers.map { (kind, value) ->
         when (kind) {
-          "exact" -> skillbill.scaffold.model.SkillClassMatcher(exact = value, excludeExact = excludeExact)
-          "pattern" -> skillbill.scaffold.model.SkillClassMatcher(pattern = Regex(value), excludeExact = excludeExact)
+          "exact" -> SkillClassMatcher(exact = value, excludeExact = excludeExact)
+          "pattern" -> SkillClassMatcher(pattern = Regex(value), excludeExact = excludeExact)
           else -> error("unknown matcher kind $kind")
         }
       },

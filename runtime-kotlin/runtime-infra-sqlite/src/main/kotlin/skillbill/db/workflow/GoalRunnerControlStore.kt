@@ -5,6 +5,7 @@ package skillbill.db.workflow
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
@@ -12,6 +13,12 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.sql.Connection
+import java.math.BigDecimal
+import java.math.BigInteger
+import kotlin.coroutines.cancellation.CancellationException
+
+private fun goalRunnerControlSchemaError(reason: String): Nothing =
+  throw InvalidWorkflowStateSchemaError("Goal runner control state: $reason")
 
 internal class GoalRunnerControlStore(
   private val connection: Connection,
@@ -198,7 +205,7 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
   val state = JsonSupport.parseObjectOrNull(raw)
     ?.let(JsonSupport::jsonElementToValue)
     ?.let(JsonSupport::anyToStringAnyMap)
-    ?: error("Goal runner control state durable record must be an object.")
+    ?: goalRunnerControlSchemaError("durable record must be an object.")
   val allowedKeys = setOf(
     "stop_after_subtask_id",
     "pause_requested",
@@ -216,7 +223,9 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
     "subtask_active_duration_as_of",
   )
   state.keys.forEach { key ->
-    require(key in allowedKeys) { "Goal runner control state has unsupported field '$key'." }
+    if (key !in allowedKeys) {
+      goalRunnerControlSchemaError("has unsupported field '$key'.")
+    }
   }
   return GoalRunnerControlState(
     stopAfterSubtaskId = state["stop_after_subtask_id"].toPositiveIntOrNull("stop_after_subtask_id"),
@@ -242,12 +251,12 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
 // row, because that would take status, pause, resume, and the lease down with it.
 private fun Map<String, Any?>.nonNegativeLongOrDefault(key: String): Long = when (val value = this[key]) {
   null -> 0L
-  is java.math.BigInteger -> runCatching { value.longValueExact() }.getOrNull()
-  is java.math.BigDecimal -> runCatching { value.toBigIntegerExact().longValueExact() }.getOrNull()
+  is BigInteger -> runCatching { value.longValueExact() }.getOrNull()
+  is BigDecimal -> runCatching { value.toBigIntegerExact().longValueExact() }.getOrNull()
   is Number -> value.toLong()
   else -> null
 }?.takeIf { it >= 0 }
-  ?: error("Goal runner control state field '$key' must be a non-negative integer.")
+  ?: goalRunnerControlSchemaError("field '$key' must be a non-negative integer.")
 
 /**
  * Pause timestamp for a durable record written before `paused_at` existed. Downstream consumers read
@@ -268,7 +277,7 @@ private fun legacyPausedAt(state: Map<String, Any?>): String? {
 
 private fun decodeExecutionLease(raw: Any?): GoalRunnerExecutionLease {
   val lease = JsonSupport.anyToStringAnyMap(raw)
-    ?: error("Goal runner execution lease must be an object or null.")
+    ?: goalRunnerControlSchemaError("execution lease must be an object or null.")
   val allowedKeys = setOf(
     "generation",
     "owner_token",
@@ -280,7 +289,9 @@ private fun decodeExecutionLease(raw: Any?): GoalRunnerExecutionLease {
     "expires_at",
   )
   lease.keys.forEach { key ->
-    require(key in allowedKeys) { "Goal runner execution lease has unsupported field '$key'." }
+    if (key !in allowedKeys) {
+      goalRunnerControlSchemaError("execution lease has unsupported field '$key'.")
+    }
   }
   return GoalRunnerExecutionLease(
     generation = lease["generation"].toPositiveLong("generation"),
@@ -297,22 +308,22 @@ private fun decodeExecutionLease(raw: Any?): GoalRunnerExecutionLease {
 private fun Map<String, Any?>.booleanOrDefault(key: String, default: Boolean): Boolean {
   if (!containsKey(key)) return default
   return when (val value = this[key]) {
-    null -> error("Goal runner control state field '$key' must be a boolean.")
+    null -> goalRunnerControlSchemaError("field '$key' must be a boolean.")
     is Boolean -> value
-    else -> error("Goal runner control state field '$key' must be a boolean.")
+    else -> goalRunnerControlSchemaError("field '$key' must be a boolean.")
   }
 }
 
 private fun Map<String, Any?>.nullableString(key: String): String? = when (val value = this[key]) {
   null -> null
   is String -> value
-  else -> error("Goal runner control state field '$key' must be a string or null.")
+  else -> goalRunnerControlSchemaError("field '$key' must be a string or null.")
 }
 
 private fun Map<String, Any?>.requiredString(key: String): String = when (val value = this[key]) {
   is String -> value.takeIf(String::isNotBlank)
-    ?: error("Goal runner execution lease field '$key' must not be blank.")
-  else -> error("Goal runner execution lease field '$key' must be a nonblank string.")
+    ?: goalRunnerControlSchemaError("execution lease field '$key' must not be blank.")
+  else -> goalRunnerControlSchemaError("execution lease field '$key' must be a nonblank string.")
 }
 
 private fun Any?.toPositiveLong(key: String): Long = when (this) {
@@ -320,13 +331,13 @@ private fun Any?.toPositiveLong(key: String): Long = when (this) {
   is Short -> toLong()
   is Int -> toLong()
   is Long -> this
-  is java.math.BigInteger -> runCatching { longValueExact() }.getOrNull()
-  is java.math.BigDecimal -> runCatching { toBigIntegerExact().longValueExact() }.getOrNull()
-  is Number -> runCatching { java.math.BigDecimal(toString()).longValueExact() }.getOrNull()
+  is BigInteger -> runCatching { longValueExact() }.getOrNull()
+  is BigDecimal -> runCatching { toBigIntegerExact().longValueExact() }.getOrNull()
+  is Number -> runCatching { BigDecimal(toString()).longValueExact() }.getOrNull()
   else -> null
 }?.also {
-  require(it > 0) { "Goal runner execution lease field '$key' must be positive." }
-} ?: error("Goal runner execution lease field '$key' must be a positive integer.")
+  if (it <= 0) goalRunnerControlSchemaError("execution lease field '$key' must be positive.")
+} ?: goalRunnerControlSchemaError("execution lease field '$key' must be a positive integer.")
 
 private fun Any?.toPositiveIntOrNull(key: String): Int? = when (this) {
   null -> null
@@ -334,59 +345,63 @@ private fun Any?.toPositiveIntOrNull(key: String): Int? = when (this) {
   is Short -> toInt()
   is Int -> this
   is Long -> takeIf { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }?.toInt()
-  is java.math.BigInteger -> runCatching { intValueExact() }.getOrNull()
-  is java.math.BigDecimal -> runCatching { toBigIntegerExact().intValueExact() }.getOrNull()
-  is Number -> runCatching { java.math.BigDecimal(toString()).intValueExact() }.getOrNull()
-  else -> error("Goal runner control state field '$key' must be a positive integer or null.")
+  is BigInteger -> runCatching { intValueExact() }.getOrNull()
+  is BigDecimal -> runCatching { toBigIntegerExact().intValueExact() }.getOrNull()
+  is Number -> runCatching { BigDecimal(toString()).intValueExact() }.getOrNull()
+  else -> goalRunnerControlSchemaError("field '$key' must be a positive integer or null.")
 }?.also {
-  require(it > 0) { "Goal runner control state field '$key' must be positive." }
+  if (it <= 0) goalRunnerControlSchemaError("field '$key' must be positive.")
 } ?: if (this == null) {
   null
 } else {
-  error(
-    "Goal runner control state field '$key' must be a positive integer or null.",
-  )
+  goalRunnerControlSchemaError("field '$key' must be a positive integer or null.")
 }
 
 private fun decodeReviewPolicy(raw: String): GoalRunnerReviewPolicy {
   val policy = JsonSupport.parseObjectOrNull(raw)
     ?.let(JsonSupport::jsonElementToValue)
     ?.let(JsonSupport::anyToStringAnyMap)
-    ?: error("Goal review policy durable record must be an object.")
+    ?: goalRunnerControlSchemaError("review policy durable record must be an object.")
   val mode = policy["code_review_mode"] as? String
-    ?: error("Goal review policy durable record is missing code_review_mode.")
+    ?: goalRunnerControlSchemaError("review policy durable record is missing code_review_mode.")
   val codeReviewMode = CodeReviewExecutionMode.fromWire(mode)
   val addOns = (policy["agent_addon_selection"] as? List<*>).orEmpty().mapIndexed { index, value ->
     val entry = JsonSupport.anyToStringAnyMap(value)
-      ?: error("Goal review policy durable add-on entry $index must be a map.")
+      ?: goalRunnerControlSchemaError("review policy durable add-on entry $index must be a map.")
     PersistedAgentAddonSelectionEntry(
-      slug = entry["slug"] as? String ?: error("Goal review policy durable add-on entry $index is missing slug."),
+      slug = entry["slug"] as? String
+        ?: goalRunnerControlSchemaError("review policy durable add-on entry $index is missing slug."),
       sourceIdentity = entry["source_identity"] as? String
-        ?: error("Goal review policy durable add-on entry $index is missing source_identity."),
+        ?: goalRunnerControlSchemaError("review policy durable add-on entry $index is missing source_identity."),
       contentSha256 = entry["content_sha256"] as? String
-        ?: error("Goal review policy durable add-on entry $index is missing content_sha256."),
+        ?: goalRunnerControlSchemaError("review policy durable add-on entry $index is missing content_sha256."),
     )
   }
   return GoalRunnerReviewPolicy(codeReviewMode, AgentAddonSelection(addOns))
 }
 
 private fun decodeAcceptances(raw: String): Map<Int, GoalRunnerOutOfBandAcceptance> {
-  val entries = runCatching { JsonSupport.json.parseToJsonElement(raw) }
-    .getOrElse { error -> throw IllegalArgumentException("Goal acceptance durable record is not valid JSON.", error) }
+  val entries = try {
+    JsonSupport.json.parseToJsonElement(raw)
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: Exception) {
+    goalRunnerControlSchemaError("acceptance durable record is not valid JSON.")
+  }
   val values = (JsonSupport.jsonElementToValue(entries) as? List<*>)
-    ?: error("Goal acceptance durable record must be a list.")
+    ?: goalRunnerControlSchemaError("acceptance durable record must be a list.")
   return values.associate { value ->
     val entry = JsonSupport.anyToStringAnyMap(value)
-      ?: error("Goal acceptance durable record entries must be maps.")
+      ?: goalRunnerControlSchemaError("acceptance durable record entries must be maps.")
     val acceptance = GoalRunnerOutOfBandAcceptance(
       subtaskId = (entry["subtask_id"] as? Number)?.toInt()
-        ?: error("Goal acceptance durable record entry is missing subtask_id."),
+        ?: goalRunnerControlSchemaError("acceptance durable record entry is missing subtask_id."),
       commitSha = entry["commit_sha"] as? String
-        ?: error("Goal acceptance durable record entry is missing commit_sha."),
+        ?: goalRunnerControlSchemaError("acceptance durable record entry is missing commit_sha."),
       reason = entry["reason"] as? String
-        ?: error("Goal acceptance durable record entry is missing reason."),
+        ?: goalRunnerControlSchemaError("acceptance durable record entry is missing reason."),
       acceptedAt = entry["accepted_at"] as? String
-        ?: error("Goal acceptance durable record entry is missing accepted_at."),
+        ?: goalRunnerControlSchemaError("acceptance durable record entry is missing accepted_at."),
     )
     acceptance.subtaskId to acceptance
   }

@@ -21,6 +21,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValida
 import skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import skillbill.contracts.JsonSupport
 
 @Inject
 class GoalPlanningPreparationCheckpoint(
@@ -179,9 +180,9 @@ class GoalPlanningPreparationCheckpoint(
             "stored plan provenance differs from the governing shared preplan",
           )
         }
-        val parsed = skillbill.contracts.JsonSupport.parseObjectOrNull(plan.planPayload)
-          ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
-          ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+        val parsed = JsonSupport.parseObjectOrNull(plan.planPayload)
+          ?.let(JsonSupport::jsonElementToValue)
+          ?.let(JsonSupport::anyToStringAnyMap)
         val status = parsed?.get("status")?.toString()
         val produced = parsed?.get("produced_outputs") as? Map<*, *>
         if (status != "completed" || produced?.isEmpty() != false) {
@@ -418,13 +419,13 @@ private fun GoalSubtaskPlanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linke
   "repair_evidence" to repairEvidence?.toArtifactMap(),
 ).filterValues { it != null }
 
-private fun skillbill.ports.goalrunner.model.GoalPlanningIdentity.asMap() = linkedMapOf(
+private fun GoalPlanningIdentity.asMap() = linkedMapOf(
   "parent_goal_workflow_id" to parentGoalWorkflowId,
   "normalized_issue_key" to normalizedIssueKey,
   "repository_identity" to repositoryIdentity,
 )
 
-private fun skillbill.ports.goalrunner.model.GoalPlanningContractProvenance.asMap() = linkedMapOf(
+private fun GoalPlanningContractProvenance.asMap() = linkedMapOf(
   "parent_spec_hash" to parentSpecHash,
   "decomposition_manifest_hash" to decompositionManifestHash,
   "planning_contract_id" to planningContractId,

@@ -9,6 +9,8 @@ import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import java.io.File
+import java.io.IOException
 
 @Inject
 class GhGoalPullRequestPort() : GoalPullRequestPort {
@@ -114,7 +116,7 @@ class GhGoalPullRequestPort() : GoalPullRequestPort {
           sink.write(buffer, 0, count)
         }
       }
-    } catch (_: java.io.IOException) {
+    } catch (_: IOException) {
       // Reader shutdown is best-effort after the process exits.
     }
   }
@@ -130,7 +132,7 @@ class GhGoalPullRequestPort() : GoalPullRequestPort {
     val names = executableNames("gh")
     return System.getenv("PATH")
       .orEmpty()
-      .split(java.io.File.pathSeparator)
+      .split(File.pathSeparator)
       .asSequence()
       .mapNotNull { raw -> raw.takeIf(String::isNotBlank)?.let(Path::of) }
       .flatMap { directory -> names.asSequence().map(directory::resolve) }

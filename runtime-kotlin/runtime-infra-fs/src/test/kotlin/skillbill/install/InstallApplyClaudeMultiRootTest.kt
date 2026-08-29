@@ -20,6 +20,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.install.model.PlatformPackSelection
+import skillbill.install.model.PlatformPackSelectionMode.SELECTED
 
 class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
   private fun markClaudeProfile(home: Path, name: String): Path {
@@ -229,8 +231,8 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
 
     val plan = InstallOperations.planInstall(
       claudeMultiRootRequest(fixture).copy(
-        platformPackSelection = skillbill.install.model.PlatformPackSelection(
-          mode = skillbill.install.model.PlatformPackSelectionMode.SELECTED,
+        platformPackSelection = PlatformPackSelection(
+          mode = SELECTED,
           selectedSlugs = setOf("kotlin"),
         ),
       ),

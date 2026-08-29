@@ -4,6 +4,7 @@ import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.fail
+import skillbill.contracts.JsonSupport
 
 /**
  * Planning-projections schema is reject-all; [producedProjectionKindFor] is null for every phase, so
@@ -48,9 +49,9 @@ class PhaseOutputFixtureParityTest {
 
   @Suppress("UNCHECKED_CAST")
   private fun parsedOutputs(producedOutputs: String): Map<String, Any?> {
-    val json = requireNotNull(skillbill.contracts.JsonSupport.parseObjectOrNull(producedOutputs)) {
+    val json = requireNotNull(JsonSupport.parseObjectOrNull(producedOutputs)) {
       "fixture produced_outputs must be a JSON object"
     }
-    return skillbill.contracts.JsonSupport.jsonElementToValue(json) as Map<String, Any?>
+    return JsonSupport.jsonElementToValue(json) as Map<String, Any?>
   }
 }

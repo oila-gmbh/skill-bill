@@ -3,7 +3,7 @@
 package skillbill.scaffold.runtime
 
 import skillbill.error.MissingSupportingFileTargetError
-import skillbill.scaffold.model.PlatformManifest
+import PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.FEATURE_TASK_ADDON_CONSUMER
 import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
@@ -167,7 +167,7 @@ private fun featureAddonPointerSpecsFor(
  */
 internal fun validatePointerTargetParity(
   repoRoot: Path,
-  packs: List<skillbill.scaffold.model.PlatformManifest>,
+  packs: List<PlatformManifest>,
 ): List<String> {
   val staticTargets = supportingFileTargets(repoRoot)
   val resolvedRoot = repoRoot.toAbsolutePath().normalize()

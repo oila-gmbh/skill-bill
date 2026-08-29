@@ -237,6 +237,7 @@ import skillbill.workflow.goal.GoalProgressEventValidator
 import skillbill.workflow.idestatus.IdeStatusValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import java.nio.file.Path
+import java.time.Clock
 
 @Component
 @Suppress("TooManyFunctions")
@@ -457,7 +458,7 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun runtimeClock(): java.time.Clock = java.time.Clock.systemUTC()
+  internal fun runtimeClock(): Clock = Clock.systemUTC()
 
   @Provides
   @JvmSynthetic

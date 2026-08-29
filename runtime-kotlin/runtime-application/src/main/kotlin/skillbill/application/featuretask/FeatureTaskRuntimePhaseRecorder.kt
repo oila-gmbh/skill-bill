@@ -121,6 +121,8 @@ import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
+import skillbill.goalrunner.model.UnaddressedFinding
 
 /**
  * The degradable classes are the environmental ones: the store rejected, could not be reached, or
@@ -548,7 +550,7 @@ class FeatureTaskRuntimePhaseRecorder(
       }
       val ledger = phaseLedgerFrom(artifacts)
       val completion = FeatureTaskRuntimePhaseLedgerEntry(
-        action = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
+        action = COMPLETE,
         sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
         timestamp = Instant.now().toString(),
         phaseId = request.phaseId,
@@ -801,14 +803,14 @@ class FeatureTaskRuntimePhaseRecorder(
   internal fun fetchUnaddressedLedger(
     workflowId: String,
     dbOverride: String? = null,
-  ): List<skillbill.goalrunner.model.UnaddressedFinding> = database.transaction(dbOverride) { unitOfWork ->
+  ): List<UnaddressedFinding> = database.transaction(dbOverride) { unitOfWork ->
     unitOfWork.unaddressedFindings.fetchWorkflowLedger(workflowId)
   }
 
   internal fun appendRejectedVerificationFindings(
     workflowId: String,
     passNumber: Int,
-    rejected: List<skillbill.goalrunner.model.UnaddressedFinding>,
+    rejected: List<UnaddressedFinding>,
     dbOverride: String? = null,
   ) {
     if (rejected.isEmpty()) return
@@ -1038,8 +1040,8 @@ class FeatureTaskRuntimePhaseRecorder(
   private fun goalReviewCompletionDispositions(
     reservedPass: Int,
     requested: List<GoalSubtaskBlockerDisposition>,
-    priorFindings: List<skillbill.goalrunner.model.UnaddressedFinding>,
-    currentFindings: List<skillbill.goalrunner.model.UnaddressedFinding>,
+    priorFindings: List<UnaddressedFinding>,
+    currentFindings: List<UnaddressedFinding>,
     recordedVerdicts: List<ReviewFindingVerdict>,
   ): List<GoalSubtaskBlockerDisposition> {
     if (reservedPass <= 1) return requested
@@ -1055,7 +1057,7 @@ class FeatureTaskRuntimePhaseRecorder(
   ): List<Map<String, Any?>> {
     val ledger = phaseLedgerFrom(artifacts)
     val completionEntry = FeatureTaskRuntimePhaseLedgerEntry(
-      action = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
+      action = COMPLETE,
       sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
       timestamp = Instant.now().toString(),
       phaseId = request.phaseId,

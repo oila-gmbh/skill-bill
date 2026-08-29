@@ -25,6 +25,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
+import skillbill.db.telemetry.TelemetryOutboxStore
 
 /**
  * Content-bearing review inputs are measured, never retained. The summary under test comes from a
@@ -109,10 +111,10 @@ class ReviewAccountingDurableRedactionTest {
       }
 
       assertNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
-      val quarantined = skillbill.db.telemetry.TelemetryOutboxStore(connection).listPending(null)
+      val quarantined = TelemetryOutboxStore(connection).listPending(null)
       assertTrue(
         quarantined.any { record ->
-          record.eventName == skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
+          record.eventName == REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
             record.payloadJson.contains("accounting_contract_quarantined")
         },
       )
@@ -141,10 +143,10 @@ class ReviewAccountingDurableRedactionTest {
       }
 
       assertNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
-      val quarantined = skillbill.db.telemetry.TelemetryOutboxStore(connection).listPending(null)
+      val quarantined = TelemetryOutboxStore(connection).listPending(null)
       assertTrue(
         quarantined.any { record ->
-          record.eventName == skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
+          record.eventName == REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
             record.payloadJson.contains("accounting_contract_quarantined")
         },
       )

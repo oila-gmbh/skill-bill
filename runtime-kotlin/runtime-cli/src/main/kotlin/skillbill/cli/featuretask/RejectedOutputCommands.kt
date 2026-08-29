@@ -14,6 +14,7 @@ import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import java.io.OutputStream
+import skillbill.ports.db.UnitOfWork
 
 private const val CONTROL_CHARACTER_LIMIT: Int = 0x20
 private const val DELETE_CHARACTER_CODE: Int = 0x7f
@@ -122,7 +123,7 @@ class RejectedOutputCleanupCliCommand(
   }
 }
 
-private fun skillbill.ports.db.UnitOfWork.diagnosticService(
+private fun UnitOfWork.diagnosticService(
   metadataValidator: RejectedOutputDiagnosticMetadataValidator,
 ): RejectedOutputDiagnosticService = RejectedOutputDiagnosticService(
   rejectedOutputDiagnostics ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable"),

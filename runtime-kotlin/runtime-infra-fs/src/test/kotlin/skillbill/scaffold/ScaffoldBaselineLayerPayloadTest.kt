@@ -15,6 +15,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import skillbill.testsupport.SkillClassFixtures
 
 class ScaffoldBaselineLayerPayloadTest {
   @Test
@@ -210,7 +211,7 @@ private fun kotlinBaselinePayloadEntry(vararg overrides: Pair<String, Any?>): Ma
 
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-baseline-layer-scaffold-repo")
-  skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
+  SkillClassFixtures.seedShippedSkillClasses(repo)
   supportingFileTargets(repo).values.forEach { target ->
     Files.createDirectories(target.parent)
     Files.writeString(target, "# ${target.fileName}\n")

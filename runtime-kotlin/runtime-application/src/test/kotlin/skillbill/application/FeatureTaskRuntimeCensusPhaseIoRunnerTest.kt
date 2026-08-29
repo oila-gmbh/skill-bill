@@ -15,6 +15,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 
 class FeatureTaskRuntimeCensusPhaseIoRunnerTest {
   @Test
@@ -258,10 +260,10 @@ private const val NIT_MESSAGE = "Hourly selection is never read"
 
 private fun censusReviewDriver(
   findings: List<ParallelReviewMergedFinding>,
-): skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver =
-  skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+): FeatureTaskRuntimeReviewDriver =
+  FeatureTaskRuntimeReviewDriver { request ->
     harnessPendingVerifyFindingIds = findings.map { it.fNumber }
-    skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+    EMPTY.run(request).copy(
       mergeResult = ParallelReviewMergeResult(
         findings = findings,
         formattedOutput = "findings",

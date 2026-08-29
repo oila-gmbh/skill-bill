@@ -13,6 +13,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 
 class FeatureTaskRuntimeModelDirectiveRunnerTest {
   @Test
@@ -283,9 +285,9 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
         perPhaseAgentIds = mapOf("review" to "cursor"),
       ),
       runtimeConfig = RuntimeHarnessConfig(
-        reviewDriver = skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+        reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           capturedAgent1 = request.agent1Id
-          skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+          EMPTY.run(request)
         },
       ),
     )

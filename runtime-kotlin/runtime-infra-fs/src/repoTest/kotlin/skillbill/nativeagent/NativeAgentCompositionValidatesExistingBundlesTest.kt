@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
 
 /**
  * SKILL-48 Subtask 2c AC3: every native-agent fixture under
@@ -80,7 +81,7 @@ class NativeAgentCompositionValidatesExistingBundlesTest {
     val worker = parseNativeAgentBundle(bundle).single { it.name == "bill-code-review-inline" }
 
     assertEquals(
-      skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
+      OPERATIONS
         .map { "mcp__skill-bill-review-evidence__$it" },
       worker.tools,
     )

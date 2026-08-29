@@ -19,6 +19,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.install.model.InstallAgent.CLAUDE
 
 private fun completedPhaseBody(
   contractVersion: String,
@@ -373,8 +375,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
         if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
         auditAttempts += 1
         if (auditAttempts == 1) {
-          skillbill.ports.agentrun.model.AgentRunLaunchFacts(
-            agent = skillbill.install.model.InstallAgent.CLAUDE,
+          AgentRunLaunchFacts(
+            agent = CLAUDE,
             exitStatus = 0,
             stdout = excerpt,
             stderr = "",
@@ -425,8 +427,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
         if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
         auditAttempts += 1
         if (auditAttempts == 1) {
-          skillbill.ports.agentrun.model.AgentRunLaunchFacts(
-            agent = skillbill.install.model.InstallAgent.CLAUDE,
+          AgentRunLaunchFacts(
+            agent = CLAUDE,
             exitStatus = 0,
             stdout = excerpt,
             stderr = "",

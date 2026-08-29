@@ -24,6 +24,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlin.coroutines.cancellation.CancellationException
 
 @Inject
 class FileSystemValidationGateRunner : ValidationGateRunner {
@@ -162,7 +163,7 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
         )
   }
 
-  private fun parseDetektXmlFile(repoRoot: Path, path: Path): List<ValidationGateFinding> = runCatching {
+  private fun parseDetektXmlFile(repoRoot: Path, path: Path): List<ValidationGateFinding> = try {
     val document = DOCUMENT_BUILDER.parse(path.toFile())
     val repo = repoRoot.toAbsolutePath().normalize()
     val files = document.getElementsByTagName("file")
@@ -191,9 +192,13 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
         }
       }
     }
-  }.getOrDefault(emptyList())
+  } catch (error: CancellationException) {
+    throw error
+  } catch (_: Exception) {
+    listOf(unparseableArtifactFinding(path, "detekt"))
+  }
 
-  private fun parseJUnitXmlFile(path: Path): List<ValidationGateFinding> = runCatching {
+  private fun parseJUnitXmlFile(path: Path): List<ValidationGateFinding> = try {
     val document = DOCUMENT_BUILDER.parse(path.toFile())
     val testcases = document.getElementsByTagName("testcase")
     buildList {
@@ -217,7 +222,19 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
         )
       }
     }
-  }.getOrDefault(emptyList())
+  } catch (error: CancellationException) {
+    throw error
+  } catch (_: Exception) {
+    listOf(unparseableArtifactFinding(path, "junit"))
+  }
+
+  private fun unparseableArtifactFinding(path: Path, format: String): ValidationGateFinding =
+    ValidationGateFinding(
+      module = UNPARSEABLE_GATE_MODULE,
+      ruleOrTestId = "unparseable_gate_artifact",
+      message = "Validation gate $format XML at '$path' could not be parsed.",
+      location = path.toString(),
+    )
 
   companion object {
     private const val GATE_TIMEOUT_MINUTES = 120L

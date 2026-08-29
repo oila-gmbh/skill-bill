@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import java.sql.Connection
 
 private const val ENQUEUE_TIME_VERSION = "7.7.7-enqueue"
 private const val UPLOAD_TIME_VERSION = "8.8.8-upload"
@@ -56,7 +57,7 @@ class TelemetryReleaseAttributionTest {
     }
   }
 
-  private fun withOutboxDatabase(block: (java.sql.Connection) -> Unit) {
+  private fun withOutboxDatabase(block: (Connection) -> Unit) {
     val dbPath = Files.createTempDirectory("telemetry-release-attribution").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use(block)
   }

@@ -4,6 +4,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 
 /**
  * Request to persist one per-phase record. Carries only runtime-owned facts plus the validated
@@ -60,7 +61,7 @@ data class FeatureTaskRuntimePhaseStateRequest(
   val launchOutcomeKnown: Boolean = false,
   val reviewRunId: String? = null,
   val findingVerificationCheckpoint:
-  List<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition>? = null,
+  List<FeatureTaskRuntimeFindingVerificationDisposition>? = null,
 )
 
 /**

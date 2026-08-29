@@ -23,6 +23,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 
 class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   @Test
@@ -235,7 +237,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     assertEquals(null, planningRecords.getValue("preplan").loopId)
     assertEquals(null, planningRecords.getValue("plan").loopId)
     val reviewCompletions = runtime.recorder.loadPhaseLedger(workflowId).orEmpty()
-      .filter { it.action == skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
+      .filter { it.action == COMPLETE }
       .filter { it.phaseId == "review" }
     assertEquals(1, runtime.launchOrder().count { it == "review" })
     assertEquals(0, reviewCompletions.count { it.loopId == "audit_gap" })
@@ -582,7 +584,7 @@ private fun goalRunForChildReport(
   val report = runner.run(
     GoalRunnerRunRequest(
       issueKey = "SKILL-56",
-      repoRoot = java.nio.file.Path.of("/tmp/repo"),
+      repoRoot = Path.of("/tmp/repo"),
       invokedAgentId = INVOKED_AGENT,
     ),
   )
@@ -639,7 +641,7 @@ private fun goalChildParityRun(
 
 private class RuntimeChildLauncher(
   private val runner: FeatureTaskRuntimeRunner,
-  private val template: skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest,
+  private val template: FeatureTaskRuntimeRunRequest,
   private val outcomes: RecordingOutcomeStore,
 ) : GoalRunnerSubtaskLauncher {
   val reports: MutableList<FeatureTaskRuntimeRunReport> = mutableListOf()

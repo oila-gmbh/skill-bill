@@ -252,7 +252,12 @@ class InvalidDecompositionManifestSchemaError(
  * phase-output schema. The message carries the source label and violation
  * reason.
  */
-enum class FeatureTaskRuntimePhaseOutputFailureKind { MALFORMED, SCHEMA_INVALID }
+enum class FeatureTaskRuntimePhaseOutputFailureKind(
+  override val wireValue: String,
+) : FailureWireCode {
+  MALFORMED("malformed"),
+  SCHEMA_INVALID("schema_invalid"),
+}
 
 data class FeatureTaskRuntimePhaseOutputStructuralRepairSource(
   val label: String,
@@ -295,17 +300,7 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   cause,
 ) {
   val failureKind: FeatureTaskRuntimePhaseOutputFailureKind
-    get() = when (failureCode) {
-      "malformed",
-      "root_not_object",
-      "no_repair_candidate",
-      "ambiguous_repair",
-      "repair_limit_exceeded",
-      "unsupported_repair",
-      "duplicate_key",
-      -> FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED
-      else -> FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID
-    }
+    get() = coarseFailureKindForPhaseOutputWireCode(failureCode)
 
   val structuralRepairOriginalDigest: String?
     get() = structuralRepair?.originalDigest
@@ -340,16 +335,18 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
 }
 
 /** Why a handoff projection was rejected before an agent was launched. */
-enum class FeatureTaskRuntimeHandoffProjectionFailureKind {
-  MISSING_REQUIRED_SOURCE,
-  MALFORMED_FIELD,
-  UNSUPPORTED_CONTRACT_VERSION,
-  UNDECLARED_FIELD,
-  DUPLICATE_PROJECTION_NAME,
-  BUDGET_OVERFLOW,
-  INVALID_COMPACT_REFERENCE,
-  CHECKPOINT_POLICY_VIOLATION,
-  SCHEMA_INVALID,
+enum class FeatureTaskRuntimeHandoffProjectionFailureKind(
+  override val wireValue: String,
+) : FailureWireCode {
+  MISSING_REQUIRED_SOURCE("missing_required_source"),
+  MALFORMED_FIELD("malformed_field"),
+  UNSUPPORTED_CONTRACT_VERSION("unsupported_contract_version"),
+  UNDECLARED_FIELD("undeclared_field"),
+  DUPLICATE_PROJECTION_NAME("duplicate_projection_name"),
+  BUDGET_OVERFLOW("budget_overflow"),
+  INVALID_COMPACT_REFERENCE("invalid_compact_reference"),
+  CHECKPOINT_POLICY_VIOLATION("checkpoint_policy_violation"),
+  SCHEMA_INVALID("schema_invalid"),
 }
 
 /**

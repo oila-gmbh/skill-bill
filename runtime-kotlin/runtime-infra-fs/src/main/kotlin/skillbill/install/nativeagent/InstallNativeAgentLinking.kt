@@ -6,6 +6,7 @@ import skillbill.install.support.createReplacementSymlinkWithGuidance
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
 import java.nio.file.Path
+import java.io.FileNotFoundException
 
 internal fun installNativeAgentFile(
   source: Path,
@@ -16,7 +17,7 @@ internal fun installNativeAgentFile(
 ): InstallNativeAgentResult {
   val resolvedSource = source.toAbsolutePath().normalize()
   if (!Files.isRegularFile(resolvedSource)) {
-    throw java.io.FileNotFoundException("Native agent file '$resolvedSource' does not exist.")
+    throw FileNotFoundException("Native agent file '$resolvedSource' does not exist.")
   }
   beforeMutation(agentTarget.path)
   Files.createDirectories(agentTarget.path)

@@ -22,6 +22,9 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import java.nio.file.Path
 
 class DecompositionManifestWriterTest {
   private val engine: WorkflowEngine = WorkflowEngine(testWorkflowSnapshotValidator)
@@ -468,7 +471,7 @@ class DecompositionManifestWriterTest {
     assertEquals(null, result)
     assertFalse(Files.exists(parentSpecPath.parent.resolve("decomposition-manifest.yaml")))
 
-    val definition = skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
     val opened = engine.openRecord(definition, "ftr-compat-001", "session-compat", "plan")
     val updated = engine.updateRecord(
       definition,
@@ -543,7 +546,7 @@ class DecompositionManifestWriterTest {
   }
 
   private fun decompositionPlan(
-    parentSpecPath: java.nio.file.Path = java.nio.file.Path.of(".feature-specs/SKILL-51-decomposition/spec.md"),
+    parentSpecPath: Path = Path.of(".feature-specs/SKILL-51-decomposition/spec.md"),
   ): Map<String, Any?> = linkedMapOf(
     "mode" to "decompose",
     "parent_spec_path" to parentSpecPath.toString(),
@@ -568,7 +571,7 @@ class DecompositionManifestWriterTest {
   )
 
   private fun stackedDecompositionPlan(
-    parentSpecPath: java.nio.file.Path = java.nio.file.Path.of(".feature-specs/SKILL-51-decomposition/spec.md"),
+    parentSpecPath: Path = Path.of(".feature-specs/SKILL-51-decomposition/spec.md"),
   ): Map<String, Any?> = linkedMapOf(
     "mode" to "decompose",
     "parent_spec_path" to parentSpecPath.toString(),
@@ -601,7 +604,7 @@ class DecompositionManifestWriterTest {
   )
 
   private fun decompositionPlanWithFirstSubtaskId(
-    parentSpecPath: java.nio.file.Path,
+    parentSpecPath: Path,
     subtaskId: Any,
   ): Map<String, Any?> {
     val plan = LinkedHashMap(decompositionPlan(parentSpecPath))
@@ -618,13 +621,13 @@ class DecompositionManifestWriterTest {
     return plan
   }
 
-  private fun runtimeArtifactsJson(subtaskSpec: java.nio.file.Path): String =
+  private fun runtimeArtifactsJson(subtaskSpec: Path): String =
     """{"assessment":{"spec_path":"${subtaskSpec.toString().replace("\\", "\\\\")}"},""" +
       """"branch":{"branch":"feature/SKILL-51-decomposition"}}"""
 
   private fun durableRuntimeArtifactsJson(
-    manifest: skillbill.workflow.decomposition.model.DecompositionManifest,
-    subtaskSpec: java.nio.file.Path,
+    manifest: DecompositionManifest,
+    subtaskSpec: Path,
   ): String = JsonSupport.mapToJsonString(
     mapOf(
       DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap(),

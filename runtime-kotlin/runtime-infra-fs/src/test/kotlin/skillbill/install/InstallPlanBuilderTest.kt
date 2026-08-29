@@ -39,6 +39,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import java.io.File
+import java.io.FileNotFoundException
 
 class InstallPlanBuilderTest {
   private val tempDirs = mutableListOf<Path>()
@@ -448,7 +450,7 @@ class InstallPlanBuilderTest {
   fun `missing base skills root fails instead of producing a plan without base skills`() {
     val fixture = setupPlanFixture()
 
-    val error = assertFailsWith<java.io.FileNotFoundException> {
+    val error = assertFailsWith<FileNotFoundException> {
       InstallOperations.planInstall(
         fixture.request(
           targetPaths = fixture.targetPaths().copy(skillsRoot = fixture.repoRoot.resolve("missing-skills")),
@@ -732,7 +734,7 @@ class InstallPlanBuilderTest {
         .associate { path ->
           val relative = root.relativize(path)
             .toString()
-            .replace(java.io.File.separatorChar, '/')
+            .replace(File.separatorChar, '/')
             .ifEmpty { "." }
           val value = when {
             Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) -> "<DIR>"

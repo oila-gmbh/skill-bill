@@ -4,7 +4,13 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
-## [2026-08-28] Census I/O for verify and implement_fix, not phase_prose
+## [2026-08-29] Capability vocabulary boundaries for fallback capabilities, entrypoints, and idle policy
+
+Context: SKILL-220 subtask 3 (P-07). Platform manifests carry `fallback_capabilities` as open strings, native-agent add-on declarations name `entrypoint` paths as manifest strings, and `AgentRunIdlePolicy` is selected at compile time per agent command builder.
+Decision: All three stay open at their current boundaries. `fallbackCapabilities` remains `Set<String>` validated for shape only in `ShellContentLoader.parseFallbackCapabilities`; the closed review-routing vocabulary (`CODE_REVIEW_CAPABILITY` / `CODE_REVIEW_FALLBACK_CAPABILITY`) converts to manifest strings at `PlatformReviewRouting` only. Native-agent `entrypoint` slots remain manifest-relative path strings validated by the platform-pack schema and `ShellContentLoader` add-on wiring — not a closed enum, because each pack names pack-owned files. `AgentRunIdlePolicy` stays a compile-time closed set (`HEARTBEAT_EXTENDED`, `DB_PROGRESS_ONLY`, `OUTPUT_EXTENDED`) chosen in each `*AgentRunCommandBuilder`; it is not wire-decoded from operator or agent output.
+Reason: Fallback capabilities and entrypoints are pack-authored extension surfaces; closing them would reject valid pack content without a migration path. Idle policy is already closed where it matters — agent builders — and is never read from untrusted JSON.
+Alternatives considered: Closed enum for `fallback_capabilities` with typed failure on unknown values (rejected: would break extensibility for future fallback lanes without a schema bump). Closed enum for entrypoint slots (rejected: filenames are pack-local). Wire-decoded idle policy (rejected: no untrusted input path exists).
+
 Context: SKILL-211 through SKILL-214 moved agent-to-agent phases onto `phase_prose`. Verify and implement_fix still decide from structure. An omitted id is silent loss.
 Decision: Keep `finding_dispositions` and `repair_receipt` as an id-enum census. Gate coverage and routing on those enums. Ignore former fat fields instead of rejecting them. Drop the compact-symbol regex rather than salvaging near-misses.
 Reason: The runtime already owns the finding set. Stuffing `value` would make Kotlin re-parse prose for ids it has. Grammar-cop near-misses were discarding tree-resident work.

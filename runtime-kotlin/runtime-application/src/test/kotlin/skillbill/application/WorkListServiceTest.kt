@@ -20,6 +20,7 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 
 class WorkListServiceTest {
   @Test
@@ -144,7 +145,7 @@ private class WorkListDatabase(
       get() = error("Not exercised by WorkListServiceTest.")
     override val telemetryOutbox: TelemetryOutboxRepository
       get() = error("Not exercised by WorkListServiceTest.")
-    override val goalPlanningPreparations = skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 

@@ -12,6 +12,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import skillbill.testsupport.SkillClassFixtures
 
 class ScaffoldPlatformPackInstallTest {
   @Test
@@ -49,7 +50,7 @@ private fun payload(repo: Path, kind: String, vararg pairs: Pair<String, Any?>):
 
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-scaffold-platform-install-repo")
-  skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
+  SkillClassFixtures.seedShippedSkillClasses(repo)
   supportingFileTargets(repo).values.forEach { target ->
     Files.createDirectories(target.parent)
     Files.writeString(target, "# ${target.fileName}\n")
