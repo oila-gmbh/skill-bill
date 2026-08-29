@@ -11,9 +11,8 @@ import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 /**
  * Builds the delivered handoff envelope from static declarations, rejecting rather than repairing.
  *
- * Budgets are counted in UTF-8 bytes and collection items *before* the envelope exists, so an
- * oversized projection can never be truncated, silently dropped, or swapped for its full source
- * artifact — it fails the launch with a typed error naming the projection and its contract.
+ * Shape and contract are validated without truncating. A consumer either receives a whole
+ * validated projection or the launch fails loudly with a typed error naming the projection.
  */
 object FeatureTaskRuntimeHandoffProjectionValidator {
   const val COMPACT_REFERENCE_MAX_LENGTH: Int = 512
@@ -34,7 +33,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       if (resolved == null) return@mapNotNull null
       FeatureTaskRuntimeHandoffProjectionDeclarationChecks.enforceDeclaredShape(inputs, declaration, fields)
       FeatureTaskRuntimeHandoffProjectionDeclarationChecks.enforceCompactReferences(inputs, declaration, fields)
-      val projection = FeatureTaskRuntimeHandoffProjection(
+      FeatureTaskRuntimeHandoffProjection(
         projectionName = declaration.projectionName,
         sourceRef = declaration.sourceRef,
         projectionContractId = declaration.projectionContractId,
@@ -46,8 +45,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
           declaration,
         ),
       )
-      FeatureTaskRuntimeHandoffProjectionDeclarationChecks.enforceBudget(inputs, declaration, projection)
-      projection
     }
     return FeatureTaskRuntimeHandoffEnvelope(
       consumerPhaseId = inputs.consumerPhaseId,

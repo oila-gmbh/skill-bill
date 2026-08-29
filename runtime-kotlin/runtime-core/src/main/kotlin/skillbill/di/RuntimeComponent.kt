@@ -550,8 +550,7 @@ abstract class RuntimeComponent(
     RuntimeComponentBindingsB7.featureTaskRuntimeReviewDriver(runner)
 
   @Provides @JvmSynthetic
-  fun featureTaskPhaseSettlementRepository() =
-    RuntimeComponentBindingsB7.featureTaskPhaseSettlementRepository()
+  fun featureTaskPhaseSettlementRepository() = RuntimeComponentBindingsB7.featureTaskPhaseSettlementRepository()
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
 
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs

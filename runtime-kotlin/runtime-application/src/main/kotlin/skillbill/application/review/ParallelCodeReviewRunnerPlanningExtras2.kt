@@ -28,11 +28,58 @@ internal fun ParallelCodeReviewRunnerPlanning.resolveDiff(
     ParallelReviewScope.BRANCH -> runDiff(listOf("git", "diff", base, head), request.repoRoot)
     ParallelReviewScope.PR -> diffResolver.runProcess(listOf("git", "diff", base, head), request.repoRoot)
       ?: runDiff(listOf("gh", "pr", "diff"), request.repoRoot)
+    ParallelReviewScope.WORKTREE_FROM_BASE -> resolveWorktreeFromBaseDiff(request, base)
   }
-  if (diffText.isBlank()) {
+  if (diffText.isBlank() && request.scope != ParallelReviewScope.WORKTREE_FROM_BASE) {
     throw DiffResolutionException("Diff is empty for scope '${request.scope.name.lowercase()}'.")
   }
   return diffText
+}
+
+internal fun ParallelCodeReviewRunnerPlanning.resolveWorktreeFromBaseDiff(
+  request: ParallelCodeReviewRequest,
+  base: String,
+): String {
+  val args = buildList {
+    addAll(listOf("git", "diff", "--binary", base))
+    if (request.ownedPathspec.isNotEmpty()) {
+      add("--")
+      addAll(request.ownedPathspec)
+    }
+  }
+  val tracked = diffResolver.runProcess(args, request.repoRoot).orEmpty()
+  val excluded = request.baselineUntrackedPolicy.excludedPaths.toSet()
+  val untracked = diffResolver.runProcess(
+    listOf("git", "ls-files", "-o", "--exclude-standard", "-z"),
+    request.repoRoot,
+  ).orEmpty()
+    .split('\u0000')
+    .map(String::trim)
+    .filter(String::isNotBlank)
+    .filterNot { it in excluded }
+    .filter { path ->
+      request.ownedPathspec.isEmpty() || request.ownedPathspec.any { owned ->
+        path == owned || path.startsWith("$owned/")
+      }
+    }
+  val patches = StringBuilder()
+  untracked.forEach { path ->
+    val patch = diffResolver.runProcess(
+      listOf("git", "diff", "--binary", "--no-index", "/dev/null", path),
+      request.repoRoot,
+    ).orEmpty()
+    if (patch.isNotBlank()) {
+      patches.append(patch)
+      if (!patches.endsWith("\n")) patches.append('\n')
+    }
+  }
+  return buildString {
+    append(tracked)
+    if (patches.isNotEmpty()) {
+      if (isNotEmpty() && !endsWith("\n")) append('\n')
+      append(patches)
+    }
+  }
 }
 
 internal fun ParallelCodeReviewRunnerPlanning.runDiff(args: List<String>, workDir: Path): String =

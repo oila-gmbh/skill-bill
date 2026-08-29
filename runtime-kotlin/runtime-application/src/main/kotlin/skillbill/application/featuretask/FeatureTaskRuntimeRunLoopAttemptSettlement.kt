@@ -2,7 +2,6 @@ package skillbill.application.featuretask
 
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
-import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
@@ -20,54 +19,9 @@ internal fun rejectedOutputTargeting(args: RejectedOutputTargetingArgs): Rejecte
 
 internal fun FeatureTaskRuntimeRunLoop.gateOutput(args: GateOutputArgs): AttemptResult {
   gateOutputEarlyExit(args)?.let { return it }
-  val run = args.run
-  val settlementEnvelope = phaseSettlementService.findEnvelope(
-    workflowId = run.request.workflowId,
-    phaseId = run.phaseId,
-    attempt = args.iteration,
-    dbPathOverride = run.request.dbPathOverride,
-  )
-  if (settlementEnvelope != null) {
-    try {
-      val acceptedOutput = outputValidator
-        .validatePhaseOutput(JsonSupport.mapToJsonString(settlementEnvelope), sourceLabel = run.phaseId)
-        .requireAcceptedOutput(run.phaseId)
-      return settleValidatedOutput(
-        SettleValidatedOutputArgs(
-          run = run,
-          iteration = args.iteration,
-          output = SettledOutputContext(
-            normalizedOutput = acceptedOutput.normalizedOutput,
-            repairEvidence = acceptedOutput.repairEvidence,
-            observability = args.observability,
-            fileManifest = args.fileManifest,
-            captured = args.captured,
-          ),
-        ),
-      )
-    } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-      phaseSettlementService.clear(
-        workflowId = run.request.workflowId,
-        phaseId = run.phaseId,
-        attempt = args.iteration,
-        dbPathOverride = run.request.dbPathOverride,
-      )
-      persistVerifyFindingsCheckpointIfPresent(run, args.captured.text)
-      recordRejectedOutput(
-        RecordRejectedOutputArgs(
-          run = run,
-          iteration = args.iteration,
-          rule = "phase-settlement-schema",
-          reason = error.reason,
-          captured = args.captured,
-          targeting = rejectedOutputTargeting(
-            defaultRejectedOutputTargetingArgs(run, RejectedOutputTargetingOverrides(path = rejectionPath(error.reason))),
-          ),
-        ),
-      )
-    }
-  }
+  settleFromPersistedEnvelope(args)?.let { return it }
   return try {
+    val run = args.run
     val acceptedOutput = outputValidator
       .validatePhaseOutput(args.captured.text, sourceLabel = run.phaseId)
       .requireAcceptedOutput(run.phaseId)

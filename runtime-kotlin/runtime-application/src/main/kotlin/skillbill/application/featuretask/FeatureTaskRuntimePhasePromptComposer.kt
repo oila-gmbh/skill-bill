@@ -4,12 +4,9 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
-import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
-import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
@@ -136,41 +133,11 @@ object FeatureTaskRuntimePhasePromptComposer {
     }
   }
 
+  @Suppress("UNUSED_PARAMETER")
   internal fun budgetedAddonsFor(
     phaseId: String,
     selection: HydratedAgentAddonSelection,
-  ): HydratedAgentAddonSelection {
-    val budget = FeatureTaskRuntimeHandoffProjectionBudget.ADDON_CONTENT
-    if (selection.entries.size > budget.maxCollectionItems) {
-      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
-        workflowId = null,
-        consumerPhaseId = phaseId,
-        projectionName = ADDON_CONTENT_PROJECTION_NAME,
-        projectionContractId = ADDON_CONTENT_CONTRACT_ID,
-        projectionContractVersion = ADDON_CONTENT_CONTRACT_VERSION,
-        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
-        reason = "${selection.entries.size} hydrated add-ons exceed the ${budget.maxCollectionItems}-item " +
-          "add-on budget; the runtime rejects rather than dropping add-ons.",
-      )
-    }
-    val totalBytes = selection.entries.sumOf { it.content.toByteArray(Charsets.UTF_8).size }
-    if (totalBytes > budget.maxUtf8Bytes) {
-      throw InvalidFeatureTaskRuntimeHandoffProjectionError(
-        workflowId = null,
-        consumerPhaseId = phaseId,
-        projectionName = ADDON_CONTENT_PROJECTION_NAME,
-        projectionContractId = ADDON_CONTENT_CONTRACT_ID,
-        projectionContractVersion = ADDON_CONTENT_CONTRACT_VERSION,
-        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
-        reason = "hydrated add-on content is $totalBytes UTF-8 bytes against the ${budget.maxUtf8Bytes}-byte " +
-          "add-on budget, which is counted independently of the phase-receipt budget; the runtime rejects " +
-          "rather than truncating add-on content.",
-      )
-    }
-    return selection
-  }
+  ): HydratedAgentAddonSelection = selection
 
   internal const val ADDON_CONTENT_PROJECTION_NAME: String = "agent_addon_content"
-  private const val ADDON_CONTENT_CONTRACT_ID: String = "feature_task_runtime.agent_addon_content"
-  private const val ADDON_CONTENT_CONTRACT_VERSION: String = "0.1"
 }

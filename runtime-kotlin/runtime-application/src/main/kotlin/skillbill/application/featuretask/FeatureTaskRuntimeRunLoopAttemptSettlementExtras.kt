@@ -1,10 +1,67 @@
 package skillbill.application.featuretask
 
+import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+
+internal fun FeatureTaskRuntimeRunLoop.settleFromPersistedEnvelope(args: GateOutputArgs): AttemptResult? {
+  val run = args.run
+  val settlementEnvelope = phaseSettlementService.findEnvelope(
+    workflowId = run.request.workflowId,
+    phaseId = run.phaseId,
+    attempt = args.iteration,
+    dbPathOverride = run.request.dbPathOverride,
+  ) ?: return null
+  return try {
+    val acceptedOutput = outputValidator
+      .validatePhaseOutput(
+        JsonSupport.mapToJsonString(settlementEnvelope),
+        sourceLabel = run.phaseId,
+      )
+      .requireAcceptedOutput(run.phaseId)
+    settleValidatedOutput(
+      SettleValidatedOutputArgs(
+        run = run,
+        iteration = args.iteration,
+        output = SettledOutputContext(
+          normalizedOutput = acceptedOutput.normalizedOutput,
+          repairEvidence = acceptedOutput.repairEvidence,
+          observability = args.observability,
+          fileManifest = args.fileManifest,
+          captured = args.captured,
+        ),
+      ),
+    )
+  } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    phaseSettlementService.clear(
+      workflowId = run.request.workflowId,
+      phaseId = run.phaseId,
+      attempt = args.iteration,
+      dbPathOverride = run.request.dbPathOverride,
+    )
+    persistVerifyFindingsCheckpointIfPresent(run, args.captured.text)
+    recordRejectedOutput(
+      RecordRejectedOutputArgs(
+        run = run,
+        iteration = args.iteration,
+        rule = "phase-settlement-schema",
+        reason = error.reason,
+        captured = args.captured,
+        targeting = rejectedOutputTargeting(
+          defaultRejectedOutputTargetingArgs(
+            run,
+            RejectedOutputTargetingOverrides(path = rejectionPath(error.reason)),
+          ),
+        ),
+      ),
+    )
+    null
+  }
+}
 
 internal fun FeatureTaskRuntimeRunLoop.gateOutputEarlyExit(args: GateOutputArgs): AttemptResult? {
   val run = args.run

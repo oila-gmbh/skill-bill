@@ -2,7 +2,6 @@ package skillbill.workflow.taskruntime
 
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
@@ -155,33 +154,6 @@ internal object FeatureTaskRuntimeHandoffProjectionDeclarationChecks {
           problem,
         )
       }
-    }
-  }
-
-  fun enforceBudget(
-    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
-    declaration: PhaseHandoffProjectionDeclaration,
-    projection: FeatureTaskRuntimeHandoffProjection,
-  ) {
-    val byteSize = projection.utf8ByteSize
-    if (byteSize > declaration.budget.maxUtf8Bytes) {
-      rejectFeatureTaskRuntimeHandoffProjection(
-        inputs,
-        declaration,
-        FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
-        "projection is $byteSize UTF-8 bytes against a ${declaration.budget.maxUtf8Bytes}-byte budget; " +
-          "the runtime rejects rather than truncating or substituting the full source artifact.",
-      )
-    }
-    val itemCount = projection.itemCount
-    if (itemCount > declaration.budget.maxCollectionItems) {
-      rejectFeatureTaskRuntimeHandoffProjection(
-        inputs,
-        declaration,
-        FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
-        "projection carries $itemCount items against a ${declaration.budget.maxCollectionItems}-item budget; " +
-          "the runtime rejects rather than dropping items.",
-      )
     }
   }
 

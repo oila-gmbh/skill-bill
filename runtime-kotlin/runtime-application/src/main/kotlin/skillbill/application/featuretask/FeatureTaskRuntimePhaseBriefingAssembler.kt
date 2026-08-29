@@ -2,7 +2,6 @@ package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator

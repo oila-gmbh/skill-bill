@@ -5,6 +5,7 @@ import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelCodeReviewRunnerDeps
+import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
@@ -67,11 +68,7 @@ class ParallelCodeReviewRunner(deps: ParallelCodeReviewRunnerDeps) {
   )
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
-    if (originalRequest.suppliedDiff != null && originalRequest.suppliedDiff.isBlank()) {
-      return planning.completeEmptySuppliedDelta(originalRequest) { reviewRunId ->
-        verificationStages.recordAdjudicationBoundary(reviewRunId)
-      }
-    }
+    earlyEmptyDelta(originalRequest)?.let { return it }
     val initial = planning.prepareInitialRun(originalRequest)
     verifyNativeWorkers(initial)
     val outcomes = laneLaunch.runLanes(initial)
@@ -124,6 +121,26 @@ class ParallelCodeReviewRunner(deps: ParallelCodeReviewRunnerDeps) {
       mergeResult = assembled,
       stageResume = resultAssembly.stageResumeReport(initial.request.reviewRunId),
     )
+  }
+
+  private fun earlyEmptyDelta(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult? {
+    if (originalRequest.suppliedDiff != null && originalRequest.suppliedDiff.isBlank()) {
+      return planning.completeEmptySuppliedDelta(originalRequest) { reviewRunId ->
+        verificationStages.recordAdjudicationBoundary(reviewRunId)
+      }
+    }
+    if (
+      originalRequest.scope == ParallelReviewScope.WORKTREE_FROM_BASE &&
+      !planning.hasSuppliedDiff(originalRequest)
+    ) {
+      val revisions = planning.resolveReviewRevisions(originalRequest)
+      if (planning.resolveDiff(originalRequest, revisions).isBlank()) {
+        return planning.completeEmptySuppliedDelta(originalRequest) { reviewRunId ->
+          verificationStages.recordAdjudicationBoundary(reviewRunId)
+        }
+      }
+    }
+    return null
   }
 
   private fun verifyNativeWorkers(initial: ParallelCodeReviewInitialRun) {

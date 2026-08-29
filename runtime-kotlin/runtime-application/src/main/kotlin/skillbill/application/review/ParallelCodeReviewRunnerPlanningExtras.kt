@@ -47,6 +47,7 @@ internal fun ParallelCodeReviewRunnerPlanning.canonicalRange(
     ParallelReviewScope.STAGED,
     ParallelReviewScope.UNSTAGED,
     ParallelReviewScope.BRANCH,
+    ParallelReviewScope.WORKTREE_FROM_BASE,
     -> detectBranchBase(request.repoRoot)
   }
   return base to head
