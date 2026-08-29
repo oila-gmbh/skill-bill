@@ -1,3 +1,11 @@
+## [2026-08-29] Validate repair is fix-all without mid-session proof
+Areas: runtime-kotlin/runtime-application/featuretask, skills/bill-code-check, platform-packs/{kotlin,kmp}/quality-check
+- Validate repair prompts no longer require spotlessApply at turn start or targeted detekt/compile/test proof after each checklist item.
+- Contract is collect-all → listed findings → fix every item → one confirmation (runtime re-run for runtime-owned gates; one bill-code-check confirm for agent-run fallback).
+- Pack and router Repair Window prose match that contract; decision log records the reversal of mid-repair targeted proof.
+Feature flag: N/A
+Acceptance criteria: n/a (prompt/contract fix)
+
 ## [2026-08-29] SKILL-220 subtask 8 — Documentation reconciliation
 Areas: docs/code-principles.md, AGENTS.md, CLAUDE.md, runtime-kotlin/{agent,ARCHITECTURE.md}
 - Published `docs/code-principles.md` with rule/shape/anti-pattern/reference sections for type modeling, failures, capabilities, single source of truth, package layout, concurrency, composition, build/tooling, imports, and review-only principles; each section cites delivered paths from subtasks 1–7.

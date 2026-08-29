@@ -326,15 +326,17 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "do not spawn delegated subagents")
       assertContains(prompt, "up to three repair turns")
       assertContains(prompt, "delegated subagents")
+      assertContains(prompt, "numbered free-form checklist")
+      assertContains(prompt, "Do not run any Gradle or other proof command while repairing")
+      assertContains(prompt, "no `spotlessApply`")
       assertContains(prompt, "`detekt`")
       assertContains(prompt, "`ktlintCheck`")
-      assertContains(prompt, "`test`")
       assertContains(prompt, "`compileKotlin`")
-      assertContains(prompt, "`./gradlew spotlessApply`")
-      assertContains(prompt, "never `:module:spotlessApply`")
-      assertContains(prompt, "First action every repair turn")
-      assertContains(prompt, "numbered free-form checklist")
-      assertContains(prompt, "Do not start the next checklist item")
+      assertContains(prompt, "`test`")
+      assertFalse(prompt.contains("First action every repair turn"))
+      assertFalse(prompt.contains("Do not start the next checklist item"))
+      assertFalse(prompt.contains("narrowest allowed proof"))
+      assertFalse(prompt.contains("You may also run targeted"))
       assertContains(
         prompt,
         "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
@@ -346,25 +348,27 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `agent-run validate prompts allow targeted checks and forbid a second agent`() {
+  fun `agent-run validate prompts forbid mid-repair proof and a second agent`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
       agentRunValidateFallback = true,
     )
 
+    assertContains(prompt, "Do not run any Gradle or other proof command while repairing")
+    assertContains(prompt, "no `spotlessApply`")
     assertContains(prompt, "`detekt`")
     assertContains(prompt, "`ktlintCheck`")
     assertContains(prompt, "`test`")
     assertContains(prompt, "`compileKotlin`")
-    assertContains(prompt, "`./gradlew spotlessApply`")
-    assertContains(prompt, "never `:module:spotlessApply`")
     assertContains(prompt, "only validate agent for this step")
     assertContains(prompt, "do not spawn delegated subagents")
     assertContains(prompt, "up to three repair turns")
-    assertContains(prompt, "Do not rerun the full gate, bill-code-check, or a cache-bypassing full check")
+    assertContains(prompt, "Do not rerun the full gate, bill-code-check, a cache-bypassing full check")
     assertContains(prompt, "Do not run `skill-bill validate`")
     assertContains(prompt, "`npx agnix`")
+    assertFalse(prompt.contains("First action every repair turn"))
+    assertFalse(prompt.contains("You may also run targeted"))
     assertFalse(prompt.contains("Rerun early only when"))
     assertFalse(prompt.contains("rerun the failing command after each fix"))
     assertFalse(prompt.contains("allowed work is read, search, and source edits only"))
@@ -397,11 +401,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "collect_all_full_gate_command")
       assertContains(prompt, "Do not run `skill-bill validate`")
       assertContains(prompt, "Do not spawn delegated subagents")
-      assertContains(prompt, "`./gradlew spotlessApply`")
-      assertContains(prompt, "never `:module:spotlessApply`")
-      assertContains(prompt, "First action every repair turn")
       assertContains(prompt, "numbered free-form checklist")
-      assertContains(prompt, "Do not start the next checklist item")
+      assertContains(prompt, "Do not run any Gradle or other proof command while repairing")
+      assertContains(prompt, "no `spotlessApply`")
+      assertFalse(prompt.contains("First action every repair turn"))
+      assertFalse(prompt.contains("Do not start the next checklist item"))
+      assertFalse(prompt.contains("You may also run targeted"))
       assertContains(prompt, "Gate repair — prose only, no phase-output schema")
       assertContains(prompt, "blast radius")
       assertFalse(prompt.contains("Required final output (validated schema gate)"))

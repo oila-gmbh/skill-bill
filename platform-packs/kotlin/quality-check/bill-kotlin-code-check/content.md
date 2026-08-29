@@ -37,7 +37,7 @@ Never suppress a failure with annotations, baselines, disabled rules, or skipped
 
 ### Repair Window
 
-Run the pack `validation_gate.collect_all_full_gate_command` once from the Gradle project root that owns the wrapper and read that output. Fix every finding in the same session. Do not invoke the full collect-all gate after each individual finding. Targeted compile, test, and module checks are allowed while repairing. Repair every finding at its root cause; re-run the same collect-all command once to confirm after the full set is repaired. When a cache-bypassing confirm is required, use the pack `validation_gate.cache_bypassing_collect_all_full_gate_command`.
+Run the pack `validation_gate.collect_all_full_gate_command` once from the Gradle project root that owns the wrapper and read that output. Fix every finding in the same session. Do not invoke the full collect-all gate, or any targeted compile, test, format, or analysis proof, after each individual finding or between findings. Repair every finding at its root cause; re-run the same collect-all command once to confirm after the full set is repaired. When a cache-bypassing confirm is required, use the pack `validation_gate.cache_bypassing_collect_all_full_gate_command`.
 
 Run the full suite when targeted checks cannot establish safety, including when build logic, shared APIs, toolchains, generated sources, dependencies, or cross-module behavior changed.
 
