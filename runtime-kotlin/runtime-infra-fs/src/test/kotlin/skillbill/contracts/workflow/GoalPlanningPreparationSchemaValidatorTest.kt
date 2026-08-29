@@ -1,9 +1,9 @@
 package skillbill.contracts.workflow
 
+import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
-import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 
 class GoalPlanningPreparationSchemaValidatorTest {
   @Test

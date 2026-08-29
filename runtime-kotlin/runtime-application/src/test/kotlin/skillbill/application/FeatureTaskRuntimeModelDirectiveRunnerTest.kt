@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.featuretask.model.FeatureTaskRuntimeModelAssignment
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
@@ -13,8 +14,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY
-import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 
 class FeatureTaskRuntimeModelDirectiveRunnerTest {
   @Test
@@ -287,7 +286,7 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
       runtimeConfig = RuntimeHarnessConfig(
         reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           capturedAgent1 = request.agent1Id
-          EMPTY.run(request)
+          FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
         },
       ),
     )

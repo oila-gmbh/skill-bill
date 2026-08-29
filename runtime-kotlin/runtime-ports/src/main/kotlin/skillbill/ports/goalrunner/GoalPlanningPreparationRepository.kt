@@ -1,6 +1,8 @@
 package skillbill.ports.goalrunner
 
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
+import skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
@@ -8,11 +10,44 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
-import skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
-import skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED
 
-@Suppress("TooManyFunctions") // single cohesive boundary: shared preplan, subtask plans, and planning status
-interface NormalizedGoalPlanningPreparationRepository {
+interface SharedGoalPreplanRepository {
+  fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): Unit =
+    error("Shared goal preplan checkpointing is not implemented by this repository.")
+
+  fun replaceSharedPreplan(
+    checkpoint: SharedGoalPreplanCheckpoint,
+    expectedPayloadSha256: String,
+    cascadePlanSubtaskIds: List<Int> = emptyList(),
+  ): Unit = error("Shared goal preplan replacement is not implemented by this repository.")
+
+  fun advanceSharedPreplanProvenance(
+    identity: GoalPlanningIdentity,
+    expectedPayloadSha256: String,
+    provenance: GoalPlanningContractProvenance,
+  ): Unit = error("Shared goal preplan provenance advance is not implemented by this repository.")
+
+  fun cascadeSiblingPlansAfterSharedPreplanRefresh(
+    parentGoalWorkflowId: String,
+    cascadePlanSubtaskIds: List<Int>,
+  ): List<Int> = error("Shared-preplan refresh plan cascade is not implemented by this repository.")
+
+  fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint?
+
+  fun deleteSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int =
+    error("Shared goal preplan deletion is not implemented by this repository.")
+
+  fun invalidateSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int =
+    error("Shared goal preplan invalidation is not implemented by this repository.")
+
+  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = emptyList()
+
+  fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean = false
+
+  fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String? = null
+}
+
+interface GoalSubtaskPlanRepository {
   fun boundedStatus(
     parentGoalWorkflowId: String,
     orderedSubtaskIds: List<Int>,
@@ -30,86 +65,15 @@ interface NormalizedGoalPlanningPreparationRepository {
     blockedSubtaskId ?: orderedSubtaskIds.firstOrNull(),
     blockedReason ?: "Goal planning has not started.",
   )
-  fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): Unit =
-    error("Shared goal preplan checkpointing is not implemented by this repository.")
-
-  /**
-   * Atomically replaces the exact shared preplan observed by the caller. A concurrent writer changing the
-   * stored payload after the caller's gate decision must fail the compare-and-replace instead of being deleted.
-   * Deletes only [cascadePlanSubtaskIds] plan rows, then restamps every remaining plan row's provenance to
-   * the replacement shared provenance in the same transaction (SKILL-181 terminal survivors).
-   */
-  fun replaceSharedPreplan(
-    checkpoint: SharedGoalPreplanCheckpoint,
-    expectedPayloadSha256: String,
-    cascadePlanSubtaskIds: List<Int> = emptyList(),
-  ): Unit = error("Shared goal preplan replacement is not implemented by this repository.")
-
-  /**
-   * Provenance-only shared-preplan refresh: UPDATEs shared provenance to [provenance] while keeping
-   * `payload_sha256` / `preplan_payload` bytes unchanged, and re-stamps every retained sibling plan row's
-   * provenance in the same transaction. Never DELETEs the shared row.
-   */
-  fun advanceSharedPreplanProvenance(
-    identity: GoalPlanningIdentity,
-    expectedPayloadSha256: String,
-    provenance: GoalPlanningContractProvenance,
-  ): Unit = error("Shared goal preplan provenance advance is not implemented by this repository.")
-
-  /**
-   * Single cascade seam for automatic shared-preplan refresh when the heading set changes.
-   * Deletes exactly [cascadePlanSubtaskIds] (caller applies terminal-with-commit exclusion).
-   * Returns the discarded subtask ids in the order supplied.
-   */
-  fun cascadeSiblingPlansAfterSharedPreplanRefresh(
-    parentGoalWorkflowId: String,
-    cascadePlanSubtaskIds: List<Int>,
-  ): List<Int> = error("Shared-preplan refresh plan cascade is not implemented by this repository.")
-
-  fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint?
 
   fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): Unit =
     error("Goal subtask plan checkpointing is not implemented by this repository.")
 
-  /**
-   * Overwrites a stored subtask plan the producer projection gate rejects, so a regeneration lands instead of
-   * wedging on the immutable guard. Provenance parity with the governing shared preplan is still enforced.
-   * The caller decides regenerability from a prior read, so this is not atomic against a concurrent writer;
-   * only the single-writer goal planning sweep may call it.
-   */
   fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): Unit =
     error("Goal subtask plan replacement is not implemented by this repository.")
 
-  /**
-   * Deletes exactly one stored subtask plan row. Returns the deleted row count (0 or 1) so callers can
-   * distinguish discard from a no-op. Does not touch the shared preplan or sibling plans.
-   */
   fun deleteSubtaskPlan(parentGoalWorkflowId: String, subtaskId: Int): Int =
     error("Goal subtask plan deletion is not implemented by this repository.")
-
-  /**
-   * Digest-conditional shared-preplan delete. Removes the shared row only when [expectedPayloadSha256]
-   * still matches the stored payload; refuses with zero mutation on mismatch. Subtask plan rows for the
-   * same parent cascade via the FK — callers that must retain terminal plan rows must delete eligible
-   * plans first and call [invalidateSharedPreplan] instead when survivors remain.
-   */
-  fun deleteSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int =
-    error("Shared goal preplan deletion is not implemented by this repository.")
-
-  /**
-   * Digest-conditional soft-invalidate of the shared preplan. Keeps the parent row so retained
-   * `goal_subtask_plans` survivors are not wiped by FK ON DELETE CASCADE. The stored payload becomes
-   * a non-prepared marker so [hasPreparedSharedPreplan] is false and relaunch regenerates via replace.
-   */
-  fun invalidateSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int =
-    error("Shared goal preplan invalidation is not implemented by this repository.")
-
-  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = emptyList()
-
-  fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean = false
-
-  /** Payload digest of the stored shared preplan, or null when absent. */
-  fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String? = null
 
   fun findSubtaskPlan(
     expectedIdentity: GoalPlanningIdentity,
@@ -135,6 +99,10 @@ interface NormalizedGoalPlanningPreparationRepository {
     return orderedDescriptors.firstOrNull { it.subtaskId !in prepared }?.subtaskId
   }
 }
+
+interface NormalizedGoalPlanningPreparationRepository :
+  SharedGoalPreplanRepository,
+  GoalSubtaskPlanRepository
 
 interface LegacyGoalPlanningPreparationRepository {
   fun markPrepared(record: GoalPlanningPreparationRecord)

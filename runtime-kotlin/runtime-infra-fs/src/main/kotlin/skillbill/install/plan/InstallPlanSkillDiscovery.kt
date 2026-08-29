@@ -12,10 +12,10 @@ import skillbill.scaffold.platformpack.loadQualityCheckContent
 import skillbill.scaffold.platformpack.validatePlatformPack
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import skillbill.scaffold.validation.ReviewSkillStructureValidator
+import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.io.FileNotFoundException
 
 internal fun discoverPlatformManifests(
   platformPacksRoot: Path,

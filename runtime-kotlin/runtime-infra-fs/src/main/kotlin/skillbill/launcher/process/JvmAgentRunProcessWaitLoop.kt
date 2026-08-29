@@ -4,15 +4,13 @@ import skillbill.goalrunner.model.GoalRunnerLivenessClassifier
 import skillbill.goalrunner.model.GoalRunnerLivenessDecision
 import skillbill.goalrunner.model.GoalRunnerLivenessInputs
 import skillbill.goalrunner.model.GoalRunnerLivenessState
-import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
-import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
-import skillbill.ports.agentrun.model.AgentRunOutputStream
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.concurrent.TimeUnit

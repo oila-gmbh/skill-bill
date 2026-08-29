@@ -3,16 +3,17 @@ package skillbill.application
 import skillbill.application.work.WorkListService
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.learning.LearningRepository
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.work.WorkListRepository
-import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
+import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import java.nio.file.Path
@@ -20,7 +21,6 @@ import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 
 class WorkListServiceTest {
   @Test

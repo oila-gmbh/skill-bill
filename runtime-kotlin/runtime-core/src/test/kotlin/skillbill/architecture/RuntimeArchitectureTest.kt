@@ -314,15 +314,19 @@ class RuntimeArchitectureTest {
             file.relativePath.startsWith("runtime-ports/")
         }
         .flatMap { file ->
+          if (file.packageName.split('.').contains("model")) return@flatMap emptyList()
+          if (file.packageName.startsWith("skillbill.boundary")) return@flatMap emptyList()
           val source = Files.readString(runtimeRoot.resolve(file.relativePath))
-          publicModelDeclarationPattern
-            .findAll(source)
-            .filter { !file.packageName.split('.').contains("model") }
-            .filter { !file.packageName.startsWith("skillbill.boundary") }
-            .map { match ->
-              val lineNumber = source.substring(0, match.range.first).count { it == '\n' } + 1
-              "${file.relativePath}:$lineNumber declares ${match.groupValues.last()} outside a model package"
-            }
+          val lines = source.lines()
+          val tracker = ScopeTracker()
+          lines.mapIndexedNotNull { index, line ->
+            tracker.consume(line)
+            val match = publicModelDeclarationPattern.find(line) ?: return@mapIndexedNotNull null
+            val trimmed = line.trim()
+            if (Regex("""^(?:private|internal)\s+""").containsMatchIn(trimmed)) return@mapIndexedNotNull null
+            if (tracker.insideNonPublicScope) return@mapIndexedNotNull null
+            "${file.relativePath}:${index + 1} declares ${match.groupValues.last()} outside a model package"
+          }
         }
         .toList()
 
@@ -730,7 +734,7 @@ class RuntimeArchitectureTest {
         sourcePath("skillbill/ports/telemetry/TelemetrySettingsProvider.kt"),
         sourcePath("skillbill/ports/telemetry/TelemetryConfigStore.kt"),
         sourcePath("skillbill/ports/telemetry/TelemetryClient.kt"),
-        sourcePath("skillbill/ports/persistence/TelemetryOutboxRepository.kt"),
+        sourcePath("skillbill/ports/telemetry/TelemetryOutboxRepository.kt"),
       )
     portFiles.forEach { path ->
       assertTrue(Files.exists(path), "Missing telemetry port: ${runtimeRoot.relativize(path)}")
@@ -1954,7 +1958,7 @@ class RuntimeArchitectureTest {
       // mirroring the decode-side validator port above.
       "skillbill.ports.workflow.decomposition.DecompositionManifestFileStore.encodeManifestYaml",
       "skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap",
-      "skillbill.workflow.toWireMap",
+      "skillbill.workflow.decomposition.toWireMap",
       "skillbill.application.decomposition.decodeDecompositionManifestMap",
       "skillbill.application.decomposition.encodeDecompositionManifestMap",
       "skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate",
@@ -2049,7 +2053,8 @@ class RuntimeArchitectureTest {
       // SKILL-150: durable append-only implementation-attempt history (the continuation projection's
       // only source of prior receipts) and its domain-owned schema validator port, mirroring the
       // quarantine store above.
-      "skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator.validateImplementationAttemptRecord",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator." +
+        "validateImplementationAttemptRecord",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.toArtifactMap",

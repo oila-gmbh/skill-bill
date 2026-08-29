@@ -278,11 +278,7 @@ internal class FeatureTaskRuntimeRemediationBaseReconciler(
     return resolved.value.orEmpty().trim().takeIf(String::isNotBlank)
   }
 
-  private fun resolvesCommit(
-    gitOperations: WorkflowGitOperations,
-    repoRoot: Path,
-    sha: String,
-  ): Boolean {
+  private fun resolvesCommit(gitOperations: WorkflowGitOperations, repoRoot: Path, sha: String): Boolean {
     val resolved = gitOperations.resolveCommit(repoRoot, sha.trim())
     return resolved.ok && resolved.value.orEmpty().trim().isNotBlank()
   }

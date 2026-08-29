@@ -1,16 +1,5 @@
 package skillbill.workflow.taskruntime.model
 
-import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION
-import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
-import skillbill.review.model.ReviewFindingVerdict
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.goal.model.ValidationDepth
-
 /**
  * Compact-reference kinds. [runtimeResolvable] marks the kinds a runtime-owned deterministic
  * operation can dereference; the others are plain identifiers the consumer reads as-is. No kind

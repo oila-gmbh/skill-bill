@@ -1,7 +1,7 @@
 package skillbill.scaffold.policy.platformpack
 
-import java.nio.file.Path
 import skillbill.scaffold.policy.scaffold.sharedContractNote
+import java.nio.file.Path
 
 /**
  * SKILL-52.1 subtask 2: pure-policy half of platform-pack scaffolding.

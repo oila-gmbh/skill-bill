@@ -1,21 +1,8 @@
 package skillbill.infrastructure.fs
 
-import me.tatarka.inject.annotations.Inject
-import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperations
-import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperationsProvider
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
 import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperations
-import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperationsProvider
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperations
-import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperationsProvider
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowScopedPathContent
 import skillbill.ports.workflow.gitops.model.WorkflowScopedPathContentsResult
@@ -32,10 +19,6 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
-import kotlin.concurrent.thread
-import java.io.BufferedReader
-
 
 internal object GitRepositoryFingerprintOperations : RepositoryFingerprintGitOperations {
   override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult {
@@ -352,4 +335,3 @@ internal fun parseDiffStat(numstatOutput: String): GoalObservabilityDiffStat {
     }
   return GoalObservabilityDiffStat(filesChanged = filesChanged, insertions = insertions, deletions = deletions)
 }
-

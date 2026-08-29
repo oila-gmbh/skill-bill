@@ -1,11 +1,11 @@
 package skillbill.db.telemetry
 
 import skillbill.contracts.JsonSupport
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.util.logging.Logger
-import java.time.Duration
 
 private const val MILLIS_PER_SECOND = 1000L
 

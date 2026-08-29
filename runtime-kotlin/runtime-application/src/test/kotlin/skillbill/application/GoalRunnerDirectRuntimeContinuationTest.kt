@@ -1,13 +1,14 @@
 package skillbill.application
 
 import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
+import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.workflow.repoRoot
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 
 class GoalRunnerDirectRuntimeContinuationTest {
   @Test
@@ -17,11 +18,19 @@ class GoalRunnerDirectRuntimeContinuationTest {
     )
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
-      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
       outcomeStore = RecordingOutcomeStore(),
     )
 
-    val launchRequest = reconciler.subtaskLaunchRequest("SKILL-56", subtaskId = 1, request = wiringRunRequest())
+    val launchRequest = reconciler.subtaskLaunchRequest(
+      SubtaskLaunchRequestArgs(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        request = wiringRunRequest(),
+        assignedWorkflowId = null,
+        reviewBaseline = null,
+        spawnAuthorization = null,
+      ),
+    )
     val context = requireNotNull(launchRequest.skillRunRequest.goalContinuation)
 
     assertEquals("SKILL-56", context.parentIssueKey)
@@ -40,15 +49,18 @@ class GoalRunnerDirectRuntimeContinuationTest {
     )
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
-      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
       outcomeStore = RecordingOutcomeStore(),
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
-      issueKey = "SKILL-56",
-      subtaskId = 1,
-      request = wiringRunRequest(),
-      assignedWorkflowId = "wftr-fresh-assigned",
+      SubtaskLaunchRequestArgs(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        request = wiringRunRequest(),
+        assignedWorkflowId = "wftr-fresh-assigned",
+        reviewBaseline = null,
+        spawnAuthorization = null,
+      ),
     )
     val context = requireNotNull(launchRequest.skillRunRequest.goalContinuation)
 
@@ -56,11 +68,10 @@ class GoalRunnerDirectRuntimeContinuationTest {
     assertEquals("wftr-fresh-assigned", context.assignedWorkflowId)
   }
 
-  private fun wiringRunRequest(): GoalRunnerRunRequest =
-    GoalRunnerRunRequest(
-      issueKey = "SKILL-56",
-      repoRoot = Path.of("/tmp/skillbill-goal-runner"),
-      invokedAgentId = "claude",
-      dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
-    )
+  private fun wiringRunRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
 }

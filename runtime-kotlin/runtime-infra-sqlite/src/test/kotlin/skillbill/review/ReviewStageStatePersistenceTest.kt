@@ -1,5 +1,6 @@
 package skillbill.review
 
+import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.SQLiteReviewRunCompletenessRepository
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
@@ -18,7 +19,6 @@ import skillbill.tempDbConnection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import skillbill.db.core.DatabaseRuntime
 
 class ReviewStageStatePersistenceTest {
   @Test

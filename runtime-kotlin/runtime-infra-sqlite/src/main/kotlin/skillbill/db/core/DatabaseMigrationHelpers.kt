@@ -1,9 +1,5 @@
 package skillbill.db.core
 
-import skillbill.db.telemetry.FeedbackEventMigration
-import skillbill.db.telemetry.GoalTelemetryMigration
-import skillbill.db.telemetry.TelemetryOutboxLastErrorMigration
-import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationMigration
 import java.sql.Connection
 
 internal fun persistGoalPlanningRepairEvidence(connection: Connection) {

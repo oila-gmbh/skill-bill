@@ -5,7 +5,9 @@ package skillbill.install
 import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
 import skillbill.install.model.ExternalAddonSource
 import skillbill.install.model.InstallAgent
+import skillbill.install.model.InstallApplyResult
 import skillbill.install.model.InstallApplyStatus
+import skillbill.install.model.InstallPlanRequest
 import skillbill.install.runtime.InstallOperations
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
@@ -17,8 +19,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.install.model.InstallApplyResult
-import skillbill.install.model.InstallPlanRequest
 
 class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
 
@@ -216,9 +216,8 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     )
   }
 
-  private fun ApplyFixture.request(selectedPlatforms: Set<String>): InstallPlanRequest =
-    request(
-      selectedPlatforms = selectedPlatforms,
-      agents = setOf(InstallAgent.CODEX),
-    )
+  private fun ApplyFixture.request(selectedPlatforms: Set<String>): InstallPlanRequest = request(
+    selectedPlatforms = selectedPlatforms,
+    agents = setOf(InstallAgent.CODEX),
+  )
 }

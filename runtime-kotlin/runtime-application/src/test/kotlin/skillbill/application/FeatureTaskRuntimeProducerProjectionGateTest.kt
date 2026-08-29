@@ -2,8 +2,8 @@
 
 package skillbill.application
 
-import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.contracts.JsonSupport
 import kotlin.test.Test
 import kotlin.test.assertContains

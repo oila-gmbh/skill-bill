@@ -2,10 +2,10 @@ package skillbill.application.workflow
 
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 
 internal fun decodeWorkflowArtifacts(artifactsJson: String): Map<String, Any?> =
   JsonSupport.parseObjectOrNull(artifactsJson)

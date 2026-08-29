@@ -1,26 +1,94 @@
 package skillbill.application.review
 
+import skillbill.application.evidence.SharedReviewEvidenceCommits
+import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
-import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
+import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
-import skillbill.scaffold.model.PlatformManifest
+import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
+import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewContextPacket
+import skillbill.review.context.model.ReviewLaneAssembledBundle
 import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneReviewDisposition
-import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.context.model.asFailedLaneRun
 import skillbill.review.context.model.withBrokerEvidenceRefusal
-import skillbill.review.context.model.ReviewLaneAssembledBundle
 import skillbill.review.model.ParallelReviewRawFinding
-import skillbill.ports.review.model.ParallelReviewLaneOutcome
+import skillbill.review.model.ReviewCoverageReport
+import skillbill.review.model.ReviewStageResumeReport
+import skillbill.scaffold.model.PlatformManifest
+
+internal data class ParallelCodeReviewRunnerPlanningDeps(
+  val diffResolver: DiffResolverPort,
+  val repoLocalConfig: RepoLocalConfigPort,
+  val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
+  val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
+  val installedPackCatalog: InstalledPlatformPackCatalogPort,
+  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort,
+  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
+  val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
+  val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning,
+)
+
+internal data class LaunchParentLaneArgs(
+  val agentId: String,
+  val launchRequests: List<ReviewSpecialistLaunchRequest>,
+  val routedManifests: List<PlatformManifest>,
+  val budget: ReviewContextBudgetPolicy,
+  val request: ParallelCodeReviewRequest,
+  val modelOverride: String?,
+  val resolvedMode: ResolvedReviewExecutionMode,
+)
+
+internal data class LaunchedBoundParentArgs(
+  val launch: ParallelCodeReviewInlineParentLaunch,
+  val bound: ParallelCodeReviewGovernedEvidenceBind.Bound,
+  val budget: ReviewContextBudgetPolicy,
+  val request: ParallelCodeReviewRequest,
+  val modelOverride: String?,
+  val resolvedMode: ResolvedReviewExecutionMode,
+)
+
+internal data class ParallelResultArgs(
+  val agent1Id: String,
+  val outcomes: ParallelReviewLaneRunResult,
+  val integration: ReviewIntegrationPassOutcome,
+  val coverage: ReviewCoverageReport?,
+  val packet: ReviewContextPacket?,
+  val budget: ReviewContextBudgetPolicy,
+  val stageResume: ReviewStageResumeReport?,
+)
+
+internal data class PlanningPrepareArgs(
+  val request: ParallelCodeReviewRequest,
+  val revisions: Pair<String, String>,
+  val diffText: String,
+  val evidence: ReviewDiffEvidence,
+  val sharedSequence: SharedReviewEvidenceCommits,
+  val routedManifests: List<PlatformManifest>,
+  val manifests: List<PlatformManifest>,
+  val ownedPathsBySlug: Map<String, Set<String>>,
+  val agentIds: List<String>,
+  val budget: ReviewContextBudgetPolicy,
+  val evidenceStorePath: String?,
+)
 
 internal data class ParallelCodeReviewInitialRun(
   val request: ParallelCodeReviewRequest,

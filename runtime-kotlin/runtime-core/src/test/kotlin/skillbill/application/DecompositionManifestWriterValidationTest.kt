@@ -8,7 +8,7 @@ import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.toWireMap
+import skillbill.workflow.decomposition.toWireMap
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

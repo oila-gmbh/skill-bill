@@ -2,8 +2,8 @@ package skillbill.application.workflow
 
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.normalizeIssueKey
+import skillbill.application.workflow.model.FeatureTaskIdentityRepairArgs
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
@@ -15,14 +15,13 @@ import java.time.ZoneOffset
 internal class WorkflowServiceFeatureTaskIdentityRepair(
   private val engine: WorkflowEngine,
 ) {
-  fun repair(
-    unitOfWork: UnitOfWork,
-    workflowId: String,
-    normalizedIssueKey: String,
-    repositoryIdentity: String,
-    governedSpecPath: String,
-    normalizedReason: String,
-  ): WorkflowUpdateResult {
+  fun repair(args: FeatureTaskIdentityRepairArgs): WorkflowUpdateResult {
+    val unitOfWork = args.unitOfWork
+    val workflowId = args.workflowId
+    val normalizedIssueKey = args.normalizedIssueKey
+    val repositoryIdentity = args.repositoryIdentity
+    val governedSpecPath = args.governedSpecPath
+    val normalizedReason = args.normalizedReason
     val family = WorkflowFamily.TASK_RUNTIME
     val workflowRow = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
       ?: return WorkflowUpdateResult.Error(

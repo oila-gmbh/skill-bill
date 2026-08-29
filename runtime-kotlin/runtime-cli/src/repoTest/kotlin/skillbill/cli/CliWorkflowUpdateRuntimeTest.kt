@@ -3,7 +3,7 @@ package skillbill.cli
 import skillbill.cli.core.CliRuntime
 import skillbill.contracts.JsonSupport
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
-import skillbill.ports.workflow.repositoryFingerprint
+import skillbill.ports.workflow.gitops.repositoryFingerprint
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

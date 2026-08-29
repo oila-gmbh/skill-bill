@@ -5,6 +5,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceDeriver
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome
@@ -25,7 +26,6 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 
 /**
  * End-to-end coverage for SKILL-164 shared evidence: one derivation shared by audit, review, and

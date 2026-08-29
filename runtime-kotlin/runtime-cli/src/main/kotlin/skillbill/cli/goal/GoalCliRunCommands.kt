@@ -22,8 +22,8 @@ import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.cli.core.invokingAgentResolutionHelp
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry
@@ -286,8 +286,7 @@ class GoalFindingsCommand(
   private fun findingsPayload(
     ledger: UnaddressedFindingsLedger,
     repairLedgers: Map<String, FeatureTaskRuntimeRepairLedger>,
-    verificationDispositions:
-    List<FeatureTaskRuntimeFindingVerificationDisposition>,
+    verificationDispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
   ): LinkedHashMap<String, Any?> = linkedMapOf(
     "issue_key" to ledger.issueKey,
     "unaddressed_findings" to ledger.findings.size,
@@ -342,8 +341,7 @@ class GoalFindingsCommand(
   private fun findingsText(
     ledger: UnaddressedFindingsLedger,
     repairLedgers: Map<String, FeatureTaskRuntimeRepairLedger>,
-    verificationDispositions:
-    List<FeatureTaskRuntimeFindingVerificationDisposition>,
+    verificationDispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
   ): String = buildString {
     appendLine("issue_key=${ledger.issueKey} unaddressed_findings=${ledger.findings.size}")
     ledger.findings.forEach { finding ->

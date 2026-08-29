@@ -6,6 +6,9 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintCo
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDiffPayloadRef
@@ -17,9 +20,6 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE
 
 /**
  * Application-layer resolve seam for the shared review evidence projection. Reuse and re-derivation

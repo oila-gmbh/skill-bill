@@ -18,8 +18,7 @@ class SkillRemoveJvmFileSystem(
   override fun discoverCascadedSkillNames(request: SkillRemovalRequest): List<String> =
     planning.discoverCascadedSkillNames(request)
 
-  override fun targetExists(request: SkillRemovalRequest): Boolean =
-    planning.targetExists(request)
+  override fun targetExists(request: SkillRemovalRequest): Boolean = planning.targetExists(request)
 
   override fun resolveCascadeFilesystemPaths(
     request: SkillRemovalRequest,

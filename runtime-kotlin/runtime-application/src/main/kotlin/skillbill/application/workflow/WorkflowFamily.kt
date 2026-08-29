@@ -1,5 +1,6 @@
 package skillbill.application.workflow
 
+import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
@@ -8,7 +9,6 @@ import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
-import skillbill.application.workflow.model.WorkflowFamilyKind
 
 internal fun WorkflowFamilyKind.workflowFamily(): WorkflowFamily = when (this) {
   WorkflowFamilyKind.VERIFY -> WorkflowFamily.VERIFY

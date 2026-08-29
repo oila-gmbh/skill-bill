@@ -2,11 +2,11 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_OUTPUT_VALIDATION_CONTRACT_VERSION
+import skillbill.error.FailureWireCode
+import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.FeatureTaskRuntimePhaseOutputStructuralRepair
 import skillbill.error.FeatureTaskRuntimePhaseOutputStructuralRepairSource
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
-import skillbill.error.FailureWireCode
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.failureWireByValue
 
 /** Stable contract version for the typed phase-output validation result. */
@@ -87,8 +87,7 @@ enum class FeatureTaskRuntimePhaseOutputFailureCode(
   companion object {
     private const val HIERARCHY = "FeatureTaskRuntimePhaseOutputFailureCode"
 
-    fun fromWire(value: String): FeatureTaskRuntimePhaseOutputFailureCode =
-      entries.failureWireByValue(value, HIERARCHY)
+    fun fromWire(value: String): FeatureTaskRuntimePhaseOutputFailureCode = entries.failureWireByValue(value, HIERARCHY)
   }
 }
 
@@ -140,29 +139,8 @@ data class FeatureTaskRuntimePhaseOutputRepairEvidence(
 
     @OpenBoundaryMap("Typed phase-output repair evidence decoded from a private workflow artifact")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseOutputRepairEvidence {
-      val expectedFields = setOf(
-        "contract_version",
-        "validator_version",
-        "format",
-        "original_digest",
-        "repaired_digest",
-        "operation",
-        "source_location",
-      )
-      if (raw.keys != expectedFields) {
-        throw phaseOutputRepairEvidenceSchemaError(
-          "Phase-output repair evidence contains unsupported or missing fields.",
-        )
-      }
-      val location = raw["source_location"] as? Map<*, *>
-        ?: throw phaseOutputRepairEvidenceSchemaError(
-          "Phase-output repair evidence source_location must be an object.",
-        )
-      if (location.keys != setOf("source_label", "offset", "line", "column")) {
-        throw phaseOutputRepairEvidenceSchemaError(
-          "Phase-output repair evidence source_location contains unsupported fields.",
-        )
-      }
+      requireRepairEvidenceExactFields(raw)
+      val location = requireRepairEvidenceLocation(raw)
       return FeatureTaskRuntimePhaseOutputRepairEvidence(
         contractVersion = raw.requireRepairEvidenceString("contract_version"),
         validatorVersion = raw.requireRepairEvidenceString("validator_version"),
@@ -203,6 +181,36 @@ private fun phaseOutputRepairEvidenceSchemaError(reason: String): Nothing =
     reason = reason,
     payloadFreeReason = reason,
   )
+
+private fun requireRepairEvidenceExactFields(raw: Map<String, Any?>) {
+  val expectedFields = setOf(
+    "contract_version",
+    "validator_version",
+    "format",
+    "original_digest",
+    "repaired_digest",
+    "operation",
+    "source_location",
+  )
+  if (raw.keys != expectedFields) {
+    phaseOutputRepairEvidenceSchemaError(
+      "Phase-output repair evidence contains unsupported or missing fields.",
+    )
+  }
+}
+
+private fun requireRepairEvidenceLocation(raw: Map<String, Any?>): Map<*, *> {
+  val location = raw["source_location"] as? Map<*, *>
+    ?: phaseOutputRepairEvidenceSchemaError(
+      "Phase-output repair evidence source_location must be an object.",
+    )
+  if (location.keys != setOf("source_label", "offset", "line", "column")) {
+    phaseOutputRepairEvidenceSchemaError(
+      "Phase-output repair evidence source_location contains unsupported fields.",
+    )
+  }
+  return location
+}
 
 private fun Map<*, *>.requireRepairEvidenceString(field: String): String = this[field] as? String
   ?: phaseOutputRepairEvidenceSchemaError("Phase-output repair evidence field '$field' must be a string.")

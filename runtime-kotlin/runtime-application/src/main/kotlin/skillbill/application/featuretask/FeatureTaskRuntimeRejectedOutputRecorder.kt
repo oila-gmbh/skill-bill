@@ -7,13 +7,13 @@ import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.ProducerOutputEvidenceValidator
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.evidenceKey
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
@@ -54,7 +54,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   private val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator,
   private val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator,
-) {
+) : FeatureTaskRuntimePhaseRejectedApi {
   private sealed class DiagnosticWriteOutcome<out T> {
     class Written<T>(val value: T) : DiagnosticWriteOutcome<T>()
     class Degraded(
@@ -62,10 +62,10 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     ) : DiagnosticWriteOutcome<Nothing>()
   }
 
-  fun recordRejectedOutput(
+  override fun recordRejectedOutput(
     request: RejectedOutputDiagnosticRequest,
-    dbOverride: String? = null,
-    producerGeneration: Int = 0,
+    dbOverride: String?,
+    producerGeneration: Int,
   ): FeatureTaskRuntimeRejectedOutputWrite {
     val evidence = ProducerOutputEvidence(
       workflowId = request.workflowId,
@@ -127,7 +127,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     }
   }
 
-  fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String? = null) {
+  override fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String?) {
     degradeDiagnosticFailure(
       workflowId = evidence.workflowId,
       operation = "retain-producer-output",
@@ -144,14 +144,13 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     }
   }
 
-  internal fun producerOutput(
-    workflowId: String,
-    phaseId: String,
-    attempt: Int,
-    agentId: String,
-    dbOverride: String? = null,
-    generation: Int = 0,
-  ): FeatureTaskRuntimeProducerOutputRead {
+  override fun producerOutput(args: ProducerOutputQueryArgs): FeatureTaskRuntimeProducerOutputRead {
+    val workflowId = args.workflowId
+    val phaseId = args.phaseId
+    val attempt = args.attempt
+    val agentId = args.agentId
+    val dbOverride = args.dbOverride
+    val generation = args.generation
     val conflictingKey = "$workflowId:$phaseId:$generation:$attempt:*:$agentId"
     fun unreadable(failureClass: FeatureTaskRuntimeDiagnosticFailureClass): FeatureTaskRuntimeProducerOutputRead {
       persistDegradedDiagnostic(
@@ -186,6 +185,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
       unreadable(FeatureTaskRuntimeDiagnosticFailureClass.SCHEMA)
     }
   }
+
   @Suppress("LongParameterList")
   private fun <T> degradeDiagnosticFailure(
     workflowId: String,
@@ -222,6 +222,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
       degrade(FeatureTaskRuntimeDiagnosticFailureClass.SCHEMA)
     }
   }
+
   @Suppress("LongParameterList")
   private fun persistDegradedDiagnostic(
     workflowId: String,
@@ -294,14 +295,16 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
     }
   }
-  fun loadDiagnosticSignals(workflowId: String, dbOverride: String? = null): List<FeatureTaskRuntimeDiagnosticSignal> =
-    database.read(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@read emptyList()
-      featureTaskRuntimeDiagnosticSignalsFromWire(
-        decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY],
-      )
-    }
+  override fun loadDiagnosticSignals(
+    workflowId: String,
+    dbOverride: String?,
+  ): List<FeatureTaskRuntimeDiagnosticSignal> = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+      ?: return@read emptyList()
+    featureTaskRuntimeDiagnosticSignalsFromWire(
+      decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY],
+    )
+  }
 
   private fun diagnosticService(unitOfWork: UnitOfWork): RejectedOutputDiagnosticService {
     val repository = unitOfWork.rejectedOutputDiagnostics

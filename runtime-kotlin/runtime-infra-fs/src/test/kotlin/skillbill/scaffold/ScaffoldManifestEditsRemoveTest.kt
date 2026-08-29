@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
@@ -9,7 +10,6 @@ import skillbill.scaffold.manifest.removeCodeReviewArea
 import skillbill.scaffold.manifest.removeDeclaredQualityCheckFile
 import skillbill.scaffold.manifest.removeSkillClassPointer
 import java.nio.file.Path
-import org.junit.jupiter.api.Assertions
 
 /**
  * SKILL-46 AC9: round-trip coverage of [removeCodeReviewArea] and [removeDeclaredQualityCheckFile].

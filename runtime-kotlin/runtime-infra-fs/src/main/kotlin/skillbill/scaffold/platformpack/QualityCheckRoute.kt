@@ -1,9 +1,9 @@
 package skillbill.scaffold.platformpack
 
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.validation.parseSkillFrontmatter
 import java.nio.file.Files
 import java.nio.file.Path
-import skillbill.scaffold.model.PlatformManifest
 
 data class QualityCheckRoute(
   val detectedStack: String,

@@ -9,7 +9,6 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY

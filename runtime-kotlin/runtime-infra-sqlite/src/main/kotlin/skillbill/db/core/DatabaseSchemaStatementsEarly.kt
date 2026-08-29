@@ -3,7 +3,7 @@ package skillbill.db.core
 internal val databaseSchemaStatementsEarly: List<String> =
   listOf(
 
-      """
+    """
       CREATE TABLE IF NOT EXISTS producer_output_evidence (
         workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
         generation INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
@@ -13,8 +13,8 @@ internal val databaseSchemaStatementsEarly: List<String> =
         byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
         PRIMARY KEY (workflow_id, phase_id, generation, attempt, repair_turn, agent_id)
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS rejected_output_diagnostics (
         identity TEXT PRIMARY KEY,
         workflow_id TEXT NOT NULL,
@@ -37,19 +37,19 @@ internal val databaseSchemaStatementsEarly: List<String> =
           (lifecycle IN ('oversized', 'expired') AND payload IS NULL)
         )
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE INDEX IF NOT EXISTS idx_rejected_output_diagnostics_selector
         ON rejected_output_diagnostics(workflow_id, phase_id, attempt, repair_turn)
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS schema_migrations (
         name TEXT PRIMARY KEY,
         version INTEGER NOT NULL,
         applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS review_runs (
         review_run_id TEXT PRIMARY KEY,
         review_session_id TEXT,
@@ -67,16 +67,16 @@ internal val databaseSchemaStatementsEarly: List<String> =
         review_finished_event_emitted_at TEXT,
         imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS review_accounting (
         review_id TEXT PRIMARY KEY,
         packet_digest TEXT NOT NULL,
         bounded_payload_json TEXT NOT NULL,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS findings (
         review_run_id TEXT NOT NULL,
         finding_id TEXT NOT NULL,
@@ -89,8 +89,8 @@ internal val databaseSchemaStatementsEarly: List<String> =
         PRIMARY KEY (review_run_id, finding_id),
         FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS unaddressed_findings (
         issue_key TEXT NOT NULL,
         workflow_id TEXT NOT NULL,
@@ -111,8 +111,8 @@ internal val databaseSchemaStatementsEarly: List<String> =
         severity_adjustment_justification TEXT,
         PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal)
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS feedback_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         review_run_id TEXT NOT NULL,
@@ -124,12 +124,12 @@ internal val databaseSchemaStatementsEarly: List<String> =
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (review_run_id, finding_id) REFERENCES findings(review_run_id, finding_id) ON DELETE CASCADE
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE INDEX IF NOT EXISTS idx_feedback_events_run
         ON feedback_events(review_run_id, finding_id, id)
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS learnings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         scope TEXT NOT NULL CHECK (scope IN ('global', 'repo', 'skill')),
@@ -147,12 +147,12 @@ internal val databaseSchemaStatementsEarly: List<String> =
           REFERENCES findings(review_run_id, finding_id)
           ON DELETE SET NULL
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE INDEX IF NOT EXISTS idx_learnings_scope
         ON learnings(scope, scope_key, status)
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS telemetry_outbox (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         event_name TEXT NOT NULL,
@@ -167,19 +167,19 @@ internal val databaseSchemaStatementsEarly: List<String> =
         -- version to report, and NULL keeps it distinguishable from a genuine recorded version.
         skill_bill_version TEXT
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE INDEX IF NOT EXISTS idx_telemetry_outbox_pending
         ON telemetry_outbox(synced_at, id)
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS session_learnings (
         review_session_id TEXT PRIMARY KEY,
         learnings_json TEXT NOT NULL,
         updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS quality_check_sessions (
         session_id TEXT PRIMARY KEY,
         routed_skill TEXT NOT NULL DEFAULT '',
@@ -199,8 +199,8 @@ internal val databaseSchemaStatementsEarly: List<String> =
         finished_at TEXT,
         finished_event_emitted_at TEXT
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS feature_verify_sessions (
         session_id TEXT PRIMARY KEY,
         acceptance_criteria_count INTEGER NOT NULL DEFAULT 0,
@@ -217,8 +217,8 @@ internal val databaseSchemaStatementsEarly: List<String> =
         finished_at TEXT,
         finished_event_emitted_at TEXT
       )
-      """.trimIndent(),
-      """
+    """.trimIndent(),
+    """
       CREATE TABLE IF NOT EXISTS feature_implement_sessions (
         session_id TEXT PRIMARY KEY,
         source TEXT NOT NULL DEFAULT 'production',
@@ -256,4 +256,5 @@ internal val databaseSchemaStatementsEarly: List<String> =
         finished_at TEXT,
         finished_event_emitted_at TEXT
       )
-      """.trimIndent(),  )
+    """.trimIndent(),
+  )

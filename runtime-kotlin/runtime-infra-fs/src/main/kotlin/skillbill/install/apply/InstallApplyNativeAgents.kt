@@ -4,6 +4,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyIssue
 import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallPlan
+import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.NativeAgentApplyOutcome
 import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.NativeAgentProviderId
@@ -16,7 +17,6 @@ import skillbill.install.support.InstallSymlinkException
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Path
-import skillbill.install.model.InstallPlanSkill
 
 internal fun applyNativeAgents(
   plan: InstallPlan,
@@ -160,12 +160,10 @@ private fun nativeAgentLegacyCacheRoot(plan: InstallPlan): Path = NativeAgentOpe
 // Unlike standaloneInstallableSkills, internal skills stay enumerated here: a native-agents
 // bundle hosted in an internal skill's dir installs exactly as it does for a listed skill
 // (native-agent parity). Do not add an internalFor filter.
-internal fun nativeAgentSourceRoots(
-  skills: List<InstallPlanSkill>,
-  selectedPlatformSlugs: Set<String>,
-): List<Path> = skills
-  .filter { skill -> skill.platformSlug == null || skill.platformSlug in selectedPlatformSlugs }
-  .map { skill -> skill.sourceDir }
+internal fun nativeAgentSourceRoots(skills: List<InstallPlanSkill>, selectedPlatformSlugs: Set<String>): List<Path> =
+  skills
+    .filter { skill -> skill.platformSlug == null || skill.platformSlug in selectedPlatformSlugs }
+    .map { skill -> skill.sourceDir }
 
 private val nativeAgentInstallers: List<NativeAgentInstaller> = NativeAgentProvider.entries.map { provider ->
   when (provider) {

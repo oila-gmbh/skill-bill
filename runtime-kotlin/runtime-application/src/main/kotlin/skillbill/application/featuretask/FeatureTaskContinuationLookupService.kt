@@ -9,6 +9,8 @@ import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
@@ -17,8 +19,6 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.db.UnitOfWork
 
 @Inject
 class FeatureTaskContinuationLookupService(

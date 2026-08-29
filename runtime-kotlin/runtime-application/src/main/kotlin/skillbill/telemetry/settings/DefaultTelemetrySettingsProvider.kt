@@ -61,10 +61,7 @@ private data class MutableTelemetrySettings(
   val installId: String,
 )
 
-private fun configBackedSettings(
-  configPath: Path,
-  config: TelemetryConfigDocument?,
-): MutableTelemetrySettings {
+private fun configBackedSettings(configPath: Path, config: TelemetryConfigDocument?): MutableTelemetrySettings {
   if (config == null) {
     return MutableTelemetrySettings(
       level = "off",

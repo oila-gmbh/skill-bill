@@ -18,8 +18,8 @@ import skillbill.workflow.goal.model.GoalProgressOutcome
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import java.nio.file.Path
-import kotlin.time.Duration
 import java.security.MessageDigest
+import kotlin.time.Duration
 
 data class SkillRunRequest(
   val issueKey: String,

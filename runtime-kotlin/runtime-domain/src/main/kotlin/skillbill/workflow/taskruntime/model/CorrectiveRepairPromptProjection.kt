@@ -1,7 +1,5 @@
 package skillbill.workflow.taskruntime.model
 
-import java.security.MessageDigest
-
 data class CorrectiveRepairPromptProjection(
   val availability: CorrectiveRepairResponseAvailability,
   val inclusionReason: CorrectiveRepairInclusionReason,

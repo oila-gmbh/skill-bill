@@ -9,6 +9,7 @@ import skillbill.nativeagent.composition.parseNativeAgentSourceFile
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntriesInRoots
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -16,7 +17,6 @@ import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
-import java.nio.file.AtomicMoveNotSupportedException
 
 private const val NATIVE_AGENT_CACHE_KEY_BYTES = 8
 private const val NATIVE_AGENT_SLUG_MAX_CHARS = 32

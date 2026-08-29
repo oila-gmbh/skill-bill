@@ -2,7 +2,6 @@ package skillbill.architecture
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 class TypedParseBoundaryArchitectureTest {
   @Test
@@ -13,7 +12,8 @@ class TypedParseBoundaryArchitectureTest {
     assertEquals(
       emptyList(),
       violations,
-      "Named parse boundaries must surface malformed external input through typed contract failures, not error, require, or bare throw.",
+      "Named parse boundaries must surface malformed external input through typed contract failures, not error," +
+        "require, or bare throw.",
     )
   }
 

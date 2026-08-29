@@ -1,5 +1,6 @@
 package skillbill.skillremove
 
+import skillbill.domain.skillremove.SkillRemove
 import skillbill.domain.skillremove.model.ManifestEditKind
 import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalTarget
@@ -12,7 +13,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import skillbill.domain.skillremove.SkillRemove
 
 /**
  * Regression coverage for the on-disk cascade discovery the desktop dialog and CLI consume.

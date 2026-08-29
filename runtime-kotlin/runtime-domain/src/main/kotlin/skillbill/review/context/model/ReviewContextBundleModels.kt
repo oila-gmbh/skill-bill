@@ -8,7 +8,7 @@ data class ReviewLaneBundleEntry(val commitSha: String, val orderIndex: Int, val
     require(hunkIds.distinct().size == hunkIds.size) { "Lane bundle entry hunk ids must be unique." }
   }
 
-  val canonical: String get() = canonicalFields(commitSha, orderIndex, canonicalFields(*hunkIds.toTypedArray()))
+  val canonical: String get() = canonicalFields(commitSha, orderIndex, canonicalFieldList(hunkIds))
 }
 
 data class ReviewLaneBundle(val entries: List<ReviewLaneBundleEntry> = emptyList()) {
@@ -24,7 +24,7 @@ data class ReviewLaneBundle(val entries: List<ReviewLaneBundleEntry> = emptyList
   }
 
   val hunkIds: List<String> get() = entries.flatMap { it.hunkIds }
-  val canonical: String get() = canonicalFields(*entries.map { it.canonical }.toTypedArray())
+  val canonical: String get() = canonicalFieldList(entries.map { it.canonical })
   val bundleDigest: String get() = sha256(canonical)
 
   companion object {

@@ -1,18 +1,16 @@
 package skillbill.application.goalrunner
 
 import skillbill.contracts.JsonSupport
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
-import skillbill.ports.db.UnitOfWork
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
-import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.withStableFindingRefs
 
 internal data class GoalSubtaskReviewOutputOutcome(
@@ -59,28 +57,6 @@ internal object GoalSubtaskReviewSummaryReducer {
       .let(::withStableFindingRefs)
   }
 
-  fun commitFocusedAccounting(output: Map<String, Any?>): GoalSubtaskCommitFocusedAccounting? =
-    output["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?.get("commit_focused_accounting")
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?.let { GoalSubtaskCommitFocusedAccounting.fromArtifactMap(it, "produced_outputs.commit_focused_accounting") }
-
-  fun structuredFindings(
-    output: Map<String, Any?>,
-    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
-  ): List<StructuredGoalReviewFinding> =
-    GoalSubtaskReviewStructuredFindingsParse.structuredFindings(output, recordedVerdicts)
-
-  fun reviewRunIdOf(output: Map<String, Any?>): String? =
-    GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf(output)
-
-  fun recordedVerdicts(unitOfWork: UnitOfWork, output: Map<String, Any?>): List<ReviewFindingVerdict> =
-    GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts(unitOfWork, output)
-
-  fun verificationBoundaryFindingPaths(finding: StructuredGoalReviewFinding): List<String> =
-    GoalSubtaskReviewStructuredFindingsParse.verificationBoundaryFindingPaths(finding)
-
   fun unaddressedFindings(
     output: Map<String, Any?>,
     scope: UnaddressedFindingLedgerScope,
@@ -109,52 +85,6 @@ internal object GoalSubtaskReviewSummaryReducer {
       }
   }
 
-  fun rejectedVerificationFindings(
-    verifyOutput: Map<String, Any?>,
-    reviewOutput: Map<String, Any?>,
-    scope: UnaddressedFindingLedgerScope,
-    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
-    truncationRecords: MutableList<String>? = null,
-  ): List<UnaddressedFinding> =
-    GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings(
-      verifyOutput,
-      reviewOutput,
-      scope,
-      recordedVerdicts,
-      truncationRecords,
-    )
-
-  internal fun rejectedVerificationReasonTruncationRecord(findingId: String): String =
-    GoalSubtaskReviewVerificationRejection.rejectedVerificationReasonTruncationRecord(findingId)
-
-  fun reviewFindingOutcomes(
-    supersededFindings: List<UnaddressedFinding>,
-    currentFindings: List<UnaddressedFinding>,
-    blockerDispositions: List<GoalSubtaskBlockerDisposition>,
-  ): List<ReviewFindingOutcomeRecord> =
-    GoalSubtaskReviewOutcomeDispositionReduction.reviewFindingOutcomes(
-      supersededFindings,
-      currentFindings,
-      blockerDispositions,
-    )
-
-  fun blockerDispositions(
-    output: Map<String, Any?>,
-    priorBlockerFindingIds: List<String> = emptyList(),
-  ): List<GoalSubtaskBlockerDisposition> =
-    GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions(output, priorBlockerFindingIds)
-
-  fun refutedBlockerSupersedes(
-    priorFindings: List<UnaddressedFinding>,
-    currentFindings: List<UnaddressedFinding>,
-    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
-  ): List<GoalSubtaskBlockerDisposition> =
-    GoalSubtaskReviewOutcomeDispositionReduction.refutedBlockerSupersedes(
-      priorFindings,
-      currentFindings,
-      recordedVerdicts,
-    )
-
   fun unresolvedCount(output: Map<String, Any?>, recordedVerdicts: List<ReviewFindingVerdict> = emptyList()): Int =
     fromOutput(output, recordedVerdicts)
       .count(GoalSubtaskReviewCompactFinding::blocksAdvance)
@@ -178,24 +108,50 @@ internal object GoalSubtaskReviewSummaryReducer {
     )
   }
 
-  private fun reviewPassVerdict(
+  fun commitFocusedAccounting(output: Map<String, Any?>): GoalSubtaskCommitFocusedAccounting? =
+    output["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("commit_focused_accounting")
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let { GoalSubtaskCommitFocusedAccounting.fromArtifactMap(it, "produced_outputs.commit_focused_accounting") }
+
+  fun rejectedVerificationFindings(
+    verifyOutput: Map<String, Any?>,
+    reviewOutput: Map<String, Any?>,
+    scope: UnaddressedFindingLedgerScope,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+    truncationRecords: MutableList<String>? = null,
+  ): List<UnaddressedFinding> = GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings(
+    verifyOutput,
+    reviewOutput,
+    scope,
+    recordedVerdicts,
+    truncationRecords,
+  )
+
+  fun reviewFindingOutcomes(
+    supersededFindings: List<UnaddressedFinding>,
+    currentFindings: List<UnaddressedFinding>,
+    blockerDispositions: List<GoalSubtaskBlockerDisposition>,
+  ): List<ReviewFindingOutcomeRecord> = GoalSubtaskReviewOutcomeDispositionReduction.reviewFindingOutcomes(
+    supersededFindings,
+    currentFindings,
+    blockerDispositions,
+  )
+
+  fun blockerDispositions(
     output: Map<String, Any?>,
-    findings: List<GoalSubtaskReviewCompactFinding>,
-    advanceBlockingCount: Int,
-    hasOnlyNonBlockingFindings: Boolean,
-  ): FeatureTaskRuntimeVerdict {
-    val declaredVerdict = (output["verdict"] as? String)?.trim()
-    val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
-    val reportedFindingsWereFiltered = findings.isEmpty() &&
-      GoalSubtaskReviewStructuredFindingsParse.structuredFindings(output).isNotEmpty()
-    return when {
-      advanceBlockingCount > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-      hasOnlyNonBlockingFindings || reportedFindingsWereFiltered -> FeatureTaskRuntimeVerdict.APPROVED
-      changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-      declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
-        .takeIf(GOAL_SUBTASK_REVIEW_PASS_VERDICTS::contains)
-        ?: FeatureTaskRuntimeVerdict.APPROVED
-      else -> FeatureTaskRuntimeVerdict.APPROVED
-    }
-  }
+    priorBlockerFindingIds: List<String> = emptyList(),
+  ): List<GoalSubtaskBlockerDisposition> =
+    GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions(output, priorBlockerFindingIds)
+
+  fun refutedBlockerSupersedes(
+    priorFindings: List<UnaddressedFinding>,
+    currentFindings: List<UnaddressedFinding>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): List<GoalSubtaskBlockerDisposition> = GoalSubtaskReviewOutcomeDispositionReduction.refutedBlockerSupersedes(
+    priorFindings,
+    currentFindings,
+    recordedVerdicts,
+  )
 }

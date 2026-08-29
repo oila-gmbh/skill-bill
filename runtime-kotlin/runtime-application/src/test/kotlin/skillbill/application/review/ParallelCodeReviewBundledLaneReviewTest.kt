@@ -4,6 +4,7 @@ package skillbill.application.review
 
 import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.ReviewPreparationRequest
+import skillbill.application.review.model.ReviewPreparationResult
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
 import skillbill.ports.review.ReviewLaneSelectionPort
@@ -34,7 +35,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.application.review.model.ReviewPreparationResult
 
 /** Six-commit bundled lane review over preparation, launch projection, and a fake lane worker. */
 class ParallelCodeReviewBundledLaneReviewTest {
@@ -143,15 +143,14 @@ class ParallelCodeReviewBundledLaneReviewTest {
     }
   }
 
-  private fun governed(lane: String, prepared: ReviewPreparationResult) =
-    GovernedReviewLaunch(
-      prepared.assignments.single { it.lane == lane },
-      prepared.packet,
-      "contract",
-      "rubric",
-      "broker",
-      ReviewContextBudgetPolicy.DEFAULT,
-    )
+  private fun governed(lane: String, prepared: ReviewPreparationResult) = GovernedReviewLaunch(
+    prepared.assignments.single { it.lane == lane },
+    prepared.packet,
+    "contract",
+    "rubric",
+    "broker",
+    ReviewContextBudgetPolicy.DEFAULT,
+  )
 
   @Test fun `each lane bundle holds only routed commits hunks and security excludes pure UI`() {
     val prepared = service().prepare(

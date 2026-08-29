@@ -1,6 +1,7 @@
 package skillbill.launcher.agentrun
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.install.model.AgentLauncherCli
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.agentLauncherUnavailableMessage
@@ -10,7 +11,6 @@ import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import java.nio.file.Path
-import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import java.security.MessageDigest
 
 interface AgentRunAdapter {
@@ -193,8 +193,7 @@ interface AgentRunOutputDecoder {
        * A truncated or interleaved Cursor stream is a transport defect, not a provider verdict: the
        * remaining envelopes carry no answer we can read, so the launch is an empty harvest.
        */
-      override fun undecodable(error: Throwable): Boolean =
-        error is CursorReviewStreamMalformedError
+      override fun undecodable(error: Throwable): Boolean = error is CursorReviewStreamMalformedError
     }
 
     private fun decoder(body: (String) -> DecodedAgentRunOutput): AgentRunOutputDecoder =
@@ -222,7 +221,8 @@ private fun decodeClaudeStreamJson(stdout: String): DecodedAgentRunOutput {
   val terminal = stdout.lineSequence()
     .filter(String::isNotBlank)
     .mapNotNull { line ->
-      runCatching { structuredOutputMapper.readTree(line) }.getOrNull() // open agent stdout NDJSON: skip malformed lines
+      // open agent stdout NDJSON: skip malformed lines
+      runCatching { structuredOutputMapper.readTree(line) }.getOrNull()
     }
     .lastOrNull { event -> event.path("type").takeIf { it.isTextual }?.asText() == "result" }
     // No terminal event means the stream was cut before Claude finished, not that the raw NDJSON is
@@ -242,7 +242,8 @@ private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   var text: String? = null
   var decodedEnvelope = false
   stdout.lineSequence().filter(String::isNotBlank).forEach { line ->
-    runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event -> // open agent stdout NDJSON: skip malformed lines
+    // open agent stdout NDJSON: skip malformed lines
+    runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event ->
       decodedEnvelope = true
       event.path("item").path("text").takeIf { it.isTextual }?.asText()?.let { text = it }
     }

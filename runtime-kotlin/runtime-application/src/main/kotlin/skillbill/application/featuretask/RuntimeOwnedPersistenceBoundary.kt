@@ -1,8 +1,8 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import kotlin.coroutines.cancellation.CancellationException
 
 internal class RuntimeOwnedFactUnavailable(message: String) : IllegalStateException(message)

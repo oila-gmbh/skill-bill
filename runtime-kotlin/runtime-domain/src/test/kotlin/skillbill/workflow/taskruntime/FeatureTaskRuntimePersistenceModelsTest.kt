@@ -19,6 +19,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap
@@ -29,8 +31,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
 
 class FeatureTaskRuntimePersistenceModelsTest {
   @Test

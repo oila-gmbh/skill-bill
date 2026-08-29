@@ -6,13 +6,13 @@ import skillbill.scaffold.rendering.renderContentBody
 import skillbill.scaffold.runtime.TemplateContext
 import skillbill.scaffold.runtime.scaffold
 import skillbill.scaffold.runtime.supportingFileTargets
+import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.testsupport.SkillClassFixtures
 
 class ScaffoldPlatformPackInstallTest {
   @Test

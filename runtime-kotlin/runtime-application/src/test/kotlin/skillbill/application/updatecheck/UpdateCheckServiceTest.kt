@@ -1,8 +1,8 @@
 package skillbill.application.updatecheck
 
+import skillbill.application.system.SystemService
 import skillbill.application.updatecheck.model.RECOMMENDED_INSTALL_COMMAND
 import skillbill.application.updatecheck.model.UpdateCheckStatus
-import skillbill.application.system.SystemService
 import skillbill.model.TransportContext
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork

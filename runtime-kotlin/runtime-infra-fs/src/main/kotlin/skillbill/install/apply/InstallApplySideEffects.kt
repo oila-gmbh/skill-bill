@@ -9,6 +9,8 @@ import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallTelemetryApplyOutcome
 import skillbill.install.model.InstallTelemetryApplyStatus
+import skillbill.install.model.McpMutationResult
+import skillbill.install.model.McpProfileOutcome
 import skillbill.install.model.McpRegistrationApplyOutcome
 import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.launcher.mcp.McpRegistrationOperations
@@ -21,8 +23,6 @@ import skillbill.telemetry.parseTelemetryLevelValue
 import skillbill.telemetry.telemetryLevels
 import java.nio.file.Files
 import java.nio.file.Path
-import skillbill.install.model.McpMutationResult
-import skillbill.install.model.McpProfileOutcome
 
 internal fun applyTelemetryIntent(
   plan: InstallPlan,

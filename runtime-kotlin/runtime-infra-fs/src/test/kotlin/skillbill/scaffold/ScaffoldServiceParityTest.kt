@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.error.InvalidAgentAddonSchemaError
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.error.RetiredScaffoldKindError
@@ -13,8 +14,8 @@ import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.authoring.validateTarget
 import skillbill.scaffold.manifest.appendCodeReviewArea
 import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.rendering.baselineReviewContent
 import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus
@@ -25,6 +26,7 @@ import skillbill.scaffold.runtime.TemplateContext
 import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.scaffold.runtime.scaffold
 import skillbill.scaffold.runtime.supportingFileTargets
+import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -34,8 +36,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.error.InvalidAgentAddonSchemaError
-import skillbill.testsupport.SkillClassFixtures
 
 class ScaffoldServiceParityTest {
   @Test

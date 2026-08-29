@@ -1,8 +1,8 @@
 package skillbill.cli.workflow
 
-import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowSnapshotView
+import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
 
 internal fun workflowSnapshotCliMap(

@@ -4,13 +4,13 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.review.model.ReviewClaimVerdict.REFUTED
+import skillbill.review.model.ReviewFindingCitation
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.review.model.ReviewClaimVerdict.REFUTED
-import skillbill.review.model.ReviewFindingCitation
 
 class UnaddressedFindingsRuntimeTest {
   @Test

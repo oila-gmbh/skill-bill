@@ -11,13 +11,17 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.model.HttpResponse
-import skillbill.ports.workflow.repositoryFingerprint
+import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
+import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -28,10 +32,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
-import skillbill.infrastructure.fs.GitWorkflowGitOperations
-import skillbill.telemetry.model.GoalFinishedRecord
-import skillbill.telemetry.model.GoalStartedRecord
-import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 
 @Suppress("LargeClass")
 class CliRuntimeTest {

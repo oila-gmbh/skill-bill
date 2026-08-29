@@ -27,9 +27,9 @@ import skillbill.install.staging.stageInstalledSkill
 import skillbill.install.staging.validateAgentAddonPointerNamespace
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
-import java.nio.file.Path
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.Path
 
 private val plannedContentHashRegex = Regex("[0-9a-f]{16}")
 

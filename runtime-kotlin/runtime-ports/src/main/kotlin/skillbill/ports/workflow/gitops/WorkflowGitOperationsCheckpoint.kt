@@ -17,7 +17,6 @@ import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Path
 
-
 interface CheckpointHistoryGitOperations {
   /**
    * Rewrites HEAD from the current index, keeping its message unless [replacementMessage] is given,

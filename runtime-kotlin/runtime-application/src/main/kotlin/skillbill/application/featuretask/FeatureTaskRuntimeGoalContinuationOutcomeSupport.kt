@@ -7,11 +7,11 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.goal.model.GoalSubtaskReviewState
 
 internal const val BRANCH_SETUP_AGENT_SENTINEL = "branch-setup"
 internal const val GOAL_PLANNING_IMPORT_AGENT_SENTINEL = "goal-planning-import"

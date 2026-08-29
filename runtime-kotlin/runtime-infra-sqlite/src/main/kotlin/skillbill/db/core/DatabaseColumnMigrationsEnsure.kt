@@ -2,7 +2,6 @@ package skillbill.db.core
 
 import java.sql.Connection
 
-
 internal object DatabaseColumnMigrationsEnsure {
   private val safeIdentifierPattern = Regex("^[a-z_][a-z0-9_]*$")
   fun ensureQualityCheckSessionColumns(connection: Connection) {
@@ -30,74 +29,9 @@ internal object DatabaseColumnMigrationsEnsure {
     )
   }
 
-  @Suppress("LongMethod")
   fun ensureFeatureTaskRuntimeSessionColumns(connection: Connection) {
-    ensureColumn(connection, "feature_task_runtime_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
-    backfillBlankColumn(connection, "feature_task_runtime_sessions", "started_at", "CURRENT_TIMESTAMP")
-    ensureColumn(connection, "feature_task_runtime_sessions", "started_event_emitted_at", "TEXT")
-    ensureColumn(connection, "feature_task_runtime_sessions", "finished_at", "TEXT")
-    ensureColumn(connection, "feature_task_runtime_sessions", "finished_event_emitted_at", "TEXT")
-    ensureColumn(
-      connection = connection,
-      tableName = "feature_task_runtime_sessions",
-      columnName = "review_fix_iteration_count",
-      definition = "INTEGER NOT NULL DEFAULT 0",
-    )
-    ensureColumn(
-      connection = connection,
-      tableName = "feature_task_runtime_sessions",
-      columnName = "audit_gap_iteration_count",
-      definition = "INTEGER NOT NULL DEFAULT 0",
-    )
-    listOf(
-      "audit_first_pass_convergence",
-      "audit_recurring_gap_count",
-      "audit_new_gap_count",
-      "audit_attempted_repair_item_count",
-      "audit_resolved_repair_item_count",
-    ).forEach { column ->
-      ensureColumn(connection, "feature_task_runtime_sessions", column, "INTEGER NOT NULL DEFAULT 0")
-    }
-    listOf(
-      "regeneration_activation_count",
-      "regeneration_attempt_count",
-    ).forEach { column ->
-      ensureColumn(connection, "feature_task_runtime_sessions", column, "INTEGER NOT NULL DEFAULT 0")
-    }
-    ensureColumn(connection, "feature_task_runtime_sessions", "regeneration_outcome_counts_json", "TEXT")
-    ensureColumn(
-      connection = connection,
-      tableName = "feature_task_runtime_sessions",
-      columnName = "crash_reconciliation_count",
-      definition = "INTEGER NOT NULL DEFAULT 0",
-    )
-    ensureColumn(connection, "feature_task_runtime_sessions", "crash_reconciliation_reason_counts_json", "TEXT")
-    ensureColumn(connection, "feature_task_runtime_sessions", "estimated_phase_tokens_json", "TEXT")
-    ensureColumn(connection, "feature_task_runtime_sessions", "estimated_total_tokens", "INTEGER")
-    ensureColumn(
-      connection = connection,
-      tableName = "feature_task_runtime_sessions",
-      columnName = "finding_verification_verified_count",
-      definition = "INTEGER NOT NULL DEFAULT 0",
-    )
-    ensureColumn(
-      connection = connection,
-      tableName = "feature_task_runtime_sessions",
-      columnName = "finding_verification_rejected_count",
-      definition = "INTEGER NOT NULL DEFAULT 0",
-    )
-    ensureColumn(
-      connection = connection,
-      tableName = "feature_task_runtime_sessions",
-      columnName = "review_fix_cap_exhausted",
-      definition = "INTEGER NOT NULL DEFAULT 0",
-    )
-    ensureColumn(
-      connection = connection,
-      tableName = "feature_task_runtime_sessions",
-      columnName = "duplicate_terminal_finished_events",
-      definition = "INTEGER NOT NULL DEFAULT 0",
-    )
+    ensureFeatureTaskRuntimeSessionLifecycleColumns(connection)
+    ensureFeatureTaskRuntimeSessionMetricColumns(connection)
   }
 
   fun ensureFeatureVerifyWorkflowColumns(connection: Connection) {

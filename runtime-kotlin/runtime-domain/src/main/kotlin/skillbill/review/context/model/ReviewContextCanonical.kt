@@ -1,11 +1,11 @@
-@file:Suppress("SpreadOperator", "MagicNumber")
-
 package skillbill.review.context.model
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 internal val SHA256_HEX = Regex("[a-f0-9]{64}")
+
+private const val ASCII_PRINTABLE_FLOOR = 0x20
 
 fun requireRepositoryRelativePath(path: String) {
   require(path.isNotEmpty() && !path.startsWith('/') && !path.startsWith('\\')) {
@@ -61,7 +61,11 @@ fun structuredString(value: String): String = buildString {
       '\n' -> append("\\n")
       '\r' -> append("\\r")
       '\t' -> append("\\t")
-      else -> if (char.code < 0x20) append("\\u%04x".format(char.code)) else append(char)
+      else -> if (char.code < ASCII_PRINTABLE_FLOOR) {
+        append("\\u%04x".format(char.code))
+      } else {
+        append(char)
+      }
     }
   }
   append('"')
@@ -70,4 +74,3 @@ fun structuredString(value: String): String = buildString {
 internal fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
   .digest(value.toByteArray(StandardCharsets.UTF_8))
   .joinToString("") { byte -> "%02x".format(byte) }
-

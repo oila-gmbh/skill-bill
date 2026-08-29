@@ -77,7 +77,7 @@ class FeatureTaskRuntimeSharedEvidenceRecorderTest {
     )
   }
 
-  private fun recorder(lifecycle: RecordingLifecycleTelemetryRepository) = FeatureTaskRuntimePhaseRecorder(
+  private fun recorder(lifecycle: RecordingLifecycleTelemetryRepository) = featureTaskRuntimePhaseRecorder(
     RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository(), lifecycle),
     NoopWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,

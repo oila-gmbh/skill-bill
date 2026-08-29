@@ -1,10 +1,11 @@
 package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.planning.GoalPlanningPreparationValidator
 import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.requireValidPlanningProjection
+import skillbill.application.goalrunner.planning.GoalPlanningPreparationValidator
 import skillbill.application.goalrunner.planning.sha256HexUtf8
+import skillbill.contracts.JsonSupport
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -16,12 +17,11 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
-import skillbill.contracts.JsonSupport
 
 @Inject
 class GoalPlanningPreparationCheckpoint(

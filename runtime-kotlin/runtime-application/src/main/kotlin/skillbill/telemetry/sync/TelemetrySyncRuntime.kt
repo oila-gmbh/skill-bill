@@ -2,9 +2,9 @@ package skillbill.telemetry.sync
 
 import skillbill.application.telemetry.model.TelemetryStatusResult
 import skillbill.application.telemetry.model.TelemetrySyncStatusResult
+import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
-import skillbill.ports.telemetry.TelemetryClient
 import skillbill.telemetry.model.SyncResult
 import skillbill.telemetry.model.TelemetrySettings
 import java.io.IOException

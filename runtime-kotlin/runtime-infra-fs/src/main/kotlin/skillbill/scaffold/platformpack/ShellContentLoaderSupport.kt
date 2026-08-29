@@ -2,51 +2,20 @@
 
 package skillbill.scaffold.platformpack
 
-import org.yaml.snakeyaml.Yaml
-import skillbill.error.ContractVersionMismatchError
-import skillbill.error.InvalidFallbackCapabilityError
 import skillbill.error.InvalidManifestSchemaError
-import skillbill.error.InvalidValidationGateDeclarationError
 import skillbill.error.MissingContentFileError
-import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
-import skillbill.review.plan.ReviewLaunchPlanPolicy
-import skillbill.scaffold.model.CodeReviewBaselineLayer
-import skillbill.scaffold.model.CodeReviewComposition
-import skillbill.scaffold.model.CodeReviewCompositionMode
-import skillbill.scaffold.model.CodeReviewCompositionScope
-import skillbill.scaffold.model.DeclaredFiles
-import skillbill.scaffold.model.FeatureAddonUsage
-import skillbill.scaffold.model.GovernedAddonActivation
-import skillbill.scaffold.model.GovernedAddonFile
-import skillbill.scaffold.model.GovernedAddonSelection
-import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.model.PointerSpec
-import skillbill.scaffold.model.ReviewLaneCondition
-import skillbill.scaffold.model.RoutingSignals
-import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
-import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
-import skillbill.scaffold.model.ValidationGateDeclaration
-import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
-import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
-import skillbill.scaffold.model.ValidationGateFindingsFormat
-import skillbill.scaffold.model.ValidationGateFindingsLocator
-import skillbill.scaffold.rendering.defaultAreaFocus
-import skillbill.scaffold.runtime.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
-import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import skillbill.scaffold.validation.parseSkillFrontmatter
 import skillbill.scaffold.validation.validateAuthoredContent
-import skillbill.scaffold.validation.validateReviewSkillStructure
 import skillbill.scaffold.validation.validateSkillMdShape
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.InvalidPathException
-import skillbill.scaffold.validation.ReviewSkillStructureValidator
 
-internal fun requireMappingField(manifest: Map<*, *>, slug: String, key: String): Map<*, *> = manifest[key] as? Map<*, *>
-  ?: throw InvalidManifestSchemaError("Platform pack '$slug': manifest field '$key' must be a mapping.")
+internal fun requireMappingField(manifest: Map<*, *>, slug: String, key: String): Map<*, *> =
+  manifest[key] as? Map<*, *>
+    ?: throw InvalidManifestSchemaError("Platform pack '$slug': manifest field '$key' must be a mapping.")
 
 internal fun requireField(manifest: Map<*, *>, slug: String, key: String): Any =
   manifest[key] ?: throw InvalidManifestSchemaError("Platform pack '$slug': manifest is missing required field '$key'.")

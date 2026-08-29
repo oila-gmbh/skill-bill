@@ -2,10 +2,13 @@ package skillbill.application
 
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalRunner
+import skillbill.application.goalrunner.goalRunnerDeps
+import skillbill.application.goalrunner.model.GoalRunnerEventSink
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.testGoalRunner
 import skillbill.application.goalrunner.toRecord
 import skillbill.application.telemetry.model.GoalFinishedRequest
 import skillbill.application.telemetry.model.GoalIssueFinishedRequest
-import skillbill.application.goalrunner.model.GoalRunnerEventSink
 import skillbill.application.telemetry.model.GoalStartedRequest
 import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.goalrunner.model.GoalRunnerRunReport
@@ -17,7 +20,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
-import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 
 class GoalModeAttributionUnitTest {
 
@@ -105,13 +107,16 @@ class GoalModeAttributionUnitTest {
     launcher: RecordingSubtaskLauncher,
     outcomes: RecordingOutcomeStore,
     telemetry: GoalLifecycleTelemetryEmitter,
-  ): GoalRunner = GoalRunner(
-    manifestStore = store,
-    subtaskLauncher = launcher,
-    outcomeStore = outcomes,
-    pullRequestPort = RecordingPullRequestPort(),
-    telemetry = telemetry,
-    clock = Clock.fixed(Instant.parse("2026-06-23T10:00:00Z"), ZoneOffset.UTC),
+  ): GoalRunner = testGoalRunner(
+    goalRunnerDeps(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+    ).copy(
+      telemetry = telemetry,
+      clock = Clock.fixed(Instant.parse("2026-06-23T10:00:00Z"), ZoneOffset.UTC),
+    ),
   )
 
   private fun completingLauncher(
@@ -124,14 +129,13 @@ class GoalModeAttributionUnitTest {
     launchFacts()
   }
 
-  private fun runRequest(): GoalRunnerRunRequest =
-    GoalRunnerRunRequest(
-      issueKey = "SKILL-56",
-      repoRoot = Path.of("/tmp/skillbill-goal-runner"),
-      invokedAgentId = "claude",
-      dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
-      eventSink = GoalRunnerEventSink {},
-    )
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+    eventSink = GoalRunnerEventSink {},
+  )
 }
 
 private class ModeCapturingTelemetryEmitter : GoalLifecycleTelemetryEmitter {

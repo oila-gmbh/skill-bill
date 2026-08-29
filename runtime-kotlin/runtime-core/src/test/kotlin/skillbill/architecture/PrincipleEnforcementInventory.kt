@@ -5,9 +5,11 @@ object PrincipleEnforcementInventory {
     "Package clustering: loose files in a subpackaged area must not belong to a sibling area cluster.",
     "Production line ceiling: no production Kotlin file may exceed 500 lines without an explicit exemption.",
     "Failure wire codes: in-scope FailureWireCode hierarchies must map cases to codes totally and injectively.",
-    "Typed parse boundaries: named untrusted-input decode sites must not report malformation via error, require, or bare throw.",
+    "Typed parse boundaries: named untrusted-input decode sites must not report malformation via error, require, or" +
+      "bare throw.",
     "Inline FQN ban: production and test Kotlin must not use inline fully-qualified references outside the keep-list.",
-    "Convention ownership: module build files must not re-apply Test or toolchain settings owned by configureKotlinJvm.",
+    "Convention ownership: module build files must not re-apply Test or toolchain settings " +
+      "owned by configureKotlinJvm.",
   )
 
   val parseBoundarySites: List<ArchitectureScanSupport.ParseBoundarySite> = listOf(
@@ -28,7 +30,9 @@ object PrincipleEnforcementInventory {
       ),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimePhaseOutputValidationModels.kt",
+      relativePath =
+      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
+        "FeatureTaskRuntimePhaseOutputValidationModels.kt",
       functionNames = setOf(
         "fromWire",
         "fromArtifactMap",
@@ -38,31 +42,40 @@ object PrincipleEnforcementInventory {
       ),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeHandoffSourceRef.kt",
+      relativePath =
+      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeHandoffSourceRef.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeHandoffProjectionValue.kt",
+      relativePath =
+      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
+        "FeatureTaskRuntimeHandoffProjectionValue.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeHandoffModels.kt",
+      relativePath =
+      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeHandoffModels.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeRunInvariantPromptFields.kt",
+      relativePath =
+      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
+        "FeatureTaskRuntimeRunInvariantPromptFields.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeRepositoryCheckpoint.kt",
+      relativePath =
+      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeRepositoryCheckpoint.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-contracts/src/main/kotlin/skillbill/contracts/goalplanning/GoalVerificationBoundaryCaps.kt",
+      relativePath =
+      "runtime-contracts/src/main/kotlin/skillbill/contracts/goalplanning/GoalVerificationBoundaryCaps.kt",
       functionNames = setOf("parse", "requiredPositiveInt", "requireKnownKeysOnly", "requireSupportedVersion"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-contracts/src/main/kotlin/skillbill/contracts/goalplanning/GoalPlanningDiscoveryExclusions.kt",
+      relativePath =
+      "runtime-contracts/src/main/kotlin/skillbill/contracts/goalplanning/GoalPlanningDiscoveryExclusions.kt",
       functionNames = setOf(
         "parse",
         "requiredStringList",
@@ -73,7 +86,8 @@ object PrincipleEnforcementInventory {
       ),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/platformpack/ShellContentLoaderValidationGate.kt",
+      relativePath =
+      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/platformpack/ShellContentLoaderValidationGate.kt",
       functionNames = setOf(
         "parseValidationGate",
         "parseValidationGateFindings",
@@ -106,12 +120,15 @@ object PrincipleEnforcementInventory {
 
   val reviewOnlyRules: List<String> = listOf(
     "Comment quality and density — subjective editorial standards resist deterministic source scans.",
-    "Naming taste beyond noun-family clustering — mechanical naming rules false-positive on intentional domain vocabulary.",
-    "Deeper noun-family relatedness inside a single area cluster — only cross-area loose-file buckets are mechanically provable.",
-    "Open harness and capability vocabulary keys when subtask 3 left them open — recorded in agent/decisions.md instead of an enum gate.",
+    "Naming taste beyond noun-family clustering — mechanical naming rules false-positive on " +
+      "intentional domain vocabulary.",
+    "Deeper noun-family relatedness inside a single area cluster — only cross-area loose-file " +
+      "buckets are mechanically provable.",
+    "Open harness and capability vocabulary keys when subtask 3 left them open — recorded in " +
+      "agent/decisions.md instead of an enum gate.",
   )
 
-  val productionLineCeiling: Int = 500
+  const val PRODUCTION_LINE_CEILING: Int = 500
 
   val productionLineCeilingExemptions: Map<String, String> = emptyMap()
 

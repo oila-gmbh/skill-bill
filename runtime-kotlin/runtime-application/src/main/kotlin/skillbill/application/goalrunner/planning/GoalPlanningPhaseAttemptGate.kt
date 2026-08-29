@@ -1,104 +1,111 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
-import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy
-import skillbill.application.featuretask.boundedSchemaGateDetail
-import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
-import skillbill.contracts.JsonSupport
-import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
-import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
-import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.goal.model.GoalProgressOutcome
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
 
-internal fun DefaultGoalPlanningSweep.producePhase(
-  shared: GoalPlanningSharedContext,
-  request: GoalRunnerRunRequest,
-  subtask: DecompositionSubtask?,
-  runInvariants: FeatureTaskRuntimeRunInvariants,
-  phaseId: String,
-  recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-  resolvedBodies: GoalPlanningResolvedBoundaryBodies = GoalPlanningResolvedBoundaryBodies(),
-  finalizePayload: (String) -> String = { it },
-): GoalPlanningPhaseProduction {
-  var priorSchemaFailure: String? = null
+internal fun DefaultGoalPlanningSweep.producePhase(args: GoalPlanningProducePhaseArgs): GoalPlanningPhaseProduction {
+  val attemptArgs = args.attempt
+  val phase = attemptArgs.phase
+  val shared = phase.shared
+  val phaseId = phase.phaseId
+  val subtask = phase.subtask
+  var priorSchemaFailure = attemptArgs.priorSchemaFailure
   var retryableDeclines = 0
   var attempt = 0
   while (true) {
     attempt += 1
-    recordPlanningAttemptStarted(shared, phaseId, subtask, attempt)
-    val production = produceAttemptOrStop(
-      shared,
-      request,
-      subtask,
-      runInvariants,
-      phaseId,
-      recordedOutputs,
-      priorSchemaFailure,
-      resolvedBodies,
+    val scope = planningAttemptScope(shared, phaseId, subtask, attempt)
+    recordPlanningAttemptStarted(scope)
+    val step = advancePlanningProduceAttempt(
+      PlanningProduceAdvanceArgs(
+        attemptArgs = attemptArgs.copy(priorSchemaFailure = priorSchemaFailure),
+        scope = scope,
+        retryableDeclines = retryableDeclines,
+        phaseId = phaseId,
+        finalizePayload = args.finalizePayload,
+      ),
     )
-    val settled: GoalPlanningPhaseProduction? = when (production) {
-      is GoalPlanningPhaseProduction.Stopped -> {
-        recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
-        production
+    when (step) {
+      is PlanningProduceStep.Done -> return step.production
+      is PlanningProduceStep.RetryDecline -> {
+        retryableDeclines = step.retryableDeclines
       }
-
-      is GoalPlanningPhaseProduction.SchemaRejected -> {
-        recordFailedAttempt(shared, phaseId, subtask, attempt, GoalPlanningSweepConstants.SCHEMA_REJECTED_PLANNING_RULE, production)
-        priorSchemaFailure = production.reason
-        null
-      }
-
-      is GoalPlanningPhaseProduction.UnsuccessfulStatus -> {
-        recordFailedAttempt(shared, phaseId, subtask, attempt, GoalPlanningSweepConstants.UNSUCCESSFUL_PLANNING_STATUS_RULE, production)
-        GoalPlanningPhaseProduction.Stopped(production.outcome)
-      }
-
-      is GoalPlanningPhaseProduction.RetryableDecline -> {
-        retryableDeclines += 1
-        declineRetryStop(shared, phaseId, subtask, attempt, retryableDeclines, production)
-      }
-
-      is GoalPlanningPhaseProduction.EmptyProviderTurn -> {
-        recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
-        recordEmptyProviderTurn(shared, phaseId, subtask, attempt, production)
-        backoffStop(shared, phaseId, subtask, attempt)
-      }
-
-      is GoalPlanningPhaseProduction.Captured -> {
-        val gated = gateCapturedPayload(production, phaseId, finalizePayload)
-        if (gated is GoalPlanningPhaseProduction.Captured) {
-          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
-          gated
-        } else {
-          val rejected = gated as GoalPlanningPhaseProduction.SchemaRejected
-          recordFailedAttempt(shared, phaseId, subtask, attempt, GoalPlanningSweepConstants.SCHEMA_REJECTED_PLANNING_RULE, rejected)
-          priorSchemaFailure = rejected.reason
-          null
-        }
+      is PlanningProduceStep.RetrySchema -> {
+        priorSchemaFailure = step.priorSchemaFailure
       }
     }
-    if (settled != null) return settled
+  }
+}
+
+private data class PlanningProduceAdvanceArgs(
+  val attemptArgs: GoalPlanningProduceAttemptArgs,
+  val scope: GoalPlanningAttemptScope,
+  val retryableDeclines: Int,
+  val phaseId: String,
+  val finalizePayload: (String) -> String,
+)
+
+private sealed interface PlanningProduceStep {
+  class Done(val production: GoalPlanningPhaseProduction) : PlanningProduceStep
+  class RetryDecline(val retryableDeclines: Int) : PlanningProduceStep
+  class RetrySchema(val priorSchemaFailure: String) : PlanningProduceStep
+}
+
+private fun DefaultGoalPlanningSweep.advancePlanningProduceAttempt(
+  args: PlanningProduceAdvanceArgs,
+): PlanningProduceStep {
+  val production = produceAttemptOrStop(args.attemptArgs)
+  return when (production) {
+    is GoalPlanningPhaseProduction.RetryableDecline -> {
+      val nextDeclines = args.retryableDeclines + 1
+      declineRetryStop(args.scope, nextDeclines, production)
+        ?.let { PlanningProduceStep.Done(it) }
+        ?: PlanningProduceStep.RetryDecline(nextDeclines)
+    }
+    is GoalPlanningPhaseProduction.EmptyProviderTurn -> {
+      recordPlanningAttempt(GoalPlanningAttemptRecordArgs(args.scope, GoalProgressOutcome.FAILED))
+      recordEmptyProviderTurn(args.scope, production)
+      backoffStop(args.scope)
+        ?.let { PlanningProduceStep.Done(it) }
+        ?: PlanningProduceStep.RetryDecline(args.retryableDeclines)
+    }
+    else -> when (val settlement = settlePlanningProductionAttempt(args.scope, production)) {
+      is GoalPlanningPhaseProductionSettlement.Settled ->
+        PlanningProduceStep.Done(settlement.production)
+      is GoalPlanningPhaseProductionSettlement.Retry ->
+        PlanningProduceStep.RetrySchema(settlement.priorSchemaFailure)
+      is GoalPlanningPhaseProductionSettlement.PendingCapture ->
+        when (
+          val captured = settleCapturedPlanningProduction(
+            args.scope,
+            settlement.production,
+            args.phaseId,
+            args.finalizePayload,
+          )
+        ) {
+          is GoalPlanningPhaseProductionSettlement.Settled ->
+            PlanningProduceStep.Done(captured.production)
+          is GoalPlanningPhaseProductionSettlement.Retry ->
+            PlanningProduceStep.RetrySchema(captured.priorSchemaFailure)
+          is GoalPlanningPhaseProductionSettlement.PendingCapture ->
+            error("Unexpected nested capture settlement.")
+        }
+    }
   }
 }
 
@@ -127,86 +134,32 @@ internal fun DefaultGoalPlanningSweep.gateCapturedPayload(
   return GoalPlanningPhaseProduction.SchemaRejected(gateReason, canonicalPayload, captured.agentId)
 }
 
-@Suppress("TooGenericExceptionCaught")
 internal fun DefaultGoalPlanningSweep.produceAttemptOrStop(
-  shared: GoalPlanningSharedContext,
-  request: GoalRunnerRunRequest,
-  subtask: DecompositionSubtask?,
-  runInvariants: FeatureTaskRuntimeRunInvariants,
-  phaseId: String,
-  recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-  priorSchemaFailure: String?,
-  resolvedBodies: GoalPlanningResolvedBoundaryBodies,
-): GoalPlanningPhaseProduction = try {
-  produceAttempt(
-    shared,
-    request,
-    subtask,
-    runInvariants,
-    phaseId,
-    recordedOutputs,
-    priorSchemaFailure,
-    resolvedBodies,
-  )
-} catch (error: Exception) {
+  args: GoalPlanningProduceAttemptArgs,
+): GoalPlanningPhaseProduction = runCatching {
+  produceAttempt(args)
+}.getOrElse { error ->
+  val phase = args.phase
   GoalPlanningPhaseProduction.Stopped(
     stopped(
-      shared,
-      subtask?.id ?: 0,
-      unexpectedPlanningFailureReason(phaseId, error),
-      phaseId,
+      phase.shared,
+      phase.subtask?.id ?: 0,
+      unexpectedPlanningFailureReason(phase.phaseId, error),
+      phase.phaseId,
     ),
   )
 }
 
-@Suppress("ReturnCount")
 internal fun DefaultGoalPlanningSweep.produceAttempt(
-  shared: GoalPlanningSharedContext,
-  request: GoalRunnerRunRequest,
-  subtask: DecompositionSubtask?,
-  runInvariants: FeatureTaskRuntimeRunInvariants,
-  phaseId: String,
-  recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-  priorSchemaFailure: String?,
-  resolvedBodies: GoalPlanningResolvedBoundaryBodies,
+  args: GoalPlanningProduceAttemptArgs,
 ): GoalPlanningPhaseProduction {
+  val phase = args.phase
+  val shared = phase.shared
+  val subtask = phase.subtask
+  val phaseId = phase.phaseId
   val currentSubtaskId = subtask?.id ?: 0
-  planningPauseOutcome(shared, currentSubtaskId, phaseId)?.let { return it }
-  val prompt = runCatching {
-    composePlanningPrompt(
-      shared,
-      request,
-      subtask,
-      runInvariants,
-      phaseId,
-      recordedOutputs,
-      priorSchemaFailure,
-      resolvedBodies,
-    )
-  }
-    .getOrElse { error ->
-      if (error !is InvalidFeatureTaskRuntimePlanningProjectionSchemaError &&
-        error !is InvalidFeatureTaskRuntimeHandoffProjectionError
-      ) {
-        throw error
-      }
-      return GoalPlanningPhaseProduction.Stopped(
-        stopped(shared, currentSubtaskId, projectionRejectedReason(phaseId, error), phaseId),
-      )
-    }
-  val startedAtNanos = System.nanoTime()
-  val outcome = runCatching { launchPlanningAttempt(shared, request, subtask, phaseId, prompt) }
-    .getOrElse { error ->
-      if (error is GoalRunnerLaunchAuthorizationDeniedException) {
-        return planningPauseOutcome(shared, currentSubtaskId, phaseId, error.controlState.pauseReason)
-          ?: error("planning pause outcome was unexpectedly absent")
-      }
-      throw error
-    }
-  val durationMs = (System.nanoTime() - startedAtNanos) / GoalPlanningSweepConstants.NANOS_PER_MILLI
-  val stdout = stdoutFor(outcome)
-    ?: return emptyOrStopped(outcome, shared, request, currentSubtaskId, phaseId, durationMs)
-  return validatePlanningAttemptOutput(stdout, shared, currentSubtaskId, phaseId, launchedAgentId(outcome))
+  return planningPauseOutcome(shared, currentSubtaskId, phaseId)
+    ?: produceAttemptAfterPauseCheck(args, shared, subtask, phaseId, currentSubtaskId)
 }
 
 internal fun DefaultGoalPlanningSweep.planningPauseOutcome(
@@ -327,48 +280,4 @@ internal fun DefaultGoalPlanningSweep.launchPlanningAttempt(
       ),
     ),
   )
-}
-
-internal fun DefaultGoalPlanningSweep.composePlanningPrompt(
-  shared: GoalPlanningSharedContext,
-  request: GoalRunnerRunRequest,
-  subtask: DecompositionSubtask?,
-  runInvariants: FeatureTaskRuntimeRunInvariants,
-  phaseId: String,
-  recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-  priorSchemaFailure: String?,
-  resolvedBodies: GoalPlanningResolvedBoundaryBodies,
-): String {
-  val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-    declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, runInvariants.featureSize),
-    runInvariants = runInvariants,
-    recordedOutputs = recordedOutputs,
-  )
-  val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
-    handoff,
-    planningProjectionValidator = planningProjectionValidator,
-    agentAddonSelection = request.agentAddonSelection,
-  )
-  val basePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
-    issueKey = request.issueKey,
-    briefing = briefing,
-    suppressDecomposition = true,
-    priorSchemaFailure = priorSchemaFailure,
-  )
-  return GoalPlanningContextPromptFormatter.append(
-    basePrompt,
-    shared.planningPacket,
-    subtask,
-    phaseId,
-    resolvedBodies,
-  )
-}
-
-internal fun DefaultGoalPlanningSweep.projectionGateReason(payload: String, phaseId: String): String? {
-  val envelope = JsonSupport.parseObjectOrNull(payload)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?: return "Goal planning '$phaseId' payload is not a JSON object."
-  return producerProjectionGateReason(phaseId, envelope, planningProjectionValidator)
-    ?.let(::boundedSchemaGateDetail)
 }

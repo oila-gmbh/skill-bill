@@ -3,9 +3,9 @@ package skillbill.scaffold
 import skillbill.scaffold.catalog.ScaffoldCatalog
 import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import java.nio.file.Path
 
 class ScaffoldCatalogTest {
   @Test

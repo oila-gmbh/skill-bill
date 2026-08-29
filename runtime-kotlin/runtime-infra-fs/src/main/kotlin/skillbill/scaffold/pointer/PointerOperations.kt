@@ -6,12 +6,12 @@ import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.nio.file.AtomicMoveNotSupportedException
 
 data class PointerRegenerationResult(
   val regeneratedFiles: List<Path>,

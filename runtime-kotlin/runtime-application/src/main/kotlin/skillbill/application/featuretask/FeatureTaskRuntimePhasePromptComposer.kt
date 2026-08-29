@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
@@ -12,7 +13,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionB
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
-import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 
 /**
  * Pure composer of the full prompt a feature-task-runtime phase agent receives. The persisted

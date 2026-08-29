@@ -1,13 +1,13 @@
 package skillbill.ports.workflow
 
-import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.model.GoalChildWorkflowDeletionScope
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
-import skillbill.ports.goalrunner.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.workflow.model.WorkflowStateRecord
 
 /**
@@ -23,8 +23,7 @@ interface WorkflowStateRepository :
   FeatureVerifyWorkflowStateRepository,
   FeatureTaskRuntimeWorkflowStateRepository
 
-@Suppress("TooManyFunctions") // single cohesive boundary: feature-task identity, candidate scans, and claim
-interface FeatureTaskWorkflowStateRepository {
+interface FeatureTaskExecutionLookupRepository {
   fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity)
 
   fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
@@ -41,19 +40,13 @@ interface FeatureTaskWorkflowStateRepository {
   ): List<FeatureTaskWorkflowCandidate> =
     error("Goal-child feature-task lookup is not implemented by this persistence adapter.")
 
-  // Goal parents carry no execution identity, so a goal that has not launched a child yet has no
-  // repository binding to match. This count distinguishes that case from a goal whose children all
-  // belong to a different repository.
   fun countGoalChildIdentities(normalizedIssueKey: String): Int = 0
 
   fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
     error("Feature-task continuation claiming is not implemented by this persistence adapter.")
+}
 
-  /**
-   * Terminalize an existing legacy prose-mode feature-task row by updating status and artifacts only.
-   * Must preserve stored `mode='prose'` — never route through the refused prose writer or a runtime
-   * upsert that would flip mode.
-   */
+interface FeatureTaskWorkflowRowRepository {
   fun terminalizeLegacyProseFeatureTaskWorkflow(row: WorkflowStateRecord): Unit =
     error("Legacy prose feature-task terminalization is not implemented by this persistence adapter.")
 
@@ -95,6 +88,10 @@ interface FeatureTaskWorkflowStateRepository {
       (this as FeatureTaskRuntimeWorkflowStateRepository).latestFeatureTaskRuntimeWorkflow()
   }
 }
+
+interface FeatureTaskWorkflowStateRepository :
+  FeatureTaskExecutionLookupRepository,
+  FeatureTaskWorkflowRowRepository
 
 interface GoalChildWorkflowStateRepository {
   fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int =

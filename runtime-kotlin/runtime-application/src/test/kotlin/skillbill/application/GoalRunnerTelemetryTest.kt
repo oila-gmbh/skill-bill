@@ -2,11 +2,13 @@ package skillbill.application
 
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalRunner
-import skillbill.application.telemetry.model.GoalFinishedRequest
-import skillbill.application.telemetry.model.GoalIssueFinishedRequest
+import skillbill.application.goalrunner.goalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerEventSink
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.testGoalRunner
+import skillbill.application.telemetry.model.GoalFinishedRequest
+import skillbill.application.telemetry.model.GoalIssueFinishedRequest
 import skillbill.application.telemetry.model.GoalStartedRequest
 import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.workflow.repoRoot
@@ -330,13 +332,16 @@ class GoalRunnerTelemetryTest {
       val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
       val outcomes = RecordingOutcomeStore()
       val events = mutableListOf<GoalRunnerRunEvent>()
-      val runner = GoalRunner(
-        manifestStore = store,
-        subtaskLauncher = completingLauncher(store, outcomes),
-        outcomeStore = outcomes,
-        pullRequestPort = RecordingPullRequestPort(),
-        telemetry = telemetry,
-        clock = fixedClock(),
+      val runner = testGoalRunner(
+        goalRunnerDeps(
+          manifestStore = store,
+          subtaskLauncher = completingLauncher(store, outcomes),
+          outcomeStore = outcomes,
+          pullRequestPort = RecordingPullRequestPort(),
+        ).copy(
+          telemetry = telemetry,
+          clock = fixedClock(),
+        ),
       )
       val result = runner.run(runRequest { events += it })
       Triple(result, store.manifest.status, events)
@@ -356,13 +361,16 @@ class GoalRunnerTelemetryTest {
     launcher: RecordingSubtaskLauncher,
     outcomes: RecordingOutcomeStore,
     telemetry: GoalLifecycleTelemetryEmitter,
-  ): GoalRunner = GoalRunner(
-    manifestStore = store,
-    subtaskLauncher = launcher,
-    outcomeStore = outcomes,
-    pullRequestPort = RecordingPullRequestPort(),
-    telemetry = telemetry,
-    clock = fixedClock(),
+  ): GoalRunner = testGoalRunner(
+    goalRunnerDeps(
+      manifestStore = store,
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+    ).copy(
+      telemetry = telemetry,
+      clock = fixedClock(),
+    ),
   )
 
   private fun completingLauncher(

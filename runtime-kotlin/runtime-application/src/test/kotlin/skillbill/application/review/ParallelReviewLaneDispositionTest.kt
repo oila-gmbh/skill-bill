@@ -2,6 +2,8 @@ package skillbill.application.review
 
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.review.ReviewRunLaneResolver
+import skillbill.review.ReviewRunLaneResolver.COMPLETE_DISPOSITION
+import skillbill.review.ReviewRunLaneResolver.RESOLVED
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
@@ -21,13 +23,11 @@ import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
+import skillbill.review.model.ReviewRunLane
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.review.ReviewRunLaneResolver.COMPLETE_DISPOSITION
-import skillbill.review.ReviewRunLaneResolver.RESOLVED
-import skillbill.review.model.ReviewRunLane
 
 /** Lane disposition and segment accounting without driving the full parallel runner. */
 class ParallelReviewLaneDispositionTest {

@@ -54,7 +54,7 @@ object McpToolDispatcher {
       "resolve_learnings" to ::resolveLearnings,
       "review_stats" to
         { arguments, context -> McpRuntime.reviewStats(arguments.optionalString("review_run_id"), context) },
-      "telemetry_proxy_capabilities" to { _, context -> McpRuntime.telemetryProxyCapabilities(context) },
+      "telemetry_proxy_capabilities" to { _, context -> McpRuntimeLifecycle.telemetryProxyCapabilities(context) },
       "telemetry_remote_stats" to ::telemetryRemoteStats,
       "triage_findings" to ::triageFindings,
       "update_check" to { _, context -> McpRuntime.updateCheck(context) },
@@ -201,7 +201,7 @@ internal fun resolveLearnings(arguments: Map<String, Any?>, context: McpRuntimeC
   )
 
 internal fun telemetryRemoteStats(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.telemetryRemoteStats(
+  McpRuntimeLifecycle.telemetryRemoteStats(
     RemoteStatsRequest(
       workflow = mapRemoteStatsWorkflow(arguments.string("workflow")),
       since = arguments.string("since"),

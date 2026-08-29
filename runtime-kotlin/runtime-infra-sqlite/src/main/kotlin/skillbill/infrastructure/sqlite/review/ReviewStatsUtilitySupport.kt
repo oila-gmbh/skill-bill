@@ -1,10 +1,10 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
+import java.sql.ResultSet
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.Locale
-import java.sql.ResultSet
 
 fun rate(count: Int, total: Int): Double = if (total == 0) {
   0.0

@@ -17,25 +17,10 @@ import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperations
 import skillbill.ports.workflow.gitops.SuppressionEvidenceGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.model.WorkflowScopedPathContent
-import skillbill.ports.workflow.gitops.model.WorkflowScopedPathContentsResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
-import skillbill.workflow.goal.model.GoalObservabilityDiffStat
-import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunk
-import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
-import java.io.IOException
-import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.nio.file.attribute.BasicFileAttributes
-import java.security.MessageDigest
-import java.util.concurrent.TimeUnit
-import kotlin.concurrent.thread
-import java.io.BufferedReader
-
 
 @Inject
 class GitWorkflowGitOperations :

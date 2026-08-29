@@ -110,17 +110,16 @@ internal fun DecompositionManifest.toResetSnapshot(): GoalRunnerResetSnapshot = 
   },
 )
 
-internal fun GoalObservabilityProgressEvent.toStatusMap(): Map<String, Any?> =
-  linkedMapOf(
-    "issue_key" to issueKey,
-    "subtask_id" to subtaskId,
-    "workflow_phase" to workflowPhase,
-    "worker_role" to workerRole,
-    "liveness_class" to livenessClass,
-    "activity_summary" to activitySummary,
-    "sequence_number" to sequenceNumber,
-    "timestamp" to timestamp,
-  )
+internal fun GoalObservabilityProgressEvent.toStatusMap(): Map<String, Any?> = linkedMapOf(
+  "issue_key" to issueKey,
+  "subtask_id" to subtaskId,
+  "workflow_phase" to workflowPhase,
+  "worker_role" to workerRole,
+  "liveness_class" to livenessClass,
+  "activity_summary" to activitySummary,
+  "sequence_number" to sequenceNumber,
+  "timestamp" to timestamp,
+)
 
 internal fun Map<Int, GoalRunnerOutOfBandAcceptance>.toAcceptedSubtasks(): List<GoalRunnerAcceptedSubtask> =
   values.sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId).map { acceptance ->

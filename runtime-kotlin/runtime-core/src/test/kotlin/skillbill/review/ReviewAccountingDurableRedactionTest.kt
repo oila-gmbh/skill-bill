@@ -1,11 +1,11 @@
 package skillbill.review
 
-import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewHarnessConfig
 import skillbill.application.review.ReviewRecorder
 import skillbill.application.review.diffForChanges
 import skillbill.application.review.harnessRequest
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.reviewPack
 import skillbill.application.review.toBoundedPayload
@@ -13,10 +13,12 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.contracts.review.ReviewContextSchemaValidator
 import skillbill.db.core.DatabaseRuntime
+import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -25,8 +27,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
-import skillbill.db.telemetry.TelemetryOutboxStore
 
 /**
  * Content-bearing review inputs are measured, never retained. The summary under test comes from a

@@ -8,9 +8,7 @@ import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
@@ -105,19 +103,17 @@ internal class WorkflowGoalRunnerProgressRecording(
     )
   }
 
-  fun recordAttemptLedgerEntry(
-    request: GoalRunnerAttemptLedgerRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean = appendHistoryArtifact(
-    HistoryArtifactAppend(
-      workflowId = request.workflowId,
-      latestKey = null,
-      historyKey = GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY,
-      retentionLimit = GOAL_ATTEMPT_LEDGER_LIMIT,
-      entryMap = request.entry.toArtifactMap(),
-    ),
-    dbPathOverride,
-  )
+  fun recordAttemptLedgerEntry(request: GoalRunnerAttemptLedgerRecordRequest, dbPathOverride: String?): Boolean =
+    appendHistoryArtifact(
+      HistoryArtifactAppend(
+        workflowId = request.workflowId,
+        latestKey = null,
+        historyKey = GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY,
+        retentionLimit = GOAL_ATTEMPT_LEDGER_LIMIT,
+        entryMap = request.entry.toArtifactMap(),
+      ),
+      dbPathOverride,
+    )
 
   fun progressEvents(workflowId: String, dbPathOverride: String?): List<Map<String, Any?>> =
     database.transaction(dbPathOverride) { unitOfWork ->

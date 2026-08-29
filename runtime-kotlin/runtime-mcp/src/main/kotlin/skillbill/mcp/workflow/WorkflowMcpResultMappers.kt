@@ -8,9 +8,9 @@ import skillbill.application.workflow.model.WorkflowListResult
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowResumeResult
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowContinueView
+import skillbill.workflow.goal.GoalObservabilityEventValidator
 
 /**
  * SKILL-52.1 — Adapter-side mappers that convert typed

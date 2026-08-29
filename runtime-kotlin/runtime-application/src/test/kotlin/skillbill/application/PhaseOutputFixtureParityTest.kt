@@ -1,10 +1,10 @@
 package skillbill.application
 
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.fail
-import skillbill.contracts.JsonSupport
 
 /**
  * Planning-projections schema is reject-all; [producedProjectionKindFor] is null for every phase, so

@@ -2,44 +2,41 @@ package skillbill.db.core
 
 import skillbill.db.telemetry.FeedbackEventMigration
 import skillbill.db.telemetry.GoalTelemetryMigration
-import skillbill.db.telemetry.TelemetryOutboxLastErrorMigration
-import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationMigration
-import java.sql.Connection
 
 internal val databaseMigrationsEarly: List<DatabaseMigration> =
   listOf(
-      DatabaseMigration(
-        version = 1,
-        name = "add-review-workflow-session-columns",
-        operation = DatabaseColumnMigrations::apply,
-      ),
-      DatabaseMigration(
-        version = 2,
-        name = "normalize-feedback-event-outcomes",
-        operation = FeedbackEventMigration::apply,
-      ),
-      DatabaseMigration(
-        version = 3,
-        name = "add-goal-telemetry-tables",
-        operation = GoalTelemetryMigration::apply,
-      ),
-      DatabaseMigration(
-        version = 4,
-        name = "add-work-list-state-metadata",
-        operation = DatabaseColumnMigrations::applyWorkListMetadata,
-      ),
-      DatabaseMigration(
-        version = 5,
-        name = "recover-work-list-issue-keys",
-        operation = DatabaseColumnMigrations::recoverWorkListIssueKeys,
-      ),
-      DatabaseMigration(
-        version = 6,
-        name = "add-feature-task-execution-identities",
-        operation = { connection ->
-          connection.createStatement().use { statement ->
-            statement.execute(
-              """
+    DatabaseMigration(
+      version = 1,
+      name = "add-review-workflow-session-columns",
+      operation = DatabaseColumnMigrations::apply,
+    ),
+    DatabaseMigration(
+      version = 2,
+      name = "normalize-feedback-event-outcomes",
+      operation = FeedbackEventMigration::apply,
+    ),
+    DatabaseMigration(
+      version = 3,
+      name = "add-goal-telemetry-tables",
+      operation = GoalTelemetryMigration::apply,
+    ),
+    DatabaseMigration(
+      version = 4,
+      name = "add-work-list-state-metadata",
+      operation = DatabaseColumnMigrations::applyWorkListMetadata,
+    ),
+    DatabaseMigration(
+      version = 5,
+      name = "recover-work-list-issue-keys",
+      operation = DatabaseColumnMigrations::recoverWorkListIssueKeys,
+    ),
+    DatabaseMigration(
+      version = 6,
+      name = "add-feature-task-execution-identities",
+      operation = { connection ->
+        connection.createStatement().use { statement ->
+          statement.execute(
+            """
               CREATE TABLE IF NOT EXISTS feature_task_execution_identities (
                 workflow_id TEXT PRIMARY KEY,
                 contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
@@ -49,28 +46,28 @@ internal val databaseMigrationsEarly: List<DatabaseMigration> =
                 mode TEXT NOT NULL CHECK (mode IN ('prose', 'runtime')),
                 route_scope TEXT NOT NULL CHECK (route_scope IN ('standalone', 'goal_child')),
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
-                connection.optionalRepairEvidenceColumn("goal_shared_preplans_pre_0_2")
-              },
+              connection.optionalRepairEvidenceColumn("goal_shared_preplans_pre_0_2")
+            },
                 FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
               )
-              """.trimIndent(),
-            )
-            statement.execute(
-              """
+            """.trimIndent(),
+          )
+          statement.execute(
+            """
               CREATE INDEX IF NOT EXISTS idx_feature_task_identity_lookup
                 ON feature_task_execution_identities(normalized_issue_key, repository_identity, route_scope)
-              """.trimIndent(),
-            )
-          }
-        },
-      ),
-      DatabaseMigration(
-        version = 7,
-        name = "add-feature-task-runtime-worker-leases",
-        operation = { connection ->
-          connection.createStatement().use { statement ->
-            statement.execute(
-              """
+            """.trimIndent(),
+          )
+        }
+      },
+    ),
+    DatabaseMigration(
+      version = 7,
+      name = "add-feature-task-runtime-worker-leases",
+      operation = { connection ->
+        connection.createStatement().use { statement ->
+          statement.execute(
+            """
               CREATE TABLE IF NOT EXISTS feature_task_runtime_worker_leases (
                 workflow_id TEXT PRIMARY KEY,
                 contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
@@ -87,25 +84,26 @@ internal val databaseMigrationsEarly: List<DatabaseMigration> =
                 phase_attempt INTEGER NOT NULL CHECK (phase_attempt > 0),
                 FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
               )
-              """.trimIndent(),
-            )
-          }
-        },
-      ),
-      DatabaseMigration(
-        version = 8,
-        name = "add-goal-planning-preparations",
-        operation = { connection ->
-          connection.createStatement().use { statement ->
-            statement.execute(
-              """
+            """.trimIndent(),
+          )
+        }
+      },
+    ),
+    DatabaseMigration(
+      version = 8,
+      name = "add-goal-planning-preparations",
+      operation = { connection ->
+        connection.createStatement().use { statement ->
+          statement.execute(
+            """
               CREATE TABLE IF NOT EXISTS goal_planning_preparations (
                 parent_goal_workflow_id TEXT NOT NULL,
                 normalized_issue_key TEXT NOT NULL,
                 repository_identity TEXT NOT NULL,
                 subtask_id INTEGER NOT NULL CHECK (subtask_id > 0),
                 governed_sub_spec_path TEXT NOT NULL,
-                preparation_status TEXT NOT NULL CHECK (preparation_status IN ('pending', 'prepared')) DEFAULT 'prepared',
+                preparation_status TEXT NOT NULL CHECK (preparation_status IN ('pending',
+                  'prepared')) DEFAULT 'prepared',
                 contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
                 parent_spec_hash TEXT NOT NULL,
                 sub_spec_hash TEXT NOT NULL,
@@ -115,29 +113,29 @@ internal val databaseMigrationsEarly: List<DatabaseMigration> =
                 preplan_payload_json TEXT NOT NULL,
                 plan_payload_json TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
-                connection.optionalRepairEvidenceColumn("goal_subtask_plans_pre_0_2")
-              },
+              connection.optionalRepairEvidenceColumn("goal_subtask_plans_pre_0_2")
+            },
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (parent_goal_workflow_id, subtask_id)
               )
-              """.trimIndent(),
-            )
-            statement.execute(
-              """
+            """.trimIndent(),
+          )
+          statement.execute(
+            """
               CREATE INDEX IF NOT EXISTS idx_goal_planning_preparations_lookup
                 ON goal_planning_preparations(normalized_issue_key, repository_identity)
-              """.trimIndent(),
-            )
-          }
-        },
-      ),
-      DatabaseMigration(
-        version = 9,
-        name = "normalize-goal-planning-preparations",
-        operation = { connection ->
-          connection.createStatement().use { statement ->
-            statement.execute(
-              """
+            """.trimIndent(),
+          )
+        }
+      },
+    ),
+    DatabaseMigration(
+      version = 9,
+      name = "normalize-goal-planning-preparations",
+      operation = { connection ->
+        connection.createStatement().use { statement ->
+          statement.execute(
+            """
               CREATE TABLE IF NOT EXISTS goal_shared_preplans (
                 parent_goal_workflow_id TEXT PRIMARY KEY,
                 normalized_issue_key TEXT NOT NULL,
@@ -155,10 +153,10 @@ internal val databaseMigrationsEarly: List<DatabaseMigration> =
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(normalized_issue_key, repository_identity)
               )
-              """.trimIndent(),
-            )
-            statement.execute(
-              """
+            """.trimIndent(),
+          )
+          statement.execute(
+            """
               CREATE TABLE IF NOT EXISTS goal_subtask_plans (
                 parent_goal_workflow_id TEXT NOT NULL,
                 normalized_issue_key TEXT NOT NULL,
@@ -181,15 +179,16 @@ internal val databaseMigrationsEarly: List<DatabaseMigration> =
                 PRIMARY KEY(parent_goal_workflow_id, subtask_id),
                 UNIQUE(parent_goal_workflow_id, governed_sub_spec_path),
                 UNIQUE(parent_goal_workflow_id, manifest_order),
-                FOREIGN KEY(parent_goal_workflow_id) REFERENCES goal_shared_preplans(parent_goal_workflow_id) ON DELETE CASCADE
+                FOREIGN KEY(parent_goal_workflow_id)
+                REFERENCES goal_shared_preplans(parent_goal_workflow_id) ON DELETE CASCADE
               )
-              """.trimIndent(),
-            )
-            statement.execute(
-              "CREATE INDEX IF NOT EXISTS idx_goal_subtask_plans_ordered " +
-                "ON goal_subtask_plans(parent_goal_workflow_id, manifest_order)",
-            )
-          }
-        },
-      ),
+            """.trimIndent(),
+          )
+          statement.execute(
+            "CREATE INDEX IF NOT EXISTS idx_goal_subtask_plans_ordered " +
+              "ON goal_subtask_plans(parent_goal_workflow_id, manifest_order)",
+          )
+        }
+      },
+    ),
   )

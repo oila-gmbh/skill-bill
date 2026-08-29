@@ -11,9 +11,9 @@ import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRunState
 import skillbill.cli.scaffold.toWireMap
-import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowContinueView
+import skillbill.workflow.goal.GoalObservabilityEventValidator
 
 /**
  * SKILL-52.1 — Adapter-side mappers that convert typed

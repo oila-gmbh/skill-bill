@@ -4,13 +4,13 @@ import skillbill.application.featuretask.validation.model.ValidationGateAgentRep
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 
 class FeatureTaskRuntimeBuildGateFullDiscoverTest {
   @Test

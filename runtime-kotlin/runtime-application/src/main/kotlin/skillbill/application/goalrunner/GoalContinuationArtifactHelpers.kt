@@ -1,9 +1,14 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.goalrunner.model.GoalRunnerStoredOutcome
+import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
@@ -14,12 +19,6 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
-import skillbill.application.workflow.WorkflowFamily
-import skillbill.application.workflow.toSnapshot
-import skillbill.goalrunner.model.GoalRunnerStoredOutcome
-import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
-import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
-import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 
 internal data class GoalContinuation(
   val issueKey: String,
@@ -220,19 +219,4 @@ internal fun GoalRunnerWorkerSubtaskRequestOutcome.toArtifactMap(): Map<String, 
     "request" to request.toArtifactMap(),
     "reason" to reason,
   )
-}
-
-internal fun GoalRunnerWorkerSubtaskRequest.toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "name" to name,
-  "spec_path" to specPath,
-  "rationale" to rationale,
-  "depends_on_subtask_ids" to dependsOnSubtaskIds,
-  "requires_operator_confirmation" to requiresOperatorConfirmation,
-).filterValues { value -> value != null }
-
-internal fun Any?.asGoalRunnerIntOrNull(): Int? = when (this) {
-  is Int -> this
-  is Number -> toInt()
-  is String -> toIntOrNull()
-  else -> null
 }

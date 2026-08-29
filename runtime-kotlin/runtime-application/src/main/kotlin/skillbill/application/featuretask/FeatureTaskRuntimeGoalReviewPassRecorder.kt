@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
+import skillbill.application.goalrunner.recordedVerdicts
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.db.DatabaseSessionFactory
@@ -20,31 +21,29 @@ internal class FeatureTaskRuntimeGoalReviewPassRecorder(
   private val patcher: FeatureTaskRuntimeGoalContinuationArtifactPatcher,
   private val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
 ) {
-  fun reserveGoalReviewPass(
-    workflowId: String,
-    dbOverride: String? = null,
-  ): GoalSubtaskReviewPassReservation = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = reviewStateFromArtifacts(artifacts)
-      ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
-    if (state.reviewCapReached || state.reviewSkippedByUser) {
-      return@transaction GoalSubtaskReviewPassCarryForward(state)
+  fun reserveGoalReviewPass(workflowId: String, dbOverride: String? = null): GoalSubtaskReviewPassReservation =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val state = reviewStateFromArtifacts(artifacts)
+        ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
+      if (state.reviewCapReached || state.reviewSkippedByUser) {
+        return@transaction GoalSubtaskReviewPassCarryForward(state)
+      }
+      if (state.reservedPassNumber != null) {
+        return@transaction GoalSubtaskReviewPassInFlight(state)
+      }
+      val reserved = state.reserveNextPass()
+      if (reserved != state) {
+        patcher.save(
+          record,
+          unitOfWork.workflowStates,
+          mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to reserved.toArtifactMap()),
+        )
+      }
+      GoalSubtaskReviewPassReserved(reserved)
     }
-    if (state.reservedPassNumber != null) {
-      return@transaction GoalSubtaskReviewPassInFlight(state)
-    }
-    val reserved = state.reserveNextPass()
-    if (reserved != state) {
-      patcher.save(
-        record,
-        unitOfWork.workflowStates,
-        mapOf(GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to reserved.toArtifactMap()),
-      )
-    }
-    GoalSubtaskReviewPassReserved(reserved)
-  }
 
   fun persistGoalReviewInput(
     workflowId: String,

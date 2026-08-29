@@ -8,13 +8,13 @@ import skillbill.ports.work.model.WorkItemKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.sql.Connection
+import java.sql.ResultSet
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
-import java.sql.ResultSet
 
 class SQLiteWorkListRepository(
   private val connection: Connection,

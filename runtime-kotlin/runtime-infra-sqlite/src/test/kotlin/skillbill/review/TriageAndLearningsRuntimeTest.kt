@@ -19,12 +19,12 @@ import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.tempDbConnection
+import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import java.sql.Connection
 
 class TriageAndLearningsRuntimeTest {
   @Test

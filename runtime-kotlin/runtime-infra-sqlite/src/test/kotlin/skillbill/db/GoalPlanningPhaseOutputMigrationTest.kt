@@ -5,11 +5,11 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import java.nio.file.Files
 import java.sql.Connection
+import java.sql.SQLException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import java.sql.SQLException
 
 class GoalPlanningPhaseOutputMigrationTest {
   @Test

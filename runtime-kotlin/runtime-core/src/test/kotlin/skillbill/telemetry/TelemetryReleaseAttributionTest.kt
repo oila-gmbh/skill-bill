@@ -5,11 +5,11 @@ import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.http.telemetryProxyBatchPayload
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
+import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import java.sql.Connection
 
 private const val ENQUEUE_TIME_VERSION = "7.7.7-enqueue"
 private const val UPLOAD_TIME_VERSION = "8.8.8-upload"

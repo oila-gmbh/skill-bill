@@ -3,6 +3,7 @@
 package skillbill.application.review
 
 import skillbill.application.review.model.ReviewPreparationRequest
+import skillbill.application.review.model.ReviewPreparationResult
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
@@ -35,7 +36,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import skillbill.application.review.model.ReviewPreparationResult
 
 /** Launch fan-out stays one worker per selected lane regardless of commit or segment count. */
 class ParallelReviewFanOutInvariantTest {

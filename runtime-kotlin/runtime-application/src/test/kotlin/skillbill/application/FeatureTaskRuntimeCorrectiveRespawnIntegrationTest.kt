@@ -8,6 +8,8 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.install.model.InstallAgent.CLAUDE
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -19,8 +21,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.install.model.InstallAgent.CLAUDE
 
 private fun completedPhaseBody(
   contractVersion: String,

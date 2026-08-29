@@ -28,12 +28,12 @@ import skillbill.workflow.decomposition.model.DecompositionManifestValidationRes
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationSourceLocation
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import java.security.MessageDigest
 
 class SpecIntentProjectionResolverTest {
   @Test

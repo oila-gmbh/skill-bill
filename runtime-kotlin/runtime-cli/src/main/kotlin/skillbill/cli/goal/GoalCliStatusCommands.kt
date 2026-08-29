@@ -10,17 +10,13 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.detectInvokingAgentId
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
-import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_LINES
-import java.nio.file.Path
 
 @Inject
 class GoalStatusCommand(
@@ -107,6 +103,7 @@ class GoalStatusCommand(
     ),
   )
 }
+
 @Inject
 class GoalWatchCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,

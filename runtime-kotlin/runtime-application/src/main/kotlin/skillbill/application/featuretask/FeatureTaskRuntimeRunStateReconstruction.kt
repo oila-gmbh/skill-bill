@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -52,15 +51,14 @@ internal object FeatureTaskRuntimeRunStateReconstruction {
     }
   }
 
-  fun reconstructFixLoopBudgetBases(
-    transitions: FeatureTaskRuntimeTransitionDeclaration,
-    edgeIterationByLoop: Map<String, Int>,
-    initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
-    initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-    completed: Set<String>,
-    gateInvalidatedPhases: Set<String>,
-    nextIteration: (String) -> Int,
-  ): MutableMap<String, Int> {
+  fun reconstructFixLoopBudgetBases(args: ReconstructFixLoopBudgetBasesArgs): MutableMap<String, Int> {
+    val transitions = args.transitions
+    val edgeIterationByLoop = args.edgeIterationByLoop
+    val initialRecords = args.initialRecords
+    val initialLedger = args.initialLedger
+    val completed = args.completed
+    val gateInvalidatedPhases = args.gateInvalidatedPhases
+    val nextIteration = args.nextIteration
     val bases = mutableMapOf<String, Int>()
     transitions.backwardEdges.forEach { edge ->
       if ((edgeIterationByLoop[edge.loopId] ?: 0) <= 0) {

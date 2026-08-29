@@ -4,14 +4,14 @@ import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
-import skillbill.application.review.model.ParallelCodeReviewRequest
-import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewClaimVerificationRunner
 import skillbill.application.review.ReviewHarnessConfig
 import skillbill.application.review.ReviewRecorder
 import skillbill.application.review.ReviewSpecAdjudicationRunner
 import skillbill.application.review.diffForPaths
+import skillbill.application.review.model.ParallelCodeReviewRequest
+import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.sparseReviewPack
 import skillbill.contracts.JsonSupport

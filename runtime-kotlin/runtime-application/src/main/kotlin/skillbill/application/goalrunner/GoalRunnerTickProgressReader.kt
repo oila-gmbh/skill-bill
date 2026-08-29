@@ -2,13 +2,13 @@ package skillbill.application.goalrunner
 
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import kotlin.coroutines.cancellation.CancellationException
-import skillbill.error.ShellContentContractException
-import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 
 internal val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 

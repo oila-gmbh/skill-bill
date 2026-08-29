@@ -39,7 +39,7 @@ data class ReviewCommitLaneDecision(
     lane,
     disposition.name,
     reason.replace("\r\n", "\n"),
-    canonicalFields(*signals.sorted().toTypedArray()),
+    canonicalFieldList(signals.sorted()),
   )
 }
 
@@ -86,10 +86,10 @@ data class ReviewCommitLaneRoutingMatrix(
   val analyzedPairCount: Int get() = decisions.size
 
   val canonical: String get() = canonicalFields(
-    canonicalFields(*commitShas.toTypedArray()),
-    canonicalFields(*lanes.toTypedArray()),
-    canonicalFields(
-      *decisions.sortedWith(compareBy({ it.orderIndex }, { it.lane })).map { it.canonical }.toTypedArray(),
+    canonicalFieldList(commitShas),
+    canonicalFieldList(lanes),
+    canonicalFieldList(
+      decisions.sortedWith(compareBy({ it.orderIndex }, { it.lane })).map { it.canonical },
     ),
   )
 

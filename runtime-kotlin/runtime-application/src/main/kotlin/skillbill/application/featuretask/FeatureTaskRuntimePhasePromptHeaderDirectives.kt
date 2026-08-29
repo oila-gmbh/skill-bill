@@ -4,6 +4,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
@@ -76,7 +77,7 @@ internal fun installedRuntimeAuthorityDirective(): String = """
 
 internal fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
   val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
-  val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
+  val scaling = FeatureTaskRuntimePhaseWorkflowQueries.ceremonyScaling(featureSize)
   val reviewScope = scaling.reviewScope.wireValue
   val phaseSpecific = when (briefing.phaseId) {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN ->

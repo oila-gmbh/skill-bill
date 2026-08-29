@@ -12,9 +12,9 @@ import skillbill.scaffold.platformpack.resolveSkillClass
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.relativeTo
+import skillbill.scaffold.policy.platformpack.PLATFORM_PACK_SHELL_CONTRACT_VERSION as POLICY_SHELL_CONTRACT_VERSION
 import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS as POLICY_APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.policy.scaffold.PLATFORM_PACK_PRESETS as POLICY_PLATFORM_PACK_PRESETS
-import skillbill.scaffold.policy.platformpack.PLATFORM_PACK_SHELL_CONTRACT_VERSION as POLICY_SHELL_CONTRACT_VERSION
 import skillbill.scaffold.policy.scaffold.SCAFFOLD_PAYLOAD_VERSION as POLICY_SCAFFOLD_PAYLOAD_VERSION
 import skillbill.scaffold.policy.scaffold.displayNameFromSlug as policyDisplayNameFromSlug
 
@@ -165,10 +165,7 @@ private fun featureAddonPointerSpecsFor(
  *
  * Returns a (sorted) list of issue strings; an empty list means parity holds.
  */
-internal fun validatePointerTargetParity(
-  repoRoot: Path,
-  packs: List<PlatformManifest>,
-): List<String> {
+internal fun validatePointerTargetParity(repoRoot: Path, packs: List<PlatformManifest>): List<String> {
   val staticTargets = supportingFileTargets(repoRoot)
   val resolvedRoot = repoRoot.toAbsolutePath().normalize()
   val issues = mutableListOf<String>()

@@ -10,11 +10,11 @@ import skillbill.goalrunner.model.UNADDRESSED_FINDING_SEVERITIES
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
-import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 
 @Inject
 class UnaddressedFindingsLedgerService(private val database: DatabaseSessionFactory) {

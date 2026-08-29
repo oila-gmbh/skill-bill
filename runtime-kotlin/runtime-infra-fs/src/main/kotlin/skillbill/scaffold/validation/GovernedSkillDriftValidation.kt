@@ -3,7 +3,6 @@
 package skillbill.scaffold.validation
 
 import skillbill.error.ShellContentContractException
-import skillbill.nativeagent.composition.displayPath
 import skillbill.scaffold.authoring.AuthoringRenderResult
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.discoverTargets
@@ -52,7 +51,7 @@ private fun validateTargetRender(
   val first = renderTarget(root, target, renderer, "first", issues) ?: return
   val second = renderTarget(root, target, renderer, "second", issues) ?: return
   if (first.stdout != second.stdout) {
-    issues += "${displayPath(root, target.contentFile)}: governed skill '${target.skillName}' render is not " +
+    issues += "${driftDisplayPath(root, target.contentFile)}: governed skill '${target.skillName}' render is not " +
       "byte-identical when repeated in memory"
   }
   validateRenderOutput(root, target, first, issues)
@@ -66,7 +65,7 @@ private fun renderTarget(
   issues: MutableList<String>,
 ): AuthoringRenderResult? = runCatching { renderer(root, target) }
   .getOrElse { error ->
-    issues += "${displayPath(root, target.contentFile)}: cannot render governed skill '${target.skillName}' " +
+    issues += "${driftDisplayPath(root, target.contentFile)}: cannot render governed skill '${target.skillName}' " +
       "on $pass pass: ${error.message.orEmpty()}"
     null
   }
@@ -79,10 +78,13 @@ private fun validateRenderOutput(
 ) {
   val wrapper = rendered.blocks.firstOrNull { block -> block.header.startsWith("===== SKILL.md: ") }
   if (wrapper == null) {
-    issues += "${displayPath(root, target.contentFile)}: governed skill '${target.skillName}' render did not emit " +
+    issues += "${driftDisplayPath(
+      root,
+      target.contentFile,
+    )}: governed skill '${target.skillName}' render did not emit " +
       "a SKILL.md block"
   } else if (wrapper.content.isBlank()) {
-    issues += "${displayPath(root, target.contentFile)}: governed skill '${target.skillName}' render emitted an " +
+    issues += "${driftDisplayPath(root, target.contentFile)}: governed skill '${target.skillName}' render emitted an " +
       "empty SKILL.md block"
   }
 }
@@ -100,7 +102,7 @@ private fun validatePointerRenderability(root: Path, issues: MutableList<String>
         val pack = try {
           loadPlatformManifest(packRoot)
         } catch (error: ShellContentContractException) {
-          issues += "${displayPath(root, packRoot)}: cannot parse platform.yaml for drift check: " +
+          issues += "${driftDisplayPath(root, packRoot)}: cannot parse platform.yaml for drift check: " +
             error.message.orEmpty()
           return@forEach
         }
@@ -108,7 +110,7 @@ private fun validatePointerRenderability(root: Path, issues: MutableList<String>
           runCatching { renderPointer(root, pack.packRoot, spec) }
             .onFailure { error ->
               val pointerFile = pack.packRoot.resolve(spec.skillRelativeDir).resolve(spec.name)
-              issues += "${displayPath(root, pointerFile)}: cannot resolve platform.yaml pointer target " +
+              issues += "${driftDisplayPath(root, pointerFile)}: cannot resolve platform.yaml pointer target " +
                 "'${spec.target}': ${error.message.orEmpty()}"
             }
         }
@@ -116,7 +118,7 @@ private fun validatePointerRenderability(root: Path, issues: MutableList<String>
   }
 }
 
-private fun displayPath(root: Path, path: Path): String {
+private fun driftDisplayPath(root: Path, path: Path): String {
   val resolvedRoot = root.toAbsolutePath().normalize()
   val resolvedPath = path.toAbsolutePath().normalize()
   return runCatching { resolvedPath.relativeTo(resolvedRoot).toString().replace('\\', '/') }

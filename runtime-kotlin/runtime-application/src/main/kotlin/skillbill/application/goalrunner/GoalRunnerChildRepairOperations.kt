@@ -12,6 +12,7 @@ import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry
+import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -20,17 +21,16 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import java.nio.file.Path
 import java.time.Instant
-import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 
 internal const val GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY: String = "goal_child_repair_evidence"
 
@@ -47,8 +47,7 @@ internal class GoalRunnerChildRepairOperations(
     issueKey: String,
     subtaskId: Int,
     repoRoot: Path,
-  ): GoalRunnerChildWedgeDiagnosis =
-    wedgeDiagnosis.diagnose(workflowStates, workflowId, issueKey, subtaskId, repoRoot)
+  ): GoalRunnerChildWedgeDiagnosis = wedgeDiagnosis.diagnose(workflowStates, workflowId, issueKey, subtaskId, repoRoot)
 
   @Suppress(
     "LongParameterList",

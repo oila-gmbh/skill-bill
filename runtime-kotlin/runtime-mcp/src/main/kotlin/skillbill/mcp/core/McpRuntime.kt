@@ -1,15 +1,11 @@
-@file:Suppress("TooManyFunctions")
-
 package skillbill.mcp.core
 
-import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
-import skillbill.application.telemetry.model.FeatureVerifyStartedRequest
-import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
-import skillbill.application.telemetry.model.QualityCheckFinishedRequest
-import skillbill.application.telemetry.model.QualityCheckStartedRequest
-import skillbill.application.workflow.model.WorkflowFamilyKind
-import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.review.toReviewFinishedTelemetryPayload
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
+import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.openFeatureTask
 import skillbill.contracts.mcp.McpLearningsSkippedContract
 import skillbill.contracts.mcp.McpOrchestratedPayloadContract
 import skillbill.contracts.mcp.McpReviewImportSkippedContract
@@ -17,21 +13,16 @@ import skillbill.contracts.mcp.McpTriageSkippedContract
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.mcp.learning.toMcpPayload
-import skillbill.mcp.lifecycle.featureVerifyFinished
-import skillbill.mcp.lifecycle.featureVerifyStarted
-import skillbill.mcp.lifecycle.prDescriptionGenerated
-import skillbill.mcp.lifecycle.qualityCheckFinished
-import skillbill.mcp.lifecycle.qualityCheckStarted
 import skillbill.mcp.review.toMcpMap
 import skillbill.mcp.scaffold.McpScaffoldRuntime
 import skillbill.mcp.telemetry.toMcpMap
 import skillbill.mcp.workflow.toMcpMap
 import skillbill.model.RuntimeContext
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.telemetry.model.RemoteStatsRequest
 import java.nio.file.Path
 
 data class McpRuntimeContext(
@@ -142,53 +133,6 @@ object McpRuntime {
   fun goalStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).reviewService.goalStats(dbOverride = null).toMcpMap()
 
-  fun qualityCheckStarted(
-    request: QualityCheckStartedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.qualityCheckStarted(request) }
-
-  fun qualityCheckFinished(
-    request: QualityCheckFinishedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.qualityCheckFinished(request) }
-
-  fun featureVerifyStarted(
-    request: FeatureVerifyStartedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureVerifyStarted(request) }
-
-  fun featureVerifyFinished(
-    request: FeatureVerifyFinishedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureVerifyFinished(request) }
-
-  fun prDescriptionGenerated(
-    request: PrDescriptionGeneratedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.prDescriptionGenerated(request) }
-
-  private fun withAutoSync(
-    context: McpRuntimeContext,
-    block: (McpRuntimeServices) -> Map<String, Any?>,
-  ): Map<String, Any?> {
-    val services = services(context)
-    val payload = block(services)
-    services.telemetryService.autoSync()
-    return payload
-  }
-
-  fun telemetryRemoteStats(
-    request: RemoteStatsRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = services(context).telemetryService.remoteStats(request).toMcpMap()
-
-  fun telemetryProxyCapabilities(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).telemetryService.capabilities().toMcpMap()
-
-  fun captureException(workflowPhase: String, error: Exception, context: McpRuntimeContext) {
-    runCatching { services(context).telemetryService.captureException(workflowPhase, error) }
-  }
-
   fun version(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).systemService.version().toPayload()
 
@@ -220,37 +164,48 @@ object McpRuntime {
   )
 }
 
+data class McpWorkflowOpenArgs(
+  val kind: WorkflowFamilyKind,
+  val sessionId: String = "",
+  val currentStepId: String? = null,
+  val context: McpRuntimeContext = McpRuntimeContext(),
+  val issueKey: String? = null,
+  val repositoryIdentity: String? = null,
+  val governedSpecPath: String? = null,
+)
+
 object McpWorkflowRuntime {
-  @Suppress("LongParameterList")
-  fun open(
-    kind: WorkflowFamilyKind,
-    sessionId: String = "",
-    currentStepId: String? = null,
-    context: McpRuntimeContext = McpRuntimeContext(),
-    issueKey: String? = null,
-    repositoryIdentity: String? = null,
-    governedSpecPath: String? = null,
-  ): Map<String, Any?> {
-    val runtimeServices = services(context)
-    val open = if (kind != WorkflowFamilyKind.VERIFY && issueKey != null) {
+  fun open(args: McpWorkflowOpenArgs): Map<String, Any?> {
+    val runtimeServices = services(args.context)
+    val open = if (args.kind != WorkflowFamilyKind.VERIFY && args.issueKey != null) {
       runtimeServices.workflowService.openFeatureTask(
-        kind,
-        sessionId,
-        currentStepId,
-        null,
-        issueKey,
-        requireNotNull(repositoryIdentity) { "Feature-task workflow opens require repository_identity." },
-        requireNotNull(governedSpecPath) { "Feature-task workflow opens require governed_spec_path." },
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = args.kind,
+          sessionId = args.sessionId,
+          currentStepId = args.currentStepId,
+          dbOverride = null,
+          issueKey = args.issueKey,
+          repositoryIdentity = requireNotNull(args.repositoryIdentity) {
+            "Feature-task workflow opens require repository_identity."
+          },
+          governedSpecPath = requireNotNull(args.governedSpecPath) {
+            "Feature-task workflow opens require governed_spec_path."
+          },
+          routeScope = FeatureTaskRouteScope.STANDALONE,
+        ),
       )
     } else {
       runtimeServices.workflowService.open(
-        kind,
-        sessionId = sessionId,
-        currentStepId = currentStepId,
-        dbOverride = null,
-        issueKey = issueKey,
-        repositoryIdentity = repositoryIdentity,
-        governedSpecPath = governedSpecPath,
+        WorkflowServiceOpenArgs(
+          kind = args.kind,
+          sessionId = args.sessionId,
+          currentStepId = args.currentStepId,
+          dbOverride = null,
+          issueKey = args.issueKey,
+          repositoryIdentity = args.repositoryIdentity,
+          governedSpecPath = args.governedSpecPath,
+          routeScope = FeatureTaskRouteScope.STANDALONE,
+        ),
       )
     }
     return open.toMcpMap(runtimeServices.workflowService.goalObservabilityEventValidator)

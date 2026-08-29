@@ -6,15 +6,15 @@ import skillbill.scaffold.runtime.RepoValidationRuntime
 import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.testing.seedConformingPlatformPack
+import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
-import Path
+import java.nio.file.Path
 import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.testsupport.SkillClassFixtures
 
 @Suppress("LargeClass")
 class RepoValidationRuntimeTest {

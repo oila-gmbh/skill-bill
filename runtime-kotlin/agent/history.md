@@ -1,3 +1,12 @@
+## [2026-08-29] SKILL-220 subtask 8 — Documentation reconciliation
+Areas: docs/code-principles.md, AGENTS.md, CLAUDE.md, runtime-kotlin/{agent,ARCHITECTURE.md}
+- Published `docs/code-principles.md` with rule/shape/anti-pattern/reference sections for type modeling, failures, capabilities, single source of truth, package layout, concurrency, composition, build/tooling, imports, and review-only principles; each section cites delivered paths from subtasks 1–7.
+- Added AGENTS/CLAUDE Coding Conventions (package clustering, FQN rule, 500-line ceiling, subtask-7 guards). Recorded 500-line, FQN keep-list, and review-only enforcement boundaries in `agent/decisions.md` (capability vocabulary decision already present from subtask 3).
+- Audit remediation: rewrote `ARCHITECTURE.md` Package Ownership for post-clustering `skillbill.workflow.{engine,decomposition,goal,taskruntime,idestatus,specsource,verify}` clusters; removed dissolved `skillbill.workflow.implement` subsystem entry; corrected open-boundary `toWireMap` FQN to `skillbill.workflow.decomposition.toWireMap`.
+- Validate gate passed (`bill-code-check/collect-all` + confirmation). Parent ACs satisfied; detekt complexity pinning remains SKILL-221 non-goal.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-29] SKILL-220 subtask 7 — Principle enforcement and build-convention promotion
 Areas: runtime-core/architecture, build-logic/convention, runtime-contracts, runtime-infra-fs, runtime-application/{goalrunner,review}
 - Six architecture guards (package clustering, 500-line ceiling, failure-code totality, typed parse boundaries, inline FQN, convention reapplication) plus PrincipleEnforcementInventory; each fails a synthetic fixture and passes the clean tree.

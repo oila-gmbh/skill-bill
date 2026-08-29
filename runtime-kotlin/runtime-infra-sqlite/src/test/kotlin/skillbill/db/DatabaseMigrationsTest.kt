@@ -13,9 +13,10 @@ import skillbill.error.InvalidWorkListRowError
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import java.nio.file.Files
 import java.nio.file.Path
-import Connection
+import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
+import java.sql.Statement
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -26,7 +27,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import java.sql.Statement
 
 @Suppress("LargeClass")
 class DatabaseMigrationsTest {
@@ -1906,20 +1906,19 @@ class DatabaseMigrationsTest {
     }
   }
 
-  private fun reviewSessionId(connection: Connection, reviewRunId: String): String =
-    connection.prepareStatement(
-      """
+  private fun reviewSessionId(connection: Connection, reviewRunId: String): String = connection.prepareStatement(
+    """
       SELECT review_session_id
       FROM review_runs
       WHERE review_run_id = ?
-      """.trimIndent(),
-    ).use { statement ->
-      statement.setString(1, reviewRunId)
-      statement.executeQuery().use { resultSet ->
-        resultSet.next()
-        resultSet.getString(1)
-      }
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, reviewRunId)
+    statement.executeQuery().use { resultSet ->
+      resultSet.next()
+      resultSet.getString(1)
     }
+  }
 
   private fun feedbackEventsSchemaSql(connection: Connection): String = connection.prepareStatement(
     """
@@ -2303,15 +2302,14 @@ class DatabaseMigrationsTest {
     }
   }
 
-  private fun producerEvidenceDdl(connection: Connection): String =
-    connection.createStatement().use { statement ->
-      statement.executeQuery(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'producer_output_evidence'",
-      ).use { rows ->
-        check(rows.next()) { "producer_output_evidence is absent." }
-        rows.getString("sql")
-      }
+  private fun producerEvidenceDdl(connection: Connection): String = connection.createStatement().use { statement ->
+    statement.executeQuery(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'producer_output_evidence'",
+    ).use { rows ->
+      check(rows.next()) { "producer_output_evidence is absent." }
+      rows.getString("sql")
     }
+  }
 
   private fun producerEvidenceRows(connection: Connection): List<ProducerEvidenceRow> =
     connection.createStatement().use { statement ->

@@ -3,12 +3,12 @@ package skillbill.application.goalrunner
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.contracts.JsonSupport
 import skillbill.ports.db.UnitOfWork
+import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.context.model.requireRepositoryRelativePath
+import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.review.ReviewFindingActionability
-import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 

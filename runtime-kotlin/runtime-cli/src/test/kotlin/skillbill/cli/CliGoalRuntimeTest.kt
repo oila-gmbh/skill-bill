@@ -1,8 +1,10 @@
 package skillbill.cli
 
+import kotlinx.serialization.json.JsonElement
 import skillbill.SkillBillVersion
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.goal.GOAL_EXIT_BLOCKED
 import skillbill.cli.model.CliExecutionResult
@@ -20,6 +22,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
+import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
@@ -36,6 +39,7 @@ import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
@@ -54,9 +58,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
-import kotlinx.serialization.json.JsonElement
-import skillbill.ports.agentrun.model.SkillRunRequest
 
 @Suppress("LargeClass") // one CLI surface per suite; splitting would scatter goal-verb coverage
 class CliGoalRuntimeTest {
@@ -1564,8 +1565,10 @@ private fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
   )
   val runtimeWorkflow = assertIs<WorkflowOpenResult.Ok>(
     component.workflowService.open(
-      kind = WorkflowFamilyKind.TASK_RUNTIME,
-      dbOverride = fixture.dbPath.toString(),
+      WorkflowServiceOpenArgs(
+        kind = WorkflowFamilyKind.TASK_RUNTIME,
+        dbOverride = fixture.dbPath.toString(),
+      ),
     ),
   )
   DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
@@ -1832,9 +1835,7 @@ internal class GoalFixtureAgentRunLauncher(
     )
   }
 
-  private fun planningLaunchOutcome(
-    skillRequest: SkillRunRequest,
-  ): AgentRunLaunchOutcome {
+  private fun planningLaunchOutcome(skillRequest: SkillRunRequest): AgentRunLaunchOutcome {
     val phaseId = Regex("""Phase: (\w+) \(""")
       .find(skillRequest.promptOverride.orEmpty())
       ?.groupValues?.get(1)
@@ -1849,10 +1850,7 @@ internal class GoalFixtureAgentRunLauncher(
     )
   }
 
-  private fun startSubtaskWorkflow(
-    skillRequest: SkillRunRequest,
-    dbPath: String,
-  ): String {
+  private fun startSubtaskWorkflow(skillRequest: SkillRunRequest, dbPath: String): String {
     val continuation = requireNotNull(skillRequest.goalContinuation) {
       "Goal child launch requires goalContinuation with a pre-opened workflow id."
     }
@@ -2043,13 +2041,15 @@ private fun runtimeWorkflowUpdate(
   update: WorkflowUpdateFixture,
   launcher: AgentRunLauncher = NoopGoalTestAgentRunLauncher,
 ): Map<String, Any?> = RuntimeWorkflowTestSupport.update(
-  dbPath = update.dbPath,
-  workflowId = update.workflowId,
-  workflowStatus = update.workflowStatus,
-  currentStepId = update.currentStep,
-  stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(update.stepUpdates),
-  artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(update.artifactsPatch),
-  context = fixture.context(launcher = launcher),
+  RuntimeWorkflowTestSupport.UpdateArgs(
+    dbPath = update.dbPath,
+    workflowId = update.workflowId,
+    workflowStatus = update.workflowStatus,
+    currentStepId = update.currentStep,
+    stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(update.stepUpdates),
+    artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(update.artifactsPatch),
+    context = fixture.context(launcher = launcher),
+  ),
 )
 
 private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(

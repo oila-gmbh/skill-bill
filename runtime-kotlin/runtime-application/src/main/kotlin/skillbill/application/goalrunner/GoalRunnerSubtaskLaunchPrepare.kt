@@ -86,13 +86,15 @@ internal class GoalRunnerSubtaskLaunchPrepare(
     return GoalRunnerIterationResult(
       state = saved,
       report = stopped(
-        issueKey = saved.manifest.issueKey,
-        attempted = emptyList(),
-        subtaskId = subtaskId,
-        reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason = reason,
-        workflowId = state.manifest.workflowIdFor(subtaskId),
-        lastResumableStep = "preplan",
+        StoppedReportArgs(
+          issueKey = saved.manifest.issueKey,
+          attempted = emptyList(),
+          subtaskId = subtaskId,
+          reason = GoalRunnerStopReason.BLOCKED,
+          blockedReason = reason,
+          workflowId = state.manifest.workflowIdFor(subtaskId),
+          lastResumableStep = "preplan",
+        ),
       ),
     )
   }
@@ -126,12 +128,7 @@ internal class GoalRunnerSubtaskLaunchPrepare(
     return blockedReviewBaselineIteration(state, targetSubtaskId, reason, request)
   }
 
-  fun emitGoalReviewSummaries(
-    issueKey: String,
-    subtaskId: Int,
-    workflowId: String,
-    request: GoalRunnerRunRequest,
-  ) {
+  fun emitGoalReviewSummaries(issueKey: String, subtaskId: Int, workflowId: String, request: GoalRunnerRunRequest) {
     outcomeStore.unemittedGoalReviewPasses(workflowId, request.dbPathOverride).forEach { pass ->
       request.eventSink.emit(
         GoalRunnerRunEvent.SubtaskReviewSummary(
@@ -273,13 +270,15 @@ internal class GoalRunnerSubtaskLaunchPrepare(
     return GoalRunnerIterationResult(
       state = saved,
       report = stopped(
-        issueKey = saved.manifest.issueKey,
-        attempted = emptyList(),
-        subtaskId = subtaskId,
-        reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason = reason,
-        workflowId = null,
-        lastResumableStep = "create_branch",
+        StoppedReportArgs(
+          issueKey = saved.manifest.issueKey,
+          attempted = emptyList(),
+          subtaskId = subtaskId,
+          reason = GoalRunnerStopReason.BLOCKED,
+          blockedReason = reason,
+          workflowId = null,
+          lastResumableStep = "create_branch",
+        ),
       ),
     )
   }

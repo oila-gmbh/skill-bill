@@ -4,9 +4,9 @@ import skillbill.install.model.AgentTarget
 import skillbill.install.support.createNewSymlinkWithGuidance
 import skillbill.install.support.createReplacementSymlinkWithGuidance
 import skillbill.nativeagent.rendering.NativeAgentProvider
+import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.io.FileNotFoundException
 
 internal fun installNativeAgentFile(
   source: Path,

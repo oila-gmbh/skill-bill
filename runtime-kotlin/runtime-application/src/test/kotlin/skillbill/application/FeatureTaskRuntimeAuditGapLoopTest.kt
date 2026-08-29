@@ -1,24 +1,23 @@
 package skillbill.application
 
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.ports.diff.DiffResolverPort
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import java.nio.file.Path
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import skillbill.ports.diff.DiffResolverPort
-import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY
-import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
-import java.nio.file.Path
-import kotlin.io.path.createTempDirectory
 
 // The audit-gap context-reuse loop exercised over the production transition topology
 // (audit --gaps_found--> implement -> review -> audit), with a
@@ -119,7 +118,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           commitMessagesObservedAtReview = git.createCommitMessages + git.amendCommitMessages
-          EMPTY.run(request)
+          FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
         },
       ),
     )
@@ -663,7 +662,12 @@ internal fun auditGapsWithoutCanonicalRefsOutput(): String = """
   }
 """.trimIndent()
 
-internal fun auditTwoGapsOutput(): String = """
+internal fun auditTwoGapsOutput(): String {
+  val valueLiteral =
+    "\"{\\\"gaps\\\":[{\\\"criterion\\\":\\\"AC-003\\\",\\\"note\\\":\\\"$AUDIT_GAP_MESSAGE\\\"}," +
+      "{\\\"criterion\\\":\\\"AC-002\\\",\\\"note\\\":\\\"$AUDIT_GAP_MESSAGE\\\"}]," +
+      "\\\"non_blocking_findings\\\":[]}\""
+  return """
   {
     "contract_version": "0.6",
     "phase_id": "audit",
@@ -671,10 +675,11 @@ internal fun auditTwoGapsOutput(): String = """
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "value": "{\"gaps\":[{\"criterion\":\"AC-003\",\"note\":\"$AUDIT_GAP_MESSAGE\"},{\"criterion\":\"AC-002\",\"note\":\"$AUDIT_GAP_MESSAGE\"}],\"non_blocking_findings\":[]}"
+      "value": $valueLiteral
     }
   }
-""".trimIndent()
+  """.trimIndent()
+}
 
 internal fun auditSatisfiedOutput(): String = """
   {

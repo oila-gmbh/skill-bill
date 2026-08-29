@@ -1,42 +1,44 @@
 package skillbill.scaffold.substance
 
-import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.platformpack.CODE_REVIEW_FALLBACK_CAPABILITY
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import java.math.BigDecimal
 import java.math.RoundingMode
-import java.nio.file.Files
 import java.nio.file.Path
-import java.text.Normalizer
-import java.util.Locale
-import kotlin.io.path.isDirectory
-import kotlin.io.path.isRegularFile
-import kotlin.io.path.name
-import kotlin.io.path.relativeTo
-
 
 const val PLATFORM_PACK_SUBSTANCE_CONTRACT_VERSION = "0.1"
 
+private const val DEFAULT_MINIMUM_RULES = 10
+private const val DEFAULT_MINIMUM_CLUSTERS = 3
+private const val DEFAULT_MINIMUM_QUALITY_FACETS = 7
+private const val DEFAULT_SHARED_SHINGLE_PERCENT = 35
+private const val DEFAULT_PAIR_SIMILARITY_PERCENT = 65
+private const val PERCENT_SCALE = 100
+private const val PERCENTAGE_DECIMAL_PLACES = 2
+
 data class SubstancePolicy(
-  val minimumRules: Int = 10,
-  val minimumClusters: Int = 3,
-  val minimumQualityFacets: Int = 7,
-  val maximumSharedShingles: Fraction = Fraction(35, 100),
-  val maximumPairSimilarity: Fraction = Fraction(65, 100),
+  val minimumRules: Int = DEFAULT_MINIMUM_RULES,
+  val minimumClusters: Int = DEFAULT_MINIMUM_CLUSTERS,
+  val minimumQualityFacets: Int = DEFAULT_MINIMUM_QUALITY_FACETS,
+  val maximumSharedShingles: Fraction = Fraction(DEFAULT_SHARED_SHINGLE_PERCENT, PERCENT_SCALE),
+  val maximumPairSimilarity: Fraction = Fraction(DEFAULT_PAIR_SIMILARITY_PERCENT, PERCENT_SCALE),
 )
 
 data class Fraction(val numerator: Int, val denominator: Int) : Comparable<Fraction> {
   override fun compareTo(other: Fraction): Int =
     numerator.toLong() * other.denominator compareTo other.numerator.toLong() * denominator
 
-  fun percentage(): String = BigDecimal(numerator).multiply(BigDecimal(100))
-    .divide(BigDecimal(denominator), 2, RoundingMode.HALF_UP).toPlainString() + "%"
+  fun percentage(): String = BigDecimal(numerator).multiply(BigDecimal(PERCENT_SCALE))
+    .divide(BigDecimal(denominator), PERCENTAGE_DECIMAL_PLACES, RoundingMode.HALF_UP).toPlainString() + "%"
 }
 
 internal enum class AuthoredFileRole { BASELINE, QUALITY_CHECK, SPECIALIST, SIDECAR }
 
-internal data class AuthoredFile(val pack: String, val role: AuthoredFileRole, val area: String?, val path: Path, val shingles: Set<String>)
+internal data class AuthoredFile(
+  val pack: String,
+  val role: AuthoredFileRole,
+  val area: String?,
+  val path: Path,
+  val shingles: Set<String>,
+)
 
 data class SpecialistMetric(
   val pack: String,
@@ -85,4 +87,3 @@ data class PlatformPackSubstanceReport(
   val violations: List<SubstanceViolation>,
   val auditErrors: List<String>,
 )
-

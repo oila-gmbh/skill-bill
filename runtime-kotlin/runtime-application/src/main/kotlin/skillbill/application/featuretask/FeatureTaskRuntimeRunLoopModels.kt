@@ -1,155 +1,26 @@
 package skillbill.application.featuretask
 
-import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolved
-import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
-import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
-import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
-import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
-import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
-import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
-import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
-import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
-import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
-import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
-import skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher
-import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
-import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
-import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
-import skillbill.application.featuretask.validation.model.ValidationGateResolution
-import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
-import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
-import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
-import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.featuretask.model.FeatureTaskRuntimePlanningStopDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeResolvedPhaseAgent
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
-import skillbill.application.review.toProjectionPayload
-import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseCompactionDirective
 import skillbill.config.model.PhaseModelDirective
-import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
-import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
-import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
-import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
-import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
-import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
-import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
-import skillbill.install.model.InstallAgent
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.diagnostics.model.ProducerOutputEvidence
-import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
-import skillbill.ports.workflow.gitops.captureIndexState
-import skillbill.ports.workflow.gitops.headCommitMessage
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.pathContentIdentities
-import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprint
-import skillbill.ports.workflow.gitops.repositoryFingerprint
-import skillbill.ports.workflow.gitops.repositoryOwnedPaths
-import skillbill.ports.workflow.gitops.restoreIndexState
-import skillbill.ports.workflow.gitops.runtimePhaseChangedPathsBetweenCommits
-import skillbill.ports.workflow.gitops.runtimePhaseHeadCommit
-import skillbill.ports.workflow.gitops.stagePaths
-import skillbill.ports.workflow.gitops.stagedPaths
-import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.context.model.SpecIntentProjectionResolveRequest
-import skillbill.review.context.model.SpecIntentResolution
-import skillbill.review.model.ReviewFindingVerdict
-import skillbill.telemetry.estimation.estimateTokens
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.goal.model.ValidationDepth
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeQualityGateRouting
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
-import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
-import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
-import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_NO_PROGRESS
-import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD
-import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
-import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgressDecision
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
-import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
-import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
-import skillbill.workflow.goal.model.GoalSubtaskReviewState
-import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
-import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
-import skillbill.workflow.taskruntime.model.ReviewPassResolution
-import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
-import skillbill.workflow.taskruntime.model.boundPriorGapNotes
-import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
-import skillbill.workflow.taskruntime.model.requireAcceptedOutput
-import skillbill.workflow.taskruntime.model.upsertRepairReceipt
-import skillbill.workflow.taskruntime.model.validateDispositionCoverage
-import java.nio.file.Path
-import kotlin.time.Duration.Companion.minutes
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
-import skillbill.application.review.model.DiffResolutionException
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
-import java.time.Instant
-import skillbill.error.InvalidReviewContextSchemaError
-import skillbill.review.context.model.ReviewContextBudgetExceededException
-import skillbill.application.review.RuntimeOwnedReviewMode
-import skillbill.application.review.model.StackDetectionException
-import skillbill.application.goalrunner.StructuredGoalReviewFinding
-import skillbill.workflow.taskruntime.model.UNPROVEN_REPOSITORY_FINGERPRINT
-import skillbill.error.UnreadableSpecIntentProjectionError
-import skillbill.application.review.model.UsageValidationException
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
-
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 
 internal data class RemediationCheckpointCommit(val commitSha: String, val parentSha: String?)
 
@@ -207,17 +78,71 @@ internal data class ReviewDriverFailed(
     FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
 ) : ReviewDriverAttempt()
 
+internal data class PhaseAttemptLoopCarryForward(
+  var priorCorrection: PriorAttemptCorrection? = null,
+  var priorUnaccountedFindings: Set<String>? = null,
+  var priorUnresolvedFindings: Set<String> = emptySet(),
+  var itemCoverageSegmentCount: Int = 0,
+)
+
 internal class PhaseAttemptLoopState(
   var iteration: Int,
   var malformedAttemptCount: Int,
   var outputGateFailures: Int,
   var semanticIteration: Int,
   var continuationSegmentCount: Int,
-  var priorCorrection: PriorAttemptCorrection? = null,
-  var priorUnaccountedFindings: Set<String>? = null,
-  var priorUnresolvedFindings: Set<String> = emptySet(),
-  var itemCoverageSegmentCount: Int = 0,
-)
+  var carryForward: PhaseAttemptLoopCarryForward = PhaseAttemptLoopCarryForward(),
+) {
+  var priorCorrection: PriorAttemptCorrection?
+    get() = carryForward.priorCorrection
+    set(value) {
+      carryForward.priorCorrection = value
+    }
+  var priorUnaccountedFindings: Set<String>?
+    get() = carryForward.priorUnaccountedFindings
+    set(value) {
+      carryForward.priorUnaccountedFindings = value
+    }
+  var priorUnresolvedFindings: Set<String>
+    get() = carryForward.priorUnresolvedFindings
+    set(value) {
+      carryForward.priorUnresolvedFindings = value
+    }
+  var itemCoverageSegmentCount: Int
+    get() = carryForward.itemCoverageSegmentCount
+    set(value) {
+      carryForward.itemCoverageSegmentCount = value
+    }
+}
+
+internal data class CapturedPhaseOutput(
+  val text: String,
+  val bytes: ByteArray,
+  val truncated: Boolean,
+  val byteSize: Long,
+  val sha256: String,
+) {
+  companion object {
+    fun fromBytes(bytes: ByteArray, text: String = bytes.decodeToString()): CapturedPhaseOutput {
+      val byteSize = bytes.size.toLong()
+      return CapturedPhaseOutput(
+        text = text,
+        bytes = bytes,
+        truncated = false,
+        byteSize = byteSize,
+        sha256 = RejectedOutputDiagnosticService.sha256(bytes),
+      )
+    }
+
+    fun fromLaunchCaptured(captured: LaunchResult.Captured): CapturedPhaseOutput = CapturedPhaseOutput(
+      text = captured.stdout,
+      bytes = captured.stdoutBytes,
+      truncated = captured.stdoutTruncated,
+      byteSize = captured.stdoutByteSize,
+      sha256 = captured.stdoutSha256,
+    )
+  }
+}
 
 internal data class FixLoopBranchContext(
   val run: PhaseRun,
@@ -230,12 +155,105 @@ internal data class FixLoopBranchContext(
 internal class ValidatedOutputCapture(
   val run: PhaseRun,
   val iteration: Int,
-  val outputText: String,
-  val outputBytes: ByteArray,
-  val outputTruncated: Boolean,
-  val outputByteSize: Long,
-  val outputSha256: String,
+  val captured: CapturedPhaseOutput,
   val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+) {
+  val outputText: String get() = captured.text
+  val outputBytes: ByteArray get() = captured.bytes
+  val outputTruncated: Boolean get() = captured.truncated
+  val outputByteSize: Long get() = captured.byteSize
+  val outputSha256: String get() = captured.sha256
+}
+
+internal data class RejectedOutputTargeting(
+  val phaseId: String,
+  val agentId: String,
+  val model: String,
+  val path: String,
+  val repairTurn: Int,
+)
+
+internal data class RecordRejectedOutputArgs(
+  val run: PhaseRun,
+  val iteration: Int,
+  val rule: String,
+  val reason: String,
+  val captured: CapturedPhaseOutput,
+  val targeting: RejectedOutputTargeting,
+)
+
+internal data class CorrectiveRepairRejectionDetail(
+  val rule: String,
+  val path: String,
+  val payloadFreeConstraint: String,
+  val acceptedAfterStructuralRepair: Boolean = false,
+  val structuralRepairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+)
+
+internal data class CorrectiveRepairRejectionArgs(
+  val run: PhaseRun,
+  val iteration: Int,
+  val captured: CapturedPhaseOutput,
+  val diagnosticWrite: FeatureTaskRuntimeRejectedOutputWrite,
+  val rejection: CorrectiveRepairRejectionDetail,
+)
+
+internal data class GateOutputArgs(
+  val run: PhaseRun,
+  val iteration: Int,
+  val captured: CapturedPhaseOutput,
+  val observability: FeatureTaskRuntimeRunObservability,
+  val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+)
+
+internal data class SettledOutputContext(
+  val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  val observability: FeatureTaskRuntimeRunObservability,
+  val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  val captured: CapturedPhaseOutput,
+)
+
+internal data class SettleValidatedOutputArgs(
+  val run: PhaseRun,
+  val iteration: Int,
+  val output: SettledOutputContext,
+)
+
+internal data class PhaseStateWriteArgs(
+  val run: PhaseRun,
+  val iteration: Int,
+  val status: String,
+  val finished: Boolean,
+  val outputArtifact: String?,
+)
+
+internal data class PhaseStateRequestExtras(
+  val fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+  val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
+  val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+  val repositoryFingerprint: String? = null,
+  val launched: LaunchedModelDirective? = null,
+  val reviewRunId: String? = null,
+)
+
+internal data class PhaseStateRequestArgs(
+  val write: PhaseStateWriteArgs,
+  val extras: PhaseStateRequestExtras = PhaseStateRequestExtras(),
+)
+
+internal data class PersistPhaseArgs(
+  val write: PhaseStateWriteArgs,
+  val fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+  val launched: LaunchedModelDirective? = null,
+  val reviewRunId: String? = null,
+)
+
+internal data class PhaseReviewPersistenceArgs(
+  val run: PhaseRun,
+  val iteration: Int,
+  val observability: FeatureTaskRuntimeRunObservability,
   val fileManifest: FeatureTaskRuntimePhaseFileManifest,
 )
 
@@ -347,4 +365,3 @@ internal sealed interface RepairReceiptSettlement {
     fun writeFailed(reason: String): RepairReceiptSettlement = WriteFailed(reason)
   }
 }
-

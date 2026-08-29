@@ -1,7 +1,5 @@
 package skillbill.workflow.taskruntime.model
 
-import java.security.MessageDigest
-
 const val FEATURE_TASK_RUNTIME_CORRECTIVE_REPAIR_CONTEXT_CONTRACT_VERSION: String = "0.1"
 
 data class FeatureTaskRuntimeCorrectiveRepairContext(

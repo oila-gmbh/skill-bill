@@ -8,13 +8,14 @@ class ProductionFileLineCeilingArchitectureTest {
   fun `production Kotlin files stay within the line ceiling`() {
     val violations = ArchitectureScanSupport.productionLineCeilingViolations(
       productionRoots = listOf("runtime-kotlin", "intellij-plugin"),
-      ceiling = PrincipleEnforcementInventory.productionLineCeiling,
+      ceiling = PrincipleEnforcementInventory.PRODUCTION_LINE_CEILING,
       exemptions = PrincipleEnforcementInventory.productionLineCeilingExemptions,
     )
     assertEquals(
       emptyList(),
       violations,
-      "Production files must stay at or below ${PrincipleEnforcementInventory.productionLineCeiling} lines unless explicitly exempted.",
+      "Production files must stay at or below ${PrincipleEnforcementInventory.PRODUCTION_LINE_CEILING} lines unless" +
+        "explicitly exempted.",
     )
   }
 
@@ -24,13 +25,14 @@ class ProductionFileLineCeilingArchitectureTest {
     val violations = ArchitectureScanSupport.productionLineCeilingViolationsInSource(
       relativePath = "runtime-kotlin/runtime-example/src/main/kotlin/Example.kt",
       source = fixtureLines,
-      ceiling = PrincipleEnforcementInventory.productionLineCeiling,
+      ceiling = PrincipleEnforcementInventory.PRODUCTION_LINE_CEILING,
       exemptions = PrincipleEnforcementInventory.productionLineCeilingExemptions,
     )
     assertEquals(
       listOf(
         "runtime-kotlin/runtime-example/src/main/kotlin/Example.kt has 501 lines; split it below the " +
-          "${PrincipleEnforcementInventory.productionLineCeiling}-line ceiling or add an explicit exemption with reason.",
+          "${PrincipleEnforcementInventory.PRODUCTION_LINE_CEILING}-line ceiling or add an explicit exemption with " +
+          "reason.",
       ),
       violations,
       "Regression if an oversized production file no longer names its line count and split expectation.",

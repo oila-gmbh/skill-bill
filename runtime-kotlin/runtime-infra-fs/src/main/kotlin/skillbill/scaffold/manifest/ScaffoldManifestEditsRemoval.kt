@@ -2,28 +2,17 @@
 
 package skillbill.scaffold.manifest
 
-import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Path
 
-private val AREAS_EMPTY_INLINE_PATTERN =
-  Regex("^declared_code_review_areas:\\s*\\[\\s*\\]\\s*$", RegexOption.MULTILINE)
 private val AREAS_LIST_PATTERN =
   Regex("^declared_code_review_areas:\\s*\\n((?:[ \\t]+-[^\\n]*\\n)*)", RegexOption.MULTILINE)
-private val DECLARED_FILES_EMPTY_INLINE_PATTERN =
-  Regex("^(declared_files:\\n(?:(?:[ \\t]+[^\\n]*\\n)*?))(  areas:\\s*\\{\\s*\\}\\s*)", RegexOption.MULTILINE)
 private val AREAS_FILES_PATTERN =
   Regex("^(declared_files:\\n(?:(?:[ \\t]+[^\\n]*\\n)*?))(  areas:\\n)((?:    [^\\n]+\\n)*)", RegexOption.MULTILINE)
-private val AREA_METADATA_EMPTY_INLINE_PATTERN =
-  Regex("^area_metadata:\\s*\\{\\s*\\}\\s*$", RegexOption.MULTILINE)
 private val AREA_METADATA_BLOCK_PATTERN =
   Regex("^(area_metadata:\\n)((?:  [^\\n]+\\n|    [^\\n]+\\n)*)", RegexOption.MULTILINE)
 private val QUALITY_CHECK_KEY_PATTERN =
   Regex("^declared_quality_check_file:\\s*(.+)$", RegexOption.MULTILINE)
-private val DECLARED_FILES_BLOCK_PATTERN =
-  Regex("^(declared_files:\\n(?:(?:[ \\t]+[^\\n]*\\n)*))", RegexOption.MULTILINE)
-private val TOP_LEVEL_KEY_PATTERN = Regex("^[^\\s#][^:\\n]*:", RegexOption.MULTILINE)
-
 
 internal fun removeCodeReviewArea(manifestPath: Path, area: String) {
   val original = manifestPath.toFile().readText()

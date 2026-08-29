@@ -1,6 +1,8 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.ReviewPreparationRequest
+import skillbill.application.review.model.ReviewPreparationResult
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
@@ -18,11 +20,14 @@ import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
+import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
+import skillbill.review.context.model.ReviewRuleReference
 import skillbill.review.context.model.SpecIntentAbsenceReason
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.plan.ReviewCommitLaneRoutingPolicy
@@ -30,11 +35,6 @@ import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutedLane
 import java.nio.file.Path
 import java.security.MessageDigest
-import skillbill.review.context.model.ReviewBuildTestFact
-import skillbill.review.context.model.ReviewLearningsReference
-import skillbill.application.review.model.ReviewPrelaunchExpansion
-import skillbill.application.review.model.ReviewPreparationResult
-import skillbill.review.context.model.ReviewRuleReference
 
 /** Compiles the already-resolved parallel-review facts into validated assignment-owned launches. */
 internal object ParallelReviewPreparationCompiler {
@@ -201,8 +201,7 @@ internal object ParallelReviewPreparationCompiler {
           emptyList<ReviewLearningsReference>()
       },
       buildTestFacts = object : ReviewBuildTestFactsPort {
-        override fun resolveBuildTestFacts(scope: ReviewScopeFacts) =
-          emptyList<ReviewBuildTestFact>()
+        override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = emptyList<ReviewBuildTestFact>()
       },
       laneSelection = object : ReviewLaneSelectionPort {
         override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = selection

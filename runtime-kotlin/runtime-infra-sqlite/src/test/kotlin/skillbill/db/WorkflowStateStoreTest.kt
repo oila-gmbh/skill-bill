@@ -14,6 +14,7 @@ import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
+import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Instant
@@ -26,7 +27,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import java.nio.file.Path
 
 @Suppress("LargeClass") // cohesive SQLite workflow-store test suite
 class WorkflowStateStoreTest {
@@ -958,7 +958,8 @@ private fun auditRepairArtifactsJson(contractVersion: String = "0.2"): String = 
     "contract_version":"$contractVersion",
     "accepted_plans":[{"contract_version":"0.2","gaps":[{
       "gap_id":"ac-001-gap-1","acceptance_criterion_ref":"AC-001",
-      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
+      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent",
+        "artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
       "diagnosis":"Diagnosis","affected_boundary":"runtime","repair_items":[{
         "repair_item_id":"ac-001-gap-1-item-1","intended_outcome":"Outcome",
         "implementation_actions":["Implement"],"affected_paths_or_symbols":["src/Foo.kt"],
@@ -967,7 +968,8 @@ private fun auditRepairArtifactsJson(contractVersion: String = "0.2"): String = 
     }]}],
     "latest_plan":{"contract_version":"0.2","gaps":[{
       "gap_id":"ac-001-gap-1","acceptance_criterion_ref":"AC-001",
-      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
+      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent",
+        "artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
       "diagnosis":"Diagnosis","affected_boundary":"runtime","repair_items":[{
         "repair_item_id":"ac-001-gap-1-item-1","intended_outcome":"Outcome",
         "implementation_actions":["Implement"],"affected_paths_or_symbols":["src/Foo.kt"],

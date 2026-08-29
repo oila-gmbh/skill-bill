@@ -7,15 +7,15 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 
 class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
@@ -182,14 +182,13 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
   @Test
   fun `shared evidence projection size is independent of branch diff size for review and audit`() {
-    fun evidence(hunksPerFile: Int) =
-      FeatureTaskRuntimeSharedReviewEvidenceReference(
-        storePath = ".skill-bill/run-evidence/wf/fp",
-        checkpointFingerprint = "fp",
-        baseRef = "base",
-        headRef = "head",
-        fileHunkIndex = (1..8).map { "modified f$it.kt hunks=$hunksPerFile" },
-      )
+    fun evidence(hunksPerFile: Int) = FeatureTaskRuntimeSharedReviewEvidenceReference(
+      storePath = ".skill-bill/run-evidence/wf/fp",
+      checkpointFingerprint = "fp",
+      baseRef = "base",
+      headRef = "head",
+      fileHunkIndex = (1..8).map { "modified f$it.kt hunks=$hunksPerFile" },
+    )
 
     fun projectionBytes(phaseId: String, hunksPerFile: Int): Int {
       val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.getValue(phaseId)

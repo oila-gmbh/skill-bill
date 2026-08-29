@@ -1,16 +1,8 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.workflow.engine.model.WorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCeremony
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 
@@ -143,16 +135,15 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
     required: Boolean = true,
-  ): PhaseHandoffProjectionDeclaration =
-    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.phaseProjection(
-      consumerPhaseId,
-      producingPhaseId,
-      name,
-      contractId,
-      fields,
-      checkpointPolicy,
-      required,
-    )
+  ): PhaseHandoffProjectionDeclaration = FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.phaseProjection(
+    consumerPhaseId,
+    producingPhaseId,
+    name,
+    contractId,
+    fields,
+    checkpointPolicy,
+    required,
+  )
 
   fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> =
     FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.auditRemediationProjections()
@@ -162,12 +153,11 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     producingPhaseId: String = PHASE_PREPLAN,
     checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-  ): PhaseHandoffProjectionDeclaration =
-    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.phaseProseDeclaration(
-      consumerPhaseId,
-      producingPhaseId,
-      checkpointPolicy,
-    )
+  ): PhaseHandoffProjectionDeclaration = FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.phaseProseDeclaration(
+    consumerPhaseId,
+    producingPhaseId,
+    checkpointPolicy,
+  )
 
   /**
    * The phase-neutral shared review evidence for the current checkpoint, delivered as a reference.
@@ -230,61 +220,4 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    */
   val transitions: FeatureTaskRuntimeTransitionDeclaration =
     FeatureTaskRuntimePhaseWorkflowTransitions.transitions(definition)
-
-  /** The declared backward edge for [loopId], or null when the id is not part of the topology. */
-  fun backwardEdgeForLoop(loopId: String): FeatureTaskRuntimeBackwardEdge? =
-    FeatureTaskRuntimePhaseWorkflowTransitions.backwardEdgeForLoop(transitions, loopId)
-
-  fun ceremonyScaling(featureSize: FeatureTaskRuntimeFeatureSize): FeatureTaskRuntimeCeremonyScaling =
-    when (featureSize) {
-      FeatureTaskRuntimeFeatureSize.SMALL -> FeatureTaskRuntimeCeremonyScaling(
-        preplanCeremony = FeatureTaskRuntimePreplanCeremony.LIGHT,
-        reviewScope = FeatureTaskRuntimeReviewScope.CURRENT_UNIT_OF_WORK,
-        auditCeremony = FeatureTaskRuntimeAuditCeremony.LIGHT,
-      )
-      FeatureTaskRuntimeFeatureSize.MEDIUM,
-      FeatureTaskRuntimeFeatureSize.LARGE,
-      -> FeatureTaskRuntimeCeremonyScaling(
-        preplanCeremony = FeatureTaskRuntimePreplanCeremony.FULL,
-        reviewScope = FeatureTaskRuntimeReviewScope.BRANCH_DIFF,
-        auditCeremony = FeatureTaskRuntimeAuditCeremony.FULL_PER_CRITERION,
-      )
-    }
-
-  fun phaseDeclaration(
-    phaseId: String,
-    featureSize: FeatureTaskRuntimeFeatureSize,
-  ): FeatureTaskRuntimePhaseDeclaration {
-    val base = phaseDeclarations[phaseId] ?: error("No phase declaration for runtime phase '$phaseId'.")
-    if (phaseId != PHASE_REVIEW) {
-      return base
-    }
-    val reviewKey = when (ceremonyScaling(featureSize).reviewScope) {
-      FeatureTaskRuntimeReviewScope.CURRENT_UNIT_OF_WORK -> "current_unit_of_work"
-      FeatureTaskRuntimeReviewScope.BRANCH_DIFF -> "diff"
-    }
-    return base.copy(derivedContextKeys = listOf(reviewKey))
-  }
-
-  fun phaseDeclarationForQualityGate(
-    phaseId: String,
-    featureSize: FeatureTaskRuntimeFeatureSize,
-    qualityGateSelection: FeatureTaskRuntimeQualityGateSelection,
-  ): FeatureTaskRuntimePhaseDeclaration {
-    val base = phaseDeclaration(phaseId, featureSize)
-    if (phaseId != PHASE_WRITE_HISTORY && phaseId != PHASE_COMMIT_PUSH) {
-      return base
-    }
-    val selectedGatePhase = when (qualityGateSelection) {
-      FeatureTaskRuntimeQualityGateSelection.BUILD -> PHASE_BUILD
-      FeatureTaskRuntimeQualityGateSelection.VALIDATE -> PHASE_VALIDATE
-    }
-    val omittedGatePhase = if (selectedGatePhase == PHASE_BUILD) PHASE_VALIDATE else PHASE_BUILD
-    return base.copy(
-      projectionDeclarations = base.projectionDeclarations.filter { declaration ->
-        val source = declaration.sourceRef as? FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput
-        source?.producingPhaseId != omittedGatePhase
-      },
-    )
-  }
 }

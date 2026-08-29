@@ -45,14 +45,16 @@ internal class GoalRunnerRunPreparation(
     if (persisted == requested) return null
     return GoalRunPreparation.PreparationBlocked(
       stopped(
-        issueKey = request.issueKey,
-        attempted = emptyList(),
-        subtaskId = state.manifest.currentSubtaskIntent.subtaskId,
-        reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason = "Cannot change stop-after subtask policy on goal resume: parent workflow " +
-          "'${state.parentWorkflowId}' is pinned to subtask $persisted.",
-        workflowId = state.parentWorkflowId,
-        lastResumableStep = "preplan",
+        StoppedReportArgs(
+          issueKey = request.issueKey,
+          attempted = emptyList(),
+          subtaskId = state.manifest.currentSubtaskIntent.subtaskId,
+          reason = GoalRunnerStopReason.BLOCKED,
+          blockedReason = "Cannot change stop-after subtask policy on goal resume: parent workflow " +
+            "'${state.parentWorkflowId}' is pinned to subtask $persisted.",
+          workflowId = state.parentWorkflowId,
+          lastResumableStep = "preplan",
+        ),
       ),
     )
   }
@@ -137,13 +139,15 @@ internal class GoalRunnerRunPreparation(
     }
     return GoalRunPreparation.PreparationBlocked(
       stopped(
-        issueKey = request.issueKey,
-        attempted = emptyList(),
-        subtaskId = 0,
-        reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason = reason,
-        workflowId = state.parentWorkflowId,
-        lastResumableStep = "preplan",
+        StoppedReportArgs(
+          issueKey = request.issueKey,
+          attempted = emptyList(),
+          subtaskId = 0,
+          reason = GoalRunnerStopReason.BLOCKED,
+          blockedReason = reason,
+          workflowId = state.parentWorkflowId,
+          lastResumableStep = "preplan",
+        ),
       ),
     )
   }

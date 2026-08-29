@@ -5,6 +5,7 @@ import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.error.MalformedMachineConfigError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
@@ -25,6 +26,7 @@ import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
@@ -47,8 +49,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.error.InvalidAgentAddonSelectionError
 
 @Suppress("LargeClass")
 class CliFeatureTaskRuntimeRuntimeTest {

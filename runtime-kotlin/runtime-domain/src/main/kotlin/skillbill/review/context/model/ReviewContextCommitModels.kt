@@ -72,7 +72,7 @@ data class ReviewCommitUnit(
     subject.replace("\r\n", "\n"),
     orderIndex,
     source.name,
-    canonicalFields(*canonicalHunks.map { it.packetCanonical() }.toTypedArray()),
+    canonicalFieldList(canonicalHunks.map { it.packetCanonical() }),
   )
 
   companion object {

@@ -1,5 +1,6 @@
 package skillbill.ports.goalrunner
 
+import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
@@ -14,6 +15,15 @@ private object EmptyNormalizedGoalPlanningPreparationRepository : NormalizedGoal
     expectedPayloadSha256: String,
     cascadePlanSubtaskIds: List<Int>,
   ) = Unit
+  override fun advanceSharedPreplanProvenance(
+    identity: GoalPlanningIdentity,
+    expectedPayloadSha256: String,
+    provenance: GoalPlanningContractProvenance,
+  ) = Unit
+  override fun cascadeSiblingPlansAfterSharedPreplanRefresh(
+    parentGoalWorkflowId: String,
+    cascadePlanSubtaskIds: List<Int>,
+  ): List<Int> = emptyList()
   override fun invalidateSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int = 0
   override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? = null
   override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit

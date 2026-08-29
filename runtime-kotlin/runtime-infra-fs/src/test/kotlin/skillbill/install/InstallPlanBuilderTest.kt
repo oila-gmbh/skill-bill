@@ -29,6 +29,8 @@ import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.testing.seedConformingPlatformPack
+import java.io.File
+import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -39,8 +41,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import java.io.File
-import java.io.FileNotFoundException
 
 class InstallPlanBuilderTest {
   private val tempDirs = mutableListOf<Path>()

@@ -1,12 +1,18 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.config.model.RepoLocalConfig
+import skillbill.config.model.ValidationGateRepoConfig
 import skillbill.contracts.JsonSupport
 import skillbill.error.ContractVersionMismatchError
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.ports.config.model.ReadRepoLocalConfigResult
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
@@ -17,6 +23,8 @@ import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
 import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
@@ -28,14 +36,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import java.nio.file.Path
-import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.config.model.ReadRepoLocalConfigRequest
-import skillbill.ports.config.model.ReadRepoLocalConfigResult
-import skillbill.config.model.RepoLocalConfig
-import skillbill.ports.config.RepoLocalConfigPort
-import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
-import skillbill.config.model.ValidationGateRepoConfig
 
 internal val validationGateTestRepoRoot: Path = Path.of(".").toAbsolutePath().normalize()
 
@@ -123,15 +123,13 @@ internal class RecordingProgressStore(
   override fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = loaded
 }
 
-internal fun repoLocalConfig(gradleWrapper: String? = null): RepoLocalConfigPort =
-  object : RepoLocalConfigPort {
-    override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
-      ReadRepoLocalConfigResult(
-        RepoLocalConfig.defaults().copy(
-          validationGate = ValidationGateRepoConfig(gradleWrapper = gradleWrapper),
-        ),
-      )
-  }
+internal fun repoLocalConfig(gradleWrapper: String? = null): RepoLocalConfigPort = object : RepoLocalConfigPort {
+  override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) = ReadRepoLocalConfigResult(
+    RepoLocalConfig.defaults().copy(
+      validationGate = ValidationGateRepoConfig(gradleWrapper = gradleWrapper),
+    ),
+  )
+}
 
 internal fun declaredResolver(
   declaration: ValidationGateDeclaration = validationGateTestDeclaration,

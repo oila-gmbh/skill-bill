@@ -1,12 +1,12 @@
 package skillbill.workflow.engine
 
+import kotlinx.serialization.json.JsonObject
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowInputProjection
 import skillbill.workflow.engine.model.WorkflowInputProjectionDeclaration
 import skillbill.workflow.engine.model.WorkflowSnapshotView
-import kotlinx.serialization.json.JsonObject
 
 const val RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY = "repository_evidence"
 

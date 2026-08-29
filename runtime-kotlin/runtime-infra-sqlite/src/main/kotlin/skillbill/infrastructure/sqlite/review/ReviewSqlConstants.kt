@@ -113,7 +113,8 @@ val numberedFindingsSql =
     a.scope_disposition AS scope_disposition,
     COALESCE(NULLIF(a.citations, ''), v.citations) AS citations,
     COALESCE(a.severity_adjustment_direction, v.severity_adjustment_direction) AS severity_adjustment_direction,
-    COALESCE(a.severity_adjustment_justification, v.severity_adjustment_justification) AS severity_adjustment_justification
+    COALESCE(a.severity_adjustment_justification,
+      v.severity_adjustment_justification) AS severity_adjustment_justification
   FROM findings f
   LEFT JOIN review_run_finding_verdicts v
     ON v.review_run_id = f.review_run_id AND v.finding_id = f.finding_id AND v.stage = 'verification'

@@ -13,7 +13,6 @@ import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
-import skillbill.cli.model.CliFormat
 
 @Inject
 class NewSkillCommand(
@@ -39,30 +38,29 @@ class NewSkillCommand(
   private val format by formatOption()
 
   override fun run() {
+    val runArgs = nativeScaffoldRunArgs(dryRun, format, state, scaffoldService, externalAddonOverlayService)
     state.result =
       if (assisted && payload != null) {
         errorResult("--assisted cannot be combined with --payload.", format)
       } else if (assisted) {
         runNativeAssistedScaffoldWizard(
-          dryRun,
-          format,
-          state,
-          scaffoldService,
-          scaffoldCatalogService,
-          installAgentService,
-          externalAddonOverlayService,
+          AssistedScaffoldWizardArgs(
+            run = runArgs,
+            scaffoldCatalogService = scaffoldCatalogService,
+            installAgentService = installAgentService,
+          ),
         )
       } else if (interactive || payload == null) {
         runNativeScaffoldWizard(
-          dryRun,
-          format,
-          state,
-          scaffoldService,
-          scaffoldCatalogService,
-          externalAddonOverlayService,
+          ScaffoldWizardArgs(
+            run = runArgs,
+            scaffoldCatalogService = scaffoldCatalogService,
+          ),
         )
       } else {
-        runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService, externalAddonOverlayService)
+        runNativeScaffoldPayload(
+          NativeScaffoldPayloadPathArgs(payloadPath = payload, run = runArgs),
+        )
       }
   }
 }
@@ -91,30 +89,29 @@ class NewCommand(
   private val format by formatOption()
 
   override fun run() {
+    val runArgs = nativeScaffoldRunArgs(dryRun, format, state, scaffoldService, externalAddonOverlayService)
     state.result =
       if (assisted && payload != null) {
         errorResult("--assisted cannot be combined with --payload.", format)
       } else if (assisted) {
         runNativeAssistedScaffoldWizard(
-          dryRun,
-          format,
-          state,
-          scaffoldService,
-          scaffoldCatalogService,
-          installAgentService,
-          externalAddonOverlayService,
+          AssistedScaffoldWizardArgs(
+            run = runArgs,
+            scaffoldCatalogService = scaffoldCatalogService,
+            installAgentService = installAgentService,
+          ),
         )
       } else if (interactive || payload == null) {
         runNativeScaffoldWizard(
-          dryRun,
-          format,
-          state,
-          scaffoldService,
-          scaffoldCatalogService,
-          externalAddonOverlayService,
+          ScaffoldWizardArgs(
+            run = runArgs,
+            scaffoldCatalogService = scaffoldCatalogService,
+          ),
         )
       } else {
-        runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService, externalAddonOverlayService)
+        runNativeScaffoldPayload(
+          NativeScaffoldPayloadPathArgs(payloadPath = payload, run = runArgs),
+        )
       }
   }
 }
@@ -148,16 +145,20 @@ class CreateAndFillCommand(
   override fun run() {
     state.result =
       createAndFillResult(
-        payload,
-        interactive,
-        dryRun,
-        body,
-        bodyFile,
-        editor,
-        format,
-        state,
-        scaffoldService,
-        unsupportedScaffoldService,
+        CreateAndFillArgs(
+          content = CreateAndFillContentArgs(
+            payload = payload,
+            interactive = interactive,
+            body = body,
+            bodyFile = bodyFile,
+            editor = editor,
+          ),
+          dryRun = dryRun,
+          format = format,
+          state = state,
+          scaffoldService = scaffoldService,
+          unsupportedScaffoldService = unsupportedScaffoldService,
+        ),
       )
   }
 }
@@ -212,12 +213,18 @@ class NewAddonCommand(
         errorResult("--body and --body-file are mutually exclusive.", format)
       } else {
         runNativeScaffoldPayload(
-          newAddonPayload(platform, name, body, bodyFile, addonLocationPath, consumerSkillDirs, state),
-          dryRun,
-          format,
-          scaffoldService,
-          state,
-          externalAddonOverlayService,
+          newAddonPayload(
+            NewAddonPayloadArgs(
+              platform = platform,
+              name = name,
+              body = body,
+              bodyFile = bodyFile,
+              addonLocationPath = addonLocationPath,
+              consumerSkillDirs = consumerSkillDirs,
+              state = state,
+            ),
+          ),
+          nativeScaffoldRunArgs(dryRun, format, state, scaffoldService, externalAddonOverlayService),
         )
       }
   }

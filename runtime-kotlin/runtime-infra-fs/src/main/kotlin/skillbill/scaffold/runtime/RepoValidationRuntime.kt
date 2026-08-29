@@ -9,7 +9,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption.APPEND
 import java.nio.file.StandardOpenOption.CREATE
-import kotlin.io.path.isRegularFile
 
 data class RepoValidationReport(
   val issues: List<String>,
@@ -155,7 +154,6 @@ object RepoValidationRuntime {
     )
   }
 
-
   internal fun extractH2(text: String, heading: String): String {
     val normalized = text.replace("\r\n", "\n")
     val startMarker = "## $heading"
@@ -183,5 +181,4 @@ object RepoValidationRuntime {
       APPEND,
     )
   }
-
 }

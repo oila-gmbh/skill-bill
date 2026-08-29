@@ -1,6 +1,5 @@
 package skillbill.ports.db
 
-import java.nio.file.Path
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
@@ -17,6 +16,7 @@ import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.work.WorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
+import java.nio.file.Path
 
 interface DatabaseSessionFactory {
   fun resolveDbPath(dbOverride: String? = null): Path

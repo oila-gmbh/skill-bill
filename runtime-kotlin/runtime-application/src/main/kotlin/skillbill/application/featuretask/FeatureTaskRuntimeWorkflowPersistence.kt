@@ -38,7 +38,7 @@ internal data class WorkflowRowAdvance(
 internal class FeatureTaskRuntimeWorkflowPersistence(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
-) {
+) : FeatureTaskRuntimePhaseWorkflowApi {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
   internal fun persistPatch(
@@ -61,20 +61,20 @@ internal class FeatureTaskRuntimeWorkflowPersistence(
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
   }
 
-  fun existingWorkflowMode(workflowId: String, dbOverride: String? = null): FeatureTaskWorkflowMode? =
+  override fun existingWorkflowMode(workflowId: String, dbOverride: String?): FeatureTaskWorkflowMode? =
     database.read(dbOverride) { unitOfWork ->
       unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.mode
     }
 
-  fun workerOwnership(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeWorkerOwnership? =
+  override fun workerOwnership(workflowId: String, dbOverride: String?): FeatureTaskRuntimeWorkerOwnership? =
     database.read(dbOverride) { unitOfWork ->
       unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
     }
-  fun ensureWorkflowOpen(
+  override fun ensureWorkflowOpen(
     workflowId: String,
     sessionId: String,
-    dbOverride: String? = null,
-    issueKey: String? = null,
+    dbOverride: String?,
+    issueKey: String?,
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     val normalizedIssueKey = normalizeIssueKey(issueKey)
     val existing = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)

@@ -1,4 +1,3 @@
-import org.gradle.api.tasks.testing.Test
 import java.io.File
 
 plugins {

@@ -892,7 +892,8 @@ private fun cliBaselineBody(slug: String): String = """
 
   Keep the baseline specialists for the whole review and use lightweight file-level classification.
   Exclude generated, vendored, and non-stack files from each specialist's scope.
-  Launch selected specialists as subagents in this harness in a deterministic order and retain every selected specialist result.
+  Launch selected specialists as subagents in this harness in a deterministic order and retain every selected
+  specialist result.
 
   ## Finding Discipline
 
@@ -928,7 +929,8 @@ private fun cliQualityCheckBody(slug: String): String = """
 
   ## Execution Steps
 
-  Determine the files in scope. Discover commands from build files, wrappers, and CI configuration before falling back to defaults.
+  Determine the files in scope. Discover commands from build files, wrappers,
+    and CI configuration before falling back to defaults.
   Run the pack's quality-check entrypoint and capture failures.
 
   ## Fix Strategy
@@ -937,7 +939,9 @@ private fun cliQualityCheckBody(slug: String): String = """
 
   ### Repair Window
 
-  Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only.
+  Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test,
+    compile, format-task, quality-check command, pack checker, `bill-code-check`,
+      or delegated subagent check. Allowed work is read, search, and source edits only.
   Escalate to the full suite when targeted checks cannot establish safety.
 """.trimIndent()
 

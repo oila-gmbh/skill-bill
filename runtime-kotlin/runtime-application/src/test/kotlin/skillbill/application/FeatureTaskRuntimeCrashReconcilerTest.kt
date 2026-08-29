@@ -4,18 +4,18 @@ import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME
+import skillbill.ports.workflow.model.WorkflowStateRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME
 
 class FeatureTaskRuntimeCrashReconcilerTest {
   @Test

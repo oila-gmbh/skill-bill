@@ -3,6 +3,7 @@ package skillbill.mcp
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.mcp.core.McpRuntimeContext
+import skillbill.mcp.core.McpWorkflowOpenArgs
 import skillbill.mcp.core.McpWorkflowRuntime
 import skillbill.mcp.workflow.workflowContinue
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
@@ -25,9 +26,11 @@ class McpWorkflowContinuationRuntimeTest {
   fun `mcp workflow continue accepts decomposed parent issue key`() {
     val fixture = mcpDecompositionFixture()
     val opened = McpWorkflowRuntime.open(
-      WorkflowFamilyKind.TASK_RUNTIME,
-      sessionId = "ftr-mcp-decomp",
-      context = fixture.context,
+      McpWorkflowOpenArgs(
+        kind = WorkflowFamilyKind.TASK_RUNTIME,
+        sessionId = "ftr-mcp-decomp",
+        context = fixture.context,
+      ),
     )
     val workflowId = opened["workflow_id"] as String
 
@@ -57,9 +60,11 @@ class McpWorkflowContinuationRuntimeTest {
   fun `mcp workflow continue handler forwards requested decomposed subtask constraint`() {
     val fixture = mcpDecompositionFixture()
     val opened = McpWorkflowRuntime.open(
-      WorkflowFamilyKind.TASK_RUNTIME,
-      sessionId = "ftr-mcp-decomp",
-      context = fixture.context,
+      McpWorkflowOpenArgs(
+        kind = WorkflowFamilyKind.TASK_RUNTIME,
+        sessionId = "ftr-mcp-decomp",
+        context = fixture.context,
+      ),
     )
     val workflowId = opened["workflow_id"] as String
 

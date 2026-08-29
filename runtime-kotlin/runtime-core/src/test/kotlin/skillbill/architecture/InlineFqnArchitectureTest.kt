@@ -13,7 +13,8 @@ class InlineFqnArchitectureTest {
     assertEquals(
       emptyList(),
       violations,
-      "Inline fully-qualified references such as java.time.Instant.now() must be replaced with imports or documented aliases.",
+      "Inline fully-qualified references such as java.time.Instant.now() must be replaced with imports or documented" +
+        "aliases.",
     )
   }
 

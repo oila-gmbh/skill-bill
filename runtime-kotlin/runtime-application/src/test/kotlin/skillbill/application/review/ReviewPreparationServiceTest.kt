@@ -35,6 +35,7 @@ import skillbill.review.context.model.ReviewCommitLaneDisposition
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
+import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewExpansionRecord
@@ -52,7 +53,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import skillbill.review.context.model.ReviewContextBudgetExceededException
 
 private fun focusedMatrix(scope: ReviewScopeFacts, lanes: List<String>) = ReviewCommitLaneRoutingMatrix(
   scope.commitUnits.sortedBy { it.orderIndex }.map { it.commitSha },

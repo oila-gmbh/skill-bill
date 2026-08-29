@@ -1,5 +1,6 @@
 package skillbill.application.workflow
 
+import kotlinx.serialization.json.JsonElement
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.workflow.model.GoalContinuationOutcome
@@ -10,7 +11,6 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
-import kotlinx.serialization.json.JsonElement
 
 /**
  * SKILL-52.1 — Internal continuation-step result. Wraps a typed

@@ -1,11 +1,11 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
-import skillbill.contracts.JsonSupport
 
 /**
  * Domain port for validating a phase's output payload; the concrete JSON-Schema

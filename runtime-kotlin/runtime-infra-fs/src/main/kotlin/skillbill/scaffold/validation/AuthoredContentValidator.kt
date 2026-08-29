@@ -2,10 +2,10 @@
 
 package skillbill.scaffold.validation
 
+import skillbill.scaffold.model.SkillClassManifest
 import skillbill.scaffold.platformpack.resolveSkillClassForSkill
 import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Path
-import skillbill.scaffold.model.SkillClassManifest
 
 private val UNRESOLVED_PLACEHOLDER_PATTERN = Regex("""(?m)^\s*(?:[-*]\s*)?(?:TODO|FIXME)\b""")
 private val GOVERNED_SCAFFOLD_PROMPT_PATTERN = Regex(

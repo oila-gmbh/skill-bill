@@ -4,7 +4,6 @@ import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetrySettings
 import java.time.LocalDate
-import skillbill.telemetry.parseRemoteStatsWindow
 
 object TelemetryRemoteStatsRuntime {
   fun parseRemoteStatsWindow(

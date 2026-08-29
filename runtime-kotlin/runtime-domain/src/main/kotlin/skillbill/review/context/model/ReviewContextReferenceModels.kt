@@ -35,7 +35,7 @@ data class ReviewRuleReference(
 
   val canonical: String
     get() = listOf(ruleId, sourcePath, excerpt.replace("\r\n", "\n"), digest)
-      .let { canonicalFields(*it.toTypedArray()) }
+      .let { canonicalFieldList(it) }
 }
 
 data class ReviewLearningsReference(val learningId: String, val source: String, val digest: String) {
@@ -64,7 +64,7 @@ data class ReviewDependencyAllowlist(val paths: List<String>) {
   }
 
   val normalized: List<String> get() = paths
-  val canonical: String get() = canonicalFields(*normalized.sorted().toTypedArray())
+  val canonical: String get() = canonicalFieldList(normalized.sorted())
 
   companion object {
     val EMPTY: ReviewDependencyAllowlist = ReviewDependencyAllowlist(emptyList())
@@ -87,8 +87,8 @@ data class ReviewBaselineUntrackedPolicy(
   }
 
   val canonical: String get() = canonicalFields(
-    canonicalFields(*includedPaths.sorted().toTypedArray()),
-    canonicalFields(*excludedPaths.sorted().toTypedArray()),
+    canonicalFieldList(includedPaths.sorted()),
+    canonicalFieldList(excludedPaths.sorted()),
   )
 
   companion object {
@@ -105,5 +105,5 @@ data class ReviewEvidenceTarget(val targetId: String, val path: String, val hunk
   }
 
   val canonical: String
-    get() = canonicalFields(targetId, path, canonicalFields(*hunkIds.sorted().toTypedArray()))
+    get() = canonicalFields(targetId, path, canonicalFieldList(hunkIds.sorted()))
 }

@@ -7,6 +7,8 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.long
 import skillbill.application.config.ConfigResolutionService
+import skillbill.application.review.ParallelCodeReviewRunner
+import skillbill.application.review.RequestedReviewMode
 import skillbill.application.review.model.DiffResolutionException
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
@@ -15,8 +17,6 @@ import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
-import skillbill.application.review.ParallelCodeReviewRunner
-import skillbill.application.review.RequestedReviewMode
 import skillbill.application.review.toBoundedPayload
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand

@@ -1,15 +1,16 @@
 package skillbill.application.featuretask
 
-import skillbill.application.goalrunner.agentFailureExcerpt
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.application.goalrunner.agentFailureExcerpt
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeProviderLimitDetector
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
@@ -184,13 +185,13 @@ internal fun phaseDeclaration(
   phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY ||
   phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH
 ) {
-  FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarationForQualityGate(
+  FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclarationForQualityGate(
     phaseId,
     featureSize,
     qualityGateSelection,
   )
 } else {
-  FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize)
+  FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(phaseId, featureSize)
 }
 
 internal fun missingUpstream(

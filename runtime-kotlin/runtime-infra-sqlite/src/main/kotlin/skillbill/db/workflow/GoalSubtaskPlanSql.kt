@@ -18,49 +18,17 @@ internal class GoalSubtaskPlanSql(
   fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
     requireNormalizedSubtaskPlan(checkpoint)
     connection.inImmediateTransaction {
-      val shared = translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {
-        sharedPreplan.findSharedPreplan(checkpoint.identity)
-      } ?: throw InvalidGoalPlanningPreparationSchemaError(
-        "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}",
-        "parent_goal_workflow_id",
-        "shared preplan must be checkpointed first",
-      )
-      if (shared.provenance != checkpoint.provenance) {
-        throw IncompatibleGoalPlanningPreparationRecoveryError(
-          checkpoint.identity.parentGoalWorkflowId,
-          checkpoint.subtaskId,
-          "subtask plan provenance must exactly match the governing shared preplan",
-        )
-      }
+      requireGoverningSharedPreplan(checkpoint)
       val inserted = connection.insertSubtaskPlanRow(checkpoint)
       val stored = findSubtaskPlan(checkpoint.identity, checkpoint.subtaskId, checkpoint.governedSubSpecPath)
-      if (!inserted && stored != checkpoint.copy(createdAt = stored?.createdAt.orEmpty())) {
-        throw IncompatibleGoalPlanningPreparationRecoveryError(
-          checkpoint.identity.parentGoalWorkflowId,
-          checkpoint.subtaskId,
-          "subtask plan checkpoint is immutable",
-        )
-      }
+      requireImmutableSubtaskPlanInsert(checkpoint, inserted, stored)
     }
   }
 
   fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
     requireNormalizedSubtaskPlan(checkpoint)
     connection.inImmediateTransaction {
-      val shared = translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {
-        sharedPreplan.findSharedPreplan(checkpoint.identity)
-      } ?: throw InvalidGoalPlanningPreparationSchemaError(
-        "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}",
-        "parent_goal_workflow_id",
-        "shared preplan must be checkpointed first",
-      )
-      if (shared.provenance != checkpoint.provenance) {
-        throw IncompatibleGoalPlanningPreparationRecoveryError(
-          checkpoint.identity.parentGoalWorkflowId,
-          checkpoint.subtaskId,
-          "subtask plan provenance must exactly match the governing shared preplan",
-        )
-      }
+      requireGoverningSharedPreplan(checkpoint)
       connection.prepareStatement(
         "DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? AND subtask_id = ?",
       ).use { s ->
@@ -107,32 +75,15 @@ internal class GoalSubtaskPlanSql(
     return connection.prepareStatement(
       "SELECT * FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? ORDER BY manifest_order, subtask_id",
     ).use { s ->
-      val descriptors = orderedDescriptors.associateBy { it.subtaskId }
-      if (descriptors.size != orderedDescriptors.size) {
-        throw InvalidGoalPlanningPreparationSchemaError(
-          expectedIdentity.parentGoalWorkflowId,
-          "ordered_descriptors",
-          "subtask ids must be unique",
-        )
-      }
+      val descriptors = uniqueDescriptorsBySubtaskId(expectedIdentity.parentGoalWorkflowId, orderedDescriptors)
       s.setString(1, expectedIdentity.parentGoalWorkflowId)
       s.executeQuery().use { r ->
         buildList {
           while (r.next()) {
             val subtaskId = r.getInt("subtask_id")
-            val descriptor = descriptors[subtaskId] ?: throw IncompatibleGoalPlanningPreparationRecoveryError(
-              expectedIdentity.parentGoalWorkflowId,
-              subtaskId,
-              "stored plan is not present in the expected governed subtask descriptors",
-            )
+            val descriptor = requireStoredDescriptor(expectedIdentity.parentGoalWorkflowId, subtaskId, descriptors)
             val plan = r.toPlan(expectedIdentity, descriptor.governedSubSpecPath)
-            if (plan.manifestOrder != descriptor.manifestOrder || plan.subSpecHash != descriptor.subSpecHash) {
-              throw IncompatibleGoalPlanningPreparationRecoveryError(
-                expectedIdentity.parentGoalWorkflowId,
-                subtaskId,
-                "stored manifest order or governed sub-spec hash differs from the expected descriptor",
-              )
-            }
+            requirePlanMatchesDescriptor(expectedIdentity.parentGoalWorkflowId, subtaskId, plan, descriptor)
             add(plan)
           }
         }
@@ -145,6 +96,77 @@ internal class GoalSubtaskPlanSql(
       it.setString(1, parentGoalWorkflowId)
       it.executeUpdate()
     }
+
+  private fun requireGoverningSharedPreplan(checkpoint: GoalSubtaskPlanCheckpoint) {
+    val shared = translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {
+      sharedPreplan.findSharedPreplan(checkpoint.identity)
+    } ?: throw InvalidGoalPlanningPreparationSchemaError(
+      "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}",
+      "parent_goal_workflow_id",
+      "shared preplan must be checkpointed first",
+    )
+    if (shared.provenance != checkpoint.provenance) {
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
+        checkpoint.identity.parentGoalWorkflowId,
+        checkpoint.subtaskId,
+        "subtask plan provenance must exactly match the governing shared preplan",
+      )
+    }
+  }
+
+  private fun requireImmutableSubtaskPlanInsert(
+    checkpoint: GoalSubtaskPlanCheckpoint,
+    inserted: Boolean,
+    stored: GoalSubtaskPlanCheckpoint?,
+  ) {
+    if (!inserted && stored != checkpoint.copy(createdAt = stored?.createdAt.orEmpty())) {
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
+        checkpoint.identity.parentGoalWorkflowId,
+        checkpoint.subtaskId,
+        "subtask plan checkpoint is immutable",
+      )
+    }
+  }
+}
+
+private fun uniqueDescriptorsBySubtaskId(
+  parentGoalWorkflowId: String,
+  orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
+): Map<Int, GovernedGoalSubtaskDescriptor> {
+  val descriptors = orderedDescriptors.associateBy { it.subtaskId }
+  if (descriptors.size != orderedDescriptors.size) {
+    throw InvalidGoalPlanningPreparationSchemaError(
+      parentGoalWorkflowId,
+      "ordered_descriptors",
+      "subtask ids must be unique",
+    )
+  }
+  return descriptors
+}
+
+private fun requireStoredDescriptor(
+  parentGoalWorkflowId: String,
+  subtaskId: Int,
+  descriptors: Map<Int, GovernedGoalSubtaskDescriptor>,
+): GovernedGoalSubtaskDescriptor = descriptors[subtaskId] ?: throw IncompatibleGoalPlanningPreparationRecoveryError(
+  parentGoalWorkflowId,
+  subtaskId,
+  "stored plan is not present in the expected governed subtask descriptors",
+)
+
+private fun requirePlanMatchesDescriptor(
+  parentGoalWorkflowId: String,
+  subtaskId: Int,
+  plan: GoalSubtaskPlanCheckpoint,
+  descriptor: GovernedGoalSubtaskDescriptor,
+) {
+  if (plan.manifestOrder != descriptor.manifestOrder || plan.subSpecHash != descriptor.subSpecHash) {
+    throw IncompatibleGoalPlanningPreparationRecoveryError(
+      parentGoalWorkflowId,
+      subtaskId,
+      "stored manifest order or governed sub-spec hash differs from the expected descriptor",
+    )
+  }
 }
 
 internal fun Connection.insertSubtaskPlanRow(checkpoint: GoalSubtaskPlanCheckpoint): Boolean = prepareStatement(

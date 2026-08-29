@@ -11,11 +11,9 @@ internal fun AgentRunDeclaredProgressProbe.safeDeclaredProgress(): AgentRunDecla
 internal fun AgentRunMcpStartupProbe.safeStartupObserved(): Boolean =
   runCatching { startupObserved() }.getOrDefault(false)
 
-internal fun AgentRunProgressProbe.safeProgressToken(): String? =
-  runCatching { progressToken() }.getOrNull()
+internal fun AgentRunProgressProbe.safeProgressToken(): String? = runCatching { progressToken() }.getOrNull()
 
-internal fun AgentRunProgressProbe.safeProgressLabel(): String? =
-  runCatching { progressLabel() }.getOrNull()
+internal fun AgentRunProgressProbe.safeProgressLabel(): String? = runCatching { progressLabel() }.getOrNull()
 
 internal fun AgentRunActivityProbe.safeActivityToken(): String? = runCatching { activityToken() }.getOrNull()
 

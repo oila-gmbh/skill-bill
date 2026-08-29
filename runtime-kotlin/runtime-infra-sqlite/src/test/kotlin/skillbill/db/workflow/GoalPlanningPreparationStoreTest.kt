@@ -1,5 +1,6 @@
 package skillbill.db.workflow
 
+import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -24,8 +25,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID
-import skillbill.db.workflow.INVALIDATED_SHARED_PREPLAN_PAYLOAD
 
 @Suppress("LargeClass")
 class GoalPlanningPreparationStoreTest {

@@ -5,10 +5,10 @@ import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import skillbill.mcp.workflow.toMcpMap
-import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.engine.model.WorkflowSnapshotView
 import skillbill.workflow.engine.model.WorkflowStepState
 import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
+import skillbill.workflow.goal.GoalObservabilityEventValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

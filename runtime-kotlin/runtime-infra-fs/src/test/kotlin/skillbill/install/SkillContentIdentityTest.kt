@@ -3,13 +3,13 @@ package skillbill.install
 import skillbill.error.SkillContentIdentityMismatchError
 import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.identity.SkillContentIdentity
+import skillbill.install.identity.routeInstalledSkillBody
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import skillbill.install.identity.routeInstalledSkillBody
 
 class SkillContentIdentityTest {
   @Test

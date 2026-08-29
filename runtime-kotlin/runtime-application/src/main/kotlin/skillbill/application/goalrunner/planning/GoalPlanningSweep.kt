@@ -1,22 +1,14 @@
 package skillbill.application.goalrunner.planning
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.goalrunner.ProduceMissingPlansArgs
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.application.goalrunner.planning.model.GoalPlanningBurstSchedule
+import skillbill.application.goalrunner.planning.model.GoalPlanningSweepDeps
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
-import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.goalrunner.model.GoalRunnerControlState
-import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
+import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
-import skillbill.ports.time.NoopRuntimeTimingPort
-import skillbill.ports.time.RuntimeTimingPort
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.SpecSource
 import java.nio.file.Path
@@ -49,75 +41,86 @@ internal data class GoalPlanningSharedContext(
 )
 
 @Inject
-class DefaultGoalPlanningSweep(
-  internal val checkpoint: GoalPlanningPreparationCheckpoint,
-  internal val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
-  internal val subtaskLauncher: GoalRunnerSubtaskLauncher,
-  internal val invariantsSource: FeatureTaskRuntimeRunInvariantsSource,
-  internal val manifestFileStore: DecompositionManifestFileStore,
-  internal val contextDiscovery: GoalPlanningContextDiscovery,
-  internal val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
-  internal val planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
-  internal val manifestStore: GoalRunnerManifestStore,
-  internal val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
-  internal val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
-  internal val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
-  internal val refreshLiveness: GoalPlanningRefreshLiveness = GoalPlanningRefreshLiveness.IDLE,
-) : GoalPlanningSweep {
-  @Suppress("ReturnCount")
+class DefaultGoalPlanningSweep(deps: GoalPlanningSweepDeps) : GoalPlanningSweep {
+  internal val checkpoint = deps.checkpoint
+  internal val outputValidator = deps.outputValidator
+  internal val subtaskLauncher = deps.subtaskLauncher
+  internal val invariantsSource = deps.invariantsSource
+  internal val manifestFileStore = deps.manifestFileStore
+  internal val contextDiscovery = deps.contextDiscovery
+  internal val planningProjectionValidator = deps.planningProjectionValidator
+  internal val planningAttemptRecorder = deps.planningAttemptRecorder
+  internal val manifestStore = deps.manifestStore
+  internal val planningRejectionRecorder = deps.planningRejectionRecorder
+  internal val timingPort = deps.timingPort
+  internal val burstSchedule = deps.burstSchedule
+  internal val refreshLiveness = deps.refreshLiveness
+
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
-    val canonicalRepository = canonicalRepository(request.repoRoot)
     val identity = GoalPlanningIdentity(
       state.parentWorkflowId,
       state.manifest.issueKey.trim().uppercase(),
-      "repo-root-realpath-v1:$canonicalRepository",
+      "repo-root-realpath-v1:${canonicalRepository(request.repoRoot)}",
     )
     val existingShared = runCatching { checkpoint.findSharedPreplan(identity, request.dbPathOverride) }
       .getOrElse { error ->
-        return preSweepStopped(
-          request,
-          preparationStateReadReason(error, request.issueKey, 0),
-        )
+        return preSweepStopped(request, preparationStateReadReason(error, request.issueKey, 0))
       }
     val recoveredPacket = existingShared?.let(::planningPacketFrom)
     if (existingShared != null && recoveredPacket == null) {
-      val remedySubtaskId = goalPlanningRemedySubtaskId(state.manifest.subtasks)
       return preSweepStopped(
         request,
-        goalPlanningMissingSharedContextPacketStopReason(request.issueKey, remedySubtaskId),
+        goalPlanningMissingSharedContextPacketStopReason(
+          request.issueKey,
+          goalPlanningRemedySubtaskId(state.manifest.subtasks),
+        ),
       )
     }
-    var shared = runCatching { gatherSharedContext(state, request, recoveredPacket) }.getOrElse { error ->
-      return preSweepStopped(request, sharedContextReason(error))
-    }
+    val gathered = runCatching { gatherSharedContext(state, request, recoveredPacket) }
+      .getOrElse { error -> return preSweepStopped(request, sharedContextReason(error)) }
+    return continueAfterSharedContext(state, request, identity, existingShared, gathered)
+  }
+
+  private fun continueAfterSharedContext(
+    state: GoalRunnerManifestState,
+    request: GoalRunnerRunRequest,
+    identity: GoalPlanningIdentity,
+    existingShared: SharedGoalPreplanCheckpoint?,
+    gathered: GoalPlanningSharedContext,
+  ): GoalPlanningSweepOutcome {
+    var shared = gathered
     val activeSubtasks = state.manifest.subtasks.filter {
       it.id in GoalPlanningSharedContextPacket.includedSubtaskIds(shared.planningPacket)
     }
-    val currentProvenance = currentProvenance(shared)
-    when (
+    return when (
       val settled = settleSharedPreplan(
-        existingShared = existingShared,
-        currentProvenance = currentProvenance,
-        shared = shared,
-        state = state,
-        request = request,
-        identity = identity,
+        SharedPreplanSettlementArgs(
+          existingShared = existingShared,
+          currentProvenance = currentProvenance(shared),
+          shared = shared,
+          state = state,
+          request = request,
+          identity = identity,
+        ),
       )
     ) {
-      is SharedPreplanSettlement.Halt -> return settled.outcome
+      is SharedPreplanSettlement.Halt -> settled.outcome
       is SharedPreplanSettlement.Ready -> {
         shared = settled.shared
         if (activeSubtasks.isEmpty()) {
-          return GoalPlanningSweepOutcome.PreparedAll(identity, settled.provenance)
+          GoalPlanningSweepOutcome.PreparedAll(identity, settled.provenance)
+        } else {
+          produceMissingPlans(
+            ProduceMissingPlansArgs(
+              shared = shared,
+              request = request,
+              identity = identity,
+              provenance = settled.provenance,
+              sharedCheckpoint = settled.checkpoint,
+              activeSubtasks = activeSubtasks,
+            ),
+          )
         }
-        return produceMissingPlans(
-          shared = shared,
-          request = request,
-          identity = identity,
-          provenance = settled.provenance,
-          sharedCheckpoint = settled.checkpoint,
-          activeSubtasks = activeSubtasks,
-        )
       }
     }
   }

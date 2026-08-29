@@ -2,9 +2,9 @@ package skillbill.application.review
 
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
-import skillbill.scaffold.model.PlatformManifest
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.structuredString
+import skillbill.scaffold.model.PlatformManifest
 
 internal object ParallelCodeReviewRunnerParentPrompt {
   fun build(

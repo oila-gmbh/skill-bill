@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
@@ -8,9 +9,63 @@ import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.goalrunner.model.GoalRunnerSubtaskAction
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import java.time.Clock
+
+internal data class GoalRunnerIterationOutcomeDeps(
+  val manifestStore: GoalRunnerManifestStore,
+  val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  val finalization: GoalRunnerFinalization,
+  val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService?,
+  val progressReader: GoalRunnerProgressReader,
+  val clock: Clock,
+)
+
+internal data class GoalRunnerIterationPendingState(
+  val validationQualityRetries: MutableMap<Int, Int>,
+  val pendingReAttemptCause: MutableMap<Int, String>,
+  val pendingCausingLoopEntry: MutableMap<Int, String>,
+)
+
+internal data class GoalRunnerSelectedSubtaskLoopDeps(
+  val manifestStore: GoalRunnerManifestStore,
+  val subtaskLauncher: GoalRunnerSubtaskLauncher,
+  val reconciler: GoalRunnerLaunchReconciler,
+  val workerRequestHandler: GoalRunnerWorkerRequestHandler,
+  val iterationOutcome: GoalRunnerIterationOutcome,
+  val pauseBoundary: GoalRunnerPauseBoundary,
+  val launchPrepare: GoalRunnerSubtaskLaunchPrepare,
+  val clock: Clock,
+  val pendingState: GoalRunnerIterationPendingState,
+)
+
+internal data class GoalRunnerIterationSession(
+  val request: GoalRunnerRunRequest,
+  val attempted: List<Int>,
+  val observability: GoalRunnerObservabilityEmitter,
+  val ledger: GoalRunnerLedgerRecorder,
+  val attemptStartMillis: Long? = null,
+)
+
+internal data class StoppedIterationArgs(
+  val state: GoalRunnerManifestState,
+  val subtaskId: Int,
+  val reconciled: GoalRunnerReconciledOutcome.Stop,
+  val session: GoalRunnerIterationSession,
+  val launchDiagnostics: GoalRunnerLaunchDiagnostics? = null,
+)
+
+internal data class CompletedIterationArgs(
+  val state: GoalRunnerManifestState,
+  val subtaskId: Int,
+  val reconciled: GoalRunnerReconciledOutcome.Complete,
+  val session: GoalRunnerIterationSession,
+)
 
 internal data class GoalRunnerIterationResult(
   val state: GoalRunnerManifestState,
@@ -106,3 +161,12 @@ internal fun GoalRunnerRunRequest.emitStoppedSubtaskEvent(
     ),
   )
 }
+
+internal data class StoppedIterationResultArgs(
+  val saved: GoalRunnerManifestState,
+  val attempted: List<Int>,
+  val subtaskId: Int,
+  val stoppedOutcome: GoalRunnerReconciledOutcome.Stop,
+  val knownWorkflowId: String?,
+  val request: GoalRunnerRunRequest,
+)

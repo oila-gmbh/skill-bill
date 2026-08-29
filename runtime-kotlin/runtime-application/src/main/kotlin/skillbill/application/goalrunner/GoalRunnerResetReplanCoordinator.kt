@@ -11,13 +11,13 @@ import skillbill.application.goalrunner.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
-import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask

@@ -11,8 +11,8 @@ import skillbill.application.workflow.repoRoot
 import skillbill.error.SkillBillRuntimeException
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposePlanOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal

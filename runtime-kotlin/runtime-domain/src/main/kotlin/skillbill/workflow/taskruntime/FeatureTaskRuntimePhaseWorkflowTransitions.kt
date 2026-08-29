@@ -54,6 +54,5 @@ internal object FeatureTaskRuntimePhaseWorkflowTransitions {
   fun backwardEdgeForLoop(
     transitions: FeatureTaskRuntimeTransitionDeclaration,
     loopId: String,
-  ): FeatureTaskRuntimeBackwardEdge? =
-    transitions.backwardEdges.firstOrNull { it.loopId == loopId }
+  ): FeatureTaskRuntimeBackwardEdge? = transitions.backwardEdges.firstOrNull { it.loopId == loopId }
 }

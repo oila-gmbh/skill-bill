@@ -166,9 +166,25 @@ runtime-ports
 - `skillbill.agentaddon` and `skillbill.agentaddon.model`: governed agent-add-on
   filesystem discovery and schema validation owned by `runtime-infra-fs`, plus
   typed declaration models owned by `runtime-domain`.
-- `skillbill.workflow` and `skillbill.workflow.model`: pure workflow engine,
-  workflow definitions, decomposition manifest codec, wire-map conversion, and
-  workflow/decomposition models owned by `runtime-domain`.
+- `skillbill.workflow.engine` and `skillbill.workflow.engine.model`: workflow
+  engine, snapshot codec, continuation assembly, and engine models owned by
+  `runtime-domain`.
+- `skillbill.workflow.decomposition` and
+  `skillbill.workflow.decomposition.model`: decomposition manifest codec,
+  wire-map conversion, and decomposition models owned by `runtime-domain`.
+- `skillbill.workflow.goal` and `skillbill.workflow.goal.model`: goal
+  observability, progress events, subtask review artifacts, and goal models
+  owned by `runtime-domain`.
+- `skillbill.workflow.taskruntime` and
+  `skillbill.workflow.taskruntime.model`: feature-task runtime phase workflow,
+  handoff projections, phase records, and taskruntime models owned by
+  `runtime-domain`.
+- `skillbill.workflow.idestatus`: IDE status validation owned by
+  `runtime-domain`.
+- `skillbill.workflow.specsource`: spec-source reading owned by
+  `runtime-domain`.
+- `skillbill.workflow.verify`: Feature Verify workflow definition
+  (`FeatureVerifyWorkflowDefinition`) owned by `runtime-domain`.
 - `skillbill.goalrunner` and `skillbill.goalrunner.model`: pure goal-runner
   liveness policy, worker-subtask parsing, status projection, accounting, and
   attempt-ledger models owned by `runtime-domain`.
@@ -181,8 +197,6 @@ runtime-ports
 - `skillbill.featurespec` and `skillbill.featurespec.model`: feature-spec
   preparation policy and typed preparation/write models owned by
   `runtime-domain`.
-- `skillbill.workflow.implement` and `skillbill.workflow.verify`: active
-  workflow runtime-surface metadata owned by `runtime-application`.
 - `skillbill.install.model`: install-plan and install-apply domain models plus
   install-plan wire-map conversion owned by `runtime-domain`.
 - `skillbill.scaffold.model`: platform manifest, scaffold result, skill-class,
@@ -388,7 +402,7 @@ runtime-ports
     - `skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText`
     - `skillbill.ports.workflow.decomposition.DecompositionManifestFileStore.encodeManifestYaml`
     - `skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap`
-    - `skillbill.workflow.toWireMap`
+    - `skillbill.workflow.decomposition.toWireMap`
     - `skillbill.application.decomposition.decodeDecompositionManifestMap`
     - `skillbill.application.decomposition.encodeDecompositionManifestMap`
     - `skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate`
@@ -634,7 +648,6 @@ skillbill.skillremove
 skillbill.telemetry
 skillbill.text
 skillbill.workflow
-skillbill.workflow.implement
 skillbill.workflow.verify
 ```
 
@@ -1394,8 +1407,9 @@ category without reshaping the marker block._
 - `skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap` [subtask 4] —
   decomposition manifest codec entrypoint; retired together with the
   workflow-snapshot typed-DTO pass.
-- `skillbill.workflow.toWireMap` [subtask 4] — workflow wire-map encoder;
-  retired together with the workflow-snapshot typed-DTO pass.
+- `skillbill.workflow.decomposition.toWireMap` [subtask 4] — decomposition
+  manifest wire-map encoder; retired together with the workflow-snapshot
+  typed-DTO pass.
 - `skillbill.application.decomposition.decodeDecompositionManifestMap` [subtask 4] —
   decomposition manifest decode entrypoint; postponed with the workflow
   family.

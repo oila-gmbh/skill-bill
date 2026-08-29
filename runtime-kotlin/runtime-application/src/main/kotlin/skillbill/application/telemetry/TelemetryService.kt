@@ -5,12 +5,12 @@ import skillbill.application.telemetry.model.TelemetryMutationResult
 import skillbill.application.telemetry.model.TelemetryStatusResult
 import skillbill.application.telemetry.model.TelemetrySyncPayload
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.telemetry.TelemetryOutboxRepository
-import skillbill.ports.telemetry.model.TelemetryOutboxRecord
-import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
+import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult

@@ -1,7 +1,6 @@
 package skillbill.application.featurespec
 
 import skillbill.application.decomposition.loadDecompositionManifest
-import skillbill.application.featurespec.FeatureSpecPreparationWriter
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.di.RuntimeComponent
 import skillbill.di.create

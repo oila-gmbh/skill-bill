@@ -1,6 +1,7 @@
 package skillbill.db.workflow
 
 import skillbill.db.core.DatabaseMigrations
+import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.tempDbConnection
 import java.nio.file.Path
@@ -11,7 +12,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
 
 class FeatureTaskRuntimeAuditGenerationStoreTest {
   private val opened = mutableListOf<Connection>()

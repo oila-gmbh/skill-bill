@@ -1,10 +1,10 @@
 package skillbill.db.telemetry
 
+import kotlinx.serialization.json.JsonElement
 import skillbill.contracts.JsonSupport
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
-import kotlinx.serialization.json.JsonElement
 
 fun Boolean.toSqlInt(): Int = if (this) 1 else 0
 

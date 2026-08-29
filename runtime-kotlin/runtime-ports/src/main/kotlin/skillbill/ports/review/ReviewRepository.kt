@@ -3,12 +3,12 @@ package skillbill.ports.review
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.ports.review.model.ReviewRepositoryStatsSnapshot
+import skillbill.ports.workflow.WorkflowStatsRepository
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
-import skillbill.ports.workflow.WorkflowStatsRepository
 
 interface ReviewRepository :
   WorkflowStatsRepository,

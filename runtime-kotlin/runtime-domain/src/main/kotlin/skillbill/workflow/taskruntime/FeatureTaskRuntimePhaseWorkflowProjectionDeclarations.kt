@@ -348,7 +348,10 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
   )
 
   fun runtimeProjectorProducerPhaseIds(consumerPhaseId: String): Set<String> = when (consumerPhaseId) {
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX -> setOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX ->
+      setOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      )
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> setOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
@@ -384,9 +387,18 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
           "No closed-world projection declaration for runtime phase '$phaseId'."
         },
         derivedContextKeys = when (phaseId) {
-          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF)
-          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR -> listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF)
-          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE)
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
+            listOf(
+              FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF,
+            )
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR ->
+            listOf(
+              FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF,
+            )
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+            listOf(
+              FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE,
+            )
           else -> emptyList()
         },
       )

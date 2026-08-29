@@ -2,6 +2,7 @@ package skillbill.launcher
 
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
+import skillbill.launcher.agentrun.PathExecutableLookup
 import skillbill.launcher.agentrun.ProcessAgentRunAdapter
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -13,7 +14,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
-import skillbill.launcher.agentrun.PathExecutableLookup
 
 class AgentLauncherPreflightTest {
   private fun request(): SkillRunRequest = SkillRunRequest(

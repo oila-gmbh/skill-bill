@@ -3,7 +3,7 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.model.EnvironmentContext
-import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
+import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.platformpack.validatePlatformPackFallbacks

@@ -1,5 +1,6 @@
 package skillbill.application
 
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
@@ -16,7 +17,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 
 internal fun seedHarnessSpecIntentProjection(repoRoot: Path, specReference: String) {
   val specPath = repoRoot.resolve(specReference)
@@ -74,8 +74,7 @@ internal object TestDecompositionManifestFileStore : DecompositionManifestFileSt
     }
   }
 
-  override fun encodeManifestYaml(wireMap: Map<String, Any?>): String =
-    YAMLMapper().writeValueAsString(wireMap)
+  override fun encodeManifestYaml(wireMap: Map<String, Any?>): String = YAMLMapper().writeValueAsString(wireMap)
 }
 
 /**
@@ -93,9 +92,8 @@ internal val testDecompositionManifestValidator: DecompositionManifestValidator 
     override fun validate(manifest: Map<String, Any?>, sourceLabel: String) = Unit
 
     @Suppress("UNCHECKED_CAST")
-    override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-      YAMLMapper()
-        .readValue(yamlText, Map::class.java) as Map<String, Any?>
+    override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> = YAMLMapper()
+      .readValue(yamlText, Map::class.java) as Map<String, Any?>
   }
 
 /**

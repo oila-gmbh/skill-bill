@@ -2,6 +2,10 @@ package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestWriter
+import skillbill.application.normalizeIssueKey
+import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
+import skillbill.application.workflow.model.FeatureTaskIdentityRepairArgs
+import skillbill.application.workflow.model.RepairFeatureTaskRuntimeIdentityArgs
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowGetResult
@@ -9,21 +13,20 @@ import skillbill.application.workflow.model.WorkflowLatestResult
 import skillbill.application.workflow.model.WorkflowListResult
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowResumeResult
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.application.normalizeIssueKey
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.goal.GoalObservabilityEventValidator
-import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import java.nio.file.Path
 
 @Inject
@@ -48,97 +51,44 @@ class WorkflowService(
   )
   private val featureTaskIdentityRepair = WorkflowServiceFeatureTaskIdentityRepair(engine)
 
-  fun open(
-    kind: WorkflowFamilyKind,
-    sessionId: String = "",
-    currentStepId: String? = null,
-    dbOverride: String? = null,
-    issueKey: String? = null,
-    repositoryIdentity: String? = null,
-    governedSpecPath: String? = null,
-    routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
-  ): WorkflowOpenResult {
-    val hasIdentityCoordinates = repositoryIdentity != null || governedSpecPath != null
-    val hasIncompleteIdentity = hasIncompleteFeatureTaskIdentity(
-      kind,
-      hasIdentityCoordinates,
-      issueKey,
-      repositoryIdentity,
-      governedSpecPath,
-    )
-    if (hasIncompleteIdentity) {
-      return WorkflowOpenResult.Error(
-        workflowId = "unassigned",
-        error = INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR,
-      )
-    }
-    val family = kind.workflowFamily()
-    val stepId = currentStepId ?: family.definition.defaultInitialStepId
+  fun open(args: WorkflowServiceOpenArgs): WorkflowOpenResult {
+    incompleteFeatureTaskIdentityError(args)?.let { return it }
+    val family = args.kind.workflowFamily()
+    val stepId = args.currentStepId ?: family.definition.defaultInitialStepId
     val workflowId = generateWorkflowId(family.definition.workflowIdPrefix)
-    val effectiveSessionId = resolveEffectiveSessionId(kind, sessionId, family.definition, workflowId)
+    val effectiveSessionId = resolveEffectiveSessionId(
+      args.kind,
+      args.sessionId,
+      family.definition,
+      workflowId,
+    )
     WorkflowEngine.validateOpen(family.definition, stepId)?.let { error ->
       return WorkflowOpenResult.Error(workflowId, error)
     }
+    val hasIdentityCoordinates = args.repositoryIdentity != null || args.governedSpecPath != null
     val executionIdentity = buildFeatureTaskExecutionIdentity(
-      kind,
-      hasIdentityCoordinates,
-      workflowId,
-      issueKey,
-      repositoryIdentity,
-      governedSpecPath,
-      routeScope,
+      BuildFeatureTaskExecutionIdentityArgs(
+        kind = args.kind,
+        hasIdentityCoordinates = hasIdentityCoordinates,
+        workflowId = workflowId,
+        issueKey = args.issueKey,
+        repositoryIdentity = args.repositoryIdentity,
+        governedSpecPath = args.governedSpecPath,
+        routeScope = args.routeScope,
+      ),
     )
-    return database.transaction(dbOverride) { unitOfWork ->
-      val record = engine.openRecord(family.definition, workflowId, effectiveSessionId, stepId)
-      family.saveRecord(
-        unitOfWork.workflowStates,
-        record.toRecord().copy(
-          startedAt = null,
-          issueKey = normalizeIssueKey(issueKey),
-        ),
-      )
-      executionIdentity?.let(unitOfWork.workflowStates::saveFeatureTaskExecutionIdentity)
-      val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
-      val currentStep = engine.snapshotView(family.definition, saved).steps
-        .firstOrNull { it.stepId == stepId }
-      val launchProjection = launchProjectionIfReady(
-        engine,
-        family.definition,
-        engine.snapshotView(family.definition, saved),
-        stepId,
-        currentStep?.attemptCount ?: 0,
-      )
-      WorkflowOpenResult.Ok(
-        workflowId = saved.workflowId,
-        dbPath = unitOfWork.dbPath.toString(),
-        snapshot = engine.snapshotView(family.definition, saved),
-        launchProjection = launchProjection,
-      )
-    }
-  }
-
-  fun openFeatureTask(
-    kind: WorkflowFamilyKind,
-    sessionId: String = "",
-    currentStepId: String? = null,
-    dbOverride: String? = null,
-    issueKey: String,
-    repositoryIdentity: String,
-    governedSpecPath: String,
-    routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
-  ): WorkflowOpenResult {
-    require(kind in FEATURE_TASK_FAMILY_KINDS) {
-      "Only runtime feature-task workflows use execution identity."
-    }
-    return open(
-      kind,
-      sessionId,
-      currentStepId,
-      dbOverride,
-      issueKey,
-      repositoryIdentity,
-      governedSpecPath,
-      routeScope,
+    return persistOpenedWorkflow(
+      PersistOpenedWorkflowArgs(
+        family = family,
+        workflowId = workflowId,
+        effectiveSessionId = effectiveSessionId,
+        stepId = stepId,
+        dbOverride = args.dbOverride,
+        issueKey = args.issueKey,
+        executionIdentity = executionIdentity,
+        engine = engine,
+        database = database,
+      ),
     )
   }
 
@@ -235,30 +185,26 @@ class WorkflowService(
     dbOverride: String? = null,
   ): WorkflowUpdateResult = blockedPhaseRetry.retry(database, workflowId, phaseId, reason, dbOverride)
 
-  fun repairFeatureTaskRuntimeIdentity(
-    workflowId: String,
-    issueKey: String,
-    repositoryIdentity: String,
-    governedSpecPath: String,
-    reason: String,
-    dbOverride: String? = null,
-  ): WorkflowUpdateResult {
-    val normalizedReason = reason.trim()
+  fun repairFeatureTaskRuntimeIdentity(args: RepairFeatureTaskRuntimeIdentityArgs): WorkflowUpdateResult {
+    val workflowId = args.workflowId
+    val normalizedReason = args.reason.trim()
     if (normalizedReason.isEmpty() || normalizedReason.length > MAX_ABANDONMENT_REASON_LENGTH) {
       return WorkflowUpdateResult.Error(
         workflowId,
         "Identity-repair reason must contain 1..$MAX_ABANDONMENT_REASON_LENGTH characters.",
       )
     }
-    val normalizedIssueKey = requireNotNull(normalizeIssueKey(issueKey)).uppercase()
-    return database.transaction(dbOverride) { unitOfWork ->
+    val normalizedIssueKey = requireNotNull(normalizeIssueKey(args.issueKey)).uppercase()
+    return database.transaction(args.dbOverride) { unitOfWork ->
       featureTaskIdentityRepair.repair(
-        unitOfWork,
-        workflowId,
-        normalizedIssueKey,
-        repositoryIdentity,
-        governedSpecPath,
-        normalizedReason,
+        FeatureTaskIdentityRepairArgs(
+          unitOfWork = unitOfWork,
+          workflowId = workflowId,
+          normalizedIssueKey = normalizedIssueKey,
+          repositoryIdentity = args.repositoryIdentity,
+          governedSpecPath = args.governedSpecPath,
+          normalizedReason = normalizedReason,
+        ),
       )
     }
   }

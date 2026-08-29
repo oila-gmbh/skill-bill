@@ -10,11 +10,14 @@ import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.toWireMap
+import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.toWireMap
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -22,9 +25,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import java.nio.file.Path
 
 class DecompositionManifestWriterTest {
   private val engine: WorkflowEngine = WorkflowEngine(testWorkflowSnapshotValidator)
@@ -603,10 +603,7 @@ class DecompositionManifestWriterTest {
       ),
   )
 
-  private fun decompositionPlanWithFirstSubtaskId(
-    parentSpecPath: Path,
-    subtaskId: Any,
-  ): Map<String, Any?> {
+  private fun decompositionPlanWithFirstSubtaskId(parentSpecPath: Path, subtaskId: Any): Map<String, Any?> {
     val plan = LinkedHashMap(decompositionPlan(parentSpecPath))
     val subtasks = (plan.getValue("subtasks") as List<*>).mapIndexed { index, raw ->
       val item = (raw as Map<*, *>).entries.associateTo(LinkedHashMap<String, Any?>()) { (key, value) ->
@@ -625,14 +622,12 @@ class DecompositionManifestWriterTest {
     """{"assessment":{"spec_path":"${subtaskSpec.toString().replace("\\", "\\\\")}"},""" +
       """"branch":{"branch":"feature/SKILL-51-decomposition"}}"""
 
-  private fun durableRuntimeArtifactsJson(
-    manifest: DecompositionManifest,
-    subtaskSpec: Path,
-  ): String = JsonSupport.mapToJsonString(
-    mapOf(
-      DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap(),
-      "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
-      "branch" to mapOf("branch" to "feature/SKILL-51-decomposition"),
-    ),
-  )
+  private fun durableRuntimeArtifactsJson(manifest: DecompositionManifest, subtaskSpec: Path): String =
+    JsonSupport.mapToJsonString(
+      mapOf(
+        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap(),
+        "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
+        "branch" to mapOf("branch" to "feature/SKILL-51-decomposition"),
+      ),
+    )
 }

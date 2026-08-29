@@ -542,7 +542,9 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       Corrected final answer:
       ```json
       {"contract_version":"0.6","phase_id":"audit","status":"completed",
-      "verdict":"gaps_found","produced_outputs":{"value":"{\"gaps\":[{\"criterion\":\"AC-128\",\"note\":\"Integration behavior is missing.\"}]}"}}
+      "verdict":"gaps_found",
+        "produced_outputs":{"value":"{\"gaps\":[{\"criterion\":\"AC-128\",\"note\":\"Integration behavior is
+        missing.\"}]}"}}
       ```
       """.trimIndent()
 
@@ -565,7 +567,8 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       Corrected final answer:
       ```json
       {"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"one gap remains",
-       "verdict":"gaps_found","produced_outputs":{"value":"{\"gaps\":[{\"criterion\":\"AC-128\",\"note\":\"Rejected lanes are omitted from the aggregate.\"}]}"}}
+       "verdict":"gaps_found",
+       "produced_outputs":{"value":"{\"gaps\":[{\"criterion\":\"AC-128\",\"note\":\"Rejected lanes are omitted from the aggregate.\"}]}"}}
       ```
       """.trimIndent()
 

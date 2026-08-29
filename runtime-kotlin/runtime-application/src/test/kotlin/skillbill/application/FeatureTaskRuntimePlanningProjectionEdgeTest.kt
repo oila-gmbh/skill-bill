@@ -9,15 +9,15 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 
 class FeatureTaskRuntimePlanningProjectionEdgeTest {
   @Test

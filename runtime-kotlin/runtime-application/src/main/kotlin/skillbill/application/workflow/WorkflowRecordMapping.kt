@@ -2,10 +2,10 @@ package skillbill.application.workflow
 
 import skillbill.application.telemetry.specInputTypes
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
-import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 
 /**
  * SKILL-48 Subtask 2a: `toSnapshot` is a pure record-to-snapshot

@@ -1,10 +1,10 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
-import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_LEDGER_CONTRACT_VERSION
+import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import java.nio.charset.StandardCharsets
 
 const val REPAIR_LEDGER_MAX_ENTRIES: Int = 100

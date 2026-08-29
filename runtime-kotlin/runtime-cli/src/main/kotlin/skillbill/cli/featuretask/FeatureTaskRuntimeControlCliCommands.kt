@@ -1,6 +1,5 @@
 package skillbill.cli.featuretask
 
-import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
@@ -9,17 +8,16 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
-import skillbill.application.featuretask.model.GoalContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.featuretask.model.GoalContinuationCandidate
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.model.RepairFeatureTaskRuntimeIdentityArgs
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.cli.workflow.toCliMap
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import java.nio.file.Path
 
 @Inject
@@ -121,13 +119,15 @@ class FeatureTaskRuntimeResumeCommand(
   override fun run() {
     validateRuntimeRunConfiguration(deps)
     verifyRuntimeResume(
-      lookupService,
-      deps.state,
-      workflowId,
-      issueKey,
-      specPath,
-      repoRoot ?: ".",
-      goalParentIssueKey != null,
+      VerifyRuntimeResumeArgs(
+        lookupService = lookupService,
+        state = deps.state,
+        workflowId = workflowId,
+        issueKey = issueKey,
+        specPath = specPath,
+        repoRoot = repoRoot ?: ".",
+        goalChild = goalParentIssueKey != null,
+      ),
     )
     executeRuntimeRun(
       deps = deps,
@@ -193,12 +193,14 @@ class FeatureTaskRuntimeRepairIdentityCommand(
   override fun run() {
     val root = Path.of(repoRoot)
     val result = workflowService.repairFeatureTaskRuntimeIdentity(
-      workflowId = workflowId,
-      issueKey = issueKey,
-      repositoryIdentity = repositoryIdentity(root),
-      governedSpecPath = governedSpecPath(root, Path.of(specPath)),
-      reason = reason,
-      dbOverride = state.dbOverride,
+      RepairFeatureTaskRuntimeIdentityArgs(
+        workflowId = workflowId,
+        issueKey = issueKey,
+        repositoryIdentity = repositoryIdentity(root),
+        governedSpecPath = governedSpecPath(root, Path.of(specPath)),
+        reason = reason,
+        dbOverride = state.dbOverride,
+      ),
     )
     state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }

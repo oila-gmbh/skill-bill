@@ -2,6 +2,7 @@ package skillbill.application.featuretask.validation
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.emitFeatureTaskRuntimeEventSafely
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCyclePhase
@@ -12,7 +13,6 @@ import skillbill.application.featuretask.validation.model.ValidationGateProgress
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
 import skillbill.application.featuretask.validation.model.requiresUnparseableGateTriage
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.config.model.applyValidationGateGradleWrapper
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION

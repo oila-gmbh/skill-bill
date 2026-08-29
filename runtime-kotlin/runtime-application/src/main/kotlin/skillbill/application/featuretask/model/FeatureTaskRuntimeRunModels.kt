@@ -1,19 +1,19 @@
 package skillbill.application.featuretask.model
 
+import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.config.model.CompactionSettings
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
-import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration
-import skillbill.agentaddon.model.AgentAddonSelection
 
 /**
  * The request that drives one deterministic phase-loop run. It carries only inert values; the

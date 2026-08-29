@@ -1,12 +1,12 @@
 package skillbill.ports.diagnostics
 
-import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
-import java.time.Instant
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diagnostics.model.RejectedOutputLifecycle
+import java.time.Instant
 
 typealias RejectedOutputLifecycle = RejectedOutputLifecycle
 typealias RejectedOutputDiagnostic = RejectedOutputDiagnostic

@@ -4,66 +4,48 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
+import skillbill.application.review.model.ParallelCodeReviewRunnerDeps
 import skillbill.application.review.model.ReviewWorkerKind
-import skillbill.ports.config.RepoLocalConfigPort
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.diff.DiffResolverPort
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
-import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
-import skillbill.ports.review.ReviewEvidenceBrokerFactory
-import skillbill.ports.review.ReviewLaunchAgentStagingPort
-import skillbill.ports.review.ReviewNativeAgentPreflightPort
-import skillbill.ports.review.ReviewRubricResolver
-import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
-import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
-import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
-import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ResolvedReviewExecutionMode
-import skillbill.review.model.ParallelReviewParseResult
 
 @Inject
-class ParallelCodeReviewRunner(
-  private val parentReviewLauncher: GoalRunnerSubtaskLauncher,
-  private val diffResolver: DiffResolverPort,
-  private val repoLocalConfig: RepoLocalConfigPort,
-  private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
-  private val reviewRubricResolver: ReviewRubricResolver,
-  private val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
-  private val database: DatabaseSessionFactory,
-  private val installedPackCatalog: InstalledPlatformPackCatalogPort = InstalledPlatformPackCatalogPort.NONE,
-  private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
-    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-  private val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
-    FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
-  private val specIntentProjectionResolver: SpecIntentProjectionResolver,
-  private val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
-  private val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
-  private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
-  private val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort = ReviewLaunchAgentStagingPort.NONE,
-  private val registerParse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
-) {
+class ParallelCodeReviewRunner(deps: ParallelCodeReviewRunnerDeps) {
+  private val parentReviewLauncher = deps.parentReviewLauncher
+  private val diffResolver = deps.diffResolver
+  private val repoLocalConfig = deps.repoLocalConfig
+  private val reviewContextEnvelopeValidator = deps.reviewContextEnvelopeValidator
+  private val reviewRubricResolver = deps.reviewRubricResolver
+  private val reviewSpecialistContractProvider = deps.reviewSpecialistContractProvider
+  private val database = deps.database
+  private val installedPackCatalog = deps.installedPackCatalog
+  private val sharedEvidenceResolver = deps.sharedEvidenceResolver
+  private val sharedEvidenceLocatorReader = deps.sharedEvidenceLocatorReader
+  private val specIntentProjectionResolver = deps.specIntentProjectionResolver
+  private val reviewEvidenceBrokerFactory = deps.reviewEvidenceBrokerFactory
+  private val governedEvidenceEndpointBinder = deps.governedEvidenceEndpointBinder
+  private val nativeAgentPreflight = deps.nativeAgentPreflight
+  private val reviewLaunchAgentStaging = deps.reviewLaunchAgentStaging
+  private val registerParse = deps.registerParse
+  private val diagnostics = deps.diagnostics
   private val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
   private val failureHelpers = ParallelCodeReviewRunnerFailureHelpers(registerParse)
   private val rubricPlanning = ParallelCodeReviewRunnerRubricPlanning(reviewRubricResolver, installedPackCatalog)
   private val planning = ParallelCodeReviewRunnerPlanning(
-    diffResolver,
-    repoLocalConfig,
-    reviewContextEnvelopeValidator,
-    reviewSpecialistContractProvider,
-    installedPackCatalog,
-    sharedEvidenceResolver,
-    sharedEvidenceLocatorReader,
-    specIntentProjectionResolver,
-    runtimeOwnedPersistence,
-    rubricPlanning,
+    ParallelCodeReviewRunnerPlanningDeps(
+      diffResolver = diffResolver,
+      repoLocalConfig = repoLocalConfig,
+      reviewContextEnvelopeValidator = reviewContextEnvelopeValidator,
+      reviewSpecialistContractProvider = reviewSpecialistContractProvider,
+      installedPackCatalog = installedPackCatalog,
+      sharedEvidenceResolver = sharedEvidenceResolver,
+      sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
+      specIntentProjectionResolver = specIntentProjectionResolver,
+      runtimeOwnedPersistence = runtimeOwnedPersistence,
+      rubricPlanning = rubricPlanning,
+    ),
   )
   private val laneLaunch = ParallelCodeReviewRunnerLaneLaunch(
     parentReviewLauncher,
@@ -97,13 +79,15 @@ class ParallelCodeReviewRunner(
     val integration = resultAssembly.runIntegrationPass(initial, outcomes)
     val coverage = resultAssembly.coverageReport(initial, outcomes, integration)
     val result = resultAssembly.parallelResult(
-      initial.agent1Id,
-      outcomes,
-      integration,
-      coverage,
-      initial.compiledLaunchRequests.firstOrNull()?.packet,
-      initial.budget,
-      resultAssembly.stageResumeReport(initial.request.reviewRunId),
+      ParallelResultArgs(
+        agent1Id = initial.agent1Id,
+        outcomes = outcomes,
+        integration = integration,
+        coverage = coverage,
+        packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
+        budget = initial.budget,
+        stageResume = resultAssembly.stageResumeReport(initial.request.reviewRunId),
+      ),
     )
     resultAssembly.persistReviewPassClaims(
       initial.request.reviewRunId,

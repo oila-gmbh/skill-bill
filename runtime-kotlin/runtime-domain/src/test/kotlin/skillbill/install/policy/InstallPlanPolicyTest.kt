@@ -8,6 +8,7 @@ import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
+import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallPlanWireValidator
@@ -35,7 +36,6 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import skillbill.install.model.InstallPlanRequest
 
 class InstallPlanPolicyTest {
   @Test

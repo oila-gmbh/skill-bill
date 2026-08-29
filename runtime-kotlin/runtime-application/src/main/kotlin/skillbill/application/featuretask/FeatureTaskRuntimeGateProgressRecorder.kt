@@ -18,10 +18,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProg
 internal class FeatureTaskRuntimeGateProgressRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
-) {
-  fun loadValidationGateProgress(
+) : FeatureTaskRuntimePhaseGateApi {
+  override fun loadValidationGateProgress(
     workflowId: String,
-    dbOverride: String? = null,
+    dbOverride: String?,
   ): FeatureTaskRuntimeValidationGateProgress? = database.read(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
     val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_VALIDATION_GATE_PROGRESS_ARTIFACT_KEY]
@@ -29,10 +29,10 @@ internal class FeatureTaskRuntimeGateProgressRecorder(
     FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(artifact)
   }
 
-  fun persistValidationGateProgress(
+  override fun persistValidationGateProgress(
     workflowId: String,
     progress: FeatureTaskRuntimeValidationGateProgress,
-    dbOverride: String? = null,
+    dbOverride: String?,
   ) {
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
@@ -47,7 +47,7 @@ internal class FeatureTaskRuntimeGateProgressRecorder(
     }
   }
 
-  fun loadAuditGapProgress(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeAuditGapProgress? =
+  override fun loadAuditGapProgress(workflowId: String, dbOverride: String?): FeatureTaskRuntimeAuditGapProgress? =
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_GAP_PROGRESS_ARTIFACT_KEY]
@@ -55,10 +55,10 @@ internal class FeatureTaskRuntimeGateProgressRecorder(
       FeatureTaskRuntimeAuditGapProgress.fromArtifactMap(artifact)
     }
 
-  fun persistAuditGapProgress(
+  override fun persistAuditGapProgress(
     workflowId: String,
     progress: FeatureTaskRuntimeAuditGapProgress,
-    dbOverride: String? = null,
+    dbOverride: String?,
   ) {
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
@@ -73,7 +73,7 @@ internal class FeatureTaskRuntimeGateProgressRecorder(
     }
   }
 
-  fun loadAuditGapPause(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeAuditGapPause? =
+  override fun loadAuditGapPause(workflowId: String, dbOverride: String?): FeatureTaskRuntimeAuditGapPause? =
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_GAP_PAUSE_ARTIFACT_KEY]
@@ -81,7 +81,7 @@ internal class FeatureTaskRuntimeGateProgressRecorder(
       FeatureTaskRuntimeAuditGapPause.fromArtifactMap(artifact)
     }
 
-  fun persistAuditGapPause(workflowId: String, pause: FeatureTaskRuntimeAuditGapPause, dbOverride: String? = null) {
+  override fun persistAuditGapPause(workflowId: String, pause: FeatureTaskRuntimeAuditGapPause, dbOverride: String?) {
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
         ?: throw InvalidWorkflowStateSchemaError(
@@ -95,9 +95,9 @@ internal class FeatureTaskRuntimeGateProgressRecorder(
     }
   }
 
-  fun loadBuildGateProgress(
+  override fun loadBuildGateProgress(
     workflowId: String,
-    dbOverride: String? = null,
+    dbOverride: String?,
   ): FeatureTaskRuntimeValidationGateProgress? = database.read(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
     val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_BUILD_GATE_PROGRESS_ARTIFACT_KEY]
@@ -105,19 +105,19 @@ internal class FeatureTaskRuntimeGateProgressRecorder(
     FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(artifact)
   }
 
-  fun loadGoalContinuationQualityGateSelection(
+  override fun loadGoalContinuationQualityGateSelection(
     workflowId: String,
-    dbOverride: String? = null,
+    dbOverride: String?,
   ): FeatureTaskRuntimeQualityGateSelection? = database.read(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
     GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly(decodeArtifacts(record.artifactsJson))
       ?.qualityGateSelection
   }
 
-  fun persistBuildGateProgress(
+  override fun persistBuildGateProgress(
     workflowId: String,
     progress: FeatureTaskRuntimeValidationGateProgress,
-    dbOverride: String? = null,
+    dbOverride: String?,
   ) {
     database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)

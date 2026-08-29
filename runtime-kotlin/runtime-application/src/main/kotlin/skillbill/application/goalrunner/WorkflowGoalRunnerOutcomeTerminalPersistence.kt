@@ -2,8 +2,6 @@ package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
-import skillbill.application.workflow.WorkflowFamily
-import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -11,7 +9,6 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
 import java.time.Instant
@@ -199,14 +196,15 @@ internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
   }
 
   fun recoverMissingResultPrefixTerminalOutcome(
-    workflowStates: WorkflowStateRepository,
-    family: WorkflowFamily,
-    record: WorkflowStateSnapshot,
-    output: Map<String, Any?>,
-    issueKey: String,
-    subtaskId: Int,
-    workflowId: String,
+    args: RecoverMissingResultPrefixTerminalOutcomeArgs,
   ): GoalRunnerStoredOutcome? {
+    val workflowStates = args.workflowStates
+    val family = args.family
+    val record = args.record
+    val output = args.output
+    val issueKey = args.issueKey
+    val subtaskId = args.subtaskId
+    val workflowId = args.workflowId
     val terminalArtifact = missingResultPrefixTerminalOutcomeArtifact(output, issueKey, subtaskId, workflowId)
     val existingArtifacts = decodeArtifacts(record.artifactsJson)
     val artifactsPatch = linkedMapOf<String, Any?>(

@@ -1,7 +1,13 @@
 package skillbill.workflow.goal.model
 
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.upsertRepairReceipt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

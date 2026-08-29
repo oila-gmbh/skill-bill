@@ -1,5 +1,6 @@
 package skillbill.infrastructure.fs
 
+import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import java.nio.file.Files
 import kotlin.test.Test
@@ -54,7 +55,7 @@ class FileSystemFeatureTaskRuntimeRunInvariantsSourceTest {
       """.trimIndent(),
     )
 
-    assertFailsWith<IllegalArgumentException> {
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseHandoffSchemaError> {
       FileSystemFeatureTaskRuntimeRunInvariantsSource().read(spec)
     }
   }

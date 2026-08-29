@@ -9,11 +9,7 @@ import skillbill.workflow.engine.model.WorkflowUpdateInput
 internal class FeatureTaskRuntimeGoalContinuationArtifactPatcher(
   private val engine: WorkflowEngine,
 ) {
-  fun save(
-    record: WorkflowStateSnapshot,
-    workflowStates: WorkflowStateRepository,
-    patch: Map<String, Any?>,
-  ) {
+  fun save(record: WorkflowStateSnapshot, workflowStates: WorkflowStateRepository, patch: Map<String, Any?>) {
     val updated = engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       record,

@@ -1,6 +1,7 @@
 package skillbill.db.workflow
 
 import skillbill.db.core.DbConstants
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.sql.Connection
@@ -8,7 +9,6 @@ import java.sql.PreparedStatement
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
-import skillbill.error.InvalidWorkflowStateSchemaError
 
 private val terminalWorkflowStatuses: Set<String> = setOf("completed", "failed", "abandoned")
 private const val SQLITE_TIMESTAMP_NOW = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')"

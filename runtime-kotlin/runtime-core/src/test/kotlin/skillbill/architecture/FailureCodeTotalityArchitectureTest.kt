@@ -17,7 +17,8 @@ class FailureCodeTotalityArchitectureTest {
     assertEquals(
       emptyList(),
       violations,
-      "Each in-scope failure case must resolve to exactly one wire code and each wire code must belong to exactly one case.",
+      "Each in-scope failure case must resolve to exactly one wire code and each wire code must belong to exactly one" +
+        "case.",
     )
   }
 
@@ -28,9 +29,9 @@ class FailureCodeTotalityArchitectureTest {
       entryCount = 2,
       wireValues = listOf("alpha"),
     )
-    assertNotNull(orphanViolation)
+    val orphan = assertNotNull(orphanViolation)
     assertTrue(
-      orphanViolation!!.contains("orphaned wire value"),
+      orphan.contains("orphaned wire value"),
       "Regression if adding a failure case without a unique wire code stops failing the architecture gate.",
     )
 
@@ -39,20 +40,19 @@ class FailureCodeTotalityArchitectureTest {
       entryCount = 2,
       wireValues = listOf("shared", "shared"),
     )
-    assertNotNull(duplicateViolation)
+    val duplicate = assertNotNull(duplicateViolation)
     assertTrue(
-      duplicateViolation!!.contains("duplicate wire value"),
+      duplicate.contains("duplicate wire value"),
       "Regression if an orphaned or duplicated failure wire code no longer fails totality enforcement.",
     )
   }
 
-  private fun inScopeFailureWireCodeViolations(): List<String> =
-    listOf(
-      wireCodeEntries(FeatureTaskRuntimePhaseOutputFailureCode.entries.toList()),
-      wireCodeEntries(DecompositionManifestValidationFailureCode.entries.toList()),
-      wireCodeEntries(FeatureTaskRuntimePhaseOutputFailureKind.entries.toList()),
-      wireCodeEntries(FeatureTaskRuntimeHandoffProjectionFailureKind.entries.toList()),
-    ).flatten()
+  private fun inScopeFailureWireCodeViolations(): List<String> = listOf(
+    wireCodeEntries(FeatureTaskRuntimePhaseOutputFailureCode.entries.toList()),
+    wireCodeEntries(DecompositionManifestValidationFailureCode.entries.toList()),
+    wireCodeEntries(FeatureTaskRuntimePhaseOutputFailureKind.entries.toList()),
+    wireCodeEntries(FeatureTaskRuntimeHandoffProjectionFailureKind.entries.toList()),
+  ).flatten()
 
   private fun wireCodeEntries(entries: List<FailureWireCode>): List<String> {
     val wireValues = entries.map { it.wireValue }

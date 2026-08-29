@@ -135,7 +135,9 @@ internal class GoalSharedPreplanSql(
 
   fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? {
     connection.rejectLegacy(expectedIdentity.parentGoalWorkflowId)
-    return connection.prepareStatement("SELECT * FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?").use { s ->
+    return connection.prepareStatement(
+      "SELECT * FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?",
+    ).use { s ->
       s.setString(1, expectedIdentity.parentGoalWorkflowId)
       s.executeQuery().use { r -> if (!r.next()) null else r.toShared(expectedIdentity) }
     }

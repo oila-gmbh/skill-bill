@@ -10,16 +10,18 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.workflow.model.WorkflowFamilyKind
-import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowLatestResult.Error
+import skillbill.application.workflow.model.WorkflowLatestResult.Ok
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
+import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.DocumentedNoOpCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.contracts.JsonSupport
-import skillbill.application.workflow.model.WorkflowLatestResult.Error
-import skillbill.application.workflow.model.WorkflowLatestResult.Ok
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 
 @Inject
 class WorkflowTopLevelCommands(
@@ -90,11 +92,16 @@ open class WorkflowOpenCommand(
   override fun run() {
     val opened =
       service.open(
-        kind,
-        sessionId,
-        currentStepId,
-        state.dbOverride,
-        issueKey,
+        WorkflowServiceOpenArgs(
+          kind = kind,
+          sessionId = sessionId,
+          currentStepId = currentStepId,
+          dbOverride = state.dbOverride,
+          issueKey = issueKey,
+          repositoryIdentity = null,
+          governedSpecPath = null,
+          routeScope = FeatureTaskRouteScope.STANDALONE,
+        ),
       )
     val payload =
       opened

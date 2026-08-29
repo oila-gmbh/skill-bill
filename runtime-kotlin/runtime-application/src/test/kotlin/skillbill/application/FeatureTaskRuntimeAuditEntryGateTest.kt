@@ -1,12 +1,12 @@
 package skillbill.application
 
+import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.featuretask.FeatureTaskRuntimeRunState
 import skillbill.application.featuretask.REVIEW_INVALIDATION_AGENT_ID
-import skillbill.application.diagnostics.RejectedOutputDiagnosticService
-import skillbill.application.featuretask.transitionsFor
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.transitionsFor
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline

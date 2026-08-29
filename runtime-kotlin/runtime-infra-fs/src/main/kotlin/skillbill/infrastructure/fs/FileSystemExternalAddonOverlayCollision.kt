@@ -5,7 +5,6 @@ import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PointerSpec
 import java.nio.file.Path
 
-
 internal typealias DirName = Pair<String, String>
 internal typealias DirTarget = Pair<String, String>
 internal typealias DirSlug = Pair<String, String>

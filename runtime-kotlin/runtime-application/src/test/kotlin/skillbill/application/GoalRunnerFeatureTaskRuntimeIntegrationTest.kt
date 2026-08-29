@@ -1,11 +1,13 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
-import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.application.goalrunner.goalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.testGoalRunner
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -13,9 +15,10 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -23,8 +26,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 
 class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   @Test
@@ -37,7 +38,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val paused = runner.run(
       GoalRunnerRunRequest(
@@ -149,11 +150,13 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       ),
     )
     val manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, workflowId))
-    val goalRunner = GoalRunner(
-      manifestStore = manifestStore,
-      subtaskLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes),
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
+    val goalRunner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = manifestStore,
+        subtaskLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes),
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ),
     )
 
     val report = goalRunner.run(
@@ -202,11 +205,13 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
         ),
       ),
     )
-    val goalRunner = GoalRunner(
-      manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, workflowId)),
-      subtaskLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes),
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
+    val goalRunner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, workflowId)),
+        subtaskLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes),
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ),
     )
 
     val report = goalRunner.run(
@@ -575,11 +580,13 @@ private fun goalRunForChildReport(
       return launchFacts()
     }
   }
-  val runner = GoalRunner(
-    manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, WORKFLOW_ID)),
-    subtaskLauncher = launcher,
-    outcomeStore = outcomes,
-    pullRequestPort = RecordingPullRequestPort(),
+  val runner = testGoalRunner(
+    goalRunnerDeps(
+      manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, WORKFLOW_ID)),
+      subtaskLauncher = launcher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+    ),
   )
   val report = runner.run(
     GoalRunnerRunRequest(
@@ -617,11 +624,13 @@ private fun goalChildParityRun(
     ),
   )
   val childLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes)
-  val goalRunner = GoalRunner(
-    manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, WORKFLOW_ID)),
-    subtaskLauncher = childLauncher,
-    outcomeStore = outcomes,
-    pullRequestPort = RecordingPullRequestPort(),
+  val goalRunner = testGoalRunner(
+    goalRunnerDeps(
+      manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, WORKFLOW_ID)),
+      subtaskLauncher = childLauncher,
+      outcomeStore = outcomes,
+      pullRequestPort = RecordingPullRequestPort(),
+    ),
   )
   val runRequest = GoalRunnerRunRequest(
     issueKey = "SKILL-56",

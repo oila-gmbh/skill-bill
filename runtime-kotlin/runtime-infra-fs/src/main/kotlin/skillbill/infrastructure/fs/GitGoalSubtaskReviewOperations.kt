@@ -7,8 +7,8 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
-import java.nio.file.Path
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import java.nio.file.Path
 
 internal const val GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES: Int = 1_000_000
 

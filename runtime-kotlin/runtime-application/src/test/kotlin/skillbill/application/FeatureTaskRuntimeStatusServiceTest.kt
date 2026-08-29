@@ -11,6 +11,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.agentAttributionFromPhaseState
+import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
@@ -18,18 +19,24 @@ import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.learning.LearningRepository
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
@@ -39,6 +46,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.RESUME
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.START
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
@@ -48,13 +56,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
-import skillbill.ports.work.EmptyWorkListRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 
 /**
  * F-001 / F-008: unit coverage for [FeatureTaskRuntimeStatusService]'s projection
@@ -1042,7 +1043,7 @@ private fun diagnosticSignal(
 private fun statusHarness(): StatusHarness {
   val repository = StatusInMemoryWorkflowRepository()
   val database = StatusFakeDatabaseSessionFactory(repository)
-  val recorder = FeatureTaskRuntimePhaseRecorder(
+  val recorder = featureTaskRuntimePhaseRecorder(
     database,
     StatusNoopSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
@@ -1222,9 +1223,7 @@ private class StatusFakeDatabaseSessionFactory(
 }
 
 private class StatusInMemoryWorkflowRepository : WorkflowStateRepository {
-  override fun saveFeatureTaskExecutionIdentity(
-    identity: FeatureTaskExecutionIdentity,
-  ) = Unit
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
 
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
     emptyList<FeatureTaskWorkflowCandidate>()

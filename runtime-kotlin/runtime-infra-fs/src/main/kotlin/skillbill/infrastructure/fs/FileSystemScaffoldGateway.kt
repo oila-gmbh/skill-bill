@@ -3,6 +3,7 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
+import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.nativeagent.composition.NativeAgentCompositionDirective
 import skillbill.nativeagent.composition.NativeAgentCompositionKind
 import skillbill.nativeagent.composition.NativeAgentSource
@@ -31,6 +32,7 @@ import skillbill.scaffold.authoring.renderAuthoringTarget
 import skillbill.scaffold.catalog.ScaffoldCatalog
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import skillbill.scaffold.runtime.scaffold
+import java.nio.file.Files
 import java.nio.file.Path
 import skillbill.agentaddon.inspectAgentAddons as inspectFsAgentAddons
 import skillbill.nativeagent.composition.parseNativeAgentSourceFile as parseFsNativeAgentSourceFile
@@ -40,8 +42,6 @@ import skillbill.nativeagent.discovery.discoverNativeAgentSourceFiles as discove
 import skillbill.ports.scaffold.model.GeneratedArtifactFile as PortGeneratedArtifactFile
 import skillbill.scaffold.platformpack.discoverGovernedAddonFiles as discoverFsGovernedAddonFiles
 import skillbill.scaffold.pointer.discoverGeneratedArtifactFiles as discoverFsGeneratedArtifactFiles
-import java.nio.file.Files
-import skillbill.error.MissingAgentAddonDeclarationError
 
 private const val CONTENT_PREVIEW_MAX_CHARS = 500
 

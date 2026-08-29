@@ -1,9 +1,9 @@
 package skillbill.application.evidence
 
 import skillbill.application.goalrunner.planning.sha256HexUtf8
-import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.ReviewCommitRange
 import skillbill.application.review.ReviewDiffEvidence
+import skillbill.application.review.model.ParallelReviewScope
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation

@@ -1,11 +1,11 @@
 package skillbill.application.updatecheck
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.system.SystemService
 import skillbill.application.updatecheck.model.RECOMMENDED_INSTALL_COMMAND
 import skillbill.application.updatecheck.model.Semver
 import skillbill.application.updatecheck.model.UpdateCheckResult
 import skillbill.application.updatecheck.model.UpdateCheckStatus
-import skillbill.application.system.SystemService
 import skillbill.contracts.JsonSupport
 import skillbill.model.TransportContext
 import skillbill.ports.telemetry.model.HttpResponse

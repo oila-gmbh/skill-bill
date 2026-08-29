@@ -1,83 +1,78 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.model.GoalRunPreparation
+import skillbill.application.goalrunner.model.GoalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.application.goalrunner.planning.GoalPlanningSweep
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.runner.GoalPullRequestPort
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.workflow.specscratch.SpecScratchStore
-import skillbill.ports.workflow.specscratch.UnavailableSpecScratchStore
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import java.time.Clock
 
 @Inject
-class GoalRunner(
-  private val manifestStore: GoalRunnerManifestStore,
-  private val subtaskLauncher: GoalRunnerSubtaskLauncher,
-  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
-  private val pullRequestPort: GoalPullRequestPort,
-  private val goalPlanningSweep: GoalPlanningSweep = GoalPlanningSweep.NONE,
-  private val specScratchStore: SpecScratchStore = UnavailableSpecScratchStore,
-  private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
-  private val telemetry: GoalLifecycleTelemetryEmitter = GoalLifecycleTelemetryEmitter.NONE,
-  private val clock: Clock = Clock.systemUTC(),
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
-  private val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService? = null,
-  private val executionCoordinator: GoalRunnerExecutionCoordinator = GoalRunnerExecutionCoordinator.NONE,
-) {
+class GoalRunner(deps: GoalRunnerDeps) {
+  private val manifestStore = deps.manifestStore
+  private val subtaskLauncher = deps.subtaskLauncher
+  private val outcomeStore = deps.outcomeStore
+  private val pullRequestPort = deps.pullRequestPort
+  private val goalPlanningSweep = deps.goalPlanningSweep
+  private val specScratchStore = deps.specScratchStore
+  private val gitOperations = deps.gitOperations
+  private val telemetry = deps.telemetry
+  private val clock = deps.clock
+  private val diagnostics = deps.diagnostics
+  private val unaddressedFindingsLedgerService = deps.unaddressedFindingsLedgerService
+  private val executionCoordinator = deps.executionCoordinator
   private val validationQualityRetries: MutableMap<Int, Int> = mutableMapOf()
   private val pendingReAttemptCause: MutableMap<Int, String> = mutableMapOf()
   private val pendingCausingLoopEntry: MutableMap<Int, String> = mutableMapOf()
   private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
-  private val reconciler = GoalRunnerLaunchReconciler(manifestStore, subtaskLauncher, outcomeStore, diagnostics)
+  private val reconciler = GoalRunnerLaunchReconciler(manifestStore, outcomeStore, diagnostics)
   private val progressReader = GoalRunnerProgressReader(outcomeStore)
   private val pauseBoundary = GoalRunnerPauseBoundary(manifestStore)
   private val runPreparation = GoalRunnerRunPreparation(manifestStore)
   private val finalization = GoalRunnerFinalization(
-    manifestStore,
-    outcomeStore,
-    pullRequestPort,
-    specScratchStore,
-    gitOperations,
-    diagnostics,
-    unaddressedFindingsLedgerService,
-    progressReader,
+    GoalRunnerFinalizationDeps(
+      manifestStore = manifestStore,
+      outcomeStore = outcomeStore,
+      pullRequestPort = pullRequestPort,
+      specScratchStore = specScratchStore,
+      gitOperations = gitOperations,
+      diagnostics = diagnostics,
+      unaddressedFindingsLedgerService = unaddressedFindingsLedgerService,
+      progressReader = progressReader,
+    ),
+  )
+  private val pendingState = GoalRunnerIterationPendingState(
+    validationQualityRetries = validationQualityRetries,
+    pendingReAttemptCause = pendingReAttemptCause,
+    pendingCausingLoopEntry = pendingCausingLoopEntry,
   )
   private val iterationOutcome = GoalRunnerIterationOutcome(
-    manifestStore,
-    outcomeStore,
-    finalization,
-    unaddressedFindingsLedgerService,
-    progressReader,
-    clock,
-    validationQualityRetries,
-    pendingReAttemptCause,
-    pendingCausingLoopEntry,
+    GoalRunnerIterationOutcomeDeps(
+      manifestStore,
+      outcomeStore,
+      finalization,
+      unaddressedFindingsLedgerService,
+      progressReader,
+      clock,
+    ),
+    pendingState,
   )
   private val launchPrepare = GoalRunnerSubtaskLaunchPrepare(manifestStore, outcomeStore, gitOperations)
   private val selectedSubtaskLoop = GoalRunnerSelectedSubtaskLoop(
-    manifestStore,
-    subtaskLauncher,
-    reconciler,
-    workerRequestHandler,
-    iterationOutcome,
-    pauseBoundary,
-    launchPrepare,
-    clock,
-    pendingReAttemptCause,
-    pendingCausingLoopEntry,
+    GoalRunnerSelectedSubtaskLoopDeps(
+      manifestStore,
+      subtaskLauncher,
+      reconciler,
+      workerRequestHandler,
+      iterationOutcome,
+      pauseBoundary,
+      launchPrepare,
+      clock,
+      pendingState,
+    ),
   )
   private val goalLoop = GoalRunnerGoalLoop(
     manifestStore,
@@ -104,17 +99,19 @@ class GoalRunner(
       }
     } catch (alreadyRunning: GoalRunnerExecutionAlreadyRunningException) {
       stopped(
-        issueKey = loadedState.manifest.issueKey,
-        attempted = emptyList(),
-        subtaskId = loadedState.manifest.currentSubtaskIntent.subtaskId,
-        reason = GoalRunnerStopReason.BLOCKED,
-        blockedReason = alreadyRunning.message.orEmpty(),
-        workflowId = loadedState.manifest.workflowIdFor(loadedState.manifest.currentSubtaskIntent.subtaskId),
-        lastResumableStep = loadedState.manifest.subtasks
-          .firstOrNull { it.id == loadedState.manifest.currentSubtaskIntent.subtaskId }
-          ?.lastResumableStep
-          .orEmpty()
-          .ifBlank { "plan" },
+        StoppedReportArgs(
+          issueKey = loadedState.manifest.issueKey,
+          attempted = emptyList(),
+          subtaskId = loadedState.manifest.currentSubtaskIntent.subtaskId,
+          reason = GoalRunnerStopReason.BLOCKED,
+          blockedReason = alreadyRunning.message.orEmpty(),
+          workflowId = loadedState.manifest.workflowIdFor(loadedState.manifest.currentSubtaskIntent.subtaskId),
+          lastResumableStep = loadedState.manifest.subtasks
+            .firstOrNull { it.id == loadedState.manifest.currentSubtaskIntent.subtaskId }
+            ?.lastResumableStep
+            .orEmpty()
+            .ifBlank { "plan" },
+        ),
       )
     }
   }
@@ -154,13 +151,15 @@ class GoalRunner(
     val sweepOutcome = goalPlanningSweep.prepare(state, effectiveRequest)
     if (sweepOutcome is GoalPlanningSweepOutcome.Stopped) {
       val planningStop = stopped(
-        issueKey = sweepOutcome.issueKey,
-        attempted = emptyList(),
-        subtaskId = sweepOutcome.currentSubtaskId,
-        reason = sweepOutcome.reason,
-        blockedReason = sweepOutcome.blockedReason,
-        workflowId = null,
-        lastResumableStep = sweepOutcome.lastResumableStep,
+        StoppedReportArgs(
+          issueKey = sweepOutcome.issueKey,
+          attempted = emptyList(),
+          subtaskId = sweepOutcome.currentSubtaskId,
+          reason = sweepOutcome.reason,
+          blockedReason = sweepOutcome.blockedReason,
+          workflowId = null,
+          lastResumableStep = sweepOutcome.lastResumableStep,
+        ),
       )
       effectiveRequest.eventSink.emit(
         GoalRunnerRunEvent.SubtaskStopped(
@@ -175,13 +174,15 @@ class GoalRunner(
       return planningStop
     }
     val loopResult = goalLoop.driveGoalLoop(
-      state,
-      effectiveRequest,
-      attempted,
-      observability,
-      ledger,
-      telemetryEmitter,
-      sweepOutcome as GoalPlanningSweepOutcome.PreparedAll,
+      DriveGoalLoopArgs(
+        initialState = state,
+        request = effectiveRequest,
+        attempted = attempted,
+        observability = observability,
+        ledger = ledger,
+        telemetryEmitter = telemetryEmitter,
+        planning = sweepOutcome as GoalPlanningSweepOutcome.PreparedAll,
+      ),
     )
     state = loopResult.state
     val finalReport = requireNotNull(loopResult.report)

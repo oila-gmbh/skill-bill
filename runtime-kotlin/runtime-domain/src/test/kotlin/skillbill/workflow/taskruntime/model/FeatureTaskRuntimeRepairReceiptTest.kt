@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.goal.model.withoutRefutedFindings
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

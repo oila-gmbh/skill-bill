@@ -7,8 +7,8 @@ import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.specsource.SpecSourceSpecReader
 import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.specsource.SpecSourceSpecReader
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 

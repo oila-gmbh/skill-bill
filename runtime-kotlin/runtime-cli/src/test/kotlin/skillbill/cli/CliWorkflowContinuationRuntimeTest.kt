@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import kotlinx.serialization.json.JsonElement
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
@@ -17,7 +18,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlinx.serialization.json.JsonElement
 
 /**
  * Decomposition continue lives on WorkflowService for TASK_RUNTIME; these tests
@@ -31,15 +31,17 @@ class CliWorkflowContinuationRuntimeTest {
     val workflowId = opened["workflow_id"] as String
 
     RuntimeWorkflowTestSupport.update(
-      dbPath = fixture.dbPath,
-      workflowId = workflowId,
-      workflowStatus = "running",
-      currentStepId = "plan",
-      stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
-        """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+      RuntimeWorkflowTestSupport.UpdateArgs(
+        dbPath = fixture.dbPath,
+        workflowId = workflowId,
+        workflowStatus = "running",
+        currentStepId = "plan",
+        stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
+          """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+        ),
+        artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
+        context = fixture.context,
       ),
-      artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
-      context = fixture.context,
     )
     val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,
@@ -69,15 +71,17 @@ class CliWorkflowContinuationRuntimeTest {
     val workflowId = opened["workflow_id"] as String
 
     RuntimeWorkflowTestSupport.update(
-      dbPath = fixture.dbPath,
-      workflowId = workflowId,
-      workflowStatus = "running",
-      currentStepId = "plan",
-      stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
-        """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+      RuntimeWorkflowTestSupport.UpdateArgs(
+        dbPath = fixture.dbPath,
+        workflowId = workflowId,
+        workflowStatus = "running",
+        currentStepId = "plan",
+        stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
+          """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+        ),
+        artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
+        context = fixture.context,
       ),
-      artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
-      context = fixture.context,
     )
     val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,

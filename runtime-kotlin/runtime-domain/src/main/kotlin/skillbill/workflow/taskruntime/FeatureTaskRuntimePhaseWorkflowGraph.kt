@@ -48,15 +48,20 @@ internal object FeatureTaskRuntimePhaseWorkflowGraph {
     requiredArtifactsByStep =
     mapOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to emptyList(),
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN),
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN),
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to
+        listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN),
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to
+        listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN),
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to listOf(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       ),
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS),
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
+        listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to
+        listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
+        listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS),
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD to listOf(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
@@ -91,20 +96,27 @@ internal object FeatureTaskRuntimePhaseWorkflowGraph {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
         "Resume the implement-fix phase from the latest verified findings, reconciling the " +
         "current tree, then persist the validated output.",
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to "Resume the completeness audit from the latest plan and implement outputs.",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
+        "Resume the completeness audit from the latest plan and implement outputs.",
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
-        "Resume code review from the latest implement and audit outputs and the derived diff context.",
+        "Resume code review from the latest implement and audit outputs and the derived " +
+        "diff context.",
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to
         "Resume finding verification from the latest review output and in-flight dispositions " +
         "without re-running review.",
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD to "Resume compile/build proof from the latest plan and audit outputs.",
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to "Resume quality validation from the latest plan and audit outputs.",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD to
+        "Resume compile/build proof from the latest plan and audit outputs.",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
+        "Resume quality validation from the latest plan and audit outputs.",
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
-        "Resume boundary history writing from the latest implement and settled build or validate output.",
+        "Resume boundary history writing from the latest implement and settled build or " +
+        "validate output.",
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to
         "Resume commit/push after verifying implement, the settled quality gate, " +
         "and write_history outputs are current.",
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to "Resume PR creation from the latest implement output, commit output, and derived diff context.",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to
+        "Resume PR creation from the latest implement output, commit output, and derived " +
+        "diff context.",
     ),
     continuationReferenceSections = emptyMap(),
     continuationDirectives = emptyMap(),

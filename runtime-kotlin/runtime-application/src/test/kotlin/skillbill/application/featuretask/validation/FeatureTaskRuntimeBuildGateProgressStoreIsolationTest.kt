@@ -4,7 +4,7 @@ import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
@@ -17,7 +17,7 @@ class FeatureTaskRuntimeBuildGateProgressStoreIsolationTest {
   fun `build gate progress store persists to build artifact without overwriting validation progress`() {
     val repository = InMemoryRuntimeWorkflowRepository()
     val database = RuntimeFakeDatabaseSessionFactory(repository)
-    val recorder = FeatureTaskRuntimePhaseRecorder(
+    val recorder = featureTaskRuntimePhaseRecorder(
       database,
       testWorkflowSnapshotValidator,
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,

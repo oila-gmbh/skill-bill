@@ -2,10 +2,13 @@ package skillbill.application
 
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.goalrunner.testPhaseRecorder
+import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
+import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
+import skillbill.application.workflow.openFeatureTask
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
@@ -28,22 +31,26 @@ class WorkflowIssueKeyPersistenceTest {
 
     val firstRuntime = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "  SKILL-117  ",
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-117/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "  SKILL-117  ",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-117/spec.md",
+        ),
       ),
     )
     val secondRuntime = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = " SKILL-118 ",
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-118/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = " SKILL-118 ",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-118/spec.md",
+        ),
       ),
     )
     val verify = assertIs<WorkflowOpenResult.Ok>(
-      service.open(WorkflowFamilyKind.VERIFY, issueKey = " SKILL-119 "),
+      service.open(WorkflowServiceOpenArgs(kind = WorkflowFamilyKind.VERIFY, issueKey = " SKILL-119 ")),
     )
 
     assertEquals("SKILL-117", assertNotNull(workflows.getFeatureTaskRuntimeWorkflow(firstRuntime.workflowId)).issueKey)
@@ -63,18 +70,22 @@ class WorkflowIssueKeyPersistenceTest {
 
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-117\nspoofed",
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-117/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-117\nspoofed",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-117/spec.md",
+        ),
       )
     }
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "S".repeat(129),
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-117/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "S".repeat(129),
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-117/spec.md",
+        ),
       )
     }
   }
@@ -82,7 +93,7 @@ class WorkflowIssueKeyPersistenceTest {
   @Test
   fun `runtime workflow reopen heals a missing issue key and rejects a conflicting normalized key`() {
     val workflows = InMemoryWorkflowStates()
-    val recorder = FeatureTaskRuntimePhaseRecorder(
+    val recorder = testPhaseRecorder(
       database = FakeDatabaseSessionFactory(workflows),
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       handoffEnvelopeValidator = AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,

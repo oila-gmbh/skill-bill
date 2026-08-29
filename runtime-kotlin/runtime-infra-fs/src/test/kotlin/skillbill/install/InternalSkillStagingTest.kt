@@ -23,6 +23,7 @@ import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.testsupport.SkillClassFixtures
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -33,7 +34,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
-import java.io.IOException
 
 /**
  * SKILL-102 (PD2/PD6): internal-skill install staging.

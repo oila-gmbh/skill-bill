@@ -1,6 +1,8 @@
 package skillbill.workflow
 
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import kotlin.test.Test

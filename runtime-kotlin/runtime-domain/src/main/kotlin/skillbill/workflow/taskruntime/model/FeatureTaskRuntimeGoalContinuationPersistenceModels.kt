@@ -1,12 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
-import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import java.math.BigDecimal
-import java.math.BigInteger
 
 /**
  * One silent heal of a goal-continuation field on resume: the launcher value was adopted because the

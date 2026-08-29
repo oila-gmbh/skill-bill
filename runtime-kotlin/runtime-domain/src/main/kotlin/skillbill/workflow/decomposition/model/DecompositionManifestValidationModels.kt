@@ -1,8 +1,8 @@
 package skillbill.workflow.decomposition.model
 
 import skillbill.contracts.workflow.DECOMPOSITION_MANIFEST_VALIDATION_CONTRACT_VERSION
-import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.FailureWireCode
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.failureWireByValue
 
 const val DECOMPOSITION_MANIFEST_VALIDATION_VERSION: String =
@@ -36,11 +36,10 @@ enum class DecompositionManifestValidationFailureCode(
   companion object {
     private const val HIERARCHY = "DecompositionManifestValidationFailureCode"
 
-    fun fromWire(value: String?): DecompositionManifestValidationFailureCode =
-      when {
-        value.isNullOrBlank() -> SCHEMA_INVALID
-        else -> entries.failureWireByValue(value, HIERARCHY)
-      }
+    fun fromWire(value: String?): DecompositionManifestValidationFailureCode = when {
+      value.isNullOrBlank() -> SCHEMA_INVALID
+      else -> entries.failureWireByValue(value, HIERARCHY)
+    }
   }
 }
 

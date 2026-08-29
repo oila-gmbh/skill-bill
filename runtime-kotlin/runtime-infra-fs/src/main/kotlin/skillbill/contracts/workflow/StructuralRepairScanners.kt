@@ -2,18 +2,6 @@
 
 package skillbill.contracts.workflow
 
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
-import java.security.MessageDigest
-
 internal class YamlFlowScalarValidator(private val text: String) {
   private var inDouble = false
   private var inSingle = false
@@ -128,4 +116,3 @@ internal class DelimiterScanner(private val text: String) {
     }
   }
 }
-

@@ -94,9 +94,11 @@ internal object FeatureTaskRuntimeHandoffProjectionEnvelopeWire {
       value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
         kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
         value = resolvedFingerprint +
-          (carriedFingerprint?.let {
-            FeatureTaskRuntimeHandoffProjectionValidator.CHECKPOINT_PRODUCER_CLAIM_SEPARATOR + it
-          }.orEmpty()),
+          (
+            carriedFingerprint?.let {
+              FeatureTaskRuntimeHandoffProjectionValidator.CHECKPOINT_PRODUCER_CLAIM_SEPARATOR + it
+            }.orEmpty()
+            ),
       ),
     )
   } else {

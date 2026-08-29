@@ -3,6 +3,7 @@ package skillbill.application.goalrunner
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.text.Utf8Text
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -10,7 +11,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.text.Utf8Text
 
 class GoalSubtaskReviewSummaryReducerTest {
   @Test

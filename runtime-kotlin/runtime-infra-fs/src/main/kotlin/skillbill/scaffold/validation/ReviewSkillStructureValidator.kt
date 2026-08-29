@@ -15,7 +15,10 @@ internal object ReviewSkillStructureValidator {
     if (violations.isNotEmpty()) {
       throw InvalidReviewSkillStructureError(
         "Platform pack '${pack.fileName}' violates the governed review-skill structure: " +
-          violations.joinToString("; ") { violation -> "${ReviewSkillStructureValidatorHelpers.displayPath(pack, violation.path)}: ${violation.rule}" },
+          violations.joinToString("; ") { violation ->
+            val display = displayPath(pack, violation.path)
+            "$display: ${violation.rule}"
+          },
       )
     }
   }
@@ -26,20 +29,31 @@ internal object ReviewSkillStructureValidator {
         packDirectories.filter(Files::isDirectory).toList().flatMap(::violations)
       }
     }
-    val manifest = ReviewSkillStructureValidatorHelpers.manifest(pack) ?: return listOf(
+    val manifest = manifest(pack) ?: return listOf(
       ReviewSkillStructureViolation(pack.resolve("platform.yaml"), "platform manifest mapping"),
     )
-    val reviewFiles = ReviewSkillStructureValidatorHelpers.contentFiles(pack)
-    val hasReviewSurface = ReviewSkillStructureValidatorHelpers.declaredBaseline(manifest) != null || ReviewSkillStructureValidatorHelpers.declaredAreas(manifest).isNotEmpty() || reviewFiles.isNotEmpty()
+    val reviewFiles = contentFiles(pack)
+    val hasReviewSurface =
+      declaredBaseline(manifest) != null ||
+        declaredAreas(manifest).isNotEmpty() ||
+        reviewFiles.isNotEmpty()
     return buildList {
       if (hasReviewSurface) {
         addAll(ReviewSkillStructureValidatorManifest.manifestViolations(pack, manifest))
-        addAll(reviewFiles.flatMap { file -> ReviewSkillStructureValidatorContent.contentViolations(pack, manifest, file) })
+        addAll(
+          reviewFiles.flatMap { file ->
+            ReviewSkillStructureValidatorContent.contentViolations(pack, manifest, file)
+          },
+        )
         addAll(ReviewSkillStructureValidatorContent.nativeAgentViolations(pack, manifest))
-        addAll(ReviewSkillStructureValidatorContent.authoredSidecarViolations(reviewFiles, manifest))
+        addAll(
+          ReviewSkillStructureValidatorContent.authoredSidecarViolations(reviewFiles, manifest),
+        )
       }
       addAll(ReviewSkillStructureValidatorContent.qualityCheckViolations(pack, manifest))
-      addAll(ReviewSkillStructureValidatorHelpers.allContentFiles(pack).flatMap(ReviewSkillStructureValidatorHelpers::severityViolations))
+      addAll(
+        allContentFiles(pack).flatMap(::severityViolations),
+      )
     }
   }
 }

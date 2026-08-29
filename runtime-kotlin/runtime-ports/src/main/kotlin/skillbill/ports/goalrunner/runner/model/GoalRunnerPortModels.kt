@@ -4,10 +4,10 @@ import skillbill.goalrunner.model.GoalAttemptLedgerEntry
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.goal.model.GoalProgressEvent
 import java.nio.file.Path
-import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 
 data class GoalRunnerManifestState(
   val parentWorkflowId: String,

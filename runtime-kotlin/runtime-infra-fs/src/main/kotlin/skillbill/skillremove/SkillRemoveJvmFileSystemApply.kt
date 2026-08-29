@@ -3,34 +3,21 @@ package skillbill.skillremove
 import skillbill.domain.skillremove.SkillBillRollbackException
 import skillbill.domain.skillremove.model.AgentSymlinkProvider
 import skillbill.domain.skillremove.model.AppliedCascade
-import skillbill.domain.skillremove.model.ManifestEdit
-import skillbill.domain.skillremove.model.ManifestEditKind
-import skillbill.domain.skillremove.model.ReadmeCatalogEdit
-import skillbill.domain.skillremove.model.ReadmeCatalogEditKind
-import skillbill.domain.skillremove.model.ReadmeCatalogWarning
 import skillbill.domain.skillremove.model.SkillRemovalPreview
 import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalTarget
 import skillbill.install.nativeagent.InstallNativeAgentOperations
 import skillbill.install.nativeagent.NativeAgentLinkRequest
-import skillbill.scaffold.manifest.removeAddonReferences
-import skillbill.scaffold.manifest.removeCodeReviewArea
-import skillbill.scaffold.manifest.removeDeclaredFilesBaseline
-import skillbill.scaffold.manifest.removeDeclaredQualityCheckFile
-import skillbill.scaffold.manifest.removePointersBlockKey
-import skillbill.scaffold.manifest.removeSkillClassPointer
-import skillbill.scaffold.platformpack.ReadmeCatalogEdits
-import skillbill.scaffold.platformpack.ReadmeEditOutcome
 import java.io.IOException
+import java.nio.file.FileVisitResult
+import java.nio.file.FileVisitResult.CONTINUE
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
 import java.util.logging.Logger
-import java.nio.file.FileVisitResult.CONTINUE
 import kotlin.coroutines.cancellation.CancellationException
-import java.nio.file.FileVisitResult
 
 internal class SkillRemoveJvmFileSystemApply(
   private val home: Path?,
@@ -38,108 +25,24 @@ internal class SkillRemoveJvmFileSystemApply(
   fun applyCascade(request: SkillRemovalRequest, preview: SkillRemovalPreview): AppliedCascade {
     val repoRoot = skillRemoveRepoRoot(request)
     val rollbackStash = mutableListOf<RollbackEntry>()
-    val removedPaths = mutableListOf<String>()
-    val editedManifests = mutableListOf<String>()
-    val unlinkedSymlinks = mutableListOf<String>()
-    val readmeWarnings = mutableListOf<ReadmeCatalogWarning>()
     log.info(
       "skill-bill remove begin: target=${describeTargetForLog(request.target)} " +
         "cascadedSkills=${preview.cascadedSkillNames.size} " +
         "filesystemPaths=${preview.filesystemPaths.size}",
     )
-    try {
-
-      preview.manifestEdits.forEach { edit ->
-        stashFile(repoRoot.resolve(edit.manifestPath), rollbackStash)
-      }
-      preview.readmeCatalogEdits.forEach { edit ->
-        stashFile(repoRoot.resolve(edit.readmePath), rollbackStash)
-      }
-
-      preview.manifestEdits.forEach { edit ->
-        val manifest = repoRoot.resolve(edit.manifestPath)
-        when (edit.editKind) {
-          ManifestEditKind.REMOVE_CODE_REVIEW_AREA,
-          ManifestEditKind.REMOVE_DECLARED_FILES_AREA_ENTRY,
-          ManifestEditKind.REMOVE_AREA_METADATA_ENTRY,
-          -> {
-            removeCodeReviewArea(manifest, edit.detail)
-          }
-          ManifestEditKind.REMOVE_DECLARED_QUALITY_CHECK_FILE -> {
-            removeDeclaredQualityCheckFile(manifest)
-          }
-          ManifestEditKind.REMOVE_DECLARED_FILES_BASELINE -> {
-            removeDeclaredFilesBaseline(manifest)
-          }
-          ManifestEditKind.REMOVE_POINTERS_BLOCK_KEY -> {
-            removePointersBlockKey(manifest, edit.detail)
-          }
-          ManifestEditKind.REMOVE_ADDON_REFERENCES -> {
-            removeAddonReferences(manifest, edit.detail)
-          }
-          ManifestEditKind.REMOVE_SKILL_CLASS_POINTER -> {
-            removeSkillClassPointer(manifest, edit.detail)
-          }
-        }
-        editedManifests += edit.manifestPath
-      }
-
-      val skillNameForReadme = (request.target as? SkillRemovalTarget.HorizontalSkill)?.skillName
-      preview.readmeCatalogEdits.forEach { edit ->
-        val readme = repoRoot.resolve(edit.readmePath)
-        val outcome: ReadmeEditOutcome? = when (edit.kind) {
-          ReadmeCatalogEditKind.REMOVE_CATALOG_ROW ->
-            if (skillNameForReadme != null) ReadmeCatalogEdits.removeCatalogRow(readme, skillNameForReadme) else null
-          ReadmeCatalogEditKind.DECREMENT_SECTION_COUNT ->
-            ReadmeCatalogEdits.decrementSectionCount(readme)
-        }
-        if (outcome is ReadmeEditOutcome.LandmarksMissing) {
-          readmeWarnings += ReadmeCatalogWarning(
-            readmePath = edit.readmePath,
-            kind = edit.kind,
-            reason = outcome.reason,
-          )
-        }
-      }
-
-      val absolutePaths = preview.filesystemPaths
-        .map { rel -> repoRoot.resolve(rel) }
-        .filter { Files.exists(it, LinkOption.NOFOLLOW_LINKS) }
-      absolutePaths.forEach { stashTree(it, rollbackStash) }
-      absolutePaths.forEach { absolute ->
-        deletePath(absolute)
-        removedPaths += absolute.toString().replace('\\', '/')
-      }
-
-      val symlinks = unlinkProviderAgents(request)
-      unlinkedSymlinks += symlinks.map { it.toString().replace('\\', '/') }
-
-      log.info(
-        "skill-bill remove success: removedPaths=${removedPaths.size} " +
-          "editedManifests=${editedManifests.size} " +
-          "unlinkedSymlinks=${unlinkedSymlinks.size}",
-      )
-      return AppliedCascade(
-        removedPaths = removedPaths,
-        editedManifests = editedManifests,
-        unlinkedSymlinks = unlinkedSymlinks,
-        readmeWarnings = readmeWarnings,
-      )
-    } catch (cancellation: CancellationException) {
-      log.info("skill-bill remove failed: exceptionName=${cancellation::class.simpleName.orEmpty()}")
-      attemptRollback(rollbackStash)
-      throw cancellation
-    } catch (error: Exception) {
-      log.info("skill-bill remove failed: exceptionName=${error::class.simpleName.orEmpty()}")
-      val rollbackOk = attemptRollback(rollbackStash)
-      if (!rollbackOk) {
-        throw SkillBillRollbackException(
-          "Skill removal failed AND rollback could not fully restore the repo: ${error.message.orEmpty()}",
-          error,
+    return runCatching {
+      applyCascadeBody(request, preview, repoRoot, rollbackStash)
+    }.fold(
+      onSuccess = { applied ->
+        log.info(
+          "skill-bill remove success: removedPaths=${applied.removedPaths.size} " +
+            "editedManifests=${applied.editedManifests.size} " +
+            "unlinkedSymlinks=${applied.unlinkedSymlinks.size}",
         )
-      }
-      throw error
-    }
+        applied
+      },
+      onFailure = { error -> handleApplyCascadeFailure(error, rollbackStash) },
+    )
   }
   fun providerUnlink(provider: AgentSymlinkProvider): (NativeAgentLinkRequest) -> List<Path> = when (provider) {
     AgentSymlinkProvider.CLAUDE -> InstallNativeAgentOperations::unlinkClaudeAgents
@@ -193,15 +96,15 @@ internal class SkillRemoveJvmFileSystemApply(
     val message: String,
   )
 
-  private data class RollbackEntry(val path: Path, val bytes: ByteArray?, val wasDirectory: Boolean)
+  internal data class RollbackEntry(val path: Path, val bytes: ByteArray?, val wasDirectory: Boolean)
 
-  private fun stashFile(path: Path, stash: MutableList<RollbackEntry>) {
+  internal fun stashFile(path: Path, stash: MutableList<RollbackEntry>) {
     if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
       stash += RollbackEntry(path = path, bytes = Files.readAllBytes(path), wasDirectory = false)
     }
   }
 
-  private fun stashTree(root: Path, stash: MutableList<RollbackEntry>) {
+  internal fun stashTree(root: Path, stash: MutableList<RollbackEntry>) {
     if (Files.isSymbolicLink(root)) {
       return
     }
@@ -227,7 +130,7 @@ internal class SkillRemoveJvmFileSystemApply(
     }
   }
 
-  private fun deletePath(target: Path) {
+  internal fun deletePath(target: Path) {
     if (Files.isSymbolicLink(target)) {
       Files.deleteIfExists(target)
       return
@@ -253,7 +156,7 @@ internal class SkillRemoveJvmFileSystemApply(
     Files.deleteIfExists(target)
   }
 
-  private fun attemptRollback(stash: List<RollbackEntry>): Boolean = try {
+  internal fun attemptRollback(stash: List<RollbackEntry>): Boolean = try {
     stash.filter { it.wasDirectory }
       .sortedBy { it.path.nameCount }
       .forEach { entry ->
@@ -273,8 +176,7 @@ internal class SkillRemoveJvmFileSystemApply(
     false
   }
 
-  private companion object {
-    private val log: Logger = Logger.getLogger("skillbill.skillremove.SkillRemoveJvmFileSystem")
+  internal companion object {
+    internal val log: Logger = Logger.getLogger("skillbill.skillremove.SkillRemoveJvmFileSystem")
   }
 }
-

@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.agentaddon.model.AgentAddonConsumer
+import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
@@ -15,25 +16,24 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.install.model.ExternalAgentAddonSource
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
-import ExternalAgentAddonSourceConfigRequest
+import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigResult
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import skillbill.agentaddon.model.AgentAddonSelection
 
 class GoalPreflightServiceTest {
   @Test

@@ -3,6 +3,7 @@
 package skillbill.install.nativeagent
 
 import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchemaFactory
@@ -11,6 +12,7 @@ import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.contracts.nativeagent.NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION
 import skillbill.contracts.nativeagent.NativeAgentLinkInventorySchemaPaths
 import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -19,8 +21,6 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
-import com.fasterxml.jackson.databind.JsonNode
-import skillbill.nativeagent.rendering.NativeAgentProvider
 
 internal data class NativeAgentLinkInventoryEntry(
   val logicalName: String,

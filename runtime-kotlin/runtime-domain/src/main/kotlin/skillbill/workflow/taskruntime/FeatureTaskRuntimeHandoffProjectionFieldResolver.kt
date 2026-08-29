@@ -80,7 +80,7 @@ internal object FeatureTaskRuntimeHandoffProjectionFieldResolver {
       FeatureTaskRuntimeHandoffProjectionField(
         name = FeatureTaskRuntimeHandoffProjectionValidator.CEREMONY_SCALING_FIELD,
         value = FeatureTaskRuntimeHandoffProjectionValue.TextList(
-          FeatureTaskRuntimePhaseWorkflowDefinition
+          FeatureTaskRuntimePhaseWorkflowQueries
             .ceremonyScaling(inputs.runInvariants.featureSize)
             .toBriefingLines(),
         ),

@@ -745,7 +745,8 @@ private val ownSeverityVocabularySpecialist = """
 
       ### Severity Scale
 
-      Blocker means the change breaks correctness or safety. Major means the change materially worsens behavior for a demonstrated scenario. Minor observations are stylistic or pre-existing.
+      Blocker means the change breaks correctness or safety. Major means the change materially worsens
+      behavior for a demonstrated scenario. Minor observations are stylistic or pre-existing.
 """.trimIndent()
 
 private val missingConsequenceSpecialist = """

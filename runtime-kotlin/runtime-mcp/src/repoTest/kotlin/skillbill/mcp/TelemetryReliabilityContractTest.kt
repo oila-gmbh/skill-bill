@@ -27,12 +27,12 @@ import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
+import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import java.sql.Connection
 
 class TelemetryReliabilityContractTest {
 

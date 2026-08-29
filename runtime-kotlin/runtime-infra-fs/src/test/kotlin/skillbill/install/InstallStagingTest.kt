@@ -17,11 +17,13 @@ import skillbill.install.staging.resolveStagedSymlinkTarget
 import skillbill.install.staging.stageInstalledSkill
 import skillbill.scaffold.authoring.renderWrapper
 import skillbill.scaffold.authoring.resolveTarget
+import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.pointer.renderPointer
 import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
-import skillbill.scaffold.runtime.scaffold
 import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.testsupport.SkillClassFixtures
+import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -33,9 +35,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import java.io.File
-import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.model.PointerSpec
 
 /**
  * SKILL-40 subtask 2: install staging pipeline.

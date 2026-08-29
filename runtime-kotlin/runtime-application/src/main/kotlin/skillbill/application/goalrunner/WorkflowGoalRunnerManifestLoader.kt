@@ -1,6 +1,5 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.resolveDecompositionManifest
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.normalizeRequiredIssueKey

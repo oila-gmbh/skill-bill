@@ -4,6 +4,7 @@ import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingManifestError
 import skillbill.scaffold.model.SkillClassManifest
+import skillbill.scaffold.model.SkillClassMatcher
 import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
 import skillbill.scaffold.platformpack.discoverSkillClasses
 import skillbill.scaffold.platformpack.loadPlatformManifest
@@ -20,7 +21,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.scaffold.model.SkillClassMatcher
 
 /**
  * Frozen golden table for the legacy `requiredSupportingFilesForSkill` behavior. The class YAMLs

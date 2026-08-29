@@ -7,15 +7,18 @@ import skillbill.application.decomposition.withBlockedSubtask
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.goalrunner.GoalRunner
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
 import skillbill.application.goalrunner.GoalRunnerLedgerContext
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
+import skillbill.application.goalrunner.TestNoopGoalRunnerSubtaskLauncher
 import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
-import skillbill.application.goalrunner.planning.cascadeEligiblePlanSubtaskIds
 import skillbill.application.goalrunner.goalRepositoryIdentity
+import skillbill.application.goalrunner.goalRunnerDeps
+import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerAcceptRequest
 import skillbill.application.goalrunner.model.GoalRunnerAcceptResult
 import skillbill.application.goalrunner.model.GoalRunnerEventSink
@@ -23,9 +26,21 @@ import skillbill.application.goalrunner.model.GoalRunnerResetRequest
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
+import skillbill.application.goalrunner.planning.cascadeEligiblePlanSubtaskIds
+import skillbill.application.goalrunner.testGoalRunner
+import skillbill.application.goalrunner.testGoalRunnerStatusService
+import skillbill.application.goalrunner.testPhaseRecorder
 import skillbill.application.workflow.repoRoot
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
+import skillbill.goalrunner.model.GoalPlanningStatusReasons
+import skillbill.goalrunner.model.GoalPlanningStatusReasons.NOT_STARTED
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
+import skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED
+import skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED
+import skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
@@ -42,6 +57,14 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.ACTIVE
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -61,25 +84,24 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.learning.LearningRepository
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.model.FeatureImplementSessionSummary
-import skillbill.ports.workflow.model.FeatureVerifySessionSummary
-import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
 import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
@@ -87,22 +109,26 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
-import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.goal.model.ValidationDepth
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
@@ -116,27 +142,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.ACTIVE
-import skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
-import skillbill.ports.work.EmptyWorkListRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
-import skillbill.goalrunner.model.GoalPlanningStatusReasons
-import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED as GoalPlanningStatusStateNOT_STARTED
-import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
-import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
-import skillbill.goalrunner.model.GoalPlanningStatusReasons.NOT_STARTED
-import skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED
-import skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED
-import skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED
-import skillbill.workflow.engine.WorkflowSnapshotValidator
 
 class GoalRunnerTest {
   @Test
@@ -150,7 +156,7 @@ class GoalRunnerTest {
       launchFacts()
     }
     val pr = RecordingPullRequestPort()
-    val runner = GoalRunner(store, launcher, outcomes, pr)
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, pr))
 
     val report = runner.run(runRequest())
 
@@ -177,11 +183,13 @@ class GoalRunnerTest {
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
     )
     val outcomes = RecordingOutcomeStore()
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = TestNoopGoalRunnerSubtaskLauncher,
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ),
     )
 
     val report = runner.run(runRequest())
@@ -214,7 +222,7 @@ class GoalRunnerTest {
       outcomes["wfl-1"] = completeOutcome(1)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
     var emittedBeforeAcknowledgement = false
 
     val report = runner.run(
@@ -253,7 +261,7 @@ class GoalRunnerTest {
         }
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -289,7 +297,7 @@ class GoalRunnerTest {
       }
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -323,7 +331,7 @@ class GoalRunnerTest {
       }
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
     val events = mutableListOf<GoalRunnerRunEvent>()
 
     val report = runner.run(runRequest().copy(eventSink = events::add))
@@ -355,7 +363,7 @@ class GoalRunnerTest {
       }
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -374,7 +382,7 @@ class GoalRunnerTest {
       launchFacts()
     }
     val outcomes = RecordingOutcomeStore()
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -422,7 +430,7 @@ class GoalRunnerTest {
       }
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -442,11 +450,13 @@ class GoalRunnerTest {
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts()
     }
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = launcher,
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ),
     )
 
     val report = runner.run(runRequest())
@@ -465,11 +475,13 @@ class GoalRunnerTest {
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts(interrupted = true)
     }
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = launcher,
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ),
     )
 
     val report = runner.run(runRequest())
@@ -507,7 +519,7 @@ class GoalRunnerTest {
         launchFacts()
       }
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -526,7 +538,7 @@ class GoalRunnerTest {
       launchFacts(timedOut = true)
     }
     val outcomes = RecordingOutcomeStore()
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -546,12 +558,15 @@ class GoalRunnerTest {
     )
     val launcher = RecordingSubtaskLauncher { launchFacts() }
     val outcomes = RecordingOutcomeStore()
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = launcher,
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
-      gitOperations = FixedBranchGitOperations("main"),
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        gitOperations = FixedBranchGitOperations("main"),
+      ),
     )
 
     val report = runner.run(runRequest())
@@ -577,12 +592,15 @@ class GoalRunnerTest {
       launchFacts()
     }
     val git = RecordingGitOperations(currentBranch = "main")
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = launcher,
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        gitOperations = git,
+      ),
     )
 
     val report = runner.run(runRequest())
@@ -597,12 +615,15 @@ class GoalRunnerTest {
   fun `same-branch goal blocks at create branch when feature branch checkout fails`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val launcher = RecordingSubtaskLauncher { launchFacts() }
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = launcher,
-      outcomeStore = RecordingOutcomeStore(),
-      pullRequestPort = RecordingPullRequestPort(),
-      gitOperations = RecordingGitOperations(currentBranch = "main", checkoutError = "cannot create feature branch"),
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        gitOperations = RecordingGitOperations(currentBranch = "main", checkoutError = "cannot create feature branch"),
+      ),
     )
 
     val report = runner.run(runRequest())
@@ -620,14 +641,17 @@ class GoalRunnerTest {
   fun `goal baseline capture failure blocks before opening or launching a child`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val launcher = RecordingSubtaskLauncher { launchFacts() }
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = launcher,
-      outcomeStore = RecordingOutcomeStore(),
-      pullRequestPort = RecordingPullRequestPort(),
-      gitOperations = RecordingGitOperations(
-        currentBranch = "feat/SKILL-56-goal",
-        baselineError = "staged tracked changes are present",
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        gitOperations = RecordingGitOperations(
+          currentBranch = "feat/SKILL-56-goal",
+          baselineError = "staged tracked changes are present",
+        ),
       ),
     )
 
@@ -647,12 +671,15 @@ class GoalRunnerTest {
       .copy(status = "complete", currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"))
     val store = InMemoryGoalManifestStore(manifest = completeManifest.copy(featureBranch = "main"))
     val launcher = RecordingSubtaskLauncher { launchFacts() }
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = launcher,
-      outcomeStore = RecordingOutcomeStore(),
-      pullRequestPort = RecordingPullRequestPort(),
-      gitOperations = FixedBranchGitOperations("main"),
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        gitOperations = FixedBranchGitOperations("main"),
+      ),
     )
 
     val report = runner.run(runRequest())
@@ -683,7 +710,7 @@ class GoalRunnerValidationDepthTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
 
@@ -703,7 +730,7 @@ class GoalRunnerValidationDepthTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
 
@@ -728,7 +755,7 @@ class GoalRunnerValidationDepthTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
 
@@ -758,7 +785,7 @@ class GoalRunnerQualityGateSelectionTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
 
@@ -782,7 +809,7 @@ class GoalRunnerQualityGateSelectionTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
 
@@ -807,7 +834,7 @@ class GoalRunnerQualityGateSelectionTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
 
@@ -847,7 +874,16 @@ class GoalRunnerLinearScratchFinalizeTest {
       launchFacts()
     }
     val scratch = RecordingSpecScratchStore()
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort(), specScratchStore = scratch)
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        specScratchStore = scratch,
+      ),
+    )
 
     val report = runner.run(linearRunRequest(repoRoot))
 
@@ -882,7 +918,16 @@ class GoalRunnerLinearScratchFinalizeTest {
       launchFacts()
     }
     val scratch = RecordingSpecScratchStore()
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort(), specScratchStore = scratch)
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        specScratchStore = scratch,
+      ),
+    )
 
     assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
 
@@ -911,7 +956,16 @@ class GoalRunnerLinearScratchFinalizeTest {
       launchFacts()
     }
     val scratch = RecordingSpecScratchStore()
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort(), specScratchStore = scratch)
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        specScratchStore = scratch,
+      ),
+    )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
 
@@ -932,13 +986,16 @@ class GoalRunnerLinearScratchFinalizeTest {
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
         .copy(specSource = SpecSource.LINEAR, executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      RecordingPullRequestPort(),
-      specScratchStore = scratch,
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        specScratchStore = scratch,
+        gitOperations = git,
+      ),
     )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
@@ -965,13 +1022,16 @@ class GoalRunnerLinearScratchFinalizeTest {
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      RecordingPullRequestPort(),
-      specScratchStore = RecordingSpecScratchStore(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        specScratchStore = RecordingSpecScratchStore(),
+        gitOperations = git,
+      ),
     )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
@@ -993,13 +1053,16 @@ class GoalRunnerLinearScratchFinalizeTest {
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
         .copy(executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      RecordingPullRequestPort(),
-      specScratchStore = RecordingSpecScratchStore(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        specScratchStore = RecordingSpecScratchStore(),
+        gitOperations = git,
+      ),
     )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
@@ -1024,13 +1087,16 @@ class GoalRunnerLinearScratchFinalizeTest {
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
         .copy(executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      RecordingPullRequestPort(),
-      specScratchStore = RecordingSpecScratchStore(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        specScratchStore = RecordingSpecScratchStore(),
+        gitOperations = git,
+      ),
     )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
@@ -1055,13 +1121,16 @@ class GoalRunnerLinearScratchFinalizeTest {
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      pullRequests,
-      specScratchStore = RecordingSpecScratchStore(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = pullRequests,
+      ).copy(
+        specScratchStore = RecordingSpecScratchStore(),
+        gitOperations = git,
+      ),
     )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
@@ -1089,13 +1158,16 @@ class GoalRunnerLinearScratchFinalizeTest {
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
         .copy(executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      pullRequests,
-      specScratchStore = RecordingSpecScratchStore(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = pullRequests,
+      ).copy(
+        specScratchStore = RecordingSpecScratchStore(),
+        gitOperations = git,
+      ),
     )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
@@ -1119,13 +1191,16 @@ class GoalRunnerLinearScratchFinalizeTest {
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      pullRequests,
-      specScratchStore = RecordingSpecScratchStore(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = pullRequests,
+      ).copy(
+        specScratchStore = RecordingSpecScratchStore(),
+        gitOperations = git,
+      ),
     )
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
@@ -1143,12 +1218,15 @@ class GoalRunnerLinearScratchFinalizeTest {
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      RecordingPullRequestPort(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        gitOperations = git,
+      ),
     )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
@@ -1170,12 +1248,15 @@ class GoalRunnerLinearScratchFinalizeTest {
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      pullRequests,
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = pullRequests,
+      ).copy(
+        gitOperations = git,
+      ),
     )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
@@ -1199,12 +1280,15 @@ class GoalRunnerLinearScratchFinalizeTest {
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      pullRequests,
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = pullRequests,
+      ).copy(
+        gitOperations = git,
+      ),
     )
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
@@ -1226,12 +1310,15 @@ class GoalRunnerLinearScratchFinalizeTest {
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
         .copy(executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      RecordingPullRequestPort(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        gitOperations = git,
+      ),
     )
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
@@ -1249,12 +1336,15 @@ class GoalRunnerLinearScratchFinalizeTest {
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
         .copy(featureBranch = "main", executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
-    val runner = GoalRunner(
-      store,
-      RecordingSubtaskLauncher { launchFacts() },
-      RecordingOutcomeStore(),
-      RecordingPullRequestPort(),
-      gitOperations = git,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        gitOperations = git,
+      ),
     )
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
@@ -1294,7 +1384,7 @@ class GoalRunnerReviewPolicyPersistenceTest {
       launchFacts()
     }
 
-    GoalRunner(store, launcher, outcomes, RecordingPullRequestPort()).run(runRequest())
+    testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort())).run(runRequest())
 
     assertEquals(
       AgentAddonSelection(listOf(addOn)),
@@ -1325,7 +1415,7 @@ class GoalRunnerPauseLaunchBoundaryTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest().copy(stopAfterSubtaskId = 1))
 
@@ -1346,7 +1436,7 @@ class GoalRunnerPauseLaunchBoundaryTest {
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
     )
     val launcher = RecordingSubtaskLauncher { launchFacts() }
-    val runner = GoalRunner(store, launcher, RecordingOutcomeStore(), RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, RecordingOutcomeStore(), RecordingPullRequestPort()))
 
     val report = runner.run(runRequest().copy(stopAfterSubtaskId = 1))
 
@@ -1368,7 +1458,7 @@ class GoalRunnerPauseLaunchBoundaryTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -1393,7 +1483,7 @@ class GoalRunnerPauseLaunchBoundaryTest {
     store.beforeLaunchAuthorization = { subtaskId ->
       if (subtaskId == 2) store.requestPauseForTest()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -1416,7 +1506,7 @@ class GoalRunnerPauseLaunchBoundaryTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -1451,41 +1541,15 @@ class GoalRunnerHandoffTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val reviewOperations = object : GoalSubtaskReviewGitOperations {
-      override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
-        if (projectionDirty) {
-          GoalSubtaskReviewBaselineResult(status = "error", error = "unstaged tracked changes are present")
-        } else {
-          GoalSubtaskReviewBaselineResult(
-            status = "ok",
-            baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-          )
-        }
-
-      override fun buildInput(
-        repoRoot: Path,
-        baseline: GoalSubtaskReviewBaseline,
-        expectedBranch: String,
-      ): GoalSubtaskReviewInputResult = error("Review input is not used by this test.")
-
-      override fun recoverBaseline(
-        repoRoot: Path,
-        request: GoalSubtaskReviewBaselineRecoveryRequest,
-        expectedBranch: String,
-      ): GoalSubtaskReviewBaselineResult = error("Review baseline recovery is not used by this test.")
-    }
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = launcher,
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
-      gitOperations = object :
-        WorkflowGitOperations by RecordingGitOperations(
-          currentBranch = "feat/SKILL-56-goal",
-        ),
-        GoalSubtaskReviewGitOperationsProvider {
-        override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = reviewOperations
-      },
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = launcher,
+        outcomeStore = outcomes,
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        gitOperations = RecordingGitOperations(currentBranch = "feat/SKILL-56-goal"),
+      ),
     )
 
     val report = runner.run(
@@ -1525,7 +1589,7 @@ class GoalRunnerRepositoryPathTest {
       launchFacts()
     }
 
-    val report = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort()).run(
+    val report = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort())).run(
       GoalRunnerRunRequest(
         issueKey = "SKILL-56",
         repoRoot = repositoryAlias,
@@ -1559,7 +1623,7 @@ class GoalRunnerNoTerminalOutcomeDiagnosisTest {
       )
     }
     val outcomes = RecordingOutcomeStore()
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -1590,7 +1654,7 @@ class GoalRunnerNoTerminalOutcomeDiagnosisTest {
         spawnFailed = false,
       )
     }
-    val runner = GoalRunner(store, launcher, RecordingOutcomeStore(), RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, RecordingOutcomeStore(), RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -1735,7 +1799,13 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(
       ExecutionLiveness.IDLE,
       requireNotNull(
-        GoalRunnerStatusService(missingLeaseStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
+        testGoalRunnerStatusService(
+          goalRunnerStatusServiceDeps(
+            manifestStore = missingLeaseStore,
+            outcomeStore = RecordingOutcomeStore(),
+            phaseRecorder = goalTestPhaseRecorder(),
+          ),
+        )
           .status(goalStatusRequest()),
       ).executionLiveness,
     )
@@ -1748,7 +1818,13 @@ class GoalRunnerStatusProjectionTest {
     assertEquals(
       ExecutionLiveness.IDLE,
       requireNotNull(
-        GoalRunnerStatusService(missingCurrentSubtaskStore, RecordingOutcomeStore(), goalTestPhaseRecorder())
+        testGoalRunnerStatusService(
+          goalRunnerStatusServiceDeps(
+            manifestStore = missingCurrentSubtaskStore,
+            outcomeStore = RecordingOutcomeStore(),
+            phaseRecorder = goalTestPhaseRecorder(),
+          ),
+        )
           .status(goalStatusRequest()),
       ).executionLiveness,
     )
@@ -1779,11 +1855,14 @@ class GoalRunnerStatusProjectionTest {
         expiresAt = "2026-07-27T12:00:01Z",
       )
     }
-    val service = GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
+      ),
     )
 
     assertEquals(ExecutionLiveness.LIVE, requireNotNull(service.status(goalStatusRequest())).executionLiveness)
@@ -1813,11 +1892,14 @@ class GoalRunnerStatusProjectionTest {
         expiresAt = "2026-07-27T12:00:01Z",
       )
     }
-    val service = GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = harness.recorder,
-      clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = harness.recorder,
+      ).copy(
+        clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
+      ),
     )
 
     assertEquals(ExecutionLiveness.LIVE, requireNotNull(service.status(goalStatusRequest())).executionLiveness)
@@ -1850,11 +1932,14 @@ class GoalRunnerStatusProjectionTest {
         timestamp = "2026-06-01T00:00:00Z",
       ),
     )
-    val service = GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = outcomes,
-      phaseRecorder = goalTestPhaseRecorder(),
-      gitOperations = StatusDiffGitOperations,
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        gitOperations = StatusDiffGitOperations,
+      ),
     )
 
     val status = service.status(
@@ -1883,7 +1968,13 @@ class GoalRunnerStatusProjectionTest {
     )
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1915,7 +2006,13 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore().apply {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-1")
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1940,7 +2037,13 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore().apply {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-authoritative")
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -1989,7 +2092,13 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "review",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2048,7 +2157,13 @@ class GoalRunnerStatusProjectionTest {
         lastSnapshotUpdatedAt = "2026-05-30 00:00:00",
       )
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2090,7 +2205,13 @@ class GoalRunnerStatusProjectionTest {
       )
     }
     val store = InMemoryGoalManifestStore(staleManifest)
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(GoalRunnerStatusRequest(issueKey = "SKILL-56", invokedAgentId = "codex"))
 
@@ -2114,7 +2235,13 @@ class GoalRunnerStatusProjectionTest {
         suppressPr = true,
       )
     }
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2146,7 +2273,13 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "review",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2185,7 +2318,13 @@ class GoalRunnerStatusProjectionTest {
       lastResumableStep = "preplan",
       suppressPr = true,
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2232,7 +2371,13 @@ class GoalRunnerStatusProjectionTest {
     )
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -2252,7 +2397,13 @@ class GoalRunnerPauseStatusTest {
   @Test
   fun `pause is consumed when the goal is stranded before launching a subtask`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val result = service.pause(
       issueKey = "SKILL-56",
@@ -2271,7 +2422,13 @@ class GoalRunnerPauseStatusTest {
   fun `resume clears a pause request that never reached a boundary`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     store.requestPauseForTest()
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val result = service.resume(
       issueKey = "SKILL-56",
@@ -2288,7 +2445,13 @@ class GoalRunnerPauseStatusTest {
   @Test
   fun `resume reports not_paused when no pause boundary is durable`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val result = service.resume(
       issueKey = "SKILL-56",
@@ -2303,15 +2466,18 @@ class GoalRunnerPauseStatusTest {
 private fun statusServiceForLiveness(
   harness: GoalStatusPhaseLedgerHarness,
   workflowId: String,
-): GoalRunnerStatusService = GoalRunnerStatusService(
-  manifestStore = InMemoryGoalManifestStore(
-    manifest(subtaskCount = 1)
-      .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"))
-      .withWorkflowId(1, workflowId),
+): GoalRunnerStatusService = testGoalRunnerStatusService(
+  goalRunnerStatusServiceDeps(
+    manifestStore = InMemoryGoalManifestStore(
+      manifest(subtaskCount = 1)
+        .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"))
+        .withWorkflowId(1, workflowId),
+    ),
+    outcomeStore = RecordingOutcomeStore(),
+    phaseRecorder = harness.recorder,
+  ).copy(
+    clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
   ),
-  outcomeStore = RecordingOutcomeStore(),
-  phaseRecorder = harness.recorder,
-  clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
 )
 
 private fun goalStatusRequest() = GoalRunnerStatusRequest(issueKey = "SKILL-56", invokedAgentId = "codex")
@@ -2327,7 +2493,7 @@ class GoalRunnerObservabilityTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts(stdout = "worker summary")
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -2350,7 +2516,7 @@ class GoalRunnerObservabilityTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts(stdout = "worker summary")
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -2370,7 +2536,7 @@ class GoalRunnerObservabilityTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts(stdout = "worker summary")
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -2390,7 +2556,7 @@ class GoalRunnerObservabilityTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts(stdout = "worker summary")
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -2417,7 +2583,7 @@ class GoalRunnerObservabilityTest {
       }
       launchFacts(stdout = stdout)
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -2445,7 +2611,7 @@ class GoalRunnerObservabilityTest {
         ),
       )
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -2473,7 +2639,7 @@ class GoalRunnerObservabilityTest {
         ),
       )
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -2486,6 +2652,15 @@ class GoalRunnerObservabilityTest {
     assertIs<GoalRunnerWorkerSubtaskRequestOutcome.RequiresOperatorConfirmation>(outcome)
   }
 
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
+class GoalRunnerAcceptResetTest {
   @Test
   fun `accept refuses ordinary out-of-band acceptance even when the subtask is not yet marked blocked`() {
     val store = InMemoryGoalManifestStore(
@@ -2501,11 +2676,14 @@ class GoalRunnerObservabilityTest {
         },
       ),
     )
-    val service = GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      gitOperations = AcceptGitOperations(),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        gitOperations = AcceptGitOperations(),
+      ),
     )
 
     val result = service.accept(
@@ -2539,11 +2717,14 @@ class GoalRunnerObservabilityTest {
         },
       ),
     )
-    val service = GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      gitOperations = AcceptGitOperations(),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        gitOperations = AcceptGitOperations(),
+      ),
     )
 
     val result = service.accept(
@@ -2565,11 +2746,14 @@ class GoalRunnerObservabilityTest {
   @Test
   fun `accept rejects a commit that does not resolve in the repository`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
-    val service = GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      gitOperations = AcceptGitOperations(),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        gitOperations = AcceptGitOperations(),
+      ),
     )
 
     val result = service.accept(
@@ -2590,11 +2774,14 @@ class GoalRunnerObservabilityTest {
   @Test
   fun `accept rejects a subtask whose dependency is not satisfied`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
-    val service = GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      gitOperations = AcceptGitOperations(),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        gitOperations = AcceptGitOperations(),
+      ),
     )
 
     val result = service.accept(
@@ -2630,11 +2817,14 @@ class GoalRunnerObservabilityTest {
         acceptedAt = "2026-01-01T00:00:00Z",
       ),
     )
-    val service = GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      gitOperations = AcceptGitOperations(),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        gitOperations = AcceptGitOperations(),
+      ),
     )
 
     val projection = service.status(
@@ -2670,7 +2860,13 @@ class GoalRunnerObservabilityTest {
         ),
     )
     val outcomes = RecordingOutcomeStore()
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val reset = service.reset(
       GoalRunnerResetRequest(
@@ -2713,7 +2909,13 @@ class GoalRunnerObservabilityTest {
         ),
       ),
     )
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     service.reset(GoalRunnerResetRequest(issueKey = "SKILL-56", hard = false))
 
@@ -2750,7 +2952,13 @@ class GoalRunnerObservabilityTest {
       )
     }
 
-    val reset = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder()).reset(
+    val reset = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    ).reset(
       GoalRunnerResetRequest(
         issueKey = "SKILL-56",
         hard = false,
@@ -2783,7 +2991,13 @@ class GoalRunnerObservabilityTest {
     }
 
     assertFailsWith<IllegalArgumentException> {
-      GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder()).reset(
+      testGoalRunnerStatusService(
+        goalRunnerStatusServiceDeps(
+          manifestStore = store,
+          outcomeStore = outcomes,
+          phaseRecorder = goalTestPhaseRecorder(),
+        ),
+      ).reset(
         GoalRunnerResetRequest(
           issueKey = "SKILL-56",
           hard = false,
@@ -2810,10 +3024,12 @@ class GoalRunnerObservabilityTest {
         }
       },
     )
-    val service = GoalRunnerStatusService(
-      store,
-      RecordingOutcomeStore(),
-      goalTestPhaseRecorder(),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
     )
 
     val reset = service.reset(
@@ -2834,72 +3050,61 @@ class GoalRunnerObservabilityTest {
 
   @Test
   fun `hard reset lists discarded acceptance and only explicit restoration recreates it`() {
-    val original = manifest(subtaskCount = 2).withBlockedSubtask(
-      subtaskId = 1,
-      workflowId = "wfl-manual",
-      reason = "finished outside runtime",
-    )
-    val store = InMemoryGoalManifestStore(original)
     val acceptedSha = "abc1234abc1234abc1234abc1234abc1234abcd"
     val acceptedAt = "2026-01-01T00:00:00Z"
-    store.persistOutOfBandAcceptance(
-      parentWorkflowId = "wfl-parent",
-      acceptance = GoalRunnerOutOfBandAcceptance(
+    val store = InMemoryGoalManifestStore(
+      manifest(subtaskCount = 2).withBlockedSubtask(
         subtaskId = 1,
-        commitSha = acceptedSha,
-        reason = "reviewed; ship it",
-        acceptedAt = acceptedAt,
+        workflowId = "wfl-manual",
+        reason = "finished outside runtime",
       ),
     )
-    val service = GoalRunnerStatusService(
-      store,
-      RecordingOutcomeStore(),
-      goalTestPhaseRecorder(),
-      AcceptGitOperations(),
+    store.persistOutOfBandAcceptance(
+      parentWorkflowId = "wfl-parent",
+      acceptance = GoalRunnerOutOfBandAcceptance(1, acceptedSha, "reviewed; ship it", acceptedAt),
     )
-
+    val service = acceptingStatusService(store)
     assertEquals(
       listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", acceptedAt)),
       service.hardResetPreflight("SKILL-56", null),
     )
     service.reset(GoalRunnerResetRequest(issueKey = "SKILL-56", hard = true, repoRoot = Path.of(".")))
     assertEquals(emptyList(), service.hardResetPreflight("SKILL-56", null))
-    assertIs<GoalRunnerAcceptResult.Rejected>(
-      service.accept(
-        GoalRunnerAcceptRequest(
-          issueKey = "SKILL-56",
-          subtaskId = 1,
-          commitSha = acceptedSha,
-          reason = "reviewed; ship it",
-          repoRoot = Path.of("."),
-        ),
-      ),
+    assertIs<GoalRunnerAcceptResult.Rejected>(service.accept(acceptRequest(acceptedSha)))
+    val restored = assertIs<GoalRunnerAcceptResult.Accepted>(
+      service.accept(acceptRequest(acceptedSha, restoreAfterHardReset = true)),
     )
-
-    val restored = service.accept(
-      GoalRunnerAcceptRequest(
-        issueKey = "SKILL-56",
-        subtaskId = 1,
-        commitSha = acceptedSha,
-        reason = "reviewed; ship it",
-        repoRoot = Path.of("."),
-        restoreAfterHardReset = true,
-      ),
-    )
-
-    assertIs<GoalRunnerAcceptResult.Accepted>(restored)
     assertEquals(
       listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", restored.acceptedAt)),
       service.hardResetPreflight("SKILL-56", null),
     )
   }
 
+  private fun acceptingStatusService(store: InMemoryGoalManifestStore) = testGoalRunnerStatusService(
+    goalRunnerStatusServiceDeps(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+    ).copy(gitOperations = AcceptGitOperations()),
+  )
+
+  private fun acceptRequest(commitSha: String, restoreAfterHardReset: Boolean = false) = GoalRunnerAcceptRequest(
+    issueKey = "SKILL-56",
+    subtaskId = 1,
+    commitSha = commitSha,
+    reason = "reviewed; ship it",
+    repoRoot = Path.of("."),
+    restoreAfterHardReset = restoreAfterHardReset,
+  )
+
   @Test
   fun `hard reset requires repository root for checkpoint ref cleanup`() {
-    val service = GoalRunnerStatusService(
-      InMemoryGoalManifestStore(manifest(subtaskCount = 1)),
-      RecordingOutcomeStore(),
-      goalTestPhaseRecorder(),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1)),
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
     )
 
     assertFailsWith<IllegalArgumentException> {
@@ -2915,7 +3120,13 @@ class GoalRunnerObservabilityTest {
         repositoryIdentity = goalRepositoryIdentity(Path.of("/tmp/bound-repo")),
       ),
     )
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     assertFailsWith<IllegalArgumentException> {
       service.reset(
@@ -2957,7 +3168,7 @@ class GoalRunnerManifestReconciliationTest {
       outcomes["wfl-2"] = completeOutcome(2)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(
       GoalRunnerRunRequest(
@@ -3531,11 +3742,19 @@ class GoalRunnerLaunchReconcilerWiringTest {
     }
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
-      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
       outcomeStore = outcomes,
     )
 
-    val launchRequest = reconciler.subtaskLaunchRequest("SKILL-56", subtaskId = 1, request = wiringRunRequest())
+    val launchRequest = reconciler.subtaskLaunchRequest(
+      SubtaskLaunchRequestArgs(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        request = wiringRunRequest(),
+        assignedWorkflowId = null,
+        reviewBaseline = null,
+        spawnAuthorization = null,
+      ),
+    )
 
     // Drive the supervisor lifecycle through the emitter the reconciler actually
     // wired into the SkillRunRequest (what the process loop would call).
@@ -3575,11 +3794,19 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val outcomes = RecordingOutcomeStore()
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
-      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
       outcomeStore = outcomes,
     )
 
-    val launchRequest = reconciler.subtaskLaunchRequest("SKILL-56", subtaskId = 1, request = wiringRunRequest())
+    val launchRequest = reconciler.subtaskLaunchRequest(
+      SubtaskLaunchRequestArgs(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        request = wiringRunRequest(),
+        assignedWorkflowId = null,
+        reviewBaseline = null,
+        spawnAuthorization = null,
+      ),
+    )
     val emitter = launchRequest.skillRunRequest.progressEmitter
     emitter.emit(supervisorEmission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
     emitter.emit(supervisorEmission(GoalProgressEventKind.OPERATION_HEARTBEAT, processAlive = true))
@@ -3602,11 +3829,19 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val outcomes = RecordingOutcomeStore()
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
-      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
       outcomeStore = outcomes,
     )
 
-    val launchRequest = reconciler.subtaskLaunchRequest("SKILL-56", subtaskId = 1, request = wiringRunRequest())
+    val launchRequest = reconciler.subtaskLaunchRequest(
+      SubtaskLaunchRequestArgs(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        request = wiringRunRequest(),
+        assignedWorkflowId = null,
+        reviewBaseline = null,
+        spawnAuthorization = null,
+      ),
+    )
     launchRequest.skillRunRequest.progressEmitter.emit(
       supervisorEmission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true),
     )
@@ -4189,7 +4424,13 @@ class GoalRunnerStatusAttributionTest {
       progressToken = "child-progress-token",
       latestLivenessSignal = "durable_progress step=implement attempt=1",
     )
-    val service = GoalRunnerStatusService(store, outcomes, goalTestPhaseRecorder())
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -4219,10 +4460,12 @@ class GoalRunnerStatusAttributionTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = "wfl-1", reason = "needs review"),
     )
-    val service = GoalRunnerStatusService(
-      store,
-      RecordingOutcomeStore(),
-      goalTestPhaseRecorder(),
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ),
     )
 
     val status = service.status(
@@ -4249,7 +4492,13 @@ class GoalRunnerStatusAttributionTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = workflowId, reason = "needs review"),
     )
-    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), harness.recorder)
+    val service = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = harness.recorder,
+      ),
+    )
 
     val status = service.status(
       GoalRunnerStatusRequest(
@@ -4271,7 +4520,7 @@ class GoalRunnerStatusAttributionTest {
 // source 2 without a database.
 internal const val FAKE_PAUSED_AT = "2026-08-02T10:00:00Z"
 
-internal fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
+internal fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = testPhaseRecorder(
   GoalTestEmptyDatabase,
   GoalTestNoopSnapshotValidator,
   AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
@@ -4285,7 +4534,7 @@ private class GoalStatusPhaseLedgerHarness {
   private val repository = GoalStatusSeedableWorkflowStateRepository()
   private val database = GoalStatusSeedableDatabase(repository)
   val recorder: FeatureTaskRuntimePhaseRecorder =
-    FeatureTaskRuntimePhaseRecorder(
+    testPhaseRecorder(
       database,
       GoalTestNoopSnapshotValidator,
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
@@ -4350,9 +4599,7 @@ private class GoalStatusSeedableDatabase(
 }
 
 private class GoalStatusSeedableWorkflowStateRepository : WorkflowStateRepository {
-  override fun saveFeatureTaskExecutionIdentity(
-    identity: FeatureTaskExecutionIdentity,
-  ) = Unit
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
     emptyList<FeatureTaskWorkflowCandidate>()
 
@@ -4379,9 +4626,7 @@ private class GoalStatusSeedableWorkflowStateRepository : WorkflowStateRepositor
     )
   }
 
-  override fun getFeatureTaskRuntimeWorkerOwnership(
-    workflowId: String,
-  ): FeatureTaskRuntimeWorkerOwnership? {
+  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? {
     if (failOwnershipReads) error("lease read failed")
     return ownershipRows[workflowId]
   }
@@ -4483,9 +4728,7 @@ private class GoalTestPlanningDatabase : DatabaseSessionFactory {
 }
 
 private object GoalTestEmptyWorkflowStateRepository : WorkflowStateRepository {
-  override fun saveFeatureTaskExecutionIdentity(
-    identity: FeatureTaskExecutionIdentity,
-  ) = Unit
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
     emptyList<FeatureTaskWorkflowCandidate>()
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
@@ -4531,7 +4774,7 @@ class GoalRunnerValidationQualityRetryTest {
       )
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 
@@ -4554,13 +4797,16 @@ class GoalRunnerUnaddressedFindingsSummaryTest {
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
     )
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
-      outcomeStore = RecordingOutcomeStore(),
-      pullRequestPort = RecordingPullRequestPort(),
-      unaddressedFindingsLedgerService = UnaddressedFindingsLedgerService(
-        RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository(), knownIssue = false),
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = TestNoopGoalRunnerSubtaskLauncher,
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        unaddressedFindingsLedgerService = UnaddressedFindingsLedgerService(
+          RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository(), knownIssue = false),
+        ),
       ),
     )
 
@@ -4599,12 +4845,15 @@ class GoalRunnerUnaddressedFindingsSummaryTest {
       summary = "Poison row persisted by an older writer",
     )
     val pullRequestPort = RecordingPullRequestPort()
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = RecordingSubtaskLauncher { launchFacts() },
-      outcomeStore = RecordingOutcomeStore(),
-      pullRequestPort = pullRequestPort,
-      unaddressedFindingsLedgerService = UnaddressedFindingsLedgerService(sessionFactory),
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = TestNoopGoalRunnerSubtaskLauncher,
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = pullRequestPort,
+      ).copy(
+        unaddressedFindingsLedgerService = UnaddressedFindingsLedgerService(sessionFactory),
+      ),
     )
 
     val request = GoalRunnerRunRequest(
@@ -4639,7 +4888,7 @@ class GoalRunnerOperatorBlockedResumeTest {
       outcomes["wfl-1"] = completeOutcome(1)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val report = runner.run(runRequest())
 

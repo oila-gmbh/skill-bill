@@ -110,7 +110,6 @@ class RuntimeArchitectureDocumentationTest {
         "skillbill.telemetry",
         "skillbill.text",
         "skillbill.workflow",
-        "skillbill.workflow.implement",
         "skillbill.workflow.verify",
       ),
       RuntimeModuleCatalog.declaredSubsystemPackages.toSet(),

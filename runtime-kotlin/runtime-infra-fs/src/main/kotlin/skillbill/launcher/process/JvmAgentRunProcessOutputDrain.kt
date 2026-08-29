@@ -9,7 +9,6 @@ import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction
-import java.nio.charset.CoderResult
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.time.Instant
@@ -66,19 +65,19 @@ internal sealed interface ProcessStart {
 
 internal class CappedUtf8Drain(
   private val input: InputStream,
-  private val limitBytes: Int?,
-  private val outputStream: AgentRunOutputStream,
-  private val outputSink: AgentRunOutputSink,
-  private val onChunkRead: (String) -> Unit,
+  internal val limitBytes: Int?,
+  internal val outputStream: AgentRunOutputStream,
+  internal val outputSink: AgentRunOutputSink,
+  internal val onChunkRead: (String) -> Unit,
 ) {
-  private val output = ByteArrayOutputStream(
+  internal val output = ByteArrayOutputStream(
     limitBytes?.coerceAtMost(INITIAL_OUTPUT_BUFFER_BYTES) ?: INITIAL_OUTPUT_BUFFER_BYTES,
   )
 
-  @Volatile private var truncated = false
-  private var totalByteSize = 0L
-  private val digest = MessageDigest.getInstance("SHA-256")
-  private val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
+  @Volatile internal var truncated = false
+  internal var totalByteSize = 0L
+  internal val digest = MessageDigest.getInstance("SHA-256")
+  internal val worker = thread(start = false, isDaemon = true, name = "skillbill-agent-run-output-drain") {
     try {
       input.use { stream ->
         val buffer = ByteArray(DEFAULT_DRAIN_BUFFER_BYTES)
@@ -111,38 +110,6 @@ internal class CappedUtf8Drain(
         decodeAvailable(decoded, withinCap) { decoder.flush(decoded) }
       }
     } catch (_: IOException) {
-    }
-  }
-
-  private fun retain(buffer: ByteArray, read: Int) {
-    output.write(buffer, 0, read)
-    val limit = limitBytes ?: return
-    if (totalByteSize > limit) truncated = true
-    if (output.size() > limit * 2) compactToTail(limit)
-  }
-
-  private fun compactToTail(limit: Int) {
-    val retained = output.toByteArray()
-    output.reset()
-    output.write(retained, retained.size - limit, limit)
-  }
-
-  private fun alignToLineStart(bytes: ByteArray): ByteArray {
-    val newline = bytes.indexOf('\n'.code.toByte())
-    return if (newline < 0) bytes else bytes.copyOfRange(newline + 1, bytes.size)
-  }
-
-  private fun decodeAvailable(decoded: CharBuffer, forwardToSink: Boolean, decode: () -> CoderResult) {
-    while (true) {
-      val result = decode()
-      decoded.flip()
-      if (decoded.hasRemaining()) {
-        val chunk = decoded.toString()
-        onChunkRead(chunk)
-        if (forwardToSink) outputSink.write(outputStream, chunk)
-      }
-      decoded.clear()
-      if (!result.isOverflow) return
     }
   }
 

@@ -3,6 +3,7 @@ package skillbill.cli
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowGetResult
 import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.cli.model.CliRuntimeContext
@@ -15,11 +16,6 @@ import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.assertIs
 
-/**
- * Seeds and inspects task-runtime workflow rows through [WorkflowService] so CLI
- * tests can exercise goal/runtime behavior without the removed `skill-bill workflow`
- * command tree.
- */
 internal fun installFakeRuntimeMcpBin(home: Path): Path {
   val bin = home.resolve(".skill-bill").resolve("runtime").resolve("runtime-mcp").resolve("bin").resolve("runtime-mcp")
   Files.createDirectories(bin.parent)
@@ -32,34 +28,37 @@ internal object RuntimeWorkflowTestSupport {
   fun open(dbPath: Path, context: CliRuntimeContext): Map<String, Any?> {
     val service = component(context).workflowService
     val result = service.open(
-      kind = WorkflowFamilyKind.TASK_RUNTIME,
-      dbOverride = dbPath.toString(),
+      WorkflowServiceOpenArgs(
+        kind = WorkflowFamilyKind.TASK_RUNTIME,
+        dbOverride = dbPath.toString(),
+      ),
     )
     return assertIs<WorkflowOpenResult.Ok>(result)
       .toCliMap(service.goalObservabilityEventValidator)
   }
 
-  @Suppress("LongParameterList") // maps 1:1 onto WorkflowUpdateRequest fields plus the DB/context seam
-  fun update(
-    dbPath: Path,
-    workflowId: String,
-    workflowStatus: String,
-    currentStepId: String,
-    stepUpdates: List<Map<String, Any?>>?,
-    artifactsPatch: Map<String, Any?>?,
-    context: CliRuntimeContext,
-  ): Map<String, Any?> {
-    val service = component(context).workflowService
+  data class UpdateArgs(
+    val dbPath: Path,
+    val workflowId: String,
+    val workflowStatus: String,
+    val currentStepId: String,
+    val stepUpdates: List<Map<String, Any?>>?,
+    val artifactsPatch: Map<String, Any?>?,
+    val context: CliRuntimeContext,
+  )
+
+  fun update(args: UpdateArgs): Map<String, Any?> {
+    val service = component(args.context).workflowService
     val result = service.update(
       WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
-        workflowId = workflowId,
-        workflowStatus = workflowStatus,
-        currentStepId = currentStepId,
-        stepUpdates = stepUpdates,
-        artifactsPatch = artifactsPatch,
+        workflowId = args.workflowId,
+        workflowStatus = args.workflowStatus,
+        currentStepId = args.currentStepId,
+        stepUpdates = args.stepUpdates,
+        artifactsPatch = args.artifactsPatch,
       ),
-      dbPath.toString(),
+      args.dbPath.toString(),
     )
     return assertIs<WorkflowUpdateResult.Ok>(result).toCliMap()
   }

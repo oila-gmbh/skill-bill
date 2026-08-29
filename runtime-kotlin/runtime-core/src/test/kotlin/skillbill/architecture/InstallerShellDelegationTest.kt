@@ -1,16 +1,16 @@
 package skillbill.architecture
 
+import org.junit.jupiter.api.Assumptions
+import org.junit.jupiter.api.BeforeEach
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.Assumptions
-import org.junit.jupiter.api.BeforeEach
-import java.io.File
-import java.security.MessageDigest
 
 @Suppress("LargeClass")
 class InstallerShellDelegationTest {
@@ -806,7 +806,8 @@ internal object InstallerShellFixtures {
       |# Pre-install uninstall (AC6 path) drives the same CLI for cleanup commands;
       |# answer them with empty output + success so the clean slate reset succeeds.
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|\
+      "install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -901,7 +902,8 @@ internal object InstallerShellFixtures {
       |fi
       |$failingNativeUnlinkBlock
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|\
+      "install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -946,7 +948,8 @@ internal object InstallerShellFixtures {
       |  printf '%s\n' "${'$'}home/agent-targets/${'$'}3"
       |  exit 0
       |fi
-      |if [[ "${'$'}{1:-}" == "install" && ( "${'$'}{2:-}" == "apply" || "${'$'}{2:-}" == "apply-external-addons" ) ]]; then
+      |if [[ "${'$'}{1:-}" == "install" && ( "${'$'}{2:-}" == "apply" ||\
+       "${'$'}{2:-}" == "apply-external-addons" ) ]]; then
       |  exit 0
       |fi
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
@@ -962,7 +965,8 @@ internal object InstallerShellFixtures {
       |  exit 0
       |fi
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|\
+      "install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac

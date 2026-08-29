@@ -28,10 +28,12 @@ class PackageClusteringArchitectureTest {
     )
     assertNotNull(
       violation,
-      "Regression if a FeatureTask type can live loose under skillbill.application while featuretask is already a child cluster.",
+      "Regression if a FeatureTask type can live loose under skillbill.application while featuretask is already a" +
+        "child cluster.",
     )
     assertEquals(
-      "skillbill.application/FeatureTaskRuntimeLeaky.kt belongs to cluster 'featuretask'; move it under skillbill.application.featuretask.",
+      "skillbill.application/FeatureTaskRuntimeLeaky.kt belongs to cluster 'featuretask'; move it under " +
+        "skillbill.application.featuretask.",
       violation,
     )
   }

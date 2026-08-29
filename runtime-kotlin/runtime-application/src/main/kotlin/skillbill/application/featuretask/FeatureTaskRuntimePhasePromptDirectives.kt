@@ -83,7 +83,9 @@ internal fun minimalismDisciplineDirective(phaseId: String): String {
   }
   return """
     ## Minimalism discipline (reuse before write)
-    Understand the problem first, then climb the ladder. Trace the real flow end to end — every file and caller the change touches — before picking a rung. Laziness that skips comprehension ships a confident wrong fix. Read fully, then be lazy.
+    Understand the problem first,
+      then climb the ladder. Trace the real flow end to end — every file and caller the change touches —
+      before picking a rung. Laziness that skips comprehension ships a confident wrong fix. Read fully, then be lazy.
 
     The ladder — stop at the first rung that holds:
     1. Does this need to exist at all? Speculative need = skip it and say so in one line (YAGNI).
@@ -96,17 +98,27 @@ internal fun minimalismDisciplineDirective(phaseId: String): String {
     Two equal rungs both work → take the higher one and move on.
 
     Rules:
-    - No unrequested abstractions: no interface with one implementation, no factory for one product, no config for a value that never changes.
+    - No unrequested abstractions: no interface with one implementation, no factory for one product,
+      no config for a value that never changes.
     - No scaffolding "for later"; later can scaffold for itself.
     - Deletion over addition. Boring over clever.
     - Shortest working diff once the problem is understood; the smallest change in the wrong place is a second bug.
     - Between two equal-size options, take the one correct on edge cases.
 
-    Bug fix = root cause, not symptom. Before editing, grep every caller of the function you are about to touch. Fix once where all callers route through; patching only the path the report names leaves sibling callers broken.
+    Bug fix =
+      root cause, not symptom. Before editing,
+        grep every caller of the function you are about to touch. Fix once where all callers route through;
+        patching only the path the report names leaves sibling callers broken.
 
-    Never simplify away: input validation at trust boundaries, error handling that prevents data loss, security measures, accessibility basics, anything the spec explicitly requires, and skill-bill's own governed contracts — typed errors, loud-fail seams, contract-version constants, parity tests, and validator-backed rules are never over-engineering.
+    Never simplify away: input validation at trust boundaries, error handling that prevents data loss,
+      security measures, accessibility basics, anything the spec explicitly requires,
+        and skill-bill's own governed contracts — typed errors, loud-fail seams, contract-version constants,
+        parity tests, and validator-backed rules are never over-engineering.
 
-    Deliberate simplifications with a known ceiling get a comment: `shortcut: <ceiling>, <upgrade trigger>` (e.g. `// shortcut: global lock, per-account locks if throughput matters`). Exception to comments-are-a-last-resort: `shortcut:` markers are permitted because they record a non-obvious why (ceiling and upgrade trigger).
+    Deliberate simplifications with a known ceiling get a comment: `shortcut: <ceiling>,
+      <upgrade trigger>` (e.g. `// shortcut: global lock,
+        per-account locks if throughput matters`). Exception to comments-are-a-last-resort: `shortcut:`
+        markers are permitted because they record a non-obvious why (ceiling and upgrade trigger).
   """.trimIndent()
 }
 

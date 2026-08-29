@@ -1,5 +1,7 @@
 package skillbill.application.goalrunner.planning
 
+import skillbill.application.featuretask.requireValidPlanningProjection
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -9,8 +11,6 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.security.MessageDigest
-import skillbill.application.featuretask.requireValidPlanningProjection
-import skillbill.contracts.JsonSupport
 
 class GoalPlanningPreparationValidator(
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,

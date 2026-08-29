@@ -2,6 +2,7 @@ package skillbill.cli
 
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.work.padTerminalEnd
 import skillbill.cli.work.terminalDisplayWidth
@@ -13,13 +14,13 @@ import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.model.RuntimeContext
 import java.nio.file.Files
+import java.nio.file.Path
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
-import java.nio.file.Path
 
 class CliWorkListRuntimeTest {
   @Test
@@ -137,13 +138,12 @@ class CliWorkListRuntimeTest {
     assertEquals(workflowId, row["workflow_id"])
   }
 
-  private fun RuntimeComponent.openWorkflow(
-    kind: WorkflowFamilyKind,
-    dbPath: Path,
-    issueKey: String,
-  ): String = assertIs<WorkflowOpenResult.Ok>(
-    workflowService.open(kind = kind, dbOverride = dbPath.toString(), issueKey = issueKey),
-  ).workflowId
+  private fun RuntimeComponent.openWorkflow(kind: WorkflowFamilyKind, dbPath: Path, issueKey: String): String =
+    assertIs<WorkflowOpenResult.Ok>(
+      workflowService.open(
+        WorkflowServiceOpenArgs(kind = kind, dbOverride = dbPath.toString(), issueKey = issueKey),
+      ),
+    ).workflowId
 
   private fun updateStartedAt(connection: Connection, table: String, workflowId: String, startedAt: String) {
     connection.prepareStatement(

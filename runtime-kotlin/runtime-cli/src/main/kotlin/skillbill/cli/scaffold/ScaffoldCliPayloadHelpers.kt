@@ -1,62 +1,41 @@
 package skillbill.cli.scaffold
 
 import skillbill.application.install.ExternalAddonOverlayService
-import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.application.scaffold.ScaffoldService
 import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRunState
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
-import skillbill.contracts.JsonSupport
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import java.nio.file.Path
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.UUID
 
-internal const val SCAFFOLD_SESSION_SUFFIX_LENGTH = 4
-
-internal fun runNativeScaffoldPayload(
-  payloadPath: String?,
-  dryRun: Boolean,
-  format: CliFormat,
-  state: CliRunState,
-  scaffoldService: ScaffoldService,
-  externalAddonOverlayService: ExternalAddonOverlayService? = null,
-  transform: (Map<String, *>) -> Map<String, *> = { it },
-): CliExecutionResult {
+internal fun runNativeScaffoldPayload(args: NativeScaffoldPayloadPathArgs): CliExecutionResult {
   val payload =
     try {
-      transform(readScaffoldPayload(payloadPath, state))
+      args.transform(readScaffoldPayload(args.payloadPath, args.run.state))
     } catch (error: SkillBillRuntimeException) {
-      return errorResult(error.message.orEmpty(), format)
+      return errorResult(error.message.orEmpty(), args.run.format)
     } catch (error: IllegalArgumentException) {
-      return errorResult(error.message.orEmpty(), format)
+      return errorResult(error.message.orEmpty(), args.run.format)
     }
-  return runNativeScaffoldPayload(payload, dryRun, format, scaffoldService, state, externalAddonOverlayService)
+  return runNativeScaffoldPayload(payload, args.run)
 }
 
-internal fun runNativeScaffoldPayload(
-  payload: Map<String, *>,
-  dryRun: Boolean,
-  format: CliFormat,
-  scaffoldService: ScaffoldService,
-  state: CliRunState,
-  externalAddonOverlayService: ExternalAddonOverlayService? = null,
-): CliExecutionResult {
+internal fun runNativeScaffoldPayload(payload: Map<String, *>, run: NativeScaffoldRunArgs): CliExecutionResult {
+  val dryRun = run.dryRun
+  val format = run.format
+  val state = run.state
+  val scaffoldService = run.scaffoldService
+  val externalAddonOverlayService = run.externalAddonOverlayService
   val sessionId = generateScaffoldSessionId()
   val payloadWithRepoRoot = if ((payload["repo_root"] as? String).isNullOrBlank()) {
     payload + ("repo_root" to findRepoRoot().toString())
   } else {
     payload
   }
-  // SKILL-52.2 subtask 2: parse the raw map at the CLI adapter boundary and call the typed
-  // overload so the application + port surface no longer accepts a raw `Map<String, Any?>`.
-  // Materialise the inbound `Map<String, *>` into the `Map<String, Any?>` shape the parser
-  // accepts; the keys are already strings — only the value variance widens.
   val typedPayload: Map<String, Any?> = payloadWithRepoRoot.mapValues { (_, value) -> value }
   val result =
     try {
@@ -86,6 +65,43 @@ internal fun runNativeScaffoldPayload(
   )
 }
 
+internal fun createAndFillResult(args: CreateAndFillArgs): CliExecutionResult {
+  val content = args.content
+  val format = args.format
+  return when {
+    content.interactive || content.payload == null -> unsupportedNativeScaffoldResult(
+      args.unsupportedScaffoldService.retiredUnsupportedMessage(
+        "create-and-fill",
+        "skill-bill create-and-fill --payload <file> --body-file <file>",
+        editor = false,
+      ),
+      format,
+    )
+    content.editor -> unsupportedNativeScaffoldResult(
+      "create-and-fill --payload --editor is not supported by the native Kotlin scaffold path yet.",
+      format,
+    )
+    content.body != null && content.bodyFile != null ->
+      errorResult("--body and --body-file are mutually exclusive.", format)
+    else -> runNativeScaffoldPayload(
+      NativeScaffoldPayloadPathArgs(
+        payloadPath = content.payload,
+        run = NativeScaffoldRunArgs(
+          dryRun = args.dryRun,
+          format = format,
+          state = args.state,
+          scaffoldService = args.scaffoldService,
+        ),
+        transform = { scaffoldPayload ->
+          createAndFillScaffoldPayload(scaffoldPayload, content.body, content.bodyFile, args.state)
+        },
+      ),
+    )
+  }
+}
+
+internal const val SCAFFOLD_SESSION_SUFFIX_LENGTH = 4
+
 internal fun registerExternalAddonSourceAfterSuccess(
   request: ScaffoldCommandRequest,
   dryRun: Boolean,
@@ -101,36 +117,6 @@ internal fun registerExternalAddonSourceAfterSuccess(
     source = ExternalAddonSource(Path.of(sourcePath), addOn.platform),
     environment = state.environment,
   )
-}
-
-internal fun createAndFillResult(
-  payload: String?,
-  interactive: Boolean,
-  dryRun: Boolean,
-  body: String?,
-  bodyFile: String?,
-  editor: Boolean,
-  format: CliFormat,
-  state: CliRunState,
-  scaffoldService: ScaffoldService,
-  unsupportedScaffoldService: UnsupportedScaffoldService,
-): CliExecutionResult = when {
-  interactive || payload == null -> unsupportedNativeScaffoldResult(
-    unsupportedScaffoldService.retiredUnsupportedMessage(
-      "create-and-fill",
-      "skill-bill create-and-fill --payload <file> --body-file <file>",
-      editor = false,
-    ),
-    format,
-  )
-  editor -> unsupportedNativeScaffoldResult(
-    "create-and-fill --payload --editor is not supported by the native Kotlin scaffold path yet.",
-    format,
-  )
-  body != null && bodyFile != null -> errorResult("--body and --body-file are mutually exclusive.", format)
-  else -> runNativeScaffoldPayload(payload, dryRun, format, state, scaffoldService) { scaffoldPayload ->
-    createAndFillScaffoldPayload(scaffoldPayload, body, bodyFile, state)
-  }
 }
 
 internal fun errorResult(message: String, format: CliFormat): CliExecutionResult {
@@ -201,89 +187,4 @@ internal fun unsupportedNativeScaffoldResult(message: String, format: CliFormat)
     stdout = CliOutput.emit(presentation, format),
     payload = presentation,
   )
-}
-
-internal fun createAndFillContentPayload(body: String?, bodyFile: String?, state: CliRunState): Map<String, String> {
-  val contentBody =
-    body ?: bodyFile?.let { path ->
-      readCliTextFile(path, state)
-    }
-  return if (contentBody == null) emptyMap() else mapOf("content_body" to contentBody)
-}
-
-internal fun createAndFillScaffoldPayload(
-  scaffoldPayload: Map<String, *>,
-  body: String?,
-  bodyFile: String?,
-  state: CliRunState,
-): Map<String, *> {
-  val kind = scaffoldPayload["kind"]?.toString().orEmpty()
-  require(kind !in setOf("platform-pack", "add-on")) {
-    "create-and-fill can only scaffold one content-managed skill; kind '$kind' is not supported."
-  }
-  return scaffoldPayload + createAndFillContentPayload(body, bodyFile, state)
-}
-
-internal fun newAddonPayload(
-  platform: String?,
-  name: String?,
-  body: String?,
-  bodyFile: String?,
-  addonLocationPath: String?,
-  consumerSkillDirs: List<String>,
-  state: CliRunState,
-): Map<String, Any> = buildMap {
-  put("scaffold_payload_version", "1.0")
-  put("kind", "add-on")
-  put("platform", platform.orEmpty())
-  put("name", name.orEmpty())
-  (body ?: bodyFile?.let { path -> readCliTextFile(path, state) })
-    ?.let { addonBody -> put("body", addonBody) }
-  addonLocationPath?.takeIf { it.isNotBlank() }?.let { path -> put("addon_location_path", path) }
-  if (consumerSkillDirs.isNotEmpty()) {
-    put("consumer_skill_dirs", consumerSkillDirs)
-  }
-}
-
-internal fun readCliTextFile(path: String, state: CliRunState): String =
-  if (path == "-") state.stdinText.orEmpty() else Path.of(path).toFile().readText()
-
-internal fun readScaffoldPayload(payloadPath: String?, state: CliRunState): Map<String, Any?> {
-  val payloadText =
-    when {
-      payloadPath == null -> throw IllegalArgumentException("--payload is required for this command.")
-      payloadPath == "-" -> state.stdinText.orEmpty()
-      else -> Path.of(payloadPath).toFile().readText()
-    }
-  val parsed =
-    JsonSupport.parseObjectOrNull(payloadText)
-      ?: throw IllegalArgumentException("Invalid JSON payload: expected an object.")
-  val payload =
-    JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
-      ?: throw IllegalArgumentException("Invalid JSON payload: expected an object.")
-  return payload.toMutableMap().apply {
-    this["scaffold_payload_version"] = this["scaffold_payload_version"]?.toString()
-  }
-}
-
-internal fun generateScaffoldSessionId(): String {
-  val date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
-  val suffix = UUID.randomUUID().toString().take(SCAFFOLD_SESSION_SUFFIX_LENGTH)
-  return "nss-$date-$suffix"
-}
-
-internal fun Any?.orEmpty(): String = this as? String ?: ""
-
-internal fun findRepoRoot(start: Path = Path.of("").toAbsolutePath().normalize()): Path {
-  var current = start
-  while (true) {
-    val hasSettings = current.resolve("runtime-kotlin/settings.gradle.kts").toFile().isFile
-    val hasSkills = current.resolve("skills").toFile().isDirectory
-    if (hasSettings && hasSkills) {
-      return current
-    }
-    val parent = current.parent ?: break
-    current = parent
-  }
-  return start
 }

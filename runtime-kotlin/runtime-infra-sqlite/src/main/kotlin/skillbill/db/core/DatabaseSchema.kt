@@ -70,10 +70,11 @@ internal object DatabaseSchema {
     )
 
   fun createBaseSchema(connection: Connection) {
-    (databaseSchemaStatementsEarly + databaseSchemaStatementsLate +
-      DatabaseReviewLedgerSchema.reviewRunLaneStatements +
-      DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements +
-      DatabaseReviewLedgerSchema.reviewStageStateStatements
+    (
+      databaseSchemaStatementsEarly + databaseSchemaStatementsLate +
+        DatabaseReviewLedgerSchema.reviewRunLaneStatements +
+        DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements +
+        DatabaseReviewLedgerSchema.reviewStageStateStatements
       ).forEach { statementSql ->
       connection.createStatement().use { statement ->
         statement.execute(statementSql)

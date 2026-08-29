@@ -1,7 +1,7 @@
 package skillbill.telemetry.http
 
-import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.TelemetryClient
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult

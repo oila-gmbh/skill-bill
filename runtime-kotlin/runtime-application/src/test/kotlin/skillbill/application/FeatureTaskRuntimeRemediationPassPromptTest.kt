@@ -8,6 +8,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
@@ -124,7 +125,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     )
     val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+      declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
       ),
@@ -172,7 +173,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   fun `implement_fix briefing includes a Minor finding from the preceding pass without severity re-filter`() {
     val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+      declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
       ),
@@ -193,8 +194,10 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
         verifyFindingsPhaseOutput(listOf("F-BLOCKER", "F-MINOR")).copy(
           payload = """
             {"produced_outputs":{"finding_dispositions":[
-              {"finding_id":"F-BLOCKER","disposition":"verified","reason":"Matches spec intent.","severity":"blocker","location":"A.kt:1","message":"must fix"},
-              {"finding_id":"F-MINOR","disposition":"verified","reason":"Matches spec intent.","severity":"minor","location":"B.kt:2","message":"polish naming"}
+              {"finding_id":"F-BLOCKER","disposition":"verified","reason":"Matches spec intent.","severity":"blocker",
+                "location":"A.kt:1","message":"must fix"},
+              {"finding_id":"F-MINOR","disposition":"verified","reason":"Matches spec intent.","severity":"minor",
+                "location":"B.kt:2","message":"polish naming"}
             ]}}
           """.trimIndent(),
         ),
@@ -230,7 +233,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   private fun implementFixPrompt(): String {
     val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+      declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
       ),
@@ -285,7 +288,7 @@ private val REVIEW_INPUT = GoalSubtaskReviewInput(
 
 private fun reviewBriefing() = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
   FeatureTaskRuntimeHandoffContract.assembleHandoff(
-    declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+    declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       FeatureTaskRuntimeFeatureSize.MEDIUM,
     ),

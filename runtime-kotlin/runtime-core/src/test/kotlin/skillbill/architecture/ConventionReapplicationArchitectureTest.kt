@@ -1,7 +1,6 @@
 package skillbill.architecture
 
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -19,7 +18,8 @@ class ConventionReapplicationArchitectureTest {
     assertEquals(
       emptyList(),
       violations,
-      "Module build files must not re-declare update-snapshots or other Test settings already owned by configureKotlinJvm.",
+      "Module build files must not re-declare update-snapshots or other Test settings already owned by" +
+        "configureKotlinJvm.",
     )
   }
 

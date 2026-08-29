@@ -7,17 +7,17 @@ import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
-import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
+import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
-import skillbill.application.workflow.model.WorkflowContinueResult
-import skillbill.application.workflow.model.WorkflowFamilyKind
-import skillbill.application.workflow.model.WorkflowGetResult
-import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.model.WorkflowUpdateRequest
-import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.application.goalrunner.model.WorkflowGoalRunnerManifestStoreDeps
+import skillbill.application.goalrunner.outcomeStoreDeps
+import skillbill.application.goalrunner.planning.sha256HexUtf8
+import skillbill.application.goalrunner.testGoalRunnerStatusService
+import skillbill.application.goalrunner.testPhaseRecorder
+import skillbill.application.goalrunner.testWorkflowGoalRunnerManifestStore
+import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.application.workflow.ContinuationStepResult
 import skillbill.application.workflow.DecompositionWorkflowContinuation
 import skillbill.application.workflow.WorkflowFamily
@@ -26,6 +26,15 @@ import skillbill.application.workflow.alignSubtaskResumeStep
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.findDecomposedParentWorkflow
 import skillbill.application.workflow.isGoalContinuationChildWorkflow
+import skillbill.application.workflow.model.RepairFeatureTaskRuntimeIdentityArgs
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowGetResult
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.application.workflow.openFeatureTask
 import skillbill.application.workflow.persistParentDecompositionRuntime
 import skillbill.application.workflow.repoRoot
 import skillbill.application.workflow.toRecord
@@ -47,30 +56,16 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
-import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
-import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
-import skillbill.ports.goalrunner.GoalRunnerControlRepository
-import skillbill.ports.learning.LearningRepository
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
-import skillbill.ports.review.ReviewRepository
-import skillbill.ports.telemetry.TelemetryOutboxRepository
-import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.db.UnitOfWork
-import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.goalrunner.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
@@ -79,29 +74,53 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
-import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.goal.GoalObservabilityEventValidator
-import skillbill.workflow.goal.GoalProgressEventValidator
-import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.goal.GoalProgressEventValidator
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset.UTC
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -112,36 +131,19 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import java.time.Clock
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
-import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
-import skillbill.ports.work.EmptyWorkListRepository
-import skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT
-import java.time.ZoneOffset.UTC
-import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.contracts.JsonSupport.json.parseToJsonElement
-import skillbill.application.goalrunner.planning.sha256HexUtf8
-import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 
 private fun WorkflowService.openTestRuntime(sessionId: String = "", currentStepId: String? = null): WorkflowOpenResult =
   openFeatureTask(
-    kind = WorkflowFamilyKind.TASK_RUNTIME,
-    sessionId = sessionId,
-    currentStepId = currentStepId,
-    issueKey = "SKILL-120",
-    repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-    governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+    WorkflowServiceOpenFeatureTaskArgs(
+      kind = WorkflowFamilyKind.TASK_RUNTIME,
+      sessionId = sessionId,
+      currentStepId = currentStepId,
+      issueKey = "SKILL-120",
+      repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+      governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+    ),
   )
 
-/**
- * SKILL-52.1 — covers the typed [WorkflowService] surface end-to-end:
- * each public method returns its declared typed result, including the
- * blocked-continue and unknown-workflow branches, and the workflow
- * engine's loud-fail schema error still propagates through the
- * service.
- */
-@Suppress("LargeClass")
 class WorkflowServiceTest {
   @Test
   fun `open returns Ok with dbPath and snapshot`() {
@@ -165,18 +167,22 @@ class WorkflowServiceTest {
 
     val first = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        ),
       ),
     )
     val second = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        ),
       ),
     )
 
@@ -198,10 +204,12 @@ class WorkflowServiceTest {
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        ),
       ),
     )
 
@@ -284,10 +292,12 @@ class WorkflowServiceTest {
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-141",
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-141/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-141",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-141/spec.md",
+        ),
       ),
     )
 
@@ -315,31 +325,39 @@ class WorkflowServiceTest {
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        ),
       ),
     )
 
     val mismatch = assertIs<WorkflowUpdateResult.Error>(
       service.repairFeatureTaskRuntimeIdentity(
-        opened.workflowId,
-        "SKILL-999",
-        "repo-root-realpath-v1:/test/repository",
-        ".feature-specs/SKILL-120/spec.md",
-        "Repair a legacy identity.",
+        RepairFeatureTaskRuntimeIdentityArgs(
+          workflowId = opened.workflowId,
+          issueKey = "SKILL-999",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+          reason = "Repair a legacy identity.",
+          dbOverride = null,
+        ),
       ),
     )
     assertContains(mismatch.error, "belongs to issue 'SKILL-120'")
 
     val repaired = assertIs<WorkflowUpdateResult.Ok>(
       service.repairFeatureTaskRuntimeIdentity(
-        opened.workflowId,
-        "SKILL-120",
-        "repo-root-realpath-v1:/test/repository",
-        ".feature-specs/SKILL-120/spec.md",
-        "Repair a legacy identity.",
+        RepairFeatureTaskRuntimeIdentityArgs(
+          workflowId = opened.workflowId,
+          issueKey = "SKILL-120",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+          reason = "Repair a legacy identity.",
+          dbOverride = null,
+        ),
       ),
     )
     assertEquals(listOf("operator_identity_repair"), repaired.acknowledgement.updatedArtifactKeys)
@@ -358,10 +376,12 @@ class WorkflowServiceTest {
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-        governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+        ),
       ),
     )
     assertIs<WorkflowUpdateResult.Ok>(
@@ -370,11 +390,14 @@ class WorkflowServiceTest {
 
     val result = assertIs<WorkflowUpdateResult.Error>(
       service.repairFeatureTaskRuntimeIdentity(
-        opened.workflowId,
-        "SKILL-120",
-        "repo-root-realpath-v1:/test/repository",
-        ".feature-specs/SKILL-120/spec.md",
-        "Repair a legacy identity.",
+        RepairFeatureTaskRuntimeIdentityArgs(
+          workflowId = opened.workflowId,
+          issueKey = "SKILL-120",
+          repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+          governedSpecPath = ".feature-specs/SKILL-120/spec.md",
+          reason = "Repair a legacy identity.",
+          dbOverride = null,
+        ),
       ),
     )
 
@@ -624,6 +647,18 @@ class WorkflowServiceTest {
     assertPersistedProgressEventArtifacts(persisted, opened.workflowId)
   }
 
+  private fun newService(): WorkflowService {
+    val workflows = InMemoryWorkflowStates()
+    return WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+  }
+}
+
+class WorkflowServiceDecomposedParentTest {
   @Test
   fun `decomposed parent lookup ignores child workflows that only carry runtime projection`() {
     val workflows = InMemoryWorkflowStates()
@@ -905,7 +940,9 @@ class WorkflowServiceTest {
       error.message,
     )
   }
+}
 
+class WorkflowServiceGoalManifestStoreTest {
   @Test
   fun `goal manifest store imports active checked-in projection over completed lineage`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-manifest-import")
@@ -943,13 +980,17 @@ class WorkflowServiceTest {
       ---
       """.trimIndent(),
     )
-    val store = WorkflowGoalRunnerManifestStore(
-      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
+    val store = testWorkflowGoalRunnerManifestStore(
+      WorkflowGoalRunnerManifestStoreDeps(
+        database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestFileStore = TestDecompositionManifestFileStore,
+        phaseOutputValidator = AlwaysValidValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+
+        clock = Clock.systemUTC(),
+      ),
     )
 
     val state = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
@@ -1013,13 +1054,17 @@ class WorkflowServiceTest {
       ),
     )
     val workflows = InMemoryWorkflowStates()
-    val store = WorkflowGoalRunnerManifestStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
+    val store = testWorkflowGoalRunnerManifestStore(
+      WorkflowGoalRunnerManifestStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestFileStore = TestDecompositionManifestFileStore,
+        phaseOutputValidator = AlwaysValidValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+
+        clock = Clock.systemUTC(),
+      ),
     )
 
     val imported = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
@@ -1070,13 +1115,17 @@ class WorkflowServiceTest {
         ),
       ),
     )
-    val store = WorkflowGoalRunnerManifestStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
+    val store = testWorkflowGoalRunnerManifestStore(
+      WorkflowGoalRunnerManifestStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestFileStore = TestDecompositionManifestFileStore,
+        phaseOutputValidator = AlwaysValidValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+
+        clock = Clock.systemUTC(),
+      ),
     )
 
     val refreshed = store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
@@ -1104,13 +1153,17 @@ class WorkflowServiceTest {
         TestDecompositionManifestFileStore,
       ),
     )
-    val store = WorkflowGoalRunnerManifestStore(
-      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
+    val store = testWorkflowGoalRunnerManifestStore(
+      WorkflowGoalRunnerManifestStoreDeps(
+        database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestFileStore = TestDecompositionManifestFileStore,
+        phaseOutputValidator = AlwaysValidValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+
+        clock = Clock.systemUTC(),
+      ),
     )
     val loaded = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
     assertEquals(repoRoot, loaded.repoRoot)
@@ -1232,13 +1285,17 @@ class WorkflowServiceTest {
         ),
       ),
     )
-    val store = WorkflowGoalRunnerManifestStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
+    val store = testWorkflowGoalRunnerManifestStore(
+      WorkflowGoalRunnerManifestStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestFileStore = TestDecompositionManifestFileStore,
+        phaseOutputValidator = AlwaysValidValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+
+        clock = Clock.systemUTC(),
+      ),
     )
     val completed = pending.copy(
       status = "complete",
@@ -1279,13 +1336,17 @@ class WorkflowServiceTest {
         ),
       )
     }
-    val store = WorkflowGoalRunnerManifestStore(
-      database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestFileStore = TestDecompositionManifestFileStore,
-      phaseOutputValidator = AlwaysValidValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
+    val store = testWorkflowGoalRunnerManifestStore(
+      WorkflowGoalRunnerManifestStoreDeps(
+        database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestFileStore = TestDecompositionManifestFileStore,
+        phaseOutputValidator = AlwaysValidValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+
+        clock = Clock.systemUTC(),
+      ),
     )
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
@@ -1298,16 +1359,6 @@ class WorkflowServiceTest {
     )
     assertContains(error.message.orEmpty(), ".feature-specs/SKILL-52.1-a-implementation/decomposition-manifest.yaml")
     assertContains(error.message.orEmpty(), ".feature-specs/SKILL-52.1-b-implementation/decomposition-manifest.yaml")
-  }
-
-  private fun newService(): WorkflowService {
-    val workflows = InMemoryWorkflowStates()
-    return WorkflowService(
-      database = FakeDatabaseSessionFactory(workflows),
-      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-    )
   }
 }
 
@@ -1500,25 +1551,31 @@ class WorkflowGoalStatusProjectionTest {
     controls: GoalRunnerControlRepository = EmptyGoalRunnerControlRepository,
   ): GoalRunnerStatusService {
     val database = FakeDatabaseSessionFactory(workflows, goalRunnerControls = controls)
-    return GoalRunnerStatusService(
-      manifestStore = WorkflowGoalRunnerManifestStore(
-        database = database,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        decompositionManifestValidator = testDecompositionManifestValidator,
-        decompositionManifestFileStore = TestDecompositionManifestFileStore,
-        phaseOutputValidator = AlwaysValidValidator,
-        planningProjectionValidator = realPlanningProjectionValidator,
-      ),
-      outcomeStore = WorkflowGoalRunnerOutcomeStore(
-        database = database,
-        workflowSnapshotValidator = testWorkflowSnapshotValidator,
-        goalObservabilityEventValidator = testGoalObservabilityEventValidator,
-      ),
-      phaseRecorder = FeatureTaskRuntimePhaseRecorder(
-        database,
-        testWorkflowSnapshotValidator,
-        AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
-        AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    return testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = testWorkflowGoalRunnerManifestStore(
+          WorkflowGoalRunnerManifestStoreDeps(
+            database = database,
+            workflowSnapshotValidator = testWorkflowSnapshotValidator,
+            decompositionManifestValidator = testDecompositionManifestValidator,
+            decompositionManifestFileStore = TestDecompositionManifestFileStore,
+            phaseOutputValidator = AlwaysValidValidator,
+            planningProjectionValidator = realPlanningProjectionValidator,
+
+            clock = Clock.systemUTC(),
+          ),
+        ),
+        outcomeStore = testWorkflowGoalRunnerOutcomeStore(
+          outcomeStoreDeps(database, testWorkflowSnapshotValidator).copy(
+            goalObservabilityEventValidator = testGoalObservabilityEventValidator,
+          ),
+        ),
+        phaseRecorder = testPhaseRecorder(
+          database,
+          testWorkflowSnapshotValidator,
+          AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+          AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+        ),
       ),
     )
   }
@@ -1555,10 +1612,13 @@ class GoalRunnerCommitShaRecoveryTest {
   fun `goal runner outcome store completes blocked commit push when remote contains head`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(blockedCommitPush("wfl-child"))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = PushedHeadGitOperations,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        gitOperations = PushedHeadGitOperations,
+      ),
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1576,10 +1636,13 @@ class GoalRunnerCommitShaRecoveryTest {
   fun `goal runner outcome store preserves blocked commit push when remote does not contain head`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(blockedCommitPush("wfl-child"))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = DivergedHeadGitOperations,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        gitOperations = DivergedHeadGitOperations,
+      ),
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1593,10 +1656,13 @@ class GoalRunnerCommitShaRecoveryTest {
   fun `goal runner outcome store backfills missing commit sha from measured git head`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = HeadShaGitOperations,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        gitOperations = HeadShaGitOperations,
+      ),
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1610,10 +1676,13 @@ class GoalRunnerCommitShaRecoveryTest {
   fun `goal runner outcome store durably persists the measured completion`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = HeadShaGitOperations,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        gitOperations = HeadShaGitOperations,
+      ),
     )
 
     store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1628,10 +1697,13 @@ class GoalRunnerCommitShaRecoveryTest {
   fun `goal runner outcome store stays blocked when measured git head is unavailable`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = NoopWorkflowGitOperations,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        gitOperations = NoopWorkflowGitOperations,
+      ),
     )
 
     val outcome = store.recoverAndPersistTerminalOutcome("wfl-child", "SKILL-52.1", 1, repoRoot = Path.of("."))
@@ -1644,10 +1716,13 @@ class GoalRunnerCommitShaRecoveryTest {
   fun `goal runner outcome store does not measure git head without a repo root`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(commitPushCompletedWithoutCommitSha("wfl-child"))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = HeadShaGitOperations,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        gitOperations = HeadShaGitOperations,
+      ),
     )
 
     val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1)
@@ -1671,9 +1746,11 @@ class GoalRunnerCommitShaRecoveryTest {
         ),
       ),
     )
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcome = store.recoverMissingResultPrefixOutput(
@@ -1704,10 +1781,13 @@ class GoalRunnerCommitShaRecoveryTest {
     // backfilled and the subtask resolves COMPLETE.
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(completeWithoutShaOutcome("wfl-child"))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = HeadShaGitOperations,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        gitOperations = HeadShaGitOperations,
+      ),
     )
 
     val reconciled = store.reconcileAuthoritativeOutcomes(issueKey = "SKILL-52.1", repoRoot = Path.of("."))
@@ -1726,10 +1806,13 @@ class GoalRunnerCommitShaRecoveryTest {
     // complete-without-SHA outcome is not silently healed by a status read.
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(completeWithoutShaOutcome("wfl-child"))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = HeadShaGitOperations,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        gitOperations = HeadShaGitOperations,
+      ),
     )
 
     store.reconcileAuthoritativeOutcomes(issueKey = "SKILL-52.1")
@@ -1946,9 +2029,11 @@ class WorkflowGoalRunnerOutcomeStoreTest {
         workflowStatus = "blocked",
       ),
     )
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcome = store.terminalOutcome("wfl-child", "SKILL-52.1", 1)
@@ -1960,70 +2045,15 @@ class WorkflowGoalRunnerOutcomeStoreTest {
   }
 }
 
-// Reconciliation and resume-step alignment behaviour for the goal-runner outcome store: choosing
-// the authoritative terminal sibling, closing or keeping stale running children, and blocking at
-// the recorded current step rather than a stale/first-unfinished step. Split out of
-// WorkflowGoalRunnerOutcomeStoreTest so each class stays under the detekt LargeClass threshold.
 class WorkflowGoalRunnerReconciliationTest {
   @Test
-  @Suppress("LongMethod")
   fun `goal runner outcome reconciliation closes stale running child in favor of authoritative terminal workflow`() {
     val workflows = InMemoryWorkflowStates()
     val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
-    val staleOpened = testWorkflowEngine.openRecord(definition, "wfl-stale", "ftr-001", "preplan")
-    val staleRunning = testWorkflowEngine.updateRecord(
-      definition,
-      staleOpened,
-      WorkflowUpdateInput(
-        workflowStatus = "running",
-        currentStepId = "implement",
-        stepUpdates = listOf(
-          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
-        ),
-        artifactsPatch = mapOf(
-          "goal_continuation" to mapOf(
-            "issue_key" to "SKILL-52.1",
-            "subtask_id" to 1,
-            "suppress_pr" to true,
-          ),
-        ),
-        sessionId = "ftr-001",
-      ),
-    )
-    val authoritativeOpened = testWorkflowEngine.openRecord(definition, "wfl-authoritative", "ftr-002", "preplan")
-    val authoritative = testWorkflowEngine.updateRecord(
-      definition,
-      authoritativeOpened,
-      WorkflowUpdateInput(
-        workflowStatus = "running",
-        currentStepId = "commit_push",
-        stepUpdates = listOf(
-          mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1),
-        ),
-        artifactsPatch = mapOf(
-          "goal_continuation" to mapOf(
-            "issue_key" to "SKILL-52.1",
-            "subtask_id" to 1,
-            "suppress_pr" to true,
-          ),
-          "goal_continuation_outcome" to mapOf(
-            "issue_key" to "SKILL-52.1",
-            "subtask_id" to 1,
-            "status" to "complete",
-            "workflow_id" to "wfl-authoritative",
-            "commit_sha" to "sha-1",
-            "last_resumable_step" to "commit_push",
-          ),
-        ),
-        sessionId = "ftr-002",
-      ),
-    )
-    workflows.saveFeatureImplementWorkflow(staleRunning.toRecord())
-    workflows.saveFeatureImplementWorkflow(authoritative.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    workflows.saveFeatureImplementWorkflow(staleRunningChildRecord(definition).toRecord())
+    workflows.saveFeatureImplementWorkflow(authoritativeCompleteChildRecord(definition).toRecord())
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(FakeDatabaseSessionFactory(workflows), testWorkflowSnapshotValidator),
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", setOf("wfl-stale", "wfl-authoritative"))
@@ -2062,9 +2092,11 @@ class WorkflowGoalRunnerReconciliationTest {
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", emptySet())
@@ -2102,9 +2134,11 @@ class WorkflowGoalRunnerReconciliationTest {
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", setOf("wfl-active"))
@@ -2116,55 +2150,16 @@ class WorkflowGoalRunnerReconciliationTest {
   }
 
   @Test
-  @Suppress("LongMethod")
   fun `goal runner outcome reconciliation keeps active retry when only blocked sibling exists`() {
     val workflows = InMemoryWorkflowStates()
     val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
-    val blockedOpened = testWorkflowEngine.openRecord(definition, "wfl-blocked", "ftr-001", "preplan")
-    val blocked = testWorkflowEngine.updateRecord(
-      definition,
-      blockedOpened,
-      WorkflowUpdateInput(
-        workflowStatus = "blocked",
-        currentStepId = "review",
-        stepUpdates = listOf(
-          mapOf("step_id" to "review", "status" to "blocked", "attempt_count" to 1),
-        ),
-        artifactsPatch = mapOf(
-          "goal_continuation" to mapOf(
-            "issue_key" to "SKILL-52.1",
-            "subtask_id" to 1,
-            "suppress_pr" to true,
-          ),
-        ),
-        sessionId = "ftr-001",
+    workflows.saveFeatureImplementWorkflow(blockedSiblingChildRecord(definition).toRecord())
+    workflows.saveFeatureImplementWorkflow(activeRetryChildRecord(definition).toRecord())
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
       ),
-    )
-    val activeOpened = testWorkflowEngine.openRecord(definition, "wfl-active", "ftr-002", "preplan")
-    val active = testWorkflowEngine.updateRecord(
-      definition,
-      activeOpened,
-      WorkflowUpdateInput(
-        workflowStatus = "running",
-        currentStepId = "implement",
-        stepUpdates = listOf(
-          mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
-        ),
-        artifactsPatch = mapOf(
-          "goal_continuation" to mapOf(
-            "issue_key" to "SKILL-52.1",
-            "subtask_id" to 1,
-            "suppress_pr" to true,
-          ),
-        ),
-        sessionId = "ftr-002",
-      ),
-    )
-    workflows.saveFeatureImplementWorkflow(blocked.toRecord())
-    workflows.saveFeatureImplementWorkflow(active.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
     )
 
     val outcomes = store.reconcileAuthoritativeOutcomes("SKILL-52.1", setOf("wfl-active"))
@@ -2206,9 +2201,11 @@ class WorkflowGoalRunnerReconciliationTest {
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val blockedStep = store.markBlocked("wfl-child", "timeout", "preplan")
@@ -2263,9 +2260,11 @@ class WorkflowGoalRunnerReconciliationTest {
       ),
     )
     workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val blockedStep = store.markBlocked("wftr-child", "no terminal outcome", "preplan")
@@ -2313,9 +2312,11 @@ class WorkflowGoalRunnerReconciliationTest {
       ),
     )
     workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val blockedStep = store.markBlocked("wftr-clean-review", "no terminal outcome", "preplan")
@@ -2363,9 +2364,11 @@ class WorkflowGoalRunnerReconciliationTest {
       ),
     )
     workflows.saveFeatureTaskRuntimeWorkflow(crashed.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val blockedStep = store.markBlocked("wftr-mid-fix", "no terminal outcome", "preplan")
@@ -2406,6 +2409,95 @@ class WorkflowGoalRunnerReconciliationTest {
     )
 }
 
+private fun staleRunningChildRecord(definition: WorkflowDefinition) = testWorkflowEngine.updateRecord(
+  definition,
+  testWorkflowEngine.openRecord(definition, "wfl-stale", "ftr-001", "preplan"),
+  WorkflowUpdateInput(
+    workflowStatus = "running",
+    currentStepId = "implement",
+    stepUpdates = listOf(
+      mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+      mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+    ),
+    artifactsPatch = mapOf(
+      "goal_continuation" to mapOf(
+        "issue_key" to "SKILL-52.1",
+        "subtask_id" to 1,
+        "suppress_pr" to true,
+      ),
+    ),
+    sessionId = "ftr-001",
+  ),
+)
+
+private fun authoritativeCompleteChildRecord(definition: WorkflowDefinition) = testWorkflowEngine.updateRecord(
+  definition,
+  testWorkflowEngine.openRecord(definition, "wfl-authoritative", "ftr-002", "preplan"),
+  WorkflowUpdateInput(
+    workflowStatus = "running",
+    currentStepId = "commit_push",
+    stepUpdates = listOf(
+      mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1),
+    ),
+    artifactsPatch = mapOf(
+      "goal_continuation" to mapOf(
+        "issue_key" to "SKILL-52.1",
+        "subtask_id" to 1,
+        "suppress_pr" to true,
+      ),
+      "goal_continuation_outcome" to mapOf(
+        "issue_key" to "SKILL-52.1",
+        "subtask_id" to 1,
+        "status" to "complete",
+        "workflow_id" to "wfl-authoritative",
+        "commit_sha" to "sha-1",
+        "last_resumable_step" to "commit_push",
+      ),
+    ),
+    sessionId = "ftr-002",
+  ),
+)
+
+private fun blockedSiblingChildRecord(definition: WorkflowDefinition) = testWorkflowEngine.updateRecord(
+  definition,
+  testWorkflowEngine.openRecord(definition, "wfl-blocked", "ftr-001", "preplan"),
+  WorkflowUpdateInput(
+    workflowStatus = "blocked",
+    currentStepId = "review",
+    stepUpdates = listOf(
+      mapOf("step_id" to "review", "status" to "blocked", "attempt_count" to 1),
+    ),
+    artifactsPatch = mapOf(
+      "goal_continuation" to mapOf(
+        "issue_key" to "SKILL-52.1",
+        "subtask_id" to 1,
+        "suppress_pr" to true,
+      ),
+    ),
+    sessionId = "ftr-001",
+  ),
+)
+
+private fun activeRetryChildRecord(definition: WorkflowDefinition) = testWorkflowEngine.updateRecord(
+  definition,
+  testWorkflowEngine.openRecord(definition, "wfl-active", "ftr-002", "preplan"),
+  WorkflowUpdateInput(
+    workflowStatus = "running",
+    currentStepId = "implement",
+    stepUpdates = listOf(
+      mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
+    ),
+    artifactsPatch = mapOf(
+      "goal_continuation" to mapOf(
+        "issue_key" to "SKILL-52.1",
+        "subtask_id" to 1,
+        "suppress_pr" to true,
+      ),
+    ),
+    sessionId = "ftr-002",
+  ),
+)
+
 // Goal-runner progress projection, progress/session/ledger persistence, and subtask resume
 // alignment for the outcome store. Split out of WorkflowGoalRunnerOutcomeStoreTest so each class
 // stays under the detekt LargeClass threshold.
@@ -2440,14 +2532,17 @@ class WorkflowGoalRunnerProgressStoreTest {
         ),
       ),
     )
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      goalObservabilityEventValidator = object : GoalObservabilityEventValidator {
-        override fun validate(event: Map<String, Any?>, sourceLabel: String) {
-          throw InvalidGoalObservabilityEventSchemaError(sourceLabel, "subtask_id", "subtask_id is required.")
-        }
-      },
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        goalObservabilityEventValidator = object : GoalObservabilityEventValidator {
+          override fun validate(event: Map<String, Any?>, sourceLabel: String) {
+            throw InvalidGoalObservabilityEventSchemaError(sourceLabel, "subtask_id", "subtask_id is required.")
+          }
+        },
+      ),
     )
 
     val progress = requireNotNull(store.progress("wfl-child"))
@@ -2463,9 +2558,11 @@ class WorkflowGoalRunnerProgressStoreTest {
   fun `goal runner outcome store appends worker subtask request outcomes`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
     val acceptedRequest = GoalRunnerWorkerSubtaskRequest(
       name = "Accepted follow up",
@@ -2525,9 +2622,11 @@ class WorkflowGoalRunnerProgressStoreTest {
   fun `record progress event accumulates append-only and mirrors latest-event key`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     assertTrue(store.recordProgressEvent(progressEventRequest("wfl-child", sequenceNumber = 0)))
@@ -2548,9 +2647,11 @@ class WorkflowGoalRunnerProgressStoreTest {
   fun `record progress event prunes oldest entry at retention limit in sequence order`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     // Append more than the bounded history limit, deliberately out of order, to
@@ -2574,9 +2675,11 @@ class WorkflowGoalRunnerProgressStoreTest {
   @Test
   fun `record progress event returns false when workflow is missing`() {
     val workflows = InMemoryWorkflowStates()
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     assertFalse(store.recordProgressEvent(progressEventRequest("wfl-missing", sequenceNumber = 0)))
@@ -2589,14 +2692,17 @@ class WorkflowGoalRunnerProgressStoreTest {
     // not silently persisted and then dropped by the soft supervisor read.
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      goalProgressEventValidator = object : GoalProgressEventValidator {
-        override fun validate(event: Map<String, Any?>, sourceLabel: String) {
-          throw InvalidGoalProgressEventSchemaError(sourceLabel, "operation_name", "operation_name is required.")
-        }
-      },
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ).copy(
+        goalProgressEventValidator = object : GoalProgressEventValidator {
+          override fun validate(event: Map<String, Any?>, sourceLabel: String) {
+            throw InvalidGoalProgressEventSchemaError(sourceLabel, "operation_name", "operation_name is required.")
+          }
+        },
+      ),
     )
 
     assertFailsWith<InvalidGoalProgressEventSchemaError> {
@@ -2613,9 +2719,11 @@ class WorkflowGoalRunnerProgressStoreTest {
   fun `record attempt ledger entry prunes oldest in sequence order at retention limit`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
 
     val total = GOAL_ATTEMPT_LEDGER_LIMIT + 3
@@ -2646,9 +2754,11 @@ class WorkflowGoalRunnerProgressStoreTest {
         mapOf("goal_continuation" to mapOf("issue_key" to "SKILL-64", "subtask_id" to 1)),
       ),
     )
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        FakeDatabaseSessionFactory(workflows),
+        testWorkflowSnapshotValidator,
+      ),
     )
     store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-child", sequenceNumber = 0))
     store.recordAttemptLedgerEntry(attemptLedgerRequest("wfl-child", sequenceNumber = 1))
@@ -2764,7 +2874,7 @@ class WorkflowGoalRunnerProgressStoreTest {
 private const val COMPACT_UPDATE_ACK_PAYLOAD_BYTE_CEILING = 1024
 
 private fun decodeWorkflowStepsForTest(stepsJson: String): Map<String, String> {
-  val element = parseToJsonElement(stepsJson)
+  val element = JsonSupport.json.parseToJsonElement(stepsJson)
   val value = JsonSupport.jsonElementToValue(element) as List<*>
   return value.associate { raw ->
     val item = raw as Map<*, *>
@@ -2773,7 +2883,7 @@ private fun decodeWorkflowStepsForTest(stepsJson: String): Map<String, String> {
 }
 
 private fun decodeWorkflowArtifactsForTest(artifactsJson: String): Map<String, Any?> {
-  val element = parseToJsonElement(artifactsJson)
+  val element = JsonSupport.json.parseToJsonElement(artifactsJson)
   return requireNotNull(
     JsonSupport.anyToStringAnyMap(
       JsonSupport.jsonElementToValue(element),
@@ -2875,13 +2985,16 @@ subtasks:
 ---
 """
 
-private fun manifestStore(rejecting: Set<String>) = WorkflowGoalRunnerManifestStore(
-  database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-  workflowSnapshotValidator = testWorkflowSnapshotValidator,
-  decompositionManifestValidator = rejectingDecompositionManifestValidator(rejecting),
-  decompositionManifestFileStore = TestDecompositionManifestFileStore,
-  phaseOutputValidator = AlwaysValidValidator,
-  planningProjectionValidator = realPlanningProjectionValidator,
+private fun manifestStore(rejecting: Set<String>) = testWorkflowGoalRunnerManifestStore(
+  WorkflowGoalRunnerManifestStoreDeps(
+    database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+    workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    decompositionManifestValidator = rejectingDecompositionManifestValidator(rejecting),
+    decompositionManifestFileStore = TestDecompositionManifestFileStore,
+    phaseOutputValidator = AlwaysValidValidator,
+    planningProjectionValidator = realPlanningProjectionValidator,
+    clock = Clock.systemUTC(),
+  ),
 )
 
 private fun rejectingDecompositionManifestValidator(rejectedSources: Set<String>): DecompositionManifestValidator =
@@ -2908,13 +3021,17 @@ private fun scopedReplanStore(
       ),
     ),
   )
-  return WorkflowGoalRunnerManifestStore(
-    database = FakeDatabaseSessionFactory(workflows),
-    workflowSnapshotValidator = testWorkflowSnapshotValidator,
-    decompositionManifestValidator = testDecompositionManifestValidator,
-    decompositionManifestFileStore = TestDecompositionManifestFileStore,
-    phaseOutputValidator = AlwaysValidValidator,
-    planningProjectionValidator = realPlanningProjectionValidator,
+  return testWorkflowGoalRunnerManifestStore(
+    WorkflowGoalRunnerManifestStoreDeps(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestFileStore = TestDecompositionManifestFileStore,
+      phaseOutputValidator = AlwaysValidValidator,
+      planningProjectionValidator = realPlanningProjectionValidator,
+
+      clock = Clock.systemUTC(),
+    ),
   )
 }
 
@@ -3297,10 +3414,12 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     )
 
     val opened = service.openFeatureTask(
-      kind = WorkflowFamilyKind.TASK_RUNTIME,
-      issueKey = "SKILL-128",
-      repositoryIdentity = REPOSITORY_IDENTITY,
-      governedSpecPath = ".feature-specs/SKILL-128/spec.md",
+      WorkflowServiceOpenFeatureTaskArgs(
+        kind = WorkflowFamilyKind.TASK_RUNTIME,
+        issueKey = "SKILL-128",
+        repositoryIdentity = REPOSITORY_IDENTITY,
+        governedSpecPath = ".feature-specs/SKILL-128/spec.md",
+      ),
     )
 
     assertIs<WorkflowOpenResult.Ok>(opened)
@@ -3445,31 +3564,37 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val setup = setupFor(1)
 
     /** Same store, but with a fixed clock so every paused=true write has an assertable timestamp. */
-    fun newClockedStore(instant: String = PAUSE_CLOCK_INSTANT) = WorkflowGoalRunnerManifestStore(
-      database = FakeDatabaseSessionFactory(
-        workflows,
-        planningPreparations = preparations,
-        goalRunnerControls = controls,
+    fun newClockedStore(instant: String = PAUSE_CLOCK_INSTANT) = testWorkflowGoalRunnerManifestStore(
+      WorkflowGoalRunnerManifestStoreDeps(
+        database = FakeDatabaseSessionFactory(
+          workflows,
+          planningPreparations = preparations,
+          goalRunnerControls = controls,
+        ),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
+        phaseOutputValidator = phaseOutputValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+        clock = Clock.fixed(Instant.parse(instant), UTC),
       ),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
-      phaseOutputValidator = phaseOutputValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
-      clock = Clock.fixed(Instant.parse(instant), UTC),
     )
 
-    fun newStore() = WorkflowGoalRunnerManifestStore(
-      database = FakeDatabaseSessionFactory(
-        workflows,
-        planningPreparations = preparations,
-        goalRunnerControls = controls,
+    fun newStore() = testWorkflowGoalRunnerManifestStore(
+      WorkflowGoalRunnerManifestStoreDeps(
+        database = FakeDatabaseSessionFactory(
+          workflows,
+          planningPreparations = preparations,
+          goalRunnerControls = controls,
+        ),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
+        phaseOutputValidator = phaseOutputValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+
+        clock = Clock.systemUTC(),
       ),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
-      phaseOutputValidator = phaseOutputValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
     )
 
     fun setupFor(id: Int): GoalRunnerChildWorkflowSetup {
@@ -3845,7 +3970,6 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
   override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? =
     workerOwnershipById[workflowId]
 
-  @Suppress("ReturnCount") // in-memory fake mirrors the guarded fenced write
   override fun reconcileFeatureTaskRuntimeCrashedWorker(
     workflowId: String,
     ownerToken: String,
@@ -3854,13 +3978,16 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     nowInstant: String,
   ): Boolean {
     val current = workerOwnershipById[workflowId] ?: return false
-    if (current.ownerToken != ownerToken || current.generation != generation) return false
+    val row = taskRuntime[workflowId]
     val leaseStillExpired = runCatching {
       Instant.parse(current.expiresAt).isBefore(Instant.parse(nowInstant))
     }.getOrDefault(false)
-    if (!leaseStillExpired) return false
-    val row = taskRuntime[workflowId] ?: return false
-    if (row.workflowStatus != "running") return false
+    val eligible = current.ownerToken == ownerToken &&
+      current.generation == generation &&
+      leaseStillExpired &&
+      row != null &&
+      row.workflowStatus == "running"
+    if (!eligible) return false
     workerOwnershipById.remove(workflowId)
     taskRuntime[workflowId] = row.copy(workflowStatus = "pending")
     return true

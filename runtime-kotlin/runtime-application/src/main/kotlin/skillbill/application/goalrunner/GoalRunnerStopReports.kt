@@ -10,24 +10,16 @@ import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionManifest
 
-internal fun stopped(
-  issueKey: String,
-  attempted: List<Int>,
-  subtaskId: Int,
-  reason: GoalRunnerStopReason,
-  blockedReason: String,
-  workflowId: String?,
-  lastResumableStep: String,
-): GoalRunnerRunReport.Stopped = GoalRunnerRunReport.Stopped(
-  issueKey = issueKey,
-  attemptedSubtasks = attempted,
+internal fun stopped(args: StoppedReportArgs): GoalRunnerRunReport.Stopped = GoalRunnerRunReport.Stopped(
+  issueKey = args.issueKey,
+  attemptedSubtasks = args.attempted,
   stop = GoalRunnerStopReport(
-    issueKey = issueKey,
-    subtaskId = subtaskId,
-    reason = reason,
-    blockedReason = blockedReason,
-    workflowId = workflowId,
-    lastResumableStep = lastResumableStep,
+    issueKey = args.issueKey,
+    subtaskId = args.subtaskId,
+    reason = args.reason,
+    blockedReason = args.blockedReason,
+    workflowId = args.workflowId,
+    lastResumableStep = args.lastResumableStep,
   ),
 )
 
@@ -53,13 +45,15 @@ internal fun completed(
 }
 
 internal fun unknownGoal(issueKey: String): GoalRunnerRunReport.Stopped = stopped(
-  issueKey = issueKey,
-  attempted = emptyList(),
-  subtaskId = 0,
-  reason = GoalRunnerStopReason.BLOCKED,
-  blockedReason = "No decomposed parent workflow was found for $issueKey.",
-  workflowId = null,
-  lastResumableStep = "preplan",
+  StoppedReportArgs(
+    issueKey = issueKey,
+    attempted = emptyList(),
+    subtaskId = 0,
+    reason = GoalRunnerStopReason.BLOCKED,
+    blockedReason = "No decomposed parent workflow was found for $issueKey.",
+    workflowId = null,
+    lastResumableStep = "preplan",
+  ),
 )
 
 internal fun String.withStopDiagnostics(

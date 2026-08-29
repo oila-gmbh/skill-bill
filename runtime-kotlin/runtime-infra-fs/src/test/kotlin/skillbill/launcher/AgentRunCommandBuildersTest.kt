@@ -20,10 +20,13 @@ import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
-import ReviewEvidenceBatchRequest
-import ReviewToolCall
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
+import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewToolCall
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 import kotlin.test.Test
@@ -35,9 +38,6 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
-import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
-import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
-import skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
 
 @Suppress("LargeClass") // cohesive builder-matrix suite across claude/codex/junie/cursor launches
 class AgentRunCommandBuildersTest {

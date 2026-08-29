@@ -5,6 +5,7 @@ import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.nio.file.Files
 import java.nio.file.Path
@@ -16,7 +17,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 
 private class RecordingDiagnostics : RuntimeDiagnostics {
   val warnings = CopyOnWriteArrayList<String>()

@@ -225,7 +225,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     definition.stepIds.forEach { phaseId ->
       val declaration = when (phaseId) {
         def.PHASE_WRITE_HISTORY, def.PHASE_COMMIT_PUSH ->
-          def.phaseDeclarationForQualityGate(
+          FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclarationForQualityGate(
             phaseId,
             FeatureTaskRuntimeFeatureSize.MEDIUM,
             FeatureTaskRuntimeQualityGateSelection.VALIDATE,
@@ -249,14 +249,14 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     )
     assertEquals(
       listOf("current_unit_of_work"),
-      FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+      FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
         FeatureTaskRuntimeFeatureSize.SMALL,
       ).derivedContextKeys,
     )
     assertEquals(
       listOf("diff"),
-      FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+      FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
       ).derivedContextKeys,

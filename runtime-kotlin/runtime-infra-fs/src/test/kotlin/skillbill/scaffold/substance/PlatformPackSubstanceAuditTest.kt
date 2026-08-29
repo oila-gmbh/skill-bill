@@ -5,17 +5,18 @@ package skillbill.scaffold.substance
 import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import java.nio.file.Path
 
 class PlatformPackSubstanceAuditTest {
   @Test
   fun `normalization is stable and unique five-token shingles ignore repetition`() {
-    val text = "---\nname: bill-demo-code-review\n---\n[Verify](https://example.test) `DemoApi` must reject invalid state."
+    val text =
+      "---\nname: bill-demo-code-review\n---\n[Verify](https://example.test) `DemoApi` must reject invalid state."
     val tokens = PlatformPackSubstanceAudit.normalize(text, listOf("demo", "bill-demo-code-review"))
     assertTrue("https" !in tokens)
     assertTrue(tokens.none { it.contains("https") })

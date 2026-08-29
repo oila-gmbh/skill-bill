@@ -119,13 +119,15 @@ internal class FeatureTaskRuntimeRunState(
 
   private val fixLoopBudgetBaseByPhase: MutableMap<String, Int> =
     FeatureTaskRuntimeRunStateReconstruction.reconstructFixLoopBudgetBases(
-      transitions = transitions,
-      edgeIterationByLoop = edgeIterationByLoop,
-      initialRecords = initialRecords,
-      initialLedger = initialLedger,
-      completed = completed,
-      gateInvalidatedPhases = gateInvalidatedPhases,
-      nextIteration = ::nextIteration,
+      ReconstructFixLoopBudgetBasesArgs(
+        transitions = transitions,
+        edgeIterationByLoop = edgeIterationByLoop,
+        initialRecords = initialRecords,
+        initialLedger = initialLedger,
+        completed = completed,
+        gateInvalidatedPhases = gateInvalidatedPhases,
+        nextIteration = ::nextIteration,
+      ),
     )
 
   init {

@@ -1,7 +1,6 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerQualityGateSelectionResolver
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
@@ -17,31 +16,27 @@ import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 internal class GoalRunnerLaunchReconciler(
   private val manifestStore: GoalRunnerManifestStore,
-  private val subtaskLauncher: GoalRunnerSubtaskLauncher,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
-  fun subtaskLaunchRequest(
-    issueKey: String,
-    subtaskId: Int,
-    request: GoalRunnerRunRequest,
-    assignedWorkflowId: String? = null,
-    reviewBaseline: GoalSubtaskReviewBaseline? = null,
-    spawnAuthorization: AgentRunSpawnAuthorization? = null,
-  ): GoalRunnerSubtaskLaunchRequest {
+  fun subtaskLaunchRequest(args: SubtaskLaunchRequestArgs): GoalRunnerSubtaskLaunchRequest {
+    val issueKey = args.issueKey
+    val subtaskId = args.subtaskId
+    val request = args.request
+    val assignedWorkflowId = args.assignedWorkflowId
+    val reviewBaseline = args.reviewBaseline
+    val spawnAuthorization = args.spawnAuthorization
     val tickReader = GoalRunnerTickProgressReader(
       manifestStore = manifestStore,
       outcomeStore = outcomeStore,
@@ -218,32 +213,31 @@ internal class GoalRunnerLaunchReconciler(
   }
 }
 
-internal fun AgentRunLaunchOutcome.toGoalRunnerLaunchFacts(): GoalRunnerLaunchFacts =
-  when (this) {
-    is AgentRunLaunchFacts -> GoalRunnerLaunchFacts(
-      timedOut = timedOut,
-      interrupted = interrupted,
-      spawnFailed = spawnFailed,
-      exitStatus = exitStatus,
-      stderrExcerpt = stderrExcerpt(stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS),
-      liveness = liveness?.let { snapshot ->
-        GoalRunnerLivenessSnapshot(
-          phase = snapshot.phase,
-          reason = snapshot.reason,
-          processState = snapshot.processState,
-          workflowId = snapshot.workflowId,
-          workflowStep = snapshot.workflowStep,
-          lastDurableProgressAt = snapshot.lastDurableProgressAt,
-          lastDurableProgressLabel = snapshot.lastDurableProgressLabel,
-          lastWorkflowSnapshotAt = snapshot.lastWorkflowSnapshotAt,
-          lastFileActivityAt = snapshot.lastFileActivityAt,
-          lastFileActivityLabel = snapshot.lastFileActivityLabel,
-          lastOutputAt = snapshot.lastOutputAt,
-          livenessState = snapshot.livenessState,
-          aliveAtKill = snapshot.livenessState == GoalRunnerLivenessState.WORKING ||
-            snapshot.livenessState == GoalRunnerLivenessState.PROGRESSING,
-        )
-      },
-    )
-    is UnsupportedAgentRunLaunch -> GoalRunnerLaunchFacts(spawnFailed = true)
-  }
+internal fun AgentRunLaunchOutcome.toGoalRunnerLaunchFacts(): GoalRunnerLaunchFacts = when (this) {
+  is AgentRunLaunchFacts -> GoalRunnerLaunchFacts(
+    timedOut = timedOut,
+    interrupted = interrupted,
+    spawnFailed = spawnFailed,
+    exitStatus = exitStatus,
+    stderrExcerpt = stderrExcerpt(stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS),
+    liveness = liveness?.let { snapshot ->
+      GoalRunnerLivenessSnapshot(
+        phase = snapshot.phase,
+        reason = snapshot.reason,
+        processState = snapshot.processState,
+        workflowId = snapshot.workflowId,
+        workflowStep = snapshot.workflowStep,
+        lastDurableProgressAt = snapshot.lastDurableProgressAt,
+        lastDurableProgressLabel = snapshot.lastDurableProgressLabel,
+        lastWorkflowSnapshotAt = snapshot.lastWorkflowSnapshotAt,
+        lastFileActivityAt = snapshot.lastFileActivityAt,
+        lastFileActivityLabel = snapshot.lastFileActivityLabel,
+        lastOutputAt = snapshot.lastOutputAt,
+        livenessState = snapshot.livenessState,
+        aliveAtKill = snapshot.livenessState == GoalRunnerLivenessState.WORKING ||
+          snapshot.livenessState == GoalRunnerLivenessState.PROGRESSING,
+      )
+    },
+  )
+  is UnsupportedAgentRunLaunch -> GoalRunnerLaunchFacts(spawnFailed = true)
+}

@@ -4,11 +4,11 @@ import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DatabaseSchema
 import java.nio.file.Files
+import java.sql.Connection
 import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import java.sql.Connection
 
 class ReviewStageStateMigrationTest {
   @Test

@@ -1,6 +1,5 @@
 package skillbill.workflow.engine
 
-import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.WorkflowContracts
 import skillbill.workflow.engine.model.WorkflowCompactContinueView
 import skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary
@@ -12,7 +11,6 @@ import skillbill.workflow.engine.model.WorkflowSummaryView
 import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 
 internal object WorkflowEngineWireMaps {
-  @OpenBoundaryMap("Wire-shape ordered snapshot map for CLI/MCP adapters")
   fun snapshotMap(view: WorkflowSnapshotView): Map<String, Any?> = WorkflowContracts.fullWorkflowPayload(
     linkedMapOf(
       "workflow_id" to view.workflowId,
@@ -30,7 +28,6 @@ internal object WorkflowEngineWireMaps {
     ),
   )
 
-  @OpenBoundaryMap("Wire-shape ordered summary map for CLI/MCP adapters")
   fun summaryMap(view: WorkflowSummaryView): Map<String, Any?> = WorkflowContracts.summaryWorkflowPayload(
     linkedMapOf(
       "workflow_id" to view.workflowId,
@@ -46,7 +43,6 @@ internal object WorkflowEngineWireMaps {
     ),
   )
 
-  @OpenBoundaryMap("Wire-shape ordered resume map for CLI/MCP adapters")
   fun resumeMap(view: WorkflowResumeView): Map<String, Any?> = WorkflowContracts.resumePayload(
     snapshotMap(view.snapshot),
     linkedMapOf(
@@ -61,7 +57,6 @@ internal object WorkflowEngineWireMaps {
     ),
   )
 
-  @OpenBoundaryMap("Wire-shape ordered continue map for CLI/MCP adapters")
   fun continueMap(view: WorkflowContinueView): Map<String, Any?> = WorkflowContracts.continuePayload(
     resumeMap(view.resume),
     linkedMapOf(
@@ -81,7 +76,6 @@ internal object WorkflowEngineWireMaps {
     ),
   )
 
-  @OpenBoundaryMap("Compact wire-shape ordered continue map for CLI/MCP adapters")
   fun compactContinueMap(view: WorkflowCompactContinueView): Map<String, Any?> = linkedMapOf(
     "workflow_id" to view.workflowId,
     "skill_name" to view.skillName,
@@ -108,7 +102,6 @@ internal object WorkflowEngineWireMaps {
     "read_only_full_state_guidance" to view.readOnlyFullStateGuidance,
   )
 
-  @OpenBoundaryMap("Compact wire-shape ordered workflow-update acknowledgement map for CLI/MCP adapters")
   fun updateAcknowledgementMap(view: WorkflowUpdateAcknowledgementView): Map<String, Any?> = linkedMapOf(
     "status" to view.status,
     "workflow_id" to view.workflowId,
@@ -120,7 +113,6 @@ internal object WorkflowEngineWireMaps {
     "read_only_full_state_guidance" to view.readOnlyFullStateGuidance,
   )
 
-  @OpenBoundaryMap("Bounded workflow launch projection map for CLI/MCP adapters")
   fun inputProjectionMap(projection: WorkflowInputProjection): Map<String, Any?> = linkedMapOf(
     "step_id" to projection.stepId,
     "producer_iteration" to projection.producerIteration,

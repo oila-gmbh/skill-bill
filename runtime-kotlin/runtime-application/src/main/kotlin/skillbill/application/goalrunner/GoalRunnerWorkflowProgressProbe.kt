@@ -31,9 +31,7 @@ internal class GoalRunnerWorkflowProgressProbe(
   }
 }
 
-internal fun declaredProgressProbe(
-  reader: GoalRunnerTickProgressReader,
-): AgentRunDeclaredProgressProbe =
+internal fun declaredProgressProbe(reader: GoalRunnerTickProgressReader): AgentRunDeclaredProgressProbe =
   AgentRunDeclaredProgressProbe {
     reader.progressState()
       ?.childProgress
@@ -44,7 +42,7 @@ internal fun declaredProgressProbe(
           processAlive = event.processAlive,
         )
       }
-}
+  }
 
 internal fun DecompositionSubtask.progressToken(): String = listOf(
   status,

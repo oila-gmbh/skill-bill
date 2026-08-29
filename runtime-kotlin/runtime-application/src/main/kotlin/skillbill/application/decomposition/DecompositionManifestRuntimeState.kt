@@ -1,7 +1,7 @@
 package skillbill.application.decomposition
 
-import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.workflow.isActiveGoalRuntime
+import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError

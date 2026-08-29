@@ -7,7 +7,7 @@ import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.toWireMap
+import skillbill.workflow.decomposition.toWireMap
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

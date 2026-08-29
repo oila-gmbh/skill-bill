@@ -1,9 +1,6 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.goalrunner.planning.GoalPlanningStatusReasonCoherence
 import skillbill.application.goalrunner.model.GoalRunnerAcceptRequest
 import skillbill.application.goalrunner.model.GoalRunnerAcceptResult
 import skillbill.application.goalrunner.model.GoalRunnerPauseResult
@@ -15,48 +12,38 @@ import skillbill.application.goalrunner.model.GoalRunnerResetRequest
 import skillbill.application.goalrunner.model.GoalRunnerResetResult
 import skillbill.application.goalrunner.model.GoalRunnerResumeResult
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
+import skillbill.application.goalrunner.model.GoalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.runner.NoopGoalRunnerAttemptLedgerStore
-import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.nio.file.Path
-import java.time.Clock
 
 @Inject
-class GoalRunnerStatusService(
-  private val manifestStore: GoalRunnerManifestStore,
-  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
-  private val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
-  private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
-  private val attemptLedgerStore: GoalRunnerAttemptLedgerStore = NoopGoalRunnerAttemptLedgerStore,
-  private val clock: Clock = Clock.systemUTC(),
-  private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
-  private val childRepairStore: GoalRunnerChildRepairStore = NoopGoalRunnerChildRepairStore,
-  private val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence =
-    GoalPlanningStatusReasonCoherence.NONE,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
-  private val runtimeStatusService: FeatureTaskRuntimeStatusService? = null,
-) {
+class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
+  private val manifestStore = deps.manifestStore
+  private val outcomeStore = deps.outcomeStore
+  private val phaseRecorder = deps.phaseRecorder
+  private val gitOperations = deps.gitOperations
+  private val attemptLedgerStore = deps.attemptLedgerStore
+  private val clock = deps.clock
+  private val workerSupervisor = deps.workerSupervisor
+  private val childRepairStore = deps.childRepairStore
+  private val planningStatusReasonCoherence = deps.planningStatusReasonCoherence
+  private val diagnostics = deps.diagnostics
+  private val runtimeStatusService = deps.runtimeStatusService
   private val projectionAssembler = GoalRunnerStatusProjectionAssembler(
-    manifestStore = manifestStore,
-    outcomeStore = outcomeStore,
-    phaseRecorder = phaseRecorder,
-    gitOperations = gitOperations,
-    attemptLedgerStore = attemptLedgerStore,
-    clock = clock,
-    workerSupervisor = workerSupervisor,
-    planningStatusReasonCoherence = planningStatusReasonCoherence,
-    diagnostics = diagnostics,
-    runtimeStatusService = runtimeStatusService,
+    GoalRunnerStatusProjectionAssemblerDeps(
+      manifestStore = manifestStore,
+      outcomeStore = outcomeStore,
+      phaseRecorder = phaseRecorder,
+      gitOperations = gitOperations,
+      attemptLedgerStore = attemptLedgerStore,
+      clock = clock,
+      workerSupervisor = workerSupervisor,
+      planningStatusReasonCoherence = planningStatusReasonCoherence,
+      diagnostics = diagnostics,
+      runtimeStatusService = runtimeStatusService,
+    ),
   )
 
   private val controlVerbs = GoalRunnerStatusControlVerbs(

@@ -4,6 +4,7 @@ import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
+import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 
@@ -129,7 +130,7 @@ private fun Map<String, Any?>.requireFeatureSizeField(key: String): FeatureTaskR
   val rawValue = requireInvariantStringField(key)
   return try {
     FeatureTaskRuntimeFeatureSize.fromWire(rawValue)
-  } catch (_: IllegalArgumentException) {
+  } catch (_: InvalidFeatureTaskRuntimePhaseHandoffSchemaError) {
     runInvariantSchemaError("Feature-task-runtime artifact field '$key' must be one of SMALL, MEDIUM, LARGE.")
   }
 }

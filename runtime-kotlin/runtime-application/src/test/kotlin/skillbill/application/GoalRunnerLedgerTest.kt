@@ -1,12 +1,18 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.GoalRunner
+import skillbill.application.goalrunner.goalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.testGoalRunner
 import skillbill.application.workflow.repoRoot
+import skillbill.goalrunner.model.GoalRunnerLaunchFacts
+import skillbill.goalrunner.model.GoalRunnerLivenessState.IDLE
+import skillbill.goalrunner.model.GoalRunnerLivenessState.PROGRESSING
+import skillbill.goalrunner.model.GoalRunnerLivenessState.WORKING
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
@@ -16,24 +22,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
-import skillbill.goalrunner.model.GoalRunnerLaunchFacts.DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL
-import skillbill.goalrunner.model.GoalRunnerLivenessState.IDLE
-import skillbill.goalrunner.model.GoalRunnerLivenessState.PROGRESSING
-import skillbill.goalrunner.model.GoalRunnerLivenessState.WORKING
 
-/**
- * SKILL-64 Subtask 4 (AC4, AC5): the attempt/event ledger must explain every
- * case — first start, resume/retry,
- * terminal done check, timeout/interruption, policy-blocked, and the final
- * reconciled result — WITHOUT provider JSONL scraping.
- *
- * Each case is driven end-to-end through [GoalRunner.run] using the recording
- * fixtures, exercising the live emit -> store -> read seam in ONE run (the
- * dead-seam guard): a regression that breaks the wiring between the ledger
- * action map (GoalRunner) and the durable record (RecordingOutcomeStore) fails
- * here, not just in an isolated model test.
- */
 class GoalRunnerLedgerTest {
   @Test
   fun `first start records child activation terminal done check and final reconciled outcome`() {
@@ -45,7 +34,7 @@ class GoalRunnerLedgerTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts().copy(childSessionPath = "/work/child-1", childSessionId = "claude:SKILL-56:subtask-1")
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(ledgerRunRequest()))
 
@@ -53,8 +42,6 @@ class GoalRunnerLedgerTest {
     assertContains(actions, "child_activation")
     assertContains(actions, "terminal_done_check")
     assertContains(actions, "final_reconciled_outcome")
-    // The ledger explains the terminal result without provider JSONL scraping:
-    // the explanatory fields are carried on the entries themselves.
     val terminalDoneCheck = outcomes.attemptLedgerRecords
       .first { it.entry.action.wireValue == "terminal_done_check" }.entry
     assertContains(requireNotNull(terminalDoneCheck.finalReconciledResult), "complete")
@@ -62,7 +49,6 @@ class GoalRunnerLedgerTest {
       .first { it.entry.action.wireValue == "final_reconciled_outcome" }.entry
     assertContains(requireNotNull(finalReconciled.finalReconciledResult), "goal_finalize")
 
-    // Monotonic per-recorder sequence space (distinct from goal_event/goal_progress).
     assertEquals(
       outcomes.attemptLedgerRecords.map { it.entry.sequenceNumber }.sorted(),
       outcomes.attemptLedgerRecords.map { it.entry.sequenceNumber },
@@ -99,7 +85,7 @@ class GoalRunnerLedgerTest {
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(ledgerRunRequest()))
 
@@ -112,20 +98,18 @@ class GoalRunnerLedgerTest {
   fun `no terminal store outcome records a retry ledger action`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val outcomes = RecordingOutcomeStore()
-    // Launcher never stores a terminal outcome -> NO_TERMINAL_STORE_OUTCOME -> retry.
     val launcher = RecordingSubtaskLauncher { request ->
       val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
     assertEquals(GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME, stopped.stop.reason)
 
     val retry = outcomes.attemptLedgerRecords.firstOrNull { it.entry.action.wireValue == "retry" }
     assertTrue(retry != null, "expected a retry ledger entry: ${ledgerActions(outcomes)}")
-    // The ledger explains the stop without provider JSONL scraping.
     assertEquals("no_terminal_store_outcome", retry.entry.stopReason)
   }
 
@@ -152,7 +136,7 @@ class GoalRunnerLedgerTest {
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts(stdout = prefixlessJson)
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
 
@@ -175,7 +159,7 @@ class GoalRunnerLedgerTest {
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts(stdout = """{"tasks_completed":1} {"tasks_completed":2}""")
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
 
@@ -196,7 +180,7 @@ class GoalRunnerLedgerTest {
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts(timedOut = true)
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
     assertEquals(GoalRunnerStopReason.TIMEOUT, stopped.stop.reason)
@@ -214,7 +198,7 @@ class GoalRunnerLedgerTest {
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       launchFacts(interrupted = true)
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
     assertEquals(GoalRunnerStopReason.INTERRUPTED, stopped.stop.reason)
@@ -225,14 +209,12 @@ class GoalRunnerLedgerTest {
 
   @Test
   fun `policy blocked records a policy block ledger action without scraping provider logs`() {
-    // Feature branch resolves to a protected branch -> policy block before any
-    // child launch, anchored to the parent decomposed workflow id.
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).copy(featureBranch = "main"),
     )
     val outcomes = RecordingOutcomeStore()
     val launcher = RecordingSubtaskLauncher { launchFacts() }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
     assertEquals(GoalRunnerStopReason.POLICY_BLOCKED, stopped.stop.reason)
@@ -258,14 +240,11 @@ class GoalRunnerLedgerTest {
       )
       launchFacts()
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
     assertEquals(GoalRunnerStopReason.FAILED, stopped.stop.reason)
 
-    // The terminal failure is explained on the ledger entry (final_reconciled_result
-    // + blocked_reason), so no provider JSONL scraping is required to answer why
-    // the subtask stopped.
     val failedEntry = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "failed" }.entry
     assertEquals("failed", failedEntry.finalReconciledResult)
     assertContains(requireNotNull(failedEntry.blockedReason), "review failed")
@@ -287,14 +266,14 @@ class GoalRunnerLedgerTest {
         ),
       )
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
     assertEquals(GoalRunnerStopReason.TIMEOUT, stopped.stop.reason)
 
     val timeoutEntry = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "timeout" }.entry
     assertEquals(
-      DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
+      GoalRunnerLaunchFacts.DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
       timeoutEntry.diagnosticClass,
       "a kill of a confirmed-alive process must emit the distinct supervisor_killed_confirmed_alive class",
     )
@@ -316,14 +295,14 @@ class GoalRunnerLedgerTest {
         ),
       )
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
     assertEquals(GoalRunnerStopReason.TIMEOUT, stopped.stop.reason)
 
     val timeoutEntry = outcomes.attemptLedgerRecords.last { it.entry.stopReason == "timeout" }.entry
     assertEquals(
-      DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
+      GoalRunnerLaunchFacts.DIAGNOSTIC_CLASS_CONFIRMED_ALIVE_KILL,
       timeoutEntry.diagnosticClass,
       "a kill of a PROGRESSING process must also emit the supervisor_killed_confirmed_alive class",
     )
@@ -345,7 +324,7 @@ class GoalRunnerLedgerTest {
         ),
       )
     }
-    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+    val runner = testGoalRunner(goalRunnerDeps(store, launcher, outcomes, RecordingPullRequestPort()))
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(ledgerRunRequest()))
     assertEquals(GoalRunnerStopReason.TIMEOUT, stopped.stop.reason)

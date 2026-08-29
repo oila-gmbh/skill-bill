@@ -9,10 +9,10 @@ import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpStdioServer
 import skillbill.mcp.core.McpToolSpec
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
+import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
-import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

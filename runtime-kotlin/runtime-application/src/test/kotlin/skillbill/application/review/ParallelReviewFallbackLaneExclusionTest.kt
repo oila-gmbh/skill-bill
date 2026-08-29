@@ -3,6 +3,7 @@ package skillbill.application.review
 import skillbill.review.plan.ReviewCrossRootLaneReconciliation
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
+import skillbill.review.plan.model.ReviewRootLanes
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
@@ -11,7 +12,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import skillbill.review.plan.model.ReviewRootLanes
 
 class ParallelReviewFallbackLaneExclusionTest {
   private val genericAreas = listOf(
@@ -132,10 +132,7 @@ class ParallelReviewFallbackLaneExclusionTest {
   private fun laneCountFromRootLanesBeforeFallbackExclusion(packs: List<PlatformManifest>, diff: String): Int =
     buildRootLanes(packs, diff).sumOf { it.lanes.size }
 
-  private fun rootLanesFromRouting(
-    packs: List<PlatformManifest>,
-    diff: String,
-  ): List<ReviewRootLanes> {
+  private fun rootLanesFromRouting(packs: List<PlatformManifest>, diff: String): List<ReviewRootLanes> {
     val evidenceFiles = diff.lines()
       .filter { it.startsWith("+++ b/") }
       .map { it.removePrefix("+++ b/") }

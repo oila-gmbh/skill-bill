@@ -2,10 +2,10 @@ package skillbill.application.work
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.featuretask.model.FeatureTaskRuntimeOperatorDecisionPause
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.application.idestatus.model.IdeStatusCandidate
 import skillbill.application.idestatus.model.IdeStatusCurrentModel
@@ -25,9 +25,9 @@ import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
+import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.work.model.WorkItemKind
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator

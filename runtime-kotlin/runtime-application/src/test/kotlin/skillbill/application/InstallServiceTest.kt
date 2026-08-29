@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.application.install.InstallPlanningPorts
-import InstallReconcilePorts
+import skillbill.application.install.InstallReconcilePorts
 import skillbill.application.install.InstallService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
@@ -17,6 +17,7 @@ import skillbill.install.model.InstallApplyIssue
 import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyResult
 import skillbill.install.model.InstallApplyStatus
+import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
@@ -42,6 +43,11 @@ import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.apply.model.InstallApplyExecutionRequest
 import skillbill.ports.install.apply.model.InstallApplyExecutionResult
+import skillbill.ports.install.baseline.BaselineManifestPersistencePort
+import skillbill.ports.install.baseline.model.ReadBaselineManifestRequest
+import skillbill.ports.install.baseline.model.ReadBaselineManifestResult
+import skillbill.ports.install.baseline.model.WriteBaselineManifestRequest
+import skillbill.ports.install.baseline.model.WriteBaselineManifestResult
 import skillbill.ports.install.link.InstallSkillLinkPort
 import skillbill.ports.install.link.model.InstallSkillLinkRequest
 import skillbill.ports.install.link.model.InstallSkillLinkResult
@@ -55,6 +61,12 @@ import skillbill.ports.install.plan.model.InstallPlatformSkillMaterializationPor
 import skillbill.ports.install.plan.model.InstallPlatformSkillMaterializationPortResult
 import skillbill.ports.install.plan.model.InstallStagingIntentRequest
 import skillbill.ports.install.plan.model.InstallStagingIntentResult
+import skillbill.ports.install.reconcile.InstallReconcileApplyPort
+import skillbill.ports.install.reconcile.InstallReconcilePort
+import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileApplyResult
+import skillbill.ports.install.reconcile.model.InstallReconcileRequest
+import skillbill.ports.install.reconcile.model.InstallReconcileResult
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionResult
@@ -67,18 +79,6 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame
-import skillbill.ports.install.baseline.BaselineManifestPersistencePort
-import skillbill.install.model.InstallPlan
-import skillbill.ports.install.reconcile.InstallReconcileApplyPort
-import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
-import skillbill.ports.install.reconcile.model.InstallReconcileApplyResult
-import skillbill.ports.install.reconcile.InstallReconcilePort
-import skillbill.ports.install.reconcile.model.InstallReconcileRequest
-import skillbill.ports.install.reconcile.model.InstallReconcileResult
-import skillbill.ports.install.baseline.model.ReadBaselineManifestRequest
-import skillbill.ports.install.baseline.model.ReadBaselineManifestResult
-import skillbill.ports.install.baseline.model.WriteBaselineManifestRequest
-import skillbill.ports.install.baseline.model.WriteBaselineManifestResult
 
 class InstallServiceTest {
   @Test
@@ -320,48 +320,46 @@ class InstallServiceTest {
     installPlanWireValidator = testInstallPlanWireValidator,
   )
 
-  private fun successfulApplyResult(
-    plan: InstallPlan,
-    resolvedAgent: InstallAgent?,
-  ): InstallApplyResult = InstallApplyResult(
-    status = InstallApplyStatus.SUCCESS,
-    skills = listOf(
-      InstallAppliedSkill(
-        skillName = "bill-code-review",
-        kind = InstallPlanSkillKind.BASE,
-        sourceDir = plan.request.repoRoot.resolve("skills/bill-code-review"),
-        staging = InstallSkillStagingOutcome(
-          status = InstallSkillStagingStatus.STAGED,
+  private fun successfulApplyResult(plan: InstallPlan, resolvedAgent: InstallAgent?): InstallApplyResult =
+    InstallApplyResult(
+      status = InstallApplyStatus.SUCCESS,
+      skills = listOf(
+        InstallAppliedSkill(
+          skillName = "bill-code-review",
+          kind = InstallPlanSkillKind.BASE,
           sourceDir = plan.request.repoRoot.resolve("skills/bill-code-review"),
+          staging = InstallSkillStagingOutcome(
+            status = InstallSkillStagingStatus.STAGED,
+            sourceDir = plan.request.repoRoot.resolve("skills/bill-code-review"),
+          ),
+          links = resolvedAgent?.let { agent ->
+            listOf(
+              InstallAgentSkillLinkOutcome(
+                agent = agent,
+                targetDir = plan.request.home.resolve(".codex/skills"),
+                linkPath = plan.request.home.resolve(".codex/skills/bill-code-review"),
+                linkTarget = plan.request.home.resolve(".skill-bill/installed-skills/bill-code-review"),
+                status = InstallAgentLinkStatus.CREATED,
+              ),
+            )
+          }.orEmpty(),
         ),
-        links = resolvedAgent?.let { agent ->
-          listOf(
-            InstallAgentSkillLinkOutcome(
-              agent = agent,
-              targetDir = plan.request.home.resolve(".codex/skills"),
-              linkPath = plan.request.home.resolve(".codex/skills/bill-code-review"),
-              linkTarget = plan.request.home.resolve(".skill-bill/installed-skills/bill-code-review"),
-              status = InstallAgentLinkStatus.CREATED,
-            ),
-          )
-        }.orEmpty(),
       ),
-    ),
-    nativeAgents = emptyList(),
-    telemetryOutcome = InstallTelemetryApplyOutcome(
-      level = plan.telemetryLevel,
-      status = InstallTelemetryApplyStatus.SUCCESS,
-    ),
-    mcpRegistrationOutcomes = emptyList(),
-    warnings = emptyList(),
-    failures = emptyList(),
-    windowsSymlinkOutcome = WindowsSymlinkApplyOutcome(
-      preflight = plan.windowsSymlinkPreflight,
-      fallbackState = WindowsSymlinkFallbackState.NOT_REQUIRED,
-    ),
-    telemetryLevel = plan.telemetryLevel,
-    mcpRegistrationIntent = plan.mcpRegistrationIntent,
-  )
+      nativeAgents = emptyList(),
+      telemetryOutcome = InstallTelemetryApplyOutcome(
+        level = plan.telemetryLevel,
+        status = InstallTelemetryApplyStatus.SUCCESS,
+      ),
+      mcpRegistrationOutcomes = emptyList(),
+      warnings = emptyList(),
+      failures = emptyList(),
+      windowsSymlinkOutcome = WindowsSymlinkApplyOutcome(
+        preflight = plan.windowsSymlinkPreflight,
+        fallbackState = WindowsSymlinkFallbackState.NOT_REQUIRED,
+      ),
+      telemetryLevel = plan.telemetryLevel,
+      mcpRegistrationIntent = plan.mcpRegistrationIntent,
+    )
 
   private fun failedApplyResult(plan: InstallPlan): InstallApplyResult = InstallApplyResult(
     status = InstallApplyStatus.FAILURE,
@@ -526,28 +524,21 @@ class InstallServiceTest {
   }
 
   private object UnsupportedInstallReconcilePort : InstallReconcilePort {
-    override fun reconcile(
-      request: InstallReconcileRequest,
-    ): InstallReconcileResult = error("reconcile is not part of this test")
+    override fun reconcile(request: InstallReconcileRequest): InstallReconcileResult =
+      error("reconcile is not part of this test")
   }
 
   private object UnsupportedInstallReconcileApplyPort : InstallReconcileApplyPort {
-    override fun apply(
-      request: InstallReconcileApplyRequest,
-    ): InstallReconcileApplyResult =
+    override fun apply(request: InstallReconcileApplyRequest): InstallReconcileApplyResult =
       error("reconcile apply is not part of this test")
   }
 
   private object UnsupportedBaselineManifestPersistencePort :
     BaselineManifestPersistencePort {
-    override fun readBaseline(
-      request: ReadBaselineManifestRequest,
-    ): ReadBaselineManifestResult =
+    override fun readBaseline(request: ReadBaselineManifestRequest): ReadBaselineManifestResult =
       error("readBaseline is not part of this test")
 
-    override fun writeBaseline(
-      request: WriteBaselineManifestRequest,
-    ): WriteBaselineManifestResult =
+    override fun writeBaseline(request: WriteBaselineManifestRequest): WriteBaselineManifestResult =
       error("writeBaseline is not part of this test")
   }
 

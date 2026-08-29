@@ -1,6 +1,5 @@
 package skillbill.cli.goal
 
-import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
@@ -10,7 +9,6 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.model.DEFAULT_GOAL_PLANNING_BUDGET
@@ -20,27 +18,33 @@ import skillbill.application.telemetry.TelemetryService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.invokingAgentResolutionHelp
-import skillbill.cli.core.refuseUnavailableAgentLaunchers
-import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.cli.telemetry.drainTelemetryOnCompletion
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
-import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.ports.agentrun.ExecutableLookup
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
-import skillbill.application.goalrunner.model.GoalRunnerEventSink
 
 @Inject
-class GoalControlSubcommands(
+class GoalControlFlowCommands(
   val pause: GoalPauseCommand,
   val stop: GoalStopCommand,
   val resume: GoalResumeCommand,
   val reset: GoalResetCommand,
+)
+
+@Inject
+class GoalControlOperatorCommands(
   val replan: GoalReplanCommand,
   val accept: GoalAcceptCommand,
   val repair: GoalRepairCommand,
   val operatorDecision: GoalOperatorDecisionCommand,
+)
+
+@Inject
+class GoalControlSubcommands(
+  val flow: GoalControlFlowCommands,
+  val operator: GoalControlOperatorCommands,
 )
 
 @Inject
@@ -128,14 +132,14 @@ class GoalRunCommand(
       goalRunSubcommands.preflight,
       goalRunSubcommands.status,
       goalRunSubcommands.watch,
-      goalRunSubcommands.controls.pause,
-      goalRunSubcommands.controls.stop,
-      goalRunSubcommands.controls.resume,
-      goalRunSubcommands.controls.reset,
-      goalRunSubcommands.controls.replan,
-      goalRunSubcommands.controls.accept,
-      goalRunSubcommands.controls.repair,
-      goalRunSubcommands.controls.operatorDecision,
+      goalRunSubcommands.controls.flow.pause,
+      goalRunSubcommands.controls.flow.stop,
+      goalRunSubcommands.controls.flow.resume,
+      goalRunSubcommands.controls.flow.reset,
+      goalRunSubcommands.controls.operator.replan,
+      goalRunSubcommands.controls.operator.accept,
+      goalRunSubcommands.controls.operator.repair,
+      goalRunSubcommands.controls.operator.operatorDecision,
       goalRunSubcommands.findings,
       goalRunSubcommands.planningLog,
     )
@@ -148,44 +152,34 @@ class GoalRunCommand(
     val effectiveRepoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
       ?: Path.of("").toAbsolutePath().normalize()
     val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
-    val candidateAgentIds = listOf(
-      invokedAgentId,
-      agentOverride,
+    validateGoalRunInputs(
+      GoalRunInputValidationArgs(
+        issueKey = issueKey,
+        stopAfterSubtask = stopAfterSubtask,
+        agentAddonSlugs = agentAddonSlugs,
+        agentAddonSelectionJson = agentAddonSelectionJson,
+        agent = agent,
+        agentOverride = agentOverride,
+        state = state,
+        executableLookup = executableLookup,
+      ),
     )
-    // An agent whose headless CLI is absent would otherwise spawn-fail at goal planning, after the
-    // goal record already exists and is blocked at subtask 0.
-    refuseUnavailableAgentLaunchers(candidateAgentIds, executableLookup)
-    val runIssueKey = issueKey ?: throw UsageError("issue_key is required for goal run.")
-    if (stopAfterSubtask != null && requireNotNull(stopAfterSubtask) <= 0) {
-      throw UsageError("--stop-after-subtask must be a positive integer.")
-    }
+    val runIssueKey = issueKey!!
     val receivingAgents = listOfNotNull(
       invokedAgentId,
       agentOverride?.takeIf(String::isNotBlank),
     ).distinct()
-    if (agentAddonSlugs.isNotEmpty() && agentAddonSelectionJson != null) {
-      throw UsageError("Use either --agent-addon or --agent-addon-selection-json, not both.")
-    }
-    val persistedSelection = parseAgentAddonSelection(agentAddonSelectionJson)
-    val hydratedSelection = if (agentAddonSlugs.isNotEmpty()) {
-      agentAddonSelectionPort.resolveInitial(
-        repoRoot = effectiveRepoRoot,
-        requestedSlugs = agentAddonSlugs,
-        consumer = AgentAddonConsumer.BILL_FEATURE,
-        receivingAgentIds = receivingAgents,
-        externalSourceRoots = externalAgentAddonSourceConfigPort.readExternalAgentAddonSources(
-          ExternalAgentAddonSourceConfigRequest(state.userHome, state.environment),
-        ).sources.map { it.path },
-      )
-    } else if (persistedSelection.entries.isEmpty()) {
-      HydratedAgentAddonSelection()
-    } else {
-      agentAddonSelectionPort.verifyPersisted(
-        persistedSelection,
-        AgentAddonConsumer.BILL_FEATURE,
-        receivingAgents,
-      )
-    }
+    val hydratedSelection = hydrateGoalRunAgentAddonSelection(
+      GoalRunAgentAddonHydrationArgs(
+        agentAddonSlugs = agentAddonSlugs,
+        agentAddonSelectionJson = agentAddonSelectionJson,
+        receivingAgents = receivingAgents,
+        effectiveRepoRoot = effectiveRepoRoot,
+        state = state,
+        agentAddonSelectionPort = agentAddonSelectionPort,
+        externalAgentAddonSourceConfigPort = externalAgentAddonSourceConfigPort,
+      ),
+    )
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
       state = state,
@@ -205,8 +199,6 @@ class GoalRunCommand(
     )
     val payload = report.toGoalRunCliMap()
     state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
-    // Parent completion only: child CLI feature-task processes drain themselves, so a per-child
-    // parent drain would only add concurrent SQLite writers on the same database.
     drainTelemetryOnCompletion(telemetryService, state.dbOverride)
   }
 

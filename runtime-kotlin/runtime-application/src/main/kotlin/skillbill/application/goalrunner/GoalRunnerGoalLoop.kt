@@ -23,81 +23,111 @@ internal class GoalRunnerGoalLoop(
   private val pauseBoundary: GoalRunnerPauseBoundary,
   private val progressReader: GoalRunnerProgressReader,
 ) {
-  fun driveGoalLoop(
-    initialState: GoalRunnerManifestState,
-    request: GoalRunnerRunRequest,
-    attempted: MutableList<Int>,
-    observability: GoalRunnerObservabilityEmitter,
-    ledger: GoalRunnerLedgerRecorder,
-    telemetryEmitter: GoalRunnerTelemetryEmitter,
-    planning: GoalPlanningSweepOutcome.PreparedAll,
-  ): GoalRunnerIterationResult {
-    var state = initialState
-    var currentPlanning = planning
-    var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, request, ledger)
+  fun driveGoalLoop(args: DriveGoalLoopArgs): GoalRunnerIterationResult {
+    var state = args.initialState
+    var currentPlanning = args.planning
+    var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, args.request, args.ledger)
     while (terminalReport == null) {
-      val pause = pauseBoundary.pauseBeforeLaunch(state, request)
+      val pause = pauseBoundary.pauseBeforeLaunch(state, args.request)
       if (pause != null) {
         state = pause.state
         terminalReport = pause.report
       } else {
         val selection = GoalRunnerPlanner.selectNext(state.manifest)
         when (selection) {
-          is GoalRunnerSelection.Done -> terminalReport = finalization.finalizeGoal(state, request, attempted, ledger)
-          is GoalRunnerSelection.Blocked ->
-            blockedSelectionIteration(state, selection, request, attempted, observability, ledger)
-              .also { result ->
-                state = result.state
-                terminalReport = result.report
-              }
-          is GoalRunnerSelection.Run -> {
-            val planningHydrationMissing = currentPlanning.identity != null &&
-              currentPlanning.hydrationFor(selection.decision.subtask.id) == null
-            if (planningHydrationMissing) {
-              when (val refreshedPlanning = goalPlanningSweep.prepare(state, request)) {
-                is GoalPlanningSweepOutcome.PreparedAll -> currentPlanning = refreshedPlanning
-                is GoalPlanningSweepOutcome.Stopped -> {
-                  terminalReport = stopped(
-                    refreshedPlanning.issueKey,
-                    attempted,
-                    refreshedPlanning.currentSubtaskId,
-                    refreshedPlanning.reason,
-                    refreshedPlanning.blockedReason,
-                    state.manifest.workflowIdFor(refreshedPlanning.currentSubtaskId),
-                    refreshedPlanning.lastResumableStep,
-                  )
-                  continue
-                }
-              }
-            }
-            val result = selectedSubtaskLoop.runSelectedSubtask(
+          is GoalRunnerSelection.Done ->
+            terminalReport = finalization.finalizeGoal(
               state,
-              selection,
-              request,
-              attempted,
-              observability,
-              ledger,
-              telemetryEmitter,
-              currentPlanning,
+              args.request,
+              args.attempted,
+              args.ledger,
             )
-            state = result.state
-            terminalReport = result.report
+          is GoalRunnerSelection.Blocked ->
+            blockedSelectionIteration(
+              BlockedSelectionIterationArgs(
+                state = state,
+                selection = selection,
+                request = args.request,
+                attempted = args.attempted,
+                observability = args.observability,
+                ledger = args.ledger,
+              ),
+            ).also { result ->
+              state = result.state
+              terminalReport = result.report
+            }
+          is GoalRunnerSelection.Run -> {
+            val advanced = advanceRunSelection(state, selection, currentPlanning, args)
+            state = advanced.state
+            currentPlanning = advanced.planning
+            terminalReport = advanced.report
           }
         }
       }
-      telemetryEmitter.emitNewlyTerminalSubtasks(state.manifest, attempted)
+      args.telemetryEmitter.emitNewlyTerminalSubtasks(state.manifest, args.attempted)
     }
     return GoalRunnerIterationResult(state, requireNotNull(terminalReport))
   }
 
-  private fun blockedSelectionIteration(
+  private data class RunSelectionAdvance(
+    val state: GoalRunnerManifestState,
+    val planning: GoalPlanningSweepOutcome.PreparedAll,
+    val report: GoalRunnerRunReport?,
+  )
+
+  private fun advanceRunSelection(
     state: GoalRunnerManifestState,
-    selection: GoalRunnerSelection.Blocked,
-    request: GoalRunnerRunRequest,
-    attempted: List<Int>,
-    observability: GoalRunnerObservabilityEmitter,
-    ledger: GoalRunnerLedgerRecorder,
-  ): GoalRunnerIterationResult {
+    selection: GoalRunnerSelection.Run,
+    currentPlanning: GoalPlanningSweepOutcome.PreparedAll,
+    args: DriveGoalLoopArgs,
+  ): RunSelectionAdvance {
+    var planning = currentPlanning
+    val planningHydrationMissing = planning.identity != null &&
+      planning.hydrationFor(selection.decision.subtask.id) == null
+    if (planningHydrationMissing) {
+      when (val refreshedPlanning = goalPlanningSweep.prepare(state, args.request)) {
+        is GoalPlanningSweepOutcome.PreparedAll -> planning = refreshedPlanning
+        is GoalPlanningSweepOutcome.Stopped -> {
+          return RunSelectionAdvance(
+            state = state,
+            planning = planning,
+            report = stopped(
+              StoppedReportArgs(
+                issueKey = refreshedPlanning.issueKey,
+                attempted = args.attempted,
+                subtaskId = refreshedPlanning.currentSubtaskId,
+                reason = refreshedPlanning.reason,
+                blockedReason = refreshedPlanning.blockedReason,
+                workflowId = state.manifest.workflowIdFor(refreshedPlanning.currentSubtaskId),
+                lastResumableStep = refreshedPlanning.lastResumableStep,
+              ),
+            ),
+          )
+        }
+      }
+    }
+    val result = selectedSubtaskLoop.runSelectedSubtask(
+      RunSelectedSubtaskArgs(
+        state = state,
+        selection = selection,
+        request = args.request,
+        attempted = args.attempted,
+        observability = args.observability,
+        ledger = args.ledger,
+        telemetryEmitter = args.telemetryEmitter,
+        planning = planning,
+      ),
+    )
+    return RunSelectionAdvance(result.state, planning, result.report)
+  }
+
+  private fun blockedSelectionIteration(args: BlockedSelectionIterationArgs): GoalRunnerIterationResult {
+    val state = args.state
+    val selection = args.selection
+    val request = args.request
+    val observability = args.observability
+    val ledger = args.ledger
+    val attempted = args.attempted
     val saved = manifestStore.save(
       state.copy(manifest = state.manifest.withBlockedSelection(selection.subtask.id, selection.reason)),
       request.dbPathOverride,
@@ -135,13 +165,15 @@ internal class GoalRunnerGoalLoop(
     return GoalRunnerIterationResult(
       state = saved,
       report = stopped(
-        issueKey = saved.manifest.issueKey,
-        attempted = attempted,
-        subtaskId = selection.subtask.id,
-        reason = GoalRunnerStopReason.DEPENDENCIES_BLOCKED,
-        blockedReason = selection.reason,
-        workflowId = selection.subtask.workflowId,
-        lastResumableStep = selection.subtask.lastResumableStep.orEmpty().ifBlank { "preplan" },
+        StoppedReportArgs(
+          issueKey = saved.manifest.issueKey,
+          attempted = attempted,
+          subtaskId = selection.subtask.id,
+          reason = GoalRunnerStopReason.DEPENDENCIES_BLOCKED,
+          blockedReason = selection.reason,
+          workflowId = selection.subtask.workflowId,
+          lastResumableStep = selection.subtask.lastResumableStep.orEmpty().ifBlank { "preplan" },
+        ),
       ),
     )
   }
@@ -203,13 +235,15 @@ internal class GoalRunnerGoalLoop(
       )
     }
     return stopped(
-      issueKey = saved.manifest.issueKey,
-      attempted = emptyList(),
-      subtaskId = subtaskId,
-      reason = GoalRunnerStopReason.POLICY_BLOCKED,
-      blockedReason = violation,
-      workflowId = null,
-      lastResumableStep = "create_branch",
+      StoppedReportArgs(
+        issueKey = saved.manifest.issueKey,
+        attempted = emptyList(),
+        subtaskId = subtaskId,
+        reason = GoalRunnerStopReason.POLICY_BLOCKED,
+        blockedReason = violation,
+        workflowId = null,
+        lastResumableStep = "create_branch",
+      ),
     )
   }
 

@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowUpdateResult.Ok
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.model.RuntimeContext
@@ -9,7 +10,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertTrue
-import skillbill.application.workflow.model.WorkflowUpdateResult.Ok
 import skillbill.application.workflow.model.WorkflowOpenResult.Ok as WorkflowOpenResultOk
 
 class WorkflowServiceRuntimeComponentTest {

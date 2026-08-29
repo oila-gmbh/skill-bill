@@ -3,25 +3,30 @@ package skillbill.application.goalrunner.planning
 import org.junit.jupiter.api.Test
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.application.manifest
 import skillbill.goalrunner.model.ExecutionLiveness
-import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.learning.LearningRepository
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
-import skillbill.ports.review.ReviewRepository
-import skillbill.ports.telemetry.TelemetryOutboxRepository
-import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.db.UnitOfWork
-import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -29,10 +34,6 @@ import java.time.ZoneOffset
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
-import skillbill.ports.work.EmptyWorkListRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 
 /**
  * Covers ChildAwareGoalPlanningRefreshLiveness: parent-lease absence is IDLE for the owning
@@ -131,7 +132,7 @@ class GoalPlanningRefreshLivenessTest {
 private class RefreshLivenessHarness(clock: Clock) {
   private val repository = SeedableRefreshLivenessWorkflowStates()
   private val database = SeedableRefreshLivenessDatabase(repository)
-  val recorder = FeatureTaskRuntimePhaseRecorder(
+  val recorder = featureTaskRuntimePhaseRecorder(
     database,
     NoopRefreshLivenessSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
@@ -214,9 +215,7 @@ private class SeedableRefreshLivenessWorkflowStates : WorkflowStateRepository {
     )
   }
 
-  override fun saveFeatureTaskExecutionIdentity(
-    identity: FeatureTaskExecutionIdentity,
-  ) = Unit
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
 
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
     emptyList<FeatureTaskWorkflowCandidate>()

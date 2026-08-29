@@ -2,12 +2,12 @@ package skillbill.application.review
 
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import GovernedReviewEvidenceEndpointBinder
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
-import ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneReviewDisposition

@@ -3,8 +3,8 @@
 package skillbill.domain.skillremove
 
 import java.nio.file.InvalidPathException
-import java.nio.file.Paths
 import java.nio.file.Path
+import java.nio.file.Paths
 
 /**
  * F-S04: removes absolute-path tokens from exception messages before they reach the dialog/CLI.

@@ -1,5 +1,6 @@
 package skillbill.workflow.engine
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.engine.model.WorkflowCompactContinueView
 import skillbill.workflow.engine.model.WorkflowContinueDecision
 import skillbill.workflow.engine.model.WorkflowContinueView
@@ -8,12 +9,9 @@ import skillbill.workflow.engine.model.WorkflowInputProjection
 import skillbill.workflow.engine.model.WorkflowResumeView
 import skillbill.workflow.engine.model.WorkflowSnapshotView
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
-import skillbill.workflow.engine.model.WorkflowStepState
 import skillbill.workflow.engine.model.WorkflowSummaryView
 import skillbill.workflow.engine.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-
 private typealias CheckpointResolver = () -> String
 
 private val unresolvedCheckpoint: CheckpointResolver = { "" }
@@ -187,83 +185,21 @@ class WorkflowEngine(
     val actualContinueStatus = continueStatusFor(snapshot, resume, currentStep)
     val continueStatus = continueStatusOverride ?: actualContinueStatus
     val workflowStatusBeforeContinue = workflowStatusBeforeContinueOverride ?: snapshot.workflowStatus
-    val declaredProjection = launchProjection(
-      definition,
-      snapshot,
-      resume.resumeStepId,
-      attemptCount,
-    )
-    val stepArtifactKeys = declaredProjection?.artifacts?.keys?.toList()
-      ?: continueArtifactKeys(definition, resume.resumeStepId, snapshot)
-    val stepArtifacts = declaredProjection?.artifacts ?: stepArtifactKeys.associateWith { key ->
-      resolvedArtifactValue(definition, snapshot, key).value
-    }
-    val currentStepArtifactKeys = resume.requiredArtifacts
-    val omittedArtifactKeys = resume.availableArtifacts.filterNot(currentStepArtifactKeys::contains)
-    val extraFields =
-      if (definition.workflowName == FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowName) {
-        implementExtraFields(snapshot.artifacts)
-      } else {
-        emptyMap()
-      }
-    val continuationBriefText = continuationBrief(
-      definition = definition,
-      workflowId = record.workflowId,
-      resumeStepId = resume.resumeStepId,
-      continueStatus = continueStatus,
-      nextAction = resume.nextAction,
-      currentStepArtifactKeys = currentStepArtifactKeys,
-      omittedArtifactKeys = omittedArtifactKeys,
-    )
-    val continuationEntryPromptText = continuationEntryPrompt(
-      definition = definition,
-      workflowId = record.workflowId,
-      sessionId = record.sessionId.orEmpty(),
-      resumeStepId = resume.resumeStepId,
-      continueStatus = continueStatus,
-      currentStepArtifactKeys = currentStepArtifactKeys,
-      omittedArtifactKeys = omittedArtifactKeys,
-      nextAction = resume.nextAction,
-      sessionSummary = sessionSummary,
-      extraFields = extraFields,
-      nextAttemptCount = nextAttemptCount,
-    )
-    val compact = compactContinueView(
-      definition = definition,
-      snapshot = snapshot,
-      resume = resume,
-      continueStatus = continueStatus,
-      workflowStatusBeforeContinue = workflowStatusBeforeContinue,
-      continueStepLabel = definition.stepLabels[resume.resumeStepId] ?: resume.resumeStepId,
-      continueStepDirective = definition.continuationDirectives[resume.resumeStepId]
-        ?: "Resume the workflow from the current step using the recovered artifacts as authoritative context.",
-      continuationBrief = continuationBriefText,
-      continuationEntryPrompt = continuationEntryPromptText,
-      declaredProjection = declaredProjection,
-    )
-    val view = WorkflowContinueView(
-      resume = resume,
-      skillName = definition.skillName,
-      workflowStatusBeforeContinue = workflowStatusBeforeContinue,
-      continueStatus = continueStatus,
-      continueStepId = resume.resumeStepId,
-      continueStepLabel = definition.stepLabels[resume.resumeStepId] ?: resume.resumeStepId,
-      continueStepDirective = definition.continuationDirectives[resume.resumeStepId]
-        ?: "Resume the workflow from the current step using the recovered artifacts as authoritative context.",
-      referenceSections = definition.continuationReferenceSections[resume.resumeStepId].orEmpty(),
-      stepArtifactKeys = stepArtifactKeys,
-      stepArtifacts = stepArtifacts,
-      extraFields = extraFields,
-      sessionSummary = sessionSummary,
-      continuationBrief = continuationBriefText,
-      continuationEntryPrompt = continuationEntryPromptText,
-      compact = compact,
-    )
-    return WorkflowContinueDecision(
-      view = view,
-      shouldReopen = actualContinueStatus == "reopened",
-      resumeStepId = resume.resumeStepId,
-      nextAttemptCount = nextAttemptCount,
+    return buildContinueDecision(
+      BuildContinueDecisionRequest(
+        context = ContinueAssemblyContext(
+          definition = definition,
+          record = record,
+          resume = resume,
+          snapshot = snapshot,
+          declaredProjection = launchProjection(definition, snapshot, resume.resumeStepId, attemptCount),
+        ),
+        continueStatus = continueStatus,
+        workflowStatusBeforeContinue = workflowStatusBeforeContinue,
+        actualContinueStatus = actualContinueStatus,
+        nextAttemptCount = nextAttemptCount,
+        sessionSummary = sessionSummary,
+      ),
     )
   }
 
@@ -298,21 +234,28 @@ class WorkflowEngine(
     fun validateUpdate(definition: WorkflowDefinition, input: WorkflowUpdateInput): String? =
       validateWorkflowUpdate(definition, input)
 
-    fun snapshotMap(view: WorkflowSnapshotView) = WorkflowEngineWireMaps.snapshotMap(view)
+    @OpenBoundaryMap("Wire-shape ordered snapshot map for CLI/MCP adapters")
+    fun snapshotMap(view: WorkflowSnapshotView): Map<String, Any?> = WorkflowEngineWireMaps.snapshotMap(view)
 
-    fun summaryMap(view: WorkflowSummaryView) = WorkflowEngineWireMaps.summaryMap(view)
+    @OpenBoundaryMap("Wire-shape ordered summary map for CLI/MCP adapters")
+    fun summaryMap(view: WorkflowSummaryView): Map<String, Any?> = WorkflowEngineWireMaps.summaryMap(view)
 
-    fun resumeMap(view: WorkflowResumeView) = WorkflowEngineWireMaps.resumeMap(view)
+    @OpenBoundaryMap("Wire-shape ordered resume map for CLI/MCP adapters")
+    fun resumeMap(view: WorkflowResumeView): Map<String, Any?> = WorkflowEngineWireMaps.resumeMap(view)
 
-    fun continueMap(view: WorkflowContinueView) = WorkflowEngineWireMaps.continueMap(view)
+    @OpenBoundaryMap("Wire-shape ordered continue map for CLI/MCP adapters")
+    fun continueMap(view: WorkflowContinueView): Map<String, Any?> = WorkflowEngineWireMaps.continueMap(view)
 
-    fun compactContinueMap(view: WorkflowCompactContinueView) =
+    @OpenBoundaryMap("Compact wire-shape ordered continue map for CLI/MCP adapters")
+    fun compactContinueMap(view: WorkflowCompactContinueView): Map<String, Any?> =
       WorkflowEngineWireMaps.compactContinueMap(view)
 
-    fun updateAcknowledgementMap(view: WorkflowUpdateAcknowledgementView) =
+    @OpenBoundaryMap("Compact wire-shape ordered workflow-update acknowledgement map for CLI/MCP adapters")
+    fun updateAcknowledgementMap(view: WorkflowUpdateAcknowledgementView): Map<String, Any?> =
       WorkflowEngineWireMaps.updateAcknowledgementMap(view)
 
-    fun inputProjectionMap(projection: WorkflowInputProjection) =
+    @OpenBoundaryMap("Bounded workflow launch projection map for CLI/MCP adapters")
+    fun inputProjectionMap(projection: WorkflowInputProjection): Map<String, Any?> =
       WorkflowEngineWireMaps.inputProjectionMap(projection)
   }
 }

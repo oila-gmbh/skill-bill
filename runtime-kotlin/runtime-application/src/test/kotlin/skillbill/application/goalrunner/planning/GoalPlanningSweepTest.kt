@@ -1,17 +1,28 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.application.goalrunner.GoalRunner
+import skillbill.application.InMemoryGoalManifestStore
+import skillbill.application.PlanningProjectionFixtures
+import skillbill.application.RecordingOutcomeStore
+import skillbill.application.RecordingPullRequestPort
+import skillbill.application.goalrunner.goalRunnerDeps
+import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptRecord
 import skillbill.application.goalrunner.planning.model.GoalPlanningBurstSchedule
 import skillbill.application.goalrunner.planning.model.GoalPlanningRejectionRecord
+import skillbill.application.goalrunner.planning.model.GoalPlanningSweepDeps
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
-import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.testDefaultGoalPlanningSweep
+import skillbill.application.goalrunner.testGoalRunner
+import skillbill.application.launchFacts
+import skillbill.application.manifest
+import skillbill.application.realFeatureTaskRuntimePhaseOutputValidator
+import skillbill.application.realPlanningProjectionValidator
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
-import IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -24,41 +35,45 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
-import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
-import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
-import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.work.EmptyWorkListRepository
-import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
-import skillbill.ports.learning.LearningRepository
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
-import skillbill.ports.review.ReviewRepository
-import skillbill.ports.telemetry.TelemetryOutboxRepository
-import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.db.UnitOfWork
-import skillbill.ports.workflow.WorkflowStateRepository
-import GoalPlanningContractProvenance
-import GoalPlanningIdentity
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningIdentity
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
-import SharedGoalPreplanCheckpoint
+import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
+import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.time.NoopRuntimeTimingPort
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.time.model.RuntimeWaitResult
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.goal.model.GoalProgressEventKind
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
@@ -81,11 +96,8 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
-import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
-import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 
-@Suppress("LargeClass") // one suite over the sweep's recovery, gate, and stop paths; they share a harness
-class GoalPlanningSweepTest {
+class GoalPlanningSweepMigrateTest {
   @Test
   fun `migrate projects 0_1 packets with platform_packs to the current version`() {
     val subtasks = listOf(
@@ -394,6 +406,9 @@ class GoalPlanningSweepTest {
 
   // Dropping a newly excluded entry re-signs the packet, so the digest it replaces has to be checked
   // first — otherwise appending one excluded entry launders a tampered checkpoint through migrate.
+}
+
+class GoalPlanningSweepPromptTest {
   @Test
   fun `migrate refuses to re-sign a tampered packet while dropping excluded entries`() {
     val subtasks = listOf(
@@ -469,7 +484,7 @@ class GoalPlanningSweepTest {
     val authorization = TrackingPlanningAuthorization()
     val openWhileAwaitingChild = mutableListOf<Boolean>()
     val store = AuthorizingGoalPlanningManifestStore(authorization)
-    val harness = sweepHarness(manifestStore = store) { phase, _, request ->
+    val harness = sweepHarness(SweepHarnessConfig(manifestStore = store)) { phase, _, request ->
       val spawnAuthorization = assertNotNull(
         request.skillRunRequest.spawnAuthorization,
         "a planning launch must carry its authorization into the spawn seam, not wrap the blocking launch",
@@ -528,7 +543,11 @@ class GoalPlanningSweepTest {
   @Test
   fun `shared repository and decomposition discovery happens exactly once across all sub_specs`() {
     val discovery = CountingContextDiscovery()
-    val harness = sweepHarness(contextDiscovery = discovery) { phase, _, _ -> validPhaseOutcome(phase) }
+    val harness = sweepHarness(
+      SweepHarnessConfig(
+        contextDiscovery = discovery,
+      ),
+    ) { phase, _, _ -> validPhaseOutcome(phase) }
 
     harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 3)), harness.request())
 
@@ -762,7 +781,7 @@ class GoalPlanningSweepTest {
       },
     )
     val store = InMemoryGoalManifestStore(resumeManifest)
-    val harness = sweepHarness(manifestStore = store) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(manifestStore = store)) { phase, _, _ ->
       if (phase == "preplan") {
         preplanLaunches += 1
         val value = if (preplanLaunches == 1) {
@@ -798,7 +817,9 @@ class GoalPlanningSweepTest {
   @Test
   fun `refresh refuses while execution liveness is live`() {
     val harness = sweepHarness(
-      refreshLiveness = GoalPlanningRefreshLiveness { _, _ -> ExecutionLiveness.LIVE },
+      SweepHarnessConfig(
+        refreshLiveness = GoalPlanningRefreshLiveness { _, _ -> ExecutionLiveness.LIVE },
+      ),
     ) { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 1))
     harness.sweep.prepare(state, harness.request())
@@ -822,7 +843,9 @@ class GoalPlanningSweepTest {
   @Test
   fun `refresh refuses while execution liveness is unknown`() {
     val harness = sweepHarness(
-      refreshLiveness = GoalPlanningRefreshLiveness { _, _ -> ExecutionLiveness.UNKNOWN },
+      SweepHarnessConfig(
+        refreshLiveness = GoalPlanningRefreshLiveness { _, _ -> ExecutionLiveness.UNKNOWN },
+      ),
     ) { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 1))
     harness.sweep.prepare(state, harness.request())
@@ -835,7 +858,9 @@ class GoalPlanningSweepTest {
     assertTrue(stopped.blockedReason.contains("unknown execution liveness"))
     assertEquals(launchCount, harness.launcher.requests.size)
   }
+}
 
+class GoalPlanningSweepPrepareAndResumeTest {
   @Test
   fun `one prepare launches at most one refresh preplan agent even if still stale`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
@@ -899,7 +924,7 @@ class GoalPlanningSweepTest {
   @Test
   fun `resume reuses saved planning when the fresh catalog no longer lists a referenced heading`() {
     val discovery = MutableContextDiscovery()
-    val harness = sweepHarness(contextDiscovery = discovery) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(contextDiscovery = discovery)) { phase, _, _ ->
       if (phase == "preplan") {
         launchFacts(stdout = preplanProsePayload(value = "Preplan prose with catalog context."))
       } else {
@@ -1112,39 +1137,18 @@ class GoalPlanningSweepTest {
     val fixtures = sharedSweepFixtures()
     val discovery = CountingContextDiscovery()
     val runOneLauncher = SweepPlanningLauncher { phase, subtaskId, _ ->
-      // A hard launch failure, not an empty harvest: this case is about resume continuing at the
-      // next subtask, and an empty harvest now spends the bounded retry budget before it stops.
       if (subtaskId == 2 && phase == "plan") spawnBlockedOutcome() else validPhaseOutcome(phase)
     }
-    val runOne = DefaultGoalPlanningSweep(
-      fixtures.checkpoint,
-      fixtures.outputValidator,
-      runOneLauncher,
-      fixtures.invariantsSource,
-      fixtures.manifestFileStore,
-      discovery,
-      NoopFeatureTaskRuntimePlanningProjectionValidator,
-      manifestStore = NoopGoalPlanningManifestStore,
-    )
-
+    val runOne = testDefaultGoalPlanningSweep(crashResumeSweepDeps(fixtures, runOneLauncher, discovery))
     val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
-    val stoppedRunOne = runOne.prepare(fixtures.stateFor(initial), fixtures.request())
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(stoppedRunOne)
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(
+      runOne.prepare(fixtures.stateFor(initial), fixtures.request()),
+    )
     assertEquals(2, stopped.currentSubtaskId)
     assertEquals(1, fixtures.preparedCount())
     assertEquals(3, runOneLauncher.requests.size)
     val runTwoLauncher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
-    val runTwo = DefaultGoalPlanningSweep(
-      fixtures.checkpoint,
-      fixtures.outputValidator,
-      runTwoLauncher,
-      fixtures.invariantsSource,
-      fixtures.manifestFileStore,
-      discovery,
-      NoopFeatureTaskRuntimePlanningProjectionValidator,
-      manifestStore = NoopGoalPlanningManifestStore,
-    )
-
+    val runTwo = testDefaultGoalPlanningSweep(crashResumeSweepDeps(fixtures, runTwoLauncher, discovery))
     val resumed = initial.copy(
       subtasks = initial.subtasks.map { subtask ->
         if (subtask.id == 1) subtask.copy(status = "complete") else subtask
@@ -1152,7 +1156,6 @@ class GoalPlanningSweepTest {
     )
     fixtures.manifestFileStore.remove("spec_subtask_1.md")
     val outcome = runTwo.prepare(fixtures.stateFor(resumed), fixtures.request())
-
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     assertEquals(listOf("plan"), runTwoLauncher.phases)
     assertEquals(listOf(2), runTwoLauncher.subtaskIds)
@@ -1160,11 +1163,33 @@ class GoalPlanningSweepTest {
     assertEquals(1, discovery.calls, "resume must recover the durable packet without repeating discovery")
   }
 
+  private fun crashResumeSweepDeps(
+    fixtures: SweepFixtures,
+    launcher: SweepPlanningLauncher,
+    discovery: CountingContextDiscovery,
+  ): GoalPlanningSweepDeps = GoalPlanningSweepDeps(
+    checkpoint = fixtures.checkpoint,
+    outputValidator = fixtures.outputValidator,
+    subtaskLauncher = launcher,
+    invariantsSource = fixtures.invariantsSource,
+    manifestFileStore = fixtures.manifestFileStore,
+    contextDiscovery = discovery,
+    planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+    planningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
+    manifestStore = NoopGoalPlanningManifestStore,
+    planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
+    timingPort = NoopRuntimeTimingPort,
+    burstSchedule = GoalPlanningBurstSchedule(),
+    refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
+  )
+
   @Test
   fun `unexpected planning launch failure becomes a resumable stopped outcome`() {
     val attempts = mutableListOf<GoalPlanningAttemptRecord>()
     val harness = sweepHarness(
-      planningAttemptRecorder = GoalPlanningAttemptRecorder { attempts += it },
+      SweepHarnessConfig(
+        planningAttemptRecorder = GoalPlanningAttemptRecorder { attempts += it },
+      ),
     ) { phase, subtaskId, _ ->
       if (phase == "plan" && subtaskId == 2) {
         error("simulated planning launcher failure")
@@ -1194,7 +1219,7 @@ class GoalPlanningSweepTest {
 
   @Test
   fun `blocked planning stops before mutation with the current subtask and resumable state`() {
-    val harness = sweepHarness(markPreparedThrows = false) { _, _, _ -> spawnBlockedOutcome() }
+    val harness = sweepHarness(SweepHarnessConfig(markPreparedThrows = false)) { _, _, _ -> spawnBlockedOutcome() }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
 
@@ -1221,7 +1246,7 @@ class GoalPlanningSweepTest {
   fun `plan failure resumes at plan while retaining the durable shared preplan`() {
     val discovery = CountingContextDiscovery()
     var failPlan = true
-    val harness = sweepHarness(contextDiscovery = discovery) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(contextDiscovery = discovery)) { phase, _, _ ->
       val payload = if (phase == "plan" && failPlan) {
         phasePayload(phase).replace("\"completed\"", "\"failed\"")
       } else {
@@ -1371,7 +1396,7 @@ class GoalPlanningSweepTest {
   fun `an empty provider turn records launch facts rather than a schema verdict`() {
     var launches = 0
     val recorded = mutableListOf<GoalPlanningRejectionRecord>()
-    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(planningRejectionRecorder = { recorded += it })) { phase, _, _ ->
       launches += 1
       if (launches == 1) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
     }
@@ -1388,12 +1413,14 @@ class GoalPlanningSweepTest {
       "an operator must not be told the schema rejected output that was never produced",
     )
   }
+}
 
+class GoalPlanningSweepRejectionTest {
   @Test
   fun `empty provider turns are retained as durable rejection evidence`() {
     var launches = 0
     val recorded = mutableListOf<GoalPlanningRejectionRecord>()
-    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(planningRejectionRecorder = { recorded += it })) { phase, _, _ ->
       launches += 1
       if (launches <= 2) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
     }
@@ -1415,7 +1442,7 @@ class GoalPlanningSweepTest {
   @Test
   fun `a deliberate agent block reports the envelope's own account and retains it durably`() {
     val recorded = mutableListOf<GoalPlanningRejectionRecord>()
-    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(planningRejectionRecorder = { recorded += it })) { phase, _, _ ->
       if (phase == "preplan") {
         validPhaseOutcome(phase)
       } else {
@@ -1436,7 +1463,7 @@ class GoalPlanningSweepTest {
   fun `a retryable decline relaunches instead of discarding every settled plan`() {
     val recorded = mutableListOf<GoalPlanningRejectionRecord>()
     var planLaunches = 0
-    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(planningRejectionRecorder = { recorded += it })) { phase, _, _ ->
       if (phase == "preplan") {
         validPhaseOutcome(phase)
       } else {
@@ -1505,7 +1532,7 @@ class GoalPlanningSweepTest {
   fun `each subtask's planning rejections stay independently addressable`() {
     val recorded = mutableListOf<GoalPlanningRejectionRecord>()
     var planLaunches = 0
-    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(planningRejectionRecorder = { recorded += it })) { phase, _, _ ->
       if (phase == "preplan") {
         validPhaseOutcome(phase)
       } else {
@@ -1548,7 +1575,11 @@ class GoalPlanningSweepTest {
 
   @Test
   fun `persistence failure rolls back leaving no half pair and stops before mutation`() {
-    val harness = sweepHarness(markPreparedThrows = true) { phase, _, _ -> validPhaseOutcome(phase) }
+    val harness = sweepHarness(
+      SweepHarnessConfig(
+        markPreparedThrows = true,
+      ),
+    ) { phase, _, _ -> validPhaseOutcome(phase) }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
@@ -1560,65 +1591,21 @@ class GoalPlanningSweepTest {
   @Test
   fun `a settled preplan with blank prose stops the sweep durably at plan launch`() {
     val fixtures = sharedSweepFixtures()
-    val settledPreplan = DefaultGoalPlanningSweep(
-      fixtures.checkpoint,
-      fixtures.outputValidator,
-      SweepPlanningLauncher { phase, _, _ ->
-        if (phase == "plan") {
-          launchFacts(stdout = phasePayload(phase).replace("\"completed\"", "\"blocked\""))
-        } else {
-          validPhaseOutcome(phase)
-        }
-      },
-      fixtures.invariantsSource,
-      fixtures.manifestFileStore,
-      fakeContextDiscovery,
-      NoopFeatureTaskRuntimePlanningProjectionValidator,
-      manifestStore = NoopGoalPlanningManifestStore,
-    )
-    assertIs<GoalPlanningSweepOutcome.Stopped>(
-      settledPreplan.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request()),
-    )
-    assertEquals(0, fixtures.preparedCount(), "run one must settle the shared preplan and no plan")
-    fixtures.database.repository.blankSettledPreplanValue(
-      GoalPlanningIdentity(
-        "wfl-parent",
-        "SKILL-56",
-        "repo-root-realpath-v1:${fixtures.repoRoot.toRealPath()}",
-      ),
-    )
-
+    settleSharedPreplanThenBlankProse(fixtures)
     val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
-    val sweep = DefaultGoalPlanningSweep(
-      fixtures.checkpoint,
-      fixtures.outputValidator,
-      launcher,
-      fixtures.invariantsSource,
-      fixtures.manifestFileStore,
-      fakeContextDiscovery,
-      NoopFeatureTaskRuntimePlanningProjectionValidator,
-      manifestStore = NoopGoalPlanningManifestStore,
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(
+      sweepFromFixtures(fixtures, launcher).prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request()),
     )
-    val outcome = sweep.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request())
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals("plan", stopped.lastResumableStep)
-    assertEquals(1, stopped.currentSubtaskId)
-    assertTrue(stopped.blockedReason.contains("rejected a declared bounded projection at the launch seam"))
-    assertTrue(
-      stopped.blockedReason.contains("Migrate or delete"),
-      "the block must name the operator remedy for a non-conforming durable record",
-    )
-    assertTrue(stopped.blockedReason.contains("produced_outputs.value must contain non-blank prose"))
-    assertEquals(
-      0,
-      launcher.requests.size,
-      "the settled preplan is not re-produced and the plan edge rejects before launching",
-    )
+    assertBlankProsePlanLaunchStop(stopped, launcher)
   }
 
   @Test
   fun `plan checkpoint failure resumes at plan after retaining the shared preplan`() {
-    val harness = sweepHarness(planCheckpointThrows = true) { phase, _, _ -> validPhaseOutcome(phase) }
+    val harness = sweepHarness(
+      SweepHarnessConfig(
+        planCheckpointThrows = true,
+      ),
+    ) { phase, _, _ -> validPhaseOutcome(phase) }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
@@ -1638,23 +1625,33 @@ class GoalPlanningSweepTest {
         validPhaseOutcome(phase)
       }
     }
-    val sweep = DefaultGoalPlanningSweep(
-      fixtures.checkpoint,
-      fixtures.outputValidator,
-      sharedLauncher,
-      fixtures.invariantsSource,
-      fixtures.manifestFileStore,
-      fakeContextDiscovery,
-      NoopFeatureTaskRuntimePlanningProjectionValidator,
-      manifestStore = NoopGoalPlanningManifestStore,
+    val sweep = testDefaultGoalPlanningSweep(
+      GoalPlanningSweepDeps(
+        checkpoint = fixtures.checkpoint,
+        outputValidator = fixtures.outputValidator,
+        subtaskLauncher = sharedLauncher,
+        invariantsSource = fixtures.invariantsSource,
+        manifestFileStore = fixtures.manifestFileStore,
+        contextDiscovery = fakeContextDiscovery,
+        planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+        planningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
+        manifestStore = NoopGoalPlanningManifestStore,
+        planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
+        timingPort = NoopRuntimeTimingPort,
+        burstSchedule = GoalPlanningBurstSchedule(),
+        refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
+      ),
     )
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
-    val runner = GoalRunner(
-      manifestStore = store,
-      subtaskLauncher = sharedLauncher,
-      outcomeStore = RecordingOutcomeStore(),
-      pullRequestPort = RecordingPullRequestPort(),
-      goalPlanningSweep = sweep,
+    val runner = testGoalRunner(
+      goalRunnerDeps(
+        manifestStore = store,
+        subtaskLauncher = sharedLauncher,
+        outcomeStore = RecordingOutcomeStore(),
+        pullRequestPort = RecordingPullRequestPort(),
+      ).copy(
+        goalPlanningSweep = sweep,
+      ),
     )
 
     val report = runner.run(fixtures.request())
@@ -1673,7 +1670,7 @@ class GoalPlanningSweepTest {
 
   @Test
   fun `planning payloads are persisted as strict canonical json even when the agent fences output with prose`() {
-    val harness = sweepHarness(outputValidator = FenceAwarePhaseOutputValidator()) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(outputValidator = FenceAwarePhaseOutputValidator())) { phase, _, _ ->
       launchFacts(stdout = fencedPhasePayload(phase))
     }
 
@@ -1707,15 +1704,22 @@ class GoalPlanningSweepTest {
       planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
     val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
-    val sweep = DefaultGoalPlanningSweep(
-      checkpoint,
-      outputValidator,
-      launcher,
-      FakeInvariantsSource(),
-      ThrowingManifestFileStore(),
-      fakeContextDiscovery,
-      NoopFeatureTaskRuntimePlanningProjectionValidator,
-      manifestStore = NoopGoalPlanningManifestStore,
+    val sweep = testDefaultGoalPlanningSweep(
+      GoalPlanningSweepDeps(
+        checkpoint = checkpoint,
+        outputValidator = outputValidator,
+        subtaskLauncher = launcher,
+        invariantsSource = FakeInvariantsSource(),
+        manifestFileStore = ThrowingManifestFileStore(),
+        contextDiscovery = fakeContextDiscovery,
+        planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+        planningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
+        manifestStore = NoopGoalPlanningManifestStore,
+        planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
+        timingPort = NoopRuntimeTimingPort,
+        burstSchedule = GoalPlanningBurstSchedule(),
+        refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
+      ),
     )
     val state = GoalRunnerManifestState(
       parentWorkflowId = "wfl-parent",
@@ -1737,7 +1741,9 @@ class GoalPlanningSweepTest {
     assertTrue(stopped.blockedReason.contains("shared context could not be gathered"))
     assertEquals(0, launcher.requests.size, "no planning agent launches before shared discovery succeeds")
   }
+}
 
+class GoalPlanningSweepTimingTest {
   @Test
   fun `incompatible provenance on only a stored plan identifies that plan and stops before another launch`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
@@ -1862,8 +1868,10 @@ class GoalPlanningSweepTest {
   fun `a plan child that first omits value relaunches once and checkpoints only the valid plan`() {
     var planAttempts = 0
     val harness = sweepHarness(
-      outputValidator = realFeatureTaskRuntimePhaseOutputValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
+      SweepHarnessConfig(
+        outputValidator = realFeatureTaskRuntimePhaseOutputValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+      ),
     ) { phase, _, _ ->
       if (phase != "plan") {
         validPhaseOutcome(phase)
@@ -1894,13 +1902,15 @@ class GoalPlanningSweepTest {
     val attempts = mutableListOf<String>()
     var launchCount = 0
     val harness = sweepHarness(
-      outputValidator = realFeatureTaskRuntimePhaseOutputValidator,
-      planningProjectionValidator = realPlanningProjectionValidator,
-      planningAttemptRecorder = GoalPlanningAttemptRecorder { record ->
-        if (record.eventKind == GoalProgressEventKind.OPERATION_COMPLETED) {
-          attempts += "${record.phaseId}:${record.subtaskId}:${record.attempt}:${record.outcome.wireValue}"
-        }
-      },
+      SweepHarnessConfig(
+        outputValidator = realFeatureTaskRuntimePhaseOutputValidator,
+        planningProjectionValidator = realPlanningProjectionValidator,
+        planningAttemptRecorder = GoalPlanningAttemptRecorder { record ->
+          if (record.eventKind == GoalProgressEventKind.OPERATION_COMPLETED) {
+            attempts += "${record.phaseId}:${record.subtaskId}:${record.attempt}:${record.outcome.wireValue}"
+          }
+        },
+      ),
     ) { phase, _, _ ->
       launchCount += 1
       if (phase == "plan" && launchCount == 2) {
@@ -1931,7 +1941,7 @@ class GoalPlanningSweepTest {
         labels += sourceLabel
       }
     }
-    val harness = sweepHarness(planningProjectionValidator = validator) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(planningProjectionValidator = validator)) { phase, _, _ ->
       if (phase == "plan") {
         launchFacts(stdout = phasePayload(phase).replace("\"completed\"", "\"blocked\""))
       } else {
@@ -1958,7 +1968,11 @@ class GoalPlanningSweepTest {
       operation = FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
       sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation("preplan", 0, 1, 1),
     )
-    val harness = sweepHarness(outputValidator = RepairingPreplanOutputValidator(evidence)) { phase, _, _ ->
+    val harness = sweepHarness(
+      SweepHarnessConfig(
+        outputValidator = RepairingPreplanOutputValidator(evidence),
+      ),
+    ) { phase, _, _ ->
       if (phase == "preplan") launchFacts(stdout = RAW_REPAIRED_PREPLAN) else validPhaseOutcome(phase)
     }
 
@@ -1977,9 +1991,11 @@ class GoalPlanningSweepTest {
     val timing = RecordingRuntimeTimingPort { events += "wait" }
     var planOrdinal = 0
     val harness = sweepHarness(
-      timingPort = timing,
-      // One wait() call per logical pace gap so ordinals stay readable.
-      burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = pace, waitSlice = pace),
+      SweepHarnessConfig(
+        timingPort = timing,
+        // One wait() call per logical pace gap so ordinals stay readable.
+        burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = pace, waitSlice = pace),
+      ),
     ) { phase, subtaskId, _ ->
       if (phase == "plan") {
         planOrdinal += 1
@@ -2008,7 +2024,7 @@ class GoalPlanningSweepTest {
       waitSlice = 60.seconds,
     )
     var launches = 0
-    val harness = sweepHarness(timingPort = timing, burstSchedule = schedule) { phase, _, _ ->
+    val harness = sweepHarness(SweepHarnessConfig(timingPort = timing, burstSchedule = schedule)) { phase, _, _ ->
       launches += 1
       if (launches <= 2) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
     }
@@ -2024,9 +2040,14 @@ class GoalPlanningSweepTest {
     val pauseStore = MutablePauseGoalPlanningManifestStore()
     val timing = RecordingRuntimeTimingPort { pauseStore.pauseRequested = true }
     val harness = sweepHarness(
-      manifestStore = pauseStore,
-      timingPort = timing,
-      burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = 20.seconds, waitSlice = 1.seconds),
+      SweepHarnessConfig(
+        manifestStore = pauseStore,
+        timingPort = timing,
+        burstSchedule = GoalPlanningBurstSchedule(
+          planLaunchPace = 20.seconds,
+          waitSlice = 1.seconds,
+        ),
+      ),
     ) { phase, _, _ -> validPhaseOutcome(phase) }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
@@ -2041,8 +2062,13 @@ class GoalPlanningSweepTest {
   fun `an interrupt during wait stops with the launch-interrupt terminal shape`() {
     val timing = RecordingRuntimeTimingPort(result = RuntimeWaitResult.INTERRUPTED)
     val harness = sweepHarness(
-      timingPort = timing,
-      burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = 20.seconds, waitSlice = 20.seconds),
+      SweepHarnessConfig(
+        timingPort = timing,
+        burstSchedule = GoalPlanningBurstSchedule(
+          planLaunchPace = 20.seconds,
+          waitSlice = 20.seconds,
+        ),
+      ),
     ) { phase, _, _ -> validPhaseOutcome(phase) }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
@@ -2499,10 +2525,7 @@ private class InMemoryPreparationRepository(
     return if (removed) 1 else 0
   }
 
-  override fun deleteSharedPreplan(
-    identity: GoalPlanningIdentity,
-    expectedPayloadSha256: String,
-  ): Int {
+  override fun deleteSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int {
     val shared = sharedPreplan
     if (shared == null ||
       shared.identity.parentGoalWorkflowId != identity.parentGoalWorkflowId ||
@@ -2520,10 +2543,7 @@ private class InMemoryPreparationRepository(
     return 1
   }
 
-  override fun invalidateSharedPreplan(
-    identity: GoalPlanningIdentity,
-    expectedPayloadSha256: String,
-  ): Int {
+  override fun invalidateSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int {
     val shared = sharedPreplan
     if (shared == null ||
       shared.identity.parentGoalWorkflowId != identity.parentGoalWorkflowId ||
@@ -2603,11 +2623,8 @@ private class InMemoryPreparationRepository(
     }
   }
 
-  override fun findSubtaskPlan(
-    expectedIdentity: GoalPlanningIdentity,
-    subtaskId: Int,
-    governedSubSpecPath: String,
-  ) = plans[subtaskId]?.takeIf { it.identity == expectedIdentity && it.governedSubSpecPath == governedSubSpecPath }
+  override fun findSubtaskPlan(expectedIdentity: GoalPlanningIdentity, subtaskId: Int, governedSubSpecPath: String) =
+    plans[subtaskId]?.takeIf { it.identity == expectedIdentity && it.governedSubSpecPath == governedSubSpecPath }
 
   override fun listSubtaskPlansOrdered(
     expectedIdentity: GoalPlanningIdentity,
@@ -2774,42 +2791,106 @@ private class SweepHarness(
   val manifestFileStore: CountingManifestFileStore get() = fixtures.manifestFileStore
 }
 
-@Suppress("LongParameterList") // one defaulted knob per sweep collaborator a case varies
-private fun sweepHarness(
-  markPreparedThrows: Boolean = false,
-  planCheckpointThrows: Boolean = false,
-  outputValidator: FeatureTaskRuntimePhaseOutputValidator = FakePhaseOutputValidator(),
-  contextDiscovery: GoalPlanningContextDiscovery = fakeContextDiscovery,
-  planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+private data class SweepHarnessConfig(
+  val markPreparedThrows: Boolean = false,
+  val planCheckpointThrows: Boolean = false,
+  val outputValidator: FeatureTaskRuntimePhaseOutputValidator = FakePhaseOutputValidator(),
+  val contextDiscovery: GoalPlanningContextDiscovery = fakeContextDiscovery,
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
-  planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
-  manifestStore: GoalRunnerManifestStore = NoopGoalPlanningManifestStore,
-  planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
-  timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
-  burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
-  refreshLiveness: GoalPlanningRefreshLiveness = GoalPlanningRefreshLiveness.IDLE,
+  val planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
+  val manifestStore: GoalRunnerManifestStore = NoopGoalPlanningManifestStore,
+  val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
+  val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
+  val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
+  val refreshLiveness: GoalPlanningRefreshLiveness = GoalPlanningRefreshLiveness.IDLE,
+)
+
+private fun sweepFromFixtures(fixtures: SweepFixtures, launcher: SweepPlanningLauncher): DefaultGoalPlanningSweep =
+  testDefaultGoalPlanningSweep(
+    GoalPlanningSweepDeps(
+      checkpoint = fixtures.checkpoint,
+      outputValidator = fixtures.outputValidator,
+      subtaskLauncher = launcher,
+      invariantsSource = fixtures.invariantsSource,
+      manifestFileStore = fixtures.manifestFileStore,
+      contextDiscovery = fakeContextDiscovery,
+      planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+      planningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
+      manifestStore = NoopGoalPlanningManifestStore,
+      planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
+      timingPort = NoopRuntimeTimingPort,
+      burstSchedule = GoalPlanningBurstSchedule(),
+      refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
+    ),
+  )
+
+private fun settleSharedPreplanThenBlankProse(fixtures: SweepFixtures) {
+  val settledPreplan = sweepFromFixtures(
+    fixtures,
+    SweepPlanningLauncher { phase, _, _ ->
+      if (phase == "plan") {
+        launchFacts(stdout = phasePayload(phase).replace("\"completed\"", "\"blocked\""))
+      } else {
+        validPhaseOutcome(phase)
+      }
+    },
+  )
+  assertIs<GoalPlanningSweepOutcome.Stopped>(
+    settledPreplan.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request()),
+  )
+  assertEquals(0, fixtures.preparedCount(), "run one must settle the shared preplan and no plan")
+  fixtures.database.repository.blankSettledPreplanValue(
+    GoalPlanningIdentity(
+      "wfl-parent",
+      "SKILL-56",
+      "repo-root-realpath-v1:${fixtures.repoRoot.toRealPath()}",
+    ),
+  )
+}
+
+private fun assertBlankProsePlanLaunchStop(stopped: GoalPlanningSweepOutcome.Stopped, launcher: SweepPlanningLauncher) {
+  assertEquals("plan", stopped.lastResumableStep)
+  assertEquals(1, stopped.currentSubtaskId)
+  assertTrue(stopped.blockedReason.contains("rejected a declared bounded projection at the launch seam"))
+  assertTrue(
+    stopped.blockedReason.contains("Migrate or delete"),
+    "the block must name the operator remedy for a non-conforming durable record",
+  )
+  assertTrue(stopped.blockedReason.contains("produced_outputs.value must contain non-blank prose"))
+  assertEquals(
+    0,
+    launcher.requests.size,
+    "the settled preplan is not re-produced and the plan edge rejects before launching",
+  )
+}
+
+private fun sweepHarness(
+  config: SweepHarnessConfig = SweepHarnessConfig(),
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(
-    markPreparedThrows = markPreparedThrows,
-    planCheckpointThrows = planCheckpointThrows,
-    outputValidator = outputValidator,
+    markPreparedThrows = config.markPreparedThrows,
+    planCheckpointThrows = config.planCheckpointThrows,
+    outputValidator = config.outputValidator,
   )
   val launcher = SweepPlanningLauncher(behavior)
-  val sweep = DefaultGoalPlanningSweep(
-    fixtures.checkpoint,
-    fixtures.outputValidator,
-    launcher,
-    fixtures.invariantsSource,
-    fixtures.manifestFileStore,
-    contextDiscovery,
-    planningProjectionValidator,
-    planningAttemptRecorder,
-    manifestStore = manifestStore,
-    planningRejectionRecorder = planningRejectionRecorder,
-    timingPort = timingPort,
-    burstSchedule = burstSchedule,
-    refreshLiveness = refreshLiveness,
+  val sweep = testDefaultGoalPlanningSweep(
+    GoalPlanningSweepDeps(
+      checkpoint = fixtures.checkpoint,
+      outputValidator = fixtures.outputValidator,
+      subtaskLauncher = launcher,
+      invariantsSource = fixtures.invariantsSource,
+      manifestFileStore = fixtures.manifestFileStore,
+      contextDiscovery = config.contextDiscovery,
+      planningProjectionValidator = config.planningProjectionValidator,
+      planningAttemptRecorder = config.planningAttemptRecorder,
+      manifestStore = config.manifestStore,
+      planningRejectionRecorder = config.planningRejectionRecorder,
+      timingPort = config.timingPort,
+      burstSchedule = config.burstSchedule,
+      refreshLiveness = config.refreshLiveness,
+    ),
   )
   return SweepHarness(fixtures, launcher, sweep)
 }

@@ -1,6 +1,5 @@
 package skillbill.application.review.model
 
-import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.context.model.ReviewAccountingSummary

@@ -9,6 +9,8 @@ import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.NativeAgentProviderId
+import skillbill.install.model.PlatformPackSelection
+import skillbill.install.model.PlatformPackSelectionMode.SELECTED
 import skillbill.install.nativeagent.InstallNativeAgentOperations
 import skillbill.install.nativeagent.NativeAgentLinkRequest
 import skillbill.install.runtime.InstallOperations
@@ -20,8 +22,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.install.model.PlatformPackSelection
-import skillbill.install.model.PlatformPackSelectionMode.SELECTED
 
 class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
   private fun markClaudeProfile(home: Path, name: String): Path {

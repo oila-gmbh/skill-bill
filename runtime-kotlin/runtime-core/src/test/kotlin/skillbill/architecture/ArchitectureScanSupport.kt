@@ -33,8 +33,7 @@ object ArchitectureScanSupport {
     }
   }
 
-  fun declaredPackage(source: String): String? =
-    PACKAGE_PATTERN.find(source)?.groupValues?.get(1)
+  fun declaredPackage(source: String): String? = PACKAGE_PATTERN.find(source)?.groupValues?.get(1)
 
   fun primaryTopLevelDeclarationName(source: String): String? {
     var braceDepth = 0
@@ -50,10 +49,7 @@ object ArchitectureScanSupport {
     return null
   }
 
-  fun packageClusteringViolations(
-    sourceRoots: List<String>,
-    genericSegments: Set<String>,
-  ): List<String> {
+  fun packageClusteringViolations(sourceRoots: List<String>, genericSegments: Set<String>): List<String> {
     val filesByPackage = linkedMapOf<String, MutableList<Pair<Path, String>>>()
     sourceRoots.forEach { sourceRoot ->
       kotlinFilesUnder(runtimeRoot.resolve(sourceRoot)).forEach { sourceFile ->
@@ -122,10 +118,7 @@ object ArchitectureScanSupport {
     )
   }
 
-  fun inlineFqnViolations(
-    scanRoots: List<String>,
-    prefixes: List<String>,
-  ): List<String> {
+  fun inlineFqnViolations(scanRoots: List<String>, prefixes: List<String>): List<String> {
     val violations = mutableListOf<String>()
     scanRoots.forEach { scanRoot ->
       kotlinFilesUnder(runtimeRoot.resolve(scanRoot)).forEach { sourceFile ->
@@ -178,30 +171,31 @@ object ArchitectureScanSupport {
     val violations = mutableListOf<String>()
     ownedPatterns.forEach { (pattern, settingName) ->
       if (Regex(pattern).containsMatchIn(text)) {
-        violations += "$relativePath re-applies $settingName already owned by configureKotlinJvm via skillbill.jvm-library."
+        violations +=
+          "$relativePath re-applies $settingName already owned by configureKotlinJvm " +
+          "via skillbill.jvm-library."
       }
     }
     return violations.sorted()
   }
 
-  fun inlineFqnReferences(source: String, prefixes: List<String>): List<String> =
-    sourceWithoutStringLiterals(source)
-      .lineSequence()
-      .filterNot { line ->
-        val trimmed = line.trim()
-        trimmed.startsWith("import ") ||
-          trimmed.startsWith("package ") ||
-          trimmed.startsWith("//") ||
-          trimmed.startsWith("*") ||
-          trimmed.startsWith("/*")
-      }
-      .flatMap { line ->
-        val codeLine = line.substringBefore("//")
-        prefixes.flatMap { prefix -> inlineFqnMatches(codeLine, prefix) }
-      }
-      .distinct()
-      .sorted()
-      .toList()
+  fun inlineFqnReferences(source: String, prefixes: List<String>): List<String> = sourceWithoutStringLiterals(source)
+    .lineSequence()
+    .filterNot { line ->
+      val trimmed = line.trim()
+      trimmed.startsWith("import ") ||
+        trimmed.startsWith("package ") ||
+        trimmed.startsWith("//") ||
+        trimmed.startsWith("*") ||
+        trimmed.startsWith("/*")
+    }
+    .flatMap { line ->
+      val codeLine = line.substringBefore("//")
+      prefixes.flatMap { prefix -> inlineFqnMatches(codeLine, prefix) }
+    }
+    .distinct()
+    .sorted()
+    .toList()
 
   private fun sourceWithoutStringLiterals(source: String): String {
     val output = StringBuilder()
@@ -290,7 +284,7 @@ object ArchitectureScanSupport {
         braceDepth += line.count { character -> character == '{' }
         braceDepth -= line.count { character -> character == '}' }
         if (braceDepth <= captureStartDepth && line.contains('}')) {
-          bodies[capturingName!!] = capture.toString()
+          bodies[capturingName] = capture.toString()
           capturingName = null
           captureStartDepth = -1
           capture.clear()
@@ -349,18 +343,36 @@ object ArchitectureScanSupport {
     var remaining = this
     val output = StringBuilder()
     while (remaining.isNotEmpty()) {
-      val lineComment = remaining.indexOf("//").takeUnless { index -> index == -1 } ?: remaining.length
-      val blockComment = remaining.indexOf("/*").takeUnless { index -> index == -1 } ?: remaining.length
-      if (lineComment <= blockComment) {
-        output.append(remaining.take(lineComment))
-        break
+      val next = nextCommentBoundary(remaining)
+      if (next == null) {
+        output.append(remaining)
+        remaining = ""
+      } else {
+        output.append(remaining.take(next.start))
+        remaining = if (next.isLineComment) {
+          ""
+        } else {
+          remaining.drop(next.endExclusive)
+        }
       }
-      output.append(remaining.take(blockComment))
-      val end = remaining.indexOf("*/", blockComment + 2)
-      if (end == -1) break
-      remaining = remaining.drop(end + 2)
     }
     return SourceLine(output.toString())
+  }
+
+  private data class CommentBoundary(val start: Int, val endExclusive: Int, val isLineComment: Boolean)
+
+  private fun nextCommentBoundary(remaining: String): CommentBoundary? {
+    val lineComment = remaining.indexOf("//").takeUnless { index -> index == -1 } ?: remaining.length
+    val blockComment = remaining.indexOf("/*").takeUnless { index -> index == -1 } ?: remaining.length
+    if (lineComment == remaining.length && blockComment == remaining.length) return null
+    if (lineComment <= blockComment) {
+      return CommentBoundary(lineComment, remaining.length, isLineComment = true)
+    }
+    val end = remaining.indexOf("*/", blockComment + 2)
+    if (end == -1) {
+      return CommentBoundary(blockComment, remaining.length, isLineComment = false)
+    }
+    return CommentBoundary(blockComment, end + 2, isLineComment = false)
   }
 
   private val PACKAGE_PATTERN = Regex("""^\s*package\s+([A-Za-z0-9_.]+)""", RegexOption.MULTILINE)

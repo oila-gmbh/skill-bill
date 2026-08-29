@@ -50,43 +50,41 @@ internal fun GoalRunnerReplanResult?.toGoalReplanCliMap(issueKey: String): Map<S
   "mode" to "scoped_replan",
 )
 
-internal fun resetSnapshotMap(snapshot: GoalRunnerResetSnapshot): Map<String, Any?> =
-  linkedMapOf(
-    "status" to snapshot.status,
-    "current_subtask" to snapshot.currentSubtaskId,
-    "current_action" to snapshot.currentAction,
-    "subtasks" to snapshot.subtasks.map { subtask ->
-      linkedMapOf(
-        "id" to subtask.id,
-        "status" to subtask.status,
-        "branch" to subtask.branch,
-        "workflow_id" to subtask.workflowId,
-        "commit_sha" to subtask.commitSha,
-        "blocked_reason" to subtask.blockedReason,
-        "last_resumable_step" to subtask.lastResumableStep,
-      )
-    },
-  )
+internal fun resetSnapshotMap(snapshot: GoalRunnerResetSnapshot): Map<String, Any?> = linkedMapOf(
+  "status" to snapshot.status,
+  "current_subtask" to snapshot.currentSubtaskId,
+  "current_action" to snapshot.currentAction,
+  "subtasks" to snapshot.subtasks.map { subtask ->
+    linkedMapOf(
+      "id" to subtask.id,
+      "status" to subtask.status,
+      "branch" to subtask.branch,
+      "workflow_id" to subtask.workflowId,
+      "commit_sha" to subtask.commitSha,
+      "blocked_reason" to subtask.blockedReason,
+      "last_resumable_step" to subtask.lastResumableStep,
+    )
+  },
+)
 
-internal fun replanSnapshotMap(snapshot: GoalRunnerReplanSnapshot): Map<String, Any?> =
-  linkedMapOf(
-    "status" to snapshot.status,
-    "current_subtask" to snapshot.currentSubtaskId,
-    "current_action" to snapshot.currentAction,
-    "shared_preplan_prepared" to snapshot.sharedPreplanPrepared,
-    "planned_subtask_ids" to snapshot.plannedSubtaskIds,
-    "subtasks" to snapshot.subtasks.map { subtask ->
-      linkedMapOf(
-        "id" to subtask.id,
-        "status" to subtask.status,
-        "branch" to subtask.branch,
-        "workflow_id" to subtask.workflowId,
-        "commit_sha" to subtask.commitSha,
-        "blocked_reason" to subtask.blockedReason,
-        "last_resumable_step" to subtask.lastResumableStep,
-      )
-    },
-  )
+internal fun replanSnapshotMap(snapshot: GoalRunnerReplanSnapshot): Map<String, Any?> = linkedMapOf(
+  "status" to snapshot.status,
+  "current_subtask" to snapshot.currentSubtaskId,
+  "current_action" to snapshot.currentAction,
+  "shared_preplan_prepared" to snapshot.sharedPreplanPrepared,
+  "planned_subtask_ids" to snapshot.plannedSubtaskIds,
+  "subtasks" to snapshot.subtasks.map { subtask ->
+    linkedMapOf(
+      "id" to subtask.id,
+      "status" to subtask.status,
+      "branch" to subtask.branch,
+      "workflow_id" to subtask.workflowId,
+      "commit_sha" to subtask.commitSha,
+      "blocked_reason" to subtask.blockedReason,
+      "last_resumable_step" to subtask.lastResumableStep,
+    )
+  },
+)
 
 internal fun GoalRunnerAcceptResult.toGoalAcceptCliMap(): Map<String, Any?> = when (this) {
   is GoalRunnerAcceptResult.Accepted -> linkedMapOf(

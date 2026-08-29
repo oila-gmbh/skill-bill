@@ -1,7 +1,5 @@
 package skillbill.workflow.taskruntime.model
 
-import java.security.MessageDigest
-
 /**
  * Opaque private-diagnostic identity. Safe for operator and prompt fallback text: identifiers only,
  * never retained bytes, database paths, or value-bearing validator text.

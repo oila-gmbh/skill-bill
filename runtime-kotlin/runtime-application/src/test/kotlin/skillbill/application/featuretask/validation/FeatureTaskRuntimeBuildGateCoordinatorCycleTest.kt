@@ -2,22 +2,22 @@ package skillbill.application.featuretask.validation
 
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
+import skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
+import skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Empty
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateFindingParseMode
+import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import java.util.concurrent.atomic.AtomicInteger
-import skillbill.workflow.goal.model.ValidationDepth.DEFAULT
-import skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Empty
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher
 
 class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
   @Test
@@ -36,7 +36,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = DEFAULT,
+        validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -65,7 +65,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = DEFAULT,
+        validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -91,7 +91,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = DEFAULT,
+        validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("skills/bill-feature/content.md"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -117,7 +117,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = DEFAULT,
+        validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
@@ -152,7 +152,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
-        validationDepth = DEFAULT,
+        validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
         agentTriageLauncher = ValidationGateAgentTriageLauncher {

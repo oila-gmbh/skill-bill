@@ -1,17 +1,18 @@
 package skillbill.application.goalrunner.planning.model
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
-import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
 
 sealed interface GoalPlanningSweepOutcome {
   data class PreparedAll(
@@ -148,6 +149,7 @@ data class GoalPlanningRejectionRecord(
  * [waitSlice] bounds how long each `RuntimeTimingPort.wait` call may block before the sweep
  * re-checks the durable pause boundary; it is an interruptibility knob, not a rate-control input.
  */
+@Inject
 data class GoalPlanningBurstSchedule(
   val planLaunchPace: Duration = DEFAULT_PLAN_LAUNCH_PACE,
   val emptyTurnBackoffBase: Duration = DEFAULT_EMPTY_TURN_BACKOFF_BASE,

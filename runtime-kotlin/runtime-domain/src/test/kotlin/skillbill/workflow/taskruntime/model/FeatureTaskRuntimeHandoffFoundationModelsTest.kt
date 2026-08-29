@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import java.declaredFields.map
 
 class FeatureTaskRuntimeHandoffFoundationModelsTest {
   @Test
@@ -95,7 +94,7 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
 
   @Test
   fun `measurement model exposes counts and classifications but no content bodies`() {
-    val propertyNames = FeatureTaskRuntimeProjectionMeasurement::class.map { it.name }.toSet()
+    val propertyNames = FeatureTaskRuntimeProjectionMeasurement::class.java.declaredFields.map { it.name }.toSet()
 
     listOf("prompt", "payload", "sourceBody", "diffBody", "receipt", "rawOutput", "logs").forEach { forbidden ->
       assertFalse(forbidden in propertyNames, "measurement unexpectedly exposes content field '$forbidden'")

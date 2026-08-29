@@ -11,6 +11,27 @@ Decision: All three stay open at their current boundaries. `fallbackCapabilities
 Reason: Fallback capabilities and entrypoints are pack-authored extension surfaces; closing them would reject valid pack content without a migration path. Idle policy is already closed where it matters — agent builders — and is never read from untrusted JSON.
 Alternatives considered: Closed enum for `fallback_capabilities` with typed failure on unknown values (rejected: would break extensibility for future fallback lanes without a schema bump). Closed enum for entrypoint slots (rejected: filenames are pack-local). Wire-decoded idle policy (rejected: no untrusted input path exists).
 
+## [2026-08-29] Production file line ceiling at 500 lines
+
+Context: SKILL-220 subtask 4–6 split fifty-two production files that exceeded 500 lines; subtask 7 added a mechanical guard.
+Decision: Production `src/main` Kotlin under the runtime modules, `intellij-plugin`, and `runtime-kotlin/build-logic` must stay at or below 500 lines. `PrincipleEnforcementInventory.productionLineCeiling` is `500`; `productionLineCeilingExemptions` is empty at program completion. Test `src/test` and `src/testFixtures` sources are out of scope for this ceiling.
+Reason: Matches v2 SKILL-18 while acknowledging this tree's larger orchestration files were split rather than exempted. Test-only size is deferred to review and SKILL-221 complexity work.
+Alternatives considered: Apply the ceiling to test sources (rejected: test fixtures and architecture scanners legitimately exceed 500 lines). Permanent exemptions for orchestration types (rejected: subtasks 4–6 already split them).
+
+## [2026-08-29] Inline FQN scanner keep-list
+
+Context: SKILL-220 subtask 2 swept ~1,100 inline FQNs; subtask 7 added `InlineFqnArchitectureTest` over `PrincipleEnforcementInventory.inlineFqnScanRoots`.
+Decision: The scanner bans inline references for prefixes `java.`, `javax.`, `jakarta.`, `kotlin.`, `kotlinx.`, `org.`, `com.`, `dev.`, and `skillbill.` in production and test Kotlin. Keep-list: `package` and `import` lines; string literals (including architecture-test fixtures and `ARCHITECTURE.md` inventories); generated sources; compiler-required disambiguation after `import … as …` fails. KDoc and comment mentions are not scanned.
+Reason: Expression-position FQNs defeat import hygiene and hide collisions; documentation and literal allow-lists must name types without forcing false positives.
+Alternatives considered: Scan KDoc and comments (rejected: subtask 2 explicitly left them optional). Narrow prefixes to `java.` only (rejected: `skillbill.` inline references were the dominant defect).
+
+## [2026-08-29] Review-only principles not mechanically enforced
+
+Context: SKILL-220 subtask 7 added six architecture guards and recorded what resist deterministic scans.
+Decision: Comment quality, naming taste beyond noun-family clustering, deeper noun-family relatedness inside a single area cluster, and open harness/capability vocabulary keys (see capability decision above) are review-only. They are listed in `PrincipleEnforcementInventory.reviewOnlyRules` and `docs/code-principles.md` but have no architecture-test guard.
+Reason: Subjective editorial rules and intra-cluster vocabulary produce false positives; open pack extension surfaces were explicitly left open in subtask 3.
+Alternatives considered: Detekt or comment-density rules (rejected: SKILL-221 owns complexity and suppression policy). Forcing closed enums for fallback capabilities (rejected: recorded in the capability vocabulary decision).
+
 Context: SKILL-211 through SKILL-214 moved agent-to-agent phases onto `phase_prose`. Verify and implement_fix still decide from structure. An omitted id is silent loss.
 Decision: Keep `finding_dispositions` and `repair_receipt` as an id-enum census. Gate coverage and routing on those enums. Ignore former fat fields instead of rejecting them. Drop the compact-symbol regex rather than salvaging near-misses.
 Reason: The runtime already owns the finding set. Stuffing `value` would make Kotlin re-parse prose for ids it has. Grammar-cop near-misses were discarding tree-resident work.

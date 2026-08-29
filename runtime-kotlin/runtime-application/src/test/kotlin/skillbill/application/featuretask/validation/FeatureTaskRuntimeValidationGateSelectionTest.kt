@@ -1,6 +1,7 @@
 package skillbill.application.featuretask.validation
 
 import skillbill.application.RecordingDiagnostics
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCyclePhase
@@ -8,12 +9,12 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleReq
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
+import skillbill.scaffold.model.RoutingSignals
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
@@ -23,7 +24,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import skillbill.scaffold.model.RoutingSignals
 
 class FeatureTaskRuntimeValidationGateSelectionTest {
   @Test

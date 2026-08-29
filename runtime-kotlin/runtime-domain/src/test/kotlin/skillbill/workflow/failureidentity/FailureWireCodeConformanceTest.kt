@@ -37,7 +37,7 @@ class FailureWireCodeConformanceTest {
     assertEquals("FeatureTaskRuntimePhaseOutputFailureCode", error.hierarchy)
   }
 
-  private fun <E> assertWireCodesTotalAndInjective(entries: Array<E>) where E : Enum<E>, E : FailureWireCode {
+  private fun <E> assertWireCodesTotalAndInjective(entries: Collection<E>) where E : Enum<E>, E : FailureWireCode {
     val wireValues = entries.map { it.wireValue }
     assertEquals(
       entries.size,

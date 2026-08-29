@@ -13,37 +13,37 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 
 @Inject
 class FeatureTaskRuntimeDecomposeTerminalRecorder(
-private val database: DatabaseSessionFactory,
-private val workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val database: DatabaseSessionFactory,
+  private val workflowSnapshotValidator: WorkflowSnapshotValidator,
 ) {
-private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+  private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
-fun recordDecomposeTerminal(
-  workflowId: String,
-  terminal: FeatureTaskRuntimeDecomposeTerminal,
-  dbOverride: String? = null,
-): Boolean = database.transaction(dbOverride) { unitOfWork ->
-  val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-    ?: return@transaction false
-  val updated = engine.updateRecord(
-    WorkflowFamily.TASK_RUNTIME.definition,
-    record,
-    WorkflowUpdateInput(
-      workflowStatus = "completed",
-      currentStepId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-      stepUpdates = null,
-      artifactsPatch = mapOf(FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY to terminal.toArtifactMap()),
-      sessionId = record.sessionId.orEmpty(),
-    ),
-  )
-  WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, updated)
-  true
-}
-
-fun loadDecomposeTerminal(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeDecomposeTerminal? =
-  database.read(dbOverride) { unitOfWork ->
+  fun recordDecomposeTerminal(
+    workflowId: String,
+    terminal: FeatureTaskRuntimeDecomposeTerminal,
+    dbOverride: String? = null,
+  ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-      ?: return@read null
-    decomposeTerminalFrom(decodeArtifacts(record.artifactsJson))
+      ?: return@transaction false
+    val updated = engine.updateRecord(
+      WorkflowFamily.TASK_RUNTIME.definition,
+      record,
+      WorkflowUpdateInput(
+        workflowStatus = "completed",
+        currentStepId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+        stepUpdates = null,
+        artifactsPatch = mapOf(FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY to terminal.toArtifactMap()),
+        sessionId = record.sessionId.orEmpty(),
+      ),
+    )
+    WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, updated)
+    true
   }
+
+  fun loadDecomposeTerminal(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeDecomposeTerminal? =
+    database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read null
+      decomposeTerminalFrom(decodeArtifacts(record.artifactsJson))
+    }
 }

@@ -3,10 +3,10 @@ package skillbill.application
 import skillbill.application.goalrunner.GoalRunnerBackwardEdge
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 
 class GoalRunnerLedgerRecorderBackwardEdgeTest {
   private fun recorder(outcomes: RecordingOutcomeStore): GoalRunnerLedgerRecorder = GoalRunnerLedgerRecorder(

@@ -2,8 +2,8 @@ package skillbill.application.featuretask.validation
 
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FeatureTaskRuntimeBuildReceiptSchemaValidator
-import kotlin.test.Test
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
+import kotlin.test.Test
 
 class FeatureTaskRuntimeBuildGateReceiptProjectionTest {
   @Test

@@ -4,15 +4,16 @@ import skillbill.application.goalrunner.DefaultGoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.GoalRunnerExecutionAlreadyRunningException
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -23,7 +24,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import java.nio.file.Path
 
 class GoalRunnerExecutionCoordinatorTest {
   @Test
@@ -207,11 +207,8 @@ private class InMemoryExecutionLeaseStore(
     return controlStateValue
   }
 
-  override fun loadByIssueKey(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path?,
-  ): GoalRunnerManifestState? = null
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    null
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
 

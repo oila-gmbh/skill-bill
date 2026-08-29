@@ -15,8 +15,7 @@ internal fun Any?.asExactIntOrNull(): Int? = when (this) {
   else -> null
 }
 
-private fun Long.intValueExactOrNull(): Int? =
-  takeIf { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }?.toInt()
+private fun Long.intValueExactOrNull(): Int? = takeIf { it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() }?.toInt()
 
 private fun BigInteger.intValueExactOrNull(): Int? = try {
   intValueExact()

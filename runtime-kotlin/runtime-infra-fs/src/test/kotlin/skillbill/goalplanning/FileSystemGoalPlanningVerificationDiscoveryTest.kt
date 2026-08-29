@@ -3,13 +3,13 @@ package skillbill.goalplanning
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
 import java.nio.file.Files
+import java.nio.file.Path
 import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import java.nio.file.Path
 
 class FileSystemGoalPlanningVerificationDiscoveryTest {
   @Test

@@ -3,11 +3,12 @@ package skillbill.application.work
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.goalRepositoryIdentity
+import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
+import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
@@ -23,43 +24,45 @@ import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
+import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
-import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
-import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.review.ReviewRepository
+import skillbill.ports.system.CheckedOutBranchSource
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.work.WorkListRepository
-import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.model.FeatureImplementSessionSummary
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.ports.system.CheckedOutBranchSource
-import skillbill.workflow.idestatus.IdeStatusValidator
-import skillbill.workflow.idestatus.NoopIdeStatusValidator
-import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.idestatus.IdeStatusValidator
+import skillbill.workflow.idestatus.NoopIdeStatusValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
@@ -75,8 +78,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
-import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 
 /**
  * SKILL-148 Subtask 1: application-layer coverage for read-only IDE status selection,
@@ -1343,7 +1344,7 @@ class IdeStatusServiceTest {
     val snapshotValidator = object : WorkflowSnapshotValidator {
       override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
     }
-    val phaseRecorder = FeatureTaskRuntimePhaseRecorder(
+    val phaseRecorder = featureTaskRuntimePhaseRecorder(
       database,
       snapshotValidator,
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
@@ -1356,12 +1357,15 @@ class IdeStatusServiceTest {
     )
     val projector = IdeStatusProjector(
       workflowSnapshotValidator = snapshotValidator,
-      goalRunnerStatusService = GoalRunnerStatusService(
-        manifestStore = manifestStore,
-        outcomeStore = outcomeStore,
-        phaseRecorder = phaseRecorder,
-        clock = clock,
-        runtimeStatusService = runtimeStatusService,
+      goalRunnerStatusService = testGoalRunnerStatusService(
+        goalRunnerStatusServiceDeps(
+          manifestStore = manifestStore,
+          outcomeStore = outcomeStore,
+          phaseRecorder = phaseRecorder,
+        ).copy(
+          clock = clock,
+          runtimeStatusService = runtimeStatusService,
+        ),
       ),
       featureTaskRuntimeStatusService = runtimeStatusService,
     )
@@ -1777,8 +1781,7 @@ private object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   override fun ledgerSequenceWatermarks(
     issueKey: String,
     dbPathOverride: String?,
-  ): GoalRunnerLedgerSequenceWatermarks =
-    GoalRunnerLedgerSequenceWatermarks()
+  ): GoalRunnerLedgerSequenceWatermarks = GoalRunnerLedgerSequenceWatermarks()
 
   override fun reopenBlockedPhaseForOperatorResume(
     workflowId: String,

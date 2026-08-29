@@ -2,9 +2,9 @@ package skillbill.goalplanning
 
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.review.context.model.requireRepositoryRelativePath
+import skillbill.text.Utf8Text
 import java.nio.file.Files
 import java.nio.file.Path
-import skillbill.text.Utf8Text
 
 /**
  * File content, plus whether the read stopped at its cap. A cut file parses into fewer entries than
@@ -117,8 +117,7 @@ internal object GoalPlanningRepositoryScope {
     return BoundaryFileRead(bytes.decodeToString(), cut = bytes.size >= cap)
   }
 
-  fun truncateToUtf8Bytes(text: String, maxBytes: Int): String =
-    Utf8Text.truncateToUtf8Bytes(text, maxBytes)
+  fun truncateToUtf8Bytes(text: String, maxBytes: Int): String = Utf8Text.truncateToUtf8Bytes(text, maxBytes)
 
   fun utf8Size(text: String): Int = Utf8Text.utf8Size(text)
 

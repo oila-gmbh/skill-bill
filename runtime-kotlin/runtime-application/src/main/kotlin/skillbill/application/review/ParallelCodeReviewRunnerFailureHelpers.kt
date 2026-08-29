@@ -4,13 +4,13 @@ import skillbill.application.goalrunner.agentFailureExcerpt
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
+import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.model.ReviewLaneAssembledBundle
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.review.model.ParallelReviewParseResult
 import skillbill.review.model.ParallelReviewRawFinding
-import skillbill.ports.review.model.ReviewLaneAccounting
 
 internal class ParallelCodeReviewRunnerFailureHelpers(
   private val registerParse: (String) -> ParallelReviewParseResult,

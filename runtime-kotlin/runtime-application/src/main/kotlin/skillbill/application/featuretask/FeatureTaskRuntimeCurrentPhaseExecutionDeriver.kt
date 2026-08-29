@@ -1,9 +1,10 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecution
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -104,7 +105,7 @@ internal class FeatureTaskRuntimeCurrentPhaseExecutionDeriver {
     ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
   ): IdeStatusCurrentPhaseExecution? {
     val (loopId, edgeIteration) = activeEdgeContext(phaseId, record, ledger) ?: return null
-    val edge = FeatureTaskRuntimePhaseWorkflowDefinition.backwardEdgeForLoop(loopId) ?: return null
+    val edge = FeatureTaskRuntimePhaseWorkflowQueries.backwardEdgeForLoop(loopId) ?: return null
     return IdeStatusCurrentPhaseExecution(
       phaseId = phaseId,
       kind = if (edge.perEdgeCap == null) {

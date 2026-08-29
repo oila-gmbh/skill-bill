@@ -9,11 +9,6 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.time.Clock
 import java.time.Instant
 
-/**
- * Execution-liveness gate for in-run shared-preplan refresh. Same LIVE/UNKNOWN/IDLE taxonomy as
- * scoped replan, but parent-lease absence is treated as IDLE for the owning prepare() launch so this
- * run's own lease cannot falsely refuse refresh.
- */
 fun interface GoalPlanningRefreshLiveness {
   fun resolve(state: GoalRunnerManifestState, dbPathOverride: String?): ExecutionLiveness
 

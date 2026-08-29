@@ -12,7 +12,6 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
-import java.nio.file.Path
 
 private const val FEATURE_TASK_RUNTIME_DEPRECATION_NOTE: String =
   "feature-task-runtime is a deprecated alias for feature-task. Use feature-task; behavior is unchanged.\n"
@@ -140,13 +139,15 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
       specPath = specPath,
       workflowId = {
         verifyRuntimeResume(
-          lookupService,
-          deps.state,
-          workflowId,
-          issueKey,
-          specPath,
-          repoRoot ?: ".",
-          goalParentIssueKey != null,
+          VerifyRuntimeResumeArgs(
+            lookupService = lookupService,
+            state = deps.state,
+            workflowId = workflowId,
+            issueKey = issueKey,
+            specPath = specPath,
+            repoRoot = repoRoot ?: ".",
+            goalChild = goalParentIssueKey != null,
+          ),
         )
         workflowId
       },

@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
@@ -9,7 +10,6 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import com.fasterxml.jackson.databind.JsonNode
 
 /**
  * SKILL-48 Subtask 2a AC5: per-violation loud-fail coverage for the

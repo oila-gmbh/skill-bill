@@ -100,7 +100,7 @@ private fun seedWorkflow(repository: InMemoryRuntimeWorkflowRepository, workflow
 }
 
 private fun recorderFor(repository: InMemoryRuntimeWorkflowRepository): FeatureTaskRuntimePhaseRecorder =
-  FeatureTaskRuntimePhaseRecorder(
+  featureTaskRuntimePhaseRecorder(
     RuntimeFakeDatabaseSessionFactory(repository),
     testWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,

@@ -24,7 +24,6 @@ private val DECLARED_FILES_BLOCK_PATTERN =
   Regex("^(declared_files:\\n(?:(?:[ \\t]+[^\\n]*\\n)*))", RegexOption.MULTILINE)
 private val TOP_LEVEL_KEY_PATTERN = Regex("^[^\\s#][^:\\n]*:", RegexOption.MULTILINE)
 
-
 internal fun appendCodeReviewArea(manifestPath: Path, area: String, relativeContentPath: String, areaFocus: String) {
   val original = manifestPath.toFile().readText()
   var updated = original

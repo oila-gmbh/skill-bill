@@ -21,12 +21,12 @@ import skillbill.scaffold.platformpack.assertSchemaIdentity
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import skillbill.scaffold.runtime.scaffold
+import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
-import skillbill.testing.repoRootFromTest
 
 /**
  * SKILL-48 cleanup acceptance tests covering C2, C4, C7, and C8. Each test below pins one

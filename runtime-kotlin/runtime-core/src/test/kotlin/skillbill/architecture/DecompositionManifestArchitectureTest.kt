@@ -79,7 +79,7 @@ class DecompositionManifestArchitectureTest {
     // it carries no schema or YAML mechanics, so it is exempt from the
     // concrete-seam token ban below.
     val validatorPortFile =
-      domainWorkflowRoot.resolve("DecompositionManifestValidator.kt").normalize()
+      domainWorkflowRoot.resolve("decomposition/DecompositionManifestValidator.kt").normalize()
     val violations = Files.walk(domainWorkflowRoot).use { paths ->
       paths
         .filter { path -> path.isRegularFile() && path.toString().endsWith(".kt") }

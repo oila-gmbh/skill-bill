@@ -1,62 +1,18 @@
 package skillbill.scaffold.runtime
 
-import skillbill.agentaddon.AgentAddonSchemaValidator
-import skillbill.agentaddon.model.AgentAddonConsumer
-import skillbill.error.InvalidScaffoldPayloadError
-import skillbill.error.MissingPlatformPackError
-import skillbill.error.ScaffoldRollbackError
-import skillbill.error.SkillAlreadyExistsError
-import skillbill.error.UnknownPreShellFamilyError
-import skillbill.error.UnknownSkillKindError
-import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallTransaction
 import skillbill.install.plan.InstallContext
 import skillbill.install.plan.detectAgents
 import skillbill.install.plan.installSkill
-import skillbill.install.plan.uninstallTargets
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
-import skillbill.scaffold.manifest.appendCodeReviewArea
-import skillbill.scaffold.manifest.appendExternalAddonManifestRegistration
-import skillbill.scaffold.manifest.appendGovernedAddonManifestRegistration
-import skillbill.scaffold.manifest.appendReadmeCatalogRow
-import skillbill.scaffold.manifest.renderExternalAddonManifestRegistration
-import skillbill.scaffold.manifest.renderGovernedAddonManifestRegistration
-import skillbill.scaffold.manifest.renderReadmeCatalogRow
-import skillbill.scaffold.manifest.setDeclaredQualityCheckFile
-import skillbill.scaffold.model.CodeReviewBaselineLayer
-import skillbill.scaffold.model.ScaffoldResult
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
-import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_AGENT_ADDON
-import skillbill.scaffold.policy.scaffold.SKILL_KIND_CODE_REVIEW_AREA
-import skillbill.scaffold.policy.scaffold.SKILL_KIND_HORIZONTAL
-import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_OVERRIDE_PILOTED
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
-import skillbill.scaffold.policy.scaffold.sharedContractNote
-import skillbill.scaffold.rendering.defaultAreaFocus
-import skillbill.scaffold.rendering.inferSkillDescription
-import skillbill.scaffold.rendering.renderAddonBody
-import skillbill.scaffold.rendering.renderContentBody
-import skillbill.scaffold.rendering.renderNativeAgentBundleStubs
 import java.nio.file.Files
 import java.nio.file.Path
-import skillbill.scaffold.payload.detectKind as policyDetectKind
-import skillbill.scaffold.payload.optionalSpecialistSubagents as policyOptionalSpecialistSubagents
-import skillbill.scaffold.payload.rejectBaselineLayersForNonPlatformPack as policyRejectBaselineLayersForNonPlatformPack
-import skillbill.scaffold.payload.rejectLeafSubagentSpecialists as policyRejectLeafSubagentSpecialists
-import skillbill.scaffold.payload.requireStringMap as requireString
-import skillbill.scaffold.payload.requireStringOrDefaultMap as requireStringOrDefault
-import skillbill.scaffold.payload.resolvePlatformPackDefaults as policyResolvePlatformPackDefaults
-import skillbill.scaffold.payload.resolvePlatformPackSelection as policyResolvePlatformPackSelection
-import skillbill.scaffold.payload.validatePayloadVersion as policyValidatePayloadVersion
-import skillbill.scaffold.policy.platformpack.buildPlatformPackInstallPaths as policyBuildPlatformPackInstallPaths
-import skillbill.scaffold.policy.platformpack.platformPackNotes as policyPlatformPackNotes
-import skillbill.scaffold.policy.platformpack.renderPlatformPackManifestContent as policyRenderPlatformPackManifestContent
-import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.payload.requireStringListPayload
 
 internal fun performInstall(
   txn: ScaffoldTransaction,
@@ -133,4 +89,3 @@ internal fun platformPackInstallPaths(
     .map { parent -> repoRoot.resolve("skills").resolve(parent) }
   return (listedPaths + parentPaths).distinctBy { path -> path.toAbsolutePath().normalize() }
 }
-

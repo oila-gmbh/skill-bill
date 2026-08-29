@@ -20,10 +20,10 @@ import java.nio.channels.SocketChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
+import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
-import java.security.MessageDigest
 
 private const val TOKEN_BYTES = 24
 private const val UNIX_SOCKET_PATH_LIMIT = 103

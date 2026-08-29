@@ -2,11 +2,12 @@ package skillbill.application.featuretask.validation
 
 import skillbill.application.featuretask.validation.model.UNPARSEABLE_GATE_FAILURE_RULE_ID
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
-import ValidationGateAgentTriageLauncher
+import skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
+import skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Captured
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -18,7 +19,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Captured
 
 class FeatureTaskRuntimeValidationGateTest {
   @Test

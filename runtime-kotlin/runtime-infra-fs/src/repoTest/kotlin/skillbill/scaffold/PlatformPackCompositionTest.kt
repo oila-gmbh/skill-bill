@@ -17,7 +17,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.declaredCodeReviewAreas.toSet
 
 class PlatformPackCompositionTest {
   @Test
@@ -62,7 +61,7 @@ class PlatformPackCompositionTest {
     assertEquals(CodeReviewCompositionScope.SameReviewScope, layer.scope)
     assertEquals(true, layer.required)
     assertEquals(CodeReviewCompositionMode.KmpBaseline, layer.mode)
-    assertEquals(APPROVED_CODE_REVIEW_AREAS, toSet())
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, kotlin.declaredCodeReviewAreas.toSet())
     assertEquals(
       setOf(
         "architecture",

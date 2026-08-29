@@ -9,15 +9,15 @@ import skillbill.install.plan.InstallContext
 import skillbill.install.plan.SUPPORTED_AGENTS
 import skillbill.install.plan.agentPaths
 import skillbill.install.plan.buildInstallPlan
-import skillbill.install.plan.codexAgentsPath
 import skillbill.install.plan.detectAgents
 import skillbill.install.plan.installSkill
 import skillbill.install.support.claudeConfigRoot
 import skillbill.install.support.claudeConfigRoots
+import skillbill.install.support.codexConfigRoots
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import java.nio.file.Files
 import java.nio.file.Path
-import skillbill.install.support.codexConfigRoots
+import skillbill.install.plan.codexAgentsPath as planCodexAgentsPath
 
 /** Public CLI-facing install operations backed by the internal install primitives. */
 @Suppress("TooManyFunctions")
@@ -43,7 +43,7 @@ object InstallOperations {
   }
 
   fun codexAgentsPath(home: Path? = null, environment: Map<String, String> = System.getenv()): Path =
-    codexAgentsPath(home, environment)
+    planCodexAgentsPath(home, environment)
 
   fun codexRoots(home: Path? = null, environment: Map<String, String> = System.getenv()): List<Path> {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))

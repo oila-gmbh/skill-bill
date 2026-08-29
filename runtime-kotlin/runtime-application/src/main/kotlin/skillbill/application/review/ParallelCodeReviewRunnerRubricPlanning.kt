@@ -1,10 +1,10 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewWorkerKind.GENERIC
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
-import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
-import skillbill.application.review.model.ReviewRubricProjection
+import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.review.plan.ReviewCrossRootLaneReconciliation
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy

@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import skillbill.error.InvalidFallbackCapabilityError
-import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
+import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files

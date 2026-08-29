@@ -1,8 +1,10 @@
 package skillbill.application.featurespec
 
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.application.TestDecompositionManifestFileStore
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.loadDecompositionManifest
-import skillbill.application.featurespec.FeatureSpecPreparationWriter
+import skillbill.application.testDecompositionManifestValidator
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
@@ -20,13 +22,12 @@ import skillbill.workflow.decomposition.model.DecompositionManifestValidationRes
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationSourceLocation
 import skillbill.workflow.decomposition.model.SpecSource
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import java.nio.file.Path
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 
 class FeatureSpecPreparationWriterTest {
   private val writer = FeatureSpecPreparationWriter(
@@ -132,7 +133,7 @@ class FeatureSpecPreparationWriterTest {
       assertContains(text, "## Validation Strategy")
       assertContains(text, "## Next Path")
     }
-    val loadedManifest = loadDecompositionManifest(manifest)
+    val loadedManifest = loadTestManifest(manifest)
     assertEquals("SKILL-59", loadedManifest.issueKey)
     assertEquals(2, loadedManifest.subtasks.size)
   }
@@ -151,7 +152,7 @@ class FeatureSpecPreparationWriterTest {
       ),
     )
     assertEquals(1, result.subtaskSpecPaths.size)
-    assertEquals(1, loadDecompositionManifest(repoRoot.resolve(result.decompositionManifestPath)).subtasks.size)
+    assertEquals(1, loadTestManifest(repoRoot.resolve(result.decompositionManifestPath)).subtasks.size)
   }
 
   @Test
@@ -183,7 +184,7 @@ class FeatureSpecPreparationWriterTest {
         specSource = SpecSource.LINEAR,
       ),
     )
-    val manifest = loadDecompositionManifest(repoRoot.resolve(result.decompositionManifestPath))
+    val manifest = loadTestManifest(repoRoot.resolve(result.decompositionManifestPath))
     assertEquals(SpecSource.LINEAR, manifest.specSource)
     assertEquals("linear-subtask-1", manifest.subtasks.single().linearIssueId)
     assertContains(Files.readString(repoRoot.resolve(result.decompositionManifestPath)), "spec_source: \"linear\"")
@@ -333,9 +334,8 @@ class FeatureSpecPreparationWriterTest {
       override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit = Unit
 
       @Suppress("UNCHECKED_CAST")
-      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-        YAMLMapper()
-          .readValue(yamlText, Map::class.java) as Map<String, Any?>
+      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> = YAMLMapper()
+        .readValue(yamlText, Map::class.java) as Map<String, Any?>
 
       override fun validateYamlTextResult(
         yamlText: String,
@@ -388,9 +388,8 @@ class FeatureSpecPreparationWriterTest {
       override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit = Unit
 
       @Suppress("UNCHECKED_CAST")
-      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-        YAMLMapper()
-          .readValue(yamlText, Map::class.java) as Map<String, Any?>
+      override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> = YAMLMapper()
+        .readValue(yamlText, Map::class.java) as Map<String, Any?>
 
       override fun validateYamlTextResult(
         yamlText: String,
@@ -424,7 +423,7 @@ class FeatureSpecPreparationWriterTest {
     assertEquals(listOf(evidence), result.repairEvidence)
     val manifestPath = repoRoot.resolve(result.decompositionManifestPath)
     assertEquals(repairingValidator.repairedYaml, Files.readString(manifestPath))
-    assertEquals("SKILL-59", loadDecompositionManifest(manifestPath).issueKey)
+    assertEquals("SKILL-59", loadTestManifest(manifestPath).issueKey)
   }
 
   @Test
@@ -439,10 +438,10 @@ class FeatureSpecPreparationWriterTest {
     )
     val first = writer.write(repoRoot, request)
     val manifestPath = repoRoot.resolve(first.decompositionManifestPath)
-    val blocked = loadDecompositionManifest(manifestPath).copy(
+    val blocked = loadTestManifest(manifestPath).copy(
       status = "blocked",
       currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "blocked"),
-      subtasks = loadDecompositionManifest(manifestPath).subtasks.map { subtask ->
+      subtasks = loadTestManifest(manifestPath).subtasks.map { subtask ->
         subtask.copy(status = "blocked", blockedReason = "operator action required")
       },
     )
@@ -459,8 +458,14 @@ class FeatureSpecPreparationWriterTest {
 
     assertTrue("status:" !in Files.readString(repoRoot.resolve(rewritten.parentSpecPath)))
     assertTrue("status:" !in Files.readString(repoRoot.resolve(rewritten.subtaskSpecPaths.single())))
-    assertEquals("blocked", loadDecompositionManifest(manifestPath).status)
+    assertEquals("blocked", loadTestManifest(manifestPath).status)
   }
+
+  private fun loadTestManifest(path: Path) = loadDecompositionManifest(
+    path,
+    TestDecompositionManifestFileStore,
+    testDecompositionManifestValidator,
+  )
 
   private fun singleSubtask() = FeatureSpecSubtaskPreparation(
     id = 1,

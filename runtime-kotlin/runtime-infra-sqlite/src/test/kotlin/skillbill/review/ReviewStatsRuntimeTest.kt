@@ -15,6 +15,7 @@ import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
@@ -22,11 +23,10 @@ import skillbill.review.model.ImportedReview
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.tempDbConnection
+import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import java.sql.Connection
-import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 
 class ReviewStatsRuntimeTest {
   @Test
@@ -484,15 +484,13 @@ private fun recordFindingOutcome(
   )
 }
 
-private fun telemetryPayloads(
-  records: List<TelemetryOutboxRecord>,
-  eventName: String,
-): List<Map<String, Any?>> = records.filter { it.eventName == eventName }.map { record ->
-  JsonSupport.parseObjectOrNull(record.payloadJson)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?: emptyMap()
-}
+private fun telemetryPayloads(records: List<TelemetryOutboxRecord>, eventName: String): List<Map<String, Any?>> =
+  records.filter { it.eventName == eventName }.map { record ->
+    JsonSupport.parseObjectOrNull(record.payloadJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: emptyMap()
+  }
 
 private fun assertSerializedReviewFinishedPayloads(
   anonymousPayload: Map<String, Any?>,

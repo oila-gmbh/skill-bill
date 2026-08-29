@@ -2,9 +2,6 @@ package skillbill.install.nativeagent
 
 import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.model.AgentTarget
-import skillbill.install.plan.CLAUDE_AGENTS_KIND
-import skillbill.install.plan.CURSOR_AGENTS_KIND
-import skillbill.install.plan.JUNIE_AGENTS_KIND
 import skillbill.nativeagent.composition.nativeAgentCompositionRepoRoot
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderOverrides
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
@@ -16,12 +13,12 @@ import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.attribute.DosFileAttributeView
 import java.nio.file.attribute.PosixFileAttributeView
 import java.nio.file.attribute.PosixFilePermission
 import java.security.MessageDigest
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 internal fun linkProviderAgents(
   provider: NativeAgentProvider,
@@ -42,88 +39,18 @@ internal fun linkProviderAgents(
   val cacheRoot = request.overrides.installCacheRoot?.toAbsolutePath()?.normalize()
     ?: NativeAgentOperations.installCacheRoot(resolvedHome, request.platformPacksRoot, request.skillsRoot)
   val journal = ProviderMutationJournal()
-  return try {
-    val generated = NativeAgentOperations.renderInstallArtifacts(
-      NativeAgentInstallRenderRequest(
-        platformPacksRoot = request.platformPacksRoot,
-        skillsRoot = request.skillsRoot,
-        selectedPlatforms = request.selectedPlatforms,
+  return linkProviderAgentsWithJournal(journal) {
+    linkProviderAgentsBody(
+      NativeAgentLinkProviderBodyArgs(
         provider = provider,
-        home = resolvedHome,
-        overrides = NativeAgentInstallRenderOverrides(
-          cacheRoot = request.overrides.installCacheRoot,
-          sourceRoots = request.overrides.sourceRoots,
-          beforeMutation = journal::beforeMutation,
-          afterTemporaryCreation = journal::afterTemporaryCreation,
-        ),
+        request = request,
+        targets = targets,
+        resolvedHome = resolvedHome,
+        cacheRoot = cacheRoot,
+        validationRoot = validationRoot,
+        journal = journal,
       ),
     )
-    val managedRoots = listOfNotNull(generated.cacheRoot, request.overrides.legacyManagedRoot)
-    publishInstalledReviewCatalog(
-      request.platformPacksRoot,
-      request.selectedPlatforms,
-      generated.cacheRoot,
-      journal,
-    )
-    val linked = mutableListOf<Path>()
-    val skipped = mutableListOf<NativeAgentSkippedLink>()
-    val artifactsByPath = generated.artifacts.associateBy { it.path }
-    targets.forEach { target ->
-      generated.generatedFiles.forEach { file ->
-        when (
-          val result = installNativeAgentFile(
-            file,
-            target,
-            managedSourceRoots = managedRoots,
-            ownership = NativeAgentLinkOwnership(
-              resolvedHome,
-              provider,
-              requireNotNull(artifactsByPath[file]).logicalName,
-            ),
-            beforeMutation = journal::beforeMutation,
-          )
-        ) {
-          is InstallNativeAgentResult.Linked -> linked.add(result.link)
-          is InstallNativeAgentResult.Skipped -> skipped.add(NativeAgentSkippedLink(result.link, result.reason))
-        }
-      }
-    }
-    val linkedPaths = linked.toSet()
-    val desired = generated.artifacts.flatMap { artifact ->
-      targets.mapNotNull { target ->
-        val agentDir = target.path
-        val installedPath = agentDir.resolve(artifact.path.fileName)
-        // A path is ours to verify only when we just linked it, or it's an already-symlinked
-        // path that already resolves to this exact artifact's target. A foreign symlink that
-        // installNativeAgentFile deliberately preserved (Skip) resolves elsewhere and must not
-        // be swept into verification, or it fails for a link we intentionally left alone.
-        val isOurs = installedPath in linkedPaths ||
-          (Files.isSymbolicLink(installedPath) && resolveSymlinkTarget(installedPath) == artifact.path)
-        if (!isOurs) return@mapNotNull null
-        NativeAgentLinkInventoryEntry(
-          logicalName = artifact.logicalName,
-          provider = provider.name.lowercase(),
-          installedPath = installedPath,
-          cacheTargetPath = artifact.path,
-          contentDigest = artifact.contentDigest,
-          sourceRoot = validationRoot,
-        )
-      }
-    }
-    desired.forEach(::verifyInstalledNativeAgent)
-    NativeAgentLinkInventory.reconcile(
-      home = resolvedHome,
-      provider = provider.name.lowercase(),
-      desired = desired,
-      managedRoots = managedRoots,
-      sourceRoot = validationRoot,
-      beforeMutation = journal::beforeMutation,
-      afterTemporaryCreation = journal::afterTemporaryCreation,
-    )
-    NativeAgentLinkOutcome(linked, skipped)
-  } catch (error: Throwable) {
-    journal.restore().forEach(error::addSuppressed)
-    throw error
   }
 }
 

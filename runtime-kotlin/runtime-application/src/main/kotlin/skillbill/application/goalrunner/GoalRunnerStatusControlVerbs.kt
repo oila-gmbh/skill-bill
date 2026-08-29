@@ -5,8 +5,8 @@ import skillbill.application.goalrunner.model.GoalRunnerResumeResult
 import skillbill.application.goalrunner.model.GoalRunnerStopStatus
 import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_STOP
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.nio.file.Path

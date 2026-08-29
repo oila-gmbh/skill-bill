@@ -5,12 +5,12 @@ import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
-import java.io.File
-import java.io.IOException
 
 @Inject
 class GhGoalPullRequestPort() : GoalPullRequestPort {

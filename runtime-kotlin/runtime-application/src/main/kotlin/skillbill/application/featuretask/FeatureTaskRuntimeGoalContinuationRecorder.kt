@@ -1,9 +1,9 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
@@ -28,47 +28,41 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val patcher = FeatureTaskRuntimeGoalContinuationArtifactPatcher(engine)
   private val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
-  private val stateRecorder = FeatureTaskRuntimeGoalContinuationStateRecorder(database, engine, patcher)
-  private val passRecorder = FeatureTaskRuntimeGoalReviewPassRecorder(database, patcher, runtimeOwnedPersistence)
+  internal val reviewStateRecorder = FeatureTaskRuntimeGoalContinuationStateRecorder(database, engine)
+  internal val reviewPassRecorder = FeatureTaskRuntimeGoalReviewPassRecorder(database, patcher, runtimeOwnedPersistence)
   private val inputBuilder = FeatureTaskRuntimeGoalReviewInputBuilder(
     database,
     patcher,
-    passRecorder::persistGoalReviewInput,
+    reviewPassRecorder::persistGoalReviewInput,
   )
-  private val remediationReconciler = FeatureTaskRuntimeRemediationBaseReconciler(database, patcher)
+  internal val remediationReconciler = FeatureTaskRuntimeRemediationBaseReconciler(database, patcher)
 
   internal fun recordGoalContinuationState(
     request: GoalContinuationStateRecordRequest,
     dbOverride: String? = null,
-  ): Boolean = stateRecorder.recordGoalContinuationState(request, dbOverride)
-
-  fun reviewState(workflowId: String, dbOverride: String? = null): GoalSubtaskReviewState? =
-    stateRecorder.reviewState(workflowId, dbOverride)
-
-  fun continuation(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeGoalContinuationArtifact? =
-    stateRecorder.continuation(workflowId, dbOverride)
+  ): Boolean = reviewStateRecorder.recordGoalContinuationState(request, dbOverride)
 
   internal fun reserveGoalReviewPass(
     workflowId: String,
     dbOverride: String? = null,
-  ): GoalSubtaskReviewPassReservation = passRecorder.reserveGoalReviewPass(workflowId, dbOverride)
+  ): GoalSubtaskReviewPassReservation = reviewPassRecorder.reserveGoalReviewPass(workflowId, dbOverride)
 
   fun persistGoalReviewInput(
     workflowId: String,
     input: GoalSubtaskReviewInput,
     dbOverride: String? = null,
-  ): GoalSubtaskReviewState? = passRecorder.persistGoalReviewInput(workflowId, input, dbOverride)
+  ): GoalSubtaskReviewState? = reviewPassRecorder.persistGoalReviewInput(workflowId, input, dbOverride)
 
   fun updateReviewState(
     workflowId: String,
     dbOverride: String? = null,
     transform: (GoalSubtaskReviewState) -> GoalSubtaskReviewState,
-  ): GoalSubtaskReviewState? = passRecorder.updateReviewState(workflowId, dbOverride, transform)
+  ): GoalSubtaskReviewState? = reviewPassRecorder.updateReviewState(workflowId, dbOverride, transform)
 
   internal fun completeGoalReviewPass(
     request: GoalReviewPassCompletionRequest,
     dbOverride: String? = null,
-  ): GoalSubtaskReviewState? = passRecorder.completeGoalReviewPass(request, dbOverride)
+  ): GoalSubtaskReviewState? = reviewPassRecorder.completeGoalReviewPass(request, dbOverride)
 
   internal class GoalReviewInputScope(
     val dbOverride: String? = null,
@@ -82,23 +76,6 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     repoRoot: Path,
     scope: GoalReviewInputScope = GoalReviewInputScope(),
   ): GoalSubtaskReviewInputPreparation = inputBuilder.buildGoalReviewInput(workflowId, gitOperations, repoRoot, scope)
-
-  fun lastGoalReviewResult(workflowId: String, dbOverride: String? = null): String? =
-    passRecorder.lastGoalReviewResult(workflowId, dbOverride)
-
-  internal fun reconcileRemediationBaseCoherence(
-    workflowId: String,
-    gitOperations: WorkflowGitOperations,
-    repoRoot: Path,
-    dbOverride: String? = null,
-  ): RemediationBaseCoherenceResult =
-    remediationReconciler.reconcileRemediationBaseCoherence(workflowId, gitOperations, repoRoot, dbOverride)
-
-  internal fun appendRemediationRollbackDegradationEvidence(
-    workflowId: String,
-    signal: RemediationDegradationSignal,
-    dbOverride: String?,
-  ) = remediationReconciler.appendRemediationRollbackDegradationEvidence(workflowId, signal, dbOverride)
 }
 
 internal data class GoalContinuationStateRecordRequest(

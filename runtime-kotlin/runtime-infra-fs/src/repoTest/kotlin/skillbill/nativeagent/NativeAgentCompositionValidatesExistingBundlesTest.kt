@@ -5,6 +5,7 @@ import skillbill.nativeagent.composition.NATIVE_AGENT_SOURCE_DIR
 import skillbill.nativeagent.composition.parseNativeAgentBundle
 import skillbill.nativeagent.composition.parseNativeAgentSource
 import skillbill.nativeagent.composition.parseNativeAgentSourceFile
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -15,7 +16,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
-import skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
 
 /**
  * SKILL-48 Subtask 2c AC3: every native-agent fixture under

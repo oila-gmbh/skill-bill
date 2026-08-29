@@ -18,6 +18,7 @@ import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
 import skillbill.testing.seedConformingPlatformPack
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -26,7 +27,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import java.io.File
 
 class InstallPlanContractCoverageTest {
   private val tempDirs = mutableListOf<Path>()

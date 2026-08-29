@@ -1,7 +1,5 @@
 package skillbill.workflow.taskruntime.model
 
-import java.security.MessageDigest
-
 /** Closed response-availability states. A non-exact body is never labeled exact. */
 enum class CorrectiveRepairResponseAvailability(val wireValue: String) {
   EXACT_RESPONSE_INCLUDED("exact_response_included"),

@@ -1,13 +1,13 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
-import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diagnostics.model.RejectedOutputLifecycle
-import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.evidenceKey
 import java.sql.Connection
 import java.sql.PreparedStatement

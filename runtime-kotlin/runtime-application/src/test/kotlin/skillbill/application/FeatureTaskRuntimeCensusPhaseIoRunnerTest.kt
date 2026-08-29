@@ -1,11 +1,12 @@
 package skillbill.application
 
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewMergeResult
+import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
@@ -15,8 +16,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY
-import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 
 class FeatureTaskRuntimeCensusPhaseIoRunnerTest {
   @Test
@@ -177,10 +176,7 @@ class FeatureTaskRuntimeCensusPhaseIoRunnerTest {
   private fun runInline(harness: RunnerHarness): FeatureTaskRuntimeRunReport =
     harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE))
 
-  private fun seededVerifyHarness(
-    verifyOutput: String,
-    implementFixOutput: String? = null,
-  ): RunnerHarness {
+  private fun seededVerifyHarness(verifyOutput: String, implementFixOutput: String? = null): RunnerHarness {
     val git = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "before-fix" }
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -258,12 +254,10 @@ class FeatureTaskRuntimeCensusPhaseIoRunnerTest {
 
 private const val NIT_MESSAGE = "Hourly selection is never read"
 
-private fun censusReviewDriver(
-  findings: List<ParallelReviewMergedFinding>,
-): FeatureTaskRuntimeReviewDriver =
+private fun censusReviewDriver(findings: List<ParallelReviewMergedFinding>): FeatureTaskRuntimeReviewDriver =
   FeatureTaskRuntimeReviewDriver { request ->
     harnessPendingVerifyFindingIds = findings.map { it.fNumber }
-    EMPTY.run(request).copy(
+    FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
       mergeResult = ParallelReviewMergeResult(
         findings = findings,
         formattedOutput = "findings",
@@ -312,11 +306,7 @@ private fun disposition(findingId: String, disposition: String, reason: String? 
   return """{"finding_id":"$findingId","disposition":"$disposition","boundary_context_unavailable":true$reasonField}"""
 }
 
-private fun verifyCensus(
-  verdict: String,
-  dispositions: List<String>,
-  extraProduced: String = "",
-): String {
+private fun verifyCensus(verdict: String, dispositions: List<String>, extraProduced: String = ""): String {
   val extra = if (extraProduced.isEmpty()) "" else ",$extraProduced"
   return """
   {

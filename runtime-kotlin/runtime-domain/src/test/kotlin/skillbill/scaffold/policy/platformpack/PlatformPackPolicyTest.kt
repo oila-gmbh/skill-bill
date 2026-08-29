@@ -1,5 +1,6 @@
 package skillbill.scaffold.policy.platformpack
 
+import skillbill.scaffold.policy.scaffold.sharedContractNote
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals

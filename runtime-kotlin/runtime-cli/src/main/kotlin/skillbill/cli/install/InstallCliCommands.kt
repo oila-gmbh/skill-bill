@@ -1,9 +1,7 @@
 package skillbill.cli.install
 
-import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
-import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
@@ -14,6 +12,9 @@ import skillbill.cli.core.DocumentedCliCommand
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.error.SkillBillRuntimeException
+import skillbill.install.model.InstallAgent
+import skillbill.install.model.InstallAgentSelection
+import skillbill.install.model.InstallAgentSelectionMode
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallTelemetryLevel
@@ -29,15 +30,12 @@ import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.model.EnvironmentContext
 import skillbill.model.RuntimeContext
-import skillbill.ports.install.selection.InstallSelectionPersistencePort
-import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
 import skillbill.ports.install.reconcile.model.InstallReconcileRequest
+import skillbill.ports.install.selection.InstallSelectionPersistencePort
+import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import java.nio.file.Path
-import skillbill.install.model.InstallAgent
-import skillbill.install.model.InstallAgentSelection
-import skillbill.install.model.InstallAgentSelectionMode
 
 @Inject
 class InstallPlanCommand(

@@ -31,9 +31,9 @@ import skillbill.review.context.model.ReviewRequestedOperation
 import skillbill.review.context.model.requireRepositoryRelativePath
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.security.MessageDigest
-import java.nio.file.LinkOption.NOFOLLOW_LINKS
 
 private const val EXPANSION_ID_HEX_LENGTH = 24
 

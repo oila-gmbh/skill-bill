@@ -3,6 +3,7 @@ package skillbill.mcp
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
 import skillbill.ZERO_FINDING_REVIEW
+import skillbill.application.review.toFeatureTaskRuntimeStatsPayload
 import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
@@ -12,14 +13,16 @@ import skillbill.application.telemetry.model.QualityCheckFinishedRequest
 import skillbill.application.telemetry.model.QualityCheckStartedRequest
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowUpdateRequest
-import skillbill.application.review.toFeatureTaskRuntimeStatsPayload
 import skillbill.cli.core.CliRuntime
+import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
+import skillbill.mcp.core.McpRuntimeLifecycle
+import skillbill.mcp.core.McpWorkflowOpenArgs
 import skillbill.mcp.core.McpWorkflowRuntime
 import skillbill.mcp.core.importReview
 import skillbill.mcp.core.newSkillScaffold
@@ -31,7 +34,7 @@ import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
 import skillbill.mcp.lifecycle.qualityCheckStarted
-import skillbill.ports.workflow.repositoryFingerprint
+import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
@@ -41,7 +44,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import skillbill.cli.model.CliExecutionResult
 
 class McpRuntimeTest {
   @Test
@@ -49,7 +51,14 @@ class McpRuntimeTest {
     val tempDir = Files.createTempDirectory("skillbill-mcp-workflow-open-compat")
     val context = McpRuntimeContext(environment = disabledTelemetryEnvironment(tempDir), userHome = tempDir)
 
-    val opened = McpWorkflowRuntime.open(WorkflowFamilyKind.TASK_RUNTIME, "ftr-compat", null, context)
+    val opened = McpWorkflowRuntime.open(
+      McpWorkflowOpenArgs(
+        kind = WorkflowFamilyKind.TASK_RUNTIME,
+        sessionId = "ftr-compat",
+        currentStepId = null,
+        context = context,
+      ),
+    )
 
     assertTrue((opened["workflow_id"] as String).startsWith("wftr-"))
   }
@@ -291,7 +300,7 @@ class McpRuntimeTest {
     val context = McpRuntimeContext(environment = env, userHome = tempDir)
 
     val started =
-      McpRuntime.qualityCheckStarted(
+      McpRuntimeLifecycle.qualityCheckStarted(
         QualityCheckStartedRequest(
           routedSkill = "bill-kotlin-code-check",
           detectedStack = "kotlin",
@@ -302,7 +311,7 @@ class McpRuntimeTest {
         context,
       )
     val finished =
-      McpRuntime.qualityCheckFinished(
+      McpRuntimeLifecycle.qualityCheckFinished(
         QualityCheckFinishedRequest(
           finalFailureCount = 0,
           iterations = 1,
@@ -488,83 +497,71 @@ class McpRuntimeTest {
     val tempDir = Files.createTempDirectory("skillbill-mcp-verify-workflow")
     val env = disabledTelemetryEnvironment(tempDir)
     val context = McpRuntimeContext(environment = env, userHome = tempDir)
-    val opened = McpWorkflowRuntime.open(WorkflowFamilyKind.VERIFY, currentStepId = "code_review", context = context)
+    val opened = McpWorkflowRuntime.open(
+      McpWorkflowOpenArgs(
+        kind = WorkflowFamilyKind.VERIFY,
+        currentStepId = "code_review",
+        context = context,
+      ),
+    )
     val workflowId = opened["workflow_id"] as String
     assertWorkflowIdShape(workflowId, "wfv")
     assertSqliteTimestampShape(opened["started_at"].toString(), "verify started_at")
     assertEquals(opened["started_at"], opened["updated_at"])
-
     val updated = markVerifyWorkflowVerdictBlocked(workflowId, context)
-
     val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.VERIFY, context = context)
     val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.VERIFY, context)
     val got = McpWorkflowRuntime.get(WorkflowFamilyKind.VERIFY, workflowId, context)
     val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.VERIFY, workflowId, context)
     val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.VERIFY, workflowId, context)
-    val continuedAt = continued["updated_at"].toString()
-
-    assertSqliteTimestampShape(got["updated_at"].toString(), "verify updated_at")
-    assertSqliteTimestampShape(continuedAt, "verify continued_at")
-    assertEquals(opened["started_at"], got["started_at"])
-    assertTrue(continuedAt >= got["updated_at"].toString())
-
-    assertGoldenPayload(
-      "mcp-feature-verify-workflow.json",
-      mapOf(
-        "open" to opened,
-        "update" to updated,
-        "list" to listed,
-        "latest" to latest,
-        "get" to got,
-        "resume" to resumed,
-        "continue" to continued,
+    assertVerifyWorkflowContinuation(
+      AssertVerifyWorkflowContinuationArgs(
+        tempDir = tempDir,
+        opened = opened,
+        updated = updated,
+        listed = listed,
+        latest = latest,
+        got = got,
+        resumed = resumed,
+        continued = continued,
+        workflowId = workflowId,
       ),
-      "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
-      "<WORKFLOW_ID>" to workflowId,
-      "<STARTED_AT>" to opened["started_at"].toString(),
-      "<UPDATED_AT>" to got["updated_at"].toString(),
-      "<CONTINUED_AT>" to continued["updated_at"].toString(),
-      "<CHECKPOINT>" to GitWorkflowGitOperations()
-        .repositoryFingerprint(Path.of("").toAbsolutePath()).value,
     )
-    assertCompactUpdateAcknowledgementPayload(updated, listOf("verdict"))
-    assertEquals(1, listed["workflow_count"])
-    assertEquals(workflowId, latest["workflow_id"])
-    assertEquals("verdict", got["current_step_id"])
-    assertEquals("resume", resumed["resume_mode"])
-    assertEquals("ok", continued["status"])
-    assertEquals("reopened", continued["continue_status"])
-    assertEquals("running", continued["workflow_status_before_continue"])
-    assertEquals(
-      "skill-bill --db '${tempDir.resolve("metrics.db").toAbsolutePath().normalize()}' verify-workflow show " +
-        "'$workflowId' --format json",
-      continued["read_only_full_state_command"],
-    )
-    assertCompactContinuationPayload(continued, "verdict")
   }
 }
 
-// Kept in its own class so it does not push McpRuntimeTest over the detekt
-// LargeClass threshold.
 class McpFeatureTaskRuntimeWorkflowTest {
   @Test
   fun `mcp workflow methods cover experimental feature-task-runtime verbs`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-task-runtime-workflow")
-    val env = disabledTelemetryEnvironment(tempDir)
-    val context = McpRuntimeContext(environment = env, userHome = tempDir)
-    val opened = McpWorkflowRuntime.open(
-      WorkflowFamilyKind.TASK_RUNTIME,
-      sessionId = "ftr-20260603-mcp",
-      context = context,
+    val context = McpRuntimeContext(
+      environment = disabledTelemetryEnvironment(tempDir),
+      userHome = tempDir,
     )
+    val opened = openTaskRuntimeWorkflow(context)
     val workflowId = opened["workflow_id"] as String
-    assertWorkflowIdShape(workflowId, "wftr")
+    val payloads = driveTaskRuntimeWorkflowVerbs(workflowId, context)
+    assertTaskRuntimeWorkflowPayloads(opened, payloads, tempDir, workflowId)
+  }
+
+  private fun openTaskRuntimeWorkflow(context: McpRuntimeContext): Map<String, Any?> {
+    val opened = McpWorkflowRuntime.open(
+      McpWorkflowOpenArgs(
+        kind = WorkflowFamilyKind.TASK_RUNTIME,
+        sessionId = "ftr-20260603-mcp",
+        context = context,
+      ),
+    )
+    assertWorkflowIdShape(opened["workflow_id"] as String, "wftr")
     assertSqliteTimestampShape(opened["started_at"].toString(), "task-runtime started_at")
     assertEquals(opened["started_at"], opened["updated_at"])
+    return opened
+  }
 
-    // F-019: populate a multi-phase per-phase records map and a multi-entry phase ledger so the
-    // golden pins the populated wire shape (including the post-fix first_started_at and the durable
-    // blocked record + blocked_reason) and the ledger sequence ordering through the MCP payloads.
+  private fun driveTaskRuntimeWorkflowVerbs(
+    workflowId: String,
+    context: McpRuntimeContext,
+  ): Map<String, Map<String, Any?>> {
     val updated = McpWorkflowRuntime.update(
       WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
@@ -580,35 +577,40 @@ class McpFeatureTaskRuntimeWorkflowTest {
       ),
       context,
     )
-    val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.TASK_RUNTIME, context = context)
-    val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_RUNTIME, context)
-    val got = McpWorkflowRuntime.get(WorkflowFamilyKind.TASK_RUNTIME, workflowId, context)
-    val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.TASK_RUNTIME, workflowId, context)
-    val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, workflowId, context)
+    return mapOf(
+      "update" to updated,
+      "list" to McpWorkflowRuntime.list(WorkflowFamilyKind.TASK_RUNTIME, context = context),
+      "latest" to McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_RUNTIME, context),
+      "get" to McpWorkflowRuntime.get(WorkflowFamilyKind.TASK_RUNTIME, workflowId, context),
+      "resume" to McpWorkflowRuntime.resume(WorkflowFamilyKind.TASK_RUNTIME, workflowId, context),
+      "continue" to McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, workflowId, context),
+    )
+  }
 
+  private fun assertTaskRuntimeWorkflowPayloads(
+    opened: Map<String, Any?>,
+    payloads: Map<String, Map<String, Any?>>,
+    tempDir: Path,
+    workflowId: String,
+  ) {
+    val got = payloads.getValue("get")
     assertSqliteTimestampShape(got["updated_at"].toString(), "task-runtime updated_at")
     assertEquals(opened["started_at"], got["started_at"])
     assertTrue(got["updated_at"].toString() >= opened["started_at"].toString())
-
     assertGoldenPayload(
       "mcp-feature-task-runtime-workflow.json",
-      mapOf(
-        "open" to opened,
-        "update" to updated,
-        "list" to listed,
-        "latest" to latest,
-        "get" to got,
-        "resume" to resumed,
-        "continue" to continued,
-      ),
+      mapOf("open" to opened) + payloads,
       "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
       "<WORKFLOW_ID>" to workflowId,
       "<STARTED_AT>" to opened["started_at"].toString(),
       "<UPDATED_AT>" to got["updated_at"].toString(),
     )
-    assertCompactUpdateAcknowledgementPayload(updated, listOf("preplan", "plan", "implement"))
-    assertEquals(1, listed["workflow_count"])
-    assertEquals(workflowId, latest["workflow_id"])
+    assertCompactUpdateAcknowledgementPayload(
+      payloads.getValue("update"),
+      listOf("preplan", "plan", "implement"),
+    )
+    assertEquals(1, payloads.getValue("list")["workflow_count"])
+    assertEquals(workflowId, payloads.getValue("latest")["workflow_id"])
     assertEquals(workflowId, got["workflow_id"])
     assertEquals("bill-feature-task", got["workflow_name"])
     assertEquals("runtime", got["mode"])
@@ -1012,7 +1014,7 @@ private fun recordBlockedFeatureTaskRuntimeFinished(
 
 private fun recordQualityCheckLifecycle(context: McpRuntimeContext) {
   val started =
-    McpRuntime.qualityCheckStarted(
+    McpRuntimeLifecycle.qualityCheckStarted(
       QualityCheckStartedRequest(
         routedSkill = "bill-kotlin-code-check",
         detectedStack = "kotlin",
@@ -1022,7 +1024,7 @@ private fun recordQualityCheckLifecycle(context: McpRuntimeContext) {
       ),
       context,
     )
-  McpRuntime.qualityCheckFinished(
+  McpRuntimeLifecycle.qualityCheckFinished(
     QualityCheckFinishedRequest(
       sessionId = started["session_id"] as String,
       finalFailureCount = 0,
@@ -1043,7 +1045,7 @@ private fun recordQualityCheckLifecycle(context: McpRuntimeContext) {
 
 private fun recordFeatureVerifyLifecycle(context: McpRuntimeContext) {
   val started =
-    McpRuntime.featureVerifyStarted(
+    McpRuntimeLifecycle.featureVerifyStarted(
       FeatureVerifyStartedRequest(
         acceptanceCriteriaCount = 2,
         rolloutRelevant = true,
@@ -1052,7 +1054,7 @@ private fun recordFeatureVerifyLifecycle(context: McpRuntimeContext) {
       ),
       context,
     )
-  McpRuntime.featureVerifyFinished(
+  McpRuntimeLifecycle.featureVerifyFinished(
     FeatureVerifyFinishedRequest(
       sessionId = started["session_id"] as String,
       featureFlagAuditPerformed = true,
@@ -1073,7 +1075,7 @@ private fun recordFeatureVerifyLifecycle(context: McpRuntimeContext) {
 }
 
 private fun recordPrDescriptionLifecycle(context: McpRuntimeContext) {
-  McpRuntime.prDescriptionGenerated(
+  McpRuntimeLifecycle.prDescriptionGenerated(
     PrDescriptionGeneratedRequest(
       commitCount = 3,
       filesChangedCount = 8,
@@ -1206,4 +1208,57 @@ private fun assertOrchestratedReviewGoldens(dbPath: Path, importResult: Map<Stri
     "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString(),
     "<REVIEW_FINISHED_AT>" to telemetryPayload["review_finished_at"].toString(),
   )
+}
+
+private data class AssertVerifyWorkflowContinuationArgs(
+  val tempDir: Path,
+  val opened: Map<String, *>,
+  val updated: Map<String, *>,
+  val listed: Map<String, *>,
+  val latest: Map<String, *>,
+  val got: Map<String, *>,
+  val resumed: Map<String, *>,
+  val continued: Map<String, *>,
+  val workflowId: String,
+)
+
+private fun assertVerifyWorkflowContinuation(args: AssertVerifyWorkflowContinuationArgs) {
+  val continuedAt = args.continued["updated_at"].toString()
+  assertSqliteTimestampShape(args.got["updated_at"].toString(), "verify updated_at")
+  assertSqliteTimestampShape(continuedAt, "verify continued_at")
+  assertEquals(args.opened["started_at"], args.got["started_at"])
+  assertTrue(continuedAt >= args.got["updated_at"].toString())
+  assertGoldenPayload(
+    "mcp-feature-verify-workflow.json",
+    mapOf(
+      "open" to args.opened,
+      "update" to args.updated,
+      "list" to args.listed,
+      "latest" to args.latest,
+      "get" to args.got,
+      "resume" to args.resumed,
+      "continue" to args.continued,
+    ),
+    "<DB_PATH>" to args.tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
+    "<WORKFLOW_ID>" to args.workflowId,
+    "<STARTED_AT>" to args.opened["started_at"].toString(),
+    "<UPDATED_AT>" to args.got["updated_at"].toString(),
+    "<CONTINUED_AT>" to args.continued["updated_at"].toString(),
+    "<CHECKPOINT>" to GitWorkflowGitOperations()
+      .repositoryFingerprint(Path.of("").toAbsolutePath()).value,
+  )
+  assertCompactUpdateAcknowledgementPayload(args.updated, listOf("verdict"))
+  assertEquals(1, args.listed["workflow_count"])
+  assertEquals(args.workflowId, args.latest["workflow_id"])
+  assertEquals("verdict", args.got["current_step_id"])
+  assertEquals("resume", args.resumed["resume_mode"])
+  assertEquals("ok", args.continued["status"])
+  assertEquals("reopened", args.continued["continue_status"])
+  assertEquals("running", args.continued["workflow_status_before_continue"])
+  assertEquals(
+    "skill-bill --db '${args.tempDir.resolve("metrics.db").toAbsolutePath().normalize()}' verify-workflow show " +
+      "'${args.workflowId}' --format json",
+    args.continued["read_only_full_state_command"],
+  )
+  assertCompactContinuationPayload(args.continued, "verdict")
 }

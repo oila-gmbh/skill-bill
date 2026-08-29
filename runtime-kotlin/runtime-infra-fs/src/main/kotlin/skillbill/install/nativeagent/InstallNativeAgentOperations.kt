@@ -1,27 +1,12 @@
 package skillbill.install.nativeagent
 
-import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.model.AgentTarget
 import skillbill.install.plan.CLAUDE_AGENTS_KIND
 import skillbill.install.plan.CURSOR_AGENTS_KIND
 import skillbill.install.plan.JUNIE_AGENTS_KIND
-import skillbill.nativeagent.composition.nativeAgentCompositionRepoRoot
-import skillbill.nativeagent.rendering.NativeAgentInstallRenderOverrides
-import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
-import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
-import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
-import skillbill.scaffold.platformpack.loadPlatformManifest
-import java.nio.file.FileSystemException
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.nio.file.attribute.DosFileAttributeView
-import java.nio.file.attribute.PosixFileAttributeView
-import java.nio.file.attribute.PosixFilePermission
-import java.security.MessageDigest
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
 data class NativeAgentLinkOutcome(
   val linked: List<Path>,
@@ -45,7 +30,6 @@ data class NativeAgentLinkRequest(
 )
 
 @Suppress("TooManyFunctions", "LongMethod", "TooGenericExceptionCaught")
-
 object InstallNativeAgentOperations {
   fun linkClaudeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome {
     val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
@@ -131,5 +115,4 @@ object InstallNativeAgentOperations {
     ) +
       unlinkedFromCache
   }
-
 }
