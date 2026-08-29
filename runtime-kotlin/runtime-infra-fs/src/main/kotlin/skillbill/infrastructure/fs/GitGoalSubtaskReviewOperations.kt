@@ -257,29 +257,38 @@ private fun materializeReviewInput(
   val indexTree = baseIsAncestor?.takeIf { it.ok }?.let {
     goalReviewGitValue(repoRoot, "write-tree")?.trim()
   }
-  // Pathspec-limited to the workflow-owned inventory: a tracked file this run does not own stays
-  // out of the review input no matter how dirty the worktree is around it.
-  val fullDelta = indexTree?.takeIf(String::isNotBlank)?.let {
-    goalReviewGitValue(repoRoot, goalReviewDiffArguments(baseline))
+  val untracked = indexTree?.takeIf(String::isNotBlank)?.let { goalReviewUntrackedPaths(repoRoot) }
+  val ownedUntracked = untracked?.filterNot { it in baseline.baselineUntrackedPaths }
+  val scopeFingerprint = if (indexTree != null && ownedUntracked != null) {
+    GoalReviewStringResult(value = scopeFingerprint(repoRoot, indexTree, ownedUntracked))
+  } else {
+    null
   }
-  val untracked = fullDelta?.let { goalReviewUntrackedPaths(repoRoot) }
-  val patches = untracked?.let { paths ->
-    ownedUntrackedPatches(repoRoot, paths.filterNot { it in baseline.baselineUntrackedPaths })
-  }
-  val untrackedBytes = patches?.value?.toByteArray()?.size ?: 0
-  val trackedDelta = fullDelta?.let { full -> withinReviewInputBound(repoRoot, baseline, full, untrackedBytes) }
-  val totalBytes = trackedDelta?.toByteArray()?.size?.plus(untrackedBytes)
   return GoalReviewInputMaterial(
     branch,
     head,
     baseExists,
     baseIsAncestor,
     indexTree,
-    trackedDelta,
+    trackedDelta = scopeFingerprint?.value?.let { "scope-fingerprint:$it\n" },
     untracked,
-    patches,
-    totalBytes,
+    patches = scopeFingerprint?.let { GoalReviewStringResult(value = "") },
+    totalBytes = null,
   )
+}
+
+private fun scopeFingerprint(repoRoot: Path, indexTree: String, ownedUntracked: List<String>): String {
+  val digest = java.security.MessageDigest.getInstance("SHA-256")
+  digest.update(indexTree.toByteArray())
+  digest.update(0)
+  ownedUntracked.sorted().forEach { path ->
+    digest.update(path.toByteArray())
+    digest.update(0)
+    val hash = goalReviewGitValue(repoRoot, "hash-object", "--", path)?.trim().orEmpty()
+    digest.update(hash.toByteArray())
+    digest.update(0)
+  }
+  return digest.digest().joinToString("") { byte -> "%02x".format(byte) }
 }
 
 private data class GoalReviewInputMaterial(
@@ -324,14 +333,12 @@ private fun reviewInputFailure(
       },
     )
   material.indexTree.isNullOrBlank() ->
-    GoalReviewInputFailure("Could not resolve the git index while materializing the exact review input.")
+    GoalReviewInputFailure("Could not resolve the git index while resolving review scope.")
   material.trackedDelta == null ->
-    GoalReviewInputFailure("Could not materialize tracked changes from the immutable review base.")
+    GoalReviewInputFailure("Could not fingerprint the worktree for review scope identity.")
   material.untracked == null ->
-    GoalReviewInputFailure("Could not read untracked inventory while materializing the exact review input.")
+    GoalReviewInputFailure("Could not read untracked inventory while resolving review scope.")
   material.patches?.ok != true -> GoalReviewInputFailure(material.patches?.error.orEmpty())
-  material.totalBytes != null && material.totalBytes > GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES ->
-    GoalReviewInputFailure("Goal-subtask review input exceeds the ${GOAL_SUBTASK_REVIEW_INPUT_MAX_BYTES}-byte bound.")
   else -> null
 }
 

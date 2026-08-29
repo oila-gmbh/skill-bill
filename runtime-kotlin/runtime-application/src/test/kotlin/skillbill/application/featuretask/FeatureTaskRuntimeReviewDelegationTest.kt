@@ -35,18 +35,18 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeReviewDelegationTest {
   @Test
-  fun `child-owned delta stays the supplied diff and never selects BRANCH`() {
-    val input = reviewInput(trackedDelta = "diff --git a/Child.kt b/Child.kt\n+owned")
+  fun `child-owned review resolves worktree-from-base without a supplied diff blob`() {
+    val input = reviewInput(trackedDelta = "scope-fingerprint:abc\n")
     val request = mappedRequest(
       input = input,
       agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
       pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.DELEGATED, "rvw-191-delta"),
     )
 
-    assertEquals(input.reviewText, request.suppliedDiff)
+    assertEquals(null, request.suppliedDiff)
+    assertEquals(ParallelReviewScope.WORKTREE_FROM_BASE, request.scope)
     assertEquals(input.reviewBaseSha, request.baseRevision)
     assertEquals(input.currentHeadSha, request.headRevision)
-    assertTrue(request.scope != ParallelReviewScope.BRANCH)
     assertEquals(CodeReviewExecutionMode.INLINE, request.codeReviewMode)
     assertEquals(CodeReviewExecutionMode.INLINE, request.resolvedTier)
     assertEquals(Path.of("spec.md"), request.specPath)
@@ -69,15 +69,15 @@ class FeatureTaskRuntimeReviewDelegationTest {
   }
 
   @Test
-  fun `explicit empty child-owned delta remains a supplied diff`() {
+  fun `explicit empty child-owned fingerprint still resolves worktree-from-base without a supplied diff`() {
     val request = mappedRequest(
       input = reviewInput(trackedDelta = ""),
       agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
       pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "rvw-191-empty"),
     )
 
-    assertEquals("", request.suppliedDiff)
-    assertNotNull(request.suppliedDiff)
+    assertEquals(null, request.suppliedDiff)
+    assertEquals(ParallelReviewScope.WORKTREE_FROM_BASE, request.scope)
     assertEquals(CodeReviewExecutionMode.INLINE, request.resolvedTier)
   }
 
@@ -211,14 +211,14 @@ class FeatureTaskRuntimeReviewDelegationTest {
         timeout = null,
         agentAddonSelection = HydratedAgentAddonSelection(),
       ),
-    )
+    ).copy(suppliedDiff = delta)
     val standalone = ParallelCodeReviewRequest(
       agent1Id = mapped.agent1Id,
       scope = ParallelReviewScope.BRANCH,
       repoRoot = repo,
       timeout = mapped.timeout,
       codeReviewMode = CodeReviewExecutionMode.INLINE,
-      suppliedDiff = mapped.suppliedDiff,
+      suppliedDiff = delta,
       reviewRunId = "parity-standalone",
       baseRevision = mapped.baseRevision,
       headRevision = mapped.headRevision,

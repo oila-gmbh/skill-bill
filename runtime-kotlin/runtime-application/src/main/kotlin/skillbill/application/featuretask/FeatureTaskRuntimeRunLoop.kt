@@ -2933,6 +2933,9 @@ internal class FeatureTaskRuntimeRunLoop(
           timeout = run.request.timeout,
           agentAddonSelection = run.request.agentAddonSelection,
           baselineUntrackedPaths = reviewBaselineUntrackedPaths(run),
+          ownedPathspec = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+            ?.workflowOwnedPaths
+            .orEmpty(),
         ),
       ),
     )

@@ -484,11 +484,9 @@ class GitWorkflowGitOperationsTest {
 
     assertTrue(input.ok, input.error)
     val reviewText = requireNotNull(input.input).reviewText
-    assertContains(reviewText, "committed")
-    assertContains(reviewText, "staged")
-    assertContains(reviewText, "unstaged")
-    assertContains(reviewText, "owned.tmp")
-    assertContains(reviewText, "owned content")
+    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
+    assertFalse("committed" in reviewText)
+    assertFalse("owned content" in reviewText)
     assertFalse("preexisting.tmp" in reviewText)
   }
 
@@ -498,12 +496,11 @@ class GitWorkflowGitOperationsTest {
    * delta keeps every surviving patch in full and reduces the deletions to a named manifest.
    */
   @Test
-  fun `an over-bound delta elides deleted bodies and keeps every surviving patch in full`() {
+  fun `an oversized worktree still resolves as a scope fingerprint without inlining bodies`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-elided-deletions")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
     git(repoRoot, "config", "user.name", "Skill Bill")
-    // One deleted file large enough on its own to put the delta over the bound.
     Files.writeString(repoRoot.resolve("retired.txt"), "retired body line\n".repeat(70_000))
     Files.writeString(repoRoot.resolve("kept.txt"), "base\n")
     git(repoRoot, "add", ".")
@@ -520,18 +517,13 @@ class GitWorkflowGitOperationsTest {
 
     assertTrue(input.ok, input.error)
     val reviewText = requireNotNull(input.input).reviewText
-    assertContains(reviewText, "deleted files, bodies elided from this review input")
-    assertContains(reviewText, "retired.txt (-70000 lines)")
-    assertContains(reviewText, "request_expansion")
-    assertContains(reviewText, "surviving edit", message = "an elided deletion must not cost the surviving patches")
-    assertFalse(
-      "retired body line" in reviewText,
-      "the elided body is what the reduction exists to drop",
-    )
+    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
+    assertFalse("retired body line" in reviewText)
+    assertFalse("surviving edit" in reviewText)
   }
 
   @Test
-  fun `a delta within the bound keeps deleted bodies inline`() {
+  fun `a small deletion still resolves as a scope fingerprint`() {
     val repoRoot = Files.createTempDirectory("skillbill-goal-review-small-deletion")
     git(repoRoot, "init")
     git(repoRoot, "config", "user.email", "skill-bill@example.test")
@@ -550,8 +542,8 @@ class GitWorkflowGitOperationsTest {
 
     assertTrue(input.ok, input.error)
     val reviewText = requireNotNull(input.input).reviewText
-    assertContains(reviewText, "retired body line", message = "an ordinary review input is unchanged by this path")
-    assertFalse("bodies elided" in reviewText)
+    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
+    assertFalse("retired body line" in reviewText)
   }
 
   @Test
@@ -631,7 +623,7 @@ class GitWorkflowGitOperationsTest {
     val input = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(repoRoot, baseline, branch)
 
     assertTrue(input.ok, input.error)
-    assertContains(requireNotNull(input.input).trackedDelta, "pre-existing edit")
+    assertTrue(requireNotNull(input.input).trackedDelta.startsWith("scope-fingerprint:"))
   }
 
   @Test
@@ -662,9 +654,8 @@ class GitWorkflowGitOperationsTest {
 
     assertTrue(input.ok, input.error)
     val reviewText = requireNotNull(input.input).reviewText
-    assertContains(reviewText, "current-subtask.txt")
-    assertContains(reviewText, "current subtask marker")
-    assertFalse("earlier-subtask.txt" in reviewText)
+    assertTrue(reviewText.startsWith("scope-fingerprint:"), reviewText)
+    assertFalse("current subtask marker" in reviewText)
     assertFalse("earlier subtask marker" in reviewText)
   }
 
@@ -736,8 +727,7 @@ class GitWorkflowGitOperationsTest {
     assertEquals(GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR, unsafe.failureReason)
     assertTrue(recovered.ok, recovered.error)
     assertTrue(input.ok, input.error)
-    assertContains(requireNotNull(input.input).reviewText, "new reviewed change")
-    assertFalse("old reviewed change" in requireNotNull(input.input).reviewText)
+    assertTrue(requireNotNull(input.input).reviewText.startsWith("scope-fingerprint:"))
   }
 
   @Test
