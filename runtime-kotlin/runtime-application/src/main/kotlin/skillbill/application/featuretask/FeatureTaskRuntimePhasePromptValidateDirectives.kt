@@ -48,6 +48,15 @@ internal fun validateRepairPhaseTask(): String =
     "tests; fix root causes instead. Return prose only; do not emit validation_result, gate_run_count, or " +
     "any phase-output JSON."
 
+internal fun validateGateTriagePhaseTask(): String =
+  "You are triaging an unparseable validation gate failure blob before the first repair turn — do not spawn " +
+    "delegated subagents. Read the gate stdout blob and repository files as needed to understand failures; " +
+    "prefer read-only inspection. $VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
+    "Do not mutate the tree unless strictly needed to understand failures. Emit a recommended " +
+    "validation_repair_plan as prose inside produced_outputs.value (JSON string) with suggested fields per " +
+    "item: item_id, module, rule_or_task, location, failure_summary, fix_intent. Extra keys are allowed. " +
+    "Return prose guidance only; do not fix code or emit validation_result, gate_run_count, or gate evidence."
+
 internal fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared: Boolean): String {
   val collectAllLine = when {
     !packCollectAllCommand.isNullOrBlank() ->
@@ -97,17 +106,21 @@ internal data class PhaseTaskDirectiveArgs(
   val packBuildCommand: String? = null,
   val priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   val validationGateRepair: Boolean = false,
+  val validationGateTriage: Boolean = false,
 )
 
 internal fun phaseTaskDirective(phaseId: String, args: PhaseTaskDirectiveArgs = PhaseTaskDirectiveArgs()): String {
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
-    return runtimeOwnedBuildPhaseTask(args.packBuildCommand)
+    return when {
+      args.validationGateTriage -> buildGateTriagePhaseTask(args.packBuildCommand)
+      else -> runtimeOwnedBuildPhaseTask(args.packBuildCommand)
+    }
   }
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
-    return if (args.validationGateRepair) {
-      validateRepairPhaseTask()
-    } else {
-      validatePhaseTask(
+    return when {
+      args.validationGateTriage -> validateGateTriagePhaseTask()
+      args.validationGateRepair -> validateRepairPhaseTask()
+      else -> validatePhaseTask(
         packCollectAllCommand = args.packCollectAllCommand,
         packGateDeclared = !args.agentRunValidateFallback,
       )

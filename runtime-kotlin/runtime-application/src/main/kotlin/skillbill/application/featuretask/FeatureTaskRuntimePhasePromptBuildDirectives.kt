@@ -26,6 +26,21 @@ internal fun runtimeOwnedBuildPhaseTask(packBuildCommand: String?): String {
     "or any phase-output JSON."
 }
 
+internal fun buildGateTriagePhaseTask(packBuildCommand: String?): String {
+  val gateLine = if (packBuildCommand.isNullOrBlank()) {
+    "The dominant pack declares validation_gate.build_command for build proof."
+  } else {
+    "The pack build command is `$packBuildCommand` — do not run it during triage."
+  }
+  return "You are triaging an unparseable build gate failure blob before the first repair turn — do not spawn " +
+    "delegated subagents. Read the gate stdout blob and repository files as needed; prefer read-only " +
+    "inspection. $gateLine $BUILD_PHASE_FORBIDDEN_EXTRAS" +
+    "Do not mutate the tree unless strictly needed to understand failures. Emit a recommended " +
+    "validation_repair_plan as prose inside produced_outputs.value (JSON string) with suggested fields per " +
+    "item: item_id, module, rule_or_task, location, failure_summary, fix_intent. Extra keys are allowed. " +
+    "Return prose guidance only; do not fix code or emit build_receipt, gate_run_count, or gate evidence."
+}
+
 internal fun nonBuildPhaseBuildOwnershipDirective(phaseId: String): String {
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
     return ""

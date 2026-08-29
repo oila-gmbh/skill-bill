@@ -25,7 +25,7 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     val repairSets = mutableListOf<List<String>>()
     val runner = ScriptedGateRunner(listOf(failedWith(compiler, laterTest), passed(forced = true)))
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
-      cycle = fullCycle { findings, _ ->
+      cycle = fullCycle { findings, _, _ ->
         repairSets += findings.findings.map { it.ruleOrTestId }
         completedRepair(findings.findings)
       },
@@ -58,7 +58,7 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     val launchSizes = mutableListOf<Int>()
     val runner = ScriptedGateRunner(listOf(failedWith(*findings.toTypedArray()), passed(forced = true)))
     val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
-      cycle = fullCycle { page, _ ->
+      cycle = fullCycle { page, _, _ ->
         launchSizes += page.findings.size
         completedRepair(page.findings)
       },
@@ -81,7 +81,7 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     repeat(maxTurns) { runnerResults += failedWith(verifyFinding) }
     val runner = ScriptedGateRunner(runnerResults)
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
-      cycle = fullCycle { findings, _ ->
+      cycle = fullCycle { findings, _, _ ->
         repairIds += findings.findings.map { it.ruleOrTestId }
         completedRepair(findings.findings)
       },

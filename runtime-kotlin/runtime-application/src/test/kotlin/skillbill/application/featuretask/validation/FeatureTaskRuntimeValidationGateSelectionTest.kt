@@ -79,7 +79,7 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
         validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
           error("repair should not run for a clean gate")
         },
       ),
@@ -124,7 +124,7 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
         validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
           error("repair must not launch on a clean gate")
         },
       ),
@@ -222,7 +222,7 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
         validationDepth = ValidationDepth.FULL,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _, _ ->
           repairSizes += findings.findings.size
           ValidationGateAgentRepairResult.Completed(
             FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
@@ -266,7 +266,7 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
         validationDepth = ValidationDepth.FULL,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _, _ ->
           repairSizes += findings.findings.size
           ValidationGateAgentRepairResult.Completed(
             FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),

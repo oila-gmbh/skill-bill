@@ -40,9 +40,27 @@ data class ValidationFindingSetProjection(
   }
 }
 
+const val UNPARSEABLE_GATE_FAILURE_RULE_ID: String = "unparseable_gate_failure"
+
+fun requiresUnparseableGateTriage(findings: List<ValidationGateFinding>): Boolean =
+  findings.size == 1 && findings.single().ruleOrTestId == UNPARSEABLE_GATE_FAILURE_RULE_ID
+
+fun interface ValidationGateAgentTriageLauncher {
+  fun launch(findings: ValidationFindingSetProjection): ValidationGateTriageResult
+}
+
+sealed interface ValidationGateTriageResult {
+  data class Captured(val validationRepairPlan: String) : ValidationGateTriageResult
+  data object Empty : ValidationGateTriageResult
+}
+
 /** Agent repair launch within the runtime-owned validate gate cycle. */
 fun interface ValidationGateAgentRepairLauncher {
-  fun launch(findings: ValidationFindingSetProjection, repairIteration: Int): ValidationGateAgentRepairResult
+  fun launch(
+    findings: ValidationFindingSetProjection,
+    repairIteration: Int,
+    triagePlan: String?,
+  ): ValidationGateAgentRepairResult
 }
 
 sealed interface ValidationGateAgentRepairResult {
@@ -82,4 +100,7 @@ data class ValidationGateCycleRequest(
   val changedPaths: List<String>,
   val repositoryCheckpoint: String,
   val agentRepairLauncher: ValidationGateAgentRepairLauncher,
+  val agentTriageLauncher: ValidationGateAgentTriageLauncher = ValidationGateAgentTriageLauncher {
+    ValidationGateTriageResult.Empty
+  },
 )

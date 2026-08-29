@@ -379,11 +379,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
       validationGateFindings = page,
+      validationGateRepair = true,
     )
     val defaultPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
       validationGateFindings = page,
+      validationGateRepair = true,
     )
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
       assertContains(prompt, "A prior gate run parsed these items")
@@ -414,6 +416,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD),
       validationGateFindings = page,
+      validationGateRepair = true,
       packBuildCommand = "./gradlew compileKotlin",
     )
     assertContains(prompt, "## Runtime build gate findings")
@@ -427,6 +430,70 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "blast radius")
     assertFalse(prompt.contains("Required final output (validated schema gate)"))
     assertFalse(prompt.contains("Required produced_outputs shape: emit a build_receipt"))
+  }
+
+  @Test
+  fun `validate triage prompt forbids gate argv with same strength as repair prompt`() {
+    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
+    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+      findings = listOf(finding),
+    )
+    val triagePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+      validationGateFindings = page,
+      validationGateTriage = true,
+    )
+    val repairPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+      validationGateFindings = page,
+      validationGateRepair = true,
+    )
+    val forbiddenPhrases = listOf(
+      "Do not run `skill-bill validate`",
+      "bill-code-check",
+      "./gradlew check",
+      "collect_all_full_gate_command",
+    )
+    forbiddenPhrases.forEach { phrase ->
+      assertContains(triagePrompt, phrase)
+      assertContains(repairPrompt, phrase)
+    }
+    assertContains(triagePrompt, "triage")
+    assertContains(triagePrompt, "validation_repair_plan")
+  }
+
+  @Test
+  fun `repair prompt includes triage working notes when plan captured`() {
+    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
+    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+      findings = listOf(finding),
+    )
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+      validationGateFindings = page,
+      validationGateRepair = true,
+      validationGateTriagePlan = "module=m: run spotlessApply then fix Foo.kt",
+    )
+    assertContains(prompt, "## Triage working notes")
+    assertContains(prompt, "module=m: run spotlessApply then fix Foo.kt")
+  }
+
+  @Test
+  fun `repair prompt omits triage section when plan empty`() {
+    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
+    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+      findings = listOf(finding),
+    )
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+      validationGateFindings = page,
+      validationGateRepair = true,
+    )
+    assertFalse(prompt.contains("## Triage working notes"))
   }
 
   // SKILL-180: FULL validate must carry no-suppression; other phases must not.

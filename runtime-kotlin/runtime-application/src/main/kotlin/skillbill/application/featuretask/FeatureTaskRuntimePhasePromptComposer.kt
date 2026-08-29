@@ -55,6 +55,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
     validationGateFindings: ValidationFindingSetProjection? = null,
+    validationGateTriagePlan: String? = null,
+    validationGateRepair: Boolean = false,
+    validationGateTriage: Boolean = false,
     agentRunValidateFallback: Boolean = false,
     packCollectAllCommand: String? = null,
     packBuildCommand: String? = null,
@@ -80,7 +83,8 @@ object FeatureTaskRuntimePhasePromptComposer {
         packCollectAllCommand,
         packBuildCommand,
         briefing.priorGapMemory,
-        validationGateFindings != null,
+        validationGateRepair = validationGateRepair,
+        validationGateTriage = validationGateTriage,
       ),
       installedRuntimeAuthorityDirective(),
       ceremonyDirective(briefing),
@@ -92,7 +96,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       priorGapMemoryRemediationDirective(briefing.phaseId, briefing.priorGapMemory),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       absentValidationGateDegradationDirective(briefing.phaseId, agentRunValidateFallback),
-      validationGateFindingsDirective(briefing.phaseId, validationGateFindings),
+      validationGateFindingsDirective(
+        briefing.phaseId,
+        validationGateFindings,
+        validationGateTriagePlan,
+      ),
       reviewExecutionDirective(
         briefing.phaseId,
         ReviewExecutionDirectiveInputs(
@@ -116,7 +124,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       terminalRetryDirective(priorTerminalFailure),
       findingCoverageDirective(priorFindingCoverage),
       if (validationGateFindings != null) {
-        gateRepairNoOutputSchemaDirective(briefing.phaseId)
+        gateRepairNoOutputSchemaDirective(briefing.phaseId, validationGateTriage)
       } else {
         outputContract(briefing, agentRunValidateFallback)
       },
@@ -151,7 +159,17 @@ object FeatureTaskRuntimePhasePromptComposer {
    * by the coordinator after it re-runs the pack command — no schema envelope, no structured plan
    * object, and no subagents that need structured input.
    */
-  private fun gateRepairNoOutputSchemaDirective(phaseId: String): String = """
+  private fun gateRepairNoOutputSchemaDirective(phaseId: String, triage: Boolean = false): String {
+    if (triage) {
+      return """
+        ## Gate triage — prose only, no phase-output schema
+        This launch triages an unparseable gate blob before the first repair turn for the runtime-owned `$phaseId` gate.
+        Do not emit a Required final output JSON object, build_receipt, validation_receipt, gate_run_count, or any other
+        phase envelope. Do not spawn delegated subagents. Read the blob and cited paths; emit optional working notes
+        as prose inside produced_outputs.value when you can recommend a repair shape.
+      """.trimIndent()
+    }
+    return """
     ## Gate repair — prose only, no phase-output schema
     This launch is a repair turn for the runtime-owned `$phaseId` gate. Do not emit a Required final
     output JSON object, build_receipt, validation_receipt, gate_run_count, or any other phase envelope.
@@ -171,6 +189,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     Never silence findings with @Suppress, @file:Suppress, baselines, disabled rules, weakened
     configuration, or skipped tests — fix the root cause instead.
   """.trimIndent()
+  }
 
   /**
    * Applies the add-on content budget before hydrated content reaches the prompt.
@@ -359,6 +378,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     packBuildCommand: String? = null,
     priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
     validationGateRepair: Boolean = false,
+    validationGateTriage: Boolean = false,
   ): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
     val directive = phaseTaskDirective(
@@ -369,6 +389,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         packBuildCommand = packBuildCommand,
         priorGapMemory = priorGapMemory,
         validationGateRepair = validationGateRepair,
+        validationGateTriage = validationGateTriage,
       ),
     )
     // Composed directly rather than as an indented raw string with trimIndent(). trimIndent() runs
@@ -654,7 +675,11 @@ object FeatureTaskRuntimePhasePromptComposer {
     return memoryBlock + scopeBlock
   }
 
-  private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
+  private fun validationGateFindingsDirective(
+    phaseId: String,
+    findings: ValidationFindingSetProjection?,
+    triagePlan: String?,
+  ): String {
     if (findings == null) return ""
     val (sectionTitle, preamble) = when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> Pair(
@@ -683,6 +708,10 @@ object FeatureTaskRuntimePhasePromptComposer {
           "${index + 1}. module=${finding.module} id=${finding.ruleOrTestId} " +
             "location=${finding.location ?: "<unknown>"} message=${finding.message}",
         )
+      }
+      if (!triagePlan.isNullOrBlank()) {
+        add("## Triage working notes")
+        add(triagePlan)
       }
     }
     return lines.joinToString("\n")

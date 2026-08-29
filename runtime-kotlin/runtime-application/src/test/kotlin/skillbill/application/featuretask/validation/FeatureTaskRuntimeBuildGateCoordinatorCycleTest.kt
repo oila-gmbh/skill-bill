@@ -32,7 +32,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
         validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
           repairLaunches++
           ValidationGateAgentRepairResult.Completed(
             skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
@@ -61,7 +61,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
         validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
           error("repair must not launch on a clean discovery run")
         },
       ),
@@ -87,7 +87,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
         validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
         changedPaths = listOf("skills/bill-feature/content.md"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
           error("repair must not launch when validation gate is absent")
         },
       ),
@@ -113,7 +113,7 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
         validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
           repairLaunches++
           ValidationGateAgentRepairResult.Completed(
             skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
@@ -130,6 +130,39 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
     assertTrue(blocked.reason.contains("recorded for the operator"))
     assertEquals("compile", blocked.remainingFindings?.findings?.single()?.ruleOrTestId)
     assertEquals(maxTurns, recorded.last().repairsUsed)
+  }
+
+  @Test
+  fun `build gate schedules triage for sole unparseable_gate_failure`() {
+    val triageLaunches = java.util.concurrent.atomic.AtomicInteger(0)
+    val repairLaunches = java.util.concurrent.atomic.AtomicInteger(0)
+    val runner = ScriptedGateRunner(
+      listOf(failedEmptyFindings("unparseable blob"), passed(forced = true)),
+    )
+    val recorded = mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress>()
+    val progress = RecordingProgressStore(recorded, null)
+    buildCoordinator(declaredResolver(declarationWithBuild()), runner, progress).execute(
+      ValidationGateCycleRequest(
+        repoRoot = validationGateTestRepoRoot,
+        request = minimalRequest(),
+        validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentTriageLauncher = skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher {
+          triageLaunches.incrementAndGet()
+          skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Empty
+        },
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _, _ ->
+          repairLaunches.incrementAndGet()
+          ValidationGateAgentRepairResult.Completed(
+            skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
+          )
+        },
+      ),
+    )
+    assertEquals(1, triageLaunches.get())
+    assertEquals(1, repairLaunches.get())
+    assertEquals(2, runner.calls)
   }
 
   private fun declarationWithBuild() = validationGateTestDeclaration.copy(
