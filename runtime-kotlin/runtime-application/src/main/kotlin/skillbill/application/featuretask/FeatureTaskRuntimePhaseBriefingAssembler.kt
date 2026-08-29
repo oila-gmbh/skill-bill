@@ -196,10 +196,10 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
   ): String {
     // Framing = the briefing with empty projection bodies. The bodies themselves were already
     // budget-checked by the validator, so only the framing needs its own ceiling. The resolved
-    // repository checkpoint renders here too and is bounded by owned-path count, not bytes, so an
-    // audit whose uncommitted tree owns the whole feature can overflow the ceiling with the count cap
-    // still satisfied. A bare require() would throw IllegalArgumentException past the launch handler
-    // that already persisted STATUS_RUNNING and wedge the row; a typed error is caught there instead.
+    // repository checkpoint renders here too; an audit whose uncommitted tree owns a large feature
+    // can overflow that byte ceiling. A bare require() would throw IllegalArgumentException past the
+    // launch handler that already persisted STATUS_RUNNING and wedge the row; a typed error is
+    // caught there instead.
     val framingBytes = renderBriefing(handoff, emptyEnvelope(envelope))
       .toByteArray(StandardCharsets.UTF_8).size
     if (framingBytes > FEATURE_TASK_RUNTIME_PHASE_BRIEFING_PAYLOAD_BYTE_CEILING) {
