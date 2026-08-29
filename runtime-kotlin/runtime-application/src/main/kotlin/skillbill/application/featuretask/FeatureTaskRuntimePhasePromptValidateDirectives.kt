@@ -18,25 +18,16 @@ private const val VALIDATE_REPAIR_FORBIDDEN_EXTRAS: String =
     "`./gradlew check`, `check " + "--" + "continue`, or the pack collect_all_full_gate_command. Those are not " +
     "this repair turn. "
 
-internal const val VALIDATE_REPAIR_SPOTLESS_PREFLIGHT: String =
-  "First action every repair turn: run `./gradlew spotlessApply` once at the Gradle project root " +
-    "(project-wide — never `:module:spotlessApply`) before any other edit or check. It is fast and clears " +
-    "format findings that may be hidden inside bundled gate output. "
-
-internal const val VALIDATE_REPAIR_CHECKLIST: String =
-  "Before editing, copy the open findings below into a numbered free-form checklist (file, rule, " +
-    "one-line fix intent). Work the checklist in order. After each item — or a batch that shares one root " +
-    "cause — run only the narrowest allowed proof (spotlessApply already ran once at turn start; then " +
-    "targeted `:module:detekt`, `ktlintCheck`, `compileKotlin`, or `test` as appropriate). Do not start the " +
-    "next checklist item until the current one passes its targeted check. Detekt threshold hits " +
-    "(TooManyFunctions, CyclomaticComplexMethod, LongMethod) need structural refactors — extract helpers or " +
-    "move code to a sibling file; do not add @Suppress. "
-
-internal const val VALIDATE_REPAIR_ALLOWED_TASKS: String =
-  VALIDATE_REPAIR_SPOTLESS_PREFLIGHT +
-    VALIDATE_REPAIR_CHECKLIST +
-    "You may also run targeted `test`, `compileKotlin`, `detekt`, and `ktlintCheck` while repairing when " +
-    "those tasks are part of the routed pack checker. "
+internal const val VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF: String =
+  "Before editing, copy the open findings into a numbered free-form checklist (file, rule, one-line " +
+    "fix intent). Fix every checklist item in this session (shared root causes may collapse several into " +
+    "one change). Do not run any Gradle or other proof command while repairing — no `spotlessApply`, " +
+    "`detekt`, `ktlintCheck`, `compileKotlin`, `test`, module-scoped variants, or rediscovery checks " +
+    "between findings. The only allowed verify is the single collect-all confirmation the phase owns " +
+    "(runtime-owned repair: stop and let the runtime re-run the pack gate; agent-run fallback: one " +
+    "bill-code-check confirmation after the full set is fixed). Detekt threshold hits " +
+    "(TooManyFunctions, CyclomaticComplexMethod, LongMethod) need structural refactors — extract " +
+    "helpers or move code to a sibling file; do not add @Suppress. "
 
 internal fun validateRepairPhaseTask(): String =
   "You are the only validate repair agent for this step — do not spawn delegated subagents. The runtime " +
@@ -44,7 +35,7 @@ internal fun validateRepairPhaseTask(): String =
     "give you up to three repair turns against whatever remains; each turn is another session of this same " +
     "agent. Fix every listed finding in this same session (shared root causes may collapse several into one " +
     "change). $VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
-    VALIDATE_REPAIR_ALLOWED_TASKS +
+    VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF +
     "Do not re-run the full gate or bill-code-check to rediscover " +
     "or confirm findings — after you stop, the runtime re-runs the pack gate and mints the receipt. Never " +
     "silence findings with annotations, baselines, disabled rules, weakened configuration, or skipped " +
@@ -80,8 +71,8 @@ internal fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared:
     "may give you up to three repair turns against the remaining findings; each turn is another session " +
     "of this same agent. $collectAllLine Read that output, and fix every finding in this same session. " +
     VALIDATE_PHASE_FORBIDDEN_EXTRAS +
-    "Do not rerun the full gate, bill-code-check, or a cache-bypassing full check after each individual " +
-    "finding; " + VALIDATE_REPAIR_ALLOWED_TASKS +
+    "Do not rerun the full gate, bill-code-check, a cache-bypassing full check, or any targeted Gradle " +
+    "proof after each individual finding. " + VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF +
     "When the set looks clean, run bill-code-check " +
     "once to confirm (same pack collect-all). Findings that share one root cause are one fix, not several. " +
     "Validation findings are repair work, not a reason to block the phase. Fix findings at their root " +
@@ -181,7 +172,7 @@ internal fun validationGateFindingsDirective(
       "A prior gate run parsed these items. They are the full open set for this repair turn — fix " +
         "every one in this session (shared root causes may collapse several into one change). Do not " +
         "run `skill-bill validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, " +
-        "or the pack collect_all_full_gate_command. $VALIDATE_REPAIR_ALLOWED_TASKS" +
+        "or the pack collect_all_full_gate_command. $VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF" +
         "Do not spawn delegated subagents.",
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> Pair(

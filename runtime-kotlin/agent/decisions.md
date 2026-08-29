@@ -225,11 +225,21 @@ Alternatives considered: Keep rejecting outside closers so agents learn to omit 
 
 Context: The validate agent ran AGENTS.md extras (`npx agnix --strict`, `skill-bill validate`) after Gradle was already green, then blocked on those results.
 
-Decision: Validate may run only the pack `validation_gate.collect_all_full_gate_command` (and targeted tasks that belong to that gate while repairing). The prompt names that argv and forbids repo-root checklists. `npx agnix --strict` is no longer in AGENTS.md.
+Decision: Validate may run only the pack `validation_gate.collect_all_full_gate_command` for collect-all and confirmation. The prompt names that argv and forbids repo-root checklists. `npx agnix --strict` is no longer in AGENTS.md. Mid-repair targeted Gradle proof is forbidden; see 2026-08-29.
 
 Reason: Agnix lints instruction files. It is not the Kotlin pack gate. Mixing the two made a green `./gradlew check` look blocked.
 
 Alternatives considered: Keep agnix on the maintainer list and hope the phase prompt wins (rejected: AGENTS.md is always applied).
+
+## [2026-08-29] Validate repair forbids mid-session proof commands
+
+Context: Repair prompts required spotlessApply at turn start and a targeted detekt/compile/test proof after each checklist item. Agents thrashed on short Gradle loops instead of fixing the full finding set and letting the runtime confirm.
+
+Decision: Validate repair is check → list → fix all → check again. Runtime-owned repair turns edit only; the runtime re-runs the pack gate after the agent stops. Agent-run fallback still runs collect-all once and one confirmation after the full set is fixed. No `spotlessApply`, `detekt`, `ktlintCheck`, `compileKotlin`, `test`, or other proof between findings.
+
+Reason: Per-item proof recreates the collect-all gate as a slow chat loop and burns wall-clock without shrinking the open set.
+
+Alternatives considered: Keep targeted proof as optional guidance (rejected: agents treated it as mandatory and never reached a clean confirm).
 
 ## [2026-08-20] Validate session owns collect-all and confirmation
 

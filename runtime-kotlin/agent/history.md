@@ -1,3 +1,11 @@
+## [2026-08-29] Validate repair is fix-all without mid-session proof
+Areas: runtime-kotlin/runtime-application/featuretask, skills/bill-code-check, platform-packs/{kotlin,kmp}/quality-check
+- Validate repair prompts no longer require spotlessApply at turn start or targeted detekt/compile/test proof after each checklist item.
+- Contract is collect-all → listed findings → fix every item → one confirmation (runtime re-run for runtime-owned gates; one bill-code-check confirm for agent-run fallback).
+- Pack and router Repair Window prose match that contract; decision log records the reversal of mid-repair targeted proof.
+Feature flag: N/A
+Acceptance criteria: n/a (prompt/contract fix)
+
 ## [2026-08-26] SKILL-209 — Delete dual-agent parallel review
 Areas: runtime-kotlin/{application/review,application/featuretask,application/goalrunner,application/config,cli,domain,ports,infra-fs,infra-sqlite,core}, skills/{bill-code-review,bill-code-review-parallel,bill-feature}, platform-packs/{kotlin,kmp}, docs, scripts
 - Removed the second-parent review product: skill, CLI (`code-review-parallel`, `code-review-merge`, `resolve-parallel-agent`), `--agent2`/`--model2`/`--parallel-review-agent`, and `code_review_parallel_agent` from typed config and new install writes.
