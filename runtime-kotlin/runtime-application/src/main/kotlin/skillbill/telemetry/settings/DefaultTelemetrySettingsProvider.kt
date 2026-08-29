@@ -14,6 +14,7 @@ import skillbill.telemetry.config.TelemetryConfigRuntime
 import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.telemetry.telemetryProxyUrl
+import java.nio.file.Path
 
 @Inject
 class DefaultTelemetrySettingsProvider(
@@ -60,10 +61,7 @@ private data class MutableTelemetrySettings(
   val installId: String,
 )
 
-private fun configBackedSettings(
-  configPath: java.nio.file.Path,
-  config: TelemetryConfigDocument?,
-): MutableTelemetrySettings {
+private fun configBackedSettings(configPath: Path, config: TelemetryConfigDocument?): MutableTelemetrySettings {
   if (config == null) {
     return MutableTelemetrySettings(
       level = "off",

@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
@@ -74,7 +74,7 @@ internal fun StringBuilder.appendAllowlistedRunInvariants(handoff: FeatureTaskRu
   }
   if (FeatureTaskRuntimeRunInvariantPromptField.CEREMONY_SCALING in allowlist) {
     appendLine("ceremony_scaling:")
-    FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(invariants.featureSize)
+    FeatureTaskRuntimePhaseWorkflowQueries.ceremonyScaling(invariants.featureSize)
       .toBriefingLines()
       .forEach { line -> appendLine("  $line") }
   }

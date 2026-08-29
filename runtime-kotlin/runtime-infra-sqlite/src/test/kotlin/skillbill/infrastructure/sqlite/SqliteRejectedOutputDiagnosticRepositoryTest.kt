@@ -1,12 +1,12 @@
 package skillbill.infrastructure.sqlite
 
 import skillbill.db.core.DatabaseRuntime
-import skillbill.ports.persistence.ProducerOutputEvidence
-import skillbill.ports.persistence.RejectedOutputDiagnostic
-import skillbill.ports.persistence.RejectedOutputDiagnosticRecord
-import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
-import skillbill.ports.persistence.RejectedOutputLifecycle
-import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
+import skillbill.ports.diagnostics.model.RejectedOutputLifecycle
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.time.Instant

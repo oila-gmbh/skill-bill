@@ -6,6 +6,7 @@ import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -148,7 +149,7 @@ private fun atomicWrite(target: Path, bytes: ByteArray) {
     Files.write(tmp, bytes)
     try {
       Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-    } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+    } catch (_: AtomicMoveNotSupportedException) {
       // Some filesystems (notably tmpfs/overlayfs in CI) refuse ATOMIC_MOVE; fall back to a
       // best-effort replace which is still safer than a non-staged write.
       Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING)

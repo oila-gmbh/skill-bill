@@ -27,6 +27,8 @@ import skillbill.install.staging.stageInstalledSkill
 import skillbill.install.staging.validateAgentAddonPointerNamespace
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
+import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 
 private val plannedContentHashRegex = Regex("[0-9a-f]{16}")
@@ -132,7 +134,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
 
 private fun validatePlannedStagingSource(inputs: PlannedStagingMaterialization, currentHash: String) {
   val marker = inputs.expectedStagingDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME)
-  if (java.nio.file.Files.isRegularFile(marker, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+  if (Files.isRegularFile(marker, NOFOLLOW_LINKS)) {
     requireMatchingSkillContentIdentity(
       suppliedSkillContentIdentity(inputs.resolvedSource),
       installedSkillContentIdentity(inputs.expectedStagingDir),

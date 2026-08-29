@@ -1,10 +1,11 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.nio.file.Files
 import java.nio.file.Path
@@ -114,7 +115,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
   }
 
   private fun ownershipFor(
-    current: skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity,
+    current: FeatureTaskRuntimeProcessIdentity,
     bootIdentity: String,
     processBirthToken: String = current.processBirthToken,
   ) = FeatureTaskRuntimeWorkerOwnership(

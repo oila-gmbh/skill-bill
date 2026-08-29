@@ -1,6 +1,6 @@
 package skillbill.application.updatecheck
 
-import skillbill.application.model.Semver
+import skillbill.application.updatecheck.model.Semver
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

@@ -3,8 +3,8 @@ package skillbill.application.featuretask
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RecordingLifecycleTelemetryRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceOutcome
@@ -77,7 +77,7 @@ class FeatureTaskRuntimeSharedEvidenceRecorderTest {
     )
   }
 
-  private fun recorder(lifecycle: RecordingLifecycleTelemetryRepository) = FeatureTaskRuntimePhaseRecorder(
+  private fun recorder(lifecycle: RecordingLifecycleTelemetryRepository) = featureTaskRuntimePhaseRecorder(
     RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository(), lifecycle),
     NoopWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,

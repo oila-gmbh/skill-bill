@@ -2,19 +2,20 @@ package skillbill.application
 
 import skillbill.application.work.WorkListService
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.LearningRepository
-import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.ports.persistence.ReviewRepository
-import skillbill.ports.persistence.TelemetryOutboxRepository
-import skillbill.ports.persistence.TelemetryReconciliationRepository
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkListRepository
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.WorkItem
-import skillbill.ports.persistence.model.WorkItemKind
-import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
+import skillbill.ports.work.WorkListRepository
+import skillbill.ports.work.model.WorkItem
+import skillbill.ports.work.model.WorkItemKind
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.test.Test
@@ -144,7 +145,7 @@ private class WorkListDatabase(
       get() = error("Not exercised by WorkListServiceTest.")
     override val telemetryOutbox: TelemetryOutboxRepository
       get() = error("Not exercised by WorkListServiceTest.")
-    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 

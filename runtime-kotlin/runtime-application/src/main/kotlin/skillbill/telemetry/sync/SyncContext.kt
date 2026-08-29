@@ -1,6 +1,6 @@
 package skillbill.telemetry.sync
 
-import skillbill.application.model.TelemetryStatusResult
+import skillbill.application.telemetry.model.TelemetryStatusResult
 import skillbill.telemetry.model.SyncResult
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Path

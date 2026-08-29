@@ -1,9 +1,9 @@
 package skillbill.application.work
 
-import skillbill.application.model.IdeStatusCandidate
-import skillbill.application.model.IdeStatusFreshness
-import skillbill.application.model.IdeStatusLifecycleState
-import skillbill.application.model.IdeStatusSelectionTier
+import skillbill.application.idestatus.model.IdeStatusCandidate
+import skillbill.application.idestatus.model.IdeStatusFreshness
+import skillbill.application.idestatus.model.IdeStatusLifecycleState
+import skillbill.application.idestatus.model.IdeStatusSelectionTier
 import java.time.Duration
 import java.time.Instant
 
@@ -108,6 +108,6 @@ object IdeStatusSelectionPolicy {
     "blocked" -> IdeStatusLifecycleState.BLOCKED
     "failed" -> IdeStatusLifecycleState.FAILED
     "completed", "abandoned", "complete", "skipped" -> IdeStatusLifecycleState.TERMINAL
-    else -> null
+    else -> null // untrusted durable workflow status wire value
   }
 }

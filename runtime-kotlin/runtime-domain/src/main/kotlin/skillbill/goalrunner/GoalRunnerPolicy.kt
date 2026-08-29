@@ -9,12 +9,13 @@ import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSubtaskAction
 import skillbill.goalrunner.model.GoalRunnerSubtaskDecision
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskSchedulingResult
-import skillbill.workflow.model.DecompositionDependency
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.DecompositionDependency
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 object GoalRunnerQualityGateSelectionResolver {
@@ -99,15 +100,16 @@ object GoalRunnerWorkerSubtaskScheduler {
             GoalRunnerWorkerSubtaskRequestOutcome.Accepted(outcome.request, subtask)
           }
         }
-        else -> outcome
+        is GoalRunnerWorkerSubtaskRequestOutcome.Accepted,
+        is GoalRunnerWorkerSubtaskRequestOutcome.Rejected,
+        is GoalRunnerWorkerSubtaskRequestOutcome.RequiresOperatorConfirmation,
+        -> outcome
       }
     }
     return GoalRunnerWorkerSubtaskSchedulingResult(nextManifest.withParentStatusForWorkerRequests(), scheduledOutcomes)
   }
 
-  private fun skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest.toSubtask(
-    manifest: DecompositionManifest,
-  ): DecompositionSubtask {
+  private fun GoalRunnerWorkerSubtaskRequest.toSubtask(manifest: DecompositionManifest): DecompositionSubtask {
     val id = manifest.nextSubtaskId()
     val dependencies = normalizedDependencies(manifest).map(::DecompositionDependency)
     return DecompositionSubtask(
@@ -119,9 +121,7 @@ object GoalRunnerWorkerSubtaskScheduler {
     )
   }
 
-  private fun skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest.normalizedDependencies(
-    manifest: DecompositionManifest,
-  ): List<Int> {
+  private fun GoalRunnerWorkerSubtaskRequest.normalizedDependencies(manifest: DecompositionManifest): List<Int> {
     val requestedDependencies = dependsOnSubtaskIds.ifEmpty {
       manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 }?.let(::listOf).orEmpty()
     }

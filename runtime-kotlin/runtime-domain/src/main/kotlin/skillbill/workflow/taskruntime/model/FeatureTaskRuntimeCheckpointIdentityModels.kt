@@ -5,7 +5,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.model.appendBoundedHistoryBySequence
+import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import java.security.MessageDigest
 
 /**

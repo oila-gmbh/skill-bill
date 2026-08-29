@@ -19,15 +19,16 @@ import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentProvenance
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.plan.model.ReviewLaunchLane
-import skillbill.workflow.DecompositionManifestCodec
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.model.DecompositionManifestRepairEvidence
-import skillbill.workflow.model.DecompositionManifestRepairOperation
-import skillbill.workflow.model.DecompositionManifestValidationFormat
-import skillbill.workflow.model.DecompositionManifestValidationResult
-import skillbill.workflow.model.DecompositionManifestValidationSourceLocation
+import skillbill.workflow.decomposition.DecompositionManifestCodec
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence
+import skillbill.workflow.decomposition.model.DecompositionManifestRepairOperation
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationFormat
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationSourceLocation
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -502,6 +503,6 @@ private fun featureRepo(includeGlob: Boolean, includeManifest: Boolean): Path {
 }
 
 private fun sha256File(path: Path): String {
-  val digest = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path))
+  val digest = MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path))
   return digest.joinToString("") { "%02x".format(it) }
 }

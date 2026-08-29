@@ -8,6 +8,7 @@ import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
+import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallPlanWireValidator
@@ -437,7 +438,7 @@ class InstallPlanPolicyTest {
   }
 
   private fun policyInput(
-    request: skillbill.install.model.InstallPlanRequest = request(),
+    request: InstallPlanRequest = request(),
     baseSkills: List<InstallPlanSkill> = listOf(baseSkill("bill-code-review")),
     platformPacks: List<InstallPlatformPackSnapshot> = listOf(platformPack()),
     detectedAgentTargets: List<InstallAgentTarget> = emptyList(),
@@ -468,7 +469,7 @@ class InstallPlanPolicyTest {
       register = true,
       runtimeMcpBin = path("/runtime-mcp"),
     ),
-  ): skillbill.install.model.InstallPlanRequest = skillbill.install.model.InstallPlanRequest(
+  ): InstallPlanRequest = InstallPlanRequest(
     repoRoot = path("/repo"),
     home = path("/home"),
     agentSelection = agentSelection,

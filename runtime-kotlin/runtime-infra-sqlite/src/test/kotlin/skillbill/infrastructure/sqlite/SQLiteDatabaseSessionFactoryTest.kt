@@ -3,10 +3,10 @@ package skillbill.infrastructure.sqlite
 import skillbill.db.core.DatabaseRuntime
 import skillbill.error.DatabaseAccessError
 import skillbill.model.EnvironmentContext
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.DriverManager

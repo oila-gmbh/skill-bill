@@ -1,8 +1,9 @@
 package skillbill.mcp.workflow
 
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.mcp.core.McpRuntimeContext
+import skillbill.mcp.core.McpWorkflowOpenArgs
 import skillbill.mcp.core.McpWorkflowRuntime
 import skillbill.mcp.core.int
 import skillbill.mcp.core.optionalInt
@@ -16,13 +17,15 @@ internal fun workflowOpen(
   arguments: Map<String, Any?>,
   context: McpRuntimeContext,
 ): Map<String, Any?> = McpWorkflowRuntime.open(
-  kind = kind,
-  sessionId = arguments.string("session_id"),
-  currentStepId = arguments.optionalString("current_step_id"),
-  issueKey = arguments.optionalString("issue_key"),
-  repositoryIdentity = arguments.optionalString("repository_identity"),
-  governedSpecPath = arguments.optionalString("governed_spec_path"),
-  context = context,
+  McpWorkflowOpenArgs(
+    kind = kind,
+    sessionId = arguments.string("session_id"),
+    currentStepId = arguments.optionalString("current_step_id"),
+    issueKey = arguments.optionalString("issue_key"),
+    repositoryIdentity = arguments.optionalString("repository_identity"),
+    governedSpecPath = arguments.optionalString("governed_spec_path"),
+    context = context,
+  ),
 )
 
 internal fun workflowUpdate(

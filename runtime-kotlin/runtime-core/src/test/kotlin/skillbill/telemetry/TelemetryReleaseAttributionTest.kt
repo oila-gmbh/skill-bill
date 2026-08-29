@@ -5,6 +5,7 @@ import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.http.telemetryProxyBatchPayload
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
+import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -56,7 +57,7 @@ class TelemetryReleaseAttributionTest {
     }
   }
 
-  private fun withOutboxDatabase(block: (java.sql.Connection) -> Unit) {
+  private fun withOutboxDatabase(block: (Connection) -> Unit) {
     val dbPath = Files.createTempDirectory("telemetry-release-attribution").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use(block)
   }

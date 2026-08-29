@@ -3,6 +3,7 @@ package skillbill.application.goalrunner
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.text.Utf8Text
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -393,7 +394,7 @@ class GoalSubtaskReviewSummaryReducerTest {
     assertEquals(1, rejected.size)
     assertEquals(
       GoalSubtaskReviewSummaryReducer.REJECTED_VERIFICATION_REASON_MAX_UTF8_BYTES,
-      skillbill.text.Utf8Text.utf8Size(requireNotNull(rejected.single().verificationReason)),
+      Utf8Text.utf8Size(requireNotNull(rejected.single().verificationReason)),
     )
     assertEquals(1, truncationRecords.size)
     assertTrue(truncationRecords.single().contains("F-001"))

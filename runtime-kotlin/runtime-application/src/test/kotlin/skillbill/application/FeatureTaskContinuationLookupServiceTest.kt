@@ -4,21 +4,27 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
+import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.openFeatureTask
 import skillbill.application.workflow.toRecord
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -114,10 +120,12 @@ class FeatureTaskContinuationLookupServiceTest {
 
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
       fixture.service.openFeatureTask(
-        kind = WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = "not-a-repository",
-        governedSpecPath = ".feature-specs/SKILL-120-continuation/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = "not-a-repository",
+          governedSpecPath = ".feature-specs/SKILL-120-continuation/spec.md",
+        ),
       )
     }
 
@@ -128,7 +136,7 @@ class FeatureTaskContinuationLookupServiceTest {
   fun `identity-less matching feature-task returns needs-identity-repair instead of crashing lookup`() {
     val fixture = fixture()
     assertIs<WorkflowOpenResult.Ok>(
-      fixture.service.open(WorkflowFamilyKind.TASK_RUNTIME, issueKey = "SKILL-120"),
+      fixture.service.open(WorkflowServiceOpenArgs(kind = WorkflowFamilyKind.TASK_RUNTIME, issueKey = "SKILL-120")),
     )
 
     val repair = assertIs<FeatureTaskContinuationLookupResult.NeedsIdentityRepair>(
@@ -186,11 +194,13 @@ class FeatureTaskContinuationLookupServiceTest {
     val fixture = fixture()
     val opened = assertIs<WorkflowOpenResult.Ok>(
       fixture.service.openFeatureTask(
-        kind = WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = REPOSITORY_A,
-        governedSpecPath = ".feature-specs/SKILL-120-goal/spec_subtask_1.md",
-        routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = REPOSITORY_A,
+          governedSpecPath = ".feature-specs/SKILL-120-goal/spec_subtask_1.md",
+          routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+        ),
       ),
     )
 
@@ -283,11 +293,13 @@ class FeatureTaskContinuationLookupServiceTest {
     fixture.saveGoalParent(workflowStatus = "paused", manifestStatus = "in_progress")
     assertIs<WorkflowOpenResult.Ok>(
       fixture.service.openFeatureTask(
-        kind = WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = REPOSITORY_B,
-        governedSpecPath = ".feature-specs/SKILL-120-goal/spec_subtask_1.md",
-        routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = REPOSITORY_B,
+          governedSpecPath = ".feature-specs/SKILL-120-goal/spec_subtask_1.md",
+          routeScope = FeatureTaskRouteScope.GOAL_CHILD,
+        ),
       ),
     )
 
@@ -342,7 +354,7 @@ class FeatureTaskContinuationLookupServiceTest {
           ),
         ),
       )
-      val definition = skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.definition
+      val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
       val engine = WorkflowEngine(testWorkflowSnapshotValidator)
       val opened = engine.openRecord(definition, "wfl-goal-parent", "ftr-goal", "preplan")
       states.saveFeatureTaskRuntimeWorkflow(
@@ -389,7 +401,7 @@ class FeatureTaskContinuationLookupServiceTest {
           encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
       )
       states.saveFeatureTaskWorkflow(
-        skillbill.ports.persistence.model.WorkflowStateRecord(
+        WorkflowStateRecord(
           workflowId = "wfl-prose-goal-parent",
           sessionId = "fis-prose-goal",
           workflowName = "bill-feature-task",
@@ -399,7 +411,7 @@ class FeatureTaskContinuationLookupServiceTest {
           currentStepId = "assess",
           stepsJson =
           """[{"step_id":"assess","status":"completed"},{"step_id":"create_branch","status":"pending"}]""",
-          artifactsJson = skillbill.contracts.JsonSupport.mapToJsonString(artifacts),
+          artifactsJson = JsonSupport.mapToJsonString(artifacts),
           startedAt = null,
           updatedAt = null,
           finishedAt = null,
@@ -454,10 +466,12 @@ class FeatureTaskContinuationLookupServiceTest {
 
     fun open(repositoryIdentity: String): WorkflowOpenResult.Ok = assertIs(
       service.openFeatureTask(
-        kind = WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = repositoryIdentity,
-        governedSpecPath = ".feature-specs/SKILL-120-continuation/spec.md",
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = repositoryIdentity,
+          governedSpecPath = ".feature-specs/SKILL-120-continuation/spec.md",
+        ),
       ),
     )
   }

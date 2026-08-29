@@ -35,6 +35,7 @@ import skillbill.review.context.model.ReviewCommitLaneDisposition
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
+import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewExpansionRecord
@@ -477,7 +478,7 @@ class ReviewPreparationServiceTest {
         expansion(assignment.digest, id = "exp-2", sequence = 1),
       ),
     )
-    val failure = assertFailsWith<skillbill.review.context.model.ReviewContextBudgetExceededException> {
+    val failure = assertFailsWith<ReviewContextBudgetExceededException> {
       bounded.validateAgainstPacket(prepared.packet, listOf(overBound) + prepared.assignments.drop(1))
     }
     assertEquals("assignment_expansions", failure.outcome.budgetKind)
@@ -495,7 +496,7 @@ class ReviewPreparationServiceTest {
       RecordingValidator(),
       ReviewContextBudgetPolicy(maxParentPacketBytes = observedBytes - 1, maxLaneLaunchBytes = observedBytes - 1),
     )
-    val failure = assertFailsWith<skillbill.review.context.model.ReviewContextBudgetExceededException> {
+    val failure = assertFailsWith<ReviewContextBudgetExceededException> {
       bounded.prepare(request())
     }
     assertEquals("parent_packet_bytes", failure.outcome.budgetKind)

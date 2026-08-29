@@ -1,12 +1,12 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.ContinuationRead
-import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimePreparation
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.ValidationDepth
+import skillbill.application.featuretask.model.ContinuationRead
+import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection

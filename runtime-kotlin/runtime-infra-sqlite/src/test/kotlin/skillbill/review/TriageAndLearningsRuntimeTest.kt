@@ -19,6 +19,7 @@ import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.tempDbConnection
+import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -155,17 +156,17 @@ class LearningPromotionTest {
     }
   }
 
-  private fun learningCount(connection: java.sql.Connection): Int = SQLiteLearningStore.countLearnings(connection)
+  private fun learningCount(connection: Connection): Int = SQLiteLearningStore.countLearnings(connection)
 }
 
-private fun importSampleReview(connection: java.sql.Connection): ImportedReview {
+private fun importSampleReview(connection: Connection): ImportedReview {
   val review = ReviewParser.parseReview(SAMPLE_REVIEW.trimIndent())
   ReviewRuntime.saveImportedReview(connection, review, sourcePath = null)
   return review
 }
 
 private fun rejectFinding(
-  connection: java.sql.Connection,
+  connection: Connection,
   reviewRunId: String,
   findingId: String,
   note: String,
@@ -182,7 +183,7 @@ private fun rejectFinding(
 )
 
 private fun addLearning(
-  connection: java.sql.Connection,
+  connection: Connection,
   reviewRunId: String,
   scope: LearningScope,
   scopeKey: String,
@@ -208,7 +209,7 @@ private fun addLearning(
 )
 
 private fun saveCachedLearnings(
-  connection: java.sql.Connection,
+  connection: Connection,
   reviewSessionId: String,
   payloadEntries: List<Map<String, Any?>>,
 ) {

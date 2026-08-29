@@ -1,16 +1,17 @@
 package skillbill.application
 
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
-import skillbill.application.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.model.DecompositionManifestWriteRequest
-import skillbill.application.model.DecompositionManifestWriteResult
+import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.workflow.model.DecompositionManifestWriteRequest
+import skillbill.application.workflow.model.DecompositionManifestWriteResult
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallPlanWireValidator
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
@@ -73,8 +74,7 @@ internal object TestDecompositionManifestFileStore : DecompositionManifestFileSt
     }
   }
 
-  override fun encodeManifestYaml(wireMap: Map<String, Any?>): String =
-    com.fasterxml.jackson.dataformat.yaml.YAMLMapper().writeValueAsString(wireMap)
+  override fun encodeManifestYaml(wireMap: Map<String, Any?>): String = YAMLMapper().writeValueAsString(wireMap)
 }
 
 /**
@@ -92,9 +92,8 @@ internal val testDecompositionManifestValidator: DecompositionManifestValidator 
     override fun validate(manifest: Map<String, Any?>, sourceLabel: String) = Unit
 
     @Suppress("UNCHECKED_CAST")
-    override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-      com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
-        .readValue(yamlText, Map::class.java) as Map<String, Any?>
+    override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> = YAMLMapper()
+      .readValue(yamlText, Map::class.java) as Map<String, Any?>
   }
 
 /**

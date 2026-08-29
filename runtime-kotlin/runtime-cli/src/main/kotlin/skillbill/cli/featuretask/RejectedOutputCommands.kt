@@ -5,14 +5,15 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.RejectedOutputDiagnosticService
+import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.RejectedOutputDiagnostic
-import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
-import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
-import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import java.io.OutputStream
 
 private const val CONTROL_CHARACTER_LIMIT: Int = 0x20
@@ -122,7 +123,7 @@ class RejectedOutputCleanupCliCommand(
   }
 }
 
-private fun skillbill.ports.persistence.UnitOfWork.diagnosticService(
+private fun UnitOfWork.diagnosticService(
   metadataValidator: RejectedOutputDiagnosticMetadataValidator,
 ): RejectedOutputDiagnosticService = RejectedOutputDiagnosticService(
   rejectedOutputDiagnostics ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable"),

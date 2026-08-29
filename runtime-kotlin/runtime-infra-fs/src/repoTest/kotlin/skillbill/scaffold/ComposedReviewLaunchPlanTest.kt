@@ -6,7 +6,7 @@ import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.HARBOR_ADDON_SLUG
 import skillbill.testing.HARBOR_ARCHITECTURE_WORKER
 import skillbill.testing.HARBOR_ENTRYPOINT_MARKER

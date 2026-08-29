@@ -1,12 +1,12 @@
 package skillbill.mcp.lifecycle
 
-import skillbill.application.model.FeatureVerifyFinishedRequest
-import skillbill.application.model.FeatureVerifyStartedRequest
-import skillbill.application.model.PrDescriptionGeneratedRequest
-import skillbill.application.model.QualityCheckFinishedRequest
-import skillbill.application.model.QualityCheckStartedRequest
-import skillbill.mcp.core.McpRuntime
+import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
+import skillbill.application.telemetry.model.FeatureVerifyStartedRequest
+import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
+import skillbill.application.telemetry.model.QualityCheckFinishedRequest
+import skillbill.application.telemetry.model.QualityCheckStartedRequest
 import skillbill.mcp.core.McpRuntimeContext
+import skillbill.mcp.core.McpRuntimeLifecycle
 import skillbill.mcp.core.boolean
 import skillbill.mcp.core.int
 import skillbill.mcp.core.optionalString
@@ -14,7 +14,7 @@ import skillbill.mcp.core.string
 import skillbill.mcp.core.stringList
 
 internal fun qualityCheckStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
-  return McpRuntime.qualityCheckStarted(
+  return McpRuntimeLifecycle.qualityCheckStarted(
     QualityCheckStartedRequest(
       routedSkill = arguments.string("routed_skill"),
       detectedStack = arguments.string("detected_stack"),
@@ -29,7 +29,7 @@ internal fun qualityCheckStarted(arguments: Map<String, Any?>, context: McpRunti
 }
 
 internal fun qualityCheckFinished(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
-  return McpRuntime.qualityCheckFinished(
+  return McpRuntimeLifecycle.qualityCheckFinished(
     QualityCheckFinishedRequest(
       finalFailureCount = arguments.int("final_failure_count", 0),
       iterations = arguments.int("iterations", 0),
@@ -51,7 +51,7 @@ internal fun qualityCheckFinished(arguments: Map<String, Any?>, context: McpRunt
 }
 
 internal fun featureVerifyStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.featureVerifyStarted(
+  McpRuntimeLifecycle.featureVerifyStarted(
     FeatureVerifyStartedRequest(
       acceptanceCriteriaCount = arguments.int("acceptance_criteria_count", 0),
       rolloutRelevant = arguments.boolean("rollout_relevant"),
@@ -62,7 +62,7 @@ internal fun featureVerifyStarted(arguments: Map<String, Any?>, context: McpRunt
   )
 
 internal fun featureVerifyFinished(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.featureVerifyFinished(
+  McpRuntimeLifecycle.featureVerifyFinished(
     FeatureVerifyFinishedRequest(
       featureFlagAuditPerformed = arguments.boolean("feature_flag_audit_performed"),
       reviewIterations = arguments.int("review_iterations", 0),
@@ -82,7 +82,7 @@ internal fun featureVerifyFinished(arguments: Map<String, Any?>, context: McpRun
   )
 
 internal fun prDescriptionGenerated(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.prDescriptionGenerated(
+  McpRuntimeLifecycle.prDescriptionGenerated(
     PrDescriptionGeneratedRequest(
       commitCount = arguments.int("commit_count", 0),
       filesChangedCount = arguments.int("files_changed_count", 0),

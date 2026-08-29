@@ -1,8 +1,9 @@
 package skillbill.db.workflow
 
 import skillbill.db.core.DbConstants
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.time.Instant
@@ -150,7 +151,7 @@ internal fun Connection.terminalizeLegacyProseFeatureTaskWorkflowRow(row: Workfl
     parameters.text(row.workflowId)
     val updated = statement.executeUpdate()
     if (updated != 1) {
-      throw skillbill.error.InvalidWorkflowStateSchemaError(
+      throw InvalidWorkflowStateSchemaError(
         "Legacy prose feature-task workflow '${row.workflowId}' was not terminalized " +
           "(missing row or mode is not prose).",
       )

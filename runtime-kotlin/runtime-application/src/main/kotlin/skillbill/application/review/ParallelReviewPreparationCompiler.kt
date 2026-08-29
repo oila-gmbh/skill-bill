@@ -1,6 +1,8 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.ReviewPreparationRequest
+import skillbill.application.review.model.ReviewPreparationResult
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
@@ -18,11 +20,14 @@ import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
+import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
+import skillbill.review.context.model.ReviewRuleReference
 import skillbill.review.context.model.SpecIntentAbsenceReason
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.plan.ReviewCommitLaneRoutingPolicy
@@ -189,15 +194,14 @@ internal object ParallelReviewPreparationCompiler {
       },
       guidance = object : ReviewGuidancePort {
         override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
-          emptyList<skillbill.review.context.model.ReviewRuleReference>()
+          emptyList<ReviewRuleReference>()
       },
       learnings = object : ReviewLearningsPort {
         override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
-          emptyList<skillbill.review.context.model.ReviewLearningsReference>()
+          emptyList<ReviewLearningsReference>()
       },
       buildTestFacts = object : ReviewBuildTestFactsPort {
-        override fun resolveBuildTestFacts(scope: ReviewScopeFacts) =
-          emptyList<skillbill.review.context.model.ReviewBuildTestFact>()
+        override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = emptyList<ReviewBuildTestFact>()
       },
       laneSelection = object : ReviewLaneSelectionPort {
         override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = selection
@@ -207,7 +211,7 @@ internal object ParallelReviewPreparationCompiler {
 
   private fun launchRequests(
     input: ParallelReviewPreparationInput,
-    preparation: skillbill.application.review.model.ReviewPreparationResult,
+    preparation: ReviewPreparationResult,
     routes: List<SpecialistRoute>,
     budget: ReviewContextBudgetPolicy,
     specialistContract: String,
@@ -314,7 +318,7 @@ internal data class ParallelReviewPreparationInput(
   val reviewRunId: String? = null,
   val baseRevision: String,
   val headRevision: String,
-  val prelaunchExpansions: List<skillbill.application.model.ReviewPrelaunchExpansion> = emptyList(),
+  val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
   val specIntentResolution: SpecIntentResolution =
     SpecIntentResolution.None(

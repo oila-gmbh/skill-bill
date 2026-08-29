@@ -4,10 +4,10 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
 import skillbill.error.GoalVerificationBoundaryCapExceededError
-import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
-import skillbill.ports.goalrunner.model.GoalPlanningBoundaryHeading
-import skillbill.ports.goalrunner.model.GoalPlanningContext
-import skillbill.ports.goalrunner.model.GoalVerificationBoundaryDiscovery
+import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
+import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
+import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
 import java.nio.file.Path
 import java.time.LocalDate
 import java.time.ZoneOffset

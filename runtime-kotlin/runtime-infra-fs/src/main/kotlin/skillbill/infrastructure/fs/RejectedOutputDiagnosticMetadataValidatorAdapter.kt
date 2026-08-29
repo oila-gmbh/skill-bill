@@ -2,8 +2,8 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.infrastructure.fs.contracts.workflow.RejectedOutputDiagnosticSchemaValidator
-import skillbill.ports.persistence.RejectedOutputDiagnostic
-import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
 
 @Inject
 class RejectedOutputDiagnosticMetadataValidatorAdapter : RejectedOutputDiagnosticMetadataValidator {

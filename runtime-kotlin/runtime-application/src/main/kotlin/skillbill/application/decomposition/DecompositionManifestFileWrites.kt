@@ -1,15 +1,15 @@
 package skillbill.application.decomposition
 
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.workflow.DecompositionManifestCodec
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionManifestRepairEvidence
-import skillbill.workflow.model.DecompositionManifestValidationFailureCode
-import skillbill.workflow.model.DecompositionManifestValidationResult
-import skillbill.workflow.model.requireAccepted
-import skillbill.workflow.toWireMap
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.workflow.decomposition.DecompositionManifestCodec
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationFailureCode
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
+import skillbill.workflow.decomposition.model.requireAccepted
+import skillbill.workflow.decomposition.toWireMap
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 

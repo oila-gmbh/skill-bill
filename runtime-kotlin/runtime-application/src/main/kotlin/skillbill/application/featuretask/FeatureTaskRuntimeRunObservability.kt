@@ -1,8 +1,8 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
-import skillbill.application.model.FeatureTaskRuntimeRunEvent
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.config.model.PhaseModelDirective
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics

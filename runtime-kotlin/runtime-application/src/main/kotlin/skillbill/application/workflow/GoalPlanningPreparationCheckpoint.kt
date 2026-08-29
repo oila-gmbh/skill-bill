@@ -1,24 +1,25 @@
 package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.GoalPlanningPreparationValidator
 import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.requireValidPlanningProjection
-import skillbill.application.featuretask.sha256HexUtf8
+import skillbill.application.goalrunner.planning.GoalPlanningPreparationValidator
+import skillbill.application.goalrunner.planning.sha256HexUtf8
+import skillbill.contracts.JsonSupport
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.model.GoalPlanningContractProvenance
-import skillbill.ports.persistence.model.GoalPlanningIdentity
-import skillbill.ports.persistence.model.GoalPlanningPreparationProgress
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
-import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
-import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
-import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningIdentity
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationProgress
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
+import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
@@ -179,9 +180,9 @@ class GoalPlanningPreparationCheckpoint(
             "stored plan provenance differs from the governing shared preplan",
           )
         }
-        val parsed = skillbill.contracts.JsonSupport.parseObjectOrNull(plan.planPayload)
-          ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
-          ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+        val parsed = JsonSupport.parseObjectOrNull(plan.planPayload)
+          ?.let(JsonSupport::jsonElementToValue)
+          ?.let(JsonSupport::anyToStringAnyMap)
         val status = parsed?.get("status")?.toString()
         val produced = parsed?.get("produced_outputs") as? Map<*, *>
         if (status != "completed" || produced?.isEmpty() != false) {
@@ -418,13 +419,13 @@ private fun GoalSubtaskPlanCheckpoint.toEnvelopeMap(): Map<String, Any?> = linke
   "repair_evidence" to repairEvidence?.toArtifactMap(),
 ).filterValues { it != null }
 
-private fun skillbill.ports.persistence.model.GoalPlanningIdentity.asMap() = linkedMapOf(
+private fun GoalPlanningIdentity.asMap() = linkedMapOf(
   "parent_goal_workflow_id" to parentGoalWorkflowId,
   "normalized_issue_key" to normalizedIssueKey,
   "repository_identity" to repositoryIdentity,
 )
 
-private fun skillbill.ports.persistence.model.GoalPlanningContractProvenance.asMap() = linkedMapOf(
+private fun GoalPlanningContractProvenance.asMap() = linkedMapOf(
   "parent_spec_hash" to parentSpecHash,
   "decomposition_manifest_hash" to decompositionManifestHash,
   "planning_contract_id" to planningContractId,

@@ -3,7 +3,7 @@ package skillbill.infrastructure.sqlite.review
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.db.telemetry.LifecycleTelemetryStore
-import skillbill.ports.persistence.model.ReviewAccountingRecord
+import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewRunLane

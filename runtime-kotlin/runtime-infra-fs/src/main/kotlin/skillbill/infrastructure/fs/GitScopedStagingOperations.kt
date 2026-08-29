@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.ScopedStagingGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Files
 import java.nio.file.Path
 

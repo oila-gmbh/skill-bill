@@ -1,4 +1,3 @@
-import org.gradle.api.tasks.testing.Test
 import java.io.File
 
 plugins {
@@ -62,11 +61,5 @@ sourceSets.named("main") {
 listOf("processResources", "processTestResources", "sourcesJar").forEach { consumer ->
   tasks.matching { task -> task.name == consumer }.configureEach {
     dependsOn(copyGoalPlanningDiscoveryExclusions, copyGoalVerificationBoundaryCaps)
-  }
-}
-
-tasks.withType<Test>().configureEach {
-  if (project.hasProperty("update-snapshots")) {
-    systemProperty("update-snapshots", "true")
   }
 }

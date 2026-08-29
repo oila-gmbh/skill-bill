@@ -27,6 +27,7 @@ import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
+import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -417,7 +418,7 @@ class TelemetryReliabilityContractTest {
 
   private fun emittedEnvelope(
     eventName: String,
-    emit: (LifecycleTelemetryStore, java.sql.Connection) -> Unit,
+    emit: (LifecycleTelemetryStore, Connection) -> Unit,
   ): LinkedHashMap<String, Any?> {
     val dbPath = Files.createTempDirectory("telemetry-reliability-emitter").resolve("metrics.db")
     return DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
@@ -469,7 +470,7 @@ class TelemetryReliabilityContractTest {
     mode = "runtime",
   )
 
-  private fun ageSession(connection: java.sql.Connection, tableName: String, sessionId: String, seconds: Int) {
+  private fun ageSession(connection: Connection, tableName: String, sessionId: String, seconds: Int) {
     connection.prepareStatement(
       "UPDATE $tableName SET started_at = datetime('now', '-' || ? || ' seconds') WHERE session_id = ?",
     ).use { statement ->

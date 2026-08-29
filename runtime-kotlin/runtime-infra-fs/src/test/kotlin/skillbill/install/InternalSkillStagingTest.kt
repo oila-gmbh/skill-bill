@@ -23,6 +23,7 @@ import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.testsupport.SkillClassFixtures
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -810,7 +811,7 @@ class InternalSkillStagingTest {
     Files.createDirectories(finalDir)
     Files.writeString(finalDir.resolve("SKILL.md"), "healthy\n")
 
-    assertFailsWith<java.io.IOException> {
+    assertFailsWith<IOException> {
       promoteInstallStagingDir(root.resolve("missing-temp"), finalDir)
     }
 

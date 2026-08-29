@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.error.InvalidAgentAddonSchemaError
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.error.MissingRequiredSectionError
 import skillbill.error.RetiredScaffoldKindError
@@ -13,8 +14,8 @@ import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.authoring.validateTarget
 import skillbill.scaffold.manifest.appendCodeReviewArea
 import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
-import skillbill.scaffold.policy.renderPlatformPackManifest
+import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.rendering.baselineReviewContent
 import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus
@@ -25,6 +26,7 @@ import skillbill.scaffold.runtime.TemplateContext
 import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
 import skillbill.scaffold.runtime.scaffold
 import skillbill.scaffold.runtime.supportingFileTargets
+import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -734,7 +736,7 @@ class ScaffoldAuthoringParityTest {
     seedBaseSkill(repo, "bill-feature")
     val before = snapshotTree(repo)
 
-    assertFailsWith<skillbill.error.InvalidAgentAddonSchemaError> {
+    assertFailsWith<InvalidAgentAddonSchemaError> {
       scaffold(
         payload(
           repo,
@@ -778,7 +780,7 @@ internal fun reviewStructurePayload(repo: Path, kind: String, vararg pairs: Pair
 
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-scaffold-repo")
-  skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
+  SkillClassFixtures.seedShippedSkillClasses(repo)
   supportingFileTargets(repo).values.forEach { target ->
     Files.createDirectories(target.parent)
     Files.writeString(target, "# ${target.fileName}\n")
@@ -913,7 +915,7 @@ private fun locateTestRepoRoot(skillDir: Path): Path {
       val rootCandidate = current
       val classesDir = rootCandidate.resolve("orchestration/skill-classes")
       if (!Files.isDirectory(classesDir)) {
-        skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(rootCandidate)
+        SkillClassFixtures.seedShippedSkillClasses(rootCandidate)
       }
       return rootCandidate
     }

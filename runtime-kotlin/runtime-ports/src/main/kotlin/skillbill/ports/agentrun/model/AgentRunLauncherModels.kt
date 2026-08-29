@@ -10,14 +10,15 @@ import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewProcessOutcome
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.GoalProgressEvent
-import skillbill.workflow.model.GoalProgressEventKind
-import skillbill.workflow.model.GoalProgressOutcome
-import skillbill.workflow.model.ValidationDepth
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.goal.model.GoalProgressEventKind
+import skillbill.workflow.goal.model.GoalProgressOutcome
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.time.Duration
 
 data class SkillRunRequest(
@@ -269,7 +270,7 @@ data class AgentRunLaunchFacts(
   /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
   val stdoutTruncated: Boolean = false,
   val stdoutByteSize: Long = stdoutBytes.size.toLong(),
-  val stdoutSha256: String = java.security.MessageDigest.getInstance("SHA-256")
+  val stdoutSha256: String = MessageDigest.getInstance("SHA-256")
     .digest(stdoutBytes).joinToString("") { "%02x".format(it) },
 ) : AgentRunLaunchOutcome {
   init {

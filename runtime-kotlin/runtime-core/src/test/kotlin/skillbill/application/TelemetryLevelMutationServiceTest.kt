@@ -1,22 +1,23 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
+import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.model.EnvironmentContext
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.EmptyWorkListRepository
-import skillbill.ports.persistence.LearningRepository
-import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.ports.persistence.ReviewRepository
-import skillbill.ports.persistence.TelemetryOutboxRepository
-import skillbill.ports.persistence.TelemetryReconciliationRepository
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryConfigStore
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.config.TelemetryConfigMutations
 import skillbill.telemetry.model.TelemetryConfigDocument
@@ -297,7 +298,7 @@ private class FakeTelemetryDatabaseSessionFactory(
     override val workflowStates: WorkflowStateRepository
       get() = error("Unexpected workflowStates")
     override val workList = EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 

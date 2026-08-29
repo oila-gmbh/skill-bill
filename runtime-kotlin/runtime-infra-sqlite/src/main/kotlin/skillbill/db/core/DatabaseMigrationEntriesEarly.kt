@@ -1,0 +1,194 @@
+package skillbill.db.core
+
+import skillbill.db.telemetry.FeedbackEventMigration
+import skillbill.db.telemetry.GoalTelemetryMigration
+
+internal val databaseMigrationsEarly: List<DatabaseMigration> =
+  listOf(
+    DatabaseMigration(
+      version = 1,
+      name = "add-review-workflow-session-columns",
+      operation = DatabaseColumnMigrations::apply,
+    ),
+    DatabaseMigration(
+      version = 2,
+      name = "normalize-feedback-event-outcomes",
+      operation = FeedbackEventMigration::apply,
+    ),
+    DatabaseMigration(
+      version = 3,
+      name = "add-goal-telemetry-tables",
+      operation = GoalTelemetryMigration::apply,
+    ),
+    DatabaseMigration(
+      version = 4,
+      name = "add-work-list-state-metadata",
+      operation = DatabaseColumnMigrations::applyWorkListMetadata,
+    ),
+    DatabaseMigration(
+      version = 5,
+      name = "recover-work-list-issue-keys",
+      operation = DatabaseColumnMigrations::recoverWorkListIssueKeys,
+    ),
+    DatabaseMigration(
+      version = 6,
+      name = "add-feature-task-execution-identities",
+      operation = { connection ->
+        connection.createStatement().use { statement ->
+          statement.execute(
+            """
+              CREATE TABLE IF NOT EXISTS feature_task_execution_identities (
+                workflow_id TEXT PRIMARY KEY,
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+                normalized_issue_key TEXT NOT NULL,
+                repository_identity TEXT NOT NULL,
+                governed_spec_path TEXT NOT NULL,
+                mode TEXT NOT NULL CHECK (mode IN ('prose', 'runtime')),
+                route_scope TEXT NOT NULL CHECK (route_scope IN ('standalone', 'goal_child')),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+              connection.optionalRepairEvidenceColumn("goal_shared_preplans_pre_0_2")
+            },
+                FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+              )
+            """.trimIndent(),
+          )
+          statement.execute(
+            """
+              CREATE INDEX IF NOT EXISTS idx_feature_task_identity_lookup
+                ON feature_task_execution_identities(normalized_issue_key, repository_identity, route_scope)
+            """.trimIndent(),
+          )
+        }
+      },
+    ),
+    DatabaseMigration(
+      version = 7,
+      name = "add-feature-task-runtime-worker-leases",
+      operation = { connection ->
+        connection.createStatement().use { statement ->
+          statement.execute(
+            """
+              CREATE TABLE IF NOT EXISTS feature_task_runtime_worker_leases (
+                workflow_id TEXT PRIMARY KEY,
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+                generation INTEGER NOT NULL CHECK (generation > 0),
+                owner_token TEXT NOT NULL,
+                host_identity TEXT NOT NULL,
+                boot_identity TEXT NOT NULL,
+                pid INTEGER NOT NULL CHECK (pid > 0),
+                process_birth_token TEXT NOT NULL,
+                lease_state TEXT NOT NULL CHECK (lease_state IN ('active', 'takeover_reserved')),
+                heartbeat_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                phase_id TEXT NOT NULL,
+                phase_attempt INTEGER NOT NULL CHECK (phase_attempt > 0),
+                FOREIGN KEY (workflow_id) REFERENCES feature_task_workflows(workflow_id) ON DELETE CASCADE
+              )
+            """.trimIndent(),
+          )
+        }
+      },
+    ),
+    DatabaseMigration(
+      version = 8,
+      name = "add-goal-planning-preparations",
+      operation = { connection ->
+        connection.createStatement().use { statement ->
+          statement.execute(
+            """
+              CREATE TABLE IF NOT EXISTS goal_planning_preparations (
+                parent_goal_workflow_id TEXT NOT NULL,
+                normalized_issue_key TEXT NOT NULL,
+                repository_identity TEXT NOT NULL,
+                subtask_id INTEGER NOT NULL CHECK (subtask_id > 0),
+                governed_sub_spec_path TEXT NOT NULL,
+                preparation_status TEXT NOT NULL CHECK (preparation_status IN ('pending',
+                  'prepared')) DEFAULT 'prepared',
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.1'),
+                parent_spec_hash TEXT NOT NULL,
+                sub_spec_hash TEXT NOT NULL,
+                decomposition_manifest_hash TEXT NOT NULL,
+                phase_output_contract_id TEXT NOT NULL,
+                phase_output_contract_version TEXT NOT NULL,
+                preplan_payload_json TEXT NOT NULL,
+                plan_payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP${
+              connection.optionalRepairEvidenceColumn("goal_subtask_plans_pre_0_2")
+            },
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (parent_goal_workflow_id, subtask_id)
+              )
+            """.trimIndent(),
+          )
+          statement.execute(
+            """
+              CREATE INDEX IF NOT EXISTS idx_goal_planning_preparations_lookup
+                ON goal_planning_preparations(normalized_issue_key, repository_identity)
+            """.trimIndent(),
+          )
+        }
+      },
+    ),
+    DatabaseMigration(
+      version = 9,
+      name = "normalize-goal-planning-preparations",
+      operation = { connection ->
+        connection.createStatement().use { statement ->
+          statement.execute(
+            """
+              CREATE TABLE IF NOT EXISTS goal_shared_preplans (
+                parent_goal_workflow_id TEXT PRIMARY KEY,
+                normalized_issue_key TEXT NOT NULL,
+                repository_identity TEXT NOT NULL,
+                preparation_status TEXT NOT NULL CHECK (preparation_status = 'prepared'),
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.2'),
+                parent_spec_hash TEXT NOT NULL,
+                decomposition_manifest_hash TEXT NOT NULL,
+                planning_contract_id TEXT NOT NULL,
+                planning_contract_version TEXT NOT NULL CHECK (planning_contract_version = '0.2'),
+                phase_output_contract_id TEXT NOT NULL,
+                phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version = '0.1'),
+                payload_sha256 TEXT NOT NULL,
+                preplan_payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(normalized_issue_key, repository_identity)
+              )
+            """.trimIndent(),
+          )
+          statement.execute(
+            """
+              CREATE TABLE IF NOT EXISTS goal_subtask_plans (
+                parent_goal_workflow_id TEXT NOT NULL,
+                normalized_issue_key TEXT NOT NULL,
+                repository_identity TEXT NOT NULL,
+                subtask_id INTEGER NOT NULL CHECK (subtask_id > 0),
+                manifest_order INTEGER NOT NULL CHECK (manifest_order >= 0),
+                governed_sub_spec_path TEXT NOT NULL,
+                sub_spec_hash TEXT NOT NULL,
+                preparation_status TEXT NOT NULL CHECK (preparation_status = 'prepared'),
+                contract_version TEXT NOT NULL CHECK (contract_version = '0.2'),
+                parent_spec_hash TEXT NOT NULL,
+                decomposition_manifest_hash TEXT NOT NULL,
+                planning_contract_id TEXT NOT NULL,
+                planning_contract_version TEXT NOT NULL CHECK (planning_contract_version = '0.2'),
+                phase_output_contract_id TEXT NOT NULL,
+                phase_output_contract_version TEXT NOT NULL CHECK (phase_output_contract_version = '0.1'),
+                payload_sha256 TEXT NOT NULL,
+                plan_payload_json TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(parent_goal_workflow_id, subtask_id),
+                UNIQUE(parent_goal_workflow_id, governed_sub_spec_path),
+                UNIQUE(parent_goal_workflow_id, manifest_order),
+                FOREIGN KEY(parent_goal_workflow_id)
+                REFERENCES goal_shared_preplans(parent_goal_workflow_id) ON DELETE CASCADE
+              )
+            """.trimIndent(),
+          )
+          statement.execute(
+            "CREATE INDEX IF NOT EXISTS idx_goal_subtask_plans_ordered " +
+              "ON goal_subtask_plans(parent_goal_workflow_id, manifest_order)",
+          )
+        }
+      },
+    ),
+  )

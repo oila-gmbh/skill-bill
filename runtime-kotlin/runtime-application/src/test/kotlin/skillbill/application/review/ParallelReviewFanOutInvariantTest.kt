@@ -3,6 +3,7 @@
 package skillbill.application.review
 
 import skillbill.application.review.model.ReviewPreparationRequest
+import skillbill.application.review.model.ReviewPreparationResult
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
@@ -114,7 +115,7 @@ class ParallelReviewFanOutInvariantTest {
     )
   }
 
-  private fun prepare(count: Int): skillbill.application.review.model.ReviewPreparationResult {
+  private fun prepare(count: Int): ReviewPreparationResult {
     val scope = scopeWithCommitCount(count)
     val paths = scope.changedHunks.map { it.path }.distinct().sorted()
     val decisions = listOf(decision("security", paths), decision("testing", paths))

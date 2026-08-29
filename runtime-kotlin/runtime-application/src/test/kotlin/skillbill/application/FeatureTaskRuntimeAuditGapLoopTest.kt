@@ -1,13 +1,17 @@
 package skillbill.application
 
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeStatusRequest
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.ports.diff.DiffResolverPort
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import java.nio.file.Path
+import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -112,9 +116,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       launcher = launcher,
       runtimeConfig = RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
-        reviewDriver = skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+        reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           commitMessagesObservedAtReview = git.createCommitMessages + git.amendCommitMessages
-          skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+          FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
         },
       ),
     )
@@ -658,7 +662,12 @@ internal fun auditGapsWithoutCanonicalRefsOutput(): String = """
   }
 """.trimIndent()
 
-internal fun auditTwoGapsOutput(): String = """
+internal fun auditTwoGapsOutput(): String {
+  val valueLiteral =
+    "\"{\\\"gaps\\\":[{\\\"criterion\\\":\\\"AC-003\\\",\\\"note\\\":\\\"$AUDIT_GAP_MESSAGE\\\"}," +
+      "{\\\"criterion\\\":\\\"AC-002\\\",\\\"note\\\":\\\"$AUDIT_GAP_MESSAGE\\\"}]," +
+      "\\\"non_blocking_findings\\\":[]}\""
+  return """
   {
     "contract_version": "0.6",
     "phase_id": "audit",
@@ -666,10 +675,11 @@ internal fun auditTwoGapsOutput(): String = """
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "value": "{\"gaps\":[{\"criterion\":\"AC-003\",\"note\":\"$AUDIT_GAP_MESSAGE\"},{\"criterion\":\"AC-002\",\"note\":\"$AUDIT_GAP_MESSAGE\"}],\"non_blocking_findings\":[]}"
+      "value": $valueLiteral
     }
   }
-""".trimIndent()
+  """.trimIndent()
+}
 
 internal fun auditSatisfiedOutput(): String = """
   {
@@ -766,10 +776,10 @@ class FeatureTaskRuntimeAuditGapSharedEvidenceTest {
     val harness = runnerHarness(
       launcher = auditGapLauncher(convergeOnAudit = 2),
       runtimeConfig = RuntimeHarnessConfig(
-        repoRoot = kotlin.io.path.createTempDirectory("audit-gap-shared-evidence"),
+        repoRoot = createTempDirectory("audit-gap-shared-evidence"),
         sharedEvidenceResolver = store,
-        diffResolver = object : skillbill.ports.diff.DiffResolverPort {
-          override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String =
+        diffResolver = object : DiffResolverPort {
+          override fun runProcess(args: List<String>, workDir: Path): String =
             "diff --git a/src/A.kt b/src/A.kt\n@@ -1 +1 @@\n+x\n"
         },
       ),

@@ -8,12 +8,13 @@ import skillbill.db.workflow.WorkflowStateStore
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.ProseFeatureTaskWorkflowWriteRefusedError
-import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
+import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Instant
@@ -567,7 +568,7 @@ class WorkflowStateStoreTest {
     assertEquals(false, verifyTransitioned.stateEnteredAtEstimated)
   }
 
-  private fun prepareConcurrentWorkflowTransitions(dbPath: java.nio.file.Path, initial: WorkflowStateRow) {
+  private fun prepareConcurrentWorkflowTransitions(dbPath: Path, initial: WorkflowStateRow) {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       WorkflowStateStore(connection).saveFeatureTaskRuntimeWorkflow(initial)
       connection.createStatement().use { statement ->
@@ -957,7 +958,8 @@ private fun auditRepairArtifactsJson(contractVersion: String = "0.2"): String = 
     "contract_version":"$contractVersion",
     "accepted_plans":[{"contract_version":"0.2","gaps":[{
       "gap_id":"ac-001-gap-1","acceptance_criterion_ref":"AC-001",
-      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
+      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent",
+        "artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
       "diagnosis":"Diagnosis","affected_boundary":"runtime","repair_items":[{
         "repair_item_id":"ac-001-gap-1-item-1","intended_outcome":"Outcome",
         "implementation_actions":["Implement"],"affected_paths_or_symbols":["src/Foo.kt"],
@@ -966,7 +968,8 @@ private fun auditRepairArtifactsJson(contractVersion: String = "0.2"): String = 
     }]}],
     "latest_plan":{"contract_version":"0.2","gaps":[{
       "gap_id":"ac-001-gap-1","acceptance_criterion_ref":"AC-001",
-      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
+      "acceptance_criterion_text":"Criterion","failure_evidence":{"observation":"required_behavior_absent",
+        "artifact_ref":"runtime-kotlin","check_ref":"AC-001"},
       "diagnosis":"Diagnosis","affected_boundary":"runtime","repair_items":[{
         "repair_item_id":"ac-001-gap-1-item-1","intended_outcome":"Outcome",
         "implementation_actions":["Implement"],"affected_paths_or_symbols":["src/Foo.kt"],

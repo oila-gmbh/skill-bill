@@ -4,7 +4,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.headlessAgentRunAdapters
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.goal.model.ValidationDepth
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains

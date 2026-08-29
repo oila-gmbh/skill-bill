@@ -1,8 +1,8 @@
 package skillbill.cli.telemetry
 
-import skillbill.application.model.TelemetryMutationResult
-import skillbill.application.model.TelemetryStatusResult
-import skillbill.application.model.TelemetrySyncStatusResult
+import skillbill.application.telemetry.model.TelemetryMutationResult
+import skillbill.application.telemetry.model.TelemetryStatusResult
+import skillbill.application.telemetry.model.TelemetrySyncStatusResult
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 

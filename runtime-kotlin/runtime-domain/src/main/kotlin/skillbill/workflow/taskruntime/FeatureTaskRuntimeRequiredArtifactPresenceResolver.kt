@@ -2,9 +2,9 @@ package skillbill.workflow.taskruntime
 
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.model.RequiredArtifactPresenceResolver
-import skillbill.workflow.model.ResolvedRequiredArtifact
-import skillbill.workflow.model.WorkflowSnapshotView
+import skillbill.workflow.engine.model.RequiredArtifactPresenceResolver
+import skillbill.workflow.engine.model.ResolvedRequiredArtifact
+import skillbill.workflow.engine.model.WorkflowSnapshotView
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact

@@ -1,11 +1,11 @@
 package skillbill.review
 
-import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewHarnessConfig
 import skillbill.application.review.ReviewRecorder
 import skillbill.application.review.diffForChanges
 import skillbill.application.review.harnessRequest
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.reviewPack
 import skillbill.application.review.toBoundedPayload
@@ -13,10 +13,12 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.contracts.review.ReviewContextSchemaValidator
 import skillbill.db.core.DatabaseRuntime
+import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
-import skillbill.ports.persistence.model.ReviewAccountingRecord
+import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -109,10 +111,10 @@ class ReviewAccountingDurableRedactionTest {
       }
 
       assertNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
-      val quarantined = skillbill.db.telemetry.TelemetryOutboxStore(connection).listPending(null)
+      val quarantined = TelemetryOutboxStore(connection).listPending(null)
       assertTrue(
         quarantined.any { record ->
-          record.eventName == skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
+          record.eventName == REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
             record.payloadJson.contains("accounting_contract_quarantined")
         },
       )
@@ -141,10 +143,10 @@ class ReviewAccountingDurableRedactionTest {
       }
 
       assertNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
-      val quarantined = skillbill.db.telemetry.TelemetryOutboxStore(connection).listPending(null)
+      val quarantined = TelemetryOutboxStore(connection).listPending(null)
       assertTrue(
         quarantined.any { record ->
-          record.eventName == skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
+          record.eventName == REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
             record.payloadJson.contains("accounting_contract_quarantined")
         },
       )

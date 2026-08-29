@@ -1,7 +1,7 @@
 package skillbill.mcp
 
-import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
+import skillbill.mcp.core.McpRuntimeLifecycle
 import skillbill.mcp.core.McpToolDispatcher
 import skillbill.mcp.core.telemetryRemoteStats
 import skillbill.mcp.telemetry.toMcpMap
@@ -34,9 +34,9 @@ class McpTelemetryRuntimeTest {
     val requester = mcpTelemetryRequester(capturedRequests)
 
     val context = McpRuntimeContext(requester = requester, environment = env, userHome = tempDir)
-    val capabilities = McpRuntime.telemetryProxyCapabilities(context)
+    val capabilities = McpRuntimeLifecycle.telemetryProxyCapabilities(context)
     val stats =
-      McpRuntime.telemetryRemoteStats(
+      McpRuntimeLifecycle.telemetryRemoteStats(
         request = RemoteStatsRequest(workflow = "bill-feature-verify", dateFrom = "2026-04-01", dateTo = "2026-04-22"),
         context = context,
       )

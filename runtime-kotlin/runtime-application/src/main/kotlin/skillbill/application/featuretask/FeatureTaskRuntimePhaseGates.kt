@@ -8,9 +8,10 @@ import skillbill.application.review.SpecIntentProjectionResolver
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator
-import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+import java.nio.file.Path
 
 @Suppress("LongParameterList") // one gate seam; every parameter is a mandatory gate dependency
 @Inject
@@ -38,5 +39,5 @@ class FeatureTaskRuntimePhaseGates(
 
 /** No repository access at all: every derivation reports the diff as unreadable and yields no evidence. */
 private object UnreadableDiffResolver : DiffResolverPort {
-  override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String? = null
+  override fun runProcess(args: List<String>, workDir: Path): String? = null
 }

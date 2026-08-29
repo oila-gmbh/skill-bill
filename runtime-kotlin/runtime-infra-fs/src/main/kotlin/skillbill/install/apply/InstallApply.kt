@@ -209,12 +209,22 @@ private fun failedStagingOutcome(sourceDir: Path, skillName: String, error: Thro
 
 private fun windowsSymlinkApplyOutcome(plan: InstallPlan): WindowsSymlinkApplyOutcome {
   val preflight = plan.windowsSymlinkPreflight
-  val fallbackState = when {
-    preflight.decision == WindowsSymlinkDecision.REQUIRE_USER_ACTION ->
-      WindowsSymlinkFallbackState.USER_ACTION_REQUIRED
-    preflight.state == WindowsSymlinkPreflightState.REQUIRES_ELEVATION_OR_DEVELOPER_MODE ->
-      WindowsSymlinkFallbackState.PROCEEDING
-    else -> WindowsSymlinkFallbackState.NOT_REQUIRED
+  val fallbackState = when (preflight.decision) {
+    WindowsSymlinkDecision.REQUIRE_USER_ACTION -> WindowsSymlinkFallbackState.USER_ACTION_REQUIRED
+    WindowsSymlinkDecision.PROCEED_WITH_SYMLINKS -> when (preflight.state) {
+      WindowsSymlinkPreflightState.REQUIRES_ELEVATION_OR_DEVELOPER_MODE -> WindowsSymlinkFallbackState.PROCEEDING
+      WindowsSymlinkPreflightState.AVAILABLE,
+      WindowsSymlinkPreflightState.NOT_WINDOWS,
+      WindowsSymlinkPreflightState.DECISION_REQUIRED,
+      -> WindowsSymlinkFallbackState.NOT_REQUIRED
+    }
+    WindowsSymlinkDecision.NOT_REQUIRED -> when (preflight.state) {
+      WindowsSymlinkPreflightState.REQUIRES_ELEVATION_OR_DEVELOPER_MODE -> WindowsSymlinkFallbackState.PROCEEDING
+      WindowsSymlinkPreflightState.AVAILABLE,
+      WindowsSymlinkPreflightState.NOT_WINDOWS,
+      WindowsSymlinkPreflightState.DECISION_REQUIRED,
+      -> WindowsSymlinkFallbackState.NOT_REQUIRED
+    }
   }
   return WindowsSymlinkApplyOutcome(
     preflight = preflight,

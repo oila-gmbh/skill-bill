@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 
 // Single source of truth for the goal-continuation business rule. AC5's skip-decomposition policy
 // hinges on the runner's suppressDecomposition prompt flag and the stopper's hard skip staying

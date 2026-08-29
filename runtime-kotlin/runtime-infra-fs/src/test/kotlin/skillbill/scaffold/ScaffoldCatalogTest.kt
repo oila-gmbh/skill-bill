@@ -3,6 +3,7 @@ package skillbill.scaffold
 import skillbill.scaffold.catalog.ScaffoldCatalog
 import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -64,7 +65,7 @@ class ScaffoldCatalogTest {
     val targetSkill: String,
   )
 
-  private fun writeManifest(packsRoot: java.nio.file.Path, slug: String, body: String) {
+  private fun writeManifest(packsRoot: Path, slug: String, body: String) {
     val packRoot = packsRoot.resolve(slug)
     Files.createDirectories(packRoot)
     Files.writeString(packRoot.resolve("platform.yaml"), body)

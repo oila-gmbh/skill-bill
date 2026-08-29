@@ -1,8 +1,8 @@
 package skillbill.cli.core
 
-import skillbill.application.model.LearningListResult
-import skillbill.application.model.LearningResolveResult
-import skillbill.application.model.TriageResult
+import skillbill.application.learning.model.LearningListResult
+import skillbill.application.learning.model.LearningResolveResult
+import skillbill.application.review.model.TriageResult
 import skillbill.learnings.model.LearningEntry
 
 internal data class CliLearningListPresentation(

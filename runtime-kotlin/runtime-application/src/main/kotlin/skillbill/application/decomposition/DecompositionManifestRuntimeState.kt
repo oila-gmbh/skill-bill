@@ -1,14 +1,14 @@
 package skillbill.application.decomposition
 
-import skillbill.application.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.workflow.isActiveGoalRuntime
+import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 

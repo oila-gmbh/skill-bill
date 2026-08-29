@@ -2,12 +2,13 @@ package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.scaffold.platformpack.loadPlatformPack
-import skillbill.scaffold.policy.renderPlatformPackManifest
+import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
 import skillbill.scaffold.rendering.inferSkillDescription
 import skillbill.scaffold.rendering.renderContentBody
 import skillbill.scaffold.runtime.TemplateContext
 import skillbill.scaffold.runtime.scaffold
 import skillbill.scaffold.runtime.supportingFileTargets
+import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -210,7 +211,7 @@ private fun kotlinBaselinePayloadEntry(vararg overrides: Pair<String, Any?>): Ma
 
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-baseline-layer-scaffold-repo")
-  skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
+  SkillClassFixtures.seedShippedSkillClasses(repo)
   supportingFileTargets(repo).values.forEach { target ->
     Files.createDirectories(target.parent)
     Files.writeString(target, "# ${target.fileName}\n")

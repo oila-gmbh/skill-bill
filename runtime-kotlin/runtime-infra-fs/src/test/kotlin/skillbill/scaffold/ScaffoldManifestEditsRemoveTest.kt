@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
@@ -56,7 +57,7 @@ class ScaffoldManifestEditsRemoveTest {
     assertFalse(updated.contains("ui: \"code-review/bill-foo-code-review-ui/content.md\""))
     assertFalse(updated.contains("focus: \"UI review\""))
     // 'perf' is left intact.
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("\"perf\""))
+    Assertions.assertTrue(updated.contains("\"perf\""))
   }
 
   @Test
@@ -149,9 +150,9 @@ class ScaffoldManifestEditsRemoveTest {
 
     val updated = manifest.toFile().readText()
     assertFalse(updated.contains("android-compose-edge-to-edge.md"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("android-compose-review.md"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("android-navigation-review.md"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("shell-ceremony.md"))
+    Assertions.assertTrue(updated.contains("android-compose-review.md"))
+    Assertions.assertTrue(updated.contains("android-navigation-review.md"))
+    Assertions.assertTrue(updated.contains("shell-ceremony.md"))
   }
 
   @Test
@@ -173,7 +174,7 @@ class ScaffoldManifestEditsRemoveTest {
 
     val updated = manifest.toFile().readText()
     assertFalse(updated.contains("android-compose-implementation"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("shell-ceremony"))
-    org.junit.jupiter.api.Assertions.assertTrue(updated.contains("android-navigation-implementation"))
+    Assertions.assertTrue(updated.contains("shell-ceremony"))
+    Assertions.assertTrue(updated.contains("android-navigation-implementation"))
   }
 }

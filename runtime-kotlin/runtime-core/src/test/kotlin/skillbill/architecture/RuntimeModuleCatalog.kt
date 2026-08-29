@@ -34,7 +34,6 @@ object RuntimeModuleCatalog {
       "skillbill.learnings",
       "skillbill.ports",
       "skillbill.infrastructure",
-      "skillbill.workflow.implement",
       "skillbill.workflow.verify",
       "skillbill.scaffold",
       "skillbill.contracts",

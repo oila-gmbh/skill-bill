@@ -3,10 +3,12 @@ package skillbill.application.featuretask
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RecordingLifecycleTelemetryRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
-import skillbill.ports.persistence.ProducerOutputEvidence
-import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
-import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.application.diagnostics.RejectedOutputDiagnosticService
+import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
+import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import java.time.Instant
 import kotlin.test.Test
@@ -17,12 +19,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/**
- * SKILL-185. A validation-gate repair cycle re-runs an agent inside one phase attempt, so its turns
- * used to address the identical producer-evidence key and the second turn killed the process with an
- * uncaught `Conflict`. These cover both halves of the fix: turns are independently addressable, and a
- * diagnostic-persistence failure degrades instead of terminating the run.
- */
 class FeatureTaskRuntimeDiagnosticDegradationTest {
   @Test
   fun `three repair turns of one attempt each retain their own evidence row`() {
@@ -38,11 +34,14 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
       listOf(1, 2, 3),
       database.retainedProducerEvidence().filter { it.phaseId == "validate" }.map { it.repairTurn },
     )
-    // The consumer-facing read resolves the newest turn without knowing how many turns ran.
-    val found = recorder.producerOutput(WORKFLOW_ID, "validate", 1, "cursor")
+    val found = recorder.producerOutput(
+      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 1, "cursor", dbOverride = null, generation = 0),
+    )
     assertIs<FeatureTaskRuntimeProducerOutputRead.Found>(found)
     assertContentEquals("turn-3".encodeToByteArray(), found.evidence.payload)
-    val absent = recorder.producerOutput(WORKFLOW_ID, "validate", 99, "cursor")
+    val absent = recorder.producerOutput(
+      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 99, "cursor", dbOverride = null, generation = 0),
+    )
     assertIs<FeatureTaskRuntimeProducerOutputRead.Absent>(absent)
     assertTrue(recorder.loadDiagnosticSignals(WORKFLOW_ID).isEmpty())
   }
@@ -70,8 +69,6 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     val retained = "first-bytes".encodeToByteArray()
     recorder.retainProducerOutput(evidence(retained, repairTurn = 1))
 
-    // Same key, different bytes: the store's immutability guard raises Conflict. Before SKILL-185 this
-    // escaped the run loop uncaught and exited the process with status 1.
     recorder.retainProducerOutput(evidence("divergent-bytes".encodeToByteArray(), repairTurn = 1))
 
     val signal = recorder.loadDiagnosticSignals(WORKFLOW_ID).single()
@@ -92,8 +89,9 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
       measurement.toTelemetryMap().values.none { it is String && it.contains("divergent-bytes") },
       "the measurement must not carry the divergent agent bytes",
     )
-    // The committed evidence is never overwritten by the divergent write.
-    val found = recorder.producerOutput(WORKFLOW_ID, "validate", 1, "cursor")
+    val found = recorder.producerOutput(
+      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 1, "cursor", dbOverride = null, generation = 0),
+    )
     assertIs<FeatureTaskRuntimeProducerOutputRead.Found>(found)
     assertContentEquals(retained, found.evidence.payload)
   }
@@ -124,7 +122,9 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     val recorder = recorder(database)
     recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
 
-    val read = recorder.producerOutput(WORKFLOW_ID, "validate", 1, "cursor")
+    val read = recorder.producerOutput(
+      ProducerOutputQueryArgs(WORKFLOW_ID, "validate", 1, "cursor", dbOverride = null, generation = 0),
+    )
 
     val unreadable = assertIs<FeatureTaskRuntimeProducerOutputRead.Unreadable>(read)
     assertEquals(FeatureTaskRuntimeDiagnosticFailureClass.PERSISTENCE, unreadable.failureClass)
@@ -156,8 +156,6 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     val recorder = recorder(database)
     recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
 
-    // A blank agent id is a defect in the calling seam, not an environmental store fault. Degrading
-    // it would let a run write evidence attributable to nobody and walk past the bug.
     assertFailsWith<RejectedOutputDiagnosticError.InvalidRequest> {
       recorder.recordRejectedOutput(rejection(byteArrayOf(1), repairTurn = 1).copy(agentId = ""))
     }
@@ -219,7 +217,7 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
       lifecycle,
     )
 
-  private fun recorder(database: RuntimeFakeDatabaseSessionFactory) = FeatureTaskRuntimePhaseRecorder(
+  private fun recorder(database: RuntimeFakeDatabaseSessionFactory) = featureTaskRuntimePhaseRecorder(
     database,
     NoopSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,

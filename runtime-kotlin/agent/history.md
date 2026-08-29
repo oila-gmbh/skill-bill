@@ -6,6 +6,73 @@ Areas: runtime-kotlin/runtime-application/featuretask, skills/bill-code-check, p
 Feature flag: N/A
 Acceptance criteria: n/a (prompt/contract fix)
 
+## [2026-08-29] SKILL-220 subtask 8 — Documentation reconciliation
+Areas: docs/code-principles.md, AGENTS.md, CLAUDE.md, runtime-kotlin/{agent,ARCHITECTURE.md}
+- Published `docs/code-principles.md` with rule/shape/anti-pattern/reference sections for type modeling, failures, capabilities, single source of truth, package layout, concurrency, composition, build/tooling, imports, and review-only principles; each section cites delivered paths from subtasks 1–7.
+- Added AGENTS/CLAUDE Coding Conventions (package clustering, FQN rule, 500-line ceiling, subtask-7 guards). Recorded 500-line, FQN keep-list, and review-only enforcement boundaries in `agent/decisions.md` (capability vocabulary decision already present from subtask 3).
+- Audit remediation: rewrote `ARCHITECTURE.md` Package Ownership for post-clustering `skillbill.workflow.{engine,decomposition,goal,taskruntime,idestatus,specsource,verify}` clusters; removed dissolved `skillbill.workflow.implement` subsystem entry; corrected open-boundary `toWireMap` FQN to `skillbill.workflow.decomposition.toWireMap`.
+- Validate gate passed (`bill-code-check/collect-all` + confirmation). Parent ACs satisfied; detekt complexity pinning remains SKILL-221 non-goal.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-08-29] SKILL-220 subtask 7 — Principle enforcement and build-convention promotion
+Areas: runtime-core/architecture, build-logic/convention, runtime-contracts, runtime-infra-fs, runtime-application/{goalrunner,review}
+- Six architecture guards (package clustering, 500-line ceiling, failure-code totality, typed parse boundaries, inline FQN, convention reapplication) plus PrincipleEnforcementInventory; each fails a synthetic fixture and passes the clean tree.
+- Hoisted `update-snapshots` Test systemProperty into `configureKotlinJvm`; removed local copies from runtime-contracts and runtime-infra-fs module build files.
+- Pattern: declaration-level source scan via ArchitectureScanSupport; inventory lists enforceable rules, parse-boundary sites, FQN keep-list roots, and four review-only rules. reusable
+- Cleared eight leftover inline FQNs in runtime-application so the general FQN guard passes; line-ceiling exemptions empty at 500.
+- Limitation: validate owns scripts/validate (AC-010); comment quality, naming taste, deeper relatedness, and open harness keys stay review-only.
+Feature flag: N/A
+Acceptance criteria: 9/10 implemented (validate gate deferred)
+
+## [2026-08-29] SKILL-220 subtask 6 — Oversized remaining-unit decomposition
+Areas: runtime-cli/{goal,featuretask,scaffold,install}, runtime-application/{featuretask,review,workflow}, runtime-infra-fs/{scaffold,launcher,infrastructure,skillremove}, runtime-infra-sqlite/{db/core,db/workflow}, runtime-domain/{review/context,install,workflow/engine}, runtime-contracts/error, runtime-core/di, runtime-ports/workflow/gitops
+- Split leftover >500-line production types (CLI command bags, ParallelCodeReviewRunner, ShellContentLoader/ScaffoldService, WorkflowService/Engine/StateStore, process/launcher, sqlite migrations/schema, contract-error dump, RuntimeComponent helpers) into same-package collaborators; production line-count scan reports 0 src/main files over 500.
+- Keep CLI/pack-substance extractions internal (45 CLI command/helper types + 7 PlatformPackSubstanceModels audit-only types); top-level GoalRun/FeatureTaskRuntimeRun/DeprecatedRun/ScaffoldTopLevel entries stay public. RuntimeComponent remains sole construction site; WorkflowEngine remains sole transition chooser.
+- Pattern: split by verb family or responsibility with visibility as narrow as callers allow; remove TooManyFunctions/LongMethod/ComplexMethod/NestedBlockDepth/CyclomaticComplexMethod file suppressions the split eliminates (leftover @Suppress → SKILL-221). reusable
+- Limitation: validate-phase owns scripts/validate (AC-007); no tests added by design.
+Feature flag: N/A
+Acceptance criteria: 7/8 implemented (validate gate deferred)
+
+## [2026-08-29] SKILL-220 subtask 4 — Oversized feature-task runtime decomposition
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime(+model), runtime-infra-fs/contracts/workflow, scripts
+- Split `FeatureTaskRuntimeRunLoop` and neighbouring >500-line types into named collaborators (recorders, run-loop drive/launch/checkpoint/verification, handoff projection, structural repair, persistence models); every scoped production file ≤500 lines.
+- Keep single-caller extractions internal/private (canonicalization Record/Transform/Canonicalization; CorrectiveRepairPromptProjection); Canonicalizer.canonicalize facade and wire encodings unchanged.
+- Preserve transaction, lease, and fencing boundaries; no new public ports/modules; composition remains the sole runtime-graph construction site.
+- Pattern: extract by responsibility with visibility as narrow as callers allow; order files top-down; delete suppressions the split removes (leftover method-level @Suppress → SKILL-221). reusable
+- Limitation: validate-phase owns scripts/validate and test-pass proof; no tests added by design.
+Feature flag: N/A
+Acceptance criteria: 5/7 implemented (validate gate deferred)
+
+## [2026-08-29] SKILL-220 subtask 3 — Failure identity and exhaustive dispatch
+Areas: runtime-kotlin/{contracts/error,domain/workflow,application/{featuretask,goalrunner,review,workflow},cli,infra-fs,infra-sqlite,ports}, intellij-plugin
+- Shared failure case-to-code contract on in-scope hierarchies; unknown wire tokens are typed violations (no `SCHEMA_INVALID` collapse); conformance test asserts totality and injectivity.
+- Production sealed/`enum` `when` arms made exhaustive (LaunchPreparation, lease/status/policy/handoff/decode sites); open JSON/stdout/XML sites stay open with a one-line reason.
+- Durable control-state, handoff, and phase-output parse boundaries emit typed schema/contract failures; `CancellationException` rethrown before broad catch; capability vocabularies stay open (decision recorded).
+- Pattern: bind failure identity once on the sealed hierarchy; map at the parse boundary; let the compiler checklist closed sets. reusable
+- Limitation: distinct failure hierarchies not merged; `@OpenBoundaryMap` maps stay open; oversized-file splits deferred to later subtasks.
+Feature flag: N/A
+Acceptance criteria: 8/9 implemented (validate gate deferred)
+
+## [2026-08-29] SKILL-220 subtask 2 — Inline FQN sweep
+Areas: runtime-kotlin/{application,domain,ports,cli,mcp,core,infra-fs,infra-sqlite,build-logic}, intellij-plugin
+- Replaced inline fully-qualified type/callable references across scoped Kotlin trees with `import` plus simple name (~234 files); extension receivers (e.g. `PreparedStatement.bindOwnership`) follow the same rule.
+- Keep list unchanged: `package`/`import` lines, string literals (architecture allow-lists), generated sources, and compiler-required disambiguation after an alias fails.
+- Pattern: one qualification style — declare once via import, reference by simple name; collide with `import a.Foo as FooA` rather than leaving an inline FQN. reusable
+- Limitation: KDoc/comment FQNs optional; architecture-test string fixtures and `ARCHITECTURE.md` inventories left as documentation of names; Subtask 7 adds the enforcement scanner.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-08-29] SKILL-220 subtask 1 — Package clustering
+Areas: runtime-kotlin/{application,domain,ports,cli,mcp,core,infra-fs,infra-sqlite,infra-http}, orchestration/contracts, intellij-plugin/architecture
+- Dissolved catch-all `application.model` and multi-area `ports.persistence` into area-owned packages (featuretask, goalrunner/planning, review, telemetry, learning, workflow, work, diagnostics, updatecheck).
+- Split mixed roots: `workflow` → engine/decomposition/goal/taskruntime/idestatus/specsource; `goalrunner` → runner/planning/findings; FeatureSpec/GoalPlanning/SpecSource/RejectedOutput out of `featuretask`; `scaffold.policy` → platformpack vs scaffold; ports `goalrunner` and `workflow` by concept.
+- Mechanical package moves and import updates only — no type rename, visibility, or public shape change; architecture docs and path assertions updated to match.
+- Pattern: cluster by product area / noun family, not by type kind; dependencies stay inward; empty bucket packages deleted. reusable
+- Limitation: leftover root types stay only when they belong to no cluster; validate/scripts proof owned by the validate phase.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-26] SKILL-209 — Delete dual-agent parallel review
 Areas: runtime-kotlin/{application/review,application/featuretask,application/goalrunner,application/config,cli,domain,ports,infra-fs,infra-sqlite,core}, skills/{bill-code-review,bill-code-review-parallel,bill-feature}, platform-packs/{kotlin,kmp}, docs, scripts
 - Removed the second-parent review product: skill, CLI (`code-review-parallel`, `code-review-merge`, `resolve-parallel-agent`), `--agent2`/`--model2`/`--parallel-review-agent`, and `code_review_parallel_agent` from typed config and new install writes.

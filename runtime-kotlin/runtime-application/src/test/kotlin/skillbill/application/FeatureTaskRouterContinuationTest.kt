@@ -2,13 +2,15 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
-import skillbill.application.model.WorkflowContinueResult
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.openFeatureTask
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,11 +40,13 @@ class FeatureTaskRouterContinuationTest {
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        kind = WorkflowFamilyKind.TASK_RUNTIME,
-        issueKey = "SKILL-120",
-        repositoryIdentity = REPOSITORY_IDENTITY,
-        governedSpecPath = SPEC_PATH,
-        sessionId = SESSION_ID,
+        WorkflowServiceOpenFeatureTaskArgs(
+          kind = WorkflowFamilyKind.TASK_RUNTIME,
+          issueKey = "SKILL-120",
+          repositoryIdentity = REPOSITORY_IDENTITY,
+          governedSpecPath = SPEC_PATH,
+          sessionId = SESSION_ID,
+        ),
       ),
     )
     service.update(WorkflowFamilyKind.TASK_RUNTIME, blockedAtImplementAfterPlan(opened.workflowId))

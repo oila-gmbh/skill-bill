@@ -1,4 +1,10 @@
 package skillbill.launcher.agentrun
+import com.fasterxml.jackson.databind.JsonNode
+import skillbill.infrastructure.fs.CursorReviewStreamError
+import skillbill.infrastructure.fs.CursorReviewStreamForbiddenOperationError
+import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
+import skillbill.infrastructure.fs.CursorReviewStreamProviderFailureError
+import skillbill.infrastructure.fs.CursorReviewStreamTerminationError
 
 @Suppress("LongMethod", "CyclomaticComplexMethod", "MagicNumber")
 internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
@@ -29,7 +35,7 @@ internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
   }.filter(String::isNotBlank).forEach { line ->
     val event =
       runCatching { structuredOutputMapper.readTree(line) }.getOrElse {
-        throw skillbill.infrastructure.fs.CursorReviewStreamMalformedError(
+        throw CursorReviewStreamMalformedError(
           "Malformed Cursor stream JSONL line: ${line.take(cursorStreamPreviewLength)}",
           it,
         )
@@ -58,16 +64,16 @@ internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
   // Throw cursor-specific errors after parsing is complete (reduces throw count)
   if (errorEvent) {
     throw when (errorType) {
-      "forbidden_operation" -> skillbill.infrastructure.fs.CursorReviewStreamForbiddenOperationError(
+      "forbidden_operation" -> CursorReviewStreamForbiddenOperationError(
         errorMessage ?: "Cursor reported a forbidden operation",
       )
-      "provider_failure" -> skillbill.infrastructure.fs.CursorReviewStreamProviderFailureError(
+      "provider_failure" -> CursorReviewStreamProviderFailureError(
         errorMessage ?: "Cursor reported a provider failure",
       )
-      "termination" -> skillbill.infrastructure.fs.CursorReviewStreamTerminationError(
+      "termination" -> CursorReviewStreamTerminationError(
         errorMessage ?: "Cursor process terminated prematurely",
       )
-      else -> skillbill.infrastructure.fs.CursorReviewStreamError(
+      else -> CursorReviewStreamError(
         errorMessage ?: "Cursor reported an unknown error",
       )
     }
@@ -128,7 +134,7 @@ private fun peelTrailingNoFindings(text: String): String? {
   return null
 }
 
-private fun cursorAssistantText(event: com.fasterxml.jackson.databind.JsonNode): String? {
+private fun cursorAssistantText(event: JsonNode): String? {
   val content = event.path("message").path("content")
   if (content.isArray) {
     val joined = content.mapNotNull { part -> part.path("text").takeIf { it.isTextual }?.asText() }

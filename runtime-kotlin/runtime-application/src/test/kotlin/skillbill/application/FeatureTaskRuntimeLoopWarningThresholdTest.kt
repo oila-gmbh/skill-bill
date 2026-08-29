@@ -2,8 +2,8 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition

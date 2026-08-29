@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
 
 data class ProcessSpec(
     val command: List<String>,
@@ -51,7 +52,7 @@ class RealProcessFactory : ProcessFactory {
     override fun start(command: List<String>, workingDirectory: String?): ProcessHandle {
         val builder = ProcessBuilder(command)
         if (workingDirectory != null) {
-            builder.directory(java.io.File(workingDirectory))
+            builder.directory(File(workingDirectory))
         }
         val process = builder.start()
         return object : ProcessHandle {

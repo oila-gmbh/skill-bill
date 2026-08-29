@@ -1,8 +1,8 @@
 package skillbill.db.workflow
 
 import skillbill.db.telemetry.bind
-import skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.persistence.model.FeatureTaskRuntimeAuditGenerationRow
+import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
 import java.sql.Connection
 
 /**

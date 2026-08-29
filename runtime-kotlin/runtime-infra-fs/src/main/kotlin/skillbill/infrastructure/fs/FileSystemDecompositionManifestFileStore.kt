@@ -3,7 +3,7 @@ package skillbill.infrastructure.fs
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -230,7 +230,7 @@ private class DecompositionManifestBundleJournal {
     try {
       Files.writeString(temp, content, StandardOpenOption.TRUNCATE_EXISTING)
       Files.newByteChannel(temp, StandardOpenOption.WRITE).use { channel ->
-        (channel as? java.nio.channels.FileChannel)?.force(true)
+        (channel as? FileChannel)?.force(true)
       }
       moveAtomically(temp, target)
     } finally {

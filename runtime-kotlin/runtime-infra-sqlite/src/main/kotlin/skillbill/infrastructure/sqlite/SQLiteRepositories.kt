@@ -3,6 +3,9 @@ package skillbill.infrastructure.sqlite
 import skillbill.db.core.reconcileStaleTelemetrySessions
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
+import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationStore
+import skillbill.db.workflow.GoalPlanningPreparationStore
+import skillbill.db.workflow.GoalRunnerControlStore
 import skillbill.db.workflow.WorkflowStateStore
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
@@ -21,24 +24,27 @@ import skillbill.learnings.model.LearningRecord
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.learnings.model.UpdateLearningRequest
-import skillbill.ports.persistence.LearningRepository
-import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.ports.persistence.RejectedOutputDiagnosticPermissions
-import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
-import skillbill.ports.persistence.ReviewRepository
-import skillbill.ports.persistence.ReviewRunCompletenessRepository
-import skillbill.ports.persistence.TelemetryOutboxRepository
-import skillbill.ports.persistence.TelemetryReconciliationRepository
-import skillbill.ports.persistence.UnaddressedFindingsRepository
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkListRepository
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.WorkflowStatsRepository
-import skillbill.ports.persistence.model.LearningResolution
-import skillbill.ports.persistence.model.ReviewAccountingRecord
-import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
-import skillbill.ports.persistence.model.TelemetryReconciliationRequest
-import skillbill.ports.persistence.model.TelemetryReconciliationResult
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
+import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.GoalRunnerControlRepository
+import skillbill.ports.goalrunner.UnaddressedFindingsRepository
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.learning.model.LearningResolution
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.review.ReviewRunCompletenessRepository
+import skillbill.ports.review.model.ReviewAccountingRecord
+import skillbill.ports.review.model.ReviewRepositoryStatsSnapshot
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
+import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
+import skillbill.ports.telemetry.model.TelemetryReconciliationResult
+import skillbill.ports.work.WorkListRepository
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.WorkflowStatsRepository
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
@@ -63,14 +69,14 @@ class SQLiteUnitOfWork(
   override val telemetryOutbox: TelemetryOutboxRepository = TelemetryOutboxStore(connection)
   override val workflowStates: WorkflowStateRepository = WorkflowStateStore(connection)
   override val workList: WorkListRepository = SQLiteWorkListRepository(connection)
-  override val goalPlanningPreparations: skillbill.ports.persistence.GoalPlanningPreparationRepository =
-    skillbill.db.workflow.GoalPlanningPreparationStore(connection)
-  override val goalRunnerControls: skillbill.ports.persistence.GoalRunnerControlRepository =
-    skillbill.db.workflow.GoalRunnerControlStore(connection)
+  override val goalPlanningPreparations: GoalPlanningPreparationRepository =
+    GoalPlanningPreparationStore(connection)
+  override val goalRunnerControls: GoalRunnerControlRepository =
+    GoalRunnerControlStore(connection)
   override val unaddressedFindings: UnaddressedFindingsRepository = SQLiteUnaddressedFindingsRepository(connection)
   override val featureTaskRuntimeAuditGenerations:
-    skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRepository =
-    skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationStore(connection)
+    FeatureTaskRuntimeAuditGenerationRepository =
+    FeatureTaskRuntimeAuditGenerationStore(connection)
   override val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository =
     SqliteRejectedOutputDiagnosticRepository(connection)
   override val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions =

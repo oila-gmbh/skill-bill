@@ -2,6 +2,8 @@ package skillbill.application.review
 
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.review.ReviewRunLaneResolver
+import skillbill.review.ReviewRunLaneResolver.COMPLETE_DISPOSITION
+import skillbill.review.ReviewRunLaneResolver.RESOLVED
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
@@ -21,6 +23,7 @@ import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
+import skillbill.review.model.ReviewRunLane
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -165,7 +168,7 @@ class ParallelReviewLaneDispositionTest {
   }
 
   @Test fun `resume selection keeps only incomplete durable lanes`() {
-    val complete = skillbill.review.model.ReviewRunLane(
+    val complete = ReviewRunLane(
       laneSkillName = "bill-kotlin-code-review-security",
       packSlug = "kotlin",
       area = "security",
@@ -173,8 +176,8 @@ class ParallelReviewLaneDispositionTest {
       required = false,
       orderIndex = 0,
       originLayerChain = listOf("kotlin"),
-      resolutionState = skillbill.review.ReviewRunLaneResolver.RESOLVED,
-      reviewDisposition = skillbill.review.ReviewRunLaneResolver.COMPLETE_DISPOSITION,
+      resolutionState = RESOLVED,
+      reviewDisposition = COMPLETE_DISPOSITION,
       bundleCompositionDigest = "a".repeat(64),
     )
     val incomplete = complete.copy(

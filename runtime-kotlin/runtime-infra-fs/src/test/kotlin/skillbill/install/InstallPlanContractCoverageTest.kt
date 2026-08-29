@@ -18,6 +18,7 @@ import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.runtime.InstallOperations
 import skillbill.testing.seedConformingPlatformPack
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -234,7 +235,7 @@ class InstallPlanContractCoverageTest {
         .associate { path ->
           val relative = root.relativize(path)
             .toString()
-            .replace(java.io.File.separatorChar, '/')
+            .replace(File.separatorChar, '/')
             .ifEmpty { "." }
           val value = when {
             Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) -> "<DIR>"

@@ -1,10 +1,12 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.goalrunner.GoalPullRequestPort
-import skillbill.ports.goalrunner.model.GoalPullRequestRequest
-import skillbill.ports.goalrunner.model.GoalPullRequestResult
+import skillbill.ports.goalrunner.runner.GoalPullRequestPort
+import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
+import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.nio.file.Files
 import java.nio.file.Path
@@ -114,7 +116,7 @@ class GhGoalPullRequestPort() : GoalPullRequestPort {
           sink.write(buffer, 0, count)
         }
       }
-    } catch (_: java.io.IOException) {
+    } catch (_: IOException) {
       // Reader shutdown is best-effort after the process exits.
     }
   }
@@ -130,7 +132,7 @@ class GhGoalPullRequestPort() : GoalPullRequestPort {
     val names = executableNames("gh")
     return System.getenv("PATH")
       .orEmpty()
-      .split(java.io.File.pathSeparator)
+      .split(File.pathSeparator)
       .asSequence()
       .mapNotNull { raw -> raw.takeIf(String::isNotBlank)?.let(Path::of) }
       .flatMap { directory -> names.asSequence().map(directory::resolve) }

@@ -11,6 +11,8 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import dev.skillbill.intellij.domain.SkillBillStatusOutcome.Paused
+import dev.skillbill.intellij.domain.SkillBillStatusOutcome.Stale
 
 class PreferenceSanitizerAndCacheTest {
     @Test
@@ -27,12 +29,12 @@ class PreferenceSanitizerAndCacheTest {
         )
         val outcome = cache.toStaleOutcome()
         assertTrue(outcome.fromCache)
-        assertTrue(outcome is dev.skillbill.intellij.domain.SkillBillStatusOutcome.Stale)
+        assertTrue(outcome is Stale)
     }
 
     @Test
     fun `a paused outcome round-trips through the cache and re-emerges as stale`() {
-        val paused = dev.skillbill.intellij.domain.SkillBillStatusOutcome.Paused(
+        val paused = Paused(
             observedAt = Instant.parse("2026-08-06T09:00:00Z"),
             summary = "paused by operator",
             repositoryIdentity = "repo",

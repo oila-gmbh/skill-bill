@@ -9,12 +9,12 @@ import skillbill.application.decomposition.decodeDecompositionManifestMap
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.model.GoalContinuationCandidate
 import skillbill.error.LegacyProseWorkflowError
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.WorkflowStateSnapshot
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 internal fun WorkflowStateSnapshot.decompositionRuntime(
   validator: DecompositionManifestValidator,

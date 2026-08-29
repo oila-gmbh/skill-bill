@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.application.agentrun.AgentRunService
-import skillbill.application.model.AgentRunStartRequest
+import skillbill.application.agentrun.model.AgentRunStartRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher

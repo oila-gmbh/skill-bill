@@ -3,6 +3,14 @@ package skillbill.workflow.taskruntime.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
+import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.asReviewStateMap
+import skillbill.workflow.goal.model.optionalReviewStateString
+import skillbill.workflow.goal.model.requireOnlyReviewStateKeys
+import skillbill.workflow.goal.model.requireReviewStateInt
+import skillbill.workflow.goal.model.requireReviewStateList
+import skillbill.workflow.goal.model.requireReviewStateString
 
 const val REPAIR_RECEIPT_MAX_ENTRIES: Int = 50
 const val REPAIR_RECEIPT_MAX_CONSTRUCTS_PER_ENTRY: Int = 16

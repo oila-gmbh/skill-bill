@@ -2,10 +2,10 @@ package skillbill.scaffold
 
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.model.WorkflowDefinition
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import kotlin.test.Test

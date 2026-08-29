@@ -18,6 +18,7 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.testing.seedConformingPlatformPack
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -59,7 +60,7 @@ open class InstallApplyTestSupport {
       .sorted()
       .toList()
       .associate { path ->
-        root.relativize(path).toString().replace(java.io.File.separatorChar, '/') to Files.readString(path)
+        root.relativize(path).toString().replace(File.separatorChar, '/') to Files.readString(path)
       }
       // SKILL-71: install legitimately scaffolds repo-local config outputs under
       // `.skill-bill/` and the root `.gitignore`. snapshotSource still guards the

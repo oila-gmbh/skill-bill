@@ -75,9 +75,9 @@ class PluginArchitectureTest {
     @Test
     fun `plugin sources must not import Skill Bill runtime persistence or JDBC SQLite`() {
         val forbidden = listOf(
-            "skillbill.ports.persistence",
+            "skillbill.ports.db",
             "skillbill.infrastructure.sqlite",
-            "skillbill.workflow.WorkflowEngine",
+            "skillbill.workflow.engine.WorkflowEngine",
             "skillbill.infrastructure.fs",
             "java.sql",
             "javax.sql",

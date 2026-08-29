@@ -5,11 +5,13 @@ import skillbill.cli.core.ProcessExternalCommandRunner
 import skillbill.model.RuntimeContext
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
-import skillbill.ports.goalrunner.GoalPullRequestPort
+import skillbill.ports.goalrunner.runner.GoalPullRequestPort
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.time.RuntimeTimingPort
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.nio.file.Path
 
 data class CliRuntimeContext(
@@ -23,8 +25,8 @@ data class CliRuntimeContext(
   val agentRunLauncher: AgentRunLauncher? = null,
   val goalPullRequestPort: GoalPullRequestPort? = null,
   val executableLookup: ExecutableLookup? = null,
-  val reviewNativeAgentPreflight: skillbill.ports.review.ReviewNativeAgentPreflightPort? = null,
-  val runtimeTimingPort: skillbill.ports.time.RuntimeTimingPort? = null,
+  val reviewNativeAgentPreflight: ReviewNativeAgentPreflightPort? = null,
+  val runtimeTimingPort: RuntimeTimingPort? = null,
   val liveStdout: (String) -> Unit = {},
   val liveStderr: (String) -> Unit = {},
 ) {

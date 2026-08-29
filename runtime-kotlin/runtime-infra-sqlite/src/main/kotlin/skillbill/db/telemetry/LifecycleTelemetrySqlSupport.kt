@@ -1,5 +1,6 @@
 package skillbill.db.telemetry
 
+import kotlinx.serialization.json.JsonElement
 import skillbill.contracts.JsonSupport
 import java.sql.Connection
 import java.sql.PreparedStatement
@@ -44,7 +45,7 @@ fun PreparedStatement.bind(values: List<Any?>) {
 
 private fun String.itemsArrayJson(): String = JsonSupport.parseObjectOrNull(this)
   ?.get("items")
-  ?.let { JsonSupport.json.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), it) }
+  ?.let { JsonSupport.json.encodeToString(JsonElement.serializer(), it) }
   ?: "[]"
 
 private fun ResultSet.toMap(): Map<String, Any?> {

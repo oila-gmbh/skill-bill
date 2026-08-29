@@ -1,7 +1,7 @@
 package skillbill.application.telemetry
 
 import skillbill.contracts.JsonSupport
-import skillbill.ports.persistence.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
 
 const val RUNTIME_EXCEPTION_EVENT = "skillbill_runtime_exception"
 const val REDACTED_ERROR_MESSAGE = "[redacted]"

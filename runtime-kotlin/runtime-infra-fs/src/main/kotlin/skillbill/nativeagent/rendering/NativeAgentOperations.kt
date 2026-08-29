@@ -9,6 +9,7 @@ import skillbill.nativeagent.composition.parseNativeAgentSourceFile
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntriesInRoots
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -206,7 +207,7 @@ object NativeAgentOperations {
           StandardCopyOption.REPLACE_EXISTING,
           StandardCopyOption.ATOMIC_MOVE,
         )
-      } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+      } catch (_: AtomicMoveNotSupportedException) {
         Files.move(
           source,
           target,

@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
+import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files
 import java.nio.file.Path

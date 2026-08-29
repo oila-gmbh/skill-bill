@@ -3,6 +3,7 @@ package skillbill.goalplanning
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
 import java.nio.file.Files
+import java.nio.file.Path
 import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlin.test.Test
@@ -153,7 +154,7 @@ class FileSystemGoalPlanningVerificationDiscoveryTest {
     assertFalse(discovery.boundaryCatalogTruncated)
   }
 
-  private fun writeEntries(file: java.nio.file.Path, title: String, body: String) {
+  private fun writeEntries(file: Path, title: String, body: String) {
     Files.writeString(
       file,
       "# Boundary History\n\n## [2026-08-01] $title\n\n$body\n",

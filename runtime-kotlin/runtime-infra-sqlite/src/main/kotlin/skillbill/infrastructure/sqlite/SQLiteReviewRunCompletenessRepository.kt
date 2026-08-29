@@ -15,10 +15,10 @@ import skillbill.infrastructure.sqlite.review.recordReviewPassClaims
 import skillbill.infrastructure.sqlite.review.recordSpecProjectionReference
 import skillbill.infrastructure.sqlite.review.recordStageBoundary
 import skillbill.infrastructure.sqlite.review.replaceReviewRunLanes
-import skillbill.ports.persistence.ReviewRunCompletenessRepository
-import skillbill.ports.persistence.ReviewRunLaneCompletenessRepository
-import skillbill.ports.persistence.ReviewRunStageCompletenessRepository
-import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
+import skillbill.ports.review.ReviewRunCompletenessRepository
+import skillbill.ports.review.ReviewRunLaneCompletenessRepository
+import skillbill.ports.review.ReviewRunStageCompletenessRepository
+import skillbill.ports.review.model.ReviewIntegrationPassRecord
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneEffectivenessRow

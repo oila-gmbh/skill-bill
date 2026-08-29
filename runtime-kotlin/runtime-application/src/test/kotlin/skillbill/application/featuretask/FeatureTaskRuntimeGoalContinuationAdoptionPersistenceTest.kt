@@ -2,23 +2,26 @@ package skillbill.application.featuretask
 
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
-import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimePreparation
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.ValidationDepth
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,13 +72,13 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       harness.preparation.prepare(
         resumeRequest(
           validationDepth = ValidationDepth.FULL,
-          qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+          qualityGateSelection = BUILD,
         ),
       ),
     )
 
     assertEquals(
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+      VALIDATE,
       prepared.request.goalContinuation?.qualityGateSelection,
     )
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
@@ -126,13 +129,13 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       harness.preparation.prepare(
         resumeRequest(
           validationDepth = ValidationDepth.FULL,
-          qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+          qualityGateSelection = BUILD,
         ),
       ),
     )
 
     assertEquals(
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+      BUILD,
       prepared.request.goalContinuation?.qualityGateSelection,
     )
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
@@ -159,8 +162,8 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
 
   private fun resumeRequest(
     validationDepth: ValidationDepth,
-    qualityGateSelection: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection =
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+    qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
+      VALIDATE,
   ): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
     issueKey = "SKILL-176",
     workflowId = workflowId,
@@ -212,7 +215,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
     ).toRecord()
     repository.saveFeatureTaskRuntimeWorkflow(seeded)
     val database = RuntimeFakeDatabaseSessionFactory(repository)
-    val recorder = FeatureTaskRuntimePhaseRecorder(
+    val recorder = featureTaskRuntimePhaseRecorder(
       database,
       testWorkflowSnapshotValidator,
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,

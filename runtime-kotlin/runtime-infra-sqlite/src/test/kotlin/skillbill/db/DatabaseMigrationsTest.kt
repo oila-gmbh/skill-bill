@@ -10,12 +10,13 @@ import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
+import java.sql.Statement
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -946,7 +947,7 @@ class DatabaseMigrationsTest {
     }
   }
 
-  private fun createLegacyStateEntryTables(statement: java.sql.Statement) {
+  private fun createLegacyStateEntryTables(statement: Statement) {
     statement.execute(
       """
       CREATE TABLE feature_task_workflows (
@@ -974,7 +975,7 @@ class DatabaseMigrationsTest {
     )
   }
 
-  private fun insertLegacyWorkflowStateEntryRows(statement: java.sql.Statement) {
+  private fun insertLegacyWorkflowStateEntryRows(statement: Statement) {
     statement.executeUpdate(
       """
       INSERT INTO feature_task_workflows (workflow_id, mode, contract_version, started_at, updated_at, finished_at)
@@ -987,7 +988,7 @@ class DatabaseMigrationsTest {
     )
   }
 
-  private fun insertLegacyGoalStateEntryRows(statement: java.sql.Statement) {
+  private fun insertLegacyGoalStateEntryRows(statement: Statement) {
     statement.executeUpdate(
       """
       INSERT INTO goal_issue_progress (parent_workflow_id, issue_key, first_started_at, last_activity_at, finished_at)
@@ -1000,7 +1001,7 @@ class DatabaseMigrationsTest {
     )
   }
 
-  private fun assertLegacyStateEntryFallbacks(connection: java.sql.Connection) {
+  private fun assertLegacyStateEntryFallbacks(connection: Connection) {
     assertStateEntryFallbacks(
       connection,
       "feature_task_workflows",
@@ -1021,7 +1022,7 @@ class DatabaseMigrationsTest {
   }
 
   private fun assertStateEntryFallbacks(
-    connection: java.sql.Connection,
+    connection: Connection,
     table: String,
     keyColumn: String,
     prefix: String,
@@ -1034,7 +1035,7 @@ class DatabaseMigrationsTest {
   }
 
   private fun assertEstimatedMissingStateEntries(
-    connection: java.sql.Connection,
+    connection: Connection,
     table: String,
     keyColumn: String,
     rowKey: String,
@@ -1043,7 +1044,7 @@ class DatabaseMigrationsTest {
     assertEquals(1, tableColumnValue(connection, table, keyColumn, rowKey, "state_entered_at_estimated"))
   }
 
-  private fun assertMissingTimestampRowsRemainUnchanged(connection: java.sql.Connection) {
+  private fun assertMissingTimestampRowsRemainUnchanged(connection: Connection) {
     connection.createStatement().use { statement ->
       statement.execute(
         """
@@ -1905,22 +1906,21 @@ class DatabaseMigrationsTest {
     }
   }
 
-  private fun reviewSessionId(connection: java.sql.Connection, reviewRunId: String): String =
-    connection.prepareStatement(
-      """
+  private fun reviewSessionId(connection: Connection, reviewRunId: String): String = connection.prepareStatement(
+    """
       SELECT review_session_id
       FROM review_runs
       WHERE review_run_id = ?
-      """.trimIndent(),
-    ).use { statement ->
-      statement.setString(1, reviewRunId)
-      statement.executeQuery().use { resultSet ->
-        resultSet.next()
-        resultSet.getString(1)
-      }
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(1, reviewRunId)
+    statement.executeQuery().use { resultSet ->
+      resultSet.next()
+      resultSet.getString(1)
     }
+  }
 
-  private fun feedbackEventsSchemaSql(connection: java.sql.Connection): String = connection.prepareStatement(
+  private fun feedbackEventsSchemaSql(connection: Connection): String = connection.prepareStatement(
     """
       SELECT sql
       FROM sqlite_master
@@ -1933,7 +1933,7 @@ class DatabaseMigrationsTest {
     }
   }
 
-  private fun reviewRunsSchemaSql(connection: java.sql.Connection): String = connection.prepareStatement(
+  private fun reviewRunsSchemaSql(connection: Connection): String = connection.prepareStatement(
     """
       SELECT sql
       FROM sqlite_master
@@ -1946,7 +1946,7 @@ class DatabaseMigrationsTest {
     }
   }
 
-  private fun feedbackEventType(connection: java.sql.Connection, reviewRunId: String, findingId: String): String =
+  private fun feedbackEventType(connection: Connection, reviewRunId: String, findingId: String): String =
     connection.prepareStatement(
       """
       SELECT event_type
@@ -1962,7 +1962,7 @@ class DatabaseMigrationsTest {
       }
     }
 
-  private fun findingIssueCategory(connection: java.sql.Connection, reviewRunId: String, findingId: String): String =
+  private fun findingIssueCategory(connection: Connection, reviewRunId: String, findingId: String): String =
     connection.prepareStatement(
       """
       SELECT issue_category
@@ -2214,7 +2214,7 @@ class DatabaseMigrationsTest {
       }
   }
 
-  private fun featureImplementColumnValue(connection: java.sql.Connection, columnName: String): Any =
+  private fun featureImplementColumnValue(connection: Connection, columnName: String): Any =
     connection.prepareStatement(
       """
       SELECT $columnName
@@ -2228,7 +2228,7 @@ class DatabaseMigrationsTest {
       }
     }
 
-  private fun columnNames(connection: java.sql.Connection, table: String): Set<String> =
+  private fun columnNames(connection: Connection, table: String): Set<String> =
     connection.prepareStatement("SELECT name FROM pragma_table_info(?)").use { statement ->
       statement.setString(1, table)
       statement.executeQuery().use { resultSet ->
@@ -2240,7 +2240,7 @@ class DatabaseMigrationsTest {
       }
     }
 
-  private fun migrationRows(connection: java.sql.Connection): List<MigrationRow> = connection.prepareStatement(
+  private fun migrationRows(connection: Connection): List<MigrationRow> = connection.prepareStatement(
     """
       SELECT version, name, applied_at
       FROM schema_migrations
@@ -2262,7 +2262,7 @@ class DatabaseMigrationsTest {
     }
   }
 
-  private fun goalSubtaskColumnValue(connection: java.sql.Connection, columnName: String): Any =
+  private fun goalSubtaskColumnValue(connection: Connection, columnName: String): Any =
     connection.prepareStatement("SELECT $columnName FROM goal_subtask_events LIMIT 1").use { statement ->
       statement.executeQuery().use { resultSet ->
         check(resultSet.next()) { "Expected a seeded goal_subtask_events row." }
@@ -2271,7 +2271,7 @@ class DatabaseMigrationsTest {
     }
 
   private fun nullableTableColumnValue(
-    connection: java.sql.Connection,
+    connection: Connection,
     tableName: String,
     pkColumnName: String,
     pkValue: String,
@@ -2287,7 +2287,7 @@ class DatabaseMigrationsTest {
   }
 
   private fun tableColumnValue(
-    connection: java.sql.Connection,
+    connection: Connection,
     tableName: String,
     pkColumnName: String,
     pkValue: String,
@@ -2302,17 +2302,16 @@ class DatabaseMigrationsTest {
     }
   }
 
-  private fun producerEvidenceDdl(connection: java.sql.Connection): String =
-    connection.createStatement().use { statement ->
-      statement.executeQuery(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'producer_output_evidence'",
-      ).use { rows ->
-        check(rows.next()) { "producer_output_evidence is absent." }
-        rows.getString("sql")
-      }
+  private fun producerEvidenceDdl(connection: Connection): String = connection.createStatement().use { statement ->
+    statement.executeQuery(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'producer_output_evidence'",
+    ).use { rows ->
+      check(rows.next()) { "producer_output_evidence is absent." }
+      rows.getString("sql")
     }
+  }
 
-  private fun producerEvidenceRows(connection: java.sql.Connection): List<ProducerEvidenceRow> =
+  private fun producerEvidenceRows(connection: Connection): List<ProducerEvidenceRow> =
     connection.createStatement().use { statement ->
       statement.executeQuery(
         "SELECT generation, attempt, recorded_at, sha256, payload FROM producer_output_evidence ORDER BY attempt",
@@ -2333,7 +2332,7 @@ class DatabaseMigrationsTest {
       }
     }
 
-  private fun tableColumns(connection: java.sql.Connection, tableName: String): Set<String> =
+  private fun tableColumns(connection: Connection, tableName: String): Set<String> =
     connection.createStatement().use { statement ->
       statement.executeQuery("PRAGMA table_info($tableName)").use { resultSet ->
         buildSet {
@@ -2344,7 +2343,7 @@ class DatabaseMigrationsTest {
       }
     }
 
-  private fun tableColumnTypes(connection: java.sql.Connection, tableName: String): Map<String, String> =
+  private fun tableColumnTypes(connection: Connection, tableName: String): Map<String, String> =
     connection.createStatement().use { statement ->
       statement.executeQuery("PRAGMA table_info($tableName)").use { resultSet ->
         buildMap {
@@ -2355,7 +2354,7 @@ class DatabaseMigrationsTest {
       }
     }
 
-  private fun legacyGoalSubtaskRows(connection: java.sql.Connection): List<Map<String, Any?>> =
+  private fun legacyGoalSubtaskRows(connection: Connection): List<Map<String, Any?>> =
     connection.createStatement().use { statement ->
       statement.executeQuery(
         """
@@ -2740,13 +2739,13 @@ class DatabaseMigrationsTest {
   }
 }
 
-private fun versionIsPrimaryKey(connection: java.sql.Connection): Boolean =
+private fun versionIsPrimaryKey(connection: Connection): Boolean =
   connection.prepareStatement("SELECT pk FROM pragma_table_info('schema_migrations') WHERE name = 'version'")
     .use { statement ->
       statement.executeQuery().use { resultSet -> resultSet.next() && resultSet.getInt("pk") > 0 }
     }
 
-private fun tableExists(connection: java.sql.Connection, table: String): Boolean =
+private fun tableExists(connection: Connection, table: String): Boolean =
   connection.prepareStatement("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").use { statement ->
     statement.setString(1, table)
     statement.executeQuery().use { resultSet -> resultSet.next() }

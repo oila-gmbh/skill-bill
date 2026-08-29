@@ -3,7 +3,7 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
-import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 
 /**
  * SKILL-52.3 Subtask 1: infra-side adapter that bridges the domain-owned

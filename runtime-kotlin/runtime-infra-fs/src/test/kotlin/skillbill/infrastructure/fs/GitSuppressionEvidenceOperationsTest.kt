@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.scopedPathContentsAgainstBase
+import skillbill.ports.workflow.gitops.scopedPathContentsAgainstBase
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.writeText

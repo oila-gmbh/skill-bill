@@ -1,6 +1,6 @@
 package skillbill.scaffold.substance
 
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.testing.repoRootFromTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

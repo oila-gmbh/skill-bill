@@ -1,6 +1,6 @@
 package skillbill.infrastructure.http
 
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
 import kotlin.test.Test

@@ -11,7 +11,7 @@ object TelemetryRemoteStatsRuntime {
     dateFrom: String = "",
     dateTo: String = "",
     today: LocalDate,
-  ): Pair<String, String> = skillbill.telemetry.parseRemoteStatsWindow(since, dateFrom, dateTo, today)
+  ): Pair<String, String> = parseRemoteStatsWindow(since, dateFrom, dateTo, today)
 }
 
 fun parseRemoteStatsWindow(

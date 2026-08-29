@@ -9,6 +9,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 
 /**
  * SKILL-47 AC8 — second bullet: one test per documented violation. Each
@@ -600,7 +601,7 @@ class PlatformPackSchemaViolationsTest {
 
     assertContains(pack.featureAddonUsage.single().consumer, "feature-task")
     assertContains(pack.featureAddonUsage.single().addons.single().entrypoint, "android-compose-implementation.md")
-    kotlin.test.assertFalse("feature_addon_usage" in pack.customFields)
+    assertFalse("feature_addon_usage" in pack.customFields)
     assertContains(pack.customFields.keys, "fork_field")
   }
 

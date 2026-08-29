@@ -314,15 +314,19 @@ class RuntimeArchitectureTest {
             file.relativePath.startsWith("runtime-ports/")
         }
         .flatMap { file ->
+          if (file.packageName.split('.').contains("model")) return@flatMap emptyList()
+          if (file.packageName.startsWith("skillbill.boundary")) return@flatMap emptyList()
           val source = Files.readString(runtimeRoot.resolve(file.relativePath))
-          publicModelDeclarationPattern
-            .findAll(source)
-            .filter { !file.packageName.split('.').contains("model") }
-            .filter { !file.packageName.startsWith("skillbill.boundary") }
-            .map { match ->
-              val lineNumber = source.substring(0, match.range.first).count { it == '\n' } + 1
-              "${file.relativePath}:$lineNumber declares ${match.groupValues.last()} outside a model package"
-            }
+          val lines = source.lines()
+          val tracker = ScopeTracker()
+          lines.mapIndexedNotNull { index, line ->
+            tracker.consume(line)
+            val match = publicModelDeclarationPattern.find(line) ?: return@mapIndexedNotNull null
+            val trimmed = line.trim()
+            if (Regex("""^(?:private|internal)\s+""").containsMatchIn(trimmed)) return@mapIndexedNotNull null
+            if (tracker.insideNonPublicScope) return@mapIndexedNotNull null
+            "${file.relativePath}:${index + 1} declares ${match.groupValues.last()} outside a model package"
+          }
         }
         .toList()
 
@@ -712,7 +716,7 @@ class RuntimeArchitectureTest {
 
     assertContains(architecture, "Decomposition-manifest schema validation is owned by")
     assertContains(architecture, "skillbill.application.decomposition.DecompositionManifestFileWrites")
-    assertContains(architecture, "skillbill.ports.workflow.DecompositionManifestFileStore")
+    assertContains(architecture, "skillbill.ports.workflow.decomposition.DecompositionManifestFileStore")
     assertContains(architecture, "FileSystemDecompositionManifestFileStore")
     assertContains(projectionIo, "Decomposition manifest parse/emission seam")
     // SKILL-52.3 subtask 1: the concrete schema validator moved to
@@ -730,7 +734,7 @@ class RuntimeArchitectureTest {
         sourcePath("skillbill/ports/telemetry/TelemetrySettingsProvider.kt"),
         sourcePath("skillbill/ports/telemetry/TelemetryConfigStore.kt"),
         sourcePath("skillbill/ports/telemetry/TelemetryClient.kt"),
-        sourcePath("skillbill/ports/persistence/TelemetryOutboxRepository.kt"),
+        sourcePath("skillbill/ports/telemetry/TelemetryOutboxRepository.kt"),
       )
     portFiles.forEach { path ->
       assertTrue(Files.exists(path), "Missing telemetry port: ${runtimeRoot.relativize(path)}")
@@ -952,7 +956,7 @@ class RuntimeArchitectureTest {
     val reconciliationSources = sourceFiles().filter { file ->
       file.relativePath.endsWith("featuretask/FeatureTaskRuntimeCrashReconciler.kt") ||
         file.relativePath.endsWith("featuretask/FeatureTaskRuntimeWorkerCoordinator.kt") ||
-        file.relativePath.endsWith("goalrunner/GoalRunnerWorkflowStores.kt")
+        file.relativePath.endsWith("goalrunner/WorkflowGoalRunnerOutcomeStore.kt")
     }
     assertTrue(reconciliationSources.isNotEmpty(), "crash-reconciliation source scan must be non-vacuous.")
     assertTrue(
@@ -1919,42 +1923,42 @@ class RuntimeArchitectureTest {
      */
     val RAW_MAP_OPEN_BOUNDARY_ALLOWLIST: List<String> = listOf(
       // SKILL-52.1 documented workflow-scope open boundaries.
-      "skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore.progressEvents",
-      "skillbill.workflow.WorkflowEngine.snapshotMap",
-      "skillbill.workflow.WorkflowEngine.summaryMap",
-      "skillbill.workflow.WorkflowEngine.resumeMap",
-      "skillbill.workflow.WorkflowEngine.continueMap",
-      "skillbill.workflow.WorkflowEngine.compactContinueMap",
-      "skillbill.workflow.WorkflowEngine.updateAcknowledgementMap",
-      "skillbill.workflow.WorkflowEngine.inputProjectionMap",
-      "skillbill.workflow.model.WorkflowContinuationArtifactSummary.value",
-      "skillbill.workflow.model.WorkflowInputProjection.artifacts",
+      "skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore.progressEvents",
+      "skillbill.workflow.engine.WorkflowEngine.snapshotMap",
+      "skillbill.workflow.engine.WorkflowEngine.summaryMap",
+      "skillbill.workflow.engine.WorkflowEngine.resumeMap",
+      "skillbill.workflow.engine.WorkflowEngine.continueMap",
+      "skillbill.workflow.engine.WorkflowEngine.compactContinueMap",
+      "skillbill.workflow.engine.WorkflowEngine.updateAcknowledgementMap",
+      "skillbill.workflow.engine.WorkflowEngine.inputProjectionMap",
+      "skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary.value",
+      "skillbill.workflow.engine.model.WorkflowInputProjection.artifacts",
       // SKILL-52.2 subtask 4: domain-owned workflow-snapshot validator port.
       // The map is the canonical schema-validated wire snapshot envelope; the
       // port stays raw-map at the validation seam because the schema itself
       // validates against the canonical map envelope.
-      "skillbill.workflow.WorkflowSnapshotValidator.validate",
+      "skillbill.workflow.engine.WorkflowSnapshotValidator.validate",
       // SKILL-148 subtask 1: IDE status wire map at the schema-validation seam.
       // The domain validator port and the application emit/problem details bag
       // stay raw-map because the Draft 2020-12 schema validates the canonical
       // map envelope before CLI JSON emission.
-      "skillbill.workflow.IdeStatusValidator.validate",
-      "skillbill.application.model.IdeStatusSnapshot.toStatusWireMap",
-      "skillbill.application.model.IdeStatusProblem.details",
+      "skillbill.workflow.idestatus.IdeStatusValidator.validate",
+      "skillbill.application.idestatus.model.IdeStatusSnapshot.toStatusWireMap",
+      "skillbill.application.idestatus.model.IdeStatusProblem.details",
       // SKILL-52.3 subtask 1: domain-owned install-plan + decomposition
       // validator ports. Each stays raw-map at the validation seam because
       // the canonical schema validates against the wire-map envelope, the
       // same rationale as the workflow-snapshot validator port above.
       "skillbill.install.model.InstallPlanWireValidator.validate",
-      "skillbill.workflow.DecompositionManifestValidator.validate",
-      "skillbill.workflow.DecompositionManifestValidator.validateYamlText",
+      "skillbill.workflow.decomposition.DecompositionManifestValidator.validate",
+      "skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText",
       // SKILL-52.3 subtask 4: domain-owned manifest file-store port. The YAML
       // serialization seam accepts the canonical schema-validated wire map and
       // delegates the concrete `YAMLMapper` mechanics to the infra-fs adapter,
       // mirroring the decode-side validator port above.
-      "skillbill.ports.workflow.DecompositionManifestFileStore.encodeManifestYaml",
-      "skillbill.workflow.DecompositionManifestCodec.decodeMap",
-      "skillbill.workflow.toWireMap",
+      "skillbill.ports.workflow.decomposition.DecompositionManifestFileStore.encodeManifestYaml",
+      "skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap",
+      "skillbill.workflow.decomposition.toWireMap",
       "skillbill.application.decomposition.decodeDecompositionManifestMap",
       "skillbill.application.decomposition.encodeDecompositionManifestMap",
       "skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate",
@@ -1965,8 +1969,8 @@ class RuntimeArchitectureTest {
       // workflow-artifact/schema seams. The domain validator owns the schema
       // boundary and CLI/MCP/projector rendering consumes compact maps after
       // validation.
-      "skillbill.workflow.GoalObservabilityEventValidator.validate",
-      "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate",
+      "skillbill.workflow.goal.GoalObservabilityEventValidator.validate",
+      "skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator.validate",
       // SKILL-129 subtask 1: the review-context packet, assignment, and
       // launch envelopes are schema-validated as canonical wire maps. The
       // typed projection owns composition; only the validation seam and the
@@ -1975,12 +1979,12 @@ class RuntimeArchitectureTest {
       "skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection",
       "skillbill.application.review.model.ReviewContextEnvelope.asWireMap",
       "skillbill.application.review.toBoundedPayload",
-      "skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload",
-      "skillbill.workflow.model.GoalObservabilityEvent.toArtifactMap",
-      "skillbill.workflow.model.GoalObservabilityEvent.toCompactSummaryMap",
-      "skillbill.workflow.model.GoalObservabilityHistory.toArtifactList",
-      "skillbill.workflow.model.goalObservabilityLatestEventFromArtifacts",
-      "skillbill.workflow.model.goalObservabilityHistoryFromArtifacts",
+      "skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload",
+      "skillbill.workflow.goal.model.GoalObservabilityEvent.toArtifactMap",
+      "skillbill.workflow.goal.model.GoalObservabilityEvent.toCompactSummaryMap",
+      "skillbill.workflow.goal.model.GoalObservabilityHistory.toArtifactList",
+      "skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts",
+      "skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts",
       "skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent",
       "skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras.latestObservabilityEvent",
       "skillbill.goalrunner.model.GoalRunnerStatusProjector.project",
@@ -1988,8 +1992,8 @@ class RuntimeArchitectureTest {
       // attempt-ledger maps are durable
       // workflow-artifact/schema seams written through the goal-runner outcome
       // store adapter and surfaced read-only by MCP goal-observability mapping.
-      "skillbill.workflow.model.GoalProgressEvent.toArtifactMap",
-      "skillbill.workflow.model.GoalProgressHistory.toArtifactList",
+      "skillbill.workflow.goal.model.GoalProgressEvent.toArtifactMap",
+      "skillbill.workflow.goal.model.GoalProgressHistory.toArtifactList",
       "skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap",
       "skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList",
       // SKILL-64 subtask 3 (F-A01/F-A02): domain-owned declared-progress event
@@ -1997,10 +2001,10 @@ class RuntimeArchitectureTest {
       // sequence-ordered retention helper used by the durable goal-runner write
       // seam. Both stay raw-map: the schema validates the wire-map envelope and
       // the retention helper prunes the same artifact-map lists in place.
-      "skillbill.workflow.GoalProgressEventValidator.validate",
-      "skillbill.workflow.model.appendBoundedHistoryBySequence",
+      "skillbill.workflow.goal.GoalProgressEventValidator.validate",
+      "skillbill.workflow.goal.model.appendBoundedHistoryBySequence",
       // Durable artifact-map seams riding inside the family workflow row's artifacts_json.
-      "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput",
       "skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.trySynthesize",
       "skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.envelopeFromSettlement",
       "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.complete",
@@ -2009,8 +2013,8 @@ class RuntimeArchitectureTest {
       "skillbill.application.featuretask.FeatureTaskPhaseSettlementService.findEnvelope",
       // SKILL-137: domain-owned canonical planning-projections schema gate (infra-fs adapter
       // bound in DI). Raw-map because the schema validates the produced_outputs wire map.
-      "skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection",
-      "skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt",
       "skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap",
@@ -2036,7 +2040,7 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement.toTelemetryMap",
       // SKILL-140: durable append-only quarantine evidence store (private, prompt-invisible) and its
       // domain-owned schema validator port (infra-fs adapter bound in DI).
-      "skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire",
@@ -2049,7 +2053,8 @@ class RuntimeArchitectureTest {
       // SKILL-150: durable append-only implementation-attempt history (the continuation projection's
       // only source of prior receipts) and its domain-owned schema validator port, mirroring the
       // quarantine store above.
-      "skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator.validateImplementationAttemptRecord",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator." +
+        "validateImplementationAttemptRecord",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.toArtifactMap",
@@ -2066,11 +2071,11 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact",
-      "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope",
-      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration",
-      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord",
-      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement",
-      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateSharedEvidenceProjection",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateSharedEvidenceProjection",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap",
@@ -2080,22 +2085,22 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.toArtifactMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.fromArtifactMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.toArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.fromArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.toArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.fromArtifactMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.toArtifactMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.fromArtifactMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decode",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.toArtifactMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewState.boundedDispositionSummary",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.toArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.fromArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decode",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewState.toArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskReviewState.fromArtifactMap",
       // SKILL-189 subtask 1: durable implement_fix repair receipts riding inside the goal-subtask
       // review state artifact. Raw-map for the same reason as the review-state seams above — the
       // phase-output schema validates the wire map before the domain model decodes it.
@@ -2110,20 +2115,20 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry.toProjectionMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerProjection.toProjectionMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap",
-      "skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap",
-      "skillbill.ports.workflow.model.GoalSubtaskReviewInput.toArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap",
+      "skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap",
+      "skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap",
-      "skillbill.ports.goalrunner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput",
+      "skillbill.ports.goalrunner.runner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput",
       "skillbill.workflow.taskruntime.model.toArtifactMap",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap",
-      "skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap",
-      "skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap",
+      "skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap",
+      "skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap",
       // SKILL-180: runtime-owned validation-gate progress at the durable workflow-artifact seam.
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap",
@@ -2166,7 +2171,7 @@ class RuntimeArchitectureTest {
       "skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished",
       "skillbill.application.telemetry.LifecycleTelemetryService.goalFinished",
       "skillbill.application.telemetry.LifecycleTelemetryService.goalIssueFinished",
-      "skillbill.workflow.WorkflowEngine.continueDecision",
+      "skillbill.workflow.engine.WorkflowEngine.continueDecision",
       "skillbill.learnings.learningPayload",
       "skillbill.learnings.learningSummaryPayload",
       "skillbill.learnings.scopeCounts",
@@ -2174,23 +2179,23 @@ class RuntimeArchitectureTest {
       "skillbill.learnings.summarizeLearningReferences",
       "skillbill.learnings.learningEntryPayload",
       // @OpenBoundaryMap-annotated typed-DTO open boundaries.
-      "skillbill.application.model.WorkflowUpdateRequest.stepUpdates",
-      "skillbill.application.model.WorkflowUpdateRequest.artifactsPatch",
-      "skillbill.application.model.DecompositionManifestWriteRequest.planningResult",
-      "skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates",
-      "skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch",
-      "skillbill.application.model.DecompositionManifestRuntimeUpdate.existingArtifacts",
+      "skillbill.application.workflow.model.WorkflowUpdateRequest.stepUpdates",
+      "skillbill.application.workflow.model.WorkflowUpdateRequest.artifactsPatch",
+      "skillbill.application.workflow.model.DecompositionManifestWriteRequest.planningResult",
+      "skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.stepUpdates",
+      "skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.artifactsPatch",
+      "skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.existingArtifacts",
       "skillbill.install.model.buildInstallPlanWireMap",
       "skillbill.scaffold.model.PlatformManifest.customFields",
       "skillbill.telemetry.model.TelemetryConfigDocument.payload",
       "skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields",
       "skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics",
-      "skillbill.workflow.model.WorkflowSnapshotView.artifacts",
-      "skillbill.workflow.model.WorkflowContinueView.stepArtifacts",
-      "skillbill.workflow.model.WorkflowContinueView.extraFields",
-      "skillbill.workflow.model.WorkflowContinueView.sessionSummary",
-      "skillbill.workflow.model.WorkflowUpdateInput.stepUpdates",
-      "skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch",
+      "skillbill.workflow.engine.model.WorkflowSnapshotView.artifacts",
+      "skillbill.workflow.engine.model.WorkflowContinueView.stepArtifacts",
+      "skillbill.workflow.engine.model.WorkflowContinueView.extraFields",
+      "skillbill.workflow.engine.model.WorkflowContinueView.sessionSummary",
+      "skillbill.workflow.engine.model.WorkflowUpdateInput.stepUpdates",
+      "skillbill.workflow.engine.model.WorkflowUpdateInput.artifactsPatch",
       "skillbill.ports.validation.model.RepoValidationReport.toPayload",
       "skillbill.ports.validation.model.ReleaseRefMetadata.toPayload",
       "skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS",

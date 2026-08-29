@@ -8,6 +8,7 @@ import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.UpdateLearningRequest
 import java.sql.Connection
+import java.sql.ResultSet
 
 object SQLiteLearningStore {
   private const val PARAM_ONE: Int = 1
@@ -314,7 +315,7 @@ private fun decodeSessionLearnings(rawJson: String): Map<String, Any?>? = JsonSu
   JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
 }
 
-private fun java.sql.ResultSet.toLearningRecord(): LearningRecord = LearningRecord(
+private fun ResultSet.toLearningRecord(): LearningRecord = LearningRecord(
   id = getInt("id"),
   scope = getString("scope"),
   scopeKey = getString("scope_key"),

@@ -2,14 +2,16 @@
 
 package skillbill.application
 
-import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
-import skillbill.application.model.FeatureTaskRuntimeRunEvent
-import skillbill.application.model.FeatureTaskRuntimeRunEventSink
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.install.model.InstallAgent.CLAUDE
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.requireAccepted
@@ -373,8 +375,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
         if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
         auditAttempts += 1
         if (auditAttempts == 1) {
-          skillbill.ports.agentrun.model.AgentRunLaunchFacts(
-            agent = skillbill.install.model.InstallAgent.CLAUDE,
+          AgentRunLaunchFacts(
+            agent = CLAUDE,
             exitStatus = 0,
             stdout = excerpt,
             stderr = "",
@@ -425,8 +427,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
         if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
         auditAttempts += 1
         if (auditAttempts == 1) {
-          skillbill.ports.agentrun.model.AgentRunLaunchFacts(
-            agent = skillbill.install.model.InstallAgent.CLAUDE,
+          AgentRunLaunchFacts(
+            agent = CLAUDE,
             exitStatus = 0,
             stdout = excerpt,
             stderr = "",

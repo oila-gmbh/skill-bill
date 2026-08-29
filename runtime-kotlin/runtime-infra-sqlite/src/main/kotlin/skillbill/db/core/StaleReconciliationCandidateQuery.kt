@@ -1,7 +1,7 @@
 package skillbill.db.core
 
 import skillbill.db.telemetry.bind
-import skillbill.ports.persistence.model.TelemetryReconciliationRequest
+import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import java.sql.Connection
 import java.sql.ResultSet
 import java.time.temporal.ChronoUnit

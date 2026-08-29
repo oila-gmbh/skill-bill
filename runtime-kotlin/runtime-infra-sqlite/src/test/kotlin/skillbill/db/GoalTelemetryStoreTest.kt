@@ -6,7 +6,7 @@ import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.sqlite.review.InvalidGoalTelemetryRowError
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
@@ -227,7 +227,8 @@ class GoalTelemetryStoreTest {
         INSERT INTO goal_subtask_events (
           issue_key, workflow_id, subtask_id, subtask_name, status,
           started_at, finished_at, duration_ms, attempt_count
-        ) VALUES ('SKILL-66', 'wf-1', 1, 'persistence', 'bogus', '2026-06-04T10:00:00Z', '2026-06-04T10:01:00Z', 60000, 1)
+        ) VALUES ('SKILL-66', 'wf-1', 1, 'persistence', 'bogus', '2026-06-04T10:00:00Z', '2026-06-04T10:01:00Z', 60000,
+          1)
         """.trimIndent(),
       ).use { it.executeUpdate() }
 

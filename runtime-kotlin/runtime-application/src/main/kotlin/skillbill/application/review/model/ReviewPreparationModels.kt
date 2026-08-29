@@ -5,6 +5,7 @@ import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewRevision
+import skillbill.review.context.model.SpecIntentProjection
 import java.nio.file.Path
 
 data class ReviewPreparationRequest(
@@ -13,7 +14,7 @@ data class ReviewPreparationRequest(
   val criteriaReferences: Map<String, List<String>> = emptyMap(),
   val dependencyAllowlist: ReviewDependencyAllowlist = ReviewDependencyAllowlist.EMPTY,
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
-  val specIntentProjection: skillbill.review.context.model.SpecIntentProjection? = null,
+  val specIntentProjection: SpecIntentProjection? = null,
   val evidenceStorePath: String? = null,
   val repoRoot: Path? = null,
 )

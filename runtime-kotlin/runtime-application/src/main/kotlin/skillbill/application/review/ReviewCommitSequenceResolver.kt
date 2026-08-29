@@ -2,7 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.evidence.SharedReviewEvidenceAssembler
 import skillbill.application.evidence.SharedReviewEvidenceProjection
-import skillbill.application.model.ParallelReviewScope
+import skillbill.application.review.model.ParallelReviewScope
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.review.context.model.ReviewCommitCoverageFact
 import skillbill.review.context.model.ReviewCommitUnit

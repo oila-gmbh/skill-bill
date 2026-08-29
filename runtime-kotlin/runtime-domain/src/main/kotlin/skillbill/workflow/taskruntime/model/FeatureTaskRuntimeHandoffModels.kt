@@ -2,9 +2,10 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.ValidationDepth
 
 /**
  * Domain models for the inter-phase handoff contract. The handoff is an
@@ -68,8 +69,9 @@ enum class FeatureTaskRuntimeFeatureSize {
 
     fun fromWire(value: String): FeatureTaskRuntimeFeatureSize =
       entries.firstOrNull { it.name == value.trim().uppercase() }
-        ?: throw IllegalArgumentException(
-          "Unknown feature-task-runtime feature size '$value'. Allowed: ${entries.joinToString { it.name }}.",
+        ?: throw InvalidFeatureTaskRuntimePhaseHandoffSchemaError(
+          sourceLabel = "<wire>",
+          reason = "Unknown feature-task-runtime feature size '$value'.",
         )
   }
 }

@@ -1,10 +1,10 @@
 package skillbill.mcp.review
 
-import skillbill.application.model.FeatureVerifyStatsResult
-import skillbill.application.model.GoalStatsResult
-import skillbill.application.model.ImportedReviewResult
-import skillbill.application.model.ReviewStatsResult
-import skillbill.application.model.TriageResult
+import skillbill.application.review.model.FeatureVerifyStatsResult
+import skillbill.application.review.model.GoalStatsResult
+import skillbill.application.review.model.ImportedReviewResult
+import skillbill.application.review.model.ReviewStatsResult
+import skillbill.application.review.model.TriageResult
 import skillbill.application.review.toFeatureVerifyStatsPayload
 import skillbill.application.review.toGoalStatsPayload
 import skillbill.application.review.toImportedReviewContract

@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -189,12 +189,7 @@ private fun auditMissingVerdict(): String = phaseProse(
   leftoverKeys = "",
 )
 
-private fun phaseProse(
-  phaseId: String,
-  value: String,
-  leftoverKeys: String,
-  verdict: String? = null,
-): String {
+private fun phaseProse(phaseId: String, value: String, leftoverKeys: String, verdict: String? = null): String {
   val verdictLine = verdict?.let { """    "verdict": "$it",""" + "\n" }.orEmpty()
   val leftoverBlock = leftoverKeys.trim().trimEnd(',').let { keys ->
     if (keys.isEmpty()) "" else "$keys,\n      "

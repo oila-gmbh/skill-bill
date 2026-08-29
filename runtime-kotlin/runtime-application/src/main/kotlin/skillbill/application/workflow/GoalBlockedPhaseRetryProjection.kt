@@ -6,10 +6,10 @@ import skillbill.application.decomposition.withRetriedSubtask
 import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.ports.db.UnitOfWork
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 

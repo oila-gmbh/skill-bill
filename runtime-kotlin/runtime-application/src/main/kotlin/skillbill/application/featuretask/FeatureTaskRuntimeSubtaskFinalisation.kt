@@ -1,16 +1,16 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.amendHeadCommit
-import skillbill.ports.workflow.captureIndexState
-import skillbill.ports.workflow.deleteCheckpointRefsUnderPrefix
-import skillbill.ports.workflow.headCommitMessage
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.resolveCheckpointRef
-import skillbill.ports.workflow.restoreIndexState
-import skillbill.ports.workflow.stagePaths
-import skillbill.ports.workflow.updateCheckpointRef
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.amendHeadCommit
+import skillbill.ports.workflow.gitops.captureIndexState
+import skillbill.ports.workflow.gitops.deleteCheckpointRefsUnderPrefix
+import skillbill.ports.workflow.gitops.headCommitMessage
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.resolveCheckpointRef
+import skillbill.ports.workflow.gitops.restoreIndexState
+import skillbill.ports.workflow.gitops.stagePaths
+import skillbill.ports.workflow.gitops.updateCheckpointRef
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import java.nio.file.Path
 

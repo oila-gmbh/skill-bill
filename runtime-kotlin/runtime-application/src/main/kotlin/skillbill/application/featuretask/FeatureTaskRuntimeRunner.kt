@@ -1,47 +1,29 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.agentFailureExcerpt
-import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
-import skillbill.application.model.FeatureTaskRuntimeFindingVerificationTelemetry
-import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimePreparation
-import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
-import skillbill.application.model.FeatureTaskRuntimeRunEvent
-import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCrashReconciliationResult
+import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.telemetry.model.FeatureTaskRuntimeFindingVerificationTelemetry
+import skillbill.application.telemetry.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
-import skillbill.goalrunner.model.GoalRunnerLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.buildGoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeProviderLimitDetector
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProviderLimitSignal
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
-
-private const val PHASE_OUTPUT_STATUS_BLOCKED = "blocked"
-private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
 
 /**
  * Runs the feature-task-runtime phase loop deterministically: for each ordered phase it
@@ -397,212 +379,4 @@ class FeatureTaskRuntimeRunner(
   // spec gate invokes this lazily only when it decides to write (terminal, non-goal-continuation run).
   private fun finalizingAgentId(request: FeatureTaskRuntimeRunRequest): String? =
     agentAttributionFromPhaseState(recorder, request.workflowId, request.dbPathOverride).finalizingAgentId
-}
-
-internal fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, Any?>): String? {
-  val status = outputMap["status"] as? String
-  if (status != PHASE_OUTPUT_STATUS_BLOCKED && status != PHASE_OUTPUT_STATUS_FAILED) {
-    return null
-  }
-  val summary = (outputMap["summary"] as? String).orEmpty().trim()
-  val blockingReasons = (outputMap["produced_outputs"] as? Map<*, *>)
-    ?.get("blocking_reasons")
-    ?.let { value ->
-      when (value) {
-        is List<*> -> value.mapNotNull { it as? String }
-        is String -> listOf(value)
-        else -> emptyList()
-      }
-    }
-    .orEmpty()
-  val detail = (listOf(summary) + blockingReasons)
-    .filter(String::isNotBlank)
-    .joinToString("; ")
-  val prefix = if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
-    "Validation phase reported status '$status'; retrying so the agent can fix failures."
-  } else {
-    "Phase output reported status '$status'."
-  }
-  return prefix + detail.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
-}
-
-private fun persistGoalContinuationOutcome(
-  goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
-  phaseRecorder: FeatureTaskRuntimePhaseRecorder,
-  gitOperations: WorkflowGitOperations,
-  request: FeatureTaskRuntimeRunRequest,
-  report: FeatureTaskRuntimeRunReport,
-): FeatureTaskRuntimeRunReport {
-  val context = request.goalContinuation ?: return report
-  val outcome = goalContinuationOutcomeFor(phaseRecorder, gitOperations, request, context, report)?.let { base ->
-    val attribution = agentAttributionFromPhaseState(phaseRecorder, request.workflowId, request.dbPathOverride)
-    base.copy(
-      finalizingAgentId = attribution.finalizingAgentId,
-      participatingAgentIds = attribution.participatingAgentIds,
-    )
-  }
-  outcome?.let { terminal ->
-    goalContinuationRecorder.recordGoalContinuationState(
-      request = GoalContinuationStateRecordRequest(
-        workflowId = request.workflowId,
-        outcome = FeatureTaskRuntimeGoalContinuationOutcome(
-          issueKey = terminal.issueKey,
-          subtaskId = terminal.subtaskId,
-          status = terminal.status,
-          workflowId = terminal.workflowId,
-          commitSha = terminal.commitSha,
-          blockedReason = terminal.blockedReason,
-          lastResumableStep = terminal.lastResumableStep,
-          finalizingAgentId = terminal.finalizingAgentId,
-          participatingAgentIds = terminal.participatingAgentIds,
-        ),
-        // A paused subtask is non-terminal and must not be collapsed to blocked; collapsing it would
-        // destroy the resumable row the pause exists to create.
-        workflowStatus = when (terminal.status) {
-          "complete" -> "completed"
-          FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
-          else -> "blocked"
-        },
-      ),
-      dbOverride = request.dbPathOverride,
-    )
-  }
-  return when {
-    report is FeatureTaskRuntimeRunReport.Completed && outcome != null -> report.copy(subtaskOutcome = outcome)
-    report is FeatureTaskRuntimeRunReport.Blocked && outcome != null -> report.copy(subtaskOutcome = outcome)
-    report is FeatureTaskRuntimeRunReport.Paused && outcome != null -> report.copy(subtaskOutcome = outcome)
-    else -> report
-  }
-}
-
-private fun goalContinuationOutcomeFor(
-  recorder: FeatureTaskRuntimePhaseRecorder,
-  gitOperations: WorkflowGitOperations,
-  request: FeatureTaskRuntimeRunRequest,
-  context: FeatureTaskRuntimeGoalContinuationContext,
-  report: FeatureTaskRuntimeRunReport,
-): FeatureTaskRuntimeSubtaskOutcome? = when (report) {
-  is FeatureTaskRuntimeRunReport.Completed ->
-    completedGoalContinuationOutcome(recorder, gitOperations, request, context)
-  is FeatureTaskRuntimeRunReport.Blocked -> FeatureTaskRuntimeSubtaskOutcome(
-    issueKey = context.parentIssueKey,
-    subtaskId = context.subtaskId,
-    status = "blocked",
-    commitSha = null,
-    workflowId = request.workflowId,
-    blockedReason = report.blockedReason,
-    lastResumableStep = report.lastIncompletePhase,
-  )
-  // Resumable, not blocked: the goal runner must treat the subtask as awaiting an operator decision
-  // rather than terminating it.
-  is FeatureTaskRuntimeRunReport.Paused -> FeatureTaskRuntimeSubtaskOutcome(
-    issueKey = context.parentIssueKey,
-    subtaskId = context.subtaskId,
-    status = "paused",
-    commitSha = null,
-    workflowId = request.workflowId,
-    blockedReason = report.pauseReason,
-    lastResumableStep = report.resumableStep,
-  )
-  is FeatureTaskRuntimeRunReport.Decomposed -> null
-}
-
-internal fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): String? = when {
-  facts.spawnFailed -> {
-    val base = "Feature-task-runtime phase '$phaseId' failed to launch: the agent process could not be spawned."
-    val excerpt = agentFailureExcerpt(facts.stderr, facts.stdout, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
-    if (excerpt != null) "$base\n$excerpt" else base
-  }
-  facts.timedOut -> "Feature-task-runtime phase '$phaseId' launch timed out before the agent produced an output."
-  facts.interrupted -> "Feature-task-runtime phase '$phaseId' launch was interrupted before completion."
-  facts.exitStatus != null && facts.exitStatus != 0 -> {
-    val base = "Feature-task-runtime phase '$phaseId' agent exited with non-zero status ${facts.exitStatus}."
-    val excerpt = agentFailureExcerpt(facts.stderr, facts.stdout, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
-    if (excerpt != null) "$base\n$excerpt" else base
-  }
-  else -> null
-}
-
-/**
- * The provider-limit refusal hiding inside a non-zero exit, or null when the exit was an ordinary
- * failure. A spawn failure, a timeout and an interruption are excluded on purpose: none of them
- * carries a provider verdict, so a limit phrase in their output is the transcript's, not the
- * provider's.
- */
-internal fun providerLimitSignal(facts: AgentRunLaunchFacts): FeatureTaskRuntimeProviderLimitSignal? {
-  val carriesProviderVerdict = !facts.spawnFailed && !facts.timedOut && !facts.interrupted
-  val failedExit = facts.exitStatus != null && facts.exitStatus != 0
-  if (!carriesProviderVerdict || !failedExit) return null
-  return FeatureTaskRuntimeProviderLimitDetector.detect(facts.stderr, facts.stdout)
-}
-
-/**
- * States what actually happened, in the provider's own words. Deliberately says the phase produced
- * no output and consumed no repair attempt: the reason a limit pause replaced a fix-loop block is
- * that the previous text claimed invalid output for a phase that never emitted any.
- */
-internal fun providerLimitPauseReason(phaseId: String, signal: FeatureTaskRuntimeProviderLimitSignal): String {
-  val reset = signal.resetHint?.let { " Access resets $it." }.orEmpty()
-  return "Feature-task-runtime phase '$phaseId' stopped because the agent provider refused the request at a " +
-    "usage limit.$reset The phase produced no output and consumed no repair attempt; the run is paused and " +
-    "resumes at '$phaseId'. Provider said: ${signal.evidence}"
-}
-
-/**
- * Recognizes a durable block this runtime wrote for a launch that never reached the schema gate.
- * Such an attempt failed the process, not the output, so [FeatureTaskRuntimeAttemptBudgets] must not
- * charge it to a schema-repair retry. Kept beside [infraFailureReason] so the text it matches
- * and the text that produces it cannot drift apart unnoticed.
- *
- * A provider-limit refusal is deliberately absent: it settles as a pause, never as a block, so it
- * reaches neither this predicate nor any attempt budget.
- */
-internal fun isProcessFailureBlockReason(phaseId: String, reason: String): Boolean =
-  reason.startsWith("Feature-task-runtime phase '$phaseId' ") &&
-    PROCESS_FAILURE_REASON_MARKERS.any(reason::contains)
-
-private val PROCESS_FAILURE_REASON_MARKERS: List<String> = listOf(
-  "agent exited with non-zero status",
-  "failed to launch:",
-  "launch timed out",
-  "launch was interrupted",
-  "could not launch an agent",
-)
-
-// Drops a legacy PLAN completion that predates the now-required PREPLAN phase so the loop re-runs
-// PLAN rather than honouring a pre-PREPLAN completion.
-internal fun invalidateLegacyPlanWithoutPreplan(completed: MutableSet<String>) {
-  val plan = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
-  val preplan = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
-  if (plan in completed && preplan !in completed) {
-    completed.remove(plan)
-  }
-}
-
-internal fun phaseDeclaration(
-  phaseId: String,
-  featureSize: FeatureTaskRuntimeFeatureSize,
-  qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
-): FeatureTaskRuntimePhaseDeclaration = if (
-  phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY ||
-  phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH
-) {
-  FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarationForQualityGate(
-    phaseId,
-    featureSize,
-    qualityGateSelection,
-  )
-} else {
-  FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize)
-}
-
-internal fun missingUpstream(
-  declaration: FeatureTaskRuntimePhaseDeclaration,
-  recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-): List<String>? {
-  val resolved = FeatureTaskRuntimeHandoffContract
-    .resolveUpstreamOutputs(declaration, recordedOutputs)
-    .outputsByPhaseId
-    .keys
-  return declaration.consumedUpstreamPhaseIds.filterNot(resolved::contains).takeIf { it.isNotEmpty() }
 }

@@ -1,8 +1,8 @@
 package skillbill.cli
 
-import skillbill.ports.workflow.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
 internal object TestRepositoryFingerprintOperations : RepositoryFingerprintGitOperations {

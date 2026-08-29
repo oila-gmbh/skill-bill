@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
-import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 
 /**
  * The production Draft 2020-12 planning-projection validator, exposed to runtime-application tests that

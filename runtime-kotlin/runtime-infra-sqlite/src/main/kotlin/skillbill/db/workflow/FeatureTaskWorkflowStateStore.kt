@@ -1,0 +1,16 @@
+package skillbill.db.workflow
+
+import skillbill.ports.workflow.FeatureTaskExecutionLookupRepository
+import skillbill.ports.workflow.FeatureTaskRuntimeWorkerRepository
+import skillbill.ports.workflow.FeatureTaskWorkflowRowRepository
+import skillbill.ports.workflow.FeatureTaskWorkflowStateRepository
+import skillbill.ports.workflow.GoalChildWorkflowStateRepository
+import java.sql.Connection
+
+internal class FeatureTaskWorkflowStateStore(
+  connection: Connection,
+) : FeatureTaskWorkflowStateRepository,
+  FeatureTaskExecutionLookupRepository by FeatureTaskExecutionLookupStore(connection),
+  FeatureTaskWorkflowRowRepository by FeatureTaskWorkflowRowStore(connection),
+  GoalChildWorkflowStateRepository by GoalChildWorkflowStore(connection),
+  FeatureTaskRuntimeWorkerRepository by FeatureTaskRuntimeWorkerStore(connection)

@@ -1,4 +1,6 @@
 package skillbill.application
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 
 // SKILL-140 Subtask 3 (task-6): the canned phase-output fixture corpus, extracted verbatim from
 // FeatureTaskRuntimeRunnerTest so a single parity test (PhaseOutputFixtureParityTest) can enumerate
@@ -12,22 +14,20 @@ internal const val REVIEW_FIX_BLOCKER_FINDING_ID = "F-001"
 internal var harnessPendingVerifyFindingIds: List<String> = emptyList()
 
 internal fun harnessReviewDriverSyncingPendingVerifyFindings(
-  delegate: skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver,
-): skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver =
-  skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
-    val result = delegate.run(request)
-    harnessPendingVerifyFindingIds = result.mergeResult.findings.map { it.fNumber }
-    result
-  }
+  delegate: FeatureTaskRuntimeReviewDriver,
+): FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver { request ->
+  val result = delegate.run(request)
+  harnessPendingVerifyFindingIds = result.mergeResult.findings.map { it.fNumber }
+  result
+}
 
 internal fun verifyFindingsPhaseOutput(
   verifiedFindingIds: List<String> = harnessPendingVerifyFindingIds,
-): skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput =
-  skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
-    "verify_findings",
-    1,
-    verifyFindingsOutput(verifiedFindingIds),
-  )
+): FeatureTaskRuntimePhaseOutput = FeatureTaskRuntimePhaseOutput(
+  "verify_findings",
+  1,
+  verifyFindingsOutput(verifiedFindingIds),
+)
 
 internal fun verifyFindingsOutputForFindingIds(vararg findingIds: String): String =
   verifyFindingsOutput(findingIds.toList())

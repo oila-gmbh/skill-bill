@@ -1,6 +1,7 @@
 package skillbill.application.featuretask.validation
 
 import skillbill.application.RecordingDiagnostics
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCyclePhase
@@ -8,13 +9,13 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleReq
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
-import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
-import skillbill.workflow.model.ValidationDepth
+import skillbill.scaffold.model.RoutingSignals
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
@@ -173,7 +174,7 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
     // generic. Catalog order lists generic first — the old selector blocked build on that.
     val generic = reviewFallbackPackWithoutGate()
     val kotlin = kotlinPackWithoutGate().copy(
-      routingSignals = skillbill.scaffold.model.RoutingSignals(
+      routingSignals = RoutingSignals(
         strong = listOf(".kt"),
         tieBreakers = emptyList(),
         path = listOf(".kt"),

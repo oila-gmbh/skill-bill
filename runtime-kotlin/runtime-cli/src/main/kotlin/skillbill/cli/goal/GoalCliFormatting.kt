@@ -1,8 +1,8 @@
 package skillbill.cli.goal
 
-import skillbill.application.model.GoalRunnerOperatorDecisionResult
-import skillbill.application.model.GoalRunnerRepairResult
-import skillbill.application.model.GoalRunnerRepairStatus
+import skillbill.application.goalrunner.model.GoalRunnerOperatorDecisionResult
+import skillbill.application.goalrunner.model.GoalRunnerRepairResult
+import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
 
 internal fun appendGoalResetSubtaskLines(builder: StringBuilder, subtasks: List<*>?) {
   subtasks.orEmpty().forEach { raw ->

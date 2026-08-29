@@ -1,4 +1,5 @@
 package skillbill.review.context.model
+import java.nio.file.Path
 
 enum class SpecIntentAbsenceReason(val wireValue: String) {
   NO_SPEC_FOUND("no_spec_found"),
@@ -81,11 +82,9 @@ data class SpecIntentDegradationRecord(
 )
 
 data class SpecIntentProjectionResolveRequest(
-  val repoRoot: java.nio.file.Path,
-  val explicitSpecPath: java.nio.file.Path? = null,
+  val repoRoot: Path,
+  val explicitSpecPath: Path? = null,
   val branchName: String = "",
   val changedPaths: List<String> = emptyList(),
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
 )
-
-private val SHA256_HEX = Regex("^[a-f0-9]{64}$")

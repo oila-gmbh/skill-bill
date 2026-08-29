@@ -6,6 +6,9 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintCo
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDiffPayloadRef
@@ -58,14 +61,14 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolverTest {
     ): FeatureTaskRuntimeSharedEvidenceResolution {
       val fingerprint = request.checkpoint.fingerprint
       stored[fingerprint]?.let {
-        return it.copy(outcome = skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE)
+        return it.copy(outcome = REUSE)
       }
       derivations++
       val derivation = deriver.derive(request.checkpoint)
       val outcome = if (stored.isNotEmpty()) {
-        skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION
+        CHECKPOINT_CHANGE_REDERIVATION
       } else {
-        skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION
+        DERIVATION
       }
       val resolution = FeatureTaskRuntimeSharedEvidenceResolution(
         artifact = FeatureTaskRuntimeSharedEvidenceArtifact(

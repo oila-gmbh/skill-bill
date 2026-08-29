@@ -1,8 +1,8 @@
 package skillbill.contracts.workflow
 
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
-import skillbill.workflow.model.DecompositionManifestValidationFailureCode
-import skillbill.workflow.model.DecompositionManifestValidationResult
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationFailureCode
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import java.security.MessageDigest
 import kotlin.test.Test

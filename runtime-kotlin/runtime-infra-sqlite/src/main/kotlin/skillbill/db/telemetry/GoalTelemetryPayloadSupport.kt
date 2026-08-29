@@ -1,6 +1,7 @@
 package skillbill.db.telemetry
 
 import skillbill.contracts.JsonSupport
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -111,7 +112,7 @@ fun goalSubtaskFinishedPayload(row: Map<String, Any?>, level: String, salt: Stri
 private fun secondsFromMillis(durationMs: Long): Long = durationMs.coerceAtLeast(0) / MILLIS_PER_SECOND
 
 private fun durationBetweenSeconds(startedAt: String, finishedAt: String): Long = runCatching {
-  java.time.Duration.between(parseTelemetryTimestamp(startedAt), parseTelemetryTimestamp(finishedAt))
+  Duration.between(parseTelemetryTimestamp(startedAt), parseTelemetryTimestamp(finishedAt))
     .seconds
     .coerceAtLeast(0)
 }.getOrDefault(0)

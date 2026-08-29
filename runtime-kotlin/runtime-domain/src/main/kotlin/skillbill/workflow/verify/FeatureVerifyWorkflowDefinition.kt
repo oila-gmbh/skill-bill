@@ -1,8 +1,8 @@
 package skillbill.workflow.verify
 
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
-import skillbill.workflow.model.WorkflowDefinition
-import skillbill.workflow.model.WorkflowInputProjectionDeclaration
+import skillbill.workflow.engine.model.WorkflowDefinition
+import skillbill.workflow.engine.model.WorkflowInputProjectionDeclaration
 
 object FeatureVerifyWorkflowDefinition {
   private val criteriaFields = setOf(

@@ -8,20 +8,21 @@ import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.resolveDecompositionManifest
 import skillbill.application.decomposition.withBlockedSubtask
 import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
-import skillbill.application.model.GoalContinuationOutcome
-import skillbill.application.model.WorkflowContinueResult
 import skillbill.application.normalizeRequiredIssueKey
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.workflow.DecompositionContinuationSelector
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.DecompositionContinuationSelection
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.WorkflowStateSnapshot
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.application.workflow.model.GoalContinuationOutcome
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.decomposition.DecompositionContinuationSelector
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
 
 internal class DecompositionWorkflowContinuation(
@@ -390,17 +391,16 @@ private fun terminalSubtaskResult(
   outcome = selection.subtask.toGoalContinuationOutcome(manifest.issueKey),
 )
 
-private fun skillbill.workflow.model.DecompositionSubtask.toGoalContinuationOutcome(
-  issueKey: String,
-): GoalContinuationOutcome = GoalContinuationOutcome(
-  issueKey = issueKey,
-  subtaskId = id,
-  status = status,
-  workflowId = workflowId.orEmpty(),
-  commitSha = commitSha,
-  blockedReason = blockedReason,
-  lastResumableStep = lastResumableStep,
-)
+private fun DecompositionSubtask.toGoalContinuationOutcome(issueKey: String): GoalContinuationOutcome =
+  GoalContinuationOutcome(
+    issueKey = issueKey,
+    subtaskId = id,
+    status = status,
+    workflowId = workflowId.orEmpty(),
+    commitSha = commitSha,
+    blockedReason = blockedReason,
+    lastResumableStep = lastResumableStep,
+  )
 
 private data class AdvancementResult(
   val manifest: DecompositionManifest,

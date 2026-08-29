@@ -1,8 +1,8 @@
 package skillbill.application.workflow
 
-import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
-import skillbill.ports.persistence.model.GoalPlanningPreparationState
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 
 internal fun GoalPlanningPreparationRecord.toEnvelopeMap(): Map<String, Any?> = linkedMapOf(
   "contract_version" to contractVersion,

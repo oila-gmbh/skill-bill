@@ -4,8 +4,8 @@ import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.ValidationDepth
 
 data class FeatureTaskRuntimeGoalContinuationArtifact(
   val issueKey: String,

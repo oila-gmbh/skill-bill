@@ -3,22 +3,22 @@ package skillbill.application.work
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetup
 import skillbill.application.goalrunner.goalRepositoryIdentity
-import skillbill.application.model.IdeStatusCandidate
-import skillbill.application.model.IdeStatusRepositoryResolution
-import skillbill.application.model.IdeStatusRequest
-import skillbill.application.model.IdeStatusResult
-import skillbill.application.model.IdeStatusSnapshot
-import skillbill.application.model.IdeStatusWorkflowFamily
+import skillbill.application.idestatus.model.IdeStatusCandidate
+import skillbill.application.idestatus.model.IdeStatusRepositoryResolution
+import skillbill.application.idestatus.model.IdeStatusRequest
+import skillbill.application.idestatus.model.IdeStatusResult
+import skillbill.application.idestatus.model.IdeStatusSnapshot
+import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidWorkListRowError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.WorkItem
-import skillbill.ports.persistence.model.WorkItemKind
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.system.CheckedOutBranchSource
-import skillbill.workflow.IdeStatusValidator
+import skillbill.ports.work.model.WorkItem
+import skillbill.ports.work.model.WorkItemKind
+import skillbill.workflow.idestatus.IdeStatusValidator
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -139,7 +139,9 @@ class IdeStatusService(
     val routeScope = when (item.workflowKind) {
       WorkItemKind.FEATURE_TASK_PROSE, WorkItemKind.FEATURE_TASK_RUNTIME ->
         unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(item.workflowId)?.routeScope
-      else -> null
+      WorkItemKind.FEATURE_VERIFY,
+      WorkItemKind.FEATURE_GOAL,
+      -> null
     }
     // Within a tier, never prefer a goal-child over an authoritative feature-goal for the same issue.
     if (routeScope == FeatureTaskRouteScope.GOAL_CHILD &&

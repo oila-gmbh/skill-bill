@@ -2,8 +2,9 @@
 
 package skillbill.application.review
 
-import skillbill.application.model.ReviewPrelaunchExpansion
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.ReviewPreparationRequest
+import skillbill.application.review.model.ReviewPreparationResult
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
 import skillbill.ports.review.ReviewLaneSelectionPort
@@ -142,15 +143,14 @@ class ParallelCodeReviewBundledLaneReviewTest {
     }
   }
 
-  private fun governed(lane: String, prepared: skillbill.application.review.model.ReviewPreparationResult) =
-    GovernedReviewLaunch(
-      prepared.assignments.single { it.lane == lane },
-      prepared.packet,
-      "contract",
-      "rubric",
-      "broker",
-      ReviewContextBudgetPolicy.DEFAULT,
-    )
+  private fun governed(lane: String, prepared: ReviewPreparationResult) = GovernedReviewLaunch(
+    prepared.assignments.single { it.lane == lane },
+    prepared.packet,
+    "contract",
+    "rubric",
+    "broker",
+    ReviewContextBudgetPolicy.DEFAULT,
+  )
 
   @Test fun `each lane bundle holds only routed commits hunks and security excludes pure UI`() {
     val prepared = service().prepare(

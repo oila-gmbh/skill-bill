@@ -185,7 +185,8 @@ class InstallerShellReuseLastSelectionTest {
     |  fi
     |  printf '%s\n' "SLF4J(W): No SLF4J providers were found." >&2
     |  printf 'agent\tcodex\t%s\n' "${'$'}home/agent-targets/codex"
-    |  printf 'platform-mode\tselected\nplatform\tkotlin\ntelemetry\t%s\nmcp\tregister\n' "${'$'}{SKILL_BILL_TEST_REPLAY_TELEMETRY:-full}"
+    |  printf 'platform-mode\tselected\nplatform\tkotlin\ntelemetry\t%s\nmcp\tregister\n' \
+    |    "${'$'}{SKILL_BILL_TEST_REPLAY_TELEMETRY:-full}"
     |  exit 0
     |fi
     |if [[ "${'$'}{1:-}" == "telemetry" && "${'$'}{2:-}" == "status" ]]; then

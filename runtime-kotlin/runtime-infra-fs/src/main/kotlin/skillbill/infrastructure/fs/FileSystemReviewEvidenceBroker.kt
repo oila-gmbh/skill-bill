@@ -31,6 +31,7 @@ import skillbill.review.context.model.ReviewRequestedOperation
 import skillbill.review.context.model.requireRepositoryRelativePath
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.security.MessageDigest
 
@@ -447,7 +448,7 @@ private fun resolveRepositoryFile(root: Path, normalized: String): Path? {
   var component = root
   root.relativize(candidate).forEach { segment ->
     component = component.resolve(segment)
-    if (!Files.exists(component, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return null
+    if (!Files.exists(component, NOFOLLOW_LINKS)) return null
     require(!Files.isSymbolicLink(component)) { "Evidence paths must not contain symbolic links." }
   }
   val real = candidate.toRealPath()

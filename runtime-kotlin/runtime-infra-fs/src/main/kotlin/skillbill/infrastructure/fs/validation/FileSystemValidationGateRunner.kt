@@ -1,25 +1,12 @@
 package skillbill.infrastructure.fs.validation
 
 import me.tatarka.inject.annotations.Inject
-import org.w3c.dom.Element
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateFindingParseMode
-import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
-import skillbill.ports.validation.model.unparseableGateFailureMessage
-import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
-import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
-import skillbill.scaffold.model.ValidationGateFindingsFormat
-import java.io.IOException
-import java.nio.file.FileSystems
-import java.nio.file.FileVisitResult
 import java.nio.file.Files
-import java.nio.file.NoSuchFileException
 import java.nio.file.Path
-import java.nio.file.SimpleFileVisitor
-import java.nio.file.attribute.BasicFileAttributes
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
@@ -64,223 +51,27 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     }
   }
 
-  private fun deriveOutcome(exitCode: Int, findings: List<ValidationGateFinding>): ValidationGateRunOutcome = when {
-    findings.isNotEmpty() || exitCode != 0 -> ValidationGateRunOutcome.FAILED
-    else -> ValidationGateRunOutcome.PASSED
-  }
-
-  private fun deriveExecutedWorkUnits(request: ValidationGateRunRequest, stdout: String): Int {
-    val signal = request.declaration.findings.executedWork ?: return DEFAULT_EXECUTED_WORK_WHEN_UNDECLARED
-    return when (signal.format) {
-      ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY ->
-        GRADLE_EXECUTED_PATTERN.find(stdout)?.groupValues?.get(1)?.toIntOrNull() ?: 0
-    }
-  }
-
-  private fun parseFindings(
-    request: ValidationGateRunRequest,
-    stdout: String,
-    artifactFloor: Instant,
-  ): List<ValidationGateFinding> {
-    val artifacts = parseArtifactFindings(request, artifactFloor)
-    if (request.findingParseMode != ValidationGateFindingParseMode.COLLECT_ALL) {
-      return artifacts
-    }
-    val compiler = parseCompilerDiagnostics(request, stdout)
-    val finerFindings = compiler + artifacts
-    var coveredTaskKeys = FileSystemValidationGateGradleStdoutParsers.coveredGradleTaskKeys(finerFindings)
-    val projectHealth = FileSystemValidationGateGradleStdoutParsers.parseGradleProjectHealthStdout(stdout)
-    coveredTaskKeys = coveredTaskKeys + projectHealth.map { "${it.module}|projectHealth" }.toSet()
-    val architectureCheck =
-      FileSystemValidationGateGradleStdoutParsers.parseGradleArchitectureCheckStdout(stdout)
-    coveredTaskKeys = coveredTaskKeys + architectureCheck.map { "${it.module}|architectureCheck" }.toSet()
-    val taskHeaders =
-      FileSystemValidationGateGradleStdoutParsers.parseGradleTaskFailureHeaders(stdout, coveredTaskKeys)
-    return (finerFindings + projectHealth + architectureCheck + taskHeaders).distinctBy { findingIdentity(it) }
-  }
-
-  private fun finalizeFindings(
-    request: ValidationGateRunRequest,
-    parsed: List<ValidationGateFinding>,
-    exitCode: Int,
-    outcome: ValidationGateRunOutcome,
-    stdout: String,
-  ): List<ValidationGateFinding> {
-    if (request.findingParseMode != ValidationGateFindingParseMode.COLLECT_ALL) {
-      return parsed
-    }
-    val failed = exitCode != 0 || outcome == ValidationGateRunOutcome.FAILED
-    if (failed && parsed.isEmpty()) {
-      return listOf(
-        ValidationGateFinding(
-          module = UNPARSEABLE_GATE_MODULE,
-          ruleOrTestId = UNPARSEABLE_GATE_RULE_ID,
-          message = unparseableGateFailureMessage(
-            gateLabel = "Validation gate",
-            outcome = outcome.wireValue,
-            exitCode = exitCode,
-            stdout = stdout,
-          ),
-          location = null,
-        ),
-      )
-    }
-    return parsed
-  }
-
-  private fun parseArtifactFindings(
-    request: ValidationGateRunRequest,
-    artifactFloor: Instant,
-  ): List<ValidationGateFinding> = when (request.declaration.findings.format) {
-    ValidationGateFindingsFormat.JUNIT_XML ->
-      request.declaration.findings.artifactGlobs
-        .flatMap { glob -> expandGlob(request.repoRoot, glob) }
-        .filter { producedByThisRun(it, artifactFloor) }
-        .flatMap { path -> parseArtifactFile(request.repoRoot, path) }
-        .distinctBy { findingIdentity(it) }
-  }
-
-  private fun parseArtifactFile(repoRoot: Path, path: Path): List<ValidationGateFinding> =
-    if (path.toString().replace('\\', '/').contains("/reports/detekt/")) {
-      parseDetektXmlFile(repoRoot, path)
-    } else {
-      parseJUnitXmlFile(path)
-    }
-
-  private fun parseCompilerDiagnostics(
-    request: ValidationGateRunRequest,
-    stdout: String,
-  ): List<ValidationGateFinding> = when (request.declaration.findings.compilerDiagnostics.format) {
-    ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT ->
-      FileSystemValidationGateGradleStdoutParsers.parseGradleKotlinCompilerStdout(
-        request.repoRoot,
-        stdout,
-      ) +
-        FileSystemValidationGateGradleStdoutParsers.parseGradleQualityToolStdout(
-          request.repoRoot,
-          stdout,
-        )
-  }
-
-  private fun parseDetektXmlFile(repoRoot: Path, path: Path): List<ValidationGateFinding> = runCatching {
-    val document = DOCUMENT_BUILDER.parse(path.toFile())
-    val repo = repoRoot.toAbsolutePath().normalize()
-    val files = document.getElementsByTagName("file")
-    buildList {
-      for (fileIndex in 0 until files.length) {
-        val fileElement = files.item(fileIndex) as Element
-        val rawFileName = fileElement.getAttribute("name").trim()
-        if (rawFileName.isEmpty()) continue
-        val relativeFile =
-          FileSystemValidationGateGradlePathSupport.repoRelativeQualityPath(repo, rawFileName)
-        val module = relativeFile.substringBefore('/').ifBlank { "<detekt>" }
-        val errors = fileElement.getElementsByTagName("error")
-        for (errorIndex in 0 until errors.length) {
-          val error = errors.item(errorIndex) as Element
-          val line = error.getAttribute("line").trim()
-          val rule = error.getAttribute("source").substringAfterLast('.').ifBlank { "detekt" }
-          val message = error.getAttribute("message").ifBlank { error.textContent?.trim().orEmpty() }
-          add(
-            ValidationGateFinding(
-              module = module,
-              ruleOrTestId = rule,
-              message = message,
-              location = listOf(relativeFile, line).filter(String::isNotBlank).joinToString(":").ifBlank { null },
-            ),
-          )
-        }
-      }
-    }
-  }.getOrDefault(emptyList())
-
-  private fun parseJUnitXmlFile(path: Path): List<ValidationGateFinding> = runCatching {
-    val document = DOCUMENT_BUILDER.parse(path.toFile())
-    val testcases = document.getElementsByTagName("testcase")
-    buildList {
-      for (index in 0 until testcases.length) {
-        val testcase = testcases.item(index) as Element
-        val failure = testcase.getElementsByTagName("failure").item(0) as? Element
-          ?: testcase.getElementsByTagName("error").item(0) as? Element
-          ?: continue
-        val classname = testcase.getAttribute("classname").ifBlank { path.parent?.fileName?.toString().orEmpty() }
-        val name = testcase.getAttribute("name").ifBlank { "unknown" }
-        add(
-          ValidationGateFinding(
-            module = classname.substringBeforeLast('.').ifBlank { classname },
-            ruleOrTestId = name,
-            message = failure.getAttribute("message").ifBlank { failure.textContent?.trim().orEmpty() },
-            location = listOfNotNull(
-              testcase.getAttribute("file").takeIf(String::isNotBlank),
-              testcase.getAttribute("line").takeIf(String::isNotBlank),
-            ).joinToString(":").ifBlank { null },
-          ),
-        )
-      }
-    }
-  }.getOrDefault(emptyList())
-
   companion object {
     private const val GATE_TIMEOUT_MINUTES = 120L
     private const val NANOS_PER_MILLIS = 1_000_000L
-    private const val DEFAULT_EXECUTED_WORK_WHEN_UNDECLARED = 1
-    private const val UNPARSEABLE_GATE_MODULE = "<validation-gate>"
-    private const val UNPARSEABLE_GATE_RULE_ID = "unparseable_gate_failure"
-    private val GRADLE_EXECUTED_PATTERN = Regex("""(\d+)\s+executed""", RegexOption.IGNORE_CASE)
-    private val DOCUMENT_BUILDER = DocumentBuilderFactory.newInstance().apply {
+    internal const val DEFAULT_EXECUTED_WORK_WHEN_UNDECLARED = 1
+    internal const val UNPARSEABLE_GATE_MODULE = "<validation-gate>"
+    internal const val UNPARSEABLE_GATE_RULE_ID = "unparseable_gate_failure"
+    internal val GRADLE_EXECUTED_PATTERN = Regex("""(\d+)\s+executed""", RegexOption.IGNORE_CASE)
+    internal val DOCUMENT_BUILDER = DocumentBuilderFactory.newInstance().apply {
       isNamespaceAware = false
       isValidating = false
       setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
     }.newDocumentBuilder()
 
-    private fun findingIdentity(finding: ValidationGateFinding): String =
+    internal fun findingIdentity(finding: ValidationGateFinding): String =
       "${finding.module}|${finding.ruleOrTestId}|${finding.message}|${finding.location}"
 
     internal fun producedByThisRun(path: Path, artifactFloor: Instant): Boolean =
       runCatching { !Files.getLastModifiedTime(path).toInstant().isBefore(artifactFloor) }.getOrDefault(true)
 
-    internal fun expandGlob(repoRoot: Path, glob: String): List<Path> {
-      val normalized = glob.replace('\\', '/')
-      val matcher = FileSystems.getDefault().getPathMatcher("glob:$normalized")
-      if (!Files.isDirectory(repoRoot)) return emptyList()
-      val matches = ArrayList<Path>()
-      Files.walkFileTree(
-        repoRoot,
-        object : SimpleFileVisitor<Path>() {
-          override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-            if (dir != repoRoot && dir.fileName?.toString() == ".git") {
-              return FileVisitResult.SKIP_SUBTREE
-            }
-            return FileVisitResult.CONTINUE
-          }
-
-          override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-            val relative = repoRoot.relativize(file).toString().replace('\\', '/')
-            if (matcher.matches(Path.of(relative))) {
-              matches.add(file)
-            }
-            return FileVisitResult.CONTINUE
-          }
-
-          override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
-            if (exc is NoSuchFileException) {
-              return FileVisitResult.CONTINUE
-            }
-            throw exc
-          }
-
-          override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
-            if (exc is NoSuchFileException) {
-              return FileVisitResult.CONTINUE
-            }
-            if (exc != null) {
-              throw exc
-            }
-            return FileVisitResult.CONTINUE
-          }
-        },
-      )
-      return matches
-    }
+    internal fun expandGlob(repoRoot: Path, glob: String): List<Path> =
+      fileSystemValidationGateExpandGlob(repoRoot, glob)
   }
 }
 

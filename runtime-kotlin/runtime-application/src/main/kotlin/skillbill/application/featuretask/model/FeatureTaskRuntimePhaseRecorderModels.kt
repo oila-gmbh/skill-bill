@@ -1,0 +1,35 @@
+package skillbill.application.featuretask.model
+
+import me.tatarka.inject.annotations.Inject
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.ProducerOutputEvidenceValidator
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
+import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeImplementationAttemptValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeQuarantineValidator
+
+@Inject
+data class FeatureTaskRuntimePhaseRecorderValidators(
+  val handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
+  val handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
+  val quarantineValidator: FeatureTaskRuntimeQuarantineValidator =
+    NoopFeatureTaskRuntimeQuarantineValidator,
+  val implementationAttemptValidator: FeatureTaskRuntimeImplementationAttemptValidator =
+    NoopFeatureTaskRuntimeImplementationAttemptValidator,
+  val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator = { },
+  val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator = { },
+)
+
+@Inject
+data class FeatureTaskRuntimePhaseRecorderDeps(
+  val database: DatabaseSessionFactory,
+  val workflowSnapshotValidator: WorkflowSnapshotValidator,
+  val validators: FeatureTaskRuntimePhaseRecorderValidators,
+  val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+)

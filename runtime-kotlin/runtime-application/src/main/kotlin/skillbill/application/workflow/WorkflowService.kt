@@ -1,70 +1,35 @@
 package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.DecompositionManifestWriter
-import skillbill.application.decomposition.encodeDecompositionManifestMap
-import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
-import skillbill.application.goalrunner.GoalObservabilityArtifacts
-import skillbill.application.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.model.WorkflowContinueResult
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowGetResult
-import skillbill.application.model.WorkflowLatestResult
-import skillbill.application.model.WorkflowListResult
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowResumeResult
-import skillbill.application.model.WorkflowUpdateRequest
-import skillbill.application.model.WorkflowUpdateResult
 import skillbill.application.normalizeIssueKey
-import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
-import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.repositoryFingerprint
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.GoalObservabilityEventValidator
-import skillbill.workflow.NoopGoalObservabilityEventValidator
-import skillbill.workflow.RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.model.WorkflowDefinition
-import skillbill.workflow.model.WorkflowSnapshotView
-import skillbill.workflow.model.WorkflowStateSnapshot
-import skillbill.workflow.model.WorkflowUpdateInput
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
+import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
+import skillbill.application.workflow.model.FeatureTaskIdentityRepairArgs
+import skillbill.application.workflow.model.RepairFeatureTaskRuntimeIdentityArgs
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowGetResult
+import skillbill.application.workflow.model.WorkflowLatestResult
+import skillbill.application.workflow.model.WorkflowListResult
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowResumeResult
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.repositoryFingerprint
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import java.nio.file.Path
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
-import kotlin.random.Random
-
-private val resolveEffectiveSessionId =
-  { kind: WorkflowFamilyKind, sessionId: String, definition: WorkflowDefinition, workflowId: String ->
-    sessionId.ifBlank {
-      if (kind == WorkflowFamilyKind.TASK_RUNTIME) "${definition.defaultSessionPrefix}-$workflowId" else ""
-    }
-  }
 
 @Inject
-@Suppress("LargeClass", "TooManyFunctions") // cohesive workflow open/continue/abandon boundary
 class WorkflowService(
   private val database: DatabaseSessionFactory,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
@@ -73,148 +38,57 @@ class WorkflowService(
   private val decompositionManifestValidator: DecompositionManifestValidator,
   val goalObservabilityEventValidator: GoalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
 ) {
-  // SKILL-52.3 Subtask 1: the workflow engine and the decomposition
-  // manifest seams receive their schema-validator dependencies at the
-  // application boundary as injected domain-owned ports. The application
-  // owns this wiring so `runtime-domain` and `runtime-application` never
-  // import the concrete schema validators (now owned by
-  // `runtime-infra-fs`). The validator caches the compiled JSON Schema
-  // instance, so a single shared engine amortises schema parse + compile
-  // cost across every call.
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
     val resolved = gitOperations.repositoryFingerprint(Path.of("").toAbsolutePath())
     check(resolved.ok) { resolved.error }
     resolved.value.orEmpty()
   }
+  private val featureTaskAbandon = WorkflowServiceFeatureTaskAbandon(engine)
+  private val blockedPhaseRetry = WorkflowServiceBlockedPhaseRetry(
+    engine,
+    decompositionManifestValidator,
+    decompositionManifestFileStore,
+  )
+  private val featureTaskIdentityRepair = WorkflowServiceFeatureTaskIdentityRepair(engine)
 
-  @Suppress("LongParameterList")
-  fun open(
-    kind: WorkflowFamilyKind,
-    sessionId: String = "",
-    currentStepId: String? = null,
-    dbOverride: String? = null,
-    issueKey: String? = null,
-    repositoryIdentity: String? = null,
-    governedSpecPath: String? = null,
-    routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
-  ): WorkflowOpenResult {
-    val hasIdentityCoordinates = repositoryIdentity != null || governedSpecPath != null
-    val hasIncompleteIdentity = hasIncompleteFeatureTaskIdentity(
-      kind,
-      hasIdentityCoordinates,
-      issueKey,
-      repositoryIdentity,
-      governedSpecPath,
-    )
-    if (hasIncompleteIdentity) {
-      return WorkflowOpenResult.Error(
-        workflowId = "unassigned",
-        error = INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR,
-      )
-    }
-    val family = kind.workflowFamily()
-    val stepId = currentStepId ?: family.definition.defaultInitialStepId
+  fun open(args: WorkflowServiceOpenArgs): WorkflowOpenResult {
+    incompleteFeatureTaskIdentityError(args)?.let { return it }
+    val family = args.kind.workflowFamily()
+    val stepId = args.currentStepId ?: family.definition.defaultInitialStepId
     val workflowId = generateWorkflowId(family.definition.workflowIdPrefix)
-    val effectiveSessionId = resolveEffectiveSessionId(kind, sessionId, family.definition, workflowId)
+    val effectiveSessionId = resolveEffectiveSessionId(
+      args.kind,
+      args.sessionId,
+      family.definition,
+      workflowId,
+    )
     WorkflowEngine.validateOpen(family.definition, stepId)?.let { error ->
       return WorkflowOpenResult.Error(workflowId, error)
     }
+    val hasIdentityCoordinates = args.repositoryIdentity != null || args.governedSpecPath != null
     val executionIdentity = buildFeatureTaskExecutionIdentity(
-      kind,
-      hasIdentityCoordinates,
-      workflowId,
-      issueKey,
-      repositoryIdentity,
-      governedSpecPath,
-      routeScope,
+      BuildFeatureTaskExecutionIdentityArgs(
+        kind = args.kind,
+        hasIdentityCoordinates = hasIdentityCoordinates,
+        workflowId = workflowId,
+        issueKey = args.issueKey,
+        repositoryIdentity = args.repositoryIdentity,
+        governedSpecPath = args.governedSpecPath,
+        routeScope = args.routeScope,
+      ),
     )
-    return database.transaction(dbOverride) { unitOfWork ->
-      val record = engine.openRecord(family.definition, workflowId, effectiveSessionId, stepId)
-      family.saveRecord(
-        unitOfWork.workflowStates,
-        record.toRecord().copy(
-          startedAt = null,
-          issueKey = normalizeIssueKey(issueKey),
-        ),
-      )
-      executionIdentity?.let(unitOfWork.workflowStates::saveFeatureTaskExecutionIdentity)
-      val saved = family.get(unitOfWork.workflowStates, workflowId) ?: record
-      val currentStep = engine.snapshotView(family.definition, saved).steps
-        .firstOrNull { it.stepId == stepId }
-      val launchProjection = launchProjectionIfReady(
-        family.definition,
-        engine.snapshotView(family.definition, saved),
-        stepId,
-        currentStep?.attemptCount ?: 0,
-      )
-      WorkflowOpenResult.Ok(
-        workflowId = saved.workflowId,
-        dbPath = unitOfWork.dbPath.toString(),
-        snapshot = engine.snapshotView(family.definition, saved),
-        launchProjection = launchProjection,
-      )
-    }
-  }
-
-  private fun hasIncompleteFeatureTaskIdentity(
-    kind: WorkflowFamilyKind,
-    hasIdentityCoordinates: Boolean,
-    issueKey: String?,
-    repositoryIdentity: String?,
-    governedSpecPath: String?,
-  ): Boolean = kind in FEATURE_TASK_FAMILY_KINDS &&
-    hasIdentityCoordinates &&
-    listOf(issueKey, repositoryIdentity, governedSpecPath).any { it == null }
-
-  @Suppress("LongParameterList")
-  private fun buildFeatureTaskExecutionIdentity(
-    kind: WorkflowFamilyKind,
-    hasIdentityCoordinates: Boolean,
-    workflowId: String,
-    issueKey: String?,
-    repositoryIdentity: String?,
-    governedSpecPath: String?,
-    routeScope: FeatureTaskRouteScope,
-  ): FeatureTaskExecutionIdentity? {
-    if (kind !in FEATURE_TASK_FAMILY_KINDS || !hasIdentityCoordinates) return null
-    val requiredRepositoryIdentity = requireNotNull(repositoryIdentity)
-    val normalizedIssueKey = FeatureTaskExecutionIdentityPolicy.validateLookupRequest(
-      requireNotNull(issueKey),
-      requiredRepositoryIdentity,
-    )
-    return FeatureTaskExecutionIdentity(
-      workflowId = workflowId,
-      normalizedIssueKey = normalizedIssueKey,
-      repositoryIdentity = requiredRepositoryIdentity,
-      governedSpecPath = requireNotNull(governedSpecPath),
-      mode = FeatureTaskWorkflowMode.RUNTIME,
-      routeScope = routeScope,
-    ).also(FeatureTaskExecutionIdentityPolicy::validate)
-  }
-
-  @Suppress("LongParameterList")
-  fun openFeatureTask(
-    kind: WorkflowFamilyKind,
-    sessionId: String = "",
-    currentStepId: String? = null,
-    dbOverride: String? = null,
-    issueKey: String,
-    repositoryIdentity: String,
-    governedSpecPath: String,
-    routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
-  ): WorkflowOpenResult {
-    require(kind in FEATURE_TASK_FAMILY_KINDS) {
-      "Only runtime feature-task workflows use execution identity."
-    }
-    return open(
-      kind,
-      sessionId,
-      currentStepId,
-      dbOverride,
-      issueKey,
-      repositoryIdentity,
-      governedSpecPath,
-      routeScope,
+    return persistOpenedWorkflow(
+      PersistOpenedWorkflowArgs(
+        family = family,
+        workflowId = workflowId,
+        effectiveSessionId = effectiveSessionId,
+        stepId = stepId,
+        dbOverride = args.dbOverride,
+        issueKey = args.issueKey,
+        executionIdentity = executionIdentity,
+        engine = engine,
+        database = database,
+      ),
     )
   }
 
@@ -235,10 +109,6 @@ class WorkflowService(
           request.workflowId,
           "Unknown workflow_id '${request.workflowId}'.",
         )
-      // SKILL-175: the runtime family keeps the decomposition synthesis that the retired prose
-      // IMPLEMENT family previously supplied — updating a row with a decompose plan materializes
-      // the decomposition_runtime artifact (and its on-disk projection) so the goal runner can
-      // resolve the parent by issue key.
       val runtimeInput = family.withDecompositionRuntime(
         existing,
         input,
@@ -265,7 +135,7 @@ class WorkflowService(
           decompositionManifestValidator,
         )
       }
-      updateOk(family.definition, updated, effectiveInput, unitOfWork.dbPath.toString())
+      buildUpdateOk(engine, family.definition, updated, effectiveInput, unitOfWork.dbPath.toString())
     }
     projectionArtifactsJson?.let { artifactsJson ->
       DecompositionManifestWriter.writeProjectionFromWorkflowState(
@@ -294,12 +164,12 @@ class WorkflowService(
           unitOfWork.dbPath.toString(),
         )
       when (existingRecord.mode) {
-        FeatureTaskWorkflowMode.RUNTIME -> abandonRuntimeFeatureTask(
+        FeatureTaskWorkflowMode.RUNTIME -> featureTaskAbandon.abandonRuntimeFeatureTask(
           unitOfWork,
           existingRecord.toSnapshot(),
           normalizedReason,
         )
-        FeatureTaskWorkflowMode.PROSE, null -> abandonLegacyProseFeatureTask(
+        FeatureTaskWorkflowMode.PROSE, null -> featureTaskAbandon.abandonLegacyProseFeatureTask(
           unitOfWork,
           existingRecord,
           normalizedReason,
@@ -308,304 +178,34 @@ class WorkflowService(
     }
   }
 
-  private fun abandonRuntimeFeatureTask(
-    unitOfWork: UnitOfWork,
-    existing: skillbill.workflow.model.WorkflowStateSnapshot,
-    normalizedReason: String,
-  ): WorkflowUpdateResult {
-    val family = WorkflowFamily.TASK_RUNTIME
-    if (existing.workflowStatus in family.definition.terminalStatuses) {
-      return WorkflowUpdateResult.Error(
-        existing.workflowId,
-        "Runtime workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
-        unitOfWork.dbPath.toString(),
-      )
-    }
-    val input = WorkflowUpdateInput(
-      workflowStatus = "abandoned",
-      currentStepId = existing.currentStepId.orEmpty(),
-      stepUpdates = null,
-      artifactsPatch = mapOf(
-        FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY to mapOf(
-          "reason" to normalizedReason,
-          "abandoned_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
-        ),
-      ),
-      sessionId = "",
-    )
-    val updated = engine.updateRecord(family.definition, existing, input)
-    family.save(unitOfWork.workflowStates, updated)
-    return updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
-  }
-
-  private fun abandonLegacyProseFeatureTask(
-    unitOfWork: UnitOfWork,
-    existing: WorkflowStateRecord,
-    normalizedReason: String,
-  ): WorkflowUpdateResult {
-    if (existing.workflowStatus in FEATURE_TASK_TERMINAL_STATUSES) {
-      return WorkflowUpdateResult.Error(
-        existing.workflowId,
-        "Feature-task workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
-        unitOfWork.dbPath.toString(),
-      )
-    }
-    val abandonedAt = OffsetDateTime.now(ZoneOffset.UTC).toString()
-    val artifacts = LinkedHashMap(decodeWorkflowArtifacts(existing.artifactsJson))
-    artifacts[FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY] = mapOf(
-      "reason" to normalizedReason,
-      "abandoned_at" to abandonedAt,
-    )
-    val updated = existing.copy(
-      workflowStatus = "abandoned",
-      artifactsJson = JsonSupport.mapToJsonString(artifacts),
-      finishedAt = abandonedAt,
-    )
-    // Narrow status/artifact write: preserve mode=prose and never route through the refused prose
-    // writer or a runtime upsert that would flip mode.
-    unitOfWork.workflowStates.terminalizeLegacyProseFeatureTaskWorkflow(updated)
-    return WorkflowUpdateResult.Ok(
-      workflowId = updated.workflowId,
-      dbPath = unitOfWork.dbPath.toString(),
-      acknowledgement = skillbill.workflow.model.WorkflowUpdateAcknowledgementView(
-        status = "ok",
-        workflowId = updated.workflowId,
-        workflowName = updated.workflowName,
-        workflowStatus = "abandoned",
-        currentStepId = updated.currentStepId,
-        updatedStepIds = emptyList(),
-        updatedArtifactKeys = listOf(FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY),
-        readOnlyFullStateGuidance =
-        "Update returns a compact acknowledgement. Use explicit read-only workflow get/show for full state, " +
-          "including steps and the complete durable artifacts map.",
-      ),
-      launchProjection = null,
-    )
-  }
-
   fun retryBlockedFeatureTaskRuntimePhase(
     workflowId: String,
     phaseId: String,
     reason: String,
     dbOverride: String? = null,
-  ): WorkflowUpdateResult {
-    val normalizedReason = reason.trim()
-    if (
-      normalizedReason.isEmpty() ||
-      normalizedReason.length > FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH
-    ) {
-      return WorkflowUpdateResult.Error(
-        workflowId,
-        "Blocked-phase retry reason must contain " +
-          "1..$FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH characters.",
-      )
-    }
-    val normalizedPhaseId = phaseId.trim()
-    val family = WorkflowFamily.TASK_RUNTIME
-    if (normalizedPhaseId !in family.definition.stepIds) {
-      return WorkflowUpdateResult.Error(
-        workflowId,
-        "Unknown runtime phase '$normalizedPhaseId'. Allowed: ${family.definition.stepIds.joinToString()}.",
-      )
-    }
-    val request = BlockedPhaseRetryRequest(workflowId, normalizedPhaseId, normalizedReason)
-    val persistence = database.transaction(dbOverride) { unitOfWork ->
-      retryBlockedFeatureTaskRuntimePhaseInTransaction(unitOfWork, request)
-    }
-    persistence.projectionArtifactsJson?.let { artifactsJson ->
-      checkNotNull(
-        DecompositionManifestWriter.writeProjectionFromWorkflowState(
-          Path.of("").toAbsolutePath(),
-          artifactsJson,
-          decompositionManifestValidator,
-          decompositionManifestFileStore,
-        ),
-      ) {
-        "Blocked-phase retry reopened the durable goal child but could not write its decomposition manifest projection."
-      }
-    }
-    return persistence.result
-  }
+  ): WorkflowUpdateResult = blockedPhaseRetry.retry(database, workflowId, phaseId, reason, dbOverride)
 
-  private fun retryBlockedFeatureTaskRuntimePhaseInTransaction(
-    unitOfWork: UnitOfWork,
-    request: BlockedPhaseRetryRequest,
-  ): BlockedPhaseRetryPersistence {
-    val family = WorkflowFamily.TASK_RUNTIME
-    val existing = family.get(unitOfWork.workflowStates, request.workflowId)
-      ?: return BlockedPhaseRetryPersistence.error(
-        WorkflowUpdateResult.Error(
-          request.workflowId,
-          "Unknown runtime workflow_id '${request.workflowId}'.",
-          unitOfWork.dbPath.toString(),
-        ),
-      )
-    if (existing.workflowStatus in family.definition.terminalStatuses) {
-      return BlockedPhaseRetryPersistence.error(
-        WorkflowUpdateResult.Error(
-          request.workflowId,
-          "Runtime workflow '${request.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
-          unitOfWork.dbPath.toString(),
-        ),
-      )
-    }
-    val artifacts = decodeWorkflowArtifacts(existing.artifactsJson)
-    val phaseRecords = decodeFeatureTaskRuntimePhaseRecords(artifacts)
-    val ledger = FeatureTaskRuntimePhaseLedgerDecoder.decode(artifacts)
-    val blockedRecord = phaseRecords[request.phaseId]
-      ?: return BlockedPhaseRetryPersistence.error(
-        WorkflowUpdateResult.Error(
-          request.workflowId,
-          "Runtime workflow '${request.workflowId}' has no durable phase record for '${request.phaseId}'.",
-          unitOfWork.dbPath.toString(),
-        ),
-      )
-    return if (blockedRecord.status != "blocked") {
-      BlockedPhaseRetryPersistence.error(
-        WorkflowUpdateResult.Error(
-          request.workflowId,
-          "Runtime workflow '${request.workflowId}' phase '${request.phaseId}' is " +
-            "'${blockedRecord.status}', not blocked.",
-          unitOfWork.dbPath.toString(),
-        ),
-      )
-    } else {
-      persistBlockedPhaseRetry(
-        unitOfWork,
-        existing,
-        request,
-        BlockedPhaseRetryState(phaseRecords, ledger, blockedRecord),
-      )
-    }
-  }
-
-  private fun persistBlockedPhaseRetry(
-    unitOfWork: UnitOfWork,
-    existing: WorkflowStateSnapshot,
-    request: BlockedPhaseRetryRequest,
-    state: BlockedPhaseRetryState,
-  ): BlockedPhaseRetryPersistence {
-    val updatedRecords = state.reopenedPhaseRecords()
-    val retryEntry = FeatureTaskRuntimePhaseLedgerEntry(
-      action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
-      sequenceNumber = (state.ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
-      timestamp = OffsetDateTime.now(ZoneOffset.UTC).toString(),
-      phaseId = request.phaseId,
-      attemptCount = state.blockedRecord.attemptCount,
-      resolvedAgentId = state.blockedRecord.resolvedAgentId,
-    )
-    val input = WorkflowUpdateInput(
-      workflowStatus = "running",
-      currentStepId = request.phaseId,
-      stepUpdates = listOf(
-        mapOf(
-          "step_id" to request.phaseId,
-          "status" to "pending",
-          "attempt_count" to 0,
-        ),
-      ),
-      artifactsPatch = mapOf(
-        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
-          updatedRecords.mapValues { (_, record) -> record.toArtifactMap() },
-        FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to
-          (state.ledger.map { it.toArtifactMap() } + retryEntry.toArtifactMap()).takeLast(
-            FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
-          ),
-        FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY to mapOf(
-          "phase_id" to request.phaseId,
-          "reason" to request.reason,
-          "retried_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
-          "previous_blocked_reason" to state.blockedRecord.blockedReason,
-          "previous_blocked_record" to state.blockedRecord.toArtifactMap(),
-        ),
-      ),
-      sessionId = "",
-    )
-    val family = WorkflowFamily.TASK_RUNTIME
-    val updated = engine.updateRecord(family.definition, existing, input)
-    family.save(unitOfWork.workflowStates, updated)
-    val projectionArtifactsJson = engine.updateGoalParentForBlockedPhaseRetry(
-      unitOfWork = unitOfWork,
-      childWorkflowId = request.workflowId,
-      childArtifacts = decodeWorkflowArtifacts(updated.artifactsJson),
-      phaseId = request.phaseId,
-      validator = decompositionManifestValidator,
-    )
-    return BlockedPhaseRetryPersistence(
-      result = updateOk(family.definition, updated, input, unitOfWork.dbPath.toString()),
-      projectionArtifactsJson = projectionArtifactsJson,
-    )
-  }
-
-  @Suppress("LongMethod", "LongParameterList")
-  fun repairFeatureTaskRuntimeIdentity(
-    workflowId: String,
-    issueKey: String,
-    repositoryIdentity: String,
-    governedSpecPath: String,
-    reason: String,
-    dbOverride: String? = null,
-  ): WorkflowUpdateResult {
-    val normalizedReason = reason.trim()
+  fun repairFeatureTaskRuntimeIdentity(args: RepairFeatureTaskRuntimeIdentityArgs): WorkflowUpdateResult {
+    val workflowId = args.workflowId
+    val normalizedReason = args.reason.trim()
     if (normalizedReason.isEmpty() || normalizedReason.length > MAX_ABANDONMENT_REASON_LENGTH) {
       return WorkflowUpdateResult.Error(
         workflowId,
         "Identity-repair reason must contain 1..$MAX_ABANDONMENT_REASON_LENGTH characters.",
       )
     }
-    val normalizedIssueKey = requireNotNull(normalizeIssueKey(issueKey)).uppercase()
-    return database.transaction(dbOverride) { unitOfWork ->
-      val family = WorkflowFamily.TASK_RUNTIME
-      val workflowRow = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)
-        ?: return@transaction WorkflowUpdateResult.Error(
-          workflowId,
-          "Unknown runtime workflow_id '$workflowId'.",
-          unitOfWork.dbPath.toString(),
-        )
-      val existing = requireNotNull(family.get(unitOfWork.workflowStates, workflowId))
-      if (existing.workflowStatus in family.definition.terminalStatuses) {
-        return@transaction WorkflowUpdateResult.Error(
-          workflowId,
-          "Runtime workflow '$workflowId' is already terminal with status '${existing.workflowStatus}'; " +
-            "identity repair is only supported for nonterminal workflows.",
-          unitOfWork.dbPath.toString(),
-        )
-      }
-      val persistedIssueKey = workflowRow.issueKey?.let(::normalizeIssueKey)?.uppercase()
-      if (persistedIssueKey != null && persistedIssueKey != normalizedIssueKey) {
-        return@transaction WorkflowUpdateResult.Error(
-          workflowId,
-          "Runtime workflow '$workflowId' belongs to issue '$persistedIssueKey', not '$normalizedIssueKey'.",
-          unitOfWork.dbPath.toString(),
-        )
-      }
-      val identity = FeatureTaskExecutionIdentity(
-        workflowId = workflowId,
-        normalizedIssueKey = normalizedIssueKey,
-        repositoryIdentity = repositoryIdentity,
-        governedSpecPath = governedSpecPath,
-        mode = FeatureTaskWorkflowMode.RUNTIME,
-        routeScope = FeatureTaskRouteScope.STANDALONE,
-      )
-      FeatureTaskExecutionIdentityPolicy.validate(identity)
-      unitOfWork.workflowStates.saveFeatureTaskExecutionIdentity(identity)
-      val input = WorkflowUpdateInput(
-        workflowStatus = existing.workflowStatus,
-        currentStepId = existing.currentStepId.orEmpty(),
-        stepUpdates = null,
-        artifactsPatch = mapOf(
-          FEATURE_TASK_RUNTIME_IDENTITY_REPAIR_ARTIFACT_KEY to mapOf(
-            "reason" to normalizedReason,
-            "repaired_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
-            "repository_identity" to repositoryIdentity,
-            "governed_spec_path" to governedSpecPath,
-          ),
+    val normalizedIssueKey = requireNotNull(normalizeIssueKey(args.issueKey)).uppercase()
+    return database.transaction(args.dbOverride) { unitOfWork ->
+      featureTaskIdentityRepair.repair(
+        FeatureTaskIdentityRepairArgs(
+          unitOfWork = unitOfWork,
+          workflowId = workflowId,
+          normalizedIssueKey = normalizedIssueKey,
+          repositoryIdentity = args.repositoryIdentity,
+          governedSpecPath = args.governedSpecPath,
+          normalizedReason = normalizedReason,
         ),
-        sessionId = "",
       )
-      val updated = engine.updateRecord(family.definition, existing, input)
-      family.save(unitOfWork.workflowStates, updated)
-      updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
     }
   }
 
@@ -710,355 +310,4 @@ class WorkflowService(
     }
     return result
   }
-
-  private fun updateOk(
-    definition: WorkflowDefinition,
-    updated: WorkflowStateSnapshot,
-    effectiveInput: WorkflowUpdateInput,
-    dbPath: String,
-  ): WorkflowUpdateResult.Ok {
-    val snapshot = engine.snapshotView(definition, updated)
-    val currentStep = snapshot.steps.firstOrNull { it.stepId == snapshot.currentStepId }
-    return WorkflowUpdateResult.Ok(
-      workflowId = updated.workflowId,
-      dbPath = dbPath,
-      acknowledgement = engine.updateAcknowledgementView(
-        snapshot = snapshot,
-        input = effectiveInput,
-      ),
-      launchProjection = launchProjectionIfReady(
-        definition,
-        snapshot,
-        snapshot.currentStepId,
-        currentStep?.attemptCount ?: 0,
-      ),
-    )
-  }
-
-  private fun launchProjectionIfReady(
-    definition: WorkflowDefinition,
-    snapshot: WorkflowSnapshotView,
-    stepId: String,
-    producerIteration: Int,
-  ) = definition.inputProjectionsByStep[stepId]
-    ?.takeIf { declaration ->
-      declaration.requiredArtifactKeys.all { artifactKey ->
-        artifactKey == RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY || snapshot.artifacts.containsKey(artifactKey)
-      }
-    }
-    ?.let { engine.launchProjection(definition, snapshot, stepId, producerIteration) }
 }
-
-private data class BlockedPhaseRetryRequest(
-  val workflowId: String,
-  val phaseId: String,
-  val reason: String,
-)
-
-private data class BlockedPhaseRetryState(
-  val phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
-  val ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-  val blockedRecord: FeatureTaskRuntimePhaseRecord,
-) {
-  fun reopenedPhaseRecords(): Map<String, FeatureTaskRuntimePhaseRecord> = LinkedHashMap(phaseRecords).apply {
-    this[blockedRecord.phaseId] = blockedRecord.copy(
-      status = "pending",
-      finishedAt = null,
-      durationMillis = null,
-      outputArtifact = null,
-      rejectedOutput = null,
-      blockedReason = null,
-      failureDisposition = null,
-      fileManifestBefore = emptyList(),
-      fileManifestAfter = emptyList(),
-      fileManifestIntroduced = emptyList(),
-    )
-  }
-}
-
-private data class BlockedPhaseRetryPersistence(
-  val result: WorkflowUpdateResult,
-  val projectionArtifactsJson: String?,
-) {
-  companion object {
-    fun error(result: WorkflowUpdateResult.Error): BlockedPhaseRetryPersistence =
-      BlockedPhaseRetryPersistence(result, projectionArtifactsJson = null)
-  }
-}
-
-private const val DEFAULT_LIST_LIMIT: Int = 20
-private const val MAX_ABANDONMENT_REASON_LENGTH: Int = 1000
-private const val FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY: String = "operator_abandonment"
-private const val FEATURE_TASK_RUNTIME_IDENTITY_REPAIR_ARTIFACT_KEY: String = "operator_identity_repair"
-private const val WORKFLOW_ID_SUFFIX_LENGTH: Int = 4
-private val FEATURE_TASK_FAMILY_KINDS = setOf(WorkflowFamilyKind.TASK_RUNTIME)
-private val FEATURE_TASK_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
-private const val INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR =
-  "Feature-task workflows must be opened through openFeatureTask with complete immutable execution identity."
-private const val SUFFIX_CHARS: String = "abcdefghijklmnopqrstuvwxyz0123456789"
-
-private fun decodeWorkflowArtifacts(artifactsJson: String): Map<String, Any?> =
-  JsonSupport.parseObjectOrNull(artifactsJson)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-    .orEmpty()
-
-private fun decodeFeatureTaskRuntimePhaseRecords(
-  artifacts: Map<String, Any?>,
-): Map<String, FeatureTaskRuntimePhaseRecord> {
-  val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY])
-    ?: return emptyMap()
-  return raw.mapValues { (_, value) ->
-    FeatureTaskRuntimePhaseRecord.fromArtifactMap(
-      JsonSupport.anyToStringAnyMap(value)
-        ?: throw IllegalArgumentException("Feature-task-runtime phase record entry is malformed."),
-    )
-  }
-}
-
-private object FeatureTaskRuntimePhaseLedgerDecoder {
-  fun decode(artifacts: Map<String, Any?>): List<FeatureTaskRuntimePhaseLedgerEntry> {
-    if (FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY !in artifacts) return emptyList()
-    val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as? List<*>
-      ?: invalid("must decode to a JSON array")
-    return raw.map { value ->
-      val entry = JsonSupport.anyToStringAnyMap(value) ?: invalid("contains a malformed entry")
-      try {
-        FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(entry)
-      } catch (error: InvalidWorkflowStateSchemaError) {
-        rethrow(error)
-      } catch (error: IllegalArgumentException) {
-        invalid("contains a malformed entry", error)
-      }
-    }
-  }
-
-  private fun invalid(reason: String, cause: Throwable? = null): Nothing = throw InvalidWorkflowStateSchemaError(
-    "Workflow artifact '$FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY' $reason.",
-    cause,
-  )
-
-  private fun rethrow(error: InvalidWorkflowStateSchemaError): Nothing = throw error
-}
-
-// SKILL-175: the runtime family keeps the decomposition synthesis that the retired prose
-// IMPLEMENT family previously supplied — updating a row with a decompose plan materializes
-// the decomposition_runtime artifact (and its on-disk projection) so the goal runner can
-// resolve the parent by issue key.
-internal fun WorkflowFamily.withDecompositionRuntime(
-  existing: WorkflowStateSnapshot,
-  input: WorkflowUpdateInput,
-  workflowId: String,
-  validator: DecompositionManifestValidator,
-  fileStore: DecompositionManifestFileStore,
-): DecompositionRuntimeInput = if (this != WorkflowFamily.TASK_RUNTIME) {
-  DecompositionRuntimeInput(input = input, updated = false)
-} else {
-  DecompositionManifestWriter.manifestFromWorkflowUpdate(
-    repoRoot = Path.of("").toAbsolutePath(),
-    existingArtifactsJson = existing.artifactsJson,
-    artifactsPatch = input.artifactsPatch,
-    validator = validator,
-    runtimeUpdate = DecompositionManifestRuntimeUpdate(
-      workflowId = workflowId,
-      workflowStatus = input.workflowStatus,
-      currentStepId = input.currentStepId,
-      stepUpdates = input.stepUpdates,
-    ),
-    fileStore = fileStore,
-  )?.let { manifest ->
-    DecompositionRuntimeInput(
-      input = input.copy(
-        artifactsPatch = LinkedHashMap(input.artifactsPatch.orEmpty()).apply {
-          put(
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            encodeDecompositionManifestMap(manifest, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
-          )
-        },
-      ),
-      updated = true,
-    )
-  } ?: DecompositionRuntimeInput(input = input, updated = false)
-}
-
-internal data class DecompositionRuntimeInput(
-  val input: WorkflowUpdateInput,
-  val updated: Boolean,
-)
-
-private fun WorkflowEngine.syncDecompositionParentRuntime(
-  family: WorkflowFamily,
-  updated: WorkflowStateSnapshot,
-  workflowId: String,
-  unitOfWork: UnitOfWork,
-  validator: DecompositionManifestValidator,
-) {
-  val manifest = updated.decompositionRuntime(validator)
-  if (family == WorkflowFamily.TASK_RUNTIME && manifest != null) {
-    val parent = unitOfWork.workflowStates.findDecomposedParentWorkflowForRuntime(manifest, validator)
-    parent?.toSnapshot()
-      ?.takeUnless { it.workflowId == workflowId }
-      ?.let { p -> persistParentDecompositionRuntime(p, manifest, unitOfWork, validator) }
-  }
-}
-
-private fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = WorkflowUpdateInput(
-  workflowStatus = workflowStatus,
-  currentStepId = currentStepId,
-  stepUpdates = stepUpdates,
-  artifactsPatch = artifactsPatch,
-  sessionId = sessionId,
-)
-
-internal fun skillbill.workflow.model.WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput =
-  WorkflowUpdateInput(
-    workflowStatus = "running",
-    currentStepId = resumeStepId,
-    stepUpdates =
-    listOf(
-      mapOf(
-        "step_id" to resumeStepId,
-        "status" to "running",
-        "attempt_count" to nextAttemptCount,
-      ),
-    ),
-    artifactsPatch = null,
-    sessionId = sessionId,
-  )
-
-private fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
-  existing: WorkflowStateSnapshot,
-  workflowId: String,
-  validator: GoalObservabilityEventValidator,
-  gitOperations: WorkflowGitOperations,
-): WorkflowUpdateInput {
-  val patch = artifactsPatch
-  return if (patch?.containsKey("progress_event") != true) {
-    this
-  } else {
-    val existingArtifacts = JsonSupport.parseObjectOrNull(existing.artifactsJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      .orEmpty()
-    val mergedArtifacts = LinkedHashMap(existingArtifacts).apply { putAll(patch) }
-    val observabilityPatch = GoalObservabilityArtifacts.patchForProgressEvent(
-      input = GoalObservabilityArtifacts.ProgressInput(
-        artifacts = mergedArtifacts,
-        workflowId = workflowId,
-        workflowStatus = workflowStatus,
-        currentStepId = currentStepId,
-        worktreeActivity = gitOperations.worktreeActivity(Path.of("").toAbsolutePath().normalize())
-          .takeIf { activity -> activity.ok }
-          ?.let { activity ->
-            GoalObservabilityArtifacts.GoalObservabilityWorktreeActivity(
-              changedFileSummary = activity.changedFileSummary,
-              diffStat = activity.diffStat,
-            )
-          },
-      ),
-      validator = validator,
-    )
-    observabilityPatch?.let { copy(artifactsPatch = LinkedHashMap(patch).apply { putAll(it) }) } ?: this
-  }
-}
-
-internal fun generateWorkflowId(prefix: String): String {
-  val now = OffsetDateTime.now(ZoneOffset.UTC)
-  val suffix = (1..WORKFLOW_ID_SUFFIX_LENGTH).map { SUFFIX_CHARS[Random.nextInt(SUFFIX_CHARS.length)] }
-    .joinToString("")
-  return "$prefix-${now.year}${now.monthValue.twoDigits()}${now.dayOfMonth.twoDigits()}-" +
-    "${now.hour.twoDigits()}${now.minute.twoDigits()}${now.second.twoDigits()}-$suffix"
-}
-
-private fun Int.twoDigits(): String = toString().padStart(2, '0')
-
-internal fun WorkflowFamilyKind.workflowFamily(): WorkflowFamily = when (this) {
-  WorkflowFamilyKind.VERIFY -> WorkflowFamily.VERIFY
-  WorkflowFamilyKind.TASK_RUNTIME -> WorkflowFamily.TASK_RUNTIME
-}
-
-internal enum class WorkflowFamily(
-  val definition: WorkflowDefinition,
-  val humanName: String,
-  // Loop-only steps sit in the pipeline only as backward-edge destinations (e.g. the runtime's
-  // `implement_fix`), so the forward transition skips them. The resume-boundary scan must skip them
-  // too, or it parks a reconciled row at a loop-only phase its verdict never triggered. Empty for
-  // families with a strict forward pipeline, leaving their boundary resolution unchanged.
-  val loopOnlyStepIds: Set<String> = emptySet(),
-) {
-  VERIFY(FeatureVerifyWorkflowDefinition.definition, "feature-verify"),
-  TASK_RUNTIME(
-    FeatureTaskRuntimePhaseWorkflowDefinition.definition,
-    "feature-task-runtime",
-    FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds,
-  ),
-  ;
-
-  init {
-    // Invariant mirrored from FeatureTaskRuntimeTransitionDeclaration: a family's loop-only steps
-    // must be a subset of its own definition. Non-runtime families keep the empty default; this
-    // guards a future family from declaring a loop-only step the definition — and the resume-boundary
-    // scan that filters on it — would never recognize.
-    require(loopOnlyStepIds.all { it in definition.stepIds }) {
-      "WorkflowFamily $humanName declares loop-only steps absent from its definition: " +
-        "${loopOnlyStepIds - definition.stepIds.toSet()}"
-    }
-  }
-
-  fun save(repository: WorkflowStateRepository, record: WorkflowStateSnapshot) {
-    saveRecord(repository, record.toRecord())
-  }
-
-  fun saveRecord(repository: WorkflowStateRepository, record: WorkflowStateRecord) {
-    when (this) {
-      VERIFY -> repository.saveFeatureVerifyWorkflow(record)
-      TASK_RUNTIME -> repository.saveFeatureTaskWorkflow(record, FeatureTaskWorkflowMode.RUNTIME)
-    }
-  }
-
-  fun get(repository: WorkflowStateRepository, workflowId: String): WorkflowStateSnapshot? = when (this) {
-    VERIFY -> repository.getFeatureVerifyWorkflow(workflowId)
-    TASK_RUNTIME -> repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.RUNTIME)
-  }?.toSnapshot()
-
-  fun getAll(repository: WorkflowStateRepository, workflowIds: Set<String>): Map<String, WorkflowStateSnapshot> =
-    buildMap {
-      workflowIds.chunked(WORKFLOW_SNAPSHOT_BATCH_SIZE).forEach { batch ->
-        val records = when (this@WorkflowFamily) {
-          VERIFY -> repository.getFeatureVerifyWorkflows(batch.toSet())
-          TASK_RUNTIME -> repository.getFeatureTaskRuntimeWorkflows(batch.toSet())
-        }
-        records.forEach { (workflowId, record) -> put(workflowId, record.toSnapshot()) }
-      }
-    }
-
-  fun list(repository: WorkflowStateRepository, limit: Int): List<WorkflowStateSnapshot> = when (this) {
-    VERIFY -> repository.listFeatureVerifyWorkflows(limit)
-    TASK_RUNTIME -> repository.listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, limit)
-  }.map(WorkflowStateRecord::toSnapshot)
-
-  fun latest(repository: WorkflowStateRepository): WorkflowStateSnapshot? = when (this) {
-    VERIFY -> repository.latestFeatureVerifyWorkflow()
-    TASK_RUNTIME -> repository.latestFeatureTaskWorkflow(FeatureTaskWorkflowMode.RUNTIME)
-  }?.toSnapshot()
-
-  /**
-   * SKILL-52.1 open-boundary: durable workflow session summary lookup.
-   * Returns the raw repository-supplied map verbatim; the typed
-   * [skillbill.workflow.model.WorkflowContinueView.sessionSummary]
-   * carries it through to the wire-shape map.
-   */
-  @OpenBoundaryMap("Durable workflow session summary passthrough")
-  fun sessionSummary(repository: WorkflowStateRepository, sessionId: String): Map<String, Any?> {
-    if (sessionId.isBlank()) {
-      return emptyMap()
-    }
-    return when (this) {
-      VERIFY -> repository.getFeatureVerifySessionSummary(sessionId)?.toPayload().orEmpty()
-      // The runtime family has no session-summary record.
-      TASK_RUNTIME -> emptyMap()
-    }
-  }
-}
-
-private const val WORKFLOW_SNAPSHOT_BATCH_SIZE = 900

@@ -1,11 +1,12 @@
 package skillbill.scaffold
 
-import skillbill.scaffold.policy.renderPlatformPackManifest
+import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
 import skillbill.scaffold.rendering.inferSkillDescription
 import skillbill.scaffold.rendering.renderContentBody
 import skillbill.scaffold.runtime.TemplateContext
 import skillbill.scaffold.runtime.scaffold
 import skillbill.scaffold.runtime.supportingFileTargets
+import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -49,7 +50,7 @@ private fun payload(repo: Path, kind: String, vararg pairs: Pair<String, Any?>):
 
 private fun seedRepo(): Path {
   val repo = Files.createTempDirectory("skillbill-scaffold-platform-install-repo")
-  skillbill.testsupport.SkillClassFixtures.seedShippedSkillClasses(repo)
+  SkillClassFixtures.seedShippedSkillClasses(repo)
   supportingFileTargets(repo).values.forEach { target ->
     Files.createDirectories(target.parent)
     Files.writeString(target, "# ${target.fileName}\n")

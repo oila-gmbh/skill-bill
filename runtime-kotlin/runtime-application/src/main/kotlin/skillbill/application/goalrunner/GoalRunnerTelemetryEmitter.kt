@@ -1,15 +1,15 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.model.GoalFinishedRequest
-import skillbill.application.model.GoalIssueFinishedRequest
-import skillbill.application.model.GoalStartedRequest
-import skillbill.application.model.GoalSubtaskFinishedRequest
+import skillbill.application.telemetry.model.GoalFinishedRequest
+import skillbill.application.telemetry.model.GoalIssueFinishedRequest
+import skillbill.application.telemetry.model.GoalStartedRequest
+import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
-import skillbill.ports.goalrunner.model.GoalRunnerManifestState
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant

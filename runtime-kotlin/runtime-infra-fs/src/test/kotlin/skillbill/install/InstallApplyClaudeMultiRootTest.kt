@@ -9,6 +9,8 @@ import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.McpRegistrationApplyStatus
 import skillbill.install.model.NativeAgentApplyStatus
 import skillbill.install.model.NativeAgentProviderId
+import skillbill.install.model.PlatformPackSelection
+import skillbill.install.model.PlatformPackSelectionMode.SELECTED
 import skillbill.install.nativeagent.InstallNativeAgentOperations
 import skillbill.install.nativeagent.NativeAgentLinkRequest
 import skillbill.install.runtime.InstallOperations
@@ -229,8 +231,8 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
 
     val plan = InstallOperations.planInstall(
       claudeMultiRootRequest(fixture).copy(
-        platformPackSelection = skillbill.install.model.PlatformPackSelection(
-          mode = skillbill.install.model.PlatformPackSelectionMode.SELECTED,
+        platformPackSelection = PlatformPackSelection(
+          mode = SELECTED,
           selectedSlugs = setOf("kotlin"),
         ),
       ),

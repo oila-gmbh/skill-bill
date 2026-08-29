@@ -52,12 +52,12 @@ internal fun ScaffoldExplainResult.toCliMap(): Map<String, Any?> {
 internal fun ScaffoldValidateResult.toCliMap(): Map<String, Any?> {
   val map = linkedMapOf<String, Any?>("repo_root" to repoRoot, "mode" to mode)
   if (mode == "selected") {
-    map["skill_names"] = skillNames.orEmpty()
+    map["skill_names"] = skillNames ?: emptyList<String>()
   }
   map["status"] = status
   map["issues"] = issues
   if (mode == "selected") {
-    map["suggested_commands"] = suggestedCommands.orEmpty()
+    map["suggested_commands"] = suggestedCommands ?: emptyList<String>()
   }
   return map
 }

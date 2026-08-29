@@ -34,6 +34,7 @@ Treat the generated flattened Review Composition plan as authoritative. Launch i
 - Use lightweight file-level classification to scope each specialist to matching files without dropping a selected lane.
 - Exclude generated, vendored, and non-stack files from specialist scope unless a generated contract is itself the reviewed artifact.
 - Preserve the manifest-declared Kotlin baseline as direct lanes for the same whole-review scope, then merge and deduplicate findings without losing the `kmp -> kotlin` attribution chain.
+- Launch every selected lane as a subagent in this harness in a deterministic order and retain every selected result.
 
 ## Finding Discipline
 

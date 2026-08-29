@@ -1,9 +1,9 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.model.GoalRunnerChildRepairApplyResult
-import skillbill.application.model.GoalRunnerChildWedgeDiagnosis
-import skillbill.application.model.GoalRunnerWedgeClass
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
+import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 
 /**

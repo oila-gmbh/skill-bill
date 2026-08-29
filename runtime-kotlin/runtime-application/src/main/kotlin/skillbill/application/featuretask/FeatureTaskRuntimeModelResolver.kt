@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimeModelAssignment
+import skillbill.application.featuretask.model.FeatureTaskRuntimeModelAssignment
 import skillbill.config.model.PhaseModelDirective
 
 object FeatureTaskRuntimeModelResolver {

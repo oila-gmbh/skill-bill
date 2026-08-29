@@ -1,7 +1,7 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import kotlin.test.Test

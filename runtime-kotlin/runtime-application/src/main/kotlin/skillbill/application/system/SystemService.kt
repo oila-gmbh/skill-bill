@@ -5,7 +5,7 @@ import skillbill.SkillBillVersion
 import skillbill.application.telemetry.telemetrySettingsOrNull
 import skillbill.contracts.system.DoctorContract
 import skillbill.contracts.system.VersionContract
-import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 
 @Inject

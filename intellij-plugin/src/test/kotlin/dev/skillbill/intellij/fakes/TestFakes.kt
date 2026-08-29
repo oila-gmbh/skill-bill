@@ -22,6 +22,9 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
+import java.util.concurrent.CountDownLatch
+import java.time.Instant
+import dev.skillbill.intellij.domain.StatusClock
 
 class FakePreferenceCache(
     private var cliOverride: String? = null,
@@ -89,13 +92,13 @@ class FakeStatusRepository(
     }
 }
 
-class ControllableClock(initial: java.time.Instant) : dev.skillbill.intellij.domain.StatusClock {
+class ControllableClock(initial: Instant) : StatusClock {
     @Volatile
-    private var now: java.time.Instant = initial
+    private var now: Instant = initial
 
-    override fun now(): java.time.Instant = now
+    override fun now(): Instant = now
 
-    fun set(instant: java.time.Instant) {
+    fun set(instant: Instant) {
         now = instant
     }
 
@@ -153,7 +156,7 @@ class ScriptedProcessFactory(
     private val hold: Boolean = false,
 ) : ProcessFactory {
     val commands = CopyOnWriteArrayList<List<String>>()
-    private val released = java.util.concurrent.CountDownLatch(if (hold) 1 else 0)
+    private val released = CountDownLatch(if (hold) 1 else 0)
 
     fun release() {
         while (released.count > 0) released.countDown()

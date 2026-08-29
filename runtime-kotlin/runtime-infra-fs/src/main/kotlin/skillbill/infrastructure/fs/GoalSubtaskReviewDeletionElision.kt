@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import java.nio.file.Path
 
 internal fun goalReviewDiffArguments(baseline: GoalSubtaskReviewBaseline, vararg options: String): List<String> =

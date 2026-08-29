@@ -14,7 +14,7 @@ import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.scaffold.model.ReviewLaneCondition
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
@@ -59,7 +59,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       ReviewHarnessConfig(
         manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
         diff = diffForPaths("src/Repo.kt"),
-        evidenceEndpointBinder = skillbill.ports.review.GovernedReviewEvidenceEndpointBinder { _, _ ->
+        evidenceEndpointBinder = GovernedReviewEvidenceEndpointBinder { _, _ ->
           error("endpoint bind failed")
         },
         parentLaunch = { error("a governed review must not launch when its evidence endpoint is unbound") },
@@ -308,7 +308,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   @Test
   fun `inline parent binds one evidence surface covering every routed area it was selected for`() {
     val recorder = ReviewRecorder()
-    val bound = mutableListOf<Pair<skillbill.ports.review.model.ReviewEvidenceBrokerBinding, ReviewEvidenceBroker>>()
+    val bound = mutableListOf<Pair<ReviewEvidenceBrokerBinding, ReviewEvidenceBroker>>()
     val defaults = ReviewHarnessConfig(
       manifests = listOf(
         reviewPack("kotlin", listOf("architecture", "security"), routingSignals = listOf("*.kt")).copy(

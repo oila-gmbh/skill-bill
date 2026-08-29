@@ -2,7 +2,7 @@ package skillbill.workflow.taskruntime
 
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
@@ -13,6 +13,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
@@ -239,7 +242,9 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     val audit = FeatureTaskRuntimePhaseOutput(def.PHASE_AUDIT, 1, """{"verdict":"satisfied","produced_outputs":{}}""")
     val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("tree-1", workingTreeOwnedPaths = listOf("src/A.kt"))
     listOf(def.PHASE_VALIDATE, def.PHASE_BUILD).forEach { consumer ->
-      val declarations = def.phaseDeclaration(consumer, FeatureTaskRuntimeFeatureSize.MEDIUM).projectionDeclarations
+      val declarations = FeatureTaskRuntimePhaseWorkflowQueries
+        .phaseDeclaration(consumer, FeatureTaskRuntimeFeatureSize.MEDIUM)
+        .projectionDeclarations
       val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
         inputs(
           consumerPhaseId = consumer,
@@ -278,10 +283,10 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     val commitPush = FeatureTaskRuntimePhaseOutput(def.PHASE_COMMIT_PUSH, 1, COMMIT_PUSH_PHASE_PAYLOAD)
     val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("tree-1", workingTreeOwnedPaths = listOf("src/A.kt"))
     listOf(def.PHASE_WRITE_HISTORY, def.PHASE_COMMIT_PUSH, def.PHASE_PR).forEach { consumer ->
-      val declarations = def.phaseDeclarationForQualityGate(
+      val declarations = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclarationForQualityGate(
         consumer,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+        VALIDATE,
       ).projectionDeclarations
       val upstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
         buildMap {
@@ -337,11 +342,11 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
 
     fun changedPathsFrom(consumer: String): List<String> {
       val gateSelection = if (consumer == def.PHASE_BUILD) {
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+        BUILD
       } else {
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
+        VALIDATE
       }
-      val declarations = def.phaseDeclarationForQualityGate(
+      val declarations = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclarationForQualityGate(
         consumer,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
         gateSelection,
@@ -411,7 +416,8 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     val validateEnvelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       inputs(
         consumerPhaseId = def.PHASE_VALIDATE,
-        declarations = def.phaseDeclaration(def.PHASE_VALIDATE, FeatureTaskRuntimeFeatureSize.MEDIUM)
+        declarations = FeatureTaskRuntimePhaseWorkflowQueries
+          .phaseDeclaration(def.PHASE_VALIDATE, FeatureTaskRuntimeFeatureSize.MEDIUM)
           .projectionDeclarations,
         resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
           mapOf(def.PHASE_PLAN to plan, def.PHASE_AUDIT to audit),
@@ -450,7 +456,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
     ).forEach { consumer ->
-      val receipt = FeatureTaskRuntimePhaseWorkflowDefinition
+      val receipt = FeatureTaskRuntimePhaseWorkflowQueries
         .phaseDeclaration(consumer, FeatureTaskRuntimeFeatureSize.MEDIUM)
         .projectionDeclarations
         .single {
@@ -464,10 +470,10 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   @Test
   fun `build-stamped write_history rejects settled validate output`() {
     val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY
-    val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarationForQualityGate(
+    val declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclarationForQualityGate(
       consumer,
       FeatureTaskRuntimeFeatureSize.MEDIUM,
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+      BUILD,
     )
     assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       FeatureTaskRuntimeHandoffProjectionValidator.validate(
@@ -488,7 +494,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
               ),
             ),
           ),
-          qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+          qualityGateSelection = BUILD,
         ),
       )
     }
@@ -858,14 +864,16 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   ) {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val gateSelection = if (consumer == def.PHASE_BUILD) {
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+      BUILD
     } else {
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
+      VALIDATE
     }
     val declarations = if (consumer == def.PHASE_VALIDATE || consumer == def.PHASE_BUILD) {
-      def.phaseDeclaration(consumer, FeatureTaskRuntimeFeatureSize.MEDIUM).projectionDeclarations
+      FeatureTaskRuntimePhaseWorkflowQueries
+        .phaseDeclaration(consumer, FeatureTaskRuntimeFeatureSize.MEDIUM)
+        .projectionDeclarations
     } else {
-      def.phaseDeclarationForQualityGate(
+      FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclarationForQualityGate(
         consumer,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
         gateSelection,
@@ -892,7 +900,9 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     val prEnvelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
       inputs(
         consumerPhaseId = def.PHASE_PR,
-        declarations = def.phaseDeclaration(def.PHASE_PR, FeatureTaskRuntimeFeatureSize.MEDIUM).projectionDeclarations,
+        declarations = FeatureTaskRuntimePhaseWorkflowQueries
+          .phaseDeclaration(def.PHASE_PR, FeatureTaskRuntimeFeatureSize.MEDIUM)
+          .projectionDeclarations,
         resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
           mapOf(
             def.PHASE_IMPLEMENT to implement,
@@ -962,8 +972,8 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
-    qualityGateSelection: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection =
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+    qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
+      VALIDATE,
     priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   ) = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = consumerPhaseId,

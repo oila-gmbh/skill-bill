@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeContinuationKind
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertEquals

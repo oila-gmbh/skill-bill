@@ -13,6 +13,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.Rule
 import org.junit.rules.TemporaryFolder
+import java.util.concurrent.TimeUnit
 
 class CliSkillBillStatusRepositoryTest {
     @get:Rule
@@ -96,7 +97,7 @@ class CliSkillBillStatusRepositoryTest {
                 object : ProcessHandle {
                     override val inputStream = json.byteInputStream()
                     override val errorStream = ByteArray(0).inputStream()
-                    override fun waitFor(timeout: Long, unit: java.util.concurrent.TimeUnit) = true
+                    override fun waitFor(timeout: Long, unit: TimeUnit) = true
                     override fun destroyForcibly() {}
                     override fun exitValue() = 0
                     override fun isAlive() = false

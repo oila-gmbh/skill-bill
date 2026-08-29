@@ -32,6 +32,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertNull
+import java.awt.Component
+import java.awt.Container
+import javax.swing.JLabel
 
 /**
  * IntelliJ Platform fixture coverage for registration, disposal, ticker stop,
@@ -338,9 +341,9 @@ class SkillBillStatusBarWidgetFixtureTest : BasePlatformTestCase() {
         widget.dispose()
     }
 
-    private fun valueLabels(component: java.awt.Component): List<javax.swing.JLabel> = when (component) {
-        is javax.swing.JLabel -> listOf(component)
-        is java.awt.Container -> component.components.flatMap { valueLabels(it) }
+    private fun valueLabels(component: Component): List<JLabel> = when (component) {
+        is JLabel -> listOf(component)
+        is Container -> component.components.flatMap { valueLabels(it) }
         else -> emptyList()
     }
 

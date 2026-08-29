@@ -4,6 +4,7 @@ import skillbill.error.ContractVersionMismatchError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingManifestError
 import skillbill.scaffold.model.SkillClassManifest
+import skillbill.scaffold.model.SkillClassMatcher
 import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
 import skillbill.scaffold.platformpack.discoverSkillClasses
 import skillbill.scaffold.platformpack.loadPlatformManifest
@@ -318,8 +319,8 @@ class SkillClassLoaderTest {
       contractVersion = SHELL_CONTRACT_VERSION,
       matchers = matchers.map { (kind, value) ->
         when (kind) {
-          "exact" -> skillbill.scaffold.model.SkillClassMatcher(exact = value, excludeExact = excludeExact)
-          "pattern" -> skillbill.scaffold.model.SkillClassMatcher(pattern = Regex(value), excludeExact = excludeExact)
+          "exact" -> SkillClassMatcher(exact = value, excludeExact = excludeExact)
+          "pattern" -> SkillClassMatcher(pattern = Regex(value), excludeExact = excludeExact)
           else -> error("unknown matcher kind $kind")
         }
       },

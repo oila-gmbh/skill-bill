@@ -36,6 +36,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import com.intellij.util.Consumer
+import java.awt.Cursor
+import java.awt.Cursor.HAND_CURSOR
 
 /**
  * Thin status-bar consumer of the project-scoped ViewModel. Owns local UI ticking
@@ -58,7 +61,7 @@ class SkillBillStatusBarWidget(
         border = JBUI.Borders.empty(0, 6)
         isOpaque = false
         toolTipText = "Skill Bill"
-        cursor = java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR)
+        cursor = Cursor.getPredefinedCursor(HAND_CURSOR)
     }
 
     private var statusBar: StatusBar? = null
@@ -98,8 +101,8 @@ class SkillBillStatusBarWidget(
 
     override fun getTooltipText(): String = latestPresentation.tooltipText
 
-    override fun getClickConsumer(): com.intellij.util.Consumer<MouseEvent> =
-        com.intellij.util.Consumer { event -> onClick(event.component, event.point) }
+    override fun getClickConsumer(): Consumer<MouseEvent> =
+        Consumer { event -> onClick(event.component, event.point) }
 
     override fun install(statusBar: StatusBar) {
         this.statusBar = statusBar

@@ -2,7 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.workflow.FeatureTaskRuntimeBuildReceiptSchemaValidator
-import skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
 
 @Inject
 class FeatureTaskRuntimeBuildReceiptValidatorAdapter : FeatureTaskRuntimeBuildReceiptValidator {

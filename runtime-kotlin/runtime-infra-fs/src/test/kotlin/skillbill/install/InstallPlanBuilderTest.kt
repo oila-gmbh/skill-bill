@@ -29,6 +29,8 @@ import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.testing.seedConformingPlatformPack
+import java.io.File
+import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -448,7 +450,7 @@ class InstallPlanBuilderTest {
   fun `missing base skills root fails instead of producing a plan without base skills`() {
     val fixture = setupPlanFixture()
 
-    val error = assertFailsWith<java.io.FileNotFoundException> {
+    val error = assertFailsWith<FileNotFoundException> {
       InstallOperations.planInstall(
         fixture.request(
           targetPaths = fixture.targetPaths().copy(skillsRoot = fixture.repoRoot.resolve("missing-skills")),
@@ -732,7 +734,7 @@ class InstallPlanBuilderTest {
         .associate { path ->
           val relative = root.relativize(path)
             .toString()
-            .replace(java.io.File.separatorChar, '/')
+            .replace(File.separatorChar, '/')
             .ifEmpty { "." }
           val value = when {
             Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) -> "<DIR>"

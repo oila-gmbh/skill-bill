@@ -3,6 +3,7 @@ package skillbill.infrastructure.fs
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
+import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.nativeagent.composition.NativeAgentCompositionDirective
 import skillbill.nativeagent.composition.NativeAgentCompositionKind
 import skillbill.nativeagent.composition.NativeAgentSource
@@ -31,6 +32,7 @@ import skillbill.scaffold.authoring.renderAuthoringTarget
 import skillbill.scaffold.catalog.ScaffoldCatalog
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import skillbill.scaffold.runtime.scaffold
+import java.nio.file.Files
 import java.nio.file.Path
 import skillbill.agentaddon.inspectAgentAddons as inspectFsAgentAddons
 import skillbill.nativeagent.composition.parseNativeAgentSourceFile as parseFsNativeAgentSourceFile
@@ -197,13 +199,13 @@ private const val AGENT_ADDON_PREFIX = "agent-addon:"
 
 private fun requireAgentAddonEntry(repoRoot: Path, identity: String): AgentAddonCatalogueEntry =
   AgentAddonDeliveryResolver().catalogue(repoRoot).firstOrNull { it.identity == identity }
-    ?: throw skillbill.error.MissingAgentAddonDeclarationError(
+    ?: throw MissingAgentAddonDeclarationError(
       identity.removePrefix(AGENT_ADDON_PREFIX),
       repoRoot.resolve("agent-addons").toString(),
     )
 
 private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: String): ScaffoldSkillStatus {
-  val contentText = java.nio.file.Files.readString(contentPath)
+  val contentText = Files.readString(contentPath)
   return ScaffoldSkillStatus(
     skillName = identity,
     packageName = "agent-addons",

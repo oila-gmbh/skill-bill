@@ -4,10 +4,10 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.http.HttpTelemetryClient
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
@@ -15,6 +15,7 @@ import skillbill.telemetry.model.TelemetrySettings
 import skillbill.telemetry.sync.TelemetrySyncRuntime
 import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -255,7 +256,7 @@ private fun remoteStatsResponseWithNullCapabilities(): HttpResponse = HttpRespon
 )
 
 private fun telemetrySettings(
-  configPath: java.nio.file.Path,
+  configPath: Path,
   proxyUrl: String = "https://telemetry.example.dev/ingest",
   customProxyUrl: String? = proxyUrl,
 ): TelemetrySettings = TelemetrySettings(

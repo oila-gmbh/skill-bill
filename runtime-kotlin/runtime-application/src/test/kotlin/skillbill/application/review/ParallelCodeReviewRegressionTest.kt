@@ -1,8 +1,8 @@
 package skillbill.application.review
 
-import skillbill.application.model.ParallelReviewScope
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.application.review.model.ParallelReviewScope
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -2,7 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaValidator
-import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
+import skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator
 
 @Inject
 class GoalPlanningPreparationEnvelopeValidatorAdapter : GoalPlanningPreparationEnvelopeValidator {

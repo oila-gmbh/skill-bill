@@ -1,7 +1,11 @@
 package skillbill.architecture
 
+import org.junit.jupiter.api.Assumptions
+import org.junit.jupiter.api.BeforeEach
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
+import java.security.MessageDigest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -15,9 +19,9 @@ class InstallerShellDelegationTest {
   // install.sh legitimately diverges (BSD `script`), so the suite runs on the Linux
   // CI leg and skips elsewhere; macOS install behavior is covered by
   // scripts/install_smoke_test.sh.
-  @org.junit.jupiter.api.BeforeEach
+  @BeforeEach
   fun assumeLinuxHost() {
-    org.junit.jupiter.api.Assumptions.assumeTrue(
+    Assumptions.assumeTrue(
       System.getProperty("os.name").lowercase().startsWith("linux"),
       "installer-shell suite assumes Linux host behavior; skipping on ${System.getProperty("os.name")}",
     )
@@ -576,7 +580,7 @@ class InstallerShellDelegationTest {
     if (options.interactiveTty) {
       // `script` allocates a PTY; gate the test on its presence so it skips cleanly
       // rather than failing on hosts without util-linux.
-      org.junit.jupiter.api.Assumptions.assumeTrue(
+      Assumptions.assumeTrue(
         PrebuiltReleaseStager.toolOnPath("script"),
         "interactive-TTY install test requires `script` (util-linux) on PATH",
       )
@@ -802,7 +806,8 @@ internal object InstallerShellFixtures {
       |# Pre-install uninstall (AC6 path) drives the same CLI for cleanup commands;
       |# answer them with empty output + success so the clean slate reset succeeds.
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|\
+      "install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -897,7 +902,8 @@ internal object InstallerShellFixtures {
       |fi
       |$failingNativeUnlinkBlock
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|\
+      "install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -942,7 +948,8 @@ internal object InstallerShellFixtures {
       |  printf '%s\n' "${'$'}home/agent-targets/${'$'}3"
       |  exit 0
       |fi
-      |if [[ "${'$'}{1:-}" == "install" && ( "${'$'}{2:-}" == "apply" || "${'$'}{2:-}" == "apply-external-addons" ) ]]; then
+      |if [[ "${'$'}{1:-}" == "install" && ( "${'$'}{2:-}" == "apply" ||\
+       "${'$'}{2:-}" == "apply-external-addons" ) ]]; then
       |  exit 0
       |fi
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
@@ -958,7 +965,8 @@ internal object InstallerShellFixtures {
       |  exit 0
       |fi
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|\
+      "install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -1113,14 +1121,14 @@ private object PrebuiltReleaseStager {
   // fail) the prebuilt-path tests when that tooling is missing so `./gradlew check`
   // stays green for contributors without libarchive-tools (bsdtar).
   fun assumeReleaseStagingTools() {
-    org.junit.jupiter.api.Assumptions.assumeTrue(
+    Assumptions.assumeTrue(
       toolOnPath("bsdtar"),
       "staged-release runtime image zips require bsdtar on PATH",
     )
   }
 
   fun toolOnPath(tool: String): Boolean = (System.getenv("PATH") ?: "")
-    .split(java.io.File.pathSeparatorChar)
+    .split(File.pathSeparatorChar)
     .filter { it.isNotEmpty() }
     .any { dir -> Files.isExecutable(Path.of(dir).resolve(tool)) }
 
@@ -1171,7 +1179,7 @@ private object PrebuiltReleaseStager {
   }
 
   private fun writeChecksumSibling(asset: Path, corrupt: Boolean) {
-    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    val digest = MessageDigest.getInstance("SHA-256")
     val hexReal = digest.digest(Files.readAllBytes(asset)).joinToString("") { "%02x".format(it) }
     val hex = if (corrupt) "0".repeat(64) else hexReal
     Files.writeString(asset.resolveSibling("${asset.fileName}.sha256"), "$hex  ${asset.fileName}\n")

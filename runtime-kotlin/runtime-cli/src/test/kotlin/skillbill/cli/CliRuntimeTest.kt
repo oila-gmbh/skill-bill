@@ -11,13 +11,17 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.model.HttpResponse
-import skillbill.ports.workflow.repositoryFingerprint
+import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
+import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -668,7 +672,7 @@ class CliRuntimeTest {
         "json",
       )
     val workflowId = opened["workflow_id"] as String
-    val checkpoint = skillbill.infrastructure.fs.GitWorkflowGitOperations()
+    val checkpoint = GitWorkflowGitOperations()
       .repositoryFingerprint(Path.of("").toAbsolutePath()).value
     val steps = opened.steps()
     assertEquals("completed", steps.single { it["step_id"] == "gather_diff" }["status"])
@@ -959,7 +963,7 @@ class CliRuntimeTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = LifecycleTelemetryStore(connection)
       store.goalStarted(
-        skillbill.telemetry.model.GoalStartedRecord(
+        GoalStartedRecord(
           issueKey = "SKILL-66",
           featureName = "goal telemetry",
           workflowId = "wf-cli-human",
@@ -971,7 +975,7 @@ class CliRuntimeTest {
         level = "full",
       )
       store.goalFinished(
-        skillbill.telemetry.model.GoalFinishedRecord(
+        GoalFinishedRecord(
           issueKey = "SKILL-66",
           workflowId = "wf-cli-human",
           status = "completed",
@@ -1138,7 +1142,7 @@ private fun seedGoalStatsDb(dbPath: Path) {
   DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
     val store = LifecycleTelemetryStore(connection)
     store.goalStarted(
-      skillbill.telemetry.model.GoalStartedRecord(
+      GoalStartedRecord(
         issueKey = "SKILL-66",
         featureName = "goal telemetry",
         workflowId = "wf-cli-1",
@@ -1150,7 +1154,7 @@ private fun seedGoalStatsDb(dbPath: Path) {
       level = "full",
     )
     store.goalSubtaskFinished(
-      skillbill.telemetry.model.GoalSubtaskFinishedRecord(
+      GoalSubtaskFinishedRecord(
         issueKey = "SKILL-66",
         workflowId = "wf-cli-1",
         subtaskId = 1,
@@ -1165,7 +1169,7 @@ private fun seedGoalStatsDb(dbPath: Path) {
       "full",
     )
     store.goalFinished(
-      skillbill.telemetry.model.GoalFinishedRecord(
+      GoalFinishedRecord(
         issueKey = "SKILL-66",
         workflowId = "wf-cli-1",
         status = "blocked",

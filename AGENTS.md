@@ -100,6 +100,38 @@ Tests cost tokens on every future change; write few, high-value ones instead of 
 
 NO COMMENTS, DON'T WRITE ANY NEW COMMENTS. NONE!!! IF YOU SEE A COMMENT - REMOVE IT!!!
 
+## Coding Conventions
+
+Authoritative detail lives in `docs/code-principles.md`. This section records the
+delivered structure after SKILL-220.
+
+**Package clustering.** Runtime Kotlin clusters by product area, not type kind.
+Application inputs and results live under `skillbill.application.<area>.model`
+(for example `featuretask`, `goalrunner`, `review`, `telemetry`). Ports split by
+concept under `skillbill.ports.*` instead of a cross-area persistence bucket.
+Workflow code splits under `skillbill.workflow.{engine,decomposition,goal,taskruntime,idestatus,specsource}`.
+Module graph and ownership: `runtime-kotlin/ARCHITECTURE.md`.
+
+**Imports.** Reference types by imported simple name in production and test Kotlin
+under `runtime-kotlin`, `intellij-plugin`, and `runtime-kotlin/build-logic`. Use
+`import … as …` for collisions. Inline fully-qualified references in expression
+position are banned except compiler-required disambiguation. KDoc, comments,
+string literals, and generated sources are keep-list exceptions. Guard:
+`InlineFqnArchitectureTest` and `PrincipleEnforcementInventory.inlineFqnPrefixes`.
+
+**File size.** Production `src/main` Kotlin files must stay at or below 500 lines
+unless listed in `PrincipleEnforcementInventory.productionLineCeilingExemptions`
+(currently empty). Test sources are out of scope for this ceiling. Guard:
+`ProductionFileLineCeilingArchitectureTest`.
+
+**Architecture enforcement (SKILL-220 subtask 7).** Six mechanical guards plus
+`PrincipleEnforcementInventory`: package clustering, production line ceiling,
+failure wire-code totality, typed parse boundaries, inline FQN ban, and
+convention reapplication (`configureKotlinJvm` ownership). Four principles
+remain review-only (comment quality, naming taste, intra-cluster relatedness,
+open capability vocabularies). Inventory and tests:
+`runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/`.
+
 ## Quality Checks
 
 Prefer `bill-code-check`; document fallback if no platform checker. Bias: stable base commands, platform depth behind routers, explicit overrides, validator-backed rules, acceptance and rejection tests.

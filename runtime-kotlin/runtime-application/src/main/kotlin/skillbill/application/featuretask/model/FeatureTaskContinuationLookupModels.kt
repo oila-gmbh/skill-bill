@@ -1,6 +1,6 @@
 package skillbill.application.featuretask.model
 
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 
 sealed interface FeatureTaskContinuationLookupResult {
   data object NoMatch : FeatureTaskContinuationLookupResult

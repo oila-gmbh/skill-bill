@@ -1,10 +1,11 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceDeriver
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome
@@ -243,7 +244,7 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
   )
 
   private fun fixedDeriver(baseRef: String) = FeatureTaskRuntimeSharedEvidenceDeriver {
-    skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation(
+    FeatureTaskRuntimeSharedEvidenceDerivation(
       baseRef = baseRef,
       headRef = "head",
       files = listOf(FeatureTaskRuntimeSharedEvidenceFileEntry("src/A.kt", "modified")),

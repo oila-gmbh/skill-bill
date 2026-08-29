@@ -1,8 +1,8 @@
 package skillbill.cli.goal
 
-import skillbill.workflow.model.GoalObservabilityDiffStat
-import skillbill.workflow.model.GoalObservabilitySelectedDiffHunk
-import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
+import skillbill.workflow.goal.model.GoalObservabilityDiffStat
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunk
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 
 internal fun GoalObservabilityDiffStat.toGoalDiffStatCliMap(): Map<String, Any?> = linkedMapOf(
   "files_changed" to filesChanged,

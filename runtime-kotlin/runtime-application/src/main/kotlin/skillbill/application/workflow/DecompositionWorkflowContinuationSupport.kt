@@ -5,17 +5,17 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.executionModel
 import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
-import skillbill.application.model.WorkflowContinueResult
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionExecutionModel
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.WorkflowStateSnapshot
-import skillbill.workflow.model.WorkflowStepState
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionExecutionModel
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.engine.model.WorkflowStepState
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
 
 internal fun WorkflowEngine.continueExistingWorkflow(

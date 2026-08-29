@@ -2,10 +2,12 @@ package skillbill.application
 
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.diagnostics.RejectedOutputDiagnosticService
+import skillbill.application.featurespec.FeatureSpecPreparationRuntime
+import skillbill.application.featurespec.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.application.featuretask.FeatureSpecPreparationRuntime
-import skillbill.application.featuretask.FeatureSpecPreparationWriter
+import skillbill.application.featuretask.AppendCheckpointIdentityArgs
 import skillbill.application.featuretask.FeatureTaskPhaseSettlementService
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
@@ -20,6 +22,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssemble
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseGates
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
@@ -29,48 +32,78 @@ import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.GoalSubtaskReviewInputReady
 import skillbill.application.featuretask.InMemoryFeatureTaskPhaseSettlementRepository
 import skillbill.application.featuretask.RemediationBaseCoherent
-import skillbill.application.featuretask.SpecSourceResolver
+import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
+import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.featuretask.phaseDeclaration
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
-import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
-import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.model.FeatureTaskRuntimeRunEvent
-import skillbill.application.model.FeatureTaskRuntimeRunEventSink
-import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateProgressStore
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore
+import skillbill.application.featuretask.validation.ValidationGateResolver
 import skillbill.application.review.SpecIntentProjectionExtractor
 import skillbill.application.review.SpecIntentProjectionResolver
+import skillbill.application.review.model.ParallelReviewLaneStatus
+import skillbill.application.specsource.SpecSourceResolver
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.workflow.repoRoot
+import skillbill.config.model.RepoLocalConfig
+import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
+import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
+import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
+import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
+import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.ports.config.model.ReadRepoLocalConfigResult
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
+import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.LearningRepository
-import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.ports.persistence.ReviewRepository
-import skillbill.ports.persistence.TelemetryOutboxRepository
-import skillbill.ports.persistence.TelemetryReconciliationRepository
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.model.FeatureImplementSessionSummary
-import skillbill.ports.persistence.model.FeatureTaskRuntimeAuditGenerationRow
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.persistence.model.FeatureVerifySessionSummary
-import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError.Absent
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError.Conflict
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
+import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
+import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.UnaddressedFindingsRepository
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
@@ -79,79 +112,133 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.ports.workflow.CheckpointHistoryGitOperations
-import skillbill.ports.workflow.CheckpointHistoryGitOperationsProvider
-import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
-import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
-import skillbill.ports.workflow.ScopedStagingGitOperations
-import skillbill.ports.workflow.ScopedStagingGitOperationsProvider
-import skillbill.ports.workflow.SpecScratchStore
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.buildGoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
-import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
+import skillbill.ports.validation.ValidationGateRunner
+import skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE
+import skillbill.ports.validation.model.ValidationGateFinding
+import skillbill.ports.validation.model.ValidationGateRunOutcome.FAILED
+import skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED
+import skillbill.ports.validation.model.ValidationGateRunRequest
+import skillbill.ports.validation.model.ValidationGateRunResult
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperations
+import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperationsProvider
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
+import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperations
+import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperationsProvider
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
+import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.PROSE
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.ports.workflow.specscratch.SpecScratchStore
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.ReviewContextBudgetExceeded
+import skillbill.review.context.model.ReviewContextBudgetExceededException
+import skillbill.review.model.ParallelReviewMergeResult
+import skillbill.review.model.ParallelReviewMergedFinding
+import skillbill.review.model.ParallelReviewSeverity.BLOCKER
+import skillbill.review.model.ParallelReviewSeverity.MAJOR
+import skillbill.review.model.ReviewFindingVerdict
+import skillbill.scaffold.model.DeclaredFiles
+import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.RoutingSignals
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
+import skillbill.scaffold.model.ValidationGateDeclaration
+import skillbill.scaffold.model.ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY
+import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
+import skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML
+import skillbill.scaffold.model.ValidationGateFindingsLocator
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
+import skillbill.telemetry.model.FeatureVerifyFinishedRecord
+import skillbill.telemetry.model.FeatureVerifyStartedRecord
+import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
+import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.telemetry.model.GoalSubtaskFinishedRecord
+import skillbill.telemetry.model.PrDescriptionGeneratedRecord
+import skillbill.telemetry.model.QualityCheckFinishedRecord
+import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.telemetry.model.TelemetrySettings
-import skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.NoopFeatureTaskRuntimeBuildReceiptValidator
-import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.GoalObservabilityChangedFileSummary
-import skillbill.workflow.model.GoalObservabilityDiffStat
-import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
-import skillbill.workflow.model.SpecSource
+import skillbill.workflow.decomposition.model.SpecSource
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
+import skillbill.workflow.goal.model.GoalObservabilityDiffStat
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
+import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.goal.model.GoalSubtaskReviewDisposition
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeBuildReceiptValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_CHECKPOINT_IDENTITY_VERSION
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
+import java.lang.Boolean.TYPE
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertContentEquals
@@ -163,6 +250,8 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import java.lang.Double.TYPE as DoubleTYPE
+import java.lang.Long.TYPE as LongTYPE
 
 @Suppress("LargeClass")
 class FeatureTaskRuntimeRunnerTest {
@@ -401,23 +490,23 @@ class FeatureTaskRuntimeRunnerTest {
       mandatesAndOverrides = listOf("mandate-X"),
     )
     val recorded = listOf(
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("audit", 1, VALID_AUDIT_OUTPUT),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("review", 1, VALID_REVIEW_OUTPUT),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
+      FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
+      FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
+      FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
+      FeatureTaskRuntimePhaseOutput("audit", 1, VALID_AUDIT_OUTPUT),
+      FeatureTaskRuntimePhaseOutput("review", 1, VALID_REVIEW_OUTPUT),
+      FeatureTaskRuntimePhaseOutput(
         "verify_findings",
         1,
         VALID_VERIFY_FINDINGS_OUTPUT,
       ),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
+      FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
+      FeatureTaskRuntimePhaseOutput(
         "write_history",
         1,
         validJsonOutput("write_history"),
       ),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
+      FeatureTaskRuntimePhaseOutput(
         "commit_push",
         1,
         FINALISED_COMMIT_PUSH_OUTPUT,
@@ -426,16 +515,16 @@ class FeatureTaskRuntimeRunnerTest {
 
     val briefings = COMPLETED_PHASES_CLEAN_RUN.associateWith { phaseId ->
       val declaration =
-        skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+        FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
           phaseId,
           invariants.featureSize,
         )
-      val handoff = skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
         declaration = declaration,
         runInvariants = invariants,
         recordedOutputs = recorded,
         // audit's receipt edge refreshes from a resolved checkpoint (AC-012).
-        repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+        repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(
           fingerprint = "fixture-checkpoint-1",
         ),
       )
@@ -587,7 +676,7 @@ class FeatureTaskRuntimeRunnerTest {
           facts(validJsonOutput(phaseId))
         }
       },
-      validator = object : skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator {
+      validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
           if (sourceLabel == "audit" && phaseOutputText.contains("goal-child-secret")) {
             throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
@@ -822,7 +911,7 @@ class FeatureTaskRuntimeRunnerTest {
   fun `gate repair completed without gate_run_count does not fail consumer-projection`() {
     // Repair agents must not invent gate_run_count; consumer-projection used to reject that
     // completed segment before the coordinator could re-run the gate and settle measured counts.
-    val gateCalls = java.util.concurrent.atomic.AtomicInteger(0)
+    val gateCalls = AtomicInteger(0)
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
@@ -861,7 +950,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `gate repair with non-schema agent stdout still settles after gate re-verify`() {
-    val gateCalls = java.util.concurrent.atomic.AtomicInteger(0)
+    val gateCalls = AtomicInteger(0)
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
@@ -1083,7 +1172,7 @@ class FeatureTaskRuntimeRunnerTest {
     // An override carrying only the production forward pipeline (no backward edges) drives the same
     // phase order as the default run.
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
-    val forwardOnly = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+    val forwardOnly = FeatureTaskRuntimeTransitionDeclaration(
       forwardPhaseIds = ALL_PHASES,
       loopOnlyPhaseIds = setOf("implement_fix", "build"),
       entryGates = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.entryGates,
@@ -1438,7 +1527,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(1, harness.launchOrder().count { it == "review" })
-    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, reviewState.completedPassCount)
     assertEquals(listOf(1), reviewState.passResults.map { it.passNumber })
     assertFalse(reviewState.reviewCapReached)
@@ -1470,7 +1559,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(1, harness.launchOrder().count { it == "review" })
     assertEquals(1, harness.launchOrder().count { it == "implement_fix" })
-    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertFalse(reviewState.pausedForOperatorDecision)
     assertEquals(1, reviewState.completedPassCount)
   }
@@ -1505,7 +1594,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     assertEquals(1, remediationMessages.size, "exactly one remediation checkpoint on a healthy round")
     val remediationIndex = git.amendCommitMessages.indexOf(remediationMessages.single())
     val remediationSha = "a${(remediationIndex + 1).toString(16)}".padStart(40, '0')
-    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(remediationSha, reviewState.remediationBaseSha, "recorded base must equal the checkpoint tip")
     // Soft-reset must not fire on the happy path; recovery evidence must stay absent.
     assertTrue(git.resetSoftToCommitCalls.isEmpty())
@@ -1537,7 +1626,9 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(
       harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
     )
-    val recordedBase = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    val recordedBase = requireNotNull(
+      harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha,
+    )
     // Reproduce the SKILL-15 sibling rewrite outside commitCheckpoint: tip moves to a new sha that
     // does not contain the recorded base, without updating the durable row.
     val siblingTip = "b".repeat(40)
@@ -1548,13 +1639,23 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value,
       "pre-fix: recorded base must be unreachable from the rewritten tip",
     )
-    assertEquals(recordedBase, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    assertEquals(
+      recordedBase,
+      harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha,
+    )
 
     val healed = assertIs<RemediationBaseCoherent>(
-      harness.goalContinuationRecorder.reconcileRemediationBaseCoherence(WORKFLOW_ID, git, repoRoot),
+      harness.goalContinuationRecorder.remediationReconciler.reconcileRemediationBaseCoherence(
+        WORKFLOW_ID,
+        git,
+        repoRoot,
+      ),
     )
     val reconciledBase = requireNotNull(healed.state?.remediationBaseSha)
-    assertEquals(reconciledBase, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    assertEquals(
+      reconciledBase,
+      harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha,
+    )
     assertNotEquals(siblingTip, reconciledBase)
     assertEquals("false", git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value)
     @Suppress("UNCHECKED_CAST")
@@ -1580,7 +1681,9 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
     )
     val settledLaunches = harness.launchOrder().count { it == "review" }
-    val settledPassCount = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)).completedPassCount
+    val settledPassCount = requireNotNull(
+      harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID),
+    ).completedPassCount
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(
       harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
@@ -1593,7 +1696,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     )
     assertEquals(
       settledPassCount,
-      requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)).completedPassCount,
+      requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID)).completedPassCount,
       "the resume allocates no further pass",
     )
   }
@@ -1637,11 +1740,10 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertContains(briefings.getValue("review").briefingText, "diff")
   }
 
-  private fun normalizedOutput(output: String): Map<String, Any?> =
-    skillbill.contracts.JsonSupport.parseObjectOrNull(output)
-      ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
-      ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
-      ?: error("Expected JSON object output.")
+  private fun normalizedOutput(output: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(output)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?: error("Expected JSON object output.")
 
   @Test
   fun `launch spawn failure blocks distinctly without schema gate or fix loop retries`() {
@@ -2091,7 +2193,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       ),
     )
     val preplanOnly = harness.request().copy(
-      transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+      transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
         forwardPhaseIds = listOf("preplan"),
         backwardEdges = emptyList(),
       ),
@@ -2137,7 +2239,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       ),
     )
     assertEquals("implement_fix", first.lastIncompletePhase)
-    val reserved = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val reserved = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, reserved.completedPassCount)
     assertEquals(null, reserved.reservedPassNumber)
 
@@ -2147,7 +2249,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
         harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
       ),
     )
-    val resumed = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val resumed = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, resumed.completedPassCount)
     assertEquals(null, resumed.reservedPassNumber)
     assertEquals(listOf(1), resumed.passResults.map { it.passNumber })
@@ -2175,7 +2277,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val state = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(recoveredBaseline.reviewBaseSha, state.reviewBaseSha)
     assertEquals(recoveredBaseline.baselineUntrackedPaths, state.baselineUntrackedPaths)
     assertEquals(1, git.goalReviewRecoverCalls)
@@ -2219,9 +2321,9 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
     harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
     harness.repository.failSaveWhen = { row ->
-      val artifacts = skillbill.contracts.JsonSupport.parseObjectOrNull(row.artifactsJson)
-        ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
-        ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+      val artifacts = JsonSupport.parseObjectOrNull(row.artifactsJson)
+        ?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
         .orEmpty()
       val reserved = (artifacts["goal_subtask_review_state"] as? Map<*, *>)?.get("reserved_pass_number")
       if (reserved != null) {
@@ -2233,7 +2335,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
       harness.runner.run(
         harness.request().copy(
-          transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+          transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
             forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
             backwardEdges = emptyList(),
           ),
@@ -2291,7 +2393,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
       harness.runner.run(
         harness.request().copy(
-          transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+          transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
             forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
             backwardEdges = emptyList(),
           ),
@@ -2341,7 +2443,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       ),
     )
     // Seed one completed pass with an orphaned remediation base that is no longer an ancestor.
-    var state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    var state = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     state = state.reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
@@ -2354,7 +2456,10 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     val prepared = harness.goalContinuationRecorder.buildGoalReviewInput(WORKFLOW_ID, git, repoRoot)
 
     assertIs<GoalSubtaskReviewInputReady>(prepared)
-    assertEquals(recoveredRemediation, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    assertEquals(
+      recoveredRemediation,
+      harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha,
+    )
     assertEquals(1, git.goalReviewRecoverCalls)
     assertEquals(unreachableRemediation, git.goalReviewRecoverRequests.single().unreachableSha)
     val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"] as List<*>
@@ -2477,14 +2582,14 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     // A short run still executes reopenCappedReviewOnChangedDelta before the loop.
     harness.runner.run(
       harness.request().copy(
-        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+        transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
           forwardPhaseIds = listOf("preplan"),
           backwardEdges = emptyList(),
         ),
       ),
     )
 
-    val after = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val after = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(GoalSubtaskReviewDisposition.PAUSED, after.disposition)
     assertEquals("9".repeat(40), after.remediationBaseSha, "staleness must not heal the remediation base")
     assertEquals(0, git.goalReviewRecoverCalls, "recovery belongs to review preparation, not staleness")
@@ -2564,14 +2669,14 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
 
     harness.runner.run(
       harness.request().copy(
-        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+        transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
           forwardPhaseIds = listOf("preplan"),
           backwardEdges = emptyList(),
         ),
       ),
     )
 
-    val after = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val after = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(GoalSubtaskReviewDisposition.PENDING, after.disposition)
     assertNull(after.remediationBaseSha, "invalidation resets review state; recovery is not the staleness path")
     assertEquals(0, git.goalReviewRecoverCalls)
@@ -2594,7 +2699,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     )
     harness.runner.run(
       harness.request().copy(
-        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+        transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
           forwardPhaseIds = listOf("preplan"),
           backwardEdges = emptyList(),
         ),
@@ -2610,20 +2715,21 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       1,
       phaseAgent("review"),
       """
-        {"contract_version":"0.2","phase_id":"review","status":"completed","summary":"Review requests changes.","verdict":"changes_requested","produced_outputs":{"summary":"full evidence remains durable"}}
+        {"contract_version":"0.2","phase_id":"review","status":"completed","summary":"Review requests changes.",
+          "verdict":"changes_requested","produced_outputs":{"summary":"full evidence remains durable"}}
       """.trimIndent(),
     )
 
     harness.runner.run(
       harness.request().copy(
-        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+        transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
           forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
           backwardEdges = emptyList(),
         ),
       ),
     )
 
-    val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val state = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, state.completedPassCount)
     val passResult = state.passResults.single()
     assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, passResult.verdict)
@@ -3272,7 +3378,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     assertEquals(1, harness.launchOrder().count { it == "review" })
-    val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val state = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(
       1,
       state.completedPassCount,
@@ -3300,7 +3406,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     assertEquals(1, harness.launchOrder().count { it == "review" })
-    val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val state = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, state.completedPassCount)
     assertEquals(null, state.reservedPassNumber)
   }
@@ -3365,20 +3471,20 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       },
       runtimeConfig = RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
-        reviewDriver = skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+        reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           reviewPasses += 1
           val findings = listOf(
-            skillbill.review.model.ParallelReviewMergedFinding(
+            ParallelReviewMergedFinding(
               fNumber = "F-001",
               agentIds = listOf(request.agent1Id),
-              severity = skillbill.review.model.ParallelReviewSeverity.MAJOR,
+              severity = MAJOR,
               confidence = "High",
               location = "Foo.kt:1",
               description = REVIEW_BLOCKER_MESSAGE,
             ),
           )
-          skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-            mergeResult = skillbill.review.model.ParallelReviewMergeResult(
+          FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+            mergeResult = ParallelReviewMergeResult(
               findings = findings,
               formattedOutput = "findings",
             ),
@@ -4618,8 +4724,6 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
   }
 
-  // AC-005: the contract bump's recovery path. A store written under 0.1 must not wedge the run at its
-  // next checkpoint, and must not be silently accepted either.
   @Test
   fun `a legacy checkpoint-identity store is quarantined with durable evidence and regenerated forward`() {
     val harness = checkpointRunHarness(checkpointGit(ownedPaths = listOf("src/Owned.kt")))
@@ -4627,16 +4731,19 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     harness.seedLegacyCheckpointIdentityStore()
 
     val appended = harness.recorder.appendCheckpointIdentity(
-      workflowId = WORKFLOW_ID,
-      issueKey = ISSUE_KEY,
-      subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
-      branch = "feat/existing-runtime-branch",
-      phaseId = "implement",
-      loopId = null,
-      generation = 0,
-      parentSha = null,
-      ownedPaths = listOf("src/Owned.kt"),
-      commitSha = "e".repeat(40),
+      AppendCheckpointIdentityArgs(
+        workflowId = WORKFLOW_ID,
+        issueKey = ISSUE_KEY,
+        subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+        branch = "feat/existing-runtime-branch",
+        phaseId = "implement",
+        loopId = null,
+        generation = 0,
+        parentSha = null,
+        ownedPaths = listOf("src/Owned.kt"),
+        commitSha = "e".repeat(40),
+        dbOverride = null,
+      ),
     )
 
     assertTrue(appended)
@@ -4648,8 +4755,6 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertContains(evidence.rejectionDetail, "actual=0.1")
   }
 
-  // AC-006: quarantine is scoped to the version bump alone; corruption at the current version must
-  // still propagate rather than be reset away as if it were a legacy record.
   @Test
   fun `a malformed current-version checkpoint-identity store propagates instead of quarantining`() {
     val harness = checkpointRunHarness(checkpointGit(ownedPaths = listOf("src/Owned.kt")))
@@ -4658,16 +4763,19 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       harness.recorder.appendCheckpointIdentity(
-        workflowId = WORKFLOW_ID,
-        issueKey = ISSUE_KEY,
-        subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
-        branch = "feat/existing-runtime-branch",
-        phaseId = "implement",
-        loopId = null,
-        generation = 0,
-        parentSha = null,
-        ownedPaths = listOf("src/Owned.kt"),
-        commitSha = "e".repeat(40),
+        AppendCheckpointIdentityArgs(
+          workflowId = WORKFLOW_ID,
+          issueKey = ISSUE_KEY,
+          subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+          branch = "feat/existing-runtime-branch",
+          phaseId = "implement",
+          loopId = null,
+          generation = 0,
+          parentSha = null,
+          ownedPaths = listOf("src/Owned.kt"),
+          commitSha = "e".repeat(40),
+          dbOverride = null,
+        ),
       )
     }
     assertTrue(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID).orEmpty().isEmpty())
@@ -4687,7 +4795,7 @@ private fun checkpointGit(
 
 private fun checkpointRunHarness(
   git: RecordingWorkflowGitOperations,
-  reviewDriver: skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver = reviewFixDriver(2),
+  reviewDriver: FeatureTaskRuntimeReviewDriver = reviewFixDriver(2),
   diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
   onPhase: (String) -> Unit = {},
 ): RunnerHarness {
@@ -4765,7 +4873,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
       "branch tip must match the preceding checkpoint after rollback",
     )
     assertNull(
-      harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha,
+      harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha,
       "durable base must remain unset when the paired record failed",
     )
   }
@@ -4862,7 +4970,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     val inner = reviewFixDriver(2)
     val harness = checkpointRunHarness(
       git,
-      reviewDriver = skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+      reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
         git.ownedPathsValue = listOf("src/Owned.kt", "src/ReviewWrote.kt")
         git.worktreeStatusValue = " M src/Owned.kt\n?? src/ReviewWrote.kt"
         inner.run(request)
@@ -5158,69 +5266,65 @@ private val VALIDATE_REPAIR_WITHOUT_GATE_COUNTS = """
 """.trimIndent()
 
 /** Fail once, then pass — drives the validate repair loop without inventing gate_run_count. */
-private fun failThenPassValidationGateRunner(
-  gateCalls: java.util.concurrent.atomic.AtomicInteger,
-): skillbill.ports.validation.ValidationGateRunner = object : skillbill.ports.validation.ValidationGateRunner {
-  override fun run(
-    request: skillbill.ports.validation.model.ValidationGateRunRequest,
-  ): skillbill.ports.validation.model.ValidationGateRunResult {
-    val call = gateCalls.getAndIncrement()
-    val outcome = if (call == 0) {
-      skillbill.ports.validation.model.ValidationGateRunOutcome.FAILED
-    } else {
-      skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED
+private fun failThenPassValidationGateRunner(gateCalls: AtomicInteger): ValidationGateRunner =
+  object : ValidationGateRunner {
+    override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
+      val call = gateCalls.getAndIncrement()
+      val outcome = if (call == 0) {
+        FAILED
+      } else {
+        PASSED
+      }
+      return ValidationGateRunResult(
+        exitCode = if (call == 0) 1 else 0,
+        durationMs = 1,
+        outcome = outcome,
+        cacheMode = if (call == 0) {
+          CACHE_ELIGIBLE
+        } else {
+          request.cacheMode
+        },
+        executedWorkUnits = 1,
+        findings = if (call == 0) {
+          listOf(
+            ValidationGateFinding("app", "t", "broken", "A.kt"),
+          )
+        } else {
+          emptyList()
+        },
+      )
     }
-    return skillbill.ports.validation.model.ValidationGateRunResult(
-      exitCode = if (call == 0) 1 else 0,
-      durationMs = 1,
-      outcome = outcome,
-      cacheMode = if (call == 0) {
-        skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE
-      } else {
-        request.cacheMode
-      },
-      executedWorkUnits = 1,
-      findings = if (call == 0) {
-        listOf(
-          skillbill.ports.validation.model.ValidationGateFinding("app", "t", "broken", "A.kt"),
-        )
-      } else {
-        emptyList()
-      },
-    )
   }
-}
 
-private fun kotlinPackWithValidationGate(): skillbill.scaffold.model.PlatformManifest =
-  skillbill.scaffold.model.PlatformManifest(
-    slug = "kotlin",
-    packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
-    contractVersion = "1.7",
-    routingSignals = skillbill.scaffold.model.RoutingSignals(
-      strong = listOf("src"),
-      tieBreakers = emptyList(),
-      path = listOf("src"),
-    ),
-    declaredCodeReviewAreas = emptyList(),
-    declaredFiles = skillbill.scaffold.model.DeclaredFiles(null, emptyMap()),
-    areaMetadata = emptyMap(),
-    validationGate = skillbill.scaffold.model.ValidationGateDeclaration(
-      fullGateCommand = listOf("echo", "cache"),
-      cacheBypassingFullGateCommand = listOf("echo", "full"),
-      collectAllFullGateCommand = listOf("echo", "collect-all"),
-      cacheBypassingCollectAllFullGateCommand = listOf("echo", "collect-all-full"),
-      findings = skillbill.scaffold.model.ValidationGateFindingsLocator(
-        format = skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML,
-        artifactGlobs = listOf("**/*.xml"),
-        compilerDiagnostics = skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator(
-          skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT,
-        ),
-        executedWork = skillbill.scaffold.model.ValidationGateExecutedWorkSignal(
-          skillbill.scaffold.model.ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY,
-        ),
+private fun kotlinPackWithValidationGate(): PlatformManifest = PlatformManifest(
+  slug = "kotlin",
+  packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
+  contractVersion = "1.7",
+  routingSignals = RoutingSignals(
+    strong = listOf("src"),
+    tieBreakers = emptyList(),
+    path = listOf("src"),
+  ),
+  declaredCodeReviewAreas = emptyList(),
+  declaredFiles = DeclaredFiles(null, emptyMap()),
+  areaMetadata = emptyMap(),
+  validationGate = ValidationGateDeclaration(
+    fullGateCommand = listOf("echo", "cache"),
+    cacheBypassingFullGateCommand = listOf("echo", "full"),
+    collectAllFullGateCommand = listOf("echo", "collect-all"),
+    cacheBypassingCollectAllFullGateCommand = listOf("echo", "collect-all-full"),
+    findings = ValidationGateFindingsLocator(
+      format = JUNIT_XML,
+      artifactGlobs = listOf("**/*.xml"),
+      compilerDiagnostics = ValidationGateCompilerDiagnosticsLocator(
+        GRADLE_KOTLIN_COMPILER_STDOUT,
+      ),
+      executedWork = ValidationGateExecutedWorkSignal(
+        GRADLE_ACTIONABLE_SUMMARY,
       ),
     ),
-  )
+  ),
+)
 
 // A clean review output carrying an empty findings array (the affirmative "no blocking findings"
 // signal the review gate requires, SKILL-85 Subtask 4 F-003); used by the default phase-aware launcher.
@@ -5319,7 +5423,7 @@ internal class RunnerHarness(
   val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore get() = io.workflow.runInvariantsStore
   val repository: InMemoryRuntimeWorkflowRepository get() = io.repository
   val gitOperations: RecordingWorkflowGitOperations get() = io.gitOperations
-  val ledgerRows: List<skillbill.goalrunner.model.UnaddressedFinding> get() = io.database.ledgerRows
+  val ledgerRows: List<UnaddressedFinding> get() = io.database.ledgerRows
 
   // Direct review-state seeding via updateReviewState only patches goal_subtask_review_state; the
   // decoder also requires a durable raw result for every completed pass, so fixtures that
@@ -5333,10 +5437,10 @@ internal class RunnerHarness(
   }
 
   fun reviewedDeltaDigest(): String? =
-    requireNotNull(goalContinuationRecorder.reviewState(WORKFLOW_ID)).reviewedDeltaDigest
+    requireNotNull(goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID)).reviewedDeltaDigest
 
   fun currentReviewDeltaDigest(git: RecordingWorkflowGitOperations, repoRoot: Path): String {
-    val state = requireNotNull(goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val state = requireNotNull(goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     return requireNotNull(
       git.buildGoalSubtaskReviewInput(
         repoRoot,
@@ -5350,7 +5454,7 @@ internal class RunnerHarness(
   // exercised against a real record rather than a hand-built one.
   fun stripReviewedDeltaDigest() {
     val artifacts = repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
-    val state = skillbill.contracts.JsonSupport
+    val state = JsonSupport
       .anyToStringAnyMap(artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])
       .orEmpty()
       .toMutableMap()
@@ -5392,7 +5496,7 @@ internal class RunnerHarness(
   fun seedReviewPhase(status: String, attemptCount: Int, outputArtifact: String?, reviewPassNumber: Int) {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
-      skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+      FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
         phaseId = "review",
         status = status,
@@ -5432,7 +5536,7 @@ internal class RunnerHarness(
     seedCheckpointIdentityStore(
       mapOf(
         "contract_version" to
-          skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION,
+          FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION,
         "checkpoints" to listOf(mapOf("sequence_number" to 0)),
       ),
     )
@@ -5463,9 +5567,9 @@ internal class RunnerHarness(
         startedAt = null,
         updatedAt = null,
         finishedAt = null,
-        mode = skillbill.ports.persistence.model.FeatureTaskWorkflowMode.PROSE,
+        mode = PROSE,
       ),
-      skillbill.ports.persistence.model.FeatureTaskWorkflowMode.PROSE,
+      PROSE,
     )
   }
 
@@ -5474,7 +5578,7 @@ internal class RunnerHarness(
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordResolvedBranch(
       WORKFLOW_ID,
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch(
+      FeatureTaskRuntimeResolvedBranch(
         branch = branch,
         baseBranch = baseBranch,
         created = created,
@@ -5493,7 +5597,7 @@ internal class RunnerHarness(
   ) {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
-      skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+      FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
         phaseId = phaseId,
         status = "blocked",
@@ -5521,7 +5625,7 @@ internal class RunnerHarness(
   ) {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
-      skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+      FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
         phaseId = phaseId,
         status = status,
@@ -5538,7 +5642,7 @@ internal class RunnerHarness(
   fun seedLoopEdge(phaseId: String, loopId: String, edgeIteration: Int) {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.appendLedgerEntry(
-      skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest(
+      FeatureTaskRuntimePhaseLedgerRequest(
         workflowId = WORKFLOW_ID,
         action = FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
         phaseId = phaseId,
@@ -5555,7 +5659,7 @@ internal class RunnerHarness(
   fun seedBranchSetupBlockedPhase(phaseId: String, blockedReason: String) {
     recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     recorder.recordPhaseState(
-      skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+      FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
         phaseId = phaseId,
         status = "blocked",
@@ -5571,9 +5675,8 @@ internal class RunnerHarness(
   fun request(): FeatureTaskRuntimeRunRequest = runRequest
 
   // Drives the run with a synthetic cyclic transition declaration (the test-only inert seam).
-  fun request(
-    transitionsOverride: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration,
-  ): FeatureTaskRuntimeRunRequest = runRequest.copy(transitionsOverride = transitionsOverride)
+  fun request(transitionsOverride: FeatureTaskRuntimeTransitionDeclaration): FeatureTaskRuntimeRunRequest =
+    runRequest.copy(transitionsOverride = transitionsOverride)
 }
 
 // Mirrors the runner's branch-setup sentinel agent id so tests can seed a branch-setup-origin block.
@@ -5629,15 +5732,15 @@ internal data class RuntimeHarnessConfig(
   val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator =
     NoopFeatureTaskRuntimeBuildReceiptValidator,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
-  val sharedEvidenceResolver: skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort =
-    skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-  val diffResolver: skillbill.ports.diff.DiffResolverPort = object : skillbill.ports.diff.DiffResolverPort {
-    override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String? = null
+  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
+    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+  val diffResolver: DiffResolverPort = object : DiffResolverPort {
+    override fun runProcess(args: List<String>, workDir: Path): String? = null
   },
-  val validationGateRunner: skillbill.ports.validation.ValidationGateRunner? = null,
-  val validationGatePlatformManifests: List<skillbill.scaffold.model.PlatformManifest> = emptyList(),
-  val reviewDriver: skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver =
-    skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY,
+  val validationGateRunner: ValidationGateRunner? = null,
+  val validationGatePlatformManifests: List<PlatformManifest> = emptyList(),
+  val reviewDriver: FeatureTaskRuntimeReviewDriver =
+    FeatureTaskRuntimeReviewDriver.EMPTY,
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
@@ -5654,30 +5757,29 @@ private fun runtimePhaseGates(
     NoopFeatureTaskRuntimePlanningProjectionValidator,
   buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator =
     NoopFeatureTaskRuntimeBuildReceiptValidator,
-  sharedEvidenceResolver: skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort =
-    skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-  diffResolver: skillbill.ports.diff.DiffResolverPort = object : skillbill.ports.diff.DiffResolverPort {
-    override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String? = null
+  sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
+    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+  diffResolver: DiffResolverPort = object : DiffResolverPort {
+    override fun runProcess(args: List<String>, workDir: Path): String? = null
   },
   recorder: FeatureTaskRuntimePhaseRecorder,
-  validationGateRunnerOverride: skillbill.ports.validation.ValidationGateRunner? = null,
-  validationGatePlatformManifests: List<skillbill.scaffold.model.PlatformManifest> = emptyList(),
-  reviewDriver: skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver =
-    skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY,
+  validationGateRunnerOverride: ValidationGateRunner? = null,
+  validationGatePlatformManifests: List<PlatformManifest> = emptyList(),
+  reviewDriver: FeatureTaskRuntimeReviewDriver =
+    FeatureTaskRuntimeReviewDriver.EMPTY,
 ): FeatureTaskRuntimePhaseGates {
   val validationGateResolver =
-    skillbill.application.featuretask.validation.ValidationGateResolver { validationGatePlatformManifests }
+    ValidationGateResolver { validationGatePlatformManifests }
   val validationGateRunner = validationGateRunnerOverride
-    ?: object : skillbill.ports.validation.ValidationGateRunner {
-      override fun run(request: skillbill.ports.validation.model.ValidationGateRunRequest) =
-        skillbill.ports.validation.model.ValidationGateRunResult(
-          exitCode = 0,
-          durationMs = 1,
-          outcome = skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED,
-          cacheMode = request.cacheMode,
-          executedWorkUnits = 1,
-          findings = emptyList(),
-        )
+    ?: object : ValidationGateRunner {
+      override fun run(request: ValidationGateRunRequest) = ValidationGateRunResult(
+        exitCode = 0,
+        durationMs = 1,
+        outcome = PASSED,
+        cacheMode = request.cacheMode,
+        executedWorkUnits = 1,
+        findings = emptyList(),
+      )
     }
   return FeatureTaskRuntimePhaseGates(
     branchSetupRunner,
@@ -5689,16 +5791,16 @@ private fun runtimePhaseGates(
     buildReceiptValidator,
     validationGateResolver,
     validationGateRunner,
-    skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator(
+    FeatureTaskRuntimeValidationGateCoordinator(
       validationGateResolver,
       validationGateRunner,
-      skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore(recorder),
+      FeatureTaskRuntimeValidationGateProgressStore(recorder),
       defaultRepoLocalConfigPort(),
     ),
-    skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator(
+    FeatureTaskRuntimeBuildGateCoordinator(
       validationGateResolver,
       validationGateRunner,
-      skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateProgressStore(recorder),
+      FeatureTaskRuntimeBuildGateProgressStore(recorder),
       defaultRepoLocalConfigPort(),
     ),
     sharedEvidenceResolver,
@@ -5713,17 +5815,16 @@ private fun runtimePhaseGates(
       ),
     ),
     FeatureTaskRuntimeFindingVerificationBoundaryMemory(
-      skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery(),
-      skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver(),
+      FileSystemGoalPlanningContextDiscovery(),
+      FileSystemGoalPlanningBoundaryBodyResolver(),
     ),
   )
 }
 
-private fun defaultRepoLocalConfigPort(): skillbill.ports.config.RepoLocalConfigPort =
-  object : skillbill.ports.config.RepoLocalConfigPort {
-    override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
-      skillbill.ports.config.model.ReadRepoLocalConfigResult(skillbill.config.model.RepoLocalConfig.defaults())
-  }
+private fun defaultRepoLocalConfigPort(): RepoLocalConfigPort = object : RepoLocalConfigPort {
+  override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
+    ReadRepoLocalConfigResult(RepoLocalConfig.defaults())
+}
 
 private fun testSpecGate(
   specScratchStore: SpecScratchStore = RecordingSpecScratchStore(),
@@ -5794,7 +5895,7 @@ internal fun runnerHarness(
   val specScratchStore = RecordingSpecScratchStore()
   val specStatusWriter = RecordingSpecStatusWriter()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
-  val recorder = FeatureTaskRuntimePhaseRecorder(
+  val recorder = featureTaskRuntimePhaseRecorder(
     database,
     NoopWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
@@ -5903,7 +6004,7 @@ internal fun telemetryRunnerHarness(
   val repository = InMemoryRuntimeWorkflowRepository()
   val lifecycle = RecordingLifecycleTelemetryRepository()
   val database = RuntimeFakeDatabaseSessionFactory(repository, lifecycle)
-  val recorder = FeatureTaskRuntimePhaseRecorder(
+  val recorder = featureTaskRuntimePhaseRecorder(
     database,
     NoopWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
@@ -6029,12 +6130,12 @@ internal fun defaultPhaseOutput(request: GoalRunnerSubtaskLaunchRequest): String
 // so the cycle exercises the executor without entering branch setup.
 private const val PLAN_FIX_CAP = 2
 
-private val PLAN_FIX_CYCLE = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+private val PLAN_FIX_CYCLE = FeatureTaskRuntimeTransitionDeclaration(
   forwardPhaseIds = listOf("preplan", "plan"),
   backwardEdges = listOf(
-    skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge(
+    FeatureTaskRuntimeBackwardEdge(
       fromPhaseId = "plan",
-      triggeringVerdict = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict("needs_fix"),
+      triggeringVerdict = FeatureTaskRuntimeVerdict("needs_fix"),
       destinationPhaseId = "preplan",
       loopId = "plan-fix",
       perEdgeCap = PLAN_FIX_CAP,
@@ -6047,12 +6148,12 @@ private val PLAN_FIX_CYCLE = skillbill.workflow.taskruntime.model.FeatureTaskRun
 // contains a mutating phase, so the remediation checkpoint boundary fires before re-entry.
 private const val IMPLEMENT_FIX_CAP = 2
 
-private val IMPLEMENT_FIX_CYCLE = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+private val IMPLEMENT_FIX_CYCLE = FeatureTaskRuntimeTransitionDeclaration(
   forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
   backwardEdges = listOf(
-    skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge(
+    FeatureTaskRuntimeBackwardEdge(
       fromPhaseId = "review",
-      triggeringVerdict = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      triggeringVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       destinationPhaseId = "implement",
       loopId = "implement-fix",
       perEdgeCap = IMPLEMENT_FIX_CAP,
@@ -6108,16 +6209,16 @@ internal fun reviewFindingsOutput(
 // The real M1 review_fix launcher: review returns changes_requested findings until [convergeOnReview]
 // (1-based review launch index at which it first approves); a value above the cap never converges.
 // implement_fix and every other phase return their schema-valid reconciled output.
-internal fun reviewFixDriver(convergeOnReview: Int): skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver {
+internal fun reviewFixDriver(convergeOnReview: Int): FeatureTaskRuntimeReviewDriver {
   var reviewPasses = 0
-  return skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+  return FeatureTaskRuntimeReviewDriver { request ->
     reviewPasses += 1
     val findings = if (reviewPasses < convergeOnReview) {
       listOf(
-        skillbill.review.model.ParallelReviewMergedFinding(
+        ParallelReviewMergedFinding(
           fNumber = REVIEW_FIX_BLOCKER_FINDING_ID,
           agentIds = listOf(request.agent1Id),
-          severity = skillbill.review.model.ParallelReviewSeverity.BLOCKER,
+          severity = BLOCKER,
           confidence = "High",
           location = "Foo.kt:1",
           description = REVIEW_BLOCKER_MESSAGE,
@@ -6127,8 +6228,8 @@ internal fun reviewFixDriver(convergeOnReview: Int): skillbill.application.featu
       emptyList()
     }
     harnessPendingVerifyFindingIds = findings.map { it.fNumber }
-    skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-      mergeResult = skillbill.review.model.ParallelReviewMergeResult(
+    FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+      mergeResult = ParallelReviewMergeResult(
         findings = findings,
         formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
       ),
@@ -6144,14 +6245,14 @@ internal fun reviewFixRuntimeConfig(
   reviewDriver = reviewFixDriver(convergeOnReview),
 )
 
-internal fun crashingRemediationReviewDriver(): skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver {
+internal fun crashingRemediationReviewDriver(): FeatureTaskRuntimeReviewDriver {
   var reviewPasses = 0
-  return skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+  return FeatureTaskRuntimeReviewDriver { request ->
     reviewPasses += 1
     when (reviewPasses) {
       2 ->
-        skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-          lane1 = skillbill.application.model.ParallelReviewLaneStatus(
+        FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+          lane1 = ParallelReviewLaneStatus(
             agentId = request.agent1Id,
             success = false,
             failureReason = "spawn failed",
@@ -6160,10 +6261,10 @@ internal fun crashingRemediationReviewDriver(): skillbill.application.featuretas
       else -> {
         val findings = if (reviewPasses == 1) {
           listOf(
-            skillbill.review.model.ParallelReviewMergedFinding(
+            ParallelReviewMergedFinding(
               fNumber = "F-001",
               agentIds = listOf(request.agent1Id),
-              severity = skillbill.review.model.ParallelReviewSeverity.BLOCKER,
+              severity = BLOCKER,
               confidence = "High",
               location = "Foo.kt:1",
               description = REVIEW_BLOCKER_MESSAGE,
@@ -6172,8 +6273,8 @@ internal fun crashingRemediationReviewDriver(): skillbill.application.featuretas
         } else {
           emptyList()
         }
-        skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-          mergeResult = skillbill.review.model.ParallelReviewMergeResult(
+        FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+          mergeResult = ParallelReviewMergeResult(
             findings = findings,
             formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
           ),
@@ -6183,38 +6284,34 @@ internal fun crashingRemediationReviewDriver(): skillbill.application.featuretas
   }
 }
 
-internal fun throwingBudgetReviewDriver(): skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver =
-  skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver {
-    throw skillbill.review.context.model.ReviewContextBudgetExceededException(
-      skillbill.review.context.model.ReviewContextBudgetExceeded(
-        lane = "architecture",
-        budgetKind = "parent_packet_bytes",
-        configuredLimit = 524_288,
-        observedValue = 584_846,
-        packetDigest = "a".repeat(64),
-        assignmentDigest = "b".repeat(64),
-        enforceable = true,
-      ),
-    )
-  }
+internal fun throwingBudgetReviewDriver(): FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver {
+  throw ReviewContextBudgetExceededException(
+    ReviewContextBudgetExceeded(
+      lane = "architecture",
+      budgetKind = "parent_packet_bytes",
+      configuredLimit = 524_288,
+      observedValue = 584_846,
+      packetDigest = "a".repeat(64),
+      assignmentDigest = "b".repeat(64),
+      enforceable = true,
+    ),
+  )
+}
 
-internal fun failingReviewDriver(
-  failOnPass: Int,
-  failureReason: String,
-): skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver {
+internal fun failingReviewDriver(failOnPass: Int, failureReason: String): FeatureTaskRuntimeReviewDriver {
   var reviewPasses = 0
-  return skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+  return FeatureTaskRuntimeReviewDriver { request ->
     reviewPasses += 1
     if (reviewPasses == failOnPass) {
-      skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-        lane1 = skillbill.application.model.ParallelReviewLaneStatus(
+      FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+        lane1 = ParallelReviewLaneStatus(
           agentId = request.agent1Id,
           success = false,
           failureReason = failureReason,
         ),
       )
     } else {
-      skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+      FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
     }
   }
 }
@@ -6223,13 +6320,13 @@ internal fun crashingReviewFixDriver(
   convergeOnReview: Int,
   crashOnPass: Int,
   shouldCrash: () -> Boolean,
-): skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver {
+): FeatureTaskRuntimeReviewDriver {
   var reviewPasses = 0
-  return skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+  return FeatureTaskRuntimeReviewDriver { request ->
     reviewPasses += 1
     if (shouldCrash() && reviewPasses == crashOnPass) {
-      skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-        lane1 = skillbill.application.model.ParallelReviewLaneStatus(
+      FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+        lane1 = ParallelReviewLaneStatus(
           agentId = request.agent1Id,
           success = false,
           failureReason = "spawn failed",
@@ -6238,10 +6335,10 @@ internal fun crashingReviewFixDriver(
     } else {
       val findings = if (reviewPasses < convergeOnReview) {
         listOf(
-          skillbill.review.model.ParallelReviewMergedFinding(
+          ParallelReviewMergedFinding(
             fNumber = "F-001",
             agentIds = listOf(request.agent1Id),
-            severity = skillbill.review.model.ParallelReviewSeverity.BLOCKER,
+            severity = BLOCKER,
             confidence = "High",
             location = "Foo.kt:1",
             description = REVIEW_BLOCKER_MESSAGE,
@@ -6250,8 +6347,8 @@ internal fun crashingReviewFixDriver(
       } else {
         emptyList()
       }
-      skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-        mergeResult = skillbill.review.model.ParallelReviewMergeResult(
+      FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+        mergeResult = ParallelReviewMergeResult(
           findings = findings,
           formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
         ),
@@ -6342,8 +6439,8 @@ private fun goalContinuationHarness(
   repoRoot: Path,
   git: RecordingWorkflowGitOperations,
   launcher: RuntimeRecordingLauncher,
-  reviewDriver: skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver =
-    skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY,
+  reviewDriver: FeatureTaskRuntimeReviewDriver =
+    FeatureTaskRuntimeReviewDriver.EMPTY,
 ): RunnerHarness = runnerHarness(
   launcher = launcher,
   agentAssignment = phasePerAgentAssignment(),
@@ -6572,9 +6669,9 @@ internal object CanonicalWrapperTestValidator : FeatureTaskRuntimePhaseOutputVal
     val trimmed = phaseOutputText.trim()
     val candidate = fencedBlock.findAll(trimmed).lastOrNull()?.groupValues?.get(1)?.trim()
       ?: trimmed.substring(trimmed.indexOf('{'), trimmed.lastIndexOf('}') + 1)
-    val envelope = skillbill.contracts.JsonSupport.parseObjectOrNull(candidate)
-      ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
-      ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+    val envelope = JsonSupport.parseObjectOrNull(candidate)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel, "test output is not an object")
     if (envelope["phase_id"] != sourceLabel) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel, "phase_id does not match")
@@ -6693,7 +6790,7 @@ internal class RecordingWorkflowGitOperations(
   var goalReviewRecoveredBaseline: GoalSubtaskReviewBaseline? = null
   var goalReviewRecoverCalls: Int = 0
   val goalReviewRecoverRequests =
-    mutableListOf<skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest>()
+    mutableListOf<GoalSubtaskReviewBaselineRecoveryRequest>()
 
   data class CheckoutCall(val branch: String, val baseBranch: String?)
 
@@ -7019,7 +7116,7 @@ internal class RecordingWorkflowGitOperations(
 
       override fun recoverBaseline(
         repoRoot: Path,
-        request: skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest,
+        request: GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult {
         goalReviewRecoverCalls++
@@ -7043,7 +7140,7 @@ private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
   resolvedAgentId: String,
   outputArtifact: String?,
 ): Boolean = recordPhaseState(
-  skillbill.application.model.FeatureTaskRuntimePhaseStateRequest(
+  FeatureTaskRuntimePhaseStateRequest(
     workflowId = WORKFLOW_ID,
     phaseId = phaseId,
     status = status,
@@ -7075,19 +7172,16 @@ private fun defaultPortReturn(method: Method): Any? = when {
   method.returnType == Void.TYPE -> null
   List::class.java.isAssignableFrom(method.returnType) -> emptyList<Any>()
   Map::class.java.isAssignableFrom(method.returnType) -> emptyMap<Any, Any>()
-  method.returnType == java.lang.Boolean.TYPE -> false
+  method.returnType == TYPE -> false
   method.returnType == Integer.TYPE -> 0
-  method.returnType == java.lang.Long.TYPE -> 0L
-  method.returnType == java.lang.Double.TYPE -> 0.0
+  method.returnType == LongTYPE -> 0L
+  method.returnType == DoubleTYPE -> 0.0
   else -> null
 }
 
-private fun recordHarnessFindingVerdicts(
-  verdicts: MutableList<skillbill.review.model.ReviewFindingVerdict>,
-  args: Array<out Any>?,
-) {
+private fun recordHarnessFindingVerdicts(verdicts: MutableList<ReviewFindingVerdict>, args: Array<out Any>?) {
   @Suppress("UNCHECKED_CAST")
-  val incoming = args?.getOrNull(1) as? List<skillbill.review.model.ReviewFindingVerdict> ?: return
+  val incoming = args?.getOrNull(1) as? List<ReviewFindingVerdict> ?: return
   incoming.forEach { verdict ->
     verdicts.removeAll { it.findingRef == verdict.findingRef && it.stage == verdict.stage }
     verdicts += verdict
@@ -7095,7 +7189,7 @@ private fun recordHarnessFindingVerdicts(
 }
 
 private fun harnessReviewRepository(): ReviewRepository {
-  val verdicts = mutableListOf<skillbill.review.model.ReviewFindingVerdict>()
+  val verdicts = mutableListOf<ReviewFindingVerdict>()
   @Suppress("UNCHECKED_CAST")
   return Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
@@ -7117,13 +7211,13 @@ internal class RuntimeFakeDatabaseSessionFactory(
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/metrics.db")
   val transactionDbOverrides = mutableListOf<String?>()
-  val ledgerRows = mutableListOf<skillbill.goalrunner.model.UnaddressedFinding>()
-  val outcomeRows = mutableListOf<skillbill.goalrunner.model.ReviewFindingOutcomeRecord>()
-  var producerOutputReadError: skillbill.ports.persistence.model.RejectedOutputDiagnosticError? = null
+  val ledgerRows = mutableListOf<UnaddressedFinding>()
+  val outcomeRows = mutableListOf<ReviewFindingOutcomeRecord>()
+  var producerOutputReadError: RejectedOutputDiagnosticError? = null
   private val diagnosticRecords =
-    linkedMapOf<String, skillbill.ports.persistence.RejectedOutputDiagnosticRecord>()
+    linkedMapOf<String, RejectedOutputDiagnosticRecord>()
   private val producerEvidence =
-    linkedMapOf<ProducerEvidenceKey, skillbill.ports.persistence.ProducerOutputEvidence>()
+    linkedMapOf<ProducerEvidenceKey, ProducerOutputEvidence>()
   private val auditGenerationRows = repository.auditGenerationRows
   private val reviewsPort: ReviewRepository = harnessReviewRepository()
   private val learningsPort: LearningRepository = noopPort(LearningRepository::class.java)
@@ -7134,13 +7228,11 @@ internal class RuntimeFakeDatabaseSessionFactory(
   fun auditGenerations(workflowId: String): List<FeatureTaskRuntimeAuditGenerationRow> =
     auditGenerationRows.filter { it.workflowId == workflowId }.sortedBy { it.generationOrdinal }
 
-  fun rejectedDiagnostics(): List<skillbill.ports.persistence.RejectedOutputDiagnosticRecord> =
-    diagnosticRecords.values.toList()
+  fun rejectedDiagnostics(): List<RejectedOutputDiagnosticRecord> = diagnosticRecords.values.toList()
 
-  fun retainedProducerEvidence(): List<skillbill.ports.persistence.ProducerOutputEvidence> =
-    producerEvidence.values.toList()
+  fun retainedProducerEvidence(): List<ProducerOutputEvidence> = producerEvidence.values.toList()
 
-  fun retainProducerEvidence(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
+  fun retainProducerEvidence(evidence: ProducerOutputEvidence) {
     unitOfWork().rejectedOutputDiagnostics!!.retainProducerOutput(evidence)
   }
 
@@ -7152,7 +7244,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
     generation: Int,
     agentId: String,
     repairTurn: Int = 0,
-  ): skillbill.ports.persistence.ProducerOutputEvidence? =
+  ): ProducerOutputEvidence? =
     producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt, agentId, repairTurn)]
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
@@ -7181,7 +7273,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
     // Mirrors the store's insert-only semantics: a duplicate ordinal is rejected rather than overwriting
     // durable history, so a test that re-appends a generation fails the same way production does.
     override val featureTaskRuntimeAuditGenerations =
-      object : skillbill.ports.persistence.FeatureTaskRuntimeAuditGenerationRepository {
+      object : FeatureTaskRuntimeAuditGenerationRepository {
         override fun append(row: FeatureTaskRuntimeAuditGenerationRow) {
           require(
             auditGenerationRows.none {
@@ -7203,34 +7295,30 @@ internal class RuntimeFakeDatabaseSessionFactory(
         }
       }
     override val rejectedOutputDiagnosticPermissions =
-      skillbill.ports.persistence.RejectedOutputDiagnosticPermissions { }
-    override val rejectedOutputDiagnostics = object : skillbill.ports.persistence.RejectedOutputDiagnosticRepository {
-      override fun insert(
-        record: skillbill.ports.persistence.RejectedOutputDiagnosticRecord,
-      ): skillbill.ports.persistence.RejectedOutputDiagnosticRecord =
+      RejectedOutputDiagnosticPermissions { }
+    override val rejectedOutputDiagnostics = object : RejectedOutputDiagnosticRepository {
+      override fun insert(record: RejectedOutputDiagnosticRecord): RejectedOutputDiagnosticRecord =
         diagnosticRecords.getOrPut(record.metadata.identity) { record }
 
-      override fun select(
-        selector: skillbill.ports.persistence.RejectedOutputDiagnosticSelector,
-      ): List<skillbill.ports.persistence.RejectedOutputDiagnostic> = diagnosticRecords.values
-        .map { it.metadata }
-        .filter {
-          it.workflowId == selector.workflowId &&
-            (selector.phaseId == null || it.phaseId == selector.phaseId) &&
-            (selector.attempt == null || it.attempt == selector.attempt)
-        }
+      override fun select(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> =
+        diagnosticRecords.values
+          .map { it.metadata }
+          .filter {
+            it.workflowId == selector.workflowId &&
+              (selector.phaseId == null || it.phaseId == selector.phaseId) &&
+              (selector.attempt == null || it.attempt == selector.attempt)
+          }
 
-      override fun read(identity: String): skillbill.ports.persistence.RejectedOutputDiagnosticRecord =
-        diagnosticRecords[identity]
-          ?: throw skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Absent(identity)
+      override fun read(identity: String): RejectedOutputDiagnosticRecord = diagnosticRecords[identity]
+        ?: throw Absent(identity)
 
-      override fun markExpired(before: java.time.Instant): Int = 0
+      override fun markExpired(before: Instant): Int = 0
 
-      override fun delete(selector: skillbill.ports.persistence.RejectedOutputDiagnosticSelector): Int = 0
+      override fun delete(selector: RejectedOutputDiagnosticSelector): Int = 0
 
       // Mirrors the SQLite write-once semantics: insert-if-absent, then a read-back equality guard
       // that raises Conflict on a divergent write to an already-retained key.
-      override fun retainProducerOutput(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
+      override fun retainProducerOutput(evidence: ProducerOutputEvidence) {
         val key = ProducerEvidenceKey(
           evidence.workflowId,
           evidence.phaseId,
@@ -7244,7 +7332,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
         if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize ||
           !samePayload(retained.payload, evidence.payload)
         ) {
-          throw skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict(
+          throw Conflict(
             "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}:" +
               "${evidence.repairTurn}:${evidence.agentId}",
           )
@@ -7257,7 +7345,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
         attempt: Int,
         agentId: String,
         generation: Int,
-      ): skillbill.ports.persistence.ProducerOutputEvidence? {
+      ): ProducerOutputEvidence? {
         producerOutputReadError?.let { throw it }
         return producerEvidence.entries
           .filter {
@@ -7269,11 +7357,11 @@ internal class RuntimeFakeDatabaseSessionFactory(
           ?.value
       }
     }.takeIf { rejectedOutputDiagnosticsAvailable }
-    override val unaddressedFindings = object : skillbill.ports.persistence.UnaddressedFindingsRepository {
+    override val unaddressedFindings = object : UnaddressedFindingsRepository {
       override fun replaceLedgerForPass(
         workflowId: String,
         reviewPassNumber: Int,
-        findings: List<skillbill.goalrunner.model.UnaddressedFinding>,
+        findings: List<UnaddressedFinding>,
       ) {
         ledgerRows.removeAll { it.workflowId == workflowId && it.reviewPassNumber <= reviewPassNumber }
         ledgerRows.addAll(findings)
@@ -7283,16 +7371,16 @@ internal class RuntimeFakeDatabaseSessionFactory(
         ledgerRows.removeAll { it.workflowId == workflowId }
       }
 
-      override fun fetchLedger(issueKey: String): List<skillbill.goalrunner.model.UnaddressedFinding> =
+      override fun fetchLedger(issueKey: String): List<UnaddressedFinding> =
         ledgerRows.filter { it.issueKey == issueKey }
 
-      override fun fetchWorkflowLedger(workflowId: String): List<skillbill.goalrunner.model.UnaddressedFinding> =
+      override fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
         ledgerRows.filter { it.workflowId == workflowId }
 
       override fun workflowIdsForIssue(issueKey: String): List<String> =
         ledgerRows.filter { it.issueKey == issueKey }.map { it.workflowId }.distinct().sorted()
 
-      override fun recordOutcomes(outcomes: List<skillbill.goalrunner.model.ReviewFindingOutcomeRecord>) {
+      override fun recordOutcomes(outcomes: List<ReviewFindingOutcomeRecord>) {
         outcomeRows.removeAll { existing ->
           outcomes.any {
             it.workflowId == existing.workflowId &&
@@ -7303,13 +7391,13 @@ internal class RuntimeFakeDatabaseSessionFactory(
         outcomeRows.addAll(outcomes)
       }
 
-      override fun fetchOutcomes(workflowId: String): List<skillbill.goalrunner.model.ReviewFindingOutcomeRecord> =
+      override fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord> =
         outcomeRows.filter { it.workflowId == workflowId }
 
       override fun issueExists(issueKey: String): Boolean = knownIssue
     }
-    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+    override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 
@@ -7332,19 +7420,15 @@ internal class RecordingLifecycleTelemetryRepository(
   val startedRecords = mutableListOf<FeatureTaskRuntimeStartedRecord>()
   val finishedRecords = mutableListOf<FeatureTaskRuntimeFinishedRecord>()
   val sharedEvidenceMeasurements =
-    mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement>()
+    mutableListOf<FeatureTaskRuntimeSharedEvidenceMeasurement>()
   val diagnosticDegradationMeasurements =
-    mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement>()
+    mutableListOf<FeatureTaskRuntimeDiagnosticDegradationMeasurement>()
 
-  override fun featureTaskRuntimeSharedEvidence(
-    record: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement,
-  ) {
+  override fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) {
     sharedEvidenceMeasurements += record
   }
 
-  override fun featureTaskRuntimeDiagnosticDegradation(
-    record: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement,
-  ) {
+  override fun featureTaskRuntimeDiagnosticDegradation(record: FeatureTaskRuntimeDiagnosticDegradationMeasurement) {
     if (throwOnDiagnosticDegradation) error("telemetry sink failed")
     diagnosticDegradationMeasurements += record
   }
@@ -7357,25 +7441,23 @@ internal class RecordingLifecycleTelemetryRepository(
     finishedRecords += record
   }
 
-  override fun qualityCheckStarted(record: skillbill.telemetry.model.QualityCheckStartedRecord, level: String) = Unit
+  override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) = Unit
 
-  override fun qualityCheckFinished(record: skillbill.telemetry.model.QualityCheckFinishedRecord, level: String) = Unit
+  override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) = Unit
 
-  override fun featureVerifyStarted(record: skillbill.telemetry.model.FeatureVerifyStartedRecord, level: String) = Unit
+  override fun featureVerifyStarted(record: FeatureVerifyStartedRecord, level: String) = Unit
 
-  override fun featureVerifyFinished(record: skillbill.telemetry.model.FeatureVerifyFinishedRecord, level: String) =
-    Unit
+  override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) = Unit
 
-  override fun prDescriptionGenerated(record: skillbill.telemetry.model.PrDescriptionGeneratedRecord, level: String) =
-    Unit
+  override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) = Unit
 
-  override fun goalStarted(record: skillbill.telemetry.model.GoalStartedRecord, level: String) = Unit
+  override fun goalStarted(record: GoalStartedRecord, level: String) = Unit
 
-  override fun goalSubtaskFinished(record: skillbill.telemetry.model.GoalSubtaskFinishedRecord, level: String) = Unit
+  override fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String) = Unit
 
-  override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = Unit
+  override fun goalFinished(record: GoalFinishedRecord, level: String) = Unit
 
-  override fun goalIssueFinished(record: skillbill.telemetry.model.GoalIssueFinishedRecord, level: String) = Unit
+  override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) = Unit
 }
 
 private fun FeatureTaskRuntimeWorkerOwnership.matchesActiveOwnership(
@@ -7398,7 +7480,7 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
    */
   val auditGenerationRows = mutableListOf<FeatureTaskRuntimeAuditGenerationRow>()
 
-  fun seedWorkerOwnership(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) {
+  fun seedWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
     workerOwnership = ownership
   }
 
@@ -7406,7 +7488,7 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
     synchronized(this) { workerOwnership?.takeIf { it.workflowId == workflowId } }
 
   override fun acquireFeatureTaskRuntimeWorker(
-    ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership,
+    ownership: FeatureTaskRuntimeWorkerOwnership,
     expectedUpdatedAt: String?,
   ): Boolean = synchronized(this) {
     if (workerOwnership != null || taskRuntimeRows[ownership.workflowId]?.updatedAt != expectedUpdatedAt) return false
@@ -7422,20 +7504,20 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
     val current = workerOwnership ?: return false
     if (!current.matchesActiveOwnership(workflowId, expectedOwnerToken, expectedGeneration)) return false
     workerOwnership = current.copy(
-      leaseState = skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED,
+      leaseState = TAKEOVER_RESERVED,
     )
     true
   }
 
   override fun transferFeatureTaskRuntimeWorker(
-    ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership,
+    ownership: FeatureTaskRuntimeWorkerOwnership,
     expectedOwnerToken: String,
     expectedGeneration: Long,
   ): Boolean = synchronized(this) {
     val current = workerOwnership ?: return false
     if (
       current.ownerToken != expectedOwnerToken || current.generation != expectedGeneration ||
-      current.leaseState != skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED
+      current.leaseState != TAKEOVER_RESERVED
     ) {
       return false
     }
@@ -7443,14 +7525,13 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
     true
   }
 
-  override fun heartbeatFeatureTaskRuntimeWorker(
-    ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership,
-  ): Boolean = synchronized(this) {
-    val current = workerOwnership ?: return false
-    if (current.ownerToken != ownership.ownerToken || current.generation != ownership.generation) return false
-    workerOwnership = ownership
-    true
-  }
+  override fun heartbeatFeatureTaskRuntimeWorker(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean =
+    synchronized(this) {
+      val current = workerOwnership ?: return false
+      if (current.ownerToken != ownership.ownerToken || current.generation != ownership.generation) return false
+      workerOwnership = ownership
+      true
+    }
 
   override fun releaseFeatureTaskRuntimeWorker(workflowId: String, ownerToken: String, generation: Long): Boolean =
     synchronized(this) {
@@ -7463,14 +7544,14 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
     }
   override fun findFeatureTaskRuntimeCrashReconciliationCandidates(
     nowInstant: String,
-  ): List<skillbill.ports.persistence.model.FeatureTaskRuntimeCrashReconciliationCandidate> = synchronized(this) {
+  ): List<FeatureTaskRuntimeCrashReconciliationCandidate> = synchronized(this) {
     val ownership = workerOwnership ?: return@synchronized emptyList()
     val row = taskRuntimeRows[ownership.workflowId] ?: return@synchronized emptyList()
     if (row.workflowStatus != "running" || !leaseExpiredBefore(ownership.expiresAt, nowInstant)) {
       return@synchronized emptyList()
     }
     listOf(
-      skillbill.ports.persistence.model.FeatureTaskRuntimeCrashReconciliationCandidate(
+      FeatureTaskRuntimeCrashReconciliationCandidate(
         ownership = ownership,
         currentStepId = row.currentStepId,
         workflowStatus = row.workflowStatus,
@@ -7501,15 +7582,13 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
   val reconciledInterruptionReasons = linkedMapOf<String, String>()
 
   private fun leaseExpiredBefore(expiresAt: String, nowInstant: String): Boolean =
-    runCatching { java.time.Instant.parse(expiresAt).isBefore(java.time.Instant.parse(nowInstant)) }
+    runCatching { Instant.parse(expiresAt).isBefore(Instant.parse(nowInstant)) }
       .getOrDefault(false)
 
-  override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
-  ) = Unit
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
 
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
+    emptyList<FeatureTaskWorkflowCandidate>()
 
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
 
@@ -7518,9 +7597,9 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
 
   fun taskRuntimeArtifacts(workflowId: String): Map<String, Any?> {
     val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
-    return skillbill.contracts.JsonSupport.parseObjectOrNull(record.artifactsJson)
-      ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
-      ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+    return JsonSupport.parseObjectOrNull(record.artifactsJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
       .orEmpty()
   }
 
@@ -7532,14 +7611,14 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
       put(FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY, corruptValue)
     }
     taskRuntimeRows[workflowId] = record.copy(
-      artifactsJson = skillbill.contracts.JsonSupport.mapToJsonString(artifacts),
+      artifactsJson = JsonSupport.mapToJsonString(artifacts),
     )
   }
 
   fun replaceTaskRuntimeArtifacts(workflowId: String, artifacts: Map<String, Any?>) {
     val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
     taskRuntimeRows[workflowId] = record.copy(
-      artifactsJson = skillbill.contracts.JsonSupport.mapToJsonString(artifacts),
+      artifactsJson = JsonSupport.mapToJsonString(artifacts),
     )
   }
 
@@ -7557,7 +7636,7 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
 
   fun bumpUpdatedAt(workflowId: String) {
     val row = taskRuntimeRows[workflowId] ?: return
-    val current = java.time.Instant.parse(row.updatedAt ?: "2026-01-01T00:00:00Z")
+    val current = Instant.parse(row.updatedAt ?: "2026-01-01T00:00:00Z")
     taskRuntimeRows[workflowId] = row.copy(updatedAt = current.plusSeconds(1).toString())
   }
 
@@ -7598,13 +7677,11 @@ internal object HarnessDeadProcessSupervisor : FeatureTaskRuntimeWorkerSuperviso
   override fun currentProcess(): FeatureTaskRuntimeProcessIdentity =
     FeatureTaskRuntimeProcessIdentity("harness-host", "harness-boot", 4321, "harness-birth-4321")
 
-  override fun inspect(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) =
-    FeatureTaskRuntimeProcessInspection.NotRunning
+  override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.NotRunning
 
-  override fun terminateGracefully(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) =
-    true
+  override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
 
-  override fun terminateForcibly(ownership: skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership) = true
+  override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
 
   override fun startHeartbeat(
     plan: FeatureTaskRuntimeHeartbeatPlan,
@@ -7625,10 +7702,10 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
     val harness = runnerHarness()
     val claudePayload = "claude-skill15-review-0-2".encodeToByteArray()
     val cursorPayload = "cursor-skill15-review-0-2".encodeToByteArray()
-    val recordedAt = java.time.Instant.parse("2026-08-08T18:49:48Z")
+    val recordedAt = Instant.parse("2026-08-08T18:49:48Z")
 
     harness.io.database.retainProducerEvidence(
-      skillbill.ports.persistence.ProducerOutputEvidence(
+      ProducerOutputEvidence(
         workflowId = WORKFLOW_ID,
         phaseId = "review",
         attempt = 2,
@@ -7636,14 +7713,14 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
         model = "claude-opus",
         recordedAt = recordedAt,
         byteSize = claudePayload.size.toLong(),
-        sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(claudePayload),
+        sha256 = RejectedOutputDiagnosticService.sha256(claudePayload),
         payload = claudePayload,
         generation = 0,
       ),
     )
 
     harness.io.database.retainProducerEvidence(
-      skillbill.ports.persistence.ProducerOutputEvidence(
+      ProducerOutputEvidence(
         workflowId = WORKFLOW_ID,
         phaseId = "review",
         attempt = 2,
@@ -7651,7 +7728,7 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
         model = "gpt",
         recordedAt = recordedAt.plusSeconds(60),
         byteSize = cursorPayload.size.toLong(),
-        sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(cursorPayload),
+        sha256 = RejectedOutputDiagnosticService.sha256(cursorPayload),
         payload = cursorPayload,
         generation = 0,
       ),
@@ -7672,9 +7749,9 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
     val harness = runnerHarness()
     val first = "first".encodeToByteArray()
     val second = "second".encodeToByteArray()
-    val recordedAt = java.time.Instant.parse("2026-08-08T18:49:48Z")
+    val recordedAt = Instant.parse("2026-08-08T18:49:48Z")
     harness.io.database.retainProducerEvidence(
-      skillbill.ports.persistence.ProducerOutputEvidence(
+      ProducerOutputEvidence(
         workflowId = WORKFLOW_ID,
         phaseId = "review",
         attempt = 2,
@@ -7682,15 +7759,15 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
         model = "claude-opus",
         recordedAt = recordedAt,
         byteSize = first.size.toLong(),
-        sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(first),
+        sha256 = RejectedOutputDiagnosticService.sha256(first),
         payload = first,
         generation = 0,
       ),
     )
 
-    assertFailsWith<skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict> {
+    assertFailsWith<Conflict> {
       harness.io.database.retainProducerEvidence(
-        skillbill.ports.persistence.ProducerOutputEvidence(
+        ProducerOutputEvidence(
           workflowId = WORKFLOW_ID,
           phaseId = "review",
           attempt = 2,
@@ -7698,7 +7775,7 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
           model = "claude-opus",
           recordedAt = recordedAt.plusSeconds(1),
           byteSize = second.size.toLong(),
-          sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(second),
+          sha256 = RejectedOutputDiagnosticService.sha256(second),
           payload = second,
           generation = 0,
         ),
@@ -7995,11 +8072,11 @@ class ProviderLimitAndProcessFailureBudgetTest {
   // with its attempt count intact, alongside the operator's reason.
   private fun reopenPhaseAsOperator(harness: RunnerHarness, phaseId: String) {
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
-    val records = skillbill.contracts.JsonSupport
+    val records = JsonSupport
       .anyToStringAnyMap(artifacts["feature_task_runtime_phase_records"])
       .orEmpty()
       .toMutableMap()
-    val record = requireNotNull(skillbill.contracts.JsonSupport.anyToStringAnyMap(records[phaseId]))
+    val record = requireNotNull(JsonSupport.anyToStringAnyMap(records[phaseId]))
       .toMutableMap()
     record["status"] = "pending"
     record["blocked_reason"] = null
@@ -8014,7 +8091,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
     // same entry the retry-blocked command writes.
     val ledger = (artifacts["feature_task_runtime_phase_ledger"] as? List<*>).orEmpty()
     val nextSequence = ledger
-      .mapNotNull { skillbill.contracts.JsonSupport.anyToStringAnyMap(it)?.get("sequence_number") as? Number }
+      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("sequence_number") as? Number }
       .maxOfOrNull { it.toInt() + 1 } ?: 0
     artifacts["feature_task_runtime_phase_ledger"] = ledger + mapOf<String, Any?>(
       "action" to "retry",
@@ -8068,7 +8145,7 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
         harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
       ),
     )
-    val reserved = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val reserved = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, reserved.completedPassCount)
     assertEquals(null, reserved.reservedPassNumber)
 
@@ -8078,7 +8155,7 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
         harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
       ),
     )
-    val recovered = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    val recovered = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
     assertEquals(1, recovered.completedPassCount)
     assertEquals(null, recovered.reservedPassNumber)
     assertFullyAssociatedLedgerRows(harness, passNumber = 1, subtaskId = 5)

@@ -1,11 +1,11 @@
 package skillbill.application.work
 
-import skillbill.application.model.IdeStatusFreshness
-import skillbill.application.model.IdeStatusLifecycleState
-import skillbill.application.model.IdeStatusProblem
-import skillbill.application.model.IdeStatusProblemCode
-import skillbill.application.model.IdeStatusSnapshot
-import skillbill.application.model.IdeStatusStep
+import skillbill.application.idestatus.model.IdeStatusFreshness
+import skillbill.application.idestatus.model.IdeStatusLifecycleState
+import skillbill.application.idestatus.model.IdeStatusProblem
+import skillbill.application.idestatus.model.IdeStatusProblemCode
+import skillbill.application.idestatus.model.IdeStatusSnapshot
+import skillbill.application.idestatus.model.IdeStatusStep
 import java.time.Instant
 
 internal object IdeStatusProblemSnapshots {

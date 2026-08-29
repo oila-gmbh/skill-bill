@@ -3,12 +3,14 @@ package skillbill.db
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.workflow.GoalRunnerControlStore
 import skillbill.db.workflow.LEGACY_UNKNOWN_PAUSED_AT
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
+import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -75,7 +77,20 @@ class GoalRunnerControlStoreTest {
         statement.setString(2, "parent-1")
         statement.executeUpdate()
       }
-      assertFailsWith<IllegalArgumentException> { store.controlState("parent-1") }
+      assertFailsWith<InvalidWorkflowStateSchemaError> { store.controlState("parent-1") }
+    }
+  }
+
+  @Test
+  fun `malformed control-state JSON returns a typed schema error not IllegalArgumentException`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-control-malformed-json").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      store.persistControlState("parent-malformed", GoalRunnerControlState())
+      writeRawControlState(connection, "parent-malformed", "{not valid json")
+
+      assertFailsWith<InvalidWorkflowStateSchemaError> { store.controlState("parent-malformed") }
     }
   }
 
@@ -143,7 +158,7 @@ class GoalRunnerControlStoreTest {
     }
   }
 
-  private fun writeRawControlState(connection: java.sql.Connection, parentWorkflowId: String, json: String) {
+  private fun writeRawControlState(connection: Connection, parentWorkflowId: String, json: String) {
     connection.prepareStatement(
       "UPDATE goal_runner_controls SET control_state_json = ? WHERE parent_workflow_id = ?",
     ).use { statement ->

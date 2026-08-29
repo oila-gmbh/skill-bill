@@ -14,8 +14,16 @@ dependencies {
   implementation(libs.json.schema.validator)
   implementation(libs.jackson.databind)
   implementation(libs.jackson.dataformat.yaml)
+  testImplementation(project(":runtime-application"))
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
+}
+
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>("compileTestKotlin") {
+  dependsOn(":runtime-application:compileKotlin")
+  friendPaths.from(
+    rootProject.layout.projectDirectory.dir("runtime-application/build/classes/kotlin/main"),
+  )
 }
 
 val canonicalPlatformPackSchemaPath: String =
@@ -640,12 +648,6 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimeQuarantineSchema)
   dependsOn(copyFeatureTaskRuntimeImplementationAttemptSchema)
   dependsOn(copyFeatureTaskRuntimeCheckpointIdentitySchema)
-}
-
-tasks.withType<Test>().configureEach {
-  if (project.hasProperty("update-snapshots")) {
-    systemProperty("update-snapshots", "true")
-  }
 }
 
 tasks.register<JavaExec>("platformPackSubstanceReport") {

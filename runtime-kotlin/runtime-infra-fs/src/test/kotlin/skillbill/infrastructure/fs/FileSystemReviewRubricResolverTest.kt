@@ -9,6 +9,7 @@ import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.model.RoutingSignals
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -289,11 +290,7 @@ class FileSystemReviewRubricResolverTest {
     )
   }
 
-  private fun manifest(
-    root: java.nio.file.Path,
-    baseline: java.nio.file.Path,
-    areas: Map<String, java.nio.file.Path> = emptyMap(),
-  ) = PlatformManifest(
+  private fun manifest(root: Path, baseline: Path, areas: Map<String, Path> = emptyMap()) = PlatformManifest(
     slug = "kotlin",
     packRoot = root,
     contractVersion = "1.3",

@@ -7,8 +7,10 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -20,7 +22,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   @Test
   fun `an oversized upstream projection is delivered whole rather than truncated`() {
     val oversizedBytes = 400_000
-    val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
       "fixture-checkpoint",
     )
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
@@ -41,7 +43,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     val planBody = "p".repeat(4000)
     val implementBody = "i".repeat(4000)
     val reviewBody = "r".repeat(4000)
-    val checkpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
       "fixture-checkpoint",
     )
     val recordedOutputs = listOf(
@@ -180,14 +182,13 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
 
   @Test
   fun `shared evidence projection size is independent of branch diff size for review and audit`() {
-    fun evidence(hunksPerFile: Int) =
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference(
-        storePath = ".skill-bill/run-evidence/wf/fp",
-        checkpointFingerprint = "fp",
-        baseRef = "base",
-        headRef = "head",
-        fileHunkIndex = (1..8).map { "modified f$it.kt hunks=$hunksPerFile" },
-      )
+    fun evidence(hunksPerFile: Int) = FeatureTaskRuntimeSharedReviewEvidenceReference(
+      storePath = ".skill-bill/run-evidence/wf/fp",
+      checkpointFingerprint = "fp",
+      baseRef = "base",
+      headRef = "head",
+      fileHunkIndex = (1..8).map { "modified f$it.kt hunks=$hunksPerFile" },
+    )
 
     fun projectionBytes(phaseId: String, hunksPerFile: Int): Int {
       val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.getValue(phaseId)
@@ -203,7 +204,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
         projectionDeclarations = listOf(
           FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseId),
         ),
-        repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+        repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(
           fingerprint = "fp",
         ),
       )

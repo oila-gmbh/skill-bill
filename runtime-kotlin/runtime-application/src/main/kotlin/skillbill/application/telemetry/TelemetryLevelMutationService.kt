@@ -1,7 +1,7 @@
 package skillbill.application.telemetry
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.ports.telemetry.TelemetrySettingsProvider

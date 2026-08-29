@@ -3,6 +3,7 @@ package skillbill.install
 import skillbill.error.SkillContentIdentityMismatchError
 import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.identity.SkillContentIdentity
+import skillbill.install.identity.routeInstalledSkillBody
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -69,7 +70,7 @@ class SkillContentIdentityTest {
     Files.writeString(staging.resolve(SKILL_CONTENT_IDENTITY_FILENAME), supplied.compact())
     assertFalse(Files.exists(staging.resolve("SKILL.md")))
 
-    skillbill.install.identity.routeInstalledSkillBody(
+    routeInstalledSkillBody(
       suppliedCompactIdentity = supplied.compact(),
       installedStagingDir = staging,
     )
@@ -95,7 +96,7 @@ class SkillContentIdentityTest {
     val staging = root.resolve("staged").also(Files::createDirectories)
     Files.writeString(staging.resolve(SKILL_CONTENT_IDENTITY_FILENAME), installed.compact())
     val error = assertFailsWith<SkillContentIdentityMismatchError> {
-      skillbill.install.identity.routeInstalledSkillBody(
+      routeInstalledSkillBody(
         suppliedCompactIdentity = supplied.compact(),
         installedStagingDir = staging,
       )

@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import kotlin.test.Test
 import kotlin.test.assertContains

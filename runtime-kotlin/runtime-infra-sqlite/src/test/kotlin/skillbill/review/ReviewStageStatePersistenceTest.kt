@@ -1,5 +1,6 @@
 package skillbill.review
 
+import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.SQLiteReviewRunCompletenessRepository
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
@@ -35,7 +36,7 @@ class ReviewStageStatePersistenceTest {
       assertEquals(2, repository.fetchFindingVerdicts(RUN_ID).size)
     }
 
-    skillbill.db.core.DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteReviewRunCompletenessRepository(connection)
       assertEquals(
         listOf(fixtures.adjudication, fixtures.verification),

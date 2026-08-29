@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
 
 /**
  * Accepts every envelope. Tests that exercise the recorder's persistence behavior rather than its

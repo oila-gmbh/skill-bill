@@ -2,38 +2,28 @@ package skillbill.di
 
 import me.tatarka.inject.annotations.Component
 import me.tatarka.inject.annotations.Provides
-import skillbill.agentaddon.AgentAddonSelectionResolver
 import skillbill.application.agentrun.AgentRunGoalRunnerSubtaskLauncher
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
-import skillbill.application.goalrunner.ChildAwareGoalPlanningRefreshLiveness
-import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.DefaultGoalRunnerExecutionCoordinator
-import skillbill.application.goalrunner.DurableGoalPlanningAttemptRecorder
-import skillbill.application.goalrunner.DurableGoalPlanningRejectionRecorder
-import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalOperatorDecisionService
-import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
-import skillbill.application.goalrunner.GoalPlanningLogService
-import skillbill.application.goalrunner.GoalPlanningRefreshLiveness
-import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
-import skillbill.application.goalrunner.GoalPlanningStatusReasonCoherence
-import skillbill.application.goalrunner.GoalPlanningSweep
 import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.GoalRunner
-import skillbill.application.goalrunner.GoalRunnerChildRepairStore
-import skillbill.application.goalrunner.GoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.goalrunner.LaunchAlignedGoalPlanningStatusReasonCoherence
-import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
+import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
+import skillbill.application.goalrunner.planning.ChildAwareGoalPlanningRefreshLiveness
+import skillbill.application.goalrunner.planning.DefaultGoalPlanningSweep
+import skillbill.application.goalrunner.planning.DurableGoalPlanningAttemptRecorder
+import skillbill.application.goalrunner.planning.DurableGoalPlanningRejectionRecorder
+import skillbill.application.goalrunner.planning.GoalPlanningLogService
+import skillbill.application.goalrunner.planning.LaunchAlignedGoalPlanningStatusReasonCoherence
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
@@ -58,8 +48,6 @@ import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
-import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
-import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
@@ -129,114 +117,24 @@ import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
-import skillbill.infrastructure.fs.ProducerOutputEvidenceValidatorAdapter
-import skillbill.infrastructure.fs.RejectedOutputDiagnosticMetadataValidatorAdapter
 import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.infrastructure.fs.validation.FileSystemValidationGateRunner
 import skillbill.infrastructure.http.HttpTelemetryClient
-import skillbill.infrastructure.http.JdkHttpRequester
-import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
-import skillbill.infrastructure.sqlite.SqliteFeatureTaskPhaseSettlementRepository
-import skillbill.install.model.InstallPlanWireValidator
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
-import skillbill.launcher.agentrun.PathExecutableLookup
 import skillbill.launcher.review.UnixSocketGovernedReviewEvidenceEndpointBinder
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
-import skillbill.model.TransportContext
 import skillbill.model.WorkflowOpsContext
-import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
-import skillbill.ports.agentrun.AgentRunLauncher
-import skillbill.ports.agentrun.ExecutableLookup
-import skillbill.ports.config.RepoLocalConfigPort
-import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
-import skillbill.ports.goalrunner.GoalPlanningBoundaryBodyResolver
-import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
-import skillbill.ports.goalrunner.GoalPullRequestPort
-import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
-import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.install.addon.ExternalAddonOverlayPort
-import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
-import skillbill.ports.install.agent.InstallAgentTargetPort
-import skillbill.ports.install.apply.InstallApplyExecutionPort
-import skillbill.ports.install.baseline.BaselineManifestPersistencePort
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
-import skillbill.ports.install.link.InstallSkillLinkPort
-import skillbill.ports.install.mcp.InstallMcpRegistrationPort
-import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
-import skillbill.ports.install.plan.InstallPlanningFactsPort
-import skillbill.ports.install.plan.InstallPlatformSkillMaterializationPort
-import skillbill.ports.install.plan.InstallStagingIntentPort
-import skillbill.ports.install.reconcile.InstallReconcileApplyPort
-import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.FeatureTaskPhaseSettlementRepository
-import skillbill.ports.persistence.ProducerOutputEvidenceValidator
-import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
-import skillbill.ports.review.DeclaredReviewSpecialistsPort
-import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
-import skillbill.ports.review.ReviewAttributionPort
-import skillbill.ports.review.ReviewEvidenceBrokerFactory
-import skillbill.ports.review.ReviewInputSource
-import skillbill.ports.review.ReviewLaunchAgentStagingPort
-import skillbill.ports.review.ReviewLaunchIsolationResolver
-import skillbill.ports.review.ReviewNativeAgentPreflightPort
-import skillbill.ports.review.ReviewRubricResolver
-import skillbill.ports.review.ReviewSnapshotGateway
-import skillbill.ports.review.ReviewSpecialistContractProvider
-import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
-import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
-import skillbill.ports.scaffold.ScaffoldCatalogGateway
-import skillbill.ports.scaffold.ScaffoldGateway
-import skillbill.ports.scaffold.UnsupportedScaffoldGateway
-import skillbill.ports.scaffold.install.ScaffoldInstallLinkPort
-import skillbill.ports.scaffold.manifest.ScaffoldManifestPersistencePort
-import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
-import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
-import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
-import skillbill.ports.system.CheckedOutBranchSource
-import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
-import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
-import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.time.RuntimeTimingPort
-import skillbill.ports.validation.RepoValidationGateway
-import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.SpecScratchStore
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator
-import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
-import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
-import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
-import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
-import skillbill.workflow.GoalObservabilityEventValidator
-import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
-import skillbill.workflow.GoalProgressEventValidator
-import skillbill.workflow.IdeStatusValidator
-import skillbill.workflow.WorkflowSnapshotValidator
-import java.nio.file.Path
 
 @Component
 @Suppress("TooManyFunctions")
@@ -252,574 +150,407 @@ abstract class RuntimeComponent(
    * application services and ports exposed below instead of importing these implementations
    * through runtime-core as an umbrella module.
    */
-  @Provides
-  fun runtimeContext(): RuntimeContext {
-    val inputEnvironment = inputRuntimeContext.environment
-    val resolvedEnvironment =
-      if (inputEnvironment.userHome == EnvironmentContext.UnspecifiedUserHome) {
-        inputEnvironment.copy(userHome = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize())
-      } else {
-        inputEnvironment
-      }
-    val environmentWithEnv =
-      if (resolvedEnvironment.environment === EnvironmentContext.UnspecifiedEnvironment) {
-        resolvedEnvironment.copy(environment = System.getenv())
-      } else {
-        resolvedEnvironment
-      }
-    val inputTransport = inputRuntimeContext.transport
-    val resolvedTransport =
-      if (inputTransport.requester === UnconfiguredHttpRequester) {
-        inputTransport.copy(requester = JdkHttpRequester)
-      } else {
-        inputTransport
-      }
-    return inputRuntimeContext.copy(environment = environmentWithEnv, transport = resolvedTransport)
-  }
+  @Provides @JvmSynthetic
+  fun runtimeContext() = RuntimeComponentBindingsA1.runtimeContext(inputRuntimeContext)
 
-  @Provides
-  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = ctx.environment
+  @Provides @JvmSynthetic
+  fun environmentContext(ctx: RuntimeContext) = RuntimeComponentBindingsA1.environmentContext(ctx)
 
-  @Provides
-  fun transportContext(ctx: RuntimeContext): TransportContext = ctx.transport
+  @Provides @JvmSynthetic
+  fun transportContext(ctx: RuntimeContext) = RuntimeComponentBindingsA1.transportContext(ctx)
 
-  @Provides
-  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = ctx.workflowOps
+  @Provides @JvmSynthetic
+  fun workflowOpsContext(ctx: RuntimeContext) = RuntimeComponentBindingsA1.workflowOpsContext(ctx)
 
-  @Provides
-  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = ctx.callbacks
+  @Provides @JvmSynthetic
+  fun optionalCallbacks(ctx: RuntimeContext) = RuntimeComponentBindingsA1.optionalCallbacks(ctx)
 
-  @Provides
-  @JvmSynthetic
-  fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
-    SQLiteDatabaseSessionFactory(context)
+  @Provides @JvmSynthetic
+  fun databaseSessionFactory(context: EnvironmentContext) = RuntimeComponentBindingsA1.databaseSessionFactory(context)
 
-  @Provides
-  @JvmSynthetic
-  internal fun telemetryConfigStore(store: FileTelemetryConfigStore): TelemetryConfigStore = store
+  @Provides @JvmSynthetic
+  internal fun telemetryConfigStore(store: FileTelemetryConfigStore) =
+    RuntimeComponentBindingsA1.telemetryConfigStore(store)
 
-  @Provides
-  @JvmSynthetic
-  internal fun externalAddonSourceConfigPort(
-    store: FileExternalAddonSourceConfigStore,
-  ): ExternalAddonSourceConfigPort = store
+  @Provides @JvmSynthetic
+  internal fun externalAddonSourceConfigPort(store: FileExternalAddonSourceConfigStore) =
+    RuntimeComponentBindingsA1.externalAddonSourceConfigPort(store)
 
-  @Provides
-  @JvmSynthetic
-  internal fun externalAddonOverlayPort(adapter: FileSystemExternalAddonOverlay): ExternalAddonOverlayPort = adapter
+  @Provides @JvmSynthetic
+  internal fun externalAddonOverlayPort(adapter: FileSystemExternalAddonOverlay) =
+    RuntimeComponentBindingsA2.externalAddonOverlayPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun telemetrySettingsProvider(provider: DefaultTelemetrySettingsProvider): TelemetrySettingsProvider =
-    provider
+  @Provides @JvmSynthetic
+  internal fun telemetrySettingsProvider(provider: DefaultTelemetrySettingsProvider) =
+    RuntimeComponentBindingsA2.telemetrySettingsProvider(provider)
 
-  @Provides
-  @JvmSynthetic
-  internal fun telemetryClient(client: HttpTelemetryClient): TelemetryClient = client
+  @Provides @JvmSynthetic
+  internal fun telemetryClient(client: HttpTelemetryClient) = RuntimeComponentBindingsA2.telemetryClient(client)
 
-  @Provides
-  @JvmSynthetic
-  internal fun telemetryLevelMutator(service: TelemetryLevelMutationService): TelemetryLevelMutator = service
+  @Provides @JvmSynthetic
+  internal fun telemetryLevelMutator(service: TelemetryLevelMutationService) =
+    RuntimeComponentBindingsA2.telemetryLevelMutator(service)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installPlanningFactsPort(adapter: FileSystemInstallPlanningFacts): InstallPlanningFactsPort = adapter
+  @Provides @JvmSynthetic
+  internal fun installPlanningFactsPort(adapter: FileSystemInstallPlanningFacts) =
+    RuntimeComponentBindingsA2.installPlanningFactsPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installPlatformSkillMaterializationPort(
-    adapter: FileSystemInstallPlatformSkillMaterialization,
-  ): InstallPlatformSkillMaterializationPort = adapter
+  @Provides @JvmSynthetic
+  internal fun installPlatformSkillMaterializationPort(adapter: FileSystemInstallPlatformSkillMaterialization) =
+    RuntimeComponentBindingsA2.installPlatformSkillMaterializationPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installStagingIntentPort(adapter: FileSystemInstallStagingIntent): InstallStagingIntentPort = adapter
+  @Provides @JvmSynthetic
+  internal fun installStagingIntentPort(adapter: FileSystemInstallStagingIntent) =
+    RuntimeComponentBindingsA2.installStagingIntentPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installApplyExecutionPort(adapter: FileSystemInstallApplyExecution): InstallApplyExecutionPort = adapter
+  @Provides @JvmSynthetic
+  internal fun installApplyExecutionPort(adapter: FileSystemInstallApplyExecution) =
+    RuntimeComponentBindingsA2.installApplyExecutionPort(adapter)
 
-  // SKILL-76 Subtask 2: reconcile-compute + baseline manifest persistence ports,
-  // bound to their infra-fs adapters exactly like every other install adapter.
-  @Provides
-  @JvmSynthetic
-  internal fun installReconcilePort(adapter: FileSystemInstallReconcile): InstallReconcilePort = adapter
+  @Provides @JvmSynthetic
+  internal fun installReconcilePort(adapter: FileSystemInstallReconcile) =
+    RuntimeComponentBindingsA3.installReconcilePort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installReconcileApplyPort(adapter: FileSystemInstallReconcileApply): InstallReconcileApplyPort = adapter
+  @Provides @JvmSynthetic
+  internal fun installReconcileApplyPort(adapter: FileSystemInstallReconcileApply) =
+    RuntimeComponentBindingsA3.installReconcileApplyPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun baselineManifestPersistencePort(
-    adapter: FileSystemBaselineManifestPersistence,
-  ): BaselineManifestPersistencePort = adapter
+  @Provides @JvmSynthetic
+  internal fun baselineManifestPersistencePort(adapter: FileSystemBaselineManifestPersistence) =
+    RuntimeComponentBindingsA3.baselineManifestPersistencePort(adapter)
 
-  // SKILL-77 Subtask 4: read-only installed-workspace modified-vs-baseline status,
-  // consumed by the desktop tree to flag locally edited skills.
-  @Provides
-  @JvmSynthetic
-  internal fun installedWorkspaceBaselineStatusPort(
-    adapter: FileSystemInstalledWorkspaceBaselineStatus,
-  ): InstalledWorkspaceBaselineStatusPort = adapter
+  @Provides @JvmSynthetic
+  internal fun installedWorkspaceBaselineStatusPort(adapter: FileSystemInstalledWorkspaceBaselineStatus) =
+    RuntimeComponentBindingsA3.installedWorkspaceBaselineStatusPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installSkillLinkPort(adapter: FileSystemInstallSkillLink): InstallSkillLinkPort = adapter
+  @Provides @JvmSynthetic
+  internal fun installSkillLinkPort(adapter: FileSystemInstallSkillLink) =
+    RuntimeComponentBindingsA3.installSkillLinkPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installAgentTargetPort(adapter: FileSystemInstallAgentTargets): InstallAgentTargetPort = adapter
+  @Provides @JvmSynthetic
+  internal fun installAgentTargetPort(adapter: FileSystemInstallAgentTargets) =
+    RuntimeComponentBindingsA3.installAgentTargetPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installNativeAgentLinkPort(adapter: FileSystemInstallNativeAgentLinks): InstallNativeAgentLinkPort =
-    adapter
+  @Provides @JvmSynthetic
+  internal fun installNativeAgentLinkPort(adapter: FileSystemInstallNativeAgentLinks) =
+    RuntimeComponentBindingsA3.installNativeAgentLinkPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installMcpRegistrationPort(adapter: FileSystemInstallMcpRegistration): InstallMcpRegistrationPort =
-    adapter
+  @Provides @JvmSynthetic
+  internal fun installMcpRegistrationPort(adapter: FileSystemInstallMcpRegistration) =
+    RuntimeComponentBindingsA3.installMcpRegistrationPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun agentRunLauncher(callbacks: OptionalCallbacks, adapter: FileSystemAgentRunLauncher): AgentRunLauncher =
-    callbacks.agentRunLauncher ?: adapter
+  @Provides @JvmSynthetic
+  internal fun agentRunLauncher(callbacks: OptionalCallbacks, adapter: FileSystemAgentRunLauncher) =
+    RuntimeComponentBindingsA4.agentRunLauncher(callbacks, adapter)
 
-  @Provides
-  @JvmSynthetic
-  fun executableLookup(callbacks: OptionalCallbacks): ExecutableLookup =
-    callbacks.executableLookup ?: PathExecutableLookup()
+  @Provides @JvmSynthetic
+  fun executableLookup(callbacks: OptionalCallbacks) = RuntimeComponentBindingsA4.executableLookup(callbacks)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalRunnerSubtaskLauncher(adapter: AgentRunGoalRunnerSubtaskLauncher): GoalRunnerSubtaskLauncher =
-    adapter
+  @Provides @JvmSynthetic
+  internal fun goalRunnerSubtaskLauncher(adapter: AgentRunGoalRunnerSubtaskLauncher) =
+    RuntimeComponentBindingsA4.goalRunnerSubtaskLauncher(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalPlanningSweep(sweep: DefaultGoalPlanningSweep): GoalPlanningSweep = sweep
+  @Provides @JvmSynthetic
+  internal fun goalPlanningSweep(sweep: DefaultGoalPlanningSweep) = RuntimeComponentBindingsA4.goalPlanningSweep(sweep)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalPlanningRefreshLiveness(
-    adapter: ChildAwareGoalPlanningRefreshLiveness,
-  ): GoalPlanningRefreshLiveness = adapter
+  @Provides @JvmSynthetic
+  internal fun goalPlanningRefreshLiveness(adapter: ChildAwareGoalPlanningRefreshLiveness) =
+    RuntimeComponentBindingsA4.goalPlanningRefreshLiveness(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalPlanningStatusReasonCoherence(
-    adapter: LaunchAlignedGoalPlanningStatusReasonCoherence,
-  ): GoalPlanningStatusReasonCoherence = adapter
+  @Provides @JvmSynthetic
+  internal fun goalPlanningStatusReasonCoherence(adapter: LaunchAlignedGoalPlanningStatusReasonCoherence) =
+    RuntimeComponentBindingsA4.goalPlanningStatusReasonCoherence(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalRunnerExecutionCoordinator(
-    coordinator: DefaultGoalRunnerExecutionCoordinator,
-  ): GoalRunnerExecutionCoordinator = coordinator
+  @Provides @JvmSynthetic
+  internal fun goalRunnerExecutionCoordinator(coordinator: DefaultGoalRunnerExecutionCoordinator) =
+    RuntimeComponentBindingsA4.goalRunnerExecutionCoordinator(coordinator)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalPlanningAttemptRecorder(recorder: DurableGoalPlanningAttemptRecorder): GoalPlanningAttemptRecorder =
-    recorder
+  @Provides @JvmSynthetic
+  internal fun goalPlanningAttemptRecorder(recorder: DurableGoalPlanningAttemptRecorder) =
+    RuntimeComponentBindingsA4.goalPlanningAttemptRecorder(recorder)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalPlanningRejectionRecorder(
-    recorder: DurableGoalPlanningRejectionRecorder,
-  ): GoalPlanningRejectionRecorder = recorder
+  @Provides @JvmSynthetic
+  internal fun goalPlanningRejectionRecorder(recorder: DurableGoalPlanningRejectionRecorder) =
+    RuntimeComponentBindingsA5.goalPlanningRejectionRecorder(recorder)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalPlanningContextDiscovery(
-    adapter: FileSystemGoalPlanningContextDiscovery,
-  ): GoalPlanningContextDiscovery = adapter
+  @Provides @JvmSynthetic
+  internal fun goalPlanningContextDiscovery(adapter: FileSystemGoalPlanningContextDiscovery) =
+    RuntimeComponentBindingsA5.goalPlanningContextDiscovery(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalPlanningBoundaryBodyResolver(
-    adapter: FileSystemGoalPlanningBoundaryBodyResolver,
-  ): GoalPlanningBoundaryBodyResolver {
-    // SKILL-174: the exclusion contract is read through a lazy classpath singleton rather than an
-    // injected port. Forcing it here turns "the contract is missing from a packaged artifact" into a
-    // typed wiring failure instead of a durable planning block discovered halfway through a goal.
-    GoalPlanningDiscoveryExclusions.excludedRoots
-    return adapter
-  }
+  @Provides @JvmSynthetic
+  internal fun goalPlanningBoundaryBodyResolver(adapter: FileSystemGoalPlanningBoundaryBodyResolver) =
+    RuntimeComponentBindingsA5.goalPlanningBoundaryBodyResolver(adapter)
 
-  // SKILL-66 Subtask 3: GoalRunner reaches lifecycle-telemetry emission only
-  // through the application-owned GoalLifecycleTelemetryEmitter seam (backed by
-  // LifecycleTelemetryService) and times every payload off this injected clock.
-  @Provides
-  @JvmSynthetic
-  internal fun goalLifecycleTelemetryEmitter(service: LifecycleTelemetryService): GoalLifecycleTelemetryEmitter =
-    service
+  @Provides @JvmSynthetic
+  internal fun goalLifecycleTelemetryEmitter(service: LifecycleTelemetryService) =
+    RuntimeComponentBindingsA5.goalLifecycleTelemetryEmitter(service)
 
-  @Provides
-  @JvmSynthetic
-  internal fun runtimeClock(): java.time.Clock = java.time.Clock.systemUTC()
+  @Provides @JvmSynthetic
+  internal fun runtimeClock() = RuntimeComponentBindingsA5.runtimeClock()
 
-  @Provides
-  @JvmSynthetic
-  internal fun runtimeTimingPort(callbacks: OptionalCallbacks, adapter: JdkRuntimeTimingPort): RuntimeTimingPort =
-    callbacks.runtimeTimingPort ?: adapter
+  @Provides @JvmSynthetic
+  internal fun runtimeTimingPort(callbacks: OptionalCallbacks, adapter: JdkRuntimeTimingPort) =
+    RuntimeComponentBindingsA5.runtimeTimingPort(callbacks, adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics): RuntimeDiagnostics = adapter
+  @Provides @JvmSynthetic
+  internal fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics) =
+    RuntimeComponentBindingsA5.runtimeDiagnostics(adapter)
 
-  @Provides
-  @JvmSynthetic
+  @Provides @JvmSynthetic
   internal fun reviewNativeAgentPreflightPort(
     callbacks: OptionalCallbacks,
     adapter: FileSystemReviewNativeAgentPreflight,
-  ): ReviewNativeAgentPreflightPort = callbacks.reviewNativeAgentPreflight ?: adapter
+  ) = RuntimeComponentBindingsA5.reviewNativeAgentPreflightPort(callbacks, adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun reviewLaunchAgentStagingPort(
-    adapter: FileSystemReviewLaunchAgentStaging,
-  ): ReviewLaunchAgentStagingPort = adapter
+  @Provides @JvmSynthetic
+  internal fun reviewLaunchAgentStagingPort(adapter: FileSystemReviewLaunchAgentStaging) =
+    RuntimeComponentBindingsA6.reviewLaunchAgentStagingPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun declaredReviewSpecialistsPort(
-    adapter: FileSystemDeclaredReviewSpecialists,
-  ): DeclaredReviewSpecialistsPort = adapter
+  @Provides @JvmSynthetic
+  internal fun declaredReviewSpecialistsPort(adapter: FileSystemDeclaredReviewSpecialists) =
+    RuntimeComponentBindingsA6.declaredReviewSpecialistsPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installedPlatformPackCatalogPort(
-    adapter: FileSystemInstalledPlatformPackCatalog,
-  ): InstalledPlatformPackCatalogPort = adapter
+  @Provides @JvmSynthetic
+  internal fun installedPlatformPackCatalogPort(adapter: FileSystemInstalledPlatformPackCatalog) =
+    RuntimeComponentBindingsA6.installedPlatformPackCatalogPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalRunnerManifestStore(adapter: WorkflowGoalRunnerManifestStore): GoalRunnerManifestStore = adapter
+  @Provides @JvmSynthetic
+  internal fun goalRunnerManifestStore(adapter: WorkflowGoalRunnerManifestStore) =
+    RuntimeComponentBindingsA6.goalRunnerManifestStore(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalRunnerWorkflowOutcomeStore(
-    adapter: WorkflowGoalRunnerOutcomeStore,
-  ): GoalRunnerWorkflowOutcomeStore = adapter
+  @Provides @JvmSynthetic
+  internal fun goalRunnerWorkflowOutcomeStore(adapter: WorkflowGoalRunnerOutcomeStore) =
+    RuntimeComponentBindingsA6.goalRunnerWorkflowOutcomeStore(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalRunnerAttemptLedgerStore(adapter: WorkflowGoalRunnerOutcomeStore): GoalRunnerAttemptLedgerStore =
-    adapter
+  @Provides @JvmSynthetic
+  internal fun goalRunnerAttemptLedgerStore(adapter: WorkflowGoalRunnerOutcomeStore) =
+    RuntimeComponentBindingsA6.goalRunnerAttemptLedgerStore(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalRunnerChildRepairStore(adapter: WorkflowGoalRunnerOutcomeStore): GoalRunnerChildRepairStore = adapter
+  @Provides @JvmSynthetic
+  internal fun goalRunnerChildRepairStore(adapter: WorkflowGoalRunnerOutcomeStore) =
+    RuntimeComponentBindingsA6.goalRunnerChildRepairStore(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalPullRequestPort(callbacks: OptionalCallbacks, adapter: GhGoalPullRequestPort): GoalPullRequestPort =
-    callbacks.goalPullRequestPort ?: adapter
+  @Provides @JvmSynthetic
+  internal fun goalPullRequestPort(callbacks: OptionalCallbacks, adapter: GhGoalPullRequestPort) =
+    RuntimeComponentBindingsA6.goalPullRequestPort(callbacks, adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun installSelectionPersistencePort(
-    adapter: FileSystemInstallSelectionPersistence,
-  ): InstallSelectionPersistencePort = adapter
+  @Provides @JvmSynthetic
+  internal fun installSelectionPersistencePort(adapter: FileSystemInstallSelectionPersistence) =
+    RuntimeComponentBindingsA7.installSelectionPersistencePort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun repoLocalConfigPort(adapter: FileSystemRepoLocalConfig): RepoLocalConfigPort = adapter
+  @Provides @JvmSynthetic
+  internal fun repoLocalConfigPort(adapter: FileSystemRepoLocalConfig) =
+    RuntimeComponentBindingsA7.repoLocalConfigPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun scaffoldGateway(gateway: FileSystemScaffoldGateway): ScaffoldGateway = gateway
+  @Provides @JvmSynthetic
+  internal fun scaffoldGateway(gateway: FileSystemScaffoldGateway) = RuntimeComponentBindingsA7.scaffoldGateway(gateway)
 
-  // SKILL-52.1 subtask 2: typed capability ports for the scaffold pipeline. These are wired
-  // alongside the legacy `ScaffoldGateway` raw-map adapter so subtask 3 can migrate the
-  // application-layer scaffold service over without further DI churn. The legacy
-  // `ScaffoldGateway` binding above intentionally stays.
-  @Provides
-  @JvmSynthetic
-  internal fun scaffoldSourceLoaderPort(adapter: FileSystemScaffoldSourceLoader): ScaffoldSourceLoaderPort = adapter
+  @Provides @JvmSynthetic
+  internal fun scaffoldSourceLoaderPort(adapter: FileSystemScaffoldSourceLoader) =
+    RuntimeComponentBindingsB1.scaffoldSourceLoaderPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun scaffoldManifestPersistencePort(
-    adapter: FileSystemScaffoldManifestPersistence,
-  ): ScaffoldManifestPersistencePort = adapter
+  @Provides @JvmSynthetic
+  internal fun scaffoldManifestPersistencePort(adapter: FileSystemScaffoldManifestPersistence) =
+    RuntimeComponentBindingsB1.scaffoldManifestPersistencePort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun scaffoldGeneratedStagingPort(
-    adapter: FileSystemScaffoldGeneratedStaging,
-  ): ScaffoldGeneratedStagingPort = adapter
+  @Provides @JvmSynthetic
+  internal fun scaffoldGeneratedStagingPort(adapter: FileSystemScaffoldGeneratedStaging) =
+    RuntimeComponentBindingsB1.scaffoldGeneratedStagingPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun scaffoldInstallLinkPort(adapter: FileSystemScaffoldInstallLink): ScaffoldInstallLinkPort = adapter
+  @Provides @JvmSynthetic
+  internal fun scaffoldInstallLinkPort(adapter: FileSystemScaffoldInstallLink) =
+    RuntimeComponentBindingsB1.scaffoldInstallLinkPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun scaffoldRepoValidationPort(adapter: FileSystemScaffoldRepoValidation): ScaffoldRepoValidationPort =
-    adapter
+  @Provides @JvmSynthetic
+  internal fun scaffoldRepoValidationPort(adapter: FileSystemScaffoldRepoValidation) =
+    RuntimeComponentBindingsB1.scaffoldRepoValidationPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun unsupportedScaffoldGateway(gateway: FileSystemUnsupportedScaffoldGateway): UnsupportedScaffoldGateway =
-    gateway
+  @Provides @JvmSynthetic
+  internal fun unsupportedScaffoldGateway(gateway: FileSystemUnsupportedScaffoldGateway) =
+    RuntimeComponentBindingsB1.unsupportedScaffoldGateway(gateway)
 
-  @Provides
-  @JvmSynthetic
-  internal fun scaffoldCatalogGateway(gateway: FileSystemScaffoldCatalogGateway): ScaffoldCatalogGateway = gateway
+  @Provides @JvmSynthetic
+  internal fun scaffoldCatalogGateway(gateway: FileSystemScaffoldCatalogGateway) =
+    RuntimeComponentBindingsB1.scaffoldCatalogGateway(gateway)
 
-  @Provides
-  @JvmSynthetic
-  internal fun diffResolverPort(adapter: FileSystemDiffResolver): DiffResolverPort = adapter
+  @Provides @JvmSynthetic
+  internal fun diffResolverPort(adapter: FileSystemDiffResolver) = RuntimeComponentBindingsB1.diffResolverPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun sharedEvidenceResolverPort(
-    adapter: FileSystemFeatureTaskRuntimeSharedEvidenceStore,
-  ): FeatureTaskRuntimeSharedEvidenceResolverPort = adapter
+  @Provides @JvmSynthetic
+  internal fun sharedEvidenceResolverPort(adapter: FileSystemFeatureTaskRuntimeSharedEvidenceStore) =
+    RuntimeComponentBindingsB2.sharedEvidenceResolverPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun sharedEvidenceLocatorReadPort(
-    adapter: FileSystemFeatureTaskRuntimeSharedEvidenceStore,
-  ): FeatureTaskRuntimeSharedEvidenceLocatorReadPort = adapter
+  @Provides @JvmSynthetic
+  internal fun sharedEvidenceLocatorReadPort(adapter: FileSystemFeatureTaskRuntimeSharedEvidenceStore) =
+    RuntimeComponentBindingsB2.sharedEvidenceLocatorReadPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun repoSourceDiscoveryGateway(gateway: FileSystemRepoSourceDiscoveryGateway): RepoSourceDiscoveryGateway =
-    gateway
+  @Provides @JvmSynthetic
+  internal fun repoSourceDiscoveryGateway(gateway: FileSystemRepoSourceDiscoveryGateway) =
+    RuntimeComponentBindingsB2.repoSourceDiscoveryGateway(gateway)
 
-  @Provides
-  @JvmSynthetic
-  internal fun repoValidationGateway(gateway: FileSystemRepoValidationGateway): RepoValidationGateway = gateway
+  @Provides @JvmSynthetic
+  internal fun repoValidationGateway(gateway: FileSystemRepoValidationGateway) =
+    RuntimeComponentBindingsB2.repoValidationGateway(gateway)
 
-  @Provides
-  @JvmSynthetic
-  internal fun validationGateRunner(runner: FileSystemValidationGateRunner): ValidationGateRunner = runner
+  @Provides @JvmSynthetic
+  internal fun validationGateRunner(runner: FileSystemValidationGateRunner) =
+    RuntimeComponentBindingsB2.validationGateRunner(runner)
 
-  @Provides
-  @JvmSynthetic
-  internal fun uninstallFileSystemGateway(gateway: FileSystemUninstallFileSystemGateway): UninstallFileSystemGateway =
-    gateway
+  @Provides @JvmSynthetic
+  internal fun uninstallFileSystemGateway(gateway: FileSystemUninstallFileSystemGateway) =
+    RuntimeComponentBindingsB2.uninstallFileSystemGateway(gateway)
 
-  @Provides
-  @JvmSynthetic
-  internal fun reviewSnapshotGateway(gateway: FileSystemReviewSnapshotGateway): ReviewSnapshotGateway = gateway
+  @Provides @JvmSynthetic
+  internal fun reviewSnapshotGateway(gateway: FileSystemReviewSnapshotGateway) =
+    RuntimeComponentBindingsB2.reviewSnapshotGateway(gateway)
 
-  @Provides
-  @JvmSynthetic
-  internal fun reviewInputSource(source: FileSystemReviewInputSource): ReviewInputSource = source
+  @Provides @JvmSynthetic
+  internal fun reviewInputSource(source: FileSystemReviewInputSource) =
+    RuntimeComponentBindingsB2.reviewInputSource(source)
 
-  @Provides
-  @JvmSynthetic
-  internal fun reviewAttributionPort(adapter: FileSystemReviewAttribution): ReviewAttributionPort = adapter
+  @Provides @JvmSynthetic
+  internal fun reviewAttributionPort(adapter: FileSystemReviewAttribution) =
+    RuntimeComponentBindingsB3.reviewAttributionPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun reviewRubricResolver(adapter: FileSystemReviewRubricResolver): ReviewRubricResolver = adapter
+  @Provides @JvmSynthetic
+  internal fun reviewRubricResolver(adapter: FileSystemReviewRubricResolver) =
+    RuntimeComponentBindingsB3.reviewRubricResolver(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun reviewSpecialistContractProvider(
-    adapter: ClasspathReviewSpecialistContractProvider,
-  ): ReviewSpecialistContractProvider = adapter
+  @Provides @JvmSynthetic
+  internal fun reviewSpecialistContractProvider(adapter: ClasspathReviewSpecialistContractProvider) =
+    RuntimeComponentBindingsB3.reviewSpecialistContractProvider(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun featureTaskRuntimeRunInvariantsSource(
-    adapter: FileSystemFeatureTaskRuntimeRunInvariantsSource,
-  ): FeatureTaskRuntimeRunInvariantsSource = adapter
+  @Provides @JvmSynthetic
+  internal fun featureTaskRuntimeRunInvariantsSource(adapter: FileSystemFeatureTaskRuntimeRunInvariantsSource) =
+    RuntimeComponentBindingsB3.featureTaskRuntimeRunInvariantsSource(adapter)
 
-  @Provides
-  @JvmSynthetic
-  fun agentAddonSelectionPort(): AgentAddonSelectionPort = AgentAddonSelectionResolver()
+  @Provides @JvmSynthetic
+  fun agentAddonSelectionPort() = RuntimeComponentBindingsB3.agentAddonSelectionPort()
 
-  @Provides
-  @JvmSynthetic
-  internal fun externalAgentAddonSourceConfigPort(
-    store: FileExternalAgentAddonSourceConfigStore,
-  ): ExternalAgentAddonSourceConfigPort = store
+  @Provides @JvmSynthetic
+  internal fun externalAgentAddonSourceConfigPort(store: FileExternalAgentAddonSourceConfigStore) =
+    RuntimeComponentBindingsB3.externalAgentAddonSourceConfigPort(store)
 
-  @Provides
-  @JvmSynthetic
-  internal fun featureTaskRuntimeWorkerSupervisor(
-    adapter: JdkFeatureTaskRuntimeWorkerSupervisor,
-  ): FeatureTaskRuntimeWorkerSupervisor = adapter
+  @Provides @JvmSynthetic
+  internal fun featureTaskRuntimeWorkerSupervisor(adapter: JdkFeatureTaskRuntimeWorkerSupervisor) =
+    RuntimeComponentBindingsB3.featureTaskRuntimeWorkerSupervisor(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun featureTaskRuntimeSpecStatusWriter(
-    adapter: FileSystemFeatureTaskRuntimeSpecStatusWriter,
-  ): FeatureTaskRuntimeSpecStatusWriter = adapter
+  @Provides @JvmSynthetic
+  internal fun featureTaskRuntimeSpecStatusWriter(adapter: FileSystemFeatureTaskRuntimeSpecStatusWriter) =
+    RuntimeComponentBindingsB3.featureTaskRuntimeSpecStatusWriter(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun skillRemoveFileSystem(fileSystem: FileSystemSkillRemoveFileSystem): SkillRemoveFileSystem = fileSystem
+  @Provides @JvmSynthetic
+  internal fun skillRemoveFileSystem(fileSystem: FileSystemSkillRemoveFileSystem) =
+    RuntimeComponentBindingsB4.skillRemoveFileSystem(fileSystem)
 
-  @Provides
-  @JvmSynthetic
-  internal fun workflowGitOperations(
-    workflowOps: WorkflowOpsContext,
-    git: GitWorkflowGitOperations,
-  ): WorkflowGitOperations =
-    if (workflowOps.workflowGitOperations === NoopWorkflowGitOperations) git else workflowOps.workflowGitOperations
+  @Provides @JvmSynthetic
+  internal fun workflowGitOperations(workflowOps: WorkflowOpsContext, git: GitWorkflowGitOperations) =
+    RuntimeComponentBindingsB4.workflowGitOperations(workflowOps, git)
 
-  @Provides
-  @JvmSynthetic
-  internal fun decompositionManifestFileStore(
-    store: FileSystemDecompositionManifestFileStore,
-  ): DecompositionManifestFileStore = store
+  @Provides @JvmSynthetic
+  internal fun decompositionManifestFileStore(store: FileSystemDecompositionManifestFileStore) =
+    RuntimeComponentBindingsB4.decompositionManifestFileStore(store)
 
-  @Provides
-  @JvmSynthetic
-  internal fun specScratchStore(store: FileSystemSpecScratchStore): SpecScratchStore = store
+  @Provides @JvmSynthetic
+  internal fun specScratchStore(store: FileSystemSpecScratchStore) = RuntimeComponentBindingsB4.specScratchStore(store)
 
-  // SKILL-52.3 Subtask 1: validator ports now bind to infra-fs adapters
-  // (the module that owns the concrete networknt + Jackson schema
-  // validators). `runtime-domain` install policy and the application
-  // decomposition + workflow seams reach the validators only through
-  // these ports, wired exactly like every other infra adapter above.
-  @Provides
-  @JvmSynthetic
-  internal fun installPlanWireValidator(adapter: InstallPlanWireValidatorAdapter): InstallPlanWireValidator = adapter
+  @Provides @JvmSynthetic
+  internal fun installPlanWireValidator(adapter: InstallPlanWireValidatorAdapter) =
+    RuntimeComponentBindingsB4.installPlanWireValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun decompositionManifestValidator(
-    adapter: DecompositionManifestValidatorAdapter,
-  ): DecompositionManifestValidator = adapter
+  @Provides @JvmSynthetic
+  internal fun decompositionManifestValidator(adapter: DecompositionManifestValidatorAdapter) =
+    RuntimeComponentBindingsB4.decompositionManifestValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun workflowSnapshotValidator(adapter: WorkflowSnapshotValidatorInfraAdapter): WorkflowSnapshotValidator =
-    adapter
+  @Provides @JvmSynthetic
+  internal fun workflowSnapshotValidator(adapter: WorkflowSnapshotValidatorInfraAdapter) =
+    RuntimeComponentBindingsB4.workflowSnapshotValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun featureTaskRuntimePhaseOutputValidator(
-    adapter: FeatureTaskRuntimePhaseOutputValidatorAdapter,
-  ): FeatureTaskRuntimePhaseOutputValidator = adapter
+  @Provides @JvmSynthetic
+  internal fun featureTaskRuntimePhaseOutputValidator(adapter: FeatureTaskRuntimePhaseOutputValidatorAdapter) =
+    RuntimeComponentBindingsB4.featureTaskRuntimePhaseOutputValidator(adapter)
 
-  // SKILL-137: the canonical planning-projections schema gate. The domain parse seam calls this port
-  // before building a typed projection, so the schema is enforced at runtime, not just authored.
-  @Provides
-  @JvmSynthetic
+  @Provides @JvmSynthetic
   internal fun featureTaskRuntimePlanningProjectionValidator(
     adapter: FeatureTaskRuntimePlanningProjectionValidatorAdapter,
-  ): FeatureTaskRuntimePlanningProjectionValidator = adapter
+  ) = RuntimeComponentBindingsB5.featureTaskRuntimePlanningProjectionValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun featureTaskRuntimeBuildReceiptValidator(
-    adapter: FeatureTaskRuntimeBuildReceiptValidatorAdapter,
-  ): FeatureTaskRuntimeBuildReceiptValidator = adapter
+  @Provides @JvmSynthetic
+  internal fun featureTaskRuntimeBuildReceiptValidator(adapter: FeatureTaskRuntimeBuildReceiptValidatorAdapter) =
+    RuntimeComponentBindingsB5.featureTaskRuntimeBuildReceiptValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
+  @Provides @JvmSynthetic
   internal fun featureTaskRuntimeHandoffEnvelopeValidator(
     adapter: FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter,
-  ): FeatureTaskRuntimeHandoffEnvelopeValidator = adapter
+  ) = RuntimeComponentBindingsB5.featureTaskRuntimeHandoffEnvelopeValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
+  @Provides @JvmSynthetic
   internal fun featureTaskRuntimeHandoffFoundationValidator(
     adapter: FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter,
-  ): FeatureTaskRuntimeHandoffFoundationValidator = adapter
+  ) = RuntimeComponentBindingsB5.featureTaskRuntimeHandoffFoundationValidator(adapter)
 
-  // SKILL-140: the canonical quarantine schema gate. The recorder's append and read seams call this
-  // port so a malformed private-evidence store fails loudly rather than round-tripping silently.
-  @Provides
-  @JvmSynthetic
-  internal fun featureTaskRuntimeQuarantineValidator(
-    adapter: FeatureTaskRuntimeQuarantineValidatorAdapter,
-  ): FeatureTaskRuntimeQuarantineValidator = adapter
+  @Provides @JvmSynthetic
+  internal fun featureTaskRuntimeQuarantineValidator(adapter: FeatureTaskRuntimeQuarantineValidatorAdapter) =
+    RuntimeComponentBindingsB5.featureTaskRuntimeQuarantineValidator(adapter)
 
-  // SKILL-150: the canonical implementation-attempt schema gate. The recorder validates every
-  // appended attempt through this port inside the advancing transaction, so a malformed receipt
-  // never reaches the durable store the continuation projection is reconstructed from.
-  @Provides
-  @JvmSynthetic
+  @Provides @JvmSynthetic
   internal fun featureTaskRuntimeImplementationAttemptValidator(
     adapter: FeatureTaskRuntimeImplementationAttemptValidatorAdapter,
-  ): FeatureTaskRuntimeImplementationAttemptValidator = adapter
+  ) = RuntimeComponentBindingsB5.featureTaskRuntimeImplementationAttemptValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
-  fun featureTaskPhaseSettlementRepository(): FeatureTaskPhaseSettlementRepository =
-    SqliteFeatureTaskPhaseSettlementRepository()
+  @Provides @JvmSynthetic
+  fun rejectedOutputDiagnosticMetadataValidator() =
+    RuntimeComponentBindingsB5.rejectedOutputDiagnosticMetadataValidator()
 
-  @Provides
-  @JvmSynthetic
-  fun rejectedOutputDiagnosticMetadataValidator(): RejectedOutputDiagnosticMetadataValidator =
-    RejectedOutputDiagnosticMetadataValidatorAdapter()
+  @Provides @JvmSynthetic
+  fun producerOutputEvidenceValidator() = RuntimeComponentBindingsB5.producerOutputEvidenceValidator()
 
-  @Provides
-  @JvmSynthetic
-  fun producerOutputEvidenceValidator(): ProducerOutputEvidenceValidator = ProducerOutputEvidenceValidatorAdapter()
+  @Provides @JvmSynthetic
+  internal fun goalPlanningPreparationEnvelopeValidator(adapter: GoalPlanningPreparationEnvelopeValidatorAdapter) =
+    RuntimeComponentBindingsB6.goalPlanningPreparationEnvelopeValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalPlanningPreparationEnvelopeValidator(
-    adapter: GoalPlanningPreparationEnvelopeValidatorAdapter,
-  ): GoalPlanningPreparationEnvelopeValidator = adapter
+  @Provides @JvmSynthetic
+  internal fun reviewContextEnvelopeValidator(adapter: ReviewContextEnvelopeValidatorAdapter) =
+    RuntimeComponentBindingsB6.reviewContextEnvelopeValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun reviewContextEnvelopeValidator(
-    adapter: ReviewContextEnvelopeValidatorAdapter,
-  ): ReviewContextEnvelopeValidator = adapter
+  @Provides @JvmSynthetic
+  internal fun reviewEvidenceBrokerFactory(adapter: FileSystemReviewEvidenceBrokerFactory) =
+    RuntimeComponentBindingsB6.reviewEvidenceBrokerFactory(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun reviewEvidenceBrokerFactory(
-    adapter: FileSystemReviewEvidenceBrokerFactory,
-  ): ReviewEvidenceBrokerFactory = adapter
+  @Provides @JvmSynthetic
+  internal fun governedReviewEvidenceEndpointBinder(adapter: UnixSocketGovernedReviewEvidenceEndpointBinder) =
+    RuntimeComponentBindingsB6.governedReviewEvidenceEndpointBinder(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun governedReviewEvidenceEndpointBinder(
-    adapter: UnixSocketGovernedReviewEvidenceEndpointBinder,
-  ): GovernedReviewEvidenceEndpointBinder = adapter
+  @Provides @JvmSynthetic
+  internal fun reviewLaunchIsolationResolver(adapter: AgentRunReviewIsolationResolver) =
+    RuntimeComponentBindingsB6.reviewLaunchIsolationResolver(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun reviewLaunchIsolationResolver(adapter: AgentRunReviewIsolationResolver): ReviewLaunchIsolationResolver =
-    adapter
+  @Provides @JvmSynthetic
+  internal fun featureSpecPathResolverPort(adapter: FileSystemFeatureSpecPathResolver) =
+    RuntimeComponentBindingsB6.featureSpecPathResolverPort(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun featureSpecPathResolverPort(adapter: FileSystemFeatureSpecPathResolver): FeatureSpecPathResolverPort =
-    adapter
+  @Provides @JvmSynthetic
+  internal fun goalObservabilityEventValidator(adapter: GoalObservabilityEventValidatorAdapter) =
+    RuntimeComponentBindingsB6.goalObservabilityEventValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun goalObservabilityEventValidator(
-    adapter: GoalObservabilityEventValidatorAdapter,
-  ): GoalObservabilityEventValidator = adapter
+  @Provides @JvmSynthetic
+  internal fun goalProgressEventValidator(adapter: GoalProgressEventValidatorAdapter) =
+    RuntimeComponentBindingsB6.goalProgressEventValidator(adapter)
 
-  // SKILL-64 Subtask 3: declared goal-progress event schema validator port,
-  // bound to the infra-fs adapter that owns the networknt JSON-Schema check.
-  // The goal-runner outcome store calls this port at the durable
-  // declared-progress write seam, mirroring goalObservabilityEventValidator.
-  @Provides
-  @JvmSynthetic
-  internal fun goalProgressEventValidator(adapter: GoalProgressEventValidatorAdapter): GoalProgressEventValidator =
-    adapter
+  @Provides @JvmSynthetic
+  internal fun ideStatusValidator(adapter: IdeStatusValidatorAdapter) =
+    RuntimeComponentBindingsB7.ideStatusValidator(adapter)
 
-  @Provides
-  @JvmSynthetic
-  internal fun ideStatusValidator(adapter: IdeStatusValidatorAdapter): IdeStatusValidator = adapter
+  @Provides @JvmSynthetic
+  internal fun checkedOutBranchSource(source: FileSystemCheckedOutBranchSource) =
+    RuntimeComponentBindingsB7.checkedOutBranchSource(source)
 
-  @Provides
-  @JvmSynthetic
-  internal fun checkedOutBranchSource(source: FileSystemCheckedOutBranchSource): CheckedOutBranchSource = source
+  @Provides @JvmSynthetic
+  internal fun featureTaskRuntimeReviewDriver(runner: ParallelCodeReviewRunner) =
+    RuntimeComponentBindingsB7.featureTaskRuntimeReviewDriver(runner)
 
-  @Provides
-  @JvmSynthetic
-  internal fun featureTaskRuntimeReviewDriver(runner: ParallelCodeReviewRunner): FeatureTaskRuntimeReviewDriver =
-    FeatureTaskRuntimeReviewDriver(runner::run)
-
+  @Provides @JvmSynthetic
+  fun featureTaskPhaseSettlementRepository() = RuntimeComponentBindingsB7.featureTaskPhaseSettlementRepository()
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
 
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs

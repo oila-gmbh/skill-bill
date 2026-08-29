@@ -5,7 +5,7 @@ import skillbill.application.decomposition.repoRelativePath
 import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.error.UnreadableSpecIntentProjectionError
-import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.SpecIntentProjection

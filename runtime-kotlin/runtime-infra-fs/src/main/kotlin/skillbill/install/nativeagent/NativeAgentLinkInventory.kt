@@ -3,6 +3,7 @@
 package skillbill.install.nativeagent
 
 import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchemaFactory
@@ -11,6 +12,7 @@ import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.contracts.nativeagent.NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION
 import skillbill.contracts.nativeagent.NativeAgentLinkInventorySchemaPaths
 import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
@@ -194,7 +196,7 @@ internal object NativeAgentLinkInventory {
   private fun bootstrap(home: Path, managedRoots: List<Path>, sourceRoot: Path): BootstrapPlan {
     val retain = mutableListOf<NativeAgentLinkInventoryEntry>()
     val remove = mutableListOf<NativeAgentLinkInventoryEntry>()
-    skillbill.nativeagent.rendering.NativeAgentProvider.entries.flatMap { provider ->
+    NativeAgentProvider.entries.flatMap { provider ->
       provider.homeAgentDirs(home).flatMap { directory ->
         if (!Files.isDirectory(directory)) return@flatMap emptyList()
         Files.list(directory).use { paths ->
@@ -379,7 +381,7 @@ internal object NativeAgentLinkInventory {
     }
   }
 
-  private fun com.fasterxml.jackson.databind.JsonNode.requiredText(field: String): String =
+  private fun JsonNode.requiredText(field: String): String =
     get(field)?.asText()?.takeIf(String::isNotBlank) ?: error("$field is required")
 
   private fun inventoryPath(home: Path): Path = home.resolve(".skill-bill/native-agent-link-inventory.json")
@@ -392,14 +394,14 @@ internal object NativeAgentLinkInventory {
   private val LOGICAL_NAME = Regex("[a-z0-9](?:[a-z0-9-]*[a-z0-9])?")
   internal val CACHE_GENERATION = Regex("(?:[a-z0-9](?:[a-z0-9-]{0,31})-)?[0-9a-f]{16}")
   private val PROVIDERS = setOf("claude", "codex", "junie", "cursor")
-  private fun provider(id: String) = skillbill.nativeagent.rendering.NativeAgentProvider.entries
+  private fun provider(id: String) = NativeAgentProvider.entries
     .single { it.name.lowercase() == id }
 }
 
 @Suppress("ReturnCount")
 internal fun isCanonicalNativeAgentArtifactTarget(
   home: Path,
-  provider: skillbill.nativeagent.rendering.NativeAgentProvider,
+  provider: NativeAgentProvider,
   logicalName: String,
   target: Path,
   currentRoots: List<Path>,

@@ -165,9 +165,17 @@ class ImplementationOwnershipArchitectureTest {
   @Test
   fun `runtime core imports concrete infrastructure only from composition files`() {
     val runtimeCoreSourceFiles = kotlinFilesUnder(runtimeRoot.resolve("runtime-core/src/main/kotlin"))
-    val compositionFiles = setOf(
-      runtimeRoot.resolve("runtime-core/src/main/kotlin/skillbill/di/RuntimeComponent.kt"),
-    )
+    val diDir = runtimeRoot.resolve("runtime-core/src/main/kotlin/skillbill/di")
+    val compositionFiles = Files.list(diDir).use { stream ->
+      stream
+        .filter { path -> path.isRegularFile() && path.extension == "kt" }
+        .filter { path ->
+          val name = path.fileName.toString()
+          name == "RuntimeComponent.kt" || name.startsWith("RuntimeComponentBindings")
+        }
+        .toList()
+        .toSet()
+    }
     val concreteInfrastructureViolations = runtimeCoreSourceFiles
       .filterNot { sourceFile -> sourceFile in compositionFiles }
       .flatMap { sourceFile ->
@@ -607,7 +615,7 @@ class ImplementationOwnershipArchitectureTest {
       "import skillbill.scaffold.FileSystemScaffoldSourceLoader",
     )
     val mustNotBeDetectedAsForbidden = listOf(
-      "import skillbill.scaffold.policy.X",
+      "import skillbill.scaffold.policy.scaffold.X",
       "import skillbill.scaffold.model.Y",
       "import skillbill.ports.scaffold.foo.Bar",
       "import java.nio.file.Path",
@@ -644,19 +652,19 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.launcher.agentrun.FileSystemAgentRunLauncher",
       "skillbill.launcher.agentrun.PathExecutableLookup",
       "skillbill.launcher.review.UnixSocketGovernedReviewEvidenceEndpointBinder",
-      "skillbill.workflow.DecompositionManifestValidator",
-      "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator",
-      "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator",
-      "skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator",
-      "skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator",
-      "skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator",
-      "skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator",
-      "skillbill.workflow.FeatureTaskRuntimeQuarantineValidator",
-      "skillbill.workflow.GoalObservabilityEventValidator",
-      "skillbill.workflow.GoalPlanningPreparationEnvelopeValidator",
-      "skillbill.workflow.GoalProgressEventValidator",
-      "skillbill.workflow.IdeStatusValidator",
-      "skillbill.workflow.WorkflowSnapshotValidator",
+      "skillbill.workflow.decomposition.DecompositionManifestValidator",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator",
+      "skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator",
+      "skillbill.workflow.goal.GoalObservabilityEventValidator",
+      "skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator",
+      "skillbill.workflow.goal.GoalProgressEventValidator",
+      "skillbill.workflow.idestatus.IdeStatusValidator",
+      "skillbill.workflow.engine.WorkflowSnapshotValidator",
     )
 
     val scaffoldApplicationServiceFileNames: Set<String> = setOf(

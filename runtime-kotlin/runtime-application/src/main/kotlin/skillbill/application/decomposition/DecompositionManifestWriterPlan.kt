@@ -1,10 +1,10 @@
 package skillbill.application.decomposition
 
-import skillbill.workflow.model.DecompositionDependency
-import skillbill.workflow.model.DecompositionExecutionModel
-import skillbill.workflow.model.DecompositionStackBranch
-import skillbill.workflow.model.DecompositionSubtask
-import skillbill.workflow.model.SpecSource
+import skillbill.workflow.decomposition.model.DecompositionDependency
+import skillbill.workflow.decomposition.model.DecompositionExecutionModel
+import skillbill.workflow.decomposition.model.DecompositionStackBranch
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.SpecSource
 import java.nio.file.Path
 
 internal fun parseSubtasks(

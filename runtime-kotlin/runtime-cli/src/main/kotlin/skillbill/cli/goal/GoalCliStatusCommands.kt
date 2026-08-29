@@ -1,0 +1,230 @@
+package skillbill.cli.goal
+
+import com.github.ajalt.clikt.core.UsageError
+import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.options.default
+import com.github.ajalt.clikt.parameters.options.flag
+import com.github.ajalt.clikt.parameters.options.multiple
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.types.int
+import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.cli.core.CliRunState
+import skillbill.cli.core.DocumentedCliCommand
+import skillbill.error.DatabaseAccessError
+import skillbill.goalrunner.model.ExecutionLiveness
+import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
+import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
+import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_LINES
+
+@Inject
+class GoalStatusCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("status", "Show read-only decomposed goal status.") {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val monitorOnly by option(
+    "--monitor",
+    help = "Render one bounded read-only snapshot for bill-monitor; never launches or polls a goal.",
+  ).flag(default = false)
+  private val agent by option(
+    "--agent",
+    help = "Agent invoking this read-only status view. Resolution order: --agent, then SKILL_BILL_AGENT, " +
+      "then the detected invoking-agent execution context. Optional and never required: active_agent " +
+      "comes from persisted run state, not from this option.",
+  )
+  private val agentOverride by option(
+    "--agent-override",
+    help = "Optional agent override whose id should be shown as active.",
+  )
+  private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
+  private val diffStat by option(
+    "--diff-stat",
+    help = "Include one current worktree diff stat snapshot. Runs git diff --numstat once.",
+  ).flag(default = false)
+  private val diffHunks by option(
+    "--diff-hunk",
+    help = "Include bounded selected diff hunks for this path. Repeat for multiple paths; noisier than --diff-stat.",
+  ).multiple()
+  private val diffHunkMaxHunks by option(
+    "--diff-hunk-max-hunks",
+    help = "Maximum selected diff hunks to print when --diff-hunk is used.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_HUNKS)
+  private val diffHunkMaxLines by option(
+    "--diff-hunk-max-lines",
+    help = "Maximum selected diff lines to print across requested hunks.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_LINES)
+  private val diffHunkMaxBytes by option(
+    "--diff-hunk-max-bytes",
+    help = "Maximum selected diff bytes to print across requested hunks.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_BYTES)
+
+  override fun run() {
+    val options = statusCliRequestOptions()
+    if (options.monitorOnly && !FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.matches(options.issueKey)) {
+      throw UsageError(
+        "Monitor requires one supported issue key matching " +
+          "${FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.pattern}.",
+      )
+    }
+    if (options.monitorOnly && (diffStat || diffHunks.isNotEmpty())) {
+      throw UsageError("Monitor accepts only one bounded status snapshot; omit diff options.")
+    }
+    val projection = try {
+      goalRunnerStatusService.status(state.goalStatusRequest(options))
+    } catch (error: DatabaseAccessError) {
+      if (!options.monitorOnly) throw error
+      val payload = databaseUnavailableGoalStatusCliMap(issueKey, error)
+      state.completeText(goalMonitorStatusText(payload), payload, exitCode = payload.goalStatusExitCode())
+      return
+    }
+    val payload = if (options.monitorOnly) {
+      projection.toBoundedGoalStatusCliMap(issueKey)
+    } else {
+      projection.toGoalStatusCliMap(issueKey)
+    }
+    val text = if (options.monitorOnly) goalMonitorStatusText(payload) else goalStatusText(payload)
+    state.completeText(text, payload, exitCode = payload.goalStatusExitCode())
+  }
+
+  private fun statusCliRequestOptions(): GoalStatusCliRequestOptions = GoalStatusCliRequestOptions(
+    issueKey = issueKey,
+    monitorOnly = monitorOnly,
+    agent = agent,
+    agentOverride = agentOverride,
+    repoRoot = repoRoot,
+    diff = GoalStatusCliDiffOptions(
+      includeDiffStat = diffStat,
+      selectedDiffHunkPaths = diffHunks,
+      selectedDiffMaxHunks = diffHunkMaxHunks,
+      selectedDiffMaxLines = diffHunkMaxLines,
+      selectedDiffMaxBytes = diffHunkMaxBytes,
+    ),
+  )
+}
+
+@Inject
+class GoalWatchCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("watch", "Refresh decomposed goal status without starting child runs.") {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val agent by option(
+    "--agent",
+    help = "Agent invoking this read-only status view. Resolution order: --agent, then SKILL_BILL_AGENT, " +
+      "then the detected invoking-agent execution context. Optional and never required: active_agent " +
+      "comes from persisted run state, not from this option.",
+  )
+  private val agentOverride by option(
+    "--agent-override",
+    help = "Optional agent override whose id should be shown as active.",
+  )
+  private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
+  private val diffStat by option(
+    "--diff-stat",
+    help = "Include one current worktree diff stat snapshot per refresh. " +
+      "Runs git diff --numstat each refresh.",
+  ).flag(default = false)
+  private val diffHunks by option(
+    "--diff-hunk",
+    help = "Include bounded selected diff hunks for this path on each refresh. " +
+      "Repeat for multiple paths; can be noisy.",
+  ).multiple()
+  private val diffHunkMaxHunks by option(
+    "--diff-hunk-max-hunks",
+    help = "Maximum selected diff hunks to print per refresh when --diff-hunk is used.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_HUNKS)
+  private val diffHunkMaxLines by option(
+    "--diff-hunk-max-lines",
+    help = "Maximum selected diff lines to print per refresh across requested hunks.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_LINES)
+  private val diffHunkMaxBytes by option(
+    "--diff-hunk-max-bytes",
+    help = "Maximum selected diff bytes to print per refresh across requested hunks.",
+  ).int().default(DEFAULT_SELECTED_DIFF_MAX_BYTES)
+  private val intervalSeconds by option(
+    "--interval-seconds",
+    help = "Seconds between read-only status refreshes. Lower values increase terminal noise and repeated git cost.",
+  ).int().default(DEFAULT_GOAL_WATCH_INTERVAL_SECONDS)
+  private val maxRefreshes by option(
+    "--max-refreshes",
+    help = "Stop after this many refreshes. Zero follows until the goal finishes and is the default.",
+  ).int().default(DEFAULT_GOAL_WATCH_REFRESHES)
+  private val showUnchanged by option(
+    "--show-unchanged",
+    help = "Compatibility option. Every refresh, including unchanged output, is shown by default.",
+  ).flag(default = false)
+  private val suppressUnchanged by option(
+    "--suppress-unchanged",
+    help = "Print only changed refreshes. The first and loop-ending refresh are always shown.",
+  ).flag(default = false)
+
+  override fun run() {
+    require(intervalSeconds >= 0) { "--interval-seconds must be non-negative." }
+    require(maxRefreshes >= 0) { "--max-refreshes must be non-negative." }
+    var latestRefresh: Map<String, Any?>? = null
+    var refreshCount = 0
+    var stopReason = ""
+    var lastPrintedRefresh: String? = null
+    var consecutiveIdleRefreshes = 0
+    while (true) {
+      refreshCount += 1
+      val projection = goalRunnerStatusService.statusRefresh(
+        state.goalStatusRequest(statusCliRequestOptions()),
+      )
+      val refresh = projection.toGoalStatusCliMap(issueKey).withWatchRefresh(refreshCount)
+      latestRefresh = refresh
+      consecutiveIdleRefreshes = if (projection?.executionLiveness == ExecutionLiveness.IDLE) {
+        consecutiveIdleRefreshes + 1
+      } else {
+        0
+      }
+      stopReason = refresh.goalWatchStopReason(
+        refreshCount = refreshCount,
+        maxRefreshes = maxRefreshes,
+        idleStop = consecutiveIdleRefreshes >= IDLE_STOP_CONSECUTIVE_REFRESHES,
+      ) ?: ""
+      val renderedRefresh = goalWatchRefreshText(refresh)
+      val normalizedRefresh = goalWatchRefreshText(
+        refresh.toMutableMap().apply { this["refresh_index"] = "<refresh_index>" },
+      )
+      val endsLoop = stopReason.isNotEmpty()
+      val refreshChanged = lastPrintedRefresh == null || normalizedRefresh != lastPrintedRefresh
+      val shouldPrintRefresh = endsLoop || showUnchanged || !suppressUnchanged || refreshChanged
+      if (shouldPrintRefresh) {
+        state.liveStdout(renderedRefresh)
+        lastPrintedRefresh = normalizedRefresh
+      }
+      if (endsLoop) {
+        break
+      }
+      if (intervalSeconds > 0) {
+        Thread.sleep(intervalSeconds * MILLIS_PER_SECOND)
+      }
+    }
+    val payload = linkedMapOf<String, Any?>(
+      "status" to latestRefresh.get("status"),
+      "issue_key" to issueKey,
+      "refresh_count" to refreshCount,
+      "interval_seconds" to intervalSeconds,
+      "latest_refresh" to latestRefresh,
+      "stop_reason" to stopReason,
+    )
+    state.completeText(goalWatchText(payload), payload, exitCode = payload.goalStatusExitCode())
+  }
+
+  private fun statusCliRequestOptions(): GoalStatusCliRequestOptions = GoalStatusCliRequestOptions(
+    issueKey = issueKey,
+    agent = agent,
+    agentOverride = agentOverride,
+    repoRoot = repoRoot,
+    diff = GoalStatusCliDiffOptions(
+      includeDiffStat = diffStat,
+      selectedDiffHunkPaths = diffHunks,
+      selectedDiffMaxHunks = diffHunkMaxHunks,
+      selectedDiffMaxLines = diffHunkMaxLines,
+      selectedDiffMaxBytes = diffHunkMaxBytes,
+    ),
+  )
+}

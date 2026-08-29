@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
+import java.sql.ResultSet
 import java.time.Duration
 import java.time.LocalDateTime
 import java.util.Locale
@@ -33,7 +34,7 @@ fun durationSeconds(row: Map<String, Any?>): Int {
   }.getOrDefault(0)
 }
 
-fun collectRows(resultSet: java.sql.ResultSet): List<Map<String, Any?>> {
+fun collectRows(resultSet: ResultSet): List<Map<String, Any?>> {
   val metadata = resultSet.metaData
   val columnNames = (1..metadata.columnCount).map(metadata::getColumnLabel)
   return buildList {

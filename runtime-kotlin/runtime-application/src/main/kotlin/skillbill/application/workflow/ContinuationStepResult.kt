@@ -1,15 +1,16 @@
 package skillbill.application.workflow
 
+import kotlinx.serialization.json.JsonElement
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
-import skillbill.application.model.GoalContinuationOutcome
-import skillbill.application.model.WorkflowContinueResult
+import skillbill.application.workflow.model.GoalContinuationOutcome
+import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.contracts.JsonSupport
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.model.DecompositionContinuationSelection
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.WorkflowStateSnapshot
+import skillbill.ports.db.UnitOfWork
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 /**
  * SKILL-52.1 — Internal continuation-step result. Wraps a typed
@@ -133,6 +134,6 @@ internal fun decompositionRuntimeArtifactsJson(
 )
 
 private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
-  kotlinx.serialization.json.JsonElement.serializer(),
+  JsonElement.serializer(),
   JsonSupport.valueToJsonElement(value),
 )

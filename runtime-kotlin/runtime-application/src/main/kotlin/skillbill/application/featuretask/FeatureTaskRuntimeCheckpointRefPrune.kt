@@ -1,8 +1,8 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.deleteCheckpointRef
-import skillbill.ports.workflow.listCheckpointRefs
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.deleteCheckpointRef
+import skillbill.ports.workflow.gitops.listCheckpointRefs
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import java.nio.file.Path
 

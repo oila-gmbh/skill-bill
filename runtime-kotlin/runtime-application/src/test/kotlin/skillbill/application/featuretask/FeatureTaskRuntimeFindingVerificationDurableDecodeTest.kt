@@ -7,8 +7,8 @@ import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -100,7 +100,7 @@ private fun seedWorkflow(repository: InMemoryRuntimeWorkflowRepository, workflow
 }
 
 private fun recorderFor(repository: InMemoryRuntimeWorkflowRepository): FeatureTaskRuntimePhaseRecorder =
-  FeatureTaskRuntimePhaseRecorder(
+  featureTaskRuntimePhaseRecorder(
     RuntimeFakeDatabaseSessionFactory(repository),
     testWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,

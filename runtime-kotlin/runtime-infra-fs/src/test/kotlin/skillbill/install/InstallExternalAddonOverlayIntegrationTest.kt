@@ -5,7 +5,9 @@ package skillbill.install
 import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
 import skillbill.install.model.ExternalAddonSource
 import skillbill.install.model.InstallAgent
+import skillbill.install.model.InstallApplyResult
 import skillbill.install.model.InstallApplyStatus
+import skillbill.install.model.InstallPlanRequest
 import skillbill.install.runtime.InstallOperations
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
@@ -137,7 +139,7 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     }
   }
 
-  private fun stagedSkillBody(result: skillbill.install.model.InstallApplyResult, name: String): String {
+  private fun stagedSkillBody(result: InstallApplyResult, name: String): String {
     val stagingDir = result.skills.first { it.skillName == "bill-code-review" }.staging.stagingDir
       ?: error("bill-code-review was not staged")
     return Files.readString(stagingDir.resolve("$name.md"))
@@ -214,9 +216,8 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     )
   }
 
-  private fun ApplyFixture.request(selectedPlatforms: Set<String>): skillbill.install.model.InstallPlanRequest =
-    request(
-      selectedPlatforms = selectedPlatforms,
-      agents = setOf(InstallAgent.CODEX),
-    )
+  private fun ApplyFixture.request(selectedPlatforms: Set<String>): InstallPlanRequest = request(
+    selectedPlatforms = selectedPlatforms,
+    agents = setOf(InstallAgent.CODEX),
+  )
 }

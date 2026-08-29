@@ -5,9 +5,9 @@ import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.ValidationDepth
-import skillbill.workflow.model.appendBoundedHistoryBySequence
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -19,6 +19,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap
@@ -717,7 +719,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
       suppressPr = true,
       goalBranch = "feat/SKILL-204",
       codeReviewMode = CodeReviewExecutionMode.INLINE,
-      qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+      qualityGateSelection = BUILD,
     )
     assertEquals("build", build.toArtifactMap()["quality_gate_selection"])
     assertEquals(
@@ -734,7 +736,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
     )
     assertNull(absent.toArtifactMap()["quality_gate_selection"])
     assertEquals(
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+      VALIDATE,
       FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(
         absent.toArtifactMap() + ("quality_gate_selection" to "validate"),
       ).qualityGateSelection,

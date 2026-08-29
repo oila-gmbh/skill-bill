@@ -23,12 +23,14 @@ import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
-import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.SpecSource.LINEAR
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 
 @Inject
@@ -147,7 +149,7 @@ class GoalPreflightService(
   private fun goalContinuationResult(
     issueKey: String,
     candidate: GoalContinuationCandidate,
-    manifestState: skillbill.ports.goalrunner.model.GoalRunnerManifestState?,
+    manifestState: GoalRunnerManifestState?,
     request: GoalPreflightRequest,
     selection: HydratedAgentAddonSelection,
     root: Path,
@@ -271,7 +273,7 @@ class GoalPreflightService(
   )
 
   private fun rehydrateTargets(root: Path, manifest: DecompositionManifest): List<GoalPreflightRehydrateTarget> {
-    if (manifest.specSource != skillbill.workflow.model.SpecSource.LINEAR) return emptyList()
+    if (manifest.specSource != LINEAR) return emptyList()
     val targets = buildList {
       add(
         GoalPreflightRehydrateTarget(

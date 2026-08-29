@@ -1,13 +1,14 @@
 package skillbill.db.worklist
 
 import skillbill.error.InvalidWorkListRowError
-import skillbill.ports.persistence.WorkListRepository
-import skillbill.ports.persistence.model.LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES
-import skillbill.ports.persistence.model.WorkItem
-import skillbill.ports.persistence.model.WorkItemKind
+import skillbill.ports.work.WorkListRepository
+import skillbill.ports.work.model.LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES
+import skillbill.ports.work.model.WorkItem
+import skillbill.ports.work.model.WorkItemKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.sql.Connection
+import java.sql.ResultSet
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -91,7 +92,7 @@ private fun fractionalSecondsSql(columnName: String): String = """
   END
 """.trimIndent()
 
-private fun java.sql.ResultSet.toWorkItem(): WorkItem {
+private fun ResultSet.toWorkItem(): WorkItem {
   val workflowId = required("workflow_id")
   val kindValue = required("workflow_kind")
   val kind = WorkItemKind.entries.firstOrNull { it.wireValue == kindValue }
@@ -121,7 +122,7 @@ private val validWorkStates: Set<String> =
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses +
     FeatureVerifyWorkflowDefinition.definition.workflowStatuses
 
-private fun java.sql.ResultSet.required(column: String): String {
+private fun ResultSet.required(column: String): String {
   val value = getString(column) ?: invalid(getString("workflow_id").orEmpty(), "missing $column")
   if (value.isBlank()) invalid(getString("workflow_id").orEmpty(), "missing $column")
   if (value != value.trim()) invalid(getString("workflow_id").orEmpty(), "invalid $column '$value'")

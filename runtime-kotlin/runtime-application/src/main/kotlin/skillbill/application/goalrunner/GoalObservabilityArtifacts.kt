@@ -1,13 +1,13 @@
 package skillbill.application.goalrunner
 
-import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
-import skillbill.workflow.GoalObservabilityEventValidator
-import skillbill.workflow.model.GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY
-import skillbill.workflow.model.GOAL_OBSERVABILITY_RUN_HISTORY_ARTIFACT_KEY
-import skillbill.workflow.model.GoalObservabilityChangedFileSummary
-import skillbill.workflow.model.GoalObservabilityDiffStat
-import skillbill.workflow.model.GoalObservabilityEvent
-import skillbill.workflow.model.goalObservabilityHistoryFromArtifacts
+import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.goal.model.GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GOAL_OBSERVABILITY_RUN_HISTORY_ARTIFACT_KEY
+import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
+import skillbill.workflow.goal.model.GoalObservabilityDiffStat
+import skillbill.workflow.goal.model.GoalObservabilityEvent
+import skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts
 
 internal object GoalObservabilityArtifacts {
   internal data class GoalObservabilityWorktreeActivity(

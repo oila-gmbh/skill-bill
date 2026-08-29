@@ -8,14 +8,16 @@ import skillbill.application.workflow.goalContinuationFor
 import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.model.FeatureTaskRouteScope
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 @Inject
@@ -80,7 +82,7 @@ class FeatureTaskContinuationLookupService(
     routeScope: FeatureTaskRouteScope,
     readIfPresent: Boolean = false,
   ): FeatureTaskContinuationLookupResult {
-    val lookup = fun(unitOfWork: skillbill.ports.persistence.UnitOfWork): FeatureTaskContinuationLookupResult {
+    val lookup = fun(unitOfWork: UnitOfWork): FeatureTaskContinuationLookupResult {
       val normalizedIssueKey = FeatureTaskExecutionIdentityPolicy.validateLookupRequest(issueKey, repositoryIdentity)
       val candidates = when (routeScope) {
         FeatureTaskRouteScope.STANDALONE -> unitOfWork.workflowStates.findStandaloneFeatureTaskCandidates(
@@ -197,7 +199,7 @@ class FeatureTaskContinuationLookupService(
   }
 
   private fun identityConflictsWithWorkflow(
-    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
+    identity: FeatureTaskExecutionIdentity,
     candidate: FeatureTaskWorkflowCandidate,
   ): Boolean {
     val workflow = candidate.workflow

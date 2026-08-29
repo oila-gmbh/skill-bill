@@ -1,16 +1,17 @@
 package skillbill.cli
 
+import kotlinx.serialization.json.JsonElement
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
-import skillbill.ports.workflow.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
+import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -30,15 +31,17 @@ class CliWorkflowContinuationRuntimeTest {
     val workflowId = opened["workflow_id"] as String
 
     RuntimeWorkflowTestSupport.update(
-      dbPath = fixture.dbPath,
-      workflowId = workflowId,
-      workflowStatus = "running",
-      currentStepId = "plan",
-      stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
-        """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+      RuntimeWorkflowTestSupport.UpdateArgs(
+        dbPath = fixture.dbPath,
+        workflowId = workflowId,
+        workflowStatus = "running",
+        currentStepId = "plan",
+        stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
+          """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+        ),
+        artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
+        context = fixture.context,
       ),
-      artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
-      context = fixture.context,
     )
     val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,
@@ -68,15 +71,17 @@ class CliWorkflowContinuationRuntimeTest {
     val workflowId = opened["workflow_id"] as String
 
     RuntimeWorkflowTestSupport.update(
-      dbPath = fixture.dbPath,
-      workflowId = workflowId,
-      workflowStatus = "running",
-      currentStepId = "plan",
-      stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
-        """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+      RuntimeWorkflowTestSupport.UpdateArgs(
+        dbPath = fixture.dbPath,
+        workflowId = workflowId,
+        workflowStatus = "running",
+        currentStepId = "plan",
+        stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
+          """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+        ),
+        artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
+        context = fixture.context,
       ),
-      artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
-      context = fixture.context,
     )
     val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,
@@ -144,7 +149,7 @@ private fun cliDecompositionFixture(): CliDecompositionFixture {
 }
 
 private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
-  kotlinx.serialization.json.JsonElement.serializer(),
+  JsonElement.serializer(),
   JsonSupport.valueToJsonElement(value),
 )
 

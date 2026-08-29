@@ -1,12 +1,14 @@
 package skillbill.application.review
 
-import skillbill.application.model.ParallelCodeReviewRequest
-import skillbill.application.model.ParallelReviewScope
-import skillbill.application.model.ReviewPrelaunchExpansion
+import skillbill.application.review.model.ParallelCodeReviewRequest
+import skillbill.application.review.model.ParallelCodeReviewRunnerDeps
+import skillbill.application.review.model.ParallelReviewScope
+import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
+import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -15,23 +17,28 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diff.DiffResolverPort
-import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.ports.persistence.ReviewRepository
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.model.ReviewAccountingRecord
-import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.ReviewRepository
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ResolvedReviewRubric
+import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceRequest
+import skillbill.ports.review.model.ReviewIntegrationPassRecord
+import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
-import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
+import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -41,6 +48,7 @@ import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
+import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
@@ -50,7 +58,18 @@ import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
+import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
+import skillbill.telemetry.model.FeatureVerifyFinishedRecord
+import skillbill.telemetry.model.FeatureVerifyStartedRecord
+import skillbill.telemetry.model.GoalFinishedRecord
+import skillbill.telemetry.model.GoalIssueFinishedRecord
+import skillbill.telemetry.model.GoalStartedRecord
+import skillbill.telemetry.model.GoalSubtaskFinishedRecord
+import skillbill.telemetry.model.PrDescriptionGeneratedRecord
+import skillbill.telemetry.model.QualityCheckFinishedRecord
+import skillbill.telemetry.model.QualityCheckStartedRecord
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
@@ -91,7 +110,7 @@ class ReviewRecorder {
 
   @Volatile var durableSpecProjection: ReviewSpecProjectionReference? = null
 
-  val stageDegradations: MutableList<skillbill.review.model.ReviewStageDegradationMeasurement> =
+  val stageDegradations: MutableList<ReviewStageDegradationMeasurement> =
     Collections.synchronizedList(mutableListOf())
 
   /** The prompts the inline parent lanes were actually launched with. */
@@ -119,12 +138,12 @@ data class ReviewHarnessConfig(
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val rubricBody: (String) -> String = { "governed rubric body for $it" },
   val response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse() },
-  val evidenceBrokerFactory: skillbill.ports.review.ReviewEvidenceBrokerFactory =
-    skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
+  val evidenceBrokerFactory: ReviewEvidenceBrokerFactory =
+    FileSystemReviewEvidenceBrokerFactory(),
   val parentLaunch: ((GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome)? = null,
   /** Set false to model a worker that answered without reading its assigned evidence. */
   val simulateEvidenceReads: Boolean = true,
-  val evidenceEndpointBinder: skillbill.ports.review.GovernedReviewEvidenceEndpointBinder =
+  val evidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder =
     stubGovernedReviewEvidenceEndpointBinder(Files.createTempDirectory("review-endpoint")),
   /**
    * Commit range the fixture enumerates. Empty keeps the default single synthetic unit; the last
@@ -135,75 +154,68 @@ data class ReviewHarnessConfig(
 
 fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): ParallelCodeReviewRunner =
   ParallelCodeReviewRunner(
-    parentReviewLauncher = GoalRunnerSubtaskLauncher { request ->
-      recorder.parentLaunches += request
-      // A real review worker pulls its assigned bodies through the governed broker before it
-      // answers, whichever launcher stub stands in for it. The fixture reads them too, so a lane
-      // here is a lane that reviewed something and the unread-evidence guard stays a signal about
-      // the worker rather than about the stub.
-      if (config.simulateEvidenceReads) simulateGovernedEvidenceReads(request.skillRunRequest)
-      config.parentLaunch?.invoke(request)?.let { return@GoalRunnerSubtaskLauncher it }
-      val response = config.response(request)
-      AgentRunLaunchFacts(
-        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = if (response.timedOut || response.spawnFailed || response.interrupted) {
-          null
-        } else {
-          response.exitStatus
-        },
-        stdout = response.stdout,
-        stderr = "",
-        timedOut = response.timedOut,
-        interrupted = response.interrupted,
-        spawnFailed = response.spawnFailed,
-        liveness = response.liveness,
-        processStarted = response.processStarted && !response.spawnFailed,
-        mcpStartupObserved = response.mcpStartupObserved,
-      ) as AgentRunLaunchOutcome
-    },
-    installedPackCatalog = InstalledPlatformPackCatalogPort { config.manifests },
-    diffResolver = object : DiffResolverPort {
-      override fun runProcess(args: List<String>, workDir: Path): String? {
-        recorder.diffCommands += args
-        return when (args.getOrNull(1)) {
-          // Declared revisions canonicalize to themselves. With no commit fixture the range
-          // enumerates nothing, so the harness reviews one synthetic unit over config.diff rather
-          // than a fabricated chain; with one it replays exactly that chain.
-          "rev-parse" -> args.last().removeSuffix("^{commit}")
-          "rev-list" -> config.commits.joinToString("\n") { it.sha }
-          "show" -> config.commits.single { it.sha == args.last() }.let { commit ->
-            "${parentOf(config.commits, commit)}\n${commit.subject}"
+    ParallelCodeReviewRunnerDeps(
+      parentReviewLauncher = GoalRunnerSubtaskLauncher { request ->
+        recorder.parentLaunches += request
+        if (config.simulateEvidenceReads) simulateGovernedEvidenceReads(request.skillRunRequest)
+        config.parentLaunch?.invoke(request)?.let { return@GoalRunnerSubtaskLauncher it }
+        val response = config.response(request)
+        AgentRunLaunchFacts(
+          agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+          exitStatus = if (response.timedOut || response.spawnFailed || response.interrupted) {
+            null
+          } else {
+            response.exitStatus
+          },
+          stdout = response.stdout,
+          stderr = "",
+          timedOut = response.timedOut,
+          interrupted = response.interrupted,
+          spawnFailed = response.spawnFailed,
+          liveness = response.liveness,
+          processStarted = response.processStarted && !response.spawnFailed,
+          mcpStartupObserved = response.mcpStartupObserved,
+        ) as AgentRunLaunchOutcome
+      },
+      installedPackCatalog = InstalledPlatformPackCatalogPort { config.manifests },
+      diffResolver = object : DiffResolverPort {
+        override fun runProcess(args: List<String>, workDir: Path): String? {
+          recorder.diffCommands += args
+          return when (args.getOrNull(1)) {
+            "rev-parse" -> args.last().removeSuffix("^{commit}")
+            "rev-list" -> config.commits.joinToString("\n") { it.sha }
+            "show" -> config.commits.single { it.sha == args.last() }.let { commit ->
+              "${parentOf(config.commits, commit)}\n${commit.subject}"
+            }
+            else -> config.commits.firstOrNull {
+              it.sha == args.getOrNull(3) && parentOf(config.commits, it) == args.getOrNull(2)
+            }?.diff ?: config.diff
           }
-          // A per-commit read names (parent, sha); the aggregate read names (base, head). Matching
-          // both ends keeps the two apart when head is also the last commit of the range.
-          else -> config.commits.firstOrNull {
-            it.sha == args.getOrNull(3) && parentOf(config.commits, it) == args.getOrNull(2)
-          }?.diff ?: config.diff
         }
-      }
-    },
-    repoLocalConfig = object : RepoLocalConfigPort {
-      override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
-        ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
-    },
-    reviewContextEnvelopeValidator = object : ReviewContextEnvelopeValidator {
-      override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
-    },
-    reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
-    reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
-    database = recordingDatabase(recorder),
-    specIntentProjectionResolver = SpecIntentProjectionResolver(
-      FileSystemDecompositionManifestFileStore(),
-      DecompositionManifestValidatorAdapter(),
-      SpecIntentProjectionExtractor(
-        object : ReviewContextEnvelopeValidator {
-          override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
-        },
+      },
+      repoLocalConfig = object : RepoLocalConfigPort {
+        override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
+          ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
+      },
+      reviewContextEnvelopeValidator = object : ReviewContextEnvelopeValidator {
+        override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+      },
+      reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
+      reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
+      database = recordingDatabase(recorder),
+      specIntentProjectionResolver = SpecIntentProjectionResolver(
         FileSystemDecompositionManifestFileStore(),
+        DecompositionManifestValidatorAdapter(),
+        SpecIntentProjectionExtractor(
+          object : ReviewContextEnvelopeValidator {
+            override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+          },
+          FileSystemDecompositionManifestFileStore(),
+        ),
       ),
+      reviewEvidenceBrokerFactory = config.evidenceBrokerFactory,
+      governedEvidenceEndpointBinder = config.evidenceEndpointBinder,
     ),
-    reviewEvidenceBrokerFactory = config.evidenceBrokerFactory,
-    governedEvidenceEndpointBinder = config.evidenceEndpointBinder,
   )
 
 /** The base revision every harness request declares; the root commit of a fixture range parents onto it. */
@@ -225,7 +237,7 @@ private fun recordingRubricResolver(recorder: ReviewRecorder, rubricBody: (Strin
 
     override fun resolve(
       manifest: PlatformManifest?,
-      evidence: List<skillbill.ports.review.model.ReviewOwnedFileEvidence>,
+      evidence: List<ReviewOwnedFileEvidence>,
       specialistSkillName: String,
     ): ResolvedReviewRubric {
       recorder.rubricResolutions += specialistSkillName
@@ -318,41 +330,31 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
 
 private fun recordingLifecycleTelemetry(recorder: ReviewRecorder): LifecycleTelemetryRepository =
   object : LifecycleTelemetryRepository {
-    override fun reviewStageDegradation(record: skillbill.review.model.ReviewStageDegradationMeasurement) {
+    override fun reviewStageDegradation(record: ReviewStageDegradationMeasurement) {
       recorder.stageDegradations += record
     }
 
-    override fun featureTaskRuntimeStarted(
-      record: skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord,
-      level: String,
-    ) = Unit
+    override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) = Unit
 
-    override fun featureTaskRuntimeFinished(
-      record: skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord,
-      level: String,
-    ) = Unit
+    override fun featureTaskRuntimeFinished(record: FeatureTaskRuntimeFinishedRecord, level: String) = Unit
 
-    override fun qualityCheckStarted(record: skillbill.telemetry.model.QualityCheckStartedRecord, level: String) = Unit
+    override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) = Unit
 
-    override fun qualityCheckFinished(record: skillbill.telemetry.model.QualityCheckFinishedRecord, level: String) =
-      Unit
+    override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) = Unit
 
-    override fun featureVerifyStarted(record: skillbill.telemetry.model.FeatureVerifyStartedRecord, level: String) =
-      Unit
+    override fun featureVerifyStarted(record: FeatureVerifyStartedRecord, level: String) = Unit
 
-    override fun featureVerifyFinished(record: skillbill.telemetry.model.FeatureVerifyFinishedRecord, level: String) =
-      Unit
+    override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) = Unit
 
-    override fun prDescriptionGenerated(record: skillbill.telemetry.model.PrDescriptionGeneratedRecord, level: String) =
-      Unit
+    override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) = Unit
 
-    override fun goalStarted(record: skillbill.telemetry.model.GoalStartedRecord, level: String) = Unit
+    override fun goalStarted(record: GoalStartedRecord, level: String) = Unit
 
-    override fun goalSubtaskFinished(record: skillbill.telemetry.model.GoalSubtaskFinishedRecord, level: String) = Unit
+    override fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String) = Unit
 
-    override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = Unit
+    override fun goalFinished(record: GoalFinishedRecord, level: String) = Unit
 
-    override fun goalIssueFinished(record: skillbill.telemetry.model.GoalIssueFinishedRecord, level: String) = Unit
+    override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) = Unit
   }
 
 private fun recordingCatalogGateway(manifests: List<PlatformManifest>): ScaffoldCatalogGateway =
@@ -490,16 +492,15 @@ private val OWNED_PATH = Regex("\"([^\"]+)\"")
  * The harness broker with one lane-evidence denial injected where the runner reads it. A fixture
  * packet carries no materializable hunk bodies, so a byte-driven refusal cannot be provoked here.
  */
-fun brokerDenyingUnit(deniedPath: String): skillbill.ports.review.ReviewEvidenceBrokerFactory =
-  skillbill.ports.review.ReviewEvidenceBrokerFactory { binding ->
-    val delegate = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory().brokerFor(binding)
-    val hunkId = binding.projectedHunks.first { it.path == deniedPath }.hunkId
-    val commitSha = binding.assignment.assignedBundle.entries.first { hunkId in it.hunkIds }.commitSha
-    val deniedUnit = "$commitSha@$deniedPath"
-    object : skillbill.ports.review.ReviewEvidenceBroker by delegate {
-      override fun accounting(): skillbill.ports.review.model.ReviewLaneAccounting = delegate.accounting().copy(
-        budgetDimension = LANE_EVIDENCE_BYTES_DIMENSION,
-        unreviewedUnits = listOf(deniedUnit),
-      )
-    }
+fun brokerDenyingUnit(deniedPath: String): ReviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+  val delegate = FileSystemReviewEvidenceBrokerFactory().brokerFor(binding)
+  val hunkId = binding.projectedHunks.first { it.path == deniedPath }.hunkId
+  val commitSha = binding.assignment.assignedBundle.entries.first { hunkId in it.hunkIds }.commitSha
+  val deniedUnit = "$commitSha@$deniedPath"
+  object : ReviewEvidenceBroker by delegate {
+    override fun accounting(): ReviewLaneAccounting = delegate.accounting().copy(
+      budgetDimension = LANE_EVIDENCE_BYTES_DIMENSION,
+      unreviewedUnits = listOf(deniedUnit),
+    )
   }
+}

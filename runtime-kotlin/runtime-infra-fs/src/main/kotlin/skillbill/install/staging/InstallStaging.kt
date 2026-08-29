@@ -154,7 +154,7 @@ internal fun stageInstalledSkill(
   home: Path,
   manifests: List<PlatformManifest>? = null,
   skillsRoot: Path? = null,
-  selectedPackSkills: List<skillbill.install.model.InstallPlanSkill> = emptyList(),
+  selectedPackSkills: List<InstallPlanSkill> = emptyList(),
   selectedPlatformSlugs: Set<String> = emptySet(),
   suppliedCompactIdentity: String? = null,
 ): RenderedSkill {

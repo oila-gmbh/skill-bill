@@ -1,9 +1,9 @@
 package skillbill.contracts.workflow
 
 import skillbill.error.InvalidGoalProgressEventSchemaError
-import skillbill.workflow.model.GoalProgressEvent
-import skillbill.workflow.model.GoalProgressEventKind
-import skillbill.workflow.model.GoalProgressOutcome
+import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.goal.model.GoalProgressEventKind
+import skillbill.workflow.goal.model.GoalProgressOutcome
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 

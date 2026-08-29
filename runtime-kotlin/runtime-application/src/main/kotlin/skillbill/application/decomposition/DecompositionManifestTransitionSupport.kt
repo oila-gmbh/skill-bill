@@ -1,7 +1,7 @@
 package skillbill.application.decomposition
 
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
 
 internal fun DecompositionManifest.withBlockedSubtask(
   subtaskId: Int,

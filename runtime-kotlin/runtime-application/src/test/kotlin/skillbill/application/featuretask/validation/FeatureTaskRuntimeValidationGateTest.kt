@@ -7,10 +7,11 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleReq
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
+import skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Captured
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
 import java.util.concurrent.atomic.AtomicInteger
@@ -134,8 +135,8 @@ class FeatureTaskRuntimeValidationGateTest {
         validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentTriageLauncher = skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher {
-          skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Captured("plan prose")
+        agentTriageLauncher = ValidationGateAgentTriageLauncher {
+          Captured("plan prose")
         },
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _, _ ->
           completedRepair()

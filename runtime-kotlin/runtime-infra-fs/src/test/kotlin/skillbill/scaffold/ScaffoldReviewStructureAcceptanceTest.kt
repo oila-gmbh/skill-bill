@@ -2,7 +2,7 @@ package skillbill.scaffold
 
 import org.yaml.snakeyaml.Yaml
 import skillbill.scaffold.authoring.renderAuthoringTarget
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.runtime.scaffold

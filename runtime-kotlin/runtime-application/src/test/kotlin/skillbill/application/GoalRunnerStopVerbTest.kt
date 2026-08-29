@@ -1,14 +1,15 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.model.GoalRunnerStopStatus
+import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
+import skillbill.application.goalrunner.model.GoalRunnerStopStatus
+import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_STOP
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.ports.goalrunner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.model.GoalRunnerManifestState
-import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
@@ -17,9 +18,9 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.workflow.model.CurrentSubtaskIntent
-import skillbill.workflow.model.DecompositionManifest
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
@@ -158,12 +159,15 @@ class GoalRunnerStopVerbTest {
   fun `the no-op supervisor never terminates anything`() {
     val store = StopFakeManifestStore(lease = liveLease())
 
-    val result = GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      clock = stopClock(),
-      workerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
+    val result = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        clock = stopClock(),
+        workerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
+      ),
     ).stop("SKILL-168", null)
 
     assertEquals(GoalRunnerStopStatus.IDENTITY_MISMATCH, result.status)
@@ -260,12 +264,15 @@ class GoalRunnerStopVerbTest {
   }
 
   private fun stopService(store: StopFakeManifestStore, supervisor: FeatureTaskRuntimeWorkerSupervisor) =
-    GoalRunnerStatusService(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-      clock = stopClock(),
-      workerSupervisor = supervisor,
+    testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = store,
+        outcomeStore = RecordingOutcomeStore(),
+        phaseRecorder = goalTestPhaseRecorder(),
+      ).copy(
+        clock = stopClock(),
+        workerSupervisor = supervisor,
+      ),
     )
 }
 

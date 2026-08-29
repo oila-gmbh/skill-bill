@@ -1,9 +1,9 @@
 package skillbill.goalplanning
 
 import skillbill.error.GoalVerificationBoundaryCapExceededError
-import skillbill.ports.goalrunner.model.GoalPlanningBoundaryBodyResolutionCaps
-import skillbill.ports.goalrunner.model.GoalPlanningBoundaryHeading
-import skillbill.ports.goalrunner.model.GoalVerificationContext
+import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBodyResolutionCaps
+import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
+import skillbill.ports.goalrunner.verification.model.GoalVerificationContext
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test

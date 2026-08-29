@@ -5,14 +5,14 @@ import skillbill.contracts.workflow.DecompositionManifestSchemaValidator
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputStructuralRepair
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputStructuralRepairDecision
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.workflow.DecompositionManifestCodec
-import skillbill.workflow.DecompositionManifestValidator
-import skillbill.workflow.model.DecompositionManifestRepairEvidence
-import skillbill.workflow.model.DecompositionManifestRepairOperation
-import skillbill.workflow.model.DecompositionManifestValidationFailureCode
-import skillbill.workflow.model.DecompositionManifestValidationFormat
-import skillbill.workflow.model.DecompositionManifestValidationResult
-import skillbill.workflow.model.DecompositionManifestValidationSourceLocation
+import skillbill.workflow.decomposition.DecompositionManifestCodec
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence
+import skillbill.workflow.decomposition.model.DecompositionManifestRepairOperation
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationFailureCode
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationFormat
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationSourceLocation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
@@ -85,7 +85,10 @@ class DecompositionManifestValidatorAdapter : DecompositionManifestValidator {
         DecompositionManifestValidationFailureCode.REPAIR_LIMIT_EXCEEDED
       FeatureTaskRuntimePhaseOutputFailureCode.UNSUPPORTED_REPAIR ->
         DecompositionManifestValidationFailureCode.UNSUPPORTED_REPAIR
-      else -> DecompositionManifestValidationFailureCode.SCHEMA_INVALID
+      FeatureTaskRuntimePhaseOutputFailureCode.SCHEMA_INVALID,
+      FeatureTaskRuntimePhaseOutputFailureCode.PHASE_ID_MISMATCH,
+      FeatureTaskRuntimePhaseOutputFailureCode.SEMANTIC_INVALID,
+      -> DecompositionManifestValidationFailureCode.SCHEMA_INVALID
     }
 
   private fun FeatureTaskRuntimePhaseOutputRepairEvidence.toManifestEvidence(): DecompositionManifestRepairEvidence =

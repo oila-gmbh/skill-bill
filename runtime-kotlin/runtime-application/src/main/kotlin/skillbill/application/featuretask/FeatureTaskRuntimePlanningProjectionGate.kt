@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 
 internal fun producerProjectionGateReason(

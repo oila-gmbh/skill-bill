@@ -13,14 +13,14 @@ import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.platformpack.declaredCodeReviewSkillNames
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.platformpack.unsupportedCompositionModeReason
-import skillbill.scaffold.policy.SKILL_KIND_AGENT_ADDON
-import skillbill.scaffold.policy.SKILL_KIND_HORIZONTAL
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_AGENT_ADDON
+import skillbill.scaffold.policy.scaffold.SKILL_KIND_HORIZONTAL
 import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
 import skillbill.scaffold.runtime.ScaffoldPlan
 import skillbill.scaffold.runtime.displayNameFromSlug
 import java.nio.file.Files
 import java.nio.file.Path
-import skillbill.scaffold.policy.parseBaselineLayerPayload as policyParseBaselineLayerPayload
+import skillbill.scaffold.policy.scaffold.parseBaselineLayerPayload as policyParseBaselineLayerPayload
 
 /**
  * Filesystem adapter for [ScaffoldRepoValidationPort]. Builds the existing

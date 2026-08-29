@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
@@ -109,7 +110,7 @@ class WorkflowStateSchemaViolationsTest {
         ),
       )
     }
-    val instance = ObjectMapper().valueToTree<com.fasterxml.jackson.databind.JsonNode>(snapshot)
+    val instance = ObjectMapper().valueToTree<JsonNode>(snapshot)
     val offendingValue = extractOffendingValueFromInstance(instance, "/steps/0/status")
     assertEquals("frobnicated", offendingValue)
   }

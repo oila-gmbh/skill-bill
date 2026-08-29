@@ -1,11 +1,11 @@
 package skillbill.scaffold.payload
 
 import skillbill.error.InvalidScaffoldPayloadError
-import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
-import skillbill.scaffold.policy.PLATFORM_PACK_PRESET_DESCRIPTORS
-import skillbill.scaffold.policy.displayNameFromSlug
-import skillbill.scaffold.policy.model.PlatformPackDefaults
-import skillbill.scaffold.policy.model.PlatformPackSelection
+import skillbill.scaffold.policy.scaffold.APPROVED_CODE_REVIEW_AREAS
+import skillbill.scaffold.policy.scaffold.PLATFORM_PACK_PRESET_DESCRIPTORS
+import skillbill.scaffold.policy.scaffold.displayNameFromSlug
+import skillbill.scaffold.policy.scaffold.model.PlatformPackDefaults
+import skillbill.scaffold.policy.scaffold.model.PlatformPackSelection
 
 /**
  * SKILL-52.2 subtask 2 (Task 11): platform-pack-resolution helpers split out of

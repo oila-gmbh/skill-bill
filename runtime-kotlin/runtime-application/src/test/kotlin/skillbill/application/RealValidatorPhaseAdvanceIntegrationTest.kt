@@ -2,7 +2,7 @@
 
 package skillbill.application
 
-import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

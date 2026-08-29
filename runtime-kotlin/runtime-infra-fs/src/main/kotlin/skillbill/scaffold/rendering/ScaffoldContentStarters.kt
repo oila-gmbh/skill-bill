@@ -200,7 +200,8 @@ internal fun baselineReviewContent(summary: String): String = buildString {
   appendLine()
   appendLine(
     "Keep this section limited to platform-specific finding preconditions; " +
-      "generated orchestration owns universal severity and precondition checks, keeps findings attributed through merge, " +
+      "generated orchestration owns universal severity and precondition checks, keeps findings attributed through" +
+      "merge, " +
       "and deduplicates without losing evidence.",
   )
 }

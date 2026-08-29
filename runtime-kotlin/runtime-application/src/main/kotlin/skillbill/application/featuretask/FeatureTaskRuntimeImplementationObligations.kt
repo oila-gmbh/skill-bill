@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
+import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt
 
 internal data class FeatureTaskRuntimeImplementationObligations(

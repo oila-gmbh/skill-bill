@@ -1,5 +1,6 @@
 package skillbill.db.workflow
 
+import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
@@ -7,14 +8,14 @@ import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
-import skillbill.ports.persistence.model.GoalPlanningContractProvenance
-import skillbill.ports.persistence.model.GoalPlanningIdentity
-import skillbill.ports.persistence.model.GoalPlanningPreparationProvenance
-import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
-import skillbill.ports.persistence.model.GoalPlanningPreparationState
-import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
-import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
-import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
+import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningIdentity
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
+import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
+import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
+import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
@@ -729,7 +730,7 @@ class GoalPlanningPreparationStoreTest {
       )
       // Store still surfaces the row so relaunch can replace+restamp.
       assertEquals(
-        skillbill.db.workflow.INVALIDATED_SHARED_PREPLAN_PAYLOAD,
+        INVALIDATED_SHARED_PREPLAN_PAYLOAD,
         store.findSharedPreplan(identity())?.preplanPayload,
       )
     }
@@ -791,7 +792,7 @@ class GoalPlanningPreparationStoreTest {
   private fun provenance() = GoalPlanningContractProvenance(
     parentSpecHash = "a".repeat(64),
     decompositionManifestHash = "b".repeat(64),
-    planningContractId = skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+    planningContractId = EXPECTED_SCHEMA_ID,
   )
 
   private fun sharedCheckpoint() = SharedGoalPreplanCheckpoint(

@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.persistence.FeatureTaskPhaseSettlementRepository
-import skillbill.ports.persistence.model.FeatureTaskPhaseSettlement
+import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
+import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import java.util.concurrent.ConcurrentHashMap
 
 class InMemoryFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementRepository {

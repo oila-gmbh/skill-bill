@@ -2,29 +2,33 @@ package skillbill.application
 
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.goalrunner.toRecord
 import skillbill.application.learning.LearningService
-import skillbill.application.model.AddLearningInput
-import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
-import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.model.GoalFinishedRequest
-import skillbill.application.model.GoalStartedRequest
-import skillbill.application.model.GoalStatsResult
-import skillbill.application.model.GoalSubtaskFinishedRequest
-import skillbill.application.model.WorkflowContinueResult
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowGetResult
-import skillbill.application.model.WorkflowLatestResult
-import skillbill.application.model.WorkflowOpenResult
-import skillbill.application.model.WorkflowResumeResult
-import skillbill.application.model.WorkflowUpdateRequest
-import skillbill.application.model.WorkflowUpdateResult
+import skillbill.application.learning.model.AddLearningInput
 import skillbill.application.review.ReviewService
+import skillbill.application.review.model.GoalStatsResult
 import skillbill.application.telemetry.RUNTIME_EXCEPTION_EVENT
 import skillbill.application.telemetry.TelemetryService
+import skillbill.application.telemetry.model.GoalFinishedRequest
+import skillbill.application.telemetry.model.GoalStartedRequest
+import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.telemetry.toRecord
 import skillbill.application.workflow.WorkflowService
+import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowFamilyKind
+import skillbill.application.workflow.model.WorkflowGetResult
+import skillbill.application.workflow.model.WorkflowLatestResult
+import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowResumeResult
+import skillbill.application.workflow.model.WorkflowServiceOpenArgs
+import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
+import skillbill.application.workflow.model.WorkflowUpdateRequest
+import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.application.workflow.openFeatureTask
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
@@ -43,39 +47,44 @@ import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.learnings.model.UpdateLearningRequest
 import skillbill.model.EnvironmentContext
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.LearningRepository
-import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.ports.persistence.ReviewRepository
-import skillbill.ports.persistence.ReviewRunCompletenessRepository
-import skillbill.ports.persistence.TelemetryOutboxRepository
-import skillbill.ports.persistence.TelemetryReconciliationRepository
-import skillbill.ports.persistence.UnavailableReviewRunCompletenessRepository
-import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.persistence.WorkflowStateRepository
-import skillbill.ports.persistence.WorkflowStatsRepository
-import skillbill.ports.persistence.model.FeatureImplementSessionSummary
-import skillbill.ports.persistence.model.FeatureVerifySessionSummary
-import skillbill.ports.persistence.model.LearningResolution
-import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
-import skillbill.ports.persistence.model.TelemetryOutboxRecord
-import skillbill.ports.persistence.model.TelemetryReconciliationRequest
-import skillbill.ports.persistence.model.TelemetryReconciliationResult
-import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.learning.model.LearningResolution
 import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.review.ReviewRunCompletenessRepository
+import skillbill.ports.review.UnavailableReviewRunCompletenessRepository
+import skillbill.ports.review.model.ReviewRepositoryStatsSnapshot
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.TelemetryConfigStore
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
+import skillbill.ports.telemetry.model.TelemetryOutboxRecord
+import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
+import skillbill.ports.telemetry.model.TelemetryReconciliationResult
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.WorkflowStatsRepository
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
+import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
@@ -104,7 +113,7 @@ import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
-import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
@@ -141,13 +150,15 @@ internal fun WorkflowService.openTestFeatureTask(
   dbOverride: String? = null,
   issueKey: String = "SKILL-120",
 ): WorkflowOpenResult = openFeatureTask(
-  kind = kind,
-  sessionId = sessionId,
-  currentStepId = currentStepId,
-  dbOverride = dbOverride,
-  issueKey = issueKey,
-  repositoryIdentity = "repo-root-realpath-v1:/test/repository",
-  governedSpecPath = ".feature-specs/$issueKey/spec.md",
+  WorkflowServiceOpenFeatureTaskArgs(
+    kind = kind,
+    sessionId = sessionId,
+    currentStepId = currentStepId,
+    dbOverride = dbOverride,
+    issueKey = issueKey,
+    repositoryIdentity = "repo-root-realpath-v1:/test/repository",
+    governedSpecPath = ".feature-specs/$issueKey/spec.md",
+  ),
 )
 
 @Suppress("LargeClass") // integration suite spanning learning/review/telemetry/workflow ports
@@ -207,7 +218,7 @@ class ApplicationPersistencePortTest {
     val database = FakeDatabaseSessionFactory(reviews = FakeReviewRepository(sourceFindingExists = true))
     val service = LearningService(database)
 
-    kotlin.test.assertFailsWith<IllegalArgumentException> {
+    assertFailsWith<IllegalArgumentException> {
       service.add(
         AddLearningInput(
           scope = LearningScope.SKILL,
@@ -1656,7 +1667,9 @@ class ApplicationPersistencePortTest {
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
 
-    val opened = service.open(WorkflowFamilyKind.VERIFY, currentStepId = "code_review", dbOverride = null)
+    val opened = service.open(
+      WorkflowServiceOpenArgs(kind = WorkflowFamilyKind.VERIFY, currentStepId = "code_review", dbOverride = null),
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
     val steps = opened.snapshot.steps
@@ -1712,7 +1725,9 @@ class ApplicationPersistencePortTest {
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
 
-    val opened = service.open(WorkflowFamilyKind.VERIFY, sessionId = "fvr-001", dbOverride = null)
+    val opened = service.open(
+      WorkflowServiceOpenArgs(kind = WorkflowFamilyKind.VERIFY, sessionId = "fvr-001", dbOverride = null),
+    )
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
     val continued = service.continueWorkflow(WorkflowFamilyKind.VERIFY, workflowId, dbOverride = null)
@@ -1932,8 +1947,8 @@ class ApplicationPersistencePortTest {
 
   @Test
   fun `goal planning preparation is a separate port unreachable from standalone feature-task persistence`() {
-    val goalPlanningPort = skillbill.ports.persistence.GoalPlanningPreparationRepository::class.java
-    val workflowStatePort = skillbill.ports.persistence.WorkflowStateRepository::class.java
+    val goalPlanningPort = GoalPlanningPreparationRepository::class.java
+    val workflowStatePort = WorkflowStateRepository::class.java
 
     assertTrue(
       goalPlanningPort !in workflowStatePort.interfaces,
@@ -1966,10 +1981,10 @@ class ApplicationPersistencePortTest {
       "GoalPlanningPreparationRepository must not expose java.sql types: ${sqlTypedMembers.map { it.name }}",
     )
     assertTrue(
-      goalPlanningPort.isAssignableFrom(skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository::class.java),
+      goalPlanningPort.isAssignableFrom(EmptyGoalPlanningPreparationRepository::class.java),
       "EmptyGoalPlanningPreparationRepository must satisfy the goal-planning port for test fakes.",
     )
-    val unitOfWorkClass = skillbill.ports.persistence.UnitOfWork::class.java
+    val unitOfWorkClass = UnitOfWork::class.java
     val unitOfWorkGetter =
       unitOfWorkClass.declaredMethods.single { method -> method.name == "getGoalPlanningPreparations" }
     assertTrue(
@@ -2015,8 +2030,8 @@ private class FakeDatabaseSessionFactory(
       this@FakeDatabaseSessionFactory.telemetryReconciliation
     override val telemetryOutbox: TelemetryOutboxRepository = this@FakeDatabaseSessionFactory.telemetryOutbox
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
-    override val workList = skillbill.ports.persistence.EmptyWorkListRepository
-    override val goalPlanningPreparations = skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
+    override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
 }
 
@@ -2459,11 +2474,9 @@ private class FakeTelemetryClient : TelemetryClient {
 }
 
 private object NoopWorkflowStateRepository : WorkflowStateRepository {
-  override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
-  ) = Unit
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
+    emptyList<FeatureTaskWorkflowCandidate>()
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) = Unit
 
   override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) = Unit
@@ -2825,11 +2838,9 @@ private class InMemoryWorkflowStateRepository(
   private val implementSessionSummary: FeatureImplementSessionSummary? = null,
   private val verifySessionSummary: FeatureVerifySessionSummary? = null,
 ) : WorkflowStateRepository {
-  override fun saveFeatureTaskExecutionIdentity(
-    identity: skillbill.ports.persistence.model.FeatureTaskExecutionIdentity,
-  ) = Unit
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
   override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate>()
+    emptyList<FeatureTaskWorkflowCandidate>()
   private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
   private val verifyRows = linkedMapOf<String, WorkflowStateRecord>()
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
@@ -2966,7 +2977,7 @@ private fun numberedFinding(number: Int, findingId: String): NumberedFinding = N
   description = "Example finding",
 )
 
-private fun testPhaseRecorder(database: DatabaseSessionFactory) = FeatureTaskRuntimePhaseRecorder(
+private fun testPhaseRecorder(database: DatabaseSessionFactory) = featureTaskRuntimePhaseRecorder(
   database,
   WorkflowSnapshotValidatorInfraAdapter(),
   FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter(),

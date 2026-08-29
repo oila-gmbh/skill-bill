@@ -102,7 +102,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     )
     val headingId = sections.single().discovery.boundaryCatalog.single().headingId
     val checkpoint = listOf(
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+      FeatureTaskRuntimeFindingVerificationDisposition(
         findingId = "F-001",
         disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
         reason = "Matches intent",
@@ -199,7 +199,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       repo,
       sections,
       listOf(
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+        FeatureTaskRuntimeFindingVerificationDisposition(
           findingId = "F-001",
           disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
           reason = "Matches intent",
@@ -225,7 +225,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
         ),
       ),
     )
-    val disposition = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+    val disposition = FeatureTaskRuntimeFindingVerificationDisposition(
       findingId = "F-002",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
@@ -254,7 +254,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       ),
     )
     assertFalse(sections.single().discovery.boundaryContextUnavailable)
-    val disposition = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+    val disposition = FeatureTaskRuntimeFindingVerificationDisposition(
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
@@ -282,7 +282,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       ),
     )
     val catalogEntry = sections.single().discovery.boundaryCatalog.single()
-    val disposition = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+    val disposition = FeatureTaskRuntimeFindingVerificationDisposition(
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
@@ -326,7 +326,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       ),
     )
     val catalogEntry = sections.single().discovery.boundaryCatalog.single()
-    val disposition = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+    val disposition = FeatureTaskRuntimeFindingVerificationDisposition(
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
@@ -359,7 +359,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
         ),
       ),
     )
-    val changed = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+    val changed = FeatureTaskRuntimeFindingVerificationDisposition(
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
@@ -398,7 +398,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       ),
     )
     val catalogEntry = sections.single().discovery.boundaryCatalog.single()
-    val disposition = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+    val disposition = FeatureTaskRuntimeFindingVerificationDisposition(
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
@@ -443,7 +443,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     )
     val catalogByFindingId = sections.associate { it.findingId to it.discovery.boundaryCatalog.single() }
     val dispositions = listOf(
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+      FeatureTaskRuntimeFindingVerificationDisposition(
         findingId = "F-001",
         disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
         reason = "Matches intent",
@@ -454,7 +454,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
           ),
         ),
       ),
-      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+      FeatureTaskRuntimeFindingVerificationDisposition(
         findingId = "F-002",
         disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
         reason = "Matches intent",

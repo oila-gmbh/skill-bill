@@ -1,8 +1,8 @@
 package skillbill.application.featuretask
 
-import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.repositoryOwnedPaths
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.repositoryOwnedPaths
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import java.nio.file.Path
 

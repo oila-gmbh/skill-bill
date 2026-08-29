@@ -1,6 +1,8 @@
 package skillbill.launcher.review
 
 import skillbill.contracts.JsonSupport
+import skillbill.error.GovernedReviewEvidenceTransportError
+import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
@@ -95,7 +97,7 @@ class GovernedReviewEvidenceEndpointTest {
   @Test
   fun `an isolated home without runtime-mcp loud-fails instead of inheriting the host binary`() {
     val home = Files.createTempDirectory("review-evidence-home")
-    val error = assertFailsWith<skillbill.error.GovernedReviewEvidenceTransportError> {
+    val error = assertFailsWith<GovernedReviewEvidenceTransportError> {
       bridgeCommand(emptyMap(), home)
     }
     assertTrue(error.message!!.contains(home.toString()))
@@ -133,10 +135,10 @@ class GovernedReviewEvidenceEndpointTest {
     val endpoint = GovernedReviewEvidenceEndpoint.bind("architecture", RecordingProtocol(), listOf("/bin/true"))
     assertTrue(Files.exists(endpoint.descriptor.socketPath))
     assertTrue(Files.exists(endpoint.descriptor.mcpConfigPath))
-    val cursorConfig = skillbill.launcher.mcp.GovernedReviewMcpConfigWriter.cursorProjectConfigPath(
+    val cursorConfig = GovernedReviewMcpConfigWriter.cursorProjectConfigPath(
       endpoint.descriptor.mcpConfigPath,
     )
-    val tomlConfig = skillbill.launcher.mcp.GovernedReviewMcpConfigWriter.tomlConfigPath(
+    val tomlConfig = GovernedReviewMcpConfigWriter.tomlConfigPath(
       endpoint.descriptor.mcpConfigPath,
     )
     assertEquals(Files.readString(endpoint.descriptor.mcpConfigPath), Files.readString(cursorConfig))

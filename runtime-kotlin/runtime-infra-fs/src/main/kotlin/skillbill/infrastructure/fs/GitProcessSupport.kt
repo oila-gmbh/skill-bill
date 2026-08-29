@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.io.IOException
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit

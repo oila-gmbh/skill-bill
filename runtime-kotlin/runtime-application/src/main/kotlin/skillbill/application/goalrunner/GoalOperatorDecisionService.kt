@@ -2,12 +2,13 @@ package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.model.GoalRunnerOperatorDecisionRequest
-import skillbill.application.model.GoalRunnerOperatorDecisionResult
-import skillbill.ports.goalrunner.GoalRunnerManifestStore
+import skillbill.application.goalrunner.model.GoalRunnerOperatorDecisionRequest
+import skillbill.application.goalrunner.model.GoalRunnerOperatorDecisionResult
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
-import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 
 @Inject
 class GoalOperatorDecisionService(
@@ -48,7 +49,7 @@ class GoalOperatorDecisionService(
     request: GoalRunnerOperatorDecisionRequest,
     parentWorkflowId: String,
     childWorkflowId: String,
-    pause: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause,
+    pause: FeatureTaskRuntimeAuditGapPause,
   ): GoalRunnerOperatorDecisionResult {
     if (pause.grantConsumed) {
       return GoalRunnerOperatorDecisionResult.Rejected(

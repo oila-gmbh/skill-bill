@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
-import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
