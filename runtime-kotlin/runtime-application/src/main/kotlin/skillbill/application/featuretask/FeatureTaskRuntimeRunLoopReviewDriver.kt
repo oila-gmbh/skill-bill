@@ -150,7 +150,6 @@ import skillbill.error.UnreadableSpecIntentProjectionError
 import skillbill.application.review.model.UsageValidationException
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 
-
 internal fun FeatureTaskRuntimeRunLoop.prepareRuntimeOwnedReview(run: PhaseRun, state: FeatureTaskRuntimeRunState): RuntimeOwnedReviewPrep {
     val input = run.goalReviewInput
       ?: return RuntimeOwnedReviewBlocked(
@@ -455,76 +454,4 @@ internal fun FeatureTaskRuntimeRunLoop.settleRuntimeOwnedReview(
     )
   }
 
-internal fun FeatureTaskRuntimeRunLoop.runDeclaredValidationGateCycle(
-    run: PhaseRun,
-    state: FeatureTaskRuntimeRunState,
-    observability: FeatureTaskRuntimeRunObservability,
-    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
-  ): PhaseOutcome {
-    val validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT
-    val changedPaths = validationChangedPaths(run)
-    val checkpoint = gitOperations.repositoryFingerprint(run.request.repoRoot).value
-      .takeIf(String::isNotBlank)
-      ?: return PhaseOutcome.blocked(
-        "Validation gate cycle could not resolve a repository checkpoint fingerprint.",
-      )
-    val iteration = state.nextIteration(run.phaseId)
-    val cycle = validationGateCoordinator.execute(
-      cycle = ValidationGateCycleRequest(
-        repoRoot = run.request.repoRoot,
-        request = run.request,
-        validationDepth = validationDepth,
-        changedPaths = changedPaths,
-        repositoryCheckpoint = checkpoint,
-        agentTriageLauncher = ValidationGateAgentTriageLauncher { findings ->
-          launchValidationGateTriage(
-            run = run,
-            state = state,
-            iteration = iteration,
-            observability = observability,
-            phaseTokenAccumulator = phaseTokenAccumulator,
-            findings = findings,
-          )
-        },
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, repairIteration, triagePlan ->
-          launchValidationGateRepair(
-            run = run,
-            state = state,
-            iteration = iteration,
-            observability = observability,
-            phaseTokenAccumulator = phaseTokenAccumulator,
-            findings = findings,
-            repairTurn = repairIteration,
-            triagePlan = triagePlan,
-          )
-        },
-      ),
-      onGateRunCount = { observability.validationGateProgress() },
-    )
-    return when (cycle) {
-      ValidationGateCycleResult.AbsentFallback ->
-        // Pack declares no gate: agent-run validate owns started/completed observability.
-        runPhaseAttempts(
-          run.copy(agentRunValidateFallback = true),
-          state,
-          observability,
-          phaseTokenAccumulator,
-        )
-      is ValidationGateCycleResult.Terminal -> {
-        observability.started(
-          run.phaseId,
-          run.resolvedAgent.resolvedAgentId,
-          iteration,
-          run.modelDirective,
-          FeatureTaskRuntimePhaseStartReentry.FIRST_VISIT,
-        )
-        when (val terminal = cycle.outcome) {
-          is ValidationGateCycleTerminalOutcome.Completed ->
-            settleRuntimeOwnedValidation(run, iteration, terminal.output.payload, observability)
-          is ValidationGateCycleTerminalOutcome.Blocked ->
-            blockAndPersistInPhase(run, iteration, terminal.reason, observability)
-        }
-      }
-    }
-  }
 

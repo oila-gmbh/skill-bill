@@ -88,5 +88,3 @@ data class SpecIntentProjectionResolveRequest(
   val changedPaths: List<String> = emptyList(),
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
 )
-
-private val SHA256_HEX = Regex("^[a-f0-9]{64}$")

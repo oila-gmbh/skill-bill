@@ -1,0 +1,251 @@
+package skillbill.error
+
+class InvalidInstallPlanSchemaError(
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Install plan fails schema validation at '${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+/**
+ * SKILL-48 Subtask 2c: surfaced when a native-agent composition source
+ * fails the canonical
+ * `orchestration/contracts/native-agent-composition-schema.yaml` Draft
+ * 2020-12 schema. The composed message carries the source label (the
+ * on-disk path or another caller-supplied identifier) and the
+ * collected violation messages so callers and tests can pinpoint the
+ * regression without parsing raw networknt validator output. Mirrors
+ * [InvalidInstallPlanSchemaError]; the dedicated subclass keeps
+ * native-agent parse-seam failures distinguishable from install-plan,
+ * workflow-state, and platform-pack failures in logs and tests.
+ */
+class InvalidNativeAgentCompositionSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Native agent composition source '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  cause,
+)
+
+/**
+ * SKILL-48 Subtask 2d: surfaced when a telemetry event envelope fails
+ * the canonical `orchestration/contracts/telemetry-event-schema.yaml`
+ * Draft 2020-12 schema. The composed message carries the dotted
+ * `fieldPath` of the first offending value AND the offending
+ * `eventName` (nullable: unknown-event-name violations may report a
+ * null name) so callers and tests can grep telemetry parse-seam
+ * regressions by event name without parsing raw networknt validator
+ * output. Mirrors [InvalidInstallPlanSchemaError]; the dedicated
+ * subclass keeps telemetry parse-seam failures distinguishable from
+ * install-plan, workflow-state, native-agent composition, and
+ * platform-pack failures in logs and tests.
+ */
+class InvalidTelemetryEventSchemaError(
+  val fieldPath: String,
+  val eventName: String?,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Telemetry event '${eventName ?: "<unknown>"}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+/**
+ * Surfaced when a durable goal-observability event stored in workflow
+ * artifacts_json fails the canonical
+ * `orchestration/contracts/goal-observability-event-schema.yaml` Draft
+ * 2020-12 schema. The composed message carries the artifact/source
+ * label plus the offending field path so malformed latest-event or
+ * run-history records fail loudly at the workflow artifact seam.
+ */
+class InvalidGoalObservabilityEventSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal observability event '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+/**
+ * SKILL-64 Subtask 3: surfaced when a durable goal declared-progress event
+ * stored in workflow artifacts_json fails the canonical
+ * `orchestration/contracts/goal-progress-event-schema.yaml` Draft 2020-12
+ * schema. The composed message carries the artifact/source label plus the
+ * offending field path so malformed declared-progress records fail loudly at
+ * the workflow artifact seam, distinct from goal-observability event failures.
+ */
+class InvalidGoalProgressEventSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal progress event '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+/**
+ * SKILL-148 Subtask 1: surfaced when an IDE status snapshot fails the canonical
+ * `orchestration/contracts/ide-status-schema.yaml` Draft 2020-12 schema, or when
+ * the bundled schema resource itself is missing or identity-mismatched.
+ */
+class InvalidIdeStatusSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "IDE status '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+class InvalidGoalSubtaskReviewStateSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal subtask review state '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+class InvalidGoalPlanningPreparationSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal planning preparation '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+class IncompatibleGoalPlanningPreparationRecoveryError(
+  val workflowId: String,
+  val subtaskId: Int,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Goal planning preparation '$workflowId' subtask $subtaskId cannot be recovered: $reason",
+  cause,
+)
+
+class MissingInstallSelectionRecordError(
+  val path: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Install selection record is missing at '${path.ifBlank { "<unknown>" }}'.",
+  cause,
+)
+
+class UnreadableInstallSelectionRecordError(
+  val path: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Install selection record at '${path.ifBlank { "<unknown>" }}' cannot be read.",
+  cause,
+)
+
+class MalformedInstallSelectionRecordError(
+  val path: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Install selection record at '${path.ifBlank { "<unknown>" }}' is malformed: $reason",
+  cause,
+)
+
+/**
+ * SKILL-76 Subtask 2: surfaced when the durable baseline manifest at
+ * `~/.skill-bill/baseline-manifest.json` exists but cannot be read or parsed
+ * (IO/permission failure, malformed JSON, unknown/blank keys, or an unsupported
+ * contract version). The message names the offending path so reconciliation
+ * fails loudly at the read seam instead of silently falling back. Mirrors
+ * [UnreadableInstallSelectionRecordError]; the dedicated subclass keeps baseline
+ * read failures distinguishable from install-selection failures.
+ */
+class UnreadableBaselineManifestError(
+  val path: String,
+  val reason: String? = null,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Baseline manifest at '${path.ifBlank { "<unknown>" }}' cannot be read" +
+    (reason?.let { ": $it." } ?: "."),
+  cause,
+)
+
+/**
+ * SKILL-76 Subtask 2: surfaced when per-skill reconciliation classification cannot
+ * be completed loudly — e.g. an upstream/local source root that is required for a
+ * computed outcome is unreadable, or a reconciliation invariant is violated. The
+ * message names the offending skill-relative path and the failure reason so the
+ * shell aborts the whole install with a clear message rather than half-applying.
+ */
+class ReconciliationConflictError(
+  val skillRelativePath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Reconciliation failed for skill '${skillRelativePath.ifBlank { "<unknown>" }}': $reason",
+  cause,
+)
+
+/**
+ * SKILL-71 Subtask 1 (AC3): surfaced when the repo-local `.skill-bill/config.yaml`
+ * exists but cannot be read (IO/permission failure). The message names the
+ * offending file path so config-load failures fail loudly at the read seam.
+ * Mirrors [UnreadableInstallSelectionRecordError]; the dedicated subclass keeps
+ * repo-local config failures distinguishable from install-selection failures.
+ */
+class UnreadableRepoLocalConfigError(
+  val path: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Repo-local config at '${path.ifBlank { "<unknown>" }}' cannot be read.",
+  cause,
+)
+
+/**
+ * SKILL-71 Subtask 1 (AC3): surfaced when the repo-local `.skill-bill/config.yaml`
+ * is malformed YAML, or carries an unknown/invalid value for a known key. The
+ * composed message names the file path AND the offending key/value so callers
+ * and tests can pinpoint the regression without guessing which key failed.
+ */
+class MalformedRepoLocalConfigError(
+  val path: String,
+  val key: String,
+  val value: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Repo-local config at '${path.ifBlank { "<unknown>" }}' is malformed: " +
+    "key '${key.ifBlank { "<root>" }}' value '$value' $reason",
+  cause,
+)
+
+class MalformedMachineConfigError(
+  val path: String,
+  val key: String,
+  val value: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Machine config at '${path.ifBlank { "<unknown>" }}' is malformed: " +
+    "key '${key.ifBlank { "<root>" }}' value '$value' $reason",
+  cause,
+)
+
+class ContractVersionMismatchError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)

@@ -1,5 +1,3 @@
-@file:Suppress("TooManyFunctions") // one file for all agent command builders and shared helpers
-
 package skillbill.launcher.agentrun
 
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -60,7 +58,7 @@ internal val GoalContinuationEnvironment: Map<String, String> = mapOf(
 // Provider credentials and endpoint overrides the Claude CLI reads from the environment. Passed
 // through during isolated review launches so the delegated worker authenticates via the same
 // provider configuration as the parent process, regardless of what is on disk.
-private val PROXY_PASSTHROUGH_KEYS: Set<String> = setOf(
+internal val PROXY_PASSTHROUGH_KEYS: Set<String> = setOf(
   "HTTP_PROXY",
   "HTTPS_PROXY",
   "NO_PROXY",
@@ -69,7 +67,7 @@ private val PROXY_PASSTHROUGH_KEYS: Set<String> = setOf(
   "no_proxy",
 )
 
-private val CLAUDE_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
+internal val CLAUDE_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",
   "ANTHROPIC_BASE_URL",
@@ -84,15 +82,15 @@ private val CLAUDE_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
   "GOOGLE_APPLICATION_CREDENTIALS",
 ) + PROXY_PASSTHROUGH_KEYS
 
-private val CODEX_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
+internal val CODEX_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
   "CODEX_HOME",
 ) + PROXY_PASSTHROUGH_KEYS
 
-private val JUNIE_PROVIDER_PASSTHROUGH_KEYS: Set<String> = PROXY_PASSTHROUGH_KEYS
+internal val JUNIE_PROVIDER_PASSTHROUGH_KEYS: Set<String> = PROXY_PASSTHROUGH_KEYS
 
-private val CURSOR_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
+internal val CURSOR_PROVIDER_PASSTHROUGH_KEYS: Set<String> = setOf(
   "CURSOR_API_KEY",
 ) + PROXY_PASSTHROUGH_KEYS
 
@@ -143,24 +141,24 @@ internal fun resolveClaudeModelDirective(directive: String?, providerEnvironment
   return directive
 }
 
-private fun isOfficialAnthropicEndpoint(baseUrl: String): Boolean = baseUrl.contains("anthropic.com")
+internal fun isOfficialAnthropicEndpoint(baseUrl: String): Boolean = baseUrl.contains("anthropic.com")
 
-private val ANTHROPIC_MODEL_ALIASES = setOf("opus", "sonnet", "haiku")
+internal val ANTHROPIC_MODEL_ALIASES = setOf("opus", "sonnet", "haiku")
 
-private fun isAnthropicModelReference(model: String): Boolean =
+internal fun isAnthropicModelReference(model: String): Boolean =
   model.startsWith("claude-") || model in ANTHROPIC_MODEL_ALIASES
 
-private val GOVERNED_REVIEW_TOOLS: List<String> = GovernedReviewEvidenceCodec.OPERATIONS.map { operation ->
+internal val GOVERNED_REVIEW_TOOLS: List<String> = GovernedReviewEvidenceCodec.OPERATIONS.map { operation ->
   "mcp__${GovernedReviewEvidenceCodec.SERVER_NAME}__$operation"
 }
 
-private val REVIEW_FAN_OUT_TOOLS = (listOf("Agent", "Task") + GOVERNED_REVIEW_TOOLS).joinToString(",")
+internal val REVIEW_FAN_OUT_TOOLS = (listOf("Agent", "Task") + GOVERNED_REVIEW_TOOLS).joinToString(",")
 
-private fun governedReviewToolList(fanOut: Boolean): String =
+internal fun governedReviewToolList(fanOut: Boolean): String =
   if (fanOut) REVIEW_FAN_OUT_TOOLS else GOVERNED_REVIEW_TOOLS.joinToString(",")
 
 class ClaudeAgentRunCommandBuilder(
-  private val providerEnvironment: Map<String, String> = System.getenv(),
+  internal val providerEnvironment: Map<String, String> = System.getenv(),
   override val governedReviewLaunchCapability: GovernedReviewLaunchCapability = GovernedReviewLaunchCapability(
     governedOnlyTooling = true,
     mcpIsolation = true,
@@ -298,311 +296,3 @@ class CodexAgentRunCommandBuilder(
   }
 }
 
-class JunieAgentRunCommandBuilder(
-  override val governedReviewLaunchCapability: GovernedReviewLaunchCapability = GovernedReviewLaunchCapability(
-    governedOnlyTooling = false,
-    mcpIsolation = false,
-    configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.JUNIE),
-  ),
-) : AgentRunCommandBuilder {
-  override val agent: InstallAgent = InstallAgent.JUNIE
-  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
-
-  override fun build(request: SkillRunRequest): AgentRunCommand {
-    requireProcessLaunch(request, reviewIsolation)
-    requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
-    return goalContinuationCommand(request, agent) ?: AgentRunCommand(
-      command = buildList {
-        require(request.modelOverride == null && request.effortOverride == null) {
-          "junie cannot honor a model/effort directive; remove its execution_matrix entry or --phase-model assignment."
-        }
-        add("junie")
-        add("--project")
-        add(request.repoRoot.toString())
-        add("--output-format")
-        add("text")
-        add("--skip-update-check")
-        request.timeout?.let { timeout ->
-          add("--timeout")
-          add(timeout.toLong(DurationUnit.MILLISECONDS).toString())
-        }
-        add(launchPrompt(request))
-      },
-      workingDirectory = request.repoRoot,
-      timeout = request.timeout,
-      environment = goalContinuationEnvironment(request),
-      inheritEnvironment = request.reviewEvidenceBroker == null,
-      conversationIsolation = request.conversationIsolation,
-      idlePolicy = unstreamedLivenessPolicy(request),
-      environmentPassthroughKeys =
-      if (request.reviewEvidenceBroker != null) JUNIE_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
-    )
-  }
-}
-
-class CursorAgentRunCommandBuilder(
-  override val governedReviewLaunchCapability: GovernedReviewLaunchCapability = GovernedReviewLaunchCapability(
-    governedOnlyTooling = true,
-    mcpIsolation = true,
-    configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.CURSOR),
-  ),
-) : AgentRunCommandBuilder {
-  override val agent: InstallAgent = InstallAgent.CURSOR
-  override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CURSOR_STREAM_JSON
-  override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
-
-  override fun build(request: SkillRunRequest): AgentRunCommand {
-    requireProcessLaunch(request, reviewIsolation)
-    requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
-    // --stream-partial-output turns one answer into a run of incremental assistant deltas. That is
-    // what a caller asking for provider output wants, and precisely what a caller asking only for a
-    // liveness signal does not: the deltas are indistinguishable from finished turns at harvest
-    // time. Liveness falls back to process heartbeat instead, as Codex already does.
-    val streamPartialOutput = request.streamProviderOutput
-    // stream-json carries the whole session — every turn, tool call and tool result — and its only
-    // harvestable event is the terminal one. A launch nobody is streaming pays that transport cost
-    // to have the answer arrive last, behind a capped drain that keeps the head. Buffer instead,
-    // exactly as Claude does, so an unstreamed launch harvests one small object.
-    val streaming = streamPartialOutput || request.streamOutputForLiveness
-    val isReviewLaunch = request.reviewEvidenceBroker != null
-    val reviewLaunchDirectory = request.reviewEvidenceEndpoint?.descriptor?.mcpConfigPath?.parent
-
-    return goalContinuationCommand(request, agent) ?: AgentRunCommand(
-      command = buildCursorCommand(
-        request,
-        isReviewLaunch,
-        reviewLaunchDirectory,
-        streamPartialOutput,
-        streaming,
-      ),
-      workingDirectory = if (isReviewLaunch) {
-        reviewLaunchDirectory ?: request.repoRoot
-      } else {
-        request.repoRoot
-      },
-      timeout = request.timeout,
-      stdinText = launchPrompt(request),
-      environment = GoalContinuationEnvironment + goalContinuationEnvironment(request),
-      inheritEnvironment = !isReviewLaunch,
-      conversationIsolation = request.conversationIsolation,
-      idlePolicy = when {
-        streamPartialOutput && request.streamOutputForLiveness -> AgentRunIdlePolicy.OUTPUT_EXTENDED
-        else -> unstreamedLivenessPolicy(request)
-      },
-      environmentPassthroughKeys = if (isReviewLaunch) CURSOR_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
-    )
-  }
-
-  private fun buildCursorCommand(
-    request: SkillRunRequest,
-    isReviewLaunch: Boolean,
-    reviewLaunchDirectory: Path?,
-    streamPartialOutput: Boolean,
-    streaming: Boolean,
-  ): List<String> = buildList {
-    add("agent")
-    add("--print")
-
-    if (isReviewLaunch) {
-      // --approve-mcps only admits the server; every tools/call still needs approval, and a
-      // --print launch auto-rejects what it cannot prompt for. Without --force the governed lane
-      // loads the evidence server, lists its tools, and is refused every read it attempts.
-      //
-      // --force also unlocks this agent's own file and shell tools, and the CLI honours no
-      // workspace-scoped permission file that could deny them back, so unlike the other agents
-      // this lane cannot be confined to broker-supplied evidence. What keeps it honest is the
-      // evidence accounting: a lane that answers without reading fails as unread.
-      add("--force")
-      add("--trust")
-      add("--approve-mcps")
-      add("--workspace")
-      add((reviewLaunchDirectory ?: request.repoRoot).toString())
-    } else {
-      add("--force")
-      add("--trust")
-      add("--approve-mcps")
-      add("--workspace")
-      add(request.repoRoot.toString())
-    }
-
-    add("--output-format")
-    add(if (streaming) "stream-json" else "json")
-    if (streamPartialOutput) add("--stream-partial-output")
-
-    request.modelOverride?.let { model ->
-      val modelArg = request.effortOverride?.let { effort ->
-        mergeModelEffort(model, effort)
-      } ?: model
-      add("--model")
-      add(modelArg)
-    }
-    request.effortOverride?.let { effort ->
-      if (request.modelOverride == null) {
-        require(false) {
-          "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
-        }
-      }
-    }
-  }
-
-  private fun mergeModelEffort(model: String, effort: String): String {
-    val effortPrefix = "[effort="
-    val effortSuffix = "]"
-
-    fun extractExistingEffort(modelString: String): String? {
-      val effortStart = modelString.indexOf(effortPrefix)
-      if (effortStart == -1) return null
-      val effortEnd = modelString.indexOf(effortSuffix, effortStart)
-      if (effortEnd == -1) return null
-      return modelString.substring(effortStart + effortPrefix.length, effortEnd)
-    }
-
-    val existingEffort = extractExistingEffort(model)
-    return when {
-      existingEffort == null -> "$model$effortPrefix$effort$effortSuffix"
-      existingEffort == effort -> model
-      else ->
-        error(
-          "Conflicting effort directive: model string '$model' declares effort='$existingEffort', but " +
-            "directive specifies effort='$effort'. Remove the conflict from the execution_matrix or " +
-            "phase assignment.",
-        )
-    }
-  }
-}
-
-private fun codexLivenessPolicy(request: SkillRunRequest): AgentRunIdlePolicy = if (request.streamOutputForLiveness) {
-  AgentRunIdlePolicy.HEARTBEAT_EXTENDED
-} else {
-  AgentRunIdlePolicy.DB_PROGRESS_ONLY
-}
-
-/**
- * Fallback for a builder that cannot honor [SkillRunRequest.streamOutputForLiveness]. Such a launch
- * can never satisfy a durable-progress watchdog, so process liveness stands in and its wall-clock
- * budget remains the real bound. A read-only phase also qualifies for heartbeat extension because it
- * produces no durable workflow rows by construction.
- */
-private fun unstreamedLivenessPolicy(request: SkillRunRequest): AgentRunIdlePolicy =
-  if (request.streamOutputForLiveness || request.readOnlyPhase) {
-    AgentRunIdlePolicy.HEARTBEAT_EXTENDED
-  } else {
-    AgentRunIdlePolicy.DB_PROGRESS_ONLY
-  }
-
-internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(request.promptOverride) {
-  "launchPrompt requires a promptOverride; goal-continuation runs spawn skill-bill directly."
-}
-
-private fun requireGovernedReviewLaunch(
-  request: SkillRunRequest,
-  agent: InstallAgent,
-  capability: GovernedReviewLaunchCapability,
-) {
-  if (request.reviewEvidenceEndpoint == null) return
-  if (!capability.governedOnlyTooling) {
-    throw GovernedReviewLaunchCapabilityError(agent.id, "governed-only tooling")
-  }
-  if (!capability.mcpIsolation) {
-    throw GovernedReviewLaunchCapabilityError(agent.id, "MCP isolation")
-  }
-}
-
-private fun requireProcessLaunch(request: SkillRunRequest, strategy: ReviewLaunchIsolationStrategy) {
-  request.conversationIsolation?.let { isolation ->
-    require(strategy.supported && isolation == ConversationIsolation.NONE) {
-      "Governed specialist launches require a supported fresh-context strategy."
-    }
-    if (strategy == ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE) {
-      require(strategy.forkTurns == isolation.forkTurns) {
-        "Governed Codex review launches require fork_turns none."
-      }
-    }
-  }
-}
-
-internal fun goalContinuationCommand(request: SkillRunRequest, agent: InstallAgent): AgentRunCommand? {
-  val context = request.goalContinuation ?: return null
-  if (request.promptOverride != null) return null
-  return AgentRunCommand(
-    command = goalContinuationArguments(request, agent),
-    workingDirectory = request.repoRoot,
-    timeout = request.timeout,
-    environment = goalContinuationEnvironment(request),
-    idlePolicy = unstreamedLivenessPolicy(request),
-  )
-}
-
-private fun goalContinuationArguments(request: SkillRunRequest, agent: InstallAgent): List<String> {
-  val context = requireNotNull(request.goalContinuation)
-  val childWorkflowId = context.childWorkflowId?.takeIf(String::isNotBlank)
-  val assignedWorkflowId = context.assignedWorkflowId?.takeIf(String::isNotBlank)
-  return buildList {
-    add("skill-bill")
-    request.dbPathOverride?.let { db ->
-      add("--db")
-      add(db)
-    }
-    add("feature-task")
-    if (childWorkflowId != null) {
-      add("resume")
-      add(childWorkflowId)
-    } else {
-      add("run")
-    }
-    add(request.issueKey)
-    add(context.specPath)
-    if (childWorkflowId == null && assignedWorkflowId != null) {
-      add("--workflow-id")
-      add(assignedWorkflowId)
-    }
-    addGoalContinuationArguments(context)
-    add("--agent")
-    add(agent.id)
-  }
-}
-
-private fun MutableList<String>.addGoalContinuationArguments(context: SkillRunGoalContinuationContext) {
-  add("--goal-parent-issue-key")
-  add(context.parentIssueKey)
-  add("--goal-subtask-id")
-  add(context.subtaskId.toString())
-  add("--goal-branch")
-  add(context.goalBranch)
-  add("--suppress-pr")
-  context.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
-    add("--goal-parent-workflow-id")
-    add(parentWorkflowId)
-  }
-  context.lastResumableStep?.takeIf(String::isNotBlank)?.let { step ->
-    add("--goal-last-resumable-step")
-    add(step)
-  }
-  add("--code-review-mode")
-  add(context.codeReviewMode.wireValue)
-  context.reviewBaseline?.let { baseline ->
-    add("--goal-review-base-sha")
-    add(baseline.reviewBaseSha)
-    baseline.baselineUntrackedPaths.forEach { path ->
-      add("--goal-baseline-untracked-path")
-      add(path)
-    }
-  }
-  if (context.agentAddonSelection.entries.isNotEmpty()) {
-    add("--agent-addon-selection-json")
-    add(
-      ObjectMapper().writeValueAsString(
-        linkedMapOf(
-          "contract_version" to "0.1",
-          "entries" to context.agentAddonSelection.entries.map { entry ->
-            linkedMapOf(
-              "slug" to entry.slug,
-              "source_identity" to entry.sourceIdentity,
-              "content_sha256" to entry.contentSha256,
-            )
-          },
-        ),
-      ),
-    )
-  }
-}

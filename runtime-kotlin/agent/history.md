@@ -1,3 +1,12 @@
+## [2026-08-29] SKILL-220 subtask 6 — Oversized remaining-unit decomposition
+Areas: runtime-cli/{goal,featuretask,scaffold,install}, runtime-application/{featuretask,review,workflow}, runtime-infra-fs/{scaffold,launcher,infrastructure,skillremove}, runtime-infra-sqlite/{db/core,db/workflow}, runtime-domain/{review/context,install,workflow/engine}, runtime-contracts/error, runtime-core/di, runtime-ports/workflow/gitops
+- Split leftover >500-line production types (CLI command bags, ParallelCodeReviewRunner, ShellContentLoader/ScaffoldService, WorkflowService/Engine/StateStore, process/launcher, sqlite migrations/schema, contract-error dump, RuntimeComponent helpers) into same-package collaborators; production line-count scan reports 0 src/main files over 500.
+- Keep CLI/pack-substance extractions internal (45 CLI command/helper types + 7 PlatformPackSubstanceModels audit-only types); top-level GoalRun/FeatureTaskRuntimeRun/DeprecatedRun/ScaffoldTopLevel entries stay public. RuntimeComponent remains sole construction site; WorkflowEngine remains sole transition chooser.
+- Pattern: split by verb family or responsibility with visibility as narrow as callers allow; remove TooManyFunctions/LongMethod/ComplexMethod/NestedBlockDepth/CyclomaticComplexMethod file suppressions the split eliminates (leftover @Suppress → SKILL-221). reusable
+- Limitation: validate-phase owns scripts/validate (AC-007); no tests added by design.
+Feature flag: N/A
+Acceptance criteria: 7/8 implemented (validate gate deferred)
+
 ## [2026-08-29] SKILL-220 subtask 4 — Oversized feature-task runtime decomposition
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime(+model), runtime-infra-fs/contracts/workflow, scripts
 - Split `FeatureTaskRuntimeRunLoop` and neighbouring >500-line types into named collaborators (recorders, run-loop drive/launch/checkpoint/verification, handoff projection, structural repair, persistence models); every scoped production file ≤500 lines.
