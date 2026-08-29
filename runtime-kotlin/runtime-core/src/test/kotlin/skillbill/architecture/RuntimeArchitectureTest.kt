@@ -952,7 +952,7 @@ class RuntimeArchitectureTest {
     val reconciliationSources = sourceFiles().filter { file ->
       file.relativePath.endsWith("featuretask/FeatureTaskRuntimeCrashReconciler.kt") ||
         file.relativePath.endsWith("featuretask/FeatureTaskRuntimeWorkerCoordinator.kt") ||
-        file.relativePath.endsWith("goalrunner/GoalRunnerWorkflowStores.kt")
+        file.relativePath.endsWith("goalrunner/WorkflowGoalRunnerOutcomeStore.kt")
     }
     assertTrue(reconciliationSources.isNotEmpty(), "crash-reconciliation source scan must be non-vacuous.")
     assertTrue(

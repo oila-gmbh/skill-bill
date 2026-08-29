@@ -1,5 +1,14 @@
 # goalrunner boundary history
 
+## [2026-08-29] SKILL-220 subtask 5 — Oversized goal-runner decomposition
+Areas: runtime-application/goalrunner (+ planning), runtime-domain/{goalrunner.model,workflow.goal.model}, runtime-infra-sqlite/db/workflow
+- Split P-08 goal-runner monoliths (`GoalRunner`, workflow stores, planning sweep/prep store, status service, review state/reducer, child repair, domain models) into named collaborators; facades stay under 500 lines; new production files max ~396.
+- Kept `GoalRunner` as the sole public orchestration entry; extracted helpers stay package-internal; atomic writes and lease/wait boundaries unchanged; JDBC/SQL stays in infra-sqlite.
+- Pattern: responsibility-named internal collaborators behind thin facades; remove LargeClass/TooManyFunctions/LongParameterList suppressions the split makes unnecessary. reusable
+- Limitation: leftover `@Suppress` is SKILL-221; feature-task and remaining oversized units are other subtasks; no schema/CLI verb changes.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-24] SKILL-200 subtask 4 — Runtime-owned preflight and add-on resolution
 Areas: runtime-application/{goalrunner,featuretask,decomposition,workflow}, runtime-domain, runtime-cli/goal, runtime-infra-{fs,sqlite}, runtime-ports, orchestration/contracts
 - Added read-only `skill-bill goal preflight` projections for continuation verdicts, the confirmation gate, and missing Linear spec rehydration targets without launch-side effects.

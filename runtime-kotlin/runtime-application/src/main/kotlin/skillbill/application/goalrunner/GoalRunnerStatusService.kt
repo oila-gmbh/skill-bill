@@ -1,93 +1,37 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.featuretask.agentAttributionFromPhaseState
-import skillbill.application.featuretask.pruneResetSubtaskCheckpointRefs
-import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.goalrunner.planning.GoalPlanningStatusReasonCoherence
-import skillbill.application.goalrunner.planning.goalPlanningHardResetRemedy
-import skillbill.application.goalrunner.planning.model.GoalPlanningStatusAlignRequest
 import skillbill.application.goalrunner.model.GoalRunnerAcceptRequest
 import skillbill.application.goalrunner.model.GoalRunnerAcceptResult
-import skillbill.application.goalrunner.model.GoalRunnerAcceptanceEvidence
-import skillbill.application.goalrunner.model.GoalRunnerAppliedRepair
-import skillbill.application.goalrunner.model.GoalRunnerChildRecoveryDiagnostic
-import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.application.goalrunner.model.GoalRunnerPauseResult
 import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairResult
-import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
 import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
 import skillbill.application.goalrunner.model.GoalRunnerReplanResult
-import skillbill.application.goalrunner.model.GoalRunnerReplanSnapshot
 import skillbill.application.goalrunner.model.GoalRunnerResetRequest
 import skillbill.application.goalrunner.model.GoalRunnerResetResult
-import skillbill.application.goalrunner.model.GoalRunnerResetSnapshot
-import skillbill.application.goalrunner.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.application.goalrunner.model.GoalRunnerResumeResult
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
-import skillbill.application.goalrunner.model.GoalRunnerStopStatus
 import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
-import skillbill.application.workflow.repoRoot
-import skillbill.error.ShellContentContractException
-import skillbill.goalrunner.model.ExecutionLiveness
-import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_STOP
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
-import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
-import skillbill.goalrunner.model.GoalRunnerStatusProjector
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.NoopGoalRunnerAttemptLedgerStore
-import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
-import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
-import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
-import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
-import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
-import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.DecompositionSubtask
-import java.io.IOException
 import java.nio.file.Path
 import java.time.Clock
-import java.time.Instant
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
-import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent
-import skillbill.ports.goalrunner.model.GoalPlanningIdentity
-
-private const val NO_CURRENT_SUBTASK_ID = 0
-private const val NO_CURRENT_SUBTASK_ACTION = "none"
-private const val SUBTASK_ACTION_START = "start"
-private const val SUBTASK_ACTION_RESUME = "resume"
-private const val SUBTASK_STATUS_IN_PROGRESS = "in_progress"
-private const val SUBTASK_STATUS_PENDING = "pending"
-private const val SUBTASK_STATUS_COMPLETE = "complete"
-private const val SUBTASK_STATUS_SKIPPED = "skipped"
-
-/** How long the stop verb lets the runner exit on its own before escalating to forcible termination. */
-private const val GRACEFUL_TERMINATION_WAIT_MILLIS: Long = 5_000
-private const val GRACEFUL_TERMINATION_POLL_MILLIS: Long = 250
-private const val GRACEFUL_TERMINATION_POLLS: Int =
-  (GRACEFUL_TERMINATION_WAIT_MILLIS / GRACEFUL_TERMINATION_POLL_MILLIS).toInt()
 
 @Inject
-// single cohesive boundary: status projection, reset, accept, and reconciliation, each with its own collaborator
-@Suppress("LargeClass", "TooManyFunctions", "LongParameterList")
 class GoalRunnerStatusService(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
@@ -102,982 +46,79 @@ class GoalRunnerStatusService(
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
   private val runtimeStatusService: FeatureTaskRuntimeStatusService? = null,
 ) {
+  private val projectionAssembler = GoalRunnerStatusProjectionAssembler(
+    manifestStore = manifestStore,
+    outcomeStore = outcomeStore,
+    phaseRecorder = phaseRecorder,
+    gitOperations = gitOperations,
+    attemptLedgerStore = attemptLedgerStore,
+    clock = clock,
+    workerSupervisor = workerSupervisor,
+    planningStatusReasonCoherence = planningStatusReasonCoherence,
+    diagnostics = diagnostics,
+    runtimeStatusService = runtimeStatusService,
+  )
+
+  private val controlVerbs = GoalRunnerStatusControlVerbs(
+    manifestStore = manifestStore,
+    clock = clock,
+    workerSupervisor = workerSupervisor,
+  )
+
+  private val resetReplanCoordinator = GoalRunnerResetReplanCoordinator(
+    manifestStore = manifestStore,
+    outcomeStore = outcomeStore,
+    gitOperations = gitOperations,
+    diagnostics = diagnostics,
+    projectionAssembler = projectionAssembler,
+  )
+
+  private val repairCoordinator = GoalRunnerRepairCoordinator(
+    manifestStore = manifestStore,
+    phaseRecorder = phaseRecorder,
+    workerSupervisor = workerSupervisor,
+    childRepairStore = childRepairStore,
+  )
+
+  private val acceptanceCoordinator = GoalRunnerAcceptanceCoordinator(
+    manifestStore = manifestStore,
+    outcomeStore = outcomeStore,
+    gitOperations = gitOperations,
+  )
+
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
     return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
-      ?.let { loadedState ->
-        val acceptances = manifestStore.outOfBandAcceptances(loadedState.parentWorkflowId, request.dbPathOverride)
-        val manifest = reconcileStatusManifest(loadedState, request, acceptances)
-        val currentSubtask = manifest.subtasks.firstOrNull { subtask ->
-          subtask.id == manifest.currentSubtaskIntent.subtaskId
-        }
-        GoalRunnerStatusProjector.project(
-          manifest = manifest,
-          activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
-          extras = statusProjectionExtras(
-            loadedState = loadedState,
-            request = request,
-            manifest = manifest,
-            currentSubtask = currentSubtask,
-            acceptances = acceptances,
-          ),
-        )
-      }
-  }
-
-  private fun statusProjectionExtras(
-    loadedState: GoalRunnerManifestState,
-    request: GoalRunnerStatusRequest,
-    manifest: DecompositionManifest,
-    currentSubtask: DecompositionSubtask?,
-    acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
-  ): GoalRunnerStatusProjectionExtras {
-    val childWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
-    val progress = childWorkflowId?.let { workflowId ->
-      outcomeStore.progress(workflowId, request.dbPathOverride)
-    }
-    val derivedCurrentStep = derivedChildCurrentStep(childWorkflowId, request.dbPathOverride)
-    val ledgerSummary = runCatching {
-      attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey, request.dbPathOverride)
-    }.getOrNull()
-    return GoalRunnerStatusProjectionExtras(
-      executionLiveness = resolveExecutionLiveness(
-        parentWorkflowId = loadedState.parentWorkflowId,
-        currentSubtask = currentSubtask,
-        dbPathOverride = request.dbPathOverride,
-      ),
-      planning = alignedPlanningStatus(loadedState, request, manifest, currentSubtask),
-      currentStepOverride = derivedCurrentStep ?: progress?.currentStepId,
-      currentWorkflowStatus = progress?.workflowStatus,
-      latestLivenessSignal = progress?.latestLivenessSignal,
-      latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
-      requestedDiffStat = request.requestedDiffStat(),
-      selectedDiffHunks = request.requestedSelectedDiffHunks(),
-      blockedAttemptCount = ledgerSummary?.blockedAttemptCount ?: 0,
-      supervisorKillCount = ledgerSummary?.supervisorKillCount ?: 0,
-      phaseAttemptCounts = ledgerSummary?.phaseAttemptCounts ?: emptyMap(),
-      cumulativeFixIterations = ledgerSummary?.cumulativeFixIterations ?: emptyMap(),
-      reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
-      findingsInScope = ledgerSummary?.findingsInScope,
-      outOfBandAcceptances = acceptances.toAcceptedSubtasks(),
-      paused = loadedState.controlState.paused,
-      pauseRequested = loadedState.controlState.pauseRequested,
-      pauseReason = loadedState.controlState.pauseReason,
-      pausedAt = loadedState.controlState.pausedAt,
-      stopAfterSubtaskId = loadedState.controlState.stopAfterSubtaskId,
-      activeDurationMs = loadedState.controlState.activeDurationMs,
-      activeDurationAsOf = loadedState.controlState.activeDurationAsOf,
-      subtaskActiveDurationMs = loadedState.controlState.subtaskActiveDurationMs,
-      subtaskActiveDurationAsOf = loadedState.controlState.subtaskActiveDurationAsOf,
-    )
-  }
-
-  private fun alignedPlanningStatus(
-    loadedState: GoalRunnerManifestState,
-    request: GoalRunnerStatusRequest,
-    manifest: DecompositionManifest,
-    currentSubtask: DecompositionSubtask?,
-  ) = currentSubtask?.takeIf { subtask ->
-    subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
-  }.let { planningBlock ->
-    manifestStore.planningStatus(
-      loadedState.parentWorkflowId,
-      manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
-      planningBlock?.id,
-      planningBlock?.blockedReason,
-      request.dbPathOverride,
-    )?.let { snapshot ->
-      planningStatusReasonCoherence.align(
-        GoalPlanningStatusAlignRequest(
-          snapshot = snapshot,
-          parentWorkflowId = loadedState.parentWorkflowId,
-          issueKey = manifest.issueKey,
-          manifest = manifest,
-          repoRoot = request.repoRoot ?: Path.of("").toAbsolutePath().normalize(),
-          dbPathOverride = request.dbPathOverride,
-        ),
-      )
-    }
-  }
-
-  private fun reconcileStatusManifest(
-    state: GoalRunnerManifestState,
-    request: GoalRunnerStatusRequest,
-    acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
-  ): DecompositionManifest {
-    val reconciled = reconcileGoalManifest(
-      manifest = state.manifest,
-      dbPathOverride = request.dbPathOverride,
-      authoritativeOutcomes = outcomeStore.authoritativeOutcomes(state.manifest.issueKey, request.dbPathOverride),
-      acceptances = acceptances,
-      outcomeStore = outcomeStore,
-    )
-    request.repoRoot?.let { repoRoot ->
-      pruneEligibleCheckpointRefsForManifest(
-        manifest = reconciled,
-        gitOperations = gitOperations,
-        repoRoot = repoRoot,
-        record = {},
-      )
-    }
-    return reconciled
-  }
-
-  /** Write the operator pause boundary directly; this does not inspect status, logs, files, or child state. */
-  fun pause(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
-  ): GoalRunnerPauseResult {
-    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
-      ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
-    val repositoryIdentity = goalRepositoryIdentity(repoRoot)
-    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, repositoryIdentity, dbPathOverride)
-    val control = manifestStore.requestPause(loaded.parentWorkflowId, dbPathOverride)
-      ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
-    val effectiveControl = if (
-      control.requiresPauseBoundary(loaded.manifest) && loaded.manifest.isAtUnlaunchedBoundary()
-    ) {
-      manifestStore.pauseAtBoundary(
-        loaded.copy(controlState = control),
-        dbPathOverride,
-      ).controlState
-    } else {
-      control
-    }
-    return GoalRunnerPauseResult(
-      issueKey = issueKey,
-      parentWorkflowId = loaded.parentWorkflowId,
-      status = if (effectiveControl.paused) "paused" else "requested",
-      paused = effectiveControl.paused,
-      pauseRequested = effectiveControl.pauseRequested,
-      pauseReason = effectiveControl.pauseReason,
-    )
-  }
-
-  /**
-   * Stop a goal immediately: write durable operator intent first, then terminate the runner that
-   * holds it. The write precedes every supervisor interaction and is never reordered — a stop whose
-   * termination fails still leaves `paused = true`, so the surviving runner halts at its next
-   * boundary anyway. Identity the supervisor cannot confirm is refused, never killed by pid.
-   */
-  fun stop(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
-  ): GoalRunnerStopVerbResult {
-    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
-      ?: return GoalRunnerStopVerbResult(issueKey = issueKey, status = GoalRunnerStopStatus.NOT_FOUND)
-    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, goalRepositoryIdentity(repoRoot), dbPathOverride)
-    val alreadyStopped = loaded.controlState.paused &&
-      loaded.controlState.pauseReason == GOAL_PAUSE_REASON_OPERATOR_STOP
-    val control = manifestStore.pauseNow(
-      parentWorkflowId = loaded.parentWorkflowId,
-      reason = GOAL_PAUSE_REASON_OPERATOR_STOP,
-      pausedAt = clock.instant().toString(),
-      overwriteExistingReason = true,
-      dbPathOverride = dbPathOverride,
-    ) ?: return GoalRunnerStopVerbResult(issueKey = issueKey, status = GoalRunnerStopStatus.NOT_FOUND)
-
-    fun outcome(status: GoalRunnerStopStatus, terminationAttempted: Boolean = false) = GoalRunnerStopVerbResult(
-      issueKey = issueKey,
-      status = status,
-      parentWorkflowId = loaded.parentWorkflowId,
-      pauseReason = control.pauseReason,
-      pausedAt = control.pausedAt,
-      terminationAttempted = terminationAttempted,
-    )
-
-    val lease = manifestStore.executionLease(loaded.parentWorkflowId, dbPathOverride)
-    val noLiveLease = if (alreadyStopped) GoalRunnerStopStatus.ALREADY_STOPPED else GoalRunnerStopStatus.NO_LIVE_LEASE
-    if (lease == null) return outcome(noLiveLease)
-    val ownership = lease.asWorkerOwnership(loaded.parentWorkflowId)
-    // The durable write already landed, so a throwing supervisor costs the operator nothing: the
-    // stop is reported as attempted and the still-running goal halts at its next pause boundary.
-    return runCatching {
-      when (workerSupervisor.inspect(ownership)) {
-        is FeatureTaskRuntimeProcessInspection.OwnershipMismatch,
-        is FeatureTaskRuntimeProcessInspection.Unsupported,
-        -> outcome(GoalRunnerStopStatus.IDENTITY_MISMATCH)
-        FeatureTaskRuntimeProcessInspection.NotRunning -> {
-          // A lease outlives its owner by design: it lapses on a term, not on the process exiting. So
-          // a confirmed-dead owner leaves every later status read reporting a live goal for the rest
-          // of that term, with no runner behind it. Releasing it here is what makes the stop
-          // observable, and it is safe precisely because the owner was just confirmed gone.
-          manifestStore.releaseExecutionLease(
-            parentWorkflowId = loaded.parentWorkflowId,
-            ownerToken = lease.ownerToken,
-            generation = lease.generation,
-            dbPathOverride = dbPathOverride,
-          )
-          outcome(noLiveLease)
-        }
-        FeatureTaskRuntimeProcessInspection.ExactLive -> {
-          terminateOwner(ownership)
-          outcome(GoalRunnerStopStatus.STOPPED, terminationAttempted = true)
-        }
-      }
-    }.getOrElse { outcome(GoalRunnerStopStatus.STOPPED, terminationAttempted = true) }
-  }
-
-  /** Graceful first, forcible only if the process outlives the wait, so the child agent can exit cleanly. */
-  private fun terminateOwner(ownership: FeatureTaskRuntimeWorkerOwnership) {
-    workerSupervisor.terminateGracefully(ownership)
-    // Counted polls rather than a wall-clock deadline: the injected clock never advances on its own,
-    // so a deadline loop would spin forever under a fixed test clock.
-    repeat(GRACEFUL_TERMINATION_POLLS) {
-      if (workerSupervisor.inspect(ownership) != FeatureTaskRuntimeProcessInspection.ExactLive) return
-      workerSupervisor.pause(GRACEFUL_TERMINATION_POLL_MILLIS)
-    }
-    if (workerSupervisor.inspect(ownership) == FeatureTaskRuntimeProcessInspection.ExactLive) {
-      workerSupervisor.terminateForcibly(ownership)
-    }
-  }
-
-  /**
-   * Clear the operator pause boundary without starting child runs. A pause request that never
-   * reached a boundary leaves `pauseRequested` set with `paused` false, so both fields clear here.
-   */
-  fun resume(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
-  ): GoalRunnerResumeResult {
-    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
-      ?: return GoalRunnerResumeResult(issueKey = issueKey, status = "not_found")
-    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, goalRepositoryIdentity(repoRoot), dbPathOverride)
-    val before = manifestStore.controlState(loaded.parentWorkflowId, dbPathOverride)
-    if (!before.paused && !before.pauseRequested) {
-      return GoalRunnerResumeResult(
-        issueKey = issueKey,
-        parentWorkflowId = loaded.parentWorkflowId,
-        status = "not_paused",
-      )
-    }
-    manifestStore.resume(loaded.parentWorkflowId, dbPathOverride)
-      ?: return GoalRunnerResumeResult(issueKey = issueKey, status = "not_found")
-    return GoalRunnerResumeResult(
-      issueKey = issueKey,
-      parentWorkflowId = loaded.parentWorkflowId,
-      status = "resumed",
-      clearedPauseReason = before.pauseReason,
-    )
-  }
-
-  private fun DecompositionManifest.isAtUnlaunchedBoundary(): Boolean {
-    val currentSubtask = subtasks.firstOrNull { it.id == currentSubtaskIntent.subtaskId }
-    val activeChildExists = subtasks.any { subtask ->
-      subtask.status == SUBTASK_STATUS_IN_PROGRESS && subtask.workflowId?.isNotBlank() == true
-    }
-    val unselected = currentSubtaskIntent.subtaskId == NO_CURRENT_SUBTASK_ID &&
-      currentSubtaskIntent.action == NO_CURRENT_SUBTASK_ACTION
-    val selectedButNotLaunched = currentSubtask?.let { subtask ->
-      subtask.status == SUBTASK_STATUS_PENDING &&
-        subtask.workflowId.isNullOrBlank() &&
-        currentSubtaskIntent.action == SUBTASK_ACTION_START
-    } == true
-    return !activeChildExists && (unselected || selectedButNotLaunched)
-  }
-
-  private fun derivedChildCurrentStep(childWorkflowId: String?, dbPathOverride: String?): String? {
-    val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return null
-    val statusService = runtimeStatusService ?: return null
-    return try {
-      statusService.status(
-        FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = dbPathOverride),
-      )?.currentPhaseId?.takeIf(String::isNotBlank)
-    } catch (error: ShellContentContractException) {
-      diagnostics.warning(
-        "Goal status omitted derived child phase for workflow '$workflowId': " +
-          "the child's durable status could not be read.",
-        error,
-      )
-      null
-    } catch (error: IOException) {
-      diagnostics.warning(
-        "Goal status omitted derived child phase for workflow '$workflowId': " +
-          "the child's durable status could not be read.",
-        error,
-      )
-      null
-    }
-  }
-
-  private fun resolveExecutionLiveness(
-    parentWorkflowId: String,
-    currentSubtask: DecompositionSubtask?,
-    dbPathOverride: String?,
-  ): ExecutionLiveness {
-    val workflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank)
-      ?: return resolveParentExecutionLiveness(parentWorkflowId, dbPathOverride)
-    val childLiveness = resolveChildExecutionLiveness(workflowId, dbPathOverride)
-    if (childLiveness == ExecutionLiveness.LIVE || childLiveness == ExecutionLiveness.UNKNOWN) {
-      return childLiveness
-    }
-    return resolveParentExecutionLiveness(parentWorkflowId, dbPathOverride)
-  }
-
-  private fun resolveChildExecutionLiveness(workflowId: String, dbPathOverride: String?): ExecutionLiveness =
-    runCatching {
-      if (phaseRecorder.existingWorkflowMode(workflowId, dbPathOverride) != FeatureTaskWorkflowMode.RUNTIME) {
-        ExecutionLiveness.UNKNOWN
-      } else {
-        val ownership = phaseRecorder.workerOwnership(workflowId, dbPathOverride)
-        if (ownership != null && Instant.parse(ownership.expiresAt).isAfter(clock.instant())) {
-          livenessOfLeaseOwner(ownership)
-        } else {
-          ExecutionLiveness.IDLE
-        }
-      }
-    }.getOrDefault(ExecutionLiveness.UNKNOWN)
-
-  private fun resolveParentExecutionLiveness(parentWorkflowId: String, dbPathOverride: String?): ExecutionLiveness =
-    runCatching {
-      // A released or never-acquired parent lease means no goal runner holds the goal — idle.
-      // UNKNOWN is reserved for lease-read failure (catch below), not for absence after clean exit.
-      val lease = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
-        ?: return@runCatching ExecutionLiveness.IDLE
-      if (Instant.parse(lease.expiresAt).isAfter(clock.instant())) {
-        livenessOfLeaseOwner(lease.asWorkerOwnership(parentWorkflowId))
-      } else {
-        ExecutionLiveness.IDLE
-      }
-    }.getOrDefault(ExecutionLiveness.UNKNOWN)
-
-  /**
-   * Liveness of an unexpired lease, decided by its owner rather than by its term.
-   *
-   * A lease lapses on a term, not on its owner exiting, so a runner killed out of band leaves every
-   * later read reporting a live goal for the rest of that term with no process behind it. A locally
-   * confirmed-dead owner is therefore idle. Anything the supervisor cannot settle — an owner on
-   * another host or boot, or a platform it cannot inspect — stays LIVE: absence of proof that a
-   * runner is alive is not proof that it is gone, and claiming idle there would invite a second
-   * runner onto durable state someone else still owns.
-   */
-  private fun livenessOfLeaseOwner(ownership: FeatureTaskRuntimeWorkerOwnership): ExecutionLiveness =
-    when (workerSupervisor.inspect(ownership)) {
-      FeatureTaskRuntimeProcessInspection.NotRunning -> ExecutionLiveness.IDLE
-      FeatureTaskRuntimeProcessInspection.ExactLive,
-      is FeatureTaskRuntimeProcessInspection.OwnershipMismatch,
-      is FeatureTaskRuntimeProcessInspection.Unsupported,
-      -> ExecutionLiveness.LIVE
-    }
-
-  private fun Map<Int, GoalRunnerOutOfBandAcceptance>.toAcceptedSubtasks(): List<GoalRunnerAcceptedSubtask> =
-    values.sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId).map { acceptance ->
-      GoalRunnerAcceptedSubtask(
-        subtaskId = acceptance.subtaskId,
-        commitSha = acceptance.commitSha,
-        reason = acceptance.reason,
-        acceptedAt = acceptance.acceptedAt,
-      )
-    }
-
-  // SKILL-103 AC1: active_agent is sourced solely from persisted run state, never from the status
-  // caller's resolution chain (--agent / SKILL_BILL_AGENT / detected / default). In order: the
-  // current subtask's active workflow agent from the persisted phase ledger; else the subtask's
-  // recorded finalizing/participating agent from the reconciled goal outcome; else null (omit).
-  // The phase ledger is a runtime-mode concept, so a non-runtime child (e.g. a prose workflow) is
-  // skipped rather than crashing the read — attribution then falls through to the subtask outcome.
-  private fun resolveActiveAgent(currentSubtask: DecompositionSubtask?, dbPathOverride: String?): String? {
-    if (currentSubtask == null) return null
-    val workflowId = currentSubtask.workflowId?.takeIf(String::isNotBlank)
-    if (workflowId != null &&
-      phaseRecorder.existingWorkflowMode(workflowId, dbPathOverride) == FeatureTaskWorkflowMode.RUNTIME
-    ) {
-      agentAttributionFromPhaseState(phaseRecorder, workflowId, dbPathOverride).finalizingAgentId
-        ?.takeIf(String::isNotBlank)
-        ?.let { return it }
-    }
-    return currentSubtask.finalizingAgentId?.takeIf(String::isNotBlank)
-      ?: currentSubtask.participatingAgentIds.firstOrNull()?.takeIf(String::isNotBlank)
+      ?.let { loadedState -> projectionAssembler.project(loadedState, request) }
   }
 
   fun statusRefresh(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? = status(request)
 
-  private fun GoalRunnerStatusRequest.requestedDiffStat() = if (includeDiffStat) {
-    repoRoot
-      ?.let(gitOperations::worktreeActivity)
-      ?.takeIf { result -> result.ok }
-      ?.diffStat
-  } else {
-    null
-  }
-
-  private fun GoalRunnerStatusRequest.requestedSelectedDiffHunks() = if (selectedDiffHunkPaths.isNotEmpty()) {
-    repoRoot
-      ?.let { root ->
-        gitOperations.selectedDiffHunks(
-          root,
-          WorkflowSelectedDiffHunksRequest(
-            paths = selectedDiffHunkPaths,
-            maxHunks = selectedDiffMaxHunks,
-            maxLines = selectedDiffMaxLines,
-            maxBytes = selectedDiffMaxBytes,
-          ),
-        )
-      }
-      ?.takeIf { result -> result.ok }
-      ?.selectedDiffHunks
-  } else {
-    null
-  }
-
-  fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? {
-    val loaded = if (request.deleteChildWorkflow) {
-      manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)?.copy(repoRoot = request.repoRoot)
-    } else {
-      manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
-    }
-      ?: return null
-    if (request.deleteChildWorkflow) {
-      return deleteIncompatibleChildWorkflow(request, loaded)
-    }
-    outcomeStore.reconcileAuthoritativeOutcomes(
-      issueKey = loaded.manifest.issueKey,
-      activeWorkflowIds = emptySet(),
-      gate = GoalRunnerReconcileGate(allowInactiveReconciliation = true),
-      dbPathOverride = request.dbPathOverride,
-    )
-    val latest = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot) ?: loaded
-    val hardResetRepoRoot = request.takeHardResetRepositoryRoot(latest)
-    val before = latest.manifest.toResetSnapshot()
-    val resetManifest = latest.manifest.resetManifest(request.hard)
-    val resetState = latest.copy(manifest = resetManifest)
-    val saved = if (request.hard) {
-      manifestStore.saveHardReset(resetState, request.dbPathOverride, request.preservePlanning)
-    } else {
-      manifestStore.save(resetState, request.dbPathOverride)
-    }
-    if (request.hard) {
-      pruneResetSubtaskCheckpointRefs(
-        gitOperations = gitOperations,
-        repoRoot = requireNotNull(hardResetRepoRoot),
-        issueKey = saved.manifest.issueKey,
-        subtaskIds = before.subtasks.map { it.id },
-        record = { message -> runCatching { diagnostics.warning(message) } },
-      )
-    }
-    val staleChild = if (!request.hard) {
-      currentChildRecoveryDiagnostic(saved.manifest, request.dbPathOverride)
-    } else {
-      null
-    }
-    return GoalRunnerResetResult(
-      issueKey = saved.manifest.issueKey,
-      mode = if (request.hard) "hard" else "soft",
-      parentWorkflowId = saved.parentWorkflowId,
-      before = before,
-      after = saved.manifest.toResetSnapshot(),
-      recovery = staleChild,
-    )
-  }
-
-  private fun GoalRunnerResetRequest.takeHardResetRepositoryRoot(latest: GoalRunnerManifestState): Path? {
-    if (!hard) return null
-    val repoRoot = requireNotNull(repoRoot) {
-      "A repository root is required for a hard reset so checkpoint refs are pruned from the correct repository."
-    }
-    manifestStore.bindRepositoryIdentity(
-      latest.parentWorkflowId,
-      goalRepositoryIdentity(repoRoot),
-      dbPathOverride,
-    )
-    return repoRoot
-  }
-
-  fun replan(request: GoalRunnerReplanRequest): GoalRunnerReplanResult? {
-    val loaded = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
-      ?: return null
-    val selected = requireReplanTarget(loaded.manifest, request)
-    requireIdleForScopedReplan(loaded, request)
-    val beforeSubtasks = loaded.manifest.toResetSnapshot().subtasks
-    val expectedSharedDigest = if (request.includeSharedPreplan) {
-      manifestStore.sharedPreplanPayloadSha256(loaded.parentWorkflowId, request.dbPathOverride)
-    } else {
-      null
-    }
-    val planningIdentity = if (request.includeSharedPreplan && expectedSharedDigest != null) {
-      GoalPlanningIdentity(
-        parentGoalWorkflowId = loaded.parentWorkflowId,
-        normalizedIssueKey = loaded.manifest.issueKey.trim().uppercase(),
-        repositoryIdentity = goalRepositoryIdentity(
-          request.repoRoot ?: Path.of("").toAbsolutePath().normalize(),
-        ),
-      )
-    } else {
-      null
-    }
-    val retargeted = loaded.copy(
-      manifest = loaded.manifest.copy(currentSubtaskIntent = replanIntent(selected)),
-      repoRoot = request.repoRoot,
-    )
-    val written = manifestStore.saveScopedReplan(
-      state = retargeted,
-      subtaskId = request.subtaskId,
-      dbPathOverride = request.dbPathOverride,
-      options = GoalRunnerScopedReplanOptions(
-        includeSharedPreplan = request.includeSharedPreplan,
-        expectedSharedPayloadSha256 = expectedSharedDigest,
-        planningIdentity = planningIdentity,
-      ),
-    )
-    return toReplanResult(request, loaded, written, beforeSubtasks)
-  }
-
-  private fun requireReplanTarget(
-    manifest: DecompositionManifest,
-    request: GoalRunnerReplanRequest,
-  ): DecompositionSubtask {
-    val selected = manifest.subtasks.singleOrNull { it.id == request.subtaskId }
-    require(selected != null) {
-      "Subtask '${request.subtaskId}' is not part of goal '${request.issueKey}'."
-    }
-    require(selected.status != SUBTASK_STATUS_COMPLETE && selected.status != SUBTASK_STATUS_SKIPPED) {
-      "Subtask '${request.subtaskId}' is terminal (${selected.status}); use reset to reopen it before replanning."
-    }
-    return selected
-  }
-
-  private fun requireIdleForScopedReplan(loaded: GoalRunnerManifestState, request: GoalRunnerReplanRequest) {
-    val currentSubtask = loaded.manifest.subtasks.firstOrNull { subtask ->
-      subtask.id == loaded.manifest.currentSubtaskIntent.subtaskId
-    }
-    val liveness = resolveExecutionLiveness(
-      parentWorkflowId = loaded.parentWorkflowId,
-      currentSubtask = currentSubtask,
-      dbPathOverride = request.dbPathOverride,
-    )
-    require(liveness == ExecutionLiveness.IDLE) {
-      when (liveness) {
-        ExecutionLiveness.LIVE ->
-          "Goal '${request.issueKey}' is live; refuse scoped replan while a child or parent run is active."
-        ExecutionLiveness.UNKNOWN ->
-          "Goal '${request.issueKey}' has unknown execution liveness; refuse scoped replan."
-        ExecutionLiveness.IDLE -> "Goal '${request.issueKey}' is idle."
-      }
-    }
-  }
-
-  private fun toReplanResult(
-    request: GoalRunnerReplanRequest,
-    before: GoalRunnerManifestState,
-    written: GoalRunnerScopedReplanWriteResult,
-    beforeSubtasks: List<GoalRunnerResetSubtaskSnapshot>,
-  ): GoalRunnerReplanResult = GoalRunnerReplanResult(
-    issueKey = written.state.manifest.issueKey,
-    parentWorkflowId = written.state.parentWorkflowId,
-    subtaskId = request.subtaskId,
-    discardedPlan = written.deletedPlanCount > 0,
-    discardedSharedPreplan = written.discardedSharedPreplan,
-    cascadedPlanSubtaskIds = written.cascadedPlanSubtaskIds,
-    clearedChildSubtaskIds = written.clearedChildSubtaskIds,
-    before = GoalRunnerReplanSnapshot(
-      status = before.manifest.status,
-      currentSubtaskId = before.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },
-      currentAction = before.manifest.currentSubtaskIntent.action,
-      sharedPreplanPrepared = written.sharedPreplanPreparedBefore,
-      plannedSubtaskIds = written.plannedSubtaskIdsBefore,
-      subtasks = beforeSubtasks,
-    ),
-    after = GoalRunnerReplanSnapshot(
-      status = written.state.manifest.status,
-      currentSubtaskId = written.state.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },
-      currentAction = written.state.manifest.currentSubtaskIntent.action,
-      sharedPreplanPrepared = written.sharedPreplanPrepared,
-      plannedSubtaskIds = written.plannedSubtaskIdsAfter,
-      subtasks = written.state.manifest.toResetSnapshot().subtasks,
-    ),
-  )
-
-  private fun currentChildRecoveryDiagnostic(
-    manifest: DecompositionManifest,
+  fun pause(
+    issueKey: String,
     dbPathOverride: String?,
-  ): GoalRunnerChildRecoveryDiagnostic? {
-    val subtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId } ?: return null
-    val workflowId = subtask.workflowId?.takeIf(String::isNotBlank) ?: return null
-    val classification = classifyDurableChild(outcomeStore.progress(workflowId, dbPathOverride))
-    return classification.takeIf { it == DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL }?.let {
-      GoalRunnerChildRecoveryDiagnostic(
-        subtaskId = subtask.id,
-        workflowId = workflowId,
-        classification = it.wireValue,
-        recoveryCommand = scopedChildRecoveryCommand(manifest.issueKey, subtask.id),
-      )
-    }
-  }
+    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
+  ): GoalRunnerPauseResult = controlVerbs.pause(issueKey, dbPathOverride, repoRoot)
 
-  fun hardResetPreflight(issueKey: String, dbPathOverride: String?): List<GoalRunnerAcceptedSubtask> {
-    val state = manifestStore.loadDurableByIssueKey(issueKey, dbPathOverride) ?: return emptyList()
-    return manifestStore.outOfBandAcceptances(state.parentWorkflowId, dbPathOverride).toAcceptedSubtasks()
-  }
+  fun stop(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
+  ): GoalRunnerStopVerbResult = controlVerbs.stop(issueKey, dbPathOverride, repoRoot)
 
-  private fun deleteIncompatibleChildWorkflow(
-    request: GoalRunnerResetRequest,
-    authoritativeState: GoalRunnerManifestState,
-  ): GoalRunnerResetResult {
-    val subtaskId = requireNotNull(request.subtaskId)
-    val selected = authoritativeState.manifest.subtasks.singleOrNull { it.id == subtaskId }
-      ?: error("Unknown or ambiguous goal subtask '$subtaskId'.")
-    require(selected.status == "blocked") {
-      "Subtask '$subtaskId' is '${selected.status}'; scoped child deletion requires a blocked subtask."
-    }
-    val workflowId = selected.workflowId?.takeIf(String::isNotBlank)
-      ?: error("Subtask '$subtaskId' has no durable child workflow to delete.")
-    val classification = classifyDurableChild(outcomeStore.progress(workflowId, request.dbPathOverride))
-    require(classification == DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL) {
-      "Child workflow '$workflowId' is ${classification.wireValue}; scoped deletion requires an incompatible " +
-        "terminal child."
-    }
-    val saved = manifestStore.deleteIncompatibleChildWorkflow(
-      authoritativeState,
-      subtaskId,
-      workflowId,
-      request.dbPathOverride,
-    )
-    return GoalRunnerResetResult(
-      issueKey = saved.manifest.issueKey,
-      mode = "scoped_child_recovery",
-      parentWorkflowId = saved.parentWorkflowId,
-      before = authoritativeState.manifest.toResetSnapshot(),
-      after = saved.manifest.toResetSnapshot(),
-      recovery = GoalRunnerChildRecoveryDiagnostic(
-        subtaskId = subtaskId,
-        workflowId = workflowId,
-        classification = classification.wireValue,
-        recoveryCommand = null,
-      ),
-    )
-  }
+  fun resume(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
+  ): GoalRunnerResumeResult = controlVerbs.resume(issueKey, dbPathOverride, repoRoot)
 
-  /**
-   * Inspect (default) or apply repairs for known goal-child wedge classes. Preserves completed
-   * commit shas, review pass results, and audit repair state; mutates only the wedging field plus
-   * durable repair evidence. Declines children whose worker lease is live.
-   */
-  // SKILL-176: inspect/apply paths are distinct guard exits
-  @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
-  fun repair(request: GoalRunnerRepairRequest): GoalRunnerRepairResult {
-    val repoRoot = request.repoRoot ?: Path.of("").toAbsolutePath().normalize()
-    val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot)
-      ?: return GoalRunnerRepairResult(
-        issueKey = request.issueKey,
-        status = GoalRunnerRepairStatus.NOT_FOUND,
-      )
-    manifestStore.bindRepositoryIdentity(
-      loaded.parentWorkflowId,
-      goalRepositoryIdentity(repoRoot),
-      request.dbPathOverride,
-    )
-    val children = loaded.manifest.subtasks
-      .filter { request.subtaskId == null || it.id == request.subtaskId }
-      .filter { !it.workflowId.isNullOrBlank() }
-    if (request.subtaskId != null && children.isEmpty()) {
-      return GoalRunnerRepairResult(
-        issueKey = request.issueKey,
-        status = GoalRunnerRepairStatus.NOT_FOUND,
-        parentWorkflowId = loaded.parentWorkflowId,
-        refusalReason = "No child workflow is bound to subtask ${request.subtaskId}.",
-      )
-    }
-    val diagnoses = children.map { subtask ->
-      childRepairStore.diagnoseChildWedges(
-        workflowId = requireNotNull(subtask.workflowId),
-        issueKey = request.issueKey,
-        subtaskId = subtask.id,
-        subtasks = loaded.manifest.subtasks,
-        repoRoot = repoRoot,
-        dbPathOverride = request.dbPathOverride,
-      )
-    }
-    val wedged = diagnoses.filterNot(GoalRunnerChildWedgeDiagnosis::isHealthy)
-    if (wedged.isEmpty()) {
-      val status = if (request.apply && request.subtaskId != null) {
-        GoalRunnerRepairStatus.NOT_WEDGED
-      } else {
-        GoalRunnerRepairStatus.HEALTHY
-      }
-      val healthy = diagnoses.firstOrNull { request.subtaskId == null || it.subtaskId == request.subtaskId }
-      return GoalRunnerRepairResult(
-        issueKey = request.issueKey,
-        status = status,
-        parentWorkflowId = loaded.parentWorkflowId,
-        diagnoses = diagnoses,
-        refusalReason = if (status == GoalRunnerRepairStatus.NOT_WEDGED) {
-          "Subtask ${request.subtaskId} is not wedged; passed checks: " +
-            (healthy?.passedChecks?.joinToString(", ") ?: "none")
-        } else {
-          "Goal children passed every repair check; no durable write."
-        },
-      )
-    }
-    val hardResetRequired = wedged.any { diagnosis ->
-      diagnosis.wedges.any { it.wedgeClass.operatorRequired }
-    }
-    if (hardResetRequired) {
-      return GoalRunnerRepairResult(
-        issueKey = request.issueKey,
-        status = if (request.apply) {
-          GoalRunnerRepairStatus.OPERATOR_REQUIRED
-        } else {
-          GoalRunnerRepairStatus.INSPECTED
-        },
-        parentWorkflowId = loaded.parentWorkflowId,
-        diagnoses = diagnoses,
-        refusalReason = "Phase-output contract version is incompatible with the installed runtime. " +
-          "Recover with: '${goalPlanningHardResetRemedy(request.issueKey)}'.",
-      )
-    }
-    if (!request.apply) {
-      return GoalRunnerRepairResult(
-        issueKey = request.issueKey,
-        status = GoalRunnerRepairStatus.INSPECTED,
-        parentWorkflowId = loaded.parentWorkflowId,
-        diagnoses = diagnoses,
-      )
-    }
-    val applied = mutableListOf<GoalRunnerAppliedRepair>()
-    for (diagnosis in wedged) {
-      val workflowId = diagnosis.workflowId ?: continue
-      val liveLease = childWorkerLeaseLive(workflowId, request.dbPathOverride)
-      if (liveLease) {
-        return GoalRunnerRepairResult(
-          issueKey = request.issueKey,
-          status = GoalRunnerRepairStatus.LIVE_LEASE_REFUSED,
-          parentWorkflowId = loaded.parentWorkflowId,
-          diagnoses = diagnoses,
-          appliedRepairs = applied,
-          liveLeaseWorkflowId = workflowId,
-          refusalReason =
-          "Child workflow '$workflowId' holds a live worker lease; a running worker owns that state.",
-        )
-      }
-      val repairResult = childRepairStore.applyChildWedgeRepairs(
-        workflowId = workflowId,
-        issueKey = request.issueKey,
-        subtaskId = diagnosis.subtaskId,
-        wedgeClasses = diagnosis.wedges.map { it.wedgeClass },
-        repoRoot = repoRoot,
-        dbPathOverride = request.dbPathOverride,
-      )
-      applied += repairResult.repairs
-    }
-    return GoalRunnerRepairResult(
-      issueKey = request.issueKey,
-      status = GoalRunnerRepairStatus.REPAIRED,
-      parentWorkflowId = loaded.parentWorkflowId,
-      diagnoses = diagnoses,
-      appliedRepairs = applied,
-    )
-  }
+  fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? = resetReplanCoordinator.reset(request)
 
-  private fun childWorkerLeaseLive(workflowId: String, dbPathOverride: String?): Boolean {
-    val ownership = runCatching { phaseRecorder.workerOwnership(workflowId, dbPathOverride) }.getOrNull()
-      ?: return false
-    return when (workerSupervisor.inspect(ownership)) {
-      FeatureTaskRuntimeProcessInspection.ExactLive -> true
-      FeatureTaskRuntimeProcessInspection.NotRunning,
-      is FeatureTaskRuntimeProcessInspection.OwnershipMismatch,
-      is FeatureTaskRuntimeProcessInspection.Unsupported,
-      -> false
-    }
-  }
+  fun replan(request: GoalRunnerReplanRequest): GoalRunnerReplanResult? = resetReplanCoordinator.replan(request)
 
-  // Out-of-band accept used to let operators (and agents) mark a subtask complete when a child
-  // blocked. That skipped audit/review and became the default recovery path for Laguna. Accept is
-  // disabled for normal use; only restoring an acceptance discarded by hard reset remains.
-  @Suppress("ReturnCount") // one return per refusal reason; each is a distinct operator-facing outcome
-  fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptResult {
-    if (!request.restoreAfterHardReset) {
-      return rejected(
-        request,
-        "Out-of-band accept is disabled. Repair or resume the child through the runtime; " +
-          "accepting past an incomplete or blocked subtask is not supported. " +
-          "Only --restore-after-hard-reset remains for recoveries that hard reset discarded.",
-      )
-    }
-    val loaded = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
-      ?: return rejected(request, "No prepared goal exists for '${request.issueKey}'.")
-    val repoRoot = request.repoRoot
-      ?: return rejected(request, "A repository root is required to verify the accepted commit.")
-    val resolvedSha = when (val evidence = acceptanceEvidence(request, loaded.manifest, repoRoot)) {
-      is GoalRunnerAcceptanceEvidence.Rejected -> return rejected(request, evidence.reason)
-      is GoalRunnerAcceptanceEvidence.Resolved -> evidence.commitSha
-    }
-    val acceptance = GoalRunnerOutOfBandAcceptance(
-      subtaskId = request.subtaskId,
-      commitSha = resolvedSha,
-      reason = request.reason,
-      acceptedAt = OffsetDateTime.now(ZoneOffset.UTC).toString(),
-    )
-    manifestStore.persistOutOfBandAcceptance(loaded.parentWorkflowId, acceptance, request.dbPathOverride)
-    val refreshed = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride) ?: loaded
-    val reconciled = reconcileGoalManifest(
-      manifest = refreshed.manifest,
-      dbPathOverride = request.dbPathOverride,
-      authoritativeOutcomes = outcomeStore.authoritativeOutcomes(refreshed.manifest.issueKey, request.dbPathOverride),
-      acceptances = manifestStore.outOfBandAcceptances(refreshed.parentWorkflowId, request.dbPathOverride),
-      outcomeStore = outcomeStore,
-    )
-    val saved = manifestStore.save(refreshed.copy(manifest = reconciled), request.dbPathOverride)
-    return GoalRunnerAcceptResult.Accepted(
-      issueKey = saved.manifest.issueKey,
-      parentWorkflowId = saved.parentWorkflowId,
-      subtaskId = acceptance.subtaskId,
-      commitSha = acceptance.commitSha,
-      reason = acceptance.reason,
-      acceptedAt = acceptance.acceptedAt,
-      after = saved.manifest.toResetSnapshot(),
-    )
-  }
+  fun hardResetPreflight(issueKey: String, dbPathOverride: String?): List<GoalRunnerAcceptedSubtask> =
+    resetReplanCoordinator.hardResetPreflight(issueKey, dbPathOverride)
 
-  private fun rejected(request: GoalRunnerAcceptRequest, reason: String): GoalRunnerAcceptResult.Rejected =
-    GoalRunnerAcceptResult.Rejected(request.issueKey, reason)
+  fun repair(request: GoalRunnerRepairRequest): GoalRunnerRepairResult = repairCoordinator.repair(request)
 
-  private fun acceptanceEvidence(
-    request: GoalRunnerAcceptRequest,
-    manifest: DecompositionManifest,
-    repoRoot: Path,
-  ): GoalRunnerAcceptanceEvidence {
-    val subtask = manifest.subtasks.firstOrNull { it.id == request.subtaskId }
-      ?: return GoalRunnerAcceptanceEvidence.Rejected("Subtask ${request.subtaskId} is not part of this goal.")
-    acceptanceStateRejection(request, subtask)?.let { reason ->
-      return GoalRunnerAcceptanceEvidence.Rejected(reason)
-    }
-    val unsatisfiedDependencyId = unsatisfiedDependency(manifest, subtask)
-    if (unsatisfiedDependencyId != null) {
-      return GoalRunnerAcceptanceEvidence.Rejected(
-        "Subtask ${request.subtaskId} depends on subtask $unsatisfiedDependencyId, which is not complete or skipped.",
-      )
-    }
-    return resolvedAcceptanceEvidence(request, repoRoot)
-  }
-
-  private fun acceptanceStateRejection(request: GoalRunnerAcceptRequest, subtask: DecompositionSubtask): String? {
-    val clearedByHardReset = subtask.status == "pending" &&
-      subtask.branch == null &&
-      subtask.commitSha == null &&
-      subtask.workflowId == null &&
-      subtask.blockedReason == null &&
-      subtask.lastResumableStep == null
-    return when {
-      request.restoreAfterHardReset && !clearedByHardReset ->
-        "Subtask ${request.subtaskId} is not in the cleared reset state required for acceptance restoration."
-      subtask.status == "complete" -> "Subtask ${request.subtaskId} is already complete."
-      else -> null
-    }
-  }
-
-  private fun resolvedAcceptanceEvidence(
-    request: GoalRunnerAcceptRequest,
-    repoRoot: Path,
-  ): GoalRunnerAcceptanceEvidence {
-    val resolved = gitOperations.resolveCommit(repoRoot, request.commitSha)
-    val resolvedSha = resolved.value.trim()
-    return if (resolved.ok && resolvedSha.isNotBlank()) {
-      GoalRunnerAcceptanceEvidence.Resolved(resolvedSha)
-    } else {
-      GoalRunnerAcceptanceEvidence.Rejected(
-        resolved.error.takeIf(String::isNotBlank)
-          ?: "Commit '${request.commitSha}' could not be resolved in this repository.",
-      )
-    }
-  }
-
-  private fun unsatisfiedDependency(manifest: DecompositionManifest, subtask: DecompositionSubtask): Int? {
-    val subtasksById = manifest.subtasks.associateBy(DecompositionSubtask::id)
-    return subtask.dependencies.firstOrNull { dependency ->
-      val dependencySubtask = subtasksById[dependency.subtaskId]
-      val satisfied = dependencySubtask?.status in setOf("complete", "skipped") ||
-        (dependency.optional && dependency.skipped)
-      !satisfied
-    }?.subtaskId
-  }
+  fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptResult = acceptanceCoordinator.accept(request)
 }
-
-private fun DecompositionManifest.resetManifest(hard: Boolean): DecompositionManifest {
-  val freshReset: (DecompositionSubtask) -> DecompositionSubtask = { subtask ->
-    subtask.copy(
-      status = "pending",
-      branch = null,
-      commitSha = null,
-      workflowId = null,
-      blockedReason = null,
-      lastResumableStep = null,
-    )
-  }
-  val resetSubtasks = subtasks.map { subtask ->
-    when {
-      hard -> freshReset(subtask)
-      subtask.status in setOf("complete", "skipped") -> subtask.copy(
-        blockedReason = null,
-        lastResumableStep = null,
-      )
-      !subtask.workflowId.isNullOrBlank() -> subtask.copy(
-        status = "in_progress",
-        blockedReason = null,
-      )
-      else -> freshReset(subtask)
-    }
-  }
-  return copy(
-    currentSubtaskIntent = restartIntent(resetSubtasks),
-    subtasks = resetSubtasks,
-  ).withParentStatus()
-}
-
-private fun restartIntent(subtasks: List<DecompositionSubtask>): CurrentSubtaskIntent {
-  if (subtasks.all { it.status in setOf("complete", "skipped") }) {
-    return CurrentSubtaskIntent(subtaskId = 0, action = "complete")
-  }
-  subtasks.firstOrNull { it.status == "in_progress" }?.let { resumable ->
-    return CurrentSubtaskIntent(subtaskId = resumable.id, action = "resume")
-  }
-  val subtasksById = subtasks.associateBy(DecompositionSubtask::id)
-  val nextRunnable = subtasks.firstOrNull { subtask ->
-    subtask.status == "pending" && subtask.dependencies.all { dependency ->
-      val dependencySubtask = subtasksById[dependency.subtaskId]
-      dependencySubtask?.status in setOf("complete", "skipped") || (dependency.optional && dependency.skipped)
-    }
-  } ?: subtasks.firstOrNull { it.status == "pending" }
-  return CurrentSubtaskIntent(
-    subtaskId = nextRunnable?.id ?: 0,
-    action = if (nextRunnable == null) "complete" else "start",
-  )
-}
-
-private fun replanIntent(subtask: DecompositionSubtask): CurrentSubtaskIntent {
-  val action = when {
-    subtask.status == SUBTASK_STATUS_IN_PROGRESS || !subtask.workflowId.isNullOrBlank() -> SUBTASK_ACTION_RESUME
-    else -> SUBTASK_ACTION_START
-  }
-  return CurrentSubtaskIntent(subtaskId = subtask.id, action = action)
-}
-
-private fun DecompositionManifest.toResetSnapshot(): GoalRunnerResetSnapshot = GoalRunnerResetSnapshot(
-  status = status,
-  currentSubtaskId = currentSubtaskIntent.subtaskId.takeIf { it > 0 },
-  currentAction = currentSubtaskIntent.action,
-  subtasks = subtasks.map { subtask ->
-    GoalRunnerResetSubtaskSnapshot(
-      id = subtask.id,
-      status = subtask.status,
-      branch = subtask.branch,
-      workflowId = subtask.workflowId,
-      commitSha = subtask.commitSha,
-      blockedReason = subtask.blockedReason,
-      lastResumableStep = subtask.lastResumableStep,
-    )
-  },
-)
-
-private fun GoalObservabilityProgressEvent.toStatusMap(): Map<String, Any?> =
-  linkedMapOf(
-    "issue_key" to issueKey,
-    "subtask_id" to subtaskId,
-    "workflow_phase" to workflowPhase,
-    "worker_role" to workerRole,
-    "liveness_class" to livenessClass,
-    "activity_summary" to activitySummary,
-    "sequence_number" to sequenceNumber,
-    "timestamp" to timestamp,
-  )
