@@ -204,9 +204,7 @@ class FileSystemValidationGateRunnerTest {
         script,
         """
         #!/bin/sh
-        printf '%s\n' 'FAILURE: Build failed with an exception.'
-        printf '%s\n' '* What went wrong:'
-        printf '%s\n' 'Execution failed for task :spotlessCheck.'
+        cat "${fixturePath("truly-unparseable.stdout")}"
         exit 1
         """.trimIndent(),
       )
@@ -220,8 +218,138 @@ class FileSystemValidationGateRunnerTest {
       val finding = result.findings.single()
       assertEquals("unparseable_gate_failure", finding.ruleOrTestId)
       assertEquals("<validation-gate>", finding.module)
-      assertTrue(finding.message.contains("Execution failed for task :spotlessCheck."))
+      assertTrue(finding.message.contains("Could not find method foo()"))
       assertTrue(finding.message.contains("Gate stdout (head+tail):"))
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `COLLECT_ALL multi-failure Gradle stdout yields discrete projectHealth and architectureCheck findings`() {
+    val repo = Files.createTempDirectory("gate-multi-failure")
+    try {
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        cat "${fixturePath("multi-failure-project-health-and-architecture-check.stdout")}"
+        exit 1
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+        ),
+      )
+      assertTrue(result.findings.size >= 2)
+      val ruleIds = result.findings.map { it.ruleOrTestId }.toSet()
+      assertTrue("incorrectConfiguration" in ruleIds)
+      assertTrue("forbidden_project_dependency" in ruleIds)
+      assertTrue(ruleIds.size >= 2)
+      assertTrue(result.findings.none { it.ruleOrTestId == "unparseable_gate_failure" })
+      val projectHealth = result.findings.single { it.ruleOrTestId == "incorrectConfiguration" }
+      assertEquals("harness-cursor", projectHealth.module)
+      assertTrue(projectHealth.message.contains("api(project(\":composition\"))"))
+      assertTrue(projectHealth.message.contains("was implementation"))
+      val architecture = result.findings.single { it.ruleOrTestId == "forbidden_project_dependency" }
+      assertEquals("architecture-tests", architecture.module)
+      assertTrue(architecture.message.contains("Forbidden project dependency"))
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `COLLECT_ALL projectHealth-only stdout yields discrete configuration mismatch finding`() {
+    val repo = Files.createTempDirectory("gate-project-health-only")
+    try {
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        cat "${fixturePath("project-health-only.stdout")}"
+        exit 1
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+        ),
+      )
+      assertTrue(result.findings.isNotEmpty())
+      val finding = result.findings.single { it.ruleOrTestId == "incorrectConfiguration" }
+      assertEquals("harness-cursor", finding.module)
+      assertTrue(finding.message.contains("api(project(\":composition\"))"))
+      assertTrue(finding.message.contains("was implementation"))
+      assertTrue(result.findings.none { it.ruleOrTestId == "unparseable_gate_failure" })
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `COLLECT_ALL uncovered task failure header yields structured finding`() {
+    val repo = Files.createTempDirectory("gate-uncovered-task-header")
+    try {
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        printf '%s\n' 'FAILURE: Build failed with an exception.'
+        printf '%s\n' '* What went wrong:'
+        printf '%s\n' "Execution failed for task ':runtime-infra-fs:spotlessCheck'."
+        exit 1
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+        ),
+      )
+      val finding = result.findings.single()
+      assertEquals("runtime-infra-fs", finding.module)
+      assertEquals("spotlessCheck", finding.ruleOrTestId)
+      assertEquals("Execution failed for task ':runtime-infra-fs:spotlessCheck'.", finding.message)
+      assertTrue(result.findings.none { it.ruleOrTestId == "unparseable_gate_failure" })
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `COLLECT_ALL compiler diagnostic suppresses duplicate compileKotlin task header finding`() {
+    val repo = Files.createTempDirectory("gate-compiler-task-dedupe")
+    try {
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        ROOT=$(pwd)
+        printf '%s\n' "e: file://${'$'}ROOT/module-a/Foo.kt:3:1 Unresolved reference: missing"
+        printf '%s\n' "Execution failed for task ':module-a:compileKotlin'."
+        exit 1
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+        ),
+      )
+      assertEquals(1, result.findings.size)
+      assertEquals("kotlin_compiler", result.findings.single().ruleOrTestId)
     } finally {
       repo.toFile().deleteRecursively()
     }
@@ -376,6 +504,12 @@ class FileSystemValidationGateRunnerTest {
     } finally {
       repo.toFile().deleteRecursively()
     }
+  }
+
+  private fun fixturePath(name: String): String {
+    val resource = javaClass.classLoader.getResource("validation-gate/$name")
+      ?: error("Missing validation-gate fixture: $name")
+    return Path.of(resource.toURI()).toString()
   }
 
   private fun writeGateScript(repo: Path): Path {

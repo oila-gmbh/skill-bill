@@ -87,7 +87,14 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
       return artifacts
     }
     val compiler = parseCompilerDiagnostics(request, stdout)
-    return (compiler + artifacts).distinctBy { findingIdentity(it) }
+    val finerFindings = compiler + artifacts
+    var coveredTaskKeys = coveredGradleTaskKeys(finerFindings)
+    val projectHealth = parseGradleProjectHealthStdout(stdout)
+    coveredTaskKeys = coveredTaskKeys + projectHealth.map { "${it.module}|projectHealth" }.toSet()
+    val architectureCheck = parseGradleArchitectureCheckStdout(stdout)
+    coveredTaskKeys = coveredTaskKeys + architectureCheck.map { "${it.module}|architectureCheck" }.toSet()
+    val taskHeaders = parseGradleTaskFailureHeaders(stdout, coveredTaskKeys)
+    return (finerFindings + projectHealth + architectureCheck + taskHeaders).distinctBy { findingIdentity(it) }
   }
 
   private fun finalizeFindings(
@@ -224,6 +231,17 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     private val QUALITY_TOOL_LINE =
       Regex("""^(?:file://)?(.+\.kt):(\d+):(\d+):\s+(.+?)\s+\[([A-Za-z0-9]+)]\s*$""")
     private val GRADLE_TASK_PREFIX = Regex("""^>\s*Task\s+:\S+\s+""")
+    private val GRADLE_TASK_FAILED_LINE = Regex("""^>\s*Task\s+:(\S+)\s+FAILED\s*$""")
+    private val GRADLE_TASK_FAILURE_HEADER =
+      Regex("""Execution failed for task '?([^']+)'?\.""")
+    private val GRADLE_PROJECT_HEALTH_ADVICE =
+      Regex("""^\s*(\w+)\((.+)\)\s+\(was\s+(\w+)\)\s*$""")
+    private val GRADLE_PROJECT_HEALTH_ADVICE_HEADER =
+      Regex("""Advice for project :(\S+)""", RegexOption.IGNORE_CASE)
+    private val GRADLE_FORBIDDEN_PROJECT_DEPENDENCY =
+      Regex("""(?i)forbidden project dependency""")
+    private val GRADLE_BANNED_PROJECT_DEPENDENCIES =
+      Regex("""^(\S+)\s+has banned project dependencies:\s*(.+)$""")
     private val DOCUMENT_BUILDER = DocumentBuilderFactory.newInstance().apply {
       isNamespaceAware = false
       isValidating = false
@@ -251,6 +269,141 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
           location = "$relative:$lineNo:$column",
         )
       }.toList()
+    }
+
+    internal fun coveredGradleTaskKeys(findings: List<ValidationGateFinding>): Set<String> = buildSet {
+      findings.forEach { finding ->
+        when (finding.ruleOrTestId) {
+          "kotlin_compiler" -> add("${finding.module}|compileKotlin")
+          "incorrectConfiguration", "projectHealth" -> add("${finding.module}|projectHealth")
+          "forbidden_project_dependency", "architectureCheck" -> add("${finding.module}|architectureCheck")
+        }
+        val location = finding.location.orEmpty()
+        if (location.contains("/reports/detekt/")) {
+          add("${finding.module}|detekt")
+        }
+        if (
+          finding.ruleOrTestId != "kotlin_compiler" &&
+          finding.ruleOrTestId != UNPARSEABLE_GATE_RULE_ID &&
+          finding.ruleOrTestId !in GRADLE_SPECIFIC_RULE_IDS &&
+          finding.location == null &&
+          finding.message.isNotBlank()
+        ) {
+          add("${finding.module}|test")
+        }
+        if (
+          finding.location?.contains(".kt:") == true &&
+          finding.ruleOrTestId.firstOrNull()?.isUpperCase() == true
+        ) {
+          add("${finding.module}|spotlessCheck")
+        }
+      }
+    }
+
+    internal fun parseGradleProjectHealthStdout(stdout: String): List<ValidationGateFinding> {
+      var currentModule: String? = null
+      return buildList {
+        stdout.lineSequence().forEach { rawLine ->
+          val line = rawLine.trim()
+          GRADLE_TASK_FAILED_LINE.matchEntire(line)?.let { match ->
+            val (module, task) = parseGradleTaskPath(match.groupValues[1])
+            if (task == "projectHealth") {
+              currentModule = module
+            }
+            return@forEach
+          }
+          GRADLE_TASK_FAILURE_HEADER.matchEntire(line)?.let { match ->
+            val (module, task) = parseGradleTaskPath(match.groupValues[1])
+            if (task == "projectHealth") {
+              currentModule = module
+            }
+            return@forEach
+          }
+          GRADLE_PROJECT_HEALTH_ADVICE_HEADER.matchEntire(line)?.let { match ->
+            currentModule = match.groupValues[1]
+            return@forEach
+          }
+          val advice = GRADLE_PROJECT_HEALTH_ADVICE.matchEntire(line) ?: return@forEach
+          val module = currentModule ?: return@forEach
+          val requiredConfiguration = advice.groupValues[1]
+          val dependencyCoordinate = advice.groupValues[2].trim()
+          val actualConfiguration = advice.groupValues[3]
+          add(
+            ValidationGateFinding(
+              module = module,
+              ruleOrTestId = "incorrectConfiguration",
+              message = "$requiredConfiguration($dependencyCoordinate) (was $actualConfiguration)",
+              location = filePathFromAdviceBlock(line)?.let { path ->
+                repoRelativeAdvicePath(path)
+              },
+            ),
+          )
+        }
+      }
+    }
+
+    internal fun parseGradleArchitectureCheckStdout(stdout: String): List<ValidationGateFinding> {
+      var currentModule: String? = null
+      return buildList {
+        stdout.lineSequence().forEach { rawLine ->
+          val line = rawLine.trim()
+          GRADLE_TASK_FAILED_LINE.matchEntire(line)?.let { match ->
+            val (module, task) = parseGradleTaskPath(match.groupValues[1])
+            if (task == "architectureCheck") {
+              currentModule = module
+            }
+            return@forEach
+          }
+          GRADLE_TASK_FAILURE_HEADER.matchEntire(line)?.let { match ->
+            val (module, task) = parseGradleTaskPath(match.groupValues[1])
+            if (task == "architectureCheck") {
+              currentModule = module
+            }
+            return@forEach
+          }
+          if (!GRADLE_FORBIDDEN_PROJECT_DEPENDENCY.containsMatchIn(line) &&
+            GRADLE_BANNED_PROJECT_DEPENDENCIES.matchEntire(line) == null
+          ) {
+            return@forEach
+          }
+          val module = currentModule
+            ?: GRADLE_BANNED_PROJECT_DEPENDENCIES.matchEntire(line)?.groupValues?.get(1)
+            ?: line.substringAfter("from :", "").substringBefore(' ').removePrefix(":")
+              .ifBlank { null }
+            ?: return@forEach
+          add(
+            ValidationGateFinding(
+              module = module,
+              ruleOrTestId = "forbidden_project_dependency",
+              message = line,
+              location = filePathFromAdviceBlock(line)?.let { path ->
+                repoRelativeAdvicePath(path)
+              },
+            ),
+          )
+        }
+      }
+    }
+
+    internal fun parseGradleTaskFailureHeaders(
+      stdout: String,
+      coveredTaskKeys: Set<String>,
+    ): List<ValidationGateFinding> = buildList {
+      stdout.lineSequence().forEach { rawLine ->
+        val line = rawLine.trim()
+        val match = GRADLE_TASK_FAILURE_HEADER.matchEntire(line) ?: return@forEach
+        val (module, task) = parseGradleTaskPath(match.groupValues[1])
+        val taskKey = "${module.ifBlank { GRADLE_ROOT_MODULE }}|$task"
+        if (taskKey in coveredTaskKeys) return@forEach
+        add(
+          ValidationGateFinding(
+            module = module.ifBlank { GRADLE_ROOT_MODULE },
+            ruleOrTestId = task,
+            message = line,
+            location = null,
+          ),
+        )
+      }
     }
 
     internal fun parseGradleKotlinCompilerStdout(repoRoot: Path, stdout: String): List<ValidationGateFinding> {
@@ -313,6 +466,31 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     }
 
     private fun canonicalizeExisting(path: Path): Path = runCatching { path.toRealPath() }.getOrDefault(path)
+
+    private const val GRADLE_ROOT_MODULE = "<root>"
+    private val GRADLE_SPECIFIC_RULE_IDS = setOf(
+      "incorrectConfiguration",
+      "projectHealth",
+      "forbidden_project_dependency",
+      "architectureCheck",
+    )
+
+    private fun parseGradleTaskPath(taskPath: String): Pair<String, String> {
+      val segments = taskPath.trim(':').split(':').filter { it.isNotEmpty() }
+      return when (segments.size) {
+        0 -> "" to ""
+        1 -> "" to segments[0]
+        else -> segments.dropLast(1).joinToString(":") to segments.last()
+      }
+    }
+
+    private fun filePathFromAdviceBlock(line: String): String? {
+      val match = Regex("""(?:file://)?(/[^\s:]+\.(?:kt|kts|java|gradle))""").find(line) ?: return null
+      return match.groupValues[1]
+    }
+
+    private fun repoRelativeAdvicePath(rawPath: String): String =
+      rawPath.removePrefix("file://").trimStart('/')
 
     private fun canonicalizeMaybeMissing(path: Path): Path {
       if (Files.exists(path)) {
