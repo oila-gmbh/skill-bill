@@ -1,12 +1,12 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.featuretask.validation.model.UNPARSEABLE_GATE_FAILURE_RULE_ID
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentTriageLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
-import skillbill.application.featuretask.validation.model.UNPARSEABLE_GATE_FAILURE_RULE_ID
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -47,7 +47,7 @@ class FeatureTaskRuntimeValidationGateTest {
           assertEquals(UNPARSEABLE_GATE_FAILURE_RULE_ID, findings.findings.single().ruleOrTestId)
           assertTrue(findings.findings.single().message.contains("Execution failed for task :spotlessCheck."))
           assertEquals("module=m fix spotless", triagePlan)
-          completedRepair(findings.findings)
+          completedRepair()
         },
       ),
     )
@@ -80,7 +80,7 @@ class FeatureTaskRuntimeValidationGateTest {
           repairLaunches.incrementAndGet()
           assertEquals(2, findings.findings.size)
           assertEquals(null, triagePlan)
-          completedRepair(findings.findings)
+          completedRepair()
         },
       ),
     )
@@ -112,7 +112,7 @@ class FeatureTaskRuntimeValidationGateTest {
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _, triagePlan ->
           repairLaunches.incrementAndGet()
           assertEquals(null, triagePlan)
-          completedRepair(findings.findings)
+          completedRepair()
         },
       ),
     )
@@ -138,7 +138,7 @@ class FeatureTaskRuntimeValidationGateTest {
           skillbill.application.featuretask.validation.model.ValidationGateTriageResult.Captured("plan prose")
         },
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _, _ ->
-          completedRepair(findings.findings)
+          completedRepair()
         },
       ),
     )

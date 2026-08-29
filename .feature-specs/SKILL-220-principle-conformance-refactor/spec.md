@@ -170,7 +170,10 @@ surface change except import paths.
   files. The FQN sweep is mechanical import hygiene and does not change
   behavior.
 - Existing suppressions, justified comments, and recorded decisions are
-  preserved unless a subtask names the one it removes and why.
+  preserved unless a subtask names the one it removes and why. Full
+  suppression elimination and explicit detekt complexity pinning are
+  SKILL-221; this program only deletes complexity suppressions that a
+  file split made unnecessary, and must not add new ones.
 - No new dependency, no new module, and no dependency-injection framework
   decision is adjudicated here.
 - Tests are held to the AGENTS.md value bar: a test added by this program
@@ -196,6 +199,11 @@ surface change except import paths.
   external process stdout). Those stay open and are documented.
 - Splitting test sources to the 500-line ceiling (production only).
 - Relitigating SKILL-52 raw-map allow-lists or hexagonal module edges.
+- Pinning TooManyFunctions / LargeClass / LongMethod (and the rest of the
+  complexity set) in `detekt.yml`, eliminating complexity suppressions, and
+  allow-listing only honest remaining `@Suppress` (e.g. some
+  `UNCHECKED_CAST`). That is SKILL-221, which starts after this program's
+  oversized splits.
 
 ## Dependency And Coordination Notes
 
@@ -235,3 +243,7 @@ only when `scripts/validate` passes on a clean checkout.
 ## Next Path
 
 Begin with subtask 1: cluster cross-area packages.
+
+SKILL-221 (detekt complexity pinning, complexity-suppression elimination,
+and an allow-list for honest remaining suppressions) is a successor goal.
+Do not start it until this program's oversized splits have landed.

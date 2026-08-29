@@ -27,7 +27,7 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = fullCycle { findings, _, _ ->
         repairSets += findings.findings.map { it.ruleOrTestId }
-        completedRepair(findings.findings)
+        completedRepair()
       },
     )
     assertEquals(listOf(listOf("e: Unresolved reference", "LaterTest.fails")), repairSets)
@@ -60,7 +60,7 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
       cycle = fullCycle { page, _, _ ->
         launchSizes += page.findings.size
-        completedRepair(page.findings)
+        completedRepair()
       },
     )
     assertEquals(listOf(65), launchSizes)
@@ -83,7 +83,7 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = fullCycle { findings, _, _ ->
         repairIds += findings.findings.map { it.ruleOrTestId }
-        completedRepair(findings.findings)
+        completedRepair()
       },
     )
     val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(

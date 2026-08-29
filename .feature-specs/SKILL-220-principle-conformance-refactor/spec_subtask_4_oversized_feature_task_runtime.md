@@ -61,7 +61,8 @@ the split makes unnecessary.
 4. No transaction is opened and committed in different collaborators, and no
    lease or lock is held across an external process wait.
 5. Detekt complexity suppressions removed by the split are deleted rather
-   than moved; any retained suppression carries a reason.
+   than moved. Do not add new suppressions. Leftover `@Suppress` is
+   SKILL-221.
 6. `scripts/validate` passes.
 7. No test is added. If a split needs a new test to be safe, the split is
    wrong.

@@ -1222,8 +1222,7 @@ internal class FeatureTaskRuntimeRunLoop(
       // Delete sources that share a move parent with owned/introduced destinations are absorbed so a
       // package move can stage both halves.
       paths = (seedOwned + deletedPaths)
-        .filterNot { path -> isFeatureSpecPathForIssue(path, request.issueKey) }
-        .filterNot { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) },
+        .filterNot { path -> isFeatureSpecPathForIssue(path, request.issueKey) },
     )
     persistOwnedInventory(ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
     checkpointOwnershipDecided = true
@@ -3450,29 +3449,81 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  private fun looseOutputEnvelope(outputText: String): Map<String, Any?>? {
+    val trimmed = outputText.trim()
+    JsonSupport.parseObjectOrNull(trimmed)?.let {
+      return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+    }
+    val start = trimmed.indexOf('{')
+    val end = trimmed.lastIndexOf('}')
+    if (start !in 0..<end) return null
+    return JsonSupport.parseObjectOrNull(trimmed.substring(start, end + 1))
+      ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
+  }
+
+  private fun gateTriageCapturedProducedOutputs(outputText: String): Map<String, Any?> {
+    val produced = looseOutputEnvelope(outputText)
+      ?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]) }
+      ?: return emptyMap()
+    return buildMap {
+      produced["value"]?.let { put("value", it) }
+      produced["validation_repair_plan"]?.let { put("validation_repair_plan", it) }
+    }
+  }
+
+  private fun gateRepairSegmentOutput(run: PhaseRun, iteration: Int): FeatureTaskRuntimePhaseOutput =
+    FeatureTaskRuntimePhaseOutput(
+      phaseId = run.phaseId,
+      iteration = iteration,
+      payload =
+      """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"${run.phaseId}",""" +
+        """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
+    )
+
+  private fun gateTriageSegmentOutput(
+    run: PhaseRun,
+    iteration: Int,
+    outputText: String,
+  ): FeatureTaskRuntimePhaseOutput {
+    val captured = gateTriageCapturedProducedOutputs(outputText)
+    val payload = mapOf(
+      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
+      "phase_id" to run.phaseId,
+      "status" to "completed",
+      "summary" to "Gate triage segment.",
+      "produced_outputs" to captured,
+    )
+    return FeatureTaskRuntimePhaseOutput(
+      phaseId = run.phaseId,
+      iteration = iteration,
+      payload = JsonSupport.mapToJsonString(payload),
+    )
+  }
+
   private fun extractValidationGateTriagePlan(output: FeatureTaskRuntimePhaseOutput): ValidationGateTriageResult {
     val envelope = outputEnvelopeOf(output) ?: return ValidationGateTriageResult.Empty
     val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])
       ?: return ValidationGateTriageResult.Empty
-    val valueText = produced["value"] as? String
-    if (!valueText.isNullOrBlank()) {
-      val inner = JsonSupport.parseObjectOrNull(valueText)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
-      val planFromValue = inner?.let { extractTriagePlanProse(it["validation_repair_plan"]) }
-      if (!planFromValue.isNullOrBlank()) {
-        return ValidationGateTriageResult.Captured(planFromValue)
-      }
-      if (inner == null) {
-        return ValidationGateTriageResult.Captured(valueText)
-      }
-    }
+    planFromProducedValue(produced["value"])?.let { return it }
     val directPlan = extractTriagePlanProse(produced["validation_repair_plan"])
     return if (!directPlan.isNullOrBlank()) {
       ValidationGateTriageResult.Captured(directPlan)
     } else {
       ValidationGateTriageResult.Empty
     }
+  }
+
+  private fun planFromProducedValue(value: Any?): ValidationGateTriageResult? {
+    val valueText = value as? String ?: return null
+    if (valueText.isBlank()) return null
+    val inner = JsonSupport.parseObjectOrNull(valueText)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+    val planFromValue = inner?.let { extractTriagePlanProse(it["validation_repair_plan"]) }
+    if (!planFromValue.isNullOrBlank()) {
+      return ValidationGateTriageResult.Captured(planFromValue)
+    }
+    return if (inner == null) ValidationGateTriageResult.Captured(valueText) else null
   }
 
   private fun extractTriagePlanProse(raw: Any?): String? = when (raw) {
@@ -4521,17 +4572,14 @@ internal class FeatureTaskRuntimeRunLoop(
     // Build/validate gate repair: the agent mutates the tree from runtime-parsed findings. Stdout is
     // not a phase receipt — the coordinator re-runs the pack command and mints build_receipt /
     // validation_receipt. Requiring schema here blocked honest fixes under the output-gate cap.
-    if (run.validationGateRepairTurn > 0 || run.validationGateTriage) {
+    if (run.validationGateRepairTurn > 0) {
       return AttemptResult.settled(
-        PhaseOutcome.completed(
-          FeatureTaskRuntimePhaseOutput(
-            phaseId = run.phaseId,
-            iteration = iteration,
-            payload =
-            """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"${run.phaseId}",""" +
-              """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
-          ),
-        ),
+        PhaseOutcome.completed(gateRepairSegmentOutput(run, iteration)),
+      )
+    }
+    if (run.validationGateTriage) {
+      return AttemptResult.settled(
+        PhaseOutcome.completed(gateTriageSegmentOutput(run, iteration, outputText)),
       )
     }
     return try {

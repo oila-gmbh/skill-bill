@@ -23,6 +23,8 @@ class ValidationGateTriagePredicateTest {
         ),
       ),
     )
-    assertFalse(requiresUnparseableGateTriage(listOf(ValidationGateFinding("m", "kotlin_compiler", "broken", "Foo.kt"))))
+    assertFalse(
+      requiresUnparseableGateTriage(listOf(ValidationGateFinding("m", "kotlin_compiler", "broken", "Foo.kt"))),
+    )
   }
 }

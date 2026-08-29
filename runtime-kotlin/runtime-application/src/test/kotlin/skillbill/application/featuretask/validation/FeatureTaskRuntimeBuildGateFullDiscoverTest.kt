@@ -45,7 +45,7 @@ class FeatureTaskRuntimeBuildGateFullDiscoverTest {
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _, _ ->
           repairRuleIds += findings.findings.map { it.ruleOrTestId }
-          completedRepair(findings.findings)
+          completedRepair()
         },
       ),
     )

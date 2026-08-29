@@ -6,6 +6,7 @@ import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import java.nio.file.Path
 
@@ -90,6 +91,29 @@ fun interface ValidationGateProgressStore {
   fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress, dbOverride: String?)
 
   fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = null
+}
+
+data class ValidationGateProgressWrite(
+  val repairWindowPhase: FeatureTaskRuntimeValidationGateRepairWindowPhase,
+  val remainingFindings: ValidationFindingSetProjection?,
+  val completeFindings: List<ValidationGateFinding>,
+  val repairsUsed: Int,
+  val capturedTriagePlan: String?,
+) {
+  companion object {
+    fun findingsOpen(
+      completeFindings: List<ValidationGateFinding>,
+      repairsUsed: Int,
+      capturedTriagePlan: String?,
+      remainingFindings: ValidationFindingSetProjection? = null,
+    ): ValidationGateProgressWrite = ValidationGateProgressWrite(
+      repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
+      remainingFindings = remainingFindings,
+      completeFindings = completeFindings,
+      repairsUsed = repairsUsed,
+      capturedTriagePlan = capturedTriagePlan,
+    )
+  }
 }
 
 /** Inputs for one runtime-owned validate gate cycle. */

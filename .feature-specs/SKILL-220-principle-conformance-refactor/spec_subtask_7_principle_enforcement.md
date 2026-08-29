@@ -103,6 +103,8 @@ incomplete.
 - Enforcing rules the tree does not yet satisfy; each guard lands only after
   its subtask.
 - Replacing the SKILL-52.3 adapter/infra FQN leak guard.
+- Banning complexity `@Suppress` and allow-listing honest remaining ones.
+  That is SKILL-221.
 
 ## Dependency Notes
 

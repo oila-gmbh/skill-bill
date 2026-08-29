@@ -172,9 +172,7 @@ internal fun failedWith(vararg findings: ValidationGateFinding): ValidationGateR
   findings = findings.toList(),
 )
 
-internal fun completedRepair(
-  findings: List<ValidationGateFinding>,
-): ValidationGateAgentRepairResult {
+internal fun completedRepair(): ValidationGateAgentRepairResult {
   val payload = JsonSupport.mapToJsonString(mapOf("produced_outputs" to emptyMap<String, Any?>()))
   return ValidationGateAgentRepairResult.Completed(
     FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = payload),

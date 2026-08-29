@@ -80,7 +80,8 @@ a new public API surface.
    tests pass without assertion changes.
 5. Every atomic write that was atomic before is atomic after.
 6. Detekt complexity suppressions removed by the split are deleted rather
-   than moved; any retained suppression carries a reason.
+   than moved. Do not add new suppressions. Leftover `@Suppress` is
+   SKILL-221.
 7. `scripts/validate` passes.
 8. No test is added. If a split needs a new test to be safe, the split is
    wrong.
