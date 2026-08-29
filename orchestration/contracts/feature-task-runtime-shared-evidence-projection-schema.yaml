@@ -73,7 +73,6 @@ properties:
     pattern: ".*\\S.*"
   file_hunk_index:
     type: array
-    maxItems: 512
     items:
       type: string
       minLength: 1

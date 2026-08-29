@@ -38,7 +38,6 @@ import skillbill.config.model.PhaseCompactionDirective
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
@@ -83,6 +82,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeQualityGateRouting
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_NO_PROGRESS
@@ -141,6 +141,7 @@ internal data class FeatureTaskRuntimeRunLoopDependencies(
   val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   val phaseGates: FeatureTaskRuntimePhaseGates,
   val subtaskLauncher: GoalRunnerSubtaskLauncher,
+  val phaseSettlementService: FeatureTaskPhaseSettlementService,
 )
 
 internal data class FeatureTaskRuntimeRunLoopContext(
@@ -233,6 +234,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private val outputValidator get() = dependencies.outputValidator
   private val phaseGates get() = dependencies.phaseGates
   private val subtaskLauncher get() = dependencies.subtaskLauncher
+  private val phaseSettlementService get() = dependencies.phaseSettlementService
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
   private val planningStopper get() = phaseGates.planningStopper
   private val gitOperations get() = phaseGates.gitOperations
@@ -4580,6 +4582,36 @@ internal class FeatureTaskRuntimeRunLoop(
         PhaseOutcome.completed(gateTriageSegmentOutput(run, iteration, outputText)),
       )
     }
+    val settlementEnvelope = phaseSettlementService.findEnvelope(
+      workflowId = run.request.workflowId,
+      phaseId = run.phaseId,
+      attempt = iteration,
+      dbPathOverride = run.request.dbPathOverride,
+    )
+    if (settlementEnvelope != null) {
+      try {
+        val acceptedOutput = outputValidator
+          .validatePhaseOutput(JsonSupport.mapToJsonString(settlementEnvelope), sourceLabel = run.phaseId)
+          .requireAcceptedOutput(run.phaseId)
+        return settleValidatedOutput(
+          run, iteration, acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence, observability, fileManifest,
+          outputText, outputBytes, outputTruncated, outputByteSize, outputSha256,
+        )
+      } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+        phaseSettlementService.clear(
+          workflowId = run.request.workflowId,
+          phaseId = run.phaseId,
+          attempt = iteration,
+          dbPathOverride = run.request.dbPathOverride,
+        )
+        persistVerifyFindingsCheckpointIfPresent(run, outputText)
+        recordRejectedOutput(
+          run, iteration, "phase-settlement-schema", error.reason, outputBytes,
+          path = rejectionPath(error.reason),
+          outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
+        )
+      }
+    }
     return try {
       val acceptedOutput = outputValidator
         .validatePhaseOutput(outputText, sourceLabel = run.phaseId)
@@ -6135,8 +6167,35 @@ internal class FeatureTaskRuntimeRunLoop(
       agentRunValidateFallback = run.agentRunValidateFallback,
       packCollectAllCommand = packCollectAllCommand(run),
       packBuildCommand = packBuildCommand(run),
-    ) + verifyFindingsSpecIntentSection(run)
+    ) + verifyFindingsSpecIntentSection(run) + proseSettlementDirective(run, state)
     return PreparedLaunch(briefing, prompt)
+  }
+
+  private fun proseSettlementDirective(run: PhaseRun, state: FeatureTaskRuntimeRunState): String {
+    if (!ProsePhaseOutputSynthesizer.isProsePhase(run.phaseId)) return ""
+    val attempt = state.nextIteration(run.phaseId)
+    val workflowId = run.request.workflowId
+    return buildString {
+      appendLine()
+      appendLine("## Phase settlement (preferred)")
+      appendLine(
+        "Prefer skill-bill MCP settlement over stdout envelope packaging. Pass workflow_id=" +
+          "`$workflowId` and attempt=`$attempt`.",
+      )
+      when (run.phaseId) {
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+          appendLine(
+            "Call `feature_task_audit_settle` with verdict `satisfied` or `gaps_found` and a non-blank " +
+              "`value` prose string. Call `feature_task_phase_block` only to durable-block.",
+          )
+        else ->
+          appendLine(
+            "Call `feature_task_phase_complete` with a non-blank `value` (and optional `prompt`). " +
+              "Call `feature_task_phase_block` to durable-block. Stdout envelopes remain a fallback; " +
+              "packaging near-misses are absorbed when `value` can be recovered.",
+          )
+      }
+    }
   }
 
   private fun findingPathsForBoundaryMemory(

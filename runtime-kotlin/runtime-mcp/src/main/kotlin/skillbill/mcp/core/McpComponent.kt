@@ -28,4 +28,5 @@ class McpRuntimeServices(
   val telemetryService: TelemetryService,
   val workflowService: WorkflowService,
   val updateCheckService: UpdateCheckService,
+  val featureTaskPhaseSettlementService: skillbill.application.featuretask.FeatureTaskPhaseSettlementService,
 )

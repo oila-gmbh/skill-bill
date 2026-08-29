@@ -91,6 +91,7 @@ class DatabaseMigrationsTest {
         32 to "allow-goal-planning-phase-output-0-4",
         33 to "allow-goal-planning-phase-output-0-5",
         34 to "allow-goal-planning-phase-output-0-6",
+        35 to "add-feature-task-phase-settlements",
       ),
       migrationDefinitions,
     )

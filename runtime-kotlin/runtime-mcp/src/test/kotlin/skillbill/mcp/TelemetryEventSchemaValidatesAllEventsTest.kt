@@ -64,30 +64,29 @@ class TelemetryEventSchemaValidatesAllEventsTest {
     return envelope
   }
 
-  @Suppress("UNCHECKED_CAST")
   private fun representativeValue(fieldSchema: Map<String, Any?>): Any? {
     val type = fieldSchema["type"] as? String ?: "object"
-    val enum = fieldSchema["enum"] as? List<*>
     return when (type) {
-      "string" -> if (enum != null && enum.isNotEmpty()) {
-        enum.first().toString()
-      } else if ((fieldSchema["minLength"] as? Number)?.toInt()?.let { it > 0 } == true) {
-        "x"
-      } else {
-        ""
-      }
-      "integer" -> 0
+      "string" -> representativeString(fieldSchema)
+      "integer" -> representativeInteger(fieldSchema)
       "number" -> 0
       "boolean" -> false
-      "array" -> {
-        val itemSchema = fieldSchema["items"] as? Map<String, Any?>
-        // Empty array is schema-valid for required arrays; the
-        // existing tests already cover non-empty cases via the
-        // violations test below.
-        if (itemSchema != null) emptyList<Any?>() else emptyList<Any?>()
-      }
+      "array" -> emptyList<Any?>()
       "object" -> emptyMap<String, Any?>()
       else -> ""
     }
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun representativeString(fieldSchema: Map<String, Any?>): String {
+    val enum = fieldSchema["enum"] as? List<*>
+    if (enum != null && enum.isNotEmpty()) return enum.first().toString()
+    val minLength = (fieldSchema["minLength"] as? Number)?.toInt()
+    return if (minLength != null && minLength > 0) "x" else ""
+  }
+
+  private fun representativeInteger(fieldSchema: Map<String, Any?>): Int {
+    val minimum = (fieldSchema["minimum"] as? Number)?.toInt()
+    return if (minimum != null && minimum > 0) minimum else 0
   }
 }

@@ -1,6 +1,9 @@
 package skillbill.mcp.core
 
 import skillbill.application.model.WorkflowFamilyKind
+import skillbill.mcp.featuretask.featureTaskAuditSettle
+import skillbill.mcp.featuretask.featureTaskPhaseBlock
+import skillbill.mcp.featuretask.featureTaskPhaseComplete
 import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
@@ -22,6 +25,9 @@ object McpToolDispatcher {
   private val nativeHandlers: Map<String, McpToolHandler> =
     mapOf(
       "doctor" to { _, context -> McpRuntime.doctor(context) },
+      "feature_task_audit_settle" to ::featureTaskAuditSettle,
+      "feature_task_phase_block" to ::featureTaskPhaseBlock,
+      "feature_task_phase_complete" to ::featureTaskPhaseComplete,
       "feature_verify_finished" to ::featureVerifyFinished,
       "feature_verify_started" to ::featureVerifyStarted,
       "feature_verify_stats" to { _, context -> McpRuntime.featureVerifyStats(context) },

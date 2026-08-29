@@ -1396,7 +1396,7 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
   }
 
   @Test
-  fun `feature-task runtime forwards omitted and explicit review modes unchanged to review`() {
+  fun `feature-task runtime pins omitted and explicit review modes on durable run invariants`() {
     val kotlinDelta = """
       diff --git a/src/Foo.kt b/src/Foo.kt
       --- a/src/Foo.kt
@@ -1405,10 +1405,11 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
       +fun foo() = 1
     """.trimIndent()
     listOf(
-      "omitted" to emptyList(),
-      "auto" to listOf("--code-review-mode", "auto"),
-      "inline" to listOf("--code-review-mode", "inline"),
-    ).forEach { (expectedMode, modeArgs) ->
+      "omitted" to (emptyList<String>() to "inline"),
+      "auto" to (listOf("--code-review-mode", "auto") to "auto"),
+      "inline" to (listOf("--code-review-mode", "inline") to "inline"),
+    ).forEach { (caseName, modeAndExpected) ->
+      val (modeArgs, expectedPinnedMode) = modeAndExpected
       val fixture = runtimeFixture()
       val launcher = RecordingPhaseLauncher()
       val git = FakeRuntimeGitOperations(trackedDelta = kotlinDelta)
@@ -1418,18 +1419,14 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
         fixture.context(launcher, workflowGitOperations = git),
       )
 
-      assertEquals(0, result.exitCode, "$expectedMode: ${result.stdout}")
-      val reviewPrompts = launcher.requests
-        .map { it.skillRunRequest.promptOverride.orEmpty() }
-        .filter { it.contains("bill-code-review mode:") }
-      val forwardedMode = when (expectedMode) {
-        "omitted", "auto" -> "inline"
-        else -> expectedMode
-      }
-      assertTrue(
-        reviewPrompts.any { it.contains("bill-code-review mode:$forwardedMode") },
-        "$expectedMode missing forwarded review mode in driver launches",
+      assertEquals(0, result.exitCode, "$caseName: ${result.stdout}")
+      val workflowId = result.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+      assertEquals(
+        expectedPinnedMode,
+        runInvariantsCodeReviewMode(fixture.dbPath, workflowId),
+        "$caseName durable code_review_mode",
       )
+      assertEquals(AGENT_LAUNCHED_PHASES, launcher.phaseOrder(), "$caseName: ${result.stdout}")
     }
   }
 
@@ -1852,6 +1849,24 @@ private fun goalContinuationValidationDepth(dbPath: Path, workflowId: String): S
 
 @Suppress("UNCHECKED_CAST")
 private fun goalContinuationArtifact(dbPath: Path, workflowId: String): Map<String, Any?>? {
+  val artifacts = featureTaskWorkflowArtifacts(dbPath, workflowId)
+  return artifacts["goal_continuation"] as Map<String, Any?>?
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun runInvariantsCodeReviewMode(dbPath: Path, workflowId: String): String {
+  val invariants = requireNotNull(
+    featureTaskWorkflowArtifacts(dbPath, workflowId)["feature_task_runtime_run_invariants"] as? Map<*, *>,
+  ) {
+    "feature_task_runtime_run_invariants missing for $workflowId"
+  }
+  return requireNotNull(invariants["code_review_mode"] as? String) {
+    "feature_task_runtime_run_invariants.code_review_mode missing for $workflowId"
+  }
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun featureTaskWorkflowArtifacts(dbPath: Path, workflowId: String): Map<String, Any?> {
   val artifactsJson = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
     connection.prepareStatement(
       "SELECT artifacts_json FROM feature_task_workflows WHERE workflow_id = ?",
@@ -1863,12 +1878,11 @@ private fun goalContinuationArtifact(dbPath: Path, workflowId: String): Map<Stri
       }
     }
   }
-  val artifacts = requireNotNull(
+  return requireNotNull(
     JsonSupport.anyToStringAnyMap(
       JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(artifactsJson))),
     ),
   ) { "artifacts_json for $workflowId is not an object map" }
-  return artifacts["goal_continuation"] as Map<String, Any?>?
 }
 
 // Replaces the only non-deterministic stdout line (the generated workflow_id) with a stable token so

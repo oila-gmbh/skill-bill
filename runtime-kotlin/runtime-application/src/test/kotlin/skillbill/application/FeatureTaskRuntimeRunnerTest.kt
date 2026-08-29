@@ -6,6 +6,7 @@ import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvel
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureSpecPreparationRuntime
 import skillbill.application.featuretask.FeatureSpecPreparationWriter
+import skillbill.application.featuretask.FeatureTaskPhaseSettlementService
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
@@ -26,6 +27,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.GoalSubtaskReviewInputReady
+import skillbill.application.featuretask.InMemoryFeatureTaskPhaseSettlementRepository
 import skillbill.application.featuretask.RemediationBaseCoherent
 import skillbill.application.featuretask.SpecSourceResolver
 import skillbill.application.featuretask.phaseDeclaration
@@ -5874,6 +5876,7 @@ private fun harnessRunner(
       harnessReviewDriverSyncingPendingVerifyFindings(runtimeConfig.reviewDriver),
     ),
     FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
+    FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
     diagnostics,
   )
 }
@@ -5935,6 +5938,7 @@ internal fun telemetryRunnerHarness(
     ),
     // Telemetry harness validates event emission, not crash reconciliation; no-op supervisor.
     FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
+    FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
   )
   val request = FeatureTaskRuntimeRunRequest(
     issueKey = ISSUE_KEY,

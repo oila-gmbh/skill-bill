@@ -33,6 +33,9 @@ object McpToolRegistry {
   private val toolNames: List<String> =
     listOf(
       "doctor",
+      "feature_task_audit_settle",
+      "feature_task_phase_block",
+      "feature_task_phase_complete",
       "feature_verify_finished",
       "feature_verify_stats",
       "feature_verify_started",
@@ -60,6 +63,12 @@ object McpToolRegistry {
   private val descriptions: Map<String, String> =
     mapOf(
       "doctor" to "Check skill-bill installation health.",
+      "feature_task_audit_settle" to
+        "Settle a feature-task audit phase via durable settlement (preferred over stdout envelope).",
+      "feature_task_phase_block" to
+        "Durable-block a prose feature-task phase (preplan|plan|implement|audit).",
+      "feature_task_phase_complete" to
+        "Complete a prose feature-task phase (preplan|plan|implement) via durable settlement.",
       "feature_verify_finished" to "Record completion of a feature-verify session.",
       "feature_verify_stats" to "Show aggregate bill-feature-verify metrics.",
       "feature_verify_started" to "Record start of a feature-verify session.",
@@ -87,6 +96,38 @@ object McpToolRegistry {
 
   private val inputSchemas: Map<String, Map<String, Any?>> =
     mapOf(
+      "feature_task_phase_complete" to objectSchema(
+        required = listOf("workflow_id", "phase_id", "attempt", "value"),
+        properties = mapOf(
+          "workflow_id" to stringSchema(minLength = 1),
+          "phase_id" to stringSchema(enum = listOf("preplan", "plan", "implement")),
+          "attempt" to mapOf("type" to "integer", "minimum" to 1),
+          "value" to stringSchema(minLength = 1),
+          "prompt" to stringSchema(minLength = 1),
+          "summary" to stringSchema(minLength = 1),
+        ),
+      ),
+      "feature_task_phase_block" to objectSchema(
+        required = listOf("workflow_id", "phase_id", "attempt", "reason"),
+        properties = mapOf(
+          "workflow_id" to stringSchema(minLength = 1),
+          "phase_id" to stringSchema(enum = listOf("preplan", "plan", "implement", "audit")),
+          "attempt" to mapOf("type" to "integer", "minimum" to 1),
+          "reason" to stringSchema(minLength = 1),
+          "failure_disposition" to stringSchema(minLength = 1),
+        ),
+      ),
+      "feature_task_audit_settle" to objectSchema(
+        required = listOf("workflow_id", "attempt", "verdict", "value"),
+        properties = mapOf(
+          "workflow_id" to stringSchema(minLength = 1),
+          "phase_id" to stringSchema(enum = listOf("audit")),
+          "attempt" to mapOf("type" to "integer", "minimum" to 1),
+          "verdict" to stringSchema(enum = listOf("satisfied", "gaps_found")),
+          "value" to stringSchema(minLength = 1),
+          "summary" to stringSchema(minLength = 1),
+        ),
+      ),
       "feature_verify_started" to objectSchema(
         required = listOf("acceptance_criteria_count", "rollout_relevant", "spec_summary"),
         properties = mapOf(

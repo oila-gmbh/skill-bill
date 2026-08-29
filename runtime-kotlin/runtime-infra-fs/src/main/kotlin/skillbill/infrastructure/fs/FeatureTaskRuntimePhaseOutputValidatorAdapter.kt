@@ -10,6 +10,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeBuildReceiptSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
@@ -27,14 +28,10 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
   ): FeatureTaskRuntimePhaseOutputValidationResult {
     val decision = FeatureTaskRuntimePhaseOutputStructuralRepair.inspect(phaseOutputText, sourceLabel)
     return when (decision) {
-      // A leniently-verified phase settles through output-verification, not the schema gate, so a
-      // structural rejection is not the last word: retry the original text with the lenient reader,
-      // which tolerates the extra keys and schema polish this phase is meant to accept. Only a
-      // rejection is retried — accepted repairs keep their evidence — so this can turn a block into
-      // an acceptance but never the reverse.
       is FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Rejected ->
         leniently(phaseOutputText, sourceLabel)
           ?.let { FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(it) }
+          ?: synthesizeProse(phaseOutputText, sourceLabel)
           ?: FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
             code = decision.code,
             reason = decision.reason,
@@ -60,13 +57,14 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
           FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(normalized, decision.evidence)
         }
       } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-        FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
-          code = FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode),
-          reason = error.payloadFreeReason ?: "Phase output failed the phase-specific schema contract.",
-          diagnosticReason = error.reason,
-          payloadFreeReason = error.payloadFreeReason,
-          structuralRepairEvidence = decision.evidence,
-        )
+        synthesizeProse(phaseOutputText, sourceLabel)
+          ?: FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
+            code = FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode),
+            reason = error.payloadFreeReason ?: "Phase output failed the phase-specific schema contract.",
+            diagnosticReason = error.reason,
+            payloadFreeReason = error.payloadFreeReason,
+            structuralRepairEvidence = decision.evidence,
+          )
       } catch (error: InvalidFeatureTaskRuntimeBuildReceiptSchemaError) {
         FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
           code = FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode),
@@ -76,6 +74,20 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
           structuralRepairEvidence = decision.evidence,
         )
       }
+    }
+  }
+
+  private fun synthesizeProse(
+    phaseOutputText: String,
+    sourceLabel: String,
+  ): FeatureTaskRuntimePhaseOutputValidationResult? {
+    val envelope = ProsePhaseOutputSynthesizer.trySynthesize(phaseOutputText, sourceLabel) ?: return null
+    return try {
+      val canonical = JsonSupport.mapToJsonString(envelope)
+      val normalized = FeatureTaskRuntimePhaseOutputSchemaValidator.normalizePhaseOutput(canonical, sourceLabel)
+      FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(normalized)
+    } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+      null
     }
   }
 

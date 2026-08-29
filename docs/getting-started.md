@@ -467,7 +467,15 @@ Primary MCP groups:
 - scaffold tool: `new_skill_scaffold`
 - health tool: `doctor`
 
-The foreground feature-task driver owns its own durable state, lifecycle telemetry, and continuation lookup in-process. It has no MCP endpoints; use `skill-bill feature-task` and `skill-bill feature-task-stats` instead.
+The foreground feature-task driver owns its durable state, lifecycle telemetry,
+and continuation lookup in-process. Settlement-only MCP tools
+(`feature_task_phase_complete`, `feature_task_phase_block`,
+`feature_task_audit_settle`) let a child agent choose the next edge without
+schema-policing a stdout envelope; use `skill-bill feature-task` and
+`skill-bill feature-task-stats` for lifecycle control. When MCP settlement is
+absent, prose phases still accept recoverable stdout packaging near-misses
+(legacy siblings stuffed into `produced_outputs.value`) rather than hard-rejecting
+them — that broadening is intentional for preplan/plan/implement/audit.
 
 ## Validation Gate
 

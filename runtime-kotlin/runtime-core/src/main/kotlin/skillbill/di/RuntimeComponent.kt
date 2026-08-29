@@ -137,6 +137,7 @@ import skillbill.infrastructure.fs.validation.FileSystemValidationGateRunner
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
+import skillbill.infrastructure.sqlite.SqliteFeatureTaskPhaseSettlementRepository
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
 import skillbill.launcher.agentrun.PathExecutableLookup
@@ -177,6 +178,7 @@ import skillbill.ports.install.reconcile.InstallReconcileApplyPort
 import skillbill.ports.install.reconcile.InstallReconcilePort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.persistence.ProducerOutputEvidenceValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
@@ -741,6 +743,11 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimeImplementationAttemptValidator(
     adapter: FeatureTaskRuntimeImplementationAttemptValidatorAdapter,
   ): FeatureTaskRuntimeImplementationAttemptValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  fun featureTaskPhaseSettlementRepository(): FeatureTaskPhaseSettlementRepository =
+    SqliteFeatureTaskPhaseSettlementRepository()
 
   @Provides
   @JvmSynthetic

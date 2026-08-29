@@ -59,6 +59,7 @@ class FeatureTaskRuntimeRunner(
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val phaseGates: FeatureTaskRuntimePhaseGates,
   private val crashReconciler: FeatureTaskRuntimeCrashReconciler,
+  private val phaseSettlementService: FeatureTaskPhaseSettlementService,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   private val branchSetupRunner get() = phaseGates.branchSetupRunner
@@ -186,6 +187,7 @@ class FeatureTaskRuntimeRunner(
           outputValidator,
           phaseGates,
           subtaskLauncher,
+          phaseSettlementService,
         ),
         FeatureTaskRuntimeRunLoopContext(
           runRequest,
