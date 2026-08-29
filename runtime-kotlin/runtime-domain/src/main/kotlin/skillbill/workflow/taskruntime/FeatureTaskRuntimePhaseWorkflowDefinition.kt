@@ -1,28 +1,17 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.engine.model.WorkflowDefinition
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewScope
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 
 /**
@@ -34,7 +23,6 @@ import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
  * [phaseDeclarations] adds the derived-context declarations that the `WorkflowDefinition`
  * shape cannot express.
  */
-@Suppress("LargeClass", "TooManyFunctions")
 object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_PREPLAN: String = "preplan"
   const val PHASE_PLAN: String = "plan"
@@ -110,99 +98,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
 
   fun retriesOnInvalidOutput(phaseId: String): Boolean = phaseId in OUTPUT_RETRY_PHASES
 
-  val definition: WorkflowDefinition = WorkflowDefinition(
-    skillName = "bill-feature-task",
-    workflowName = "bill-feature-task",
-    workflowIdPrefix = "wftr",
-    defaultSessionPrefix = "ftr",
-    contractVersion = WORKFLOW_STATE_CONTRACT_VERSION,
-    workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
-    stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped", "paused"),
-    terminalStatuses = setOf("completed", "failed", "abandoned"),
-    defaultInitialStepId = PHASE_PREPLAN,
-    stepIds =
-    listOf(
-      PHASE_PREPLAN,
-      PHASE_PLAN,
-      PHASE_IMPLEMENT,
-      PHASE_AUDIT,
-      PHASE_REVIEW,
-      PHASE_VERIFY_FINDINGS,
-      PHASE_IMPLEMENT_FIX,
-      PHASE_BUILD,
-      PHASE_VALIDATE,
-      PHASE_WRITE_HISTORY,
-      PHASE_COMMIT_PUSH,
-      PHASE_PR,
-    ),
-    stepLabels =
-    mapOf(
-      PHASE_PREPLAN to "Phase 1: Pre-plan",
-      PHASE_PLAN to "Phase 2: Plan",
-      PHASE_IMPLEMENT to "Phase 3: Implement",
-      PHASE_AUDIT to "Phase 4: Completeness Audit",
-      PHASE_REVIEW to "Phase 5: Code Review",
-      PHASE_VERIFY_FINDINGS to "Phase 5a: Verify Findings",
-      PHASE_IMPLEMENT_FIX to "Phase 5b: Implement Fix",
-      PHASE_BUILD to "Phase 5c: Build",
-      PHASE_VALIDATE to "Phase 6: Quality Validation",
-      PHASE_WRITE_HISTORY to "Phase 7: Boundary History",
-      PHASE_COMMIT_PUSH to "Phase 8: Commit and Push",
-      PHASE_PR to "Phase 9: Pull Request",
-    ),
-    requiredArtifactsByStep =
-    mapOf(
-      PHASE_PREPLAN to emptyList(),
-      PHASE_PLAN to listOf(PHASE_PREPLAN),
-      PHASE_IMPLEMENT to listOf(PHASE_PLAN),
-      PHASE_AUDIT to listOf(PHASE_PLAN, PHASE_IMPLEMENT),
-      PHASE_REVIEW to listOf(PHASE_AUDIT),
-      PHASE_VERIFY_FINDINGS to listOf(PHASE_REVIEW),
-      PHASE_IMPLEMENT_FIX to listOf(PHASE_VERIFY_FINDINGS),
-      PHASE_BUILD to listOf(PHASE_PLAN, PHASE_AUDIT),
-      PHASE_VALIDATE to listOf(PHASE_PLAN, PHASE_AUDIT),
-      PHASE_WRITE_HISTORY to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE),
-      PHASE_COMMIT_PUSH to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_WRITE_HISTORY),
-      PHASE_PR to listOf(PHASE_IMPLEMENT, PHASE_COMMIT_PUSH),
-    ),
-    resumeActions =
-    mapOf(
-      PHASE_PREPLAN to
-        "Re-run the preplan phase from the run-invariants, then persist the validated planning prose output.",
-      PHASE_PLAN to
-        "Resume planning from the latest preplan prose, then persist the validated planning prose output.",
-      PHASE_IMPLEMENT to
-        "Resume implementation reconciliation from the immutable initial preplan and plan outputs when an " +
-        "audit-gap loop is active, then persist the validated output.",
-      PHASE_IMPLEMENT_FIX to
-        "Resume the implement-fix phase from the latest verified findings, reconciling the " +
-        "current tree, then persist the validated output.",
-      PHASE_AUDIT to "Resume the completeness audit from the latest plan and implement outputs.",
-      PHASE_REVIEW to
-        "Resume code review from the latest implement and audit outputs and the derived diff context.",
-      PHASE_VERIFY_FINDINGS to
-        "Resume finding verification from the latest review output and in-flight dispositions " +
-        "without re-running review.",
-      PHASE_BUILD to "Resume compile/build proof from the latest plan and audit outputs.",
-      PHASE_VALIDATE to "Resume quality validation from the latest plan and audit outputs.",
-      PHASE_WRITE_HISTORY to
-        "Resume boundary history writing from the latest implement and settled build or validate output.",
-      PHASE_COMMIT_PUSH to
-        "Resume commit/push after verifying implement, the settled quality gate, " +
-        "and write_history outputs are current.",
-      PHASE_PR to "Resume PR creation from the latest implement output, commit output, and derived diff context.",
-    ),
-    continuationReferenceSections = emptyMap(),
-    continuationDirectives = emptyMap(),
-    continuationArtifactOrder = emptyList(),
-    openPriorStepsCompleted = false,
-    // The per-phase records store is always persisted for a completed run, whereas no top-level
-    // `pr` artifact is ever written; point the completed-run summary pointer at the store that
-    // actually exists so resumeView's "done" next-action dereferences real persisted state.
-    completedTerminalSummaryArtifact = FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY,
-    workflowMode = "runtime",
-    requiredArtifactPresenceResolver = FeatureTaskRuntimeRequiredArtifactPresenceResolver,
-  )
+  val definition: WorkflowDefinition = FeatureTaskRuntimePhaseWorkflowGraph.definition
 
   /** Legacy contract id retained only for compatibility rejection and regression assertions. */
   const val UPSTREAM_PHASE_RECEIPT_CONTRACT_ID: String = "feature_task_runtime.upstream_phase_receipt"
@@ -247,47 +143,31 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
     required: Boolean = true,
-  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
-    consumerPhaseId = consumerPhaseId,
-    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
-    projectionName = name,
-    projectionContractId = contractId,
-    projectionContractVersion = PhaseProjectionContract.VERSION,
-    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-    budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-    declaredFieldNames = fields,
-    checkpointPolicy = checkpointPolicy,
-    required = required,
-  )
+  ): PhaseHandoffProjectionDeclaration =
+    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.phaseProjection(
+      consumerPhaseId,
+      producingPhaseId,
+      name,
+      contractId,
+      fields,
+      checkpointPolicy,
+      required,
+    )
 
-  fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
-    phaseProseDeclaration(PHASE_IMPLEMENT, PHASE_PLAN),
-    phaseProseDeclaration(PHASE_IMPLEMENT, PHASE_IMPLEMENT),
-    phaseProseDeclaration(
-      PHASE_IMPLEMENT,
-      PHASE_AUDIT,
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-    ),
-    priorGapMemoryDeclaration(PHASE_IMPLEMENT),
-  )
+  fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> =
+    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.auditRemediationProjections()
 
   fun phaseProseDeclaration(
     consumerPhaseId: String,
     producingPhaseId: String = PHASE_PREPLAN,
     checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
-    consumerPhaseId = consumerPhaseId,
-    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
-    projectionName = "${producingPhaseId}_prose",
-    projectionContractId = PhaseProjectionContract.PHASE_PROSE,
-    projectionContractVersion = PhaseProjectionContract.VERSION,
-    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-    budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-    declaredFieldNames = listOf("value", "directive"),
-    checkpointPolicy = checkpointPolicy,
-    required = true,
-  )
+  ): PhaseHandoffProjectionDeclaration =
+    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.phaseProseDeclaration(
+      consumerPhaseId,
+      producingPhaseId,
+      checkpointPolicy,
+    )
 
   /**
    * The phase-neutral shared review evidence for the current checkpoint, delivered as a reference.
@@ -297,32 +177,10 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * mandates. Absent evidence omits the projection; the phase still launches.
    */
   fun sharedReviewEvidenceDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
-    PhaseHandoffProjectionDeclaration(
-      consumerPhaseId = consumerPhaseId,
-      sourceRef = FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence,
-      projectionName = SHARED_REVIEW_EVIDENCE_PROJECTION_NAME,
-      projectionContractId = FeatureTaskRuntimePlanningProjectionContract.SHARED_REVIEW_EVIDENCE_ID,
-      projectionContractVersion = FeatureTaskRuntimePlanningProjectionContract.VERSION,
-      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-      declaredFieldNames = FeatureTaskRuntimeSharedReviewEvidenceReference.DECLARED_FIELD_NAMES,
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      required = false,
-    )
+    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.sharedReviewEvidenceDeclaration(consumerPhaseId)
 
   fun repairLedgerDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
-    PhaseHandoffProjectionDeclaration(
-      consumerPhaseId = consumerPhaseId,
-      sourceRef = FeatureTaskRuntimeHandoffSourceRef.RepairLedger,
-      projectionName = REPAIR_LEDGER_PROJECTION_NAME,
-      projectionContractId = PhaseProjectionContract.REPAIR_LEDGER,
-      projectionContractVersion = PhaseProjectionContract.VERSION,
-      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-      declaredFieldNames = listOf(REPAIR_LEDGER_PROJECTION_NAME),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-      required = false,
-    )
+    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.repairLedgerDeclaration(consumerPhaseId)
 
   const val REPAIR_LEDGER_PROJECTION_NAME: String = "repair_ledger"
 
@@ -339,258 +197,18 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * that predates the projection.
    */
   fun priorGapMemoryDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
-    PhaseHandoffProjectionDeclaration(
-      consumerPhaseId = consumerPhaseId,
-      sourceRef = FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory,
-      projectionName = PRIOR_GAP_MEMORY_PROJECTION_NAME,
-      projectionContractId = PhaseProjectionContract.PRIOR_GAP_MEMORY,
-      projectionContractVersion = "0.2",
-      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-      declaredFieldNames = FeatureTaskRuntimePriorGapMemory.DECLARED_FIELD_NAMES,
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-      required = false,
-    )
-
-  /**
-   * Closed-world projection matrix for every phase. Every upstream edge has an explicit typed
-   * declaration; an omitted phase or edge is a contract error rather than permission to deliver a
-   * complete producer receipt.
-   */
-  private val PHASE_PROJECTION_MATRIX: Map<String, List<PhaseHandoffProjectionDeclaration>> = mapOf(
-    PHASE_PREPLAN to emptyList(),
-    PHASE_PLAN to listOf(phaseProseDeclaration(PHASE_PLAN)),
-    PHASE_IMPLEMENT to listOf(phaseProseDeclaration(PHASE_IMPLEMENT, PHASE_PLAN)),
-    PHASE_AUDIT to listOf(
-      phaseProseDeclaration(PHASE_AUDIT, PHASE_PLAN),
-      phaseProseDeclaration(PHASE_AUDIT, PHASE_IMPLEMENT),
-      sharedReviewEvidenceDeclaration(PHASE_AUDIT),
-    ),
-    PHASE_IMPLEMENT_FIX to listOf(
-      phaseProjection(
-        PHASE_IMPLEMENT_FIX,
-        PHASE_VERIFY_FINDINGS,
-        "review_repair_request",
-        PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
-        listOf("unresolved_blocker_findings", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
-      ),
-    ),
-    PHASE_VERIFY_FINDINGS to listOf(
-      phaseProjection(
-        PHASE_VERIFY_FINDINGS,
-        PHASE_REVIEW,
-        "review_findings_for_verification",
-        PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT,
-        listOf("findings", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-    ),
-    PHASE_REVIEW to listOf(
-      phaseProjection(
-        PHASE_REVIEW,
-        PHASE_AUDIT,
-        "audit_clearance",
-        PhaseProjectionContract.AUDIT_CLEARANCE,
-        listOf("clearance_status", "review_scope", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-      sharedReviewEvidenceDeclaration(PHASE_REVIEW),
-    ),
-    PHASE_VALIDATE to listOf(
-      phaseProseDeclaration(PHASE_VALIDATE, PHASE_PLAN),
-      phaseProjection(
-        PHASE_VALIDATE,
-        PHASE_PLAN,
-        "validation_request",
-        PhaseProjectionContract.VALIDATION_REQUEST,
-        listOf(
-          "changed_paths",
-          "repository_checkpoint",
-        ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-      phaseProjection(
-        PHASE_VALIDATE,
-        PHASE_AUDIT,
-        "audit_clearance",
-        PhaseProjectionContract.AUDIT_CLEARANCE,
-        listOf("verdict", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-    ),
-    PHASE_BUILD to listOf(
-      phaseProseDeclaration(PHASE_BUILD, PHASE_PLAN),
-      phaseProjection(
-        PHASE_BUILD,
-        PHASE_PLAN,
-        "validation_request",
-        PhaseProjectionContract.VALIDATION_REQUEST,
-        listOf(
-          "changed_paths",
-          "repository_checkpoint",
-        ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-      phaseProjection(
-        PHASE_BUILD,
-        PHASE_AUDIT,
-        "audit_clearance",
-        PhaseProjectionContract.AUDIT_CLEARANCE,
-        listOf("verdict", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-    ),
-    PHASE_WRITE_HISTORY to listOf(
-      phaseProseDeclaration(PHASE_WRITE_HISTORY, PHASE_IMPLEMENT),
-      phaseProjection(
-        PHASE_WRITE_HISTORY,
-        PHASE_IMPLEMENT,
-        "boundary_candidates",
-        PhaseProjectionContract.BOUNDARY_CANDIDATES,
-        listOf("changed_paths", "boundary_candidates"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-      phaseProjection(
-        PHASE_WRITE_HISTORY,
-        PHASE_VALIDATE,
-        "validation_receipt",
-        PhaseProjectionContract.VALIDATION_RECEIPT,
-        listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
-        ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-      phaseProjection(
-        PHASE_WRITE_HISTORY,
-        PHASE_BUILD,
-        "build_receipt",
-        PhaseProjectionContract.BUILD_RECEIPT,
-        listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
-        ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-        required = false,
-      ),
-    ),
-    PHASE_COMMIT_PUSH to listOf(
-      phaseProseDeclaration(PHASE_COMMIT_PUSH, PHASE_IMPLEMENT),
-      phaseProjection(
-        PHASE_COMMIT_PUSH,
-        PHASE_IMPLEMENT,
-        "commit_request",
-        PhaseProjectionContract.COMMIT_REQUEST,
-        listOf(
-          "path_inventory",
-          "required_inclusions",
-          "branch_identity",
-          "gate_attestations",
-          "repository_checkpoint",
-        ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-      phaseProjection(
-        PHASE_COMMIT_PUSH,
-        PHASE_VALIDATE,
-        "validation_receipt",
-        PhaseProjectionContract.VALIDATION_RECEIPT,
-        listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
-        ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-      phaseProjection(
-        PHASE_COMMIT_PUSH,
-        PHASE_BUILD,
-        "build_receipt",
-        PhaseProjectionContract.BUILD_RECEIPT,
-        listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
-        ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-        required = false,
-      ),
-      phaseProjection(
-        PHASE_COMMIT_PUSH,
-        PHASE_WRITE_HISTORY,
-        "history_receipt",
-        PhaseProjectionContract.HISTORY_RECEIPT,
-        listOf("changed_paths", "decisions_recorded"),
-      ),
-    ),
-    PHASE_PR to listOf(
-      phaseProseDeclaration(PHASE_PR, PHASE_IMPLEMENT),
-      phaseProjection(
-        PHASE_PR,
-        PHASE_IMPLEMENT,
-        "pr_request",
-        PhaseProjectionContract.PR_REQUEST,
-        listOf(
-          "changed_paths",
-          "validation_summary",
-          "base_branch",
-          "diff_reference",
-        ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      ),
-      phaseProjection(
-        PHASE_PR,
-        PHASE_COMMIT_PUSH,
-        "commit_receipt",
-        PhaseProjectionContract.COMMIT_RECEIPT,
-        listOf("commit_sha", "branch", "base_branch", "pushed"),
-      ),
-    ),
-  )
+    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.priorGapMemoryDeclaration(consumerPhaseId)
 
   /**
    * Private producer evidence that a runtime-owned projector may combine. These records are never
    * delivered directly; the consumer still sees only the closed declaration in
-   * [PHASE_PROJECTION_MATRIX].
+   * [phaseDeclarations].
    */
-  fun runtimeProjectorProducerPhaseIds(consumerPhaseId: String): Set<String> = when (consumerPhaseId) {
-    PHASE_IMPLEMENT_FIX -> setOf(PHASE_REVIEW)
-    PHASE_VALIDATE -> setOf(PHASE_PLAN, PHASE_AUDIT)
-    PHASE_BUILD -> setOf(PHASE_PLAN, PHASE_AUDIT)
-    PHASE_WRITE_HISTORY -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_BUILD)
-    PHASE_COMMIT_PUSH -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_BUILD, PHASE_WRITE_HISTORY)
-    PHASE_PR -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_COMMIT_PUSH)
-    else -> emptySet()
-  }
+  fun runtimeProjectorProducerPhaseIds(consumerPhaseId: String): Set<String> =
+    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.runtimeProjectorProducerPhaseIds(consumerPhaseId)
 
   val phaseDeclarations: Map<String, FeatureTaskRuntimePhaseDeclaration> =
-    definition.stepIds.associateWith { phaseId ->
-      FeatureTaskRuntimePhaseDeclaration(
-        phaseId = phaseId,
-        projectionDeclarations = requireNotNull(PHASE_PROJECTION_MATRIX[phaseId]) {
-          "No closed-world projection declaration for runtime phase '$phaseId'."
-        },
-        derivedContextKeys = when (phaseId) {
-          PHASE_REVIEW -> listOf(DERIVED_CONTEXT_DIFF)
-          PHASE_PR -> listOf(DERIVED_CONTEXT_PR_BRANCH_DIFF)
-          // Audit compares the plan commitment and the receipt against the tree itself, so it needs
-          // the scoped repository state at the envelope's checkpoint, not the branch-wide diff.
-          PHASE_AUDIT -> listOf(DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE)
-          else -> emptyList()
-        },
-      )
-    }
+    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.phaseDeclarations(definition)
 
   /**
    * Transition topology: the ordered [stepIds] forward pipeline plus the M1 `review_fix` and M2
@@ -611,47 +229,11 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * `implement_fix` is unreachable until `verify_findings` has settled `findings_verified`.
    */
   val transitions: FeatureTaskRuntimeTransitionDeclaration =
-    FeatureTaskRuntimeTransitionDeclaration(
-      forwardPhaseIds = definition.stepIds,
-      entryGates = listOf(
-        FeatureTaskRuntimePhaseEntryGate(
-          phaseId = PHASE_REVIEW,
-          requiredPhaseId = PHASE_AUDIT,
-          requiredVerdict = FeatureTaskRuntimeVerdict.SATISFIED,
-        ),
-        FeatureTaskRuntimePhaseEntryGate(
-          phaseId = PHASE_IMPLEMENT_FIX,
-          requiredPhaseId = PHASE_VERIFY_FINDINGS,
-          requiredVerdict = FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
-        ),
-      ),
-      backwardEdges = listOf(
-        FeatureTaskRuntimeBackwardEdge(
-          fromPhaseId = PHASE_VERIFY_FINDINGS,
-          triggeringVerdict = FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
-          destinationPhaseId = PHASE_IMPLEMENT_FIX,
-          loopId = REVIEW_FIX_LOOP_ID,
-          perEdgeCap = 1,
-          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
-          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
-        ),
-        FeatureTaskRuntimeBackwardEdge(
-          fromPhaseId = PHASE_AUDIT,
-          triggeringVerdict = FeatureTaskRuntimeVerdict.GAPS_FOUND,
-          destinationPhaseId = PHASE_IMPLEMENT,
-          loopId = AUDIT_GAP_LOOP_ID,
-          perEdgeCap = null,
-          capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
-          warnAfterIterations = SEMANTIC_LOOP_WARNING_THRESHOLD,
-        ),
-      ),
-      loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX, PHASE_BUILD),
-      loopOnlySuccessors = emptyMap(),
-    )
+    FeatureTaskRuntimePhaseWorkflowTransitions.transitions(definition)
 
   /** The declared backward edge for [loopId], or null when the id is not part of the topology. */
   fun backwardEdgeForLoop(loopId: String): FeatureTaskRuntimeBackwardEdge? =
-    transitions.backwardEdges.firstOrNull { it.loopId == loopId }
+    FeatureTaskRuntimePhaseWorkflowTransitions.backwardEdgeForLoop(transitions, loopId)
 
   fun ceremonyScaling(featureSize: FeatureTaskRuntimeFeatureSize): FeatureTaskRuntimeCeremonyScaling =
     when (featureSize) {

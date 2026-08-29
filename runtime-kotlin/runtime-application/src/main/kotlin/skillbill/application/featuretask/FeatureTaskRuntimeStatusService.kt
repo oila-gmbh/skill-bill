@@ -10,31 +10,14 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeOperatorDecisio
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
-import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecution
-import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.orLegacyValidate
-
-private const val PHASE_STATUS_PENDING = "pending"
-private const val PHASE_STATUS_COMPLETED = "completed"
-private const val PHASE_STATUS_BLOCKED = "blocked"
-private val PHASE_TERMINAL_STATUSES = setOf(PHASE_STATUS_COMPLETED, PHASE_STATUS_BLOCKED)
-private val CONTINUATION_KIND_ACTIONS = setOf(
-  FeatureTaskRuntimePhaseLedgerAction.START,
-  FeatureTaskRuntimePhaseLedgerAction.RESUME,
-  FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
-  FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION,
-)
-private val LOOP_ONLY_PHASE_IDS: Set<String> = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds
 
 /**
  * Read-only status service that projects durable per-phase records and the ledger into a typed
@@ -47,14 +30,13 @@ class FeatureTaskRuntimeStatusService(
   private val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
   private val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
 ) {
-  private val currentPhaseExecutionDeriver = CurrentPhaseExecutionDeriver()
+  private val currentPhaseExecutionDeriver = FeatureTaskRuntimeCurrentPhaseExecutionDeriver()
 
   /**
    * Projects the read-only status. Returns null only when the workflow row is absent,
    * distinguishing "no such workflow" from "workflow exists but no phase has a record yet"
    * (an empty record map projects every phase as pending).
    */
-  @Suppress("LongMethod")
   fun status(request: FeatureTaskRuntimeStatusRequest): FeatureTaskRuntimeStatusProjection? {
     val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride) ?: return null
     val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
@@ -109,7 +91,7 @@ class FeatureTaskRuntimeStatusService(
       auditRepair = auditRepair,
       gateRunCount = gateRunCount,
       currentPhaseExecution = currentPhaseExecutionDeriver.derive(
-        CurrentPhaseExecutionContext(
+        FeatureTaskRuntimeCurrentPhaseExecutionContext(
           currentPhaseId = currentPhaseId,
           records = records,
           phases = phases,
@@ -188,322 +170,4 @@ class FeatureTaskRuntimeStatusService(
       entries.maxByOrNull { it.sequenceNumber }?.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED
     }
     .keys
-}
-
-private data class CurrentPhaseExecutionContext(
-  val currentPhaseId: String?,
-  val records: Map<String, FeatureTaskRuntimePhaseRecord>,
-  val phases: List<FeatureTaskRuntimePhaseStatus>,
-  val ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-  val auditGapIterationCount: Int,
-  val gateRunCount: Int?,
-)
-
-private class CurrentPhaseExecutionDeriver {
-  /**
-   * Derives one current-phase execution value from the same durable inputs that selected the
-   * current phase. Never reads a completed neighbour's historical counter as current.
-   */
-  fun derive(context: CurrentPhaseExecutionContext): IdeStatusCurrentPhaseExecution? {
-    val phaseId = context.currentPhaseId?.takeIf(String::isNotBlank) ?: return null
-    val phaseStatus = context.phases.firstOrNull { it.phaseId == phaseId } ?: return null
-    val record = context.records[phaseId]
-    return when (phaseId) {
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
-        auditExecution(phaseId, phaseStatus, record, context.auditGapIterationCount)
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
-        reviewExecution(phaseId, phaseStatus, record, context.ledger)
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
-        attemptExecution(phaseId, phaseStatus.attemptCount)
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
-        validationExecution(phaseId, phaseStatus, context.gateRunCount)
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD ->
-        buildExecution(phaseId, phaseStatus, context.gateRunCount)
-      else ->
-        edgeExecution(phaseId, record, context.ledger) ?: attemptExecution(phaseId, phaseStatus.attemptCount)
-    }
-  }
-
-  private fun auditExecution(
-    phaseId: String,
-    phaseStatus: FeatureTaskRuntimePhaseStatus,
-    record: FeatureTaskRuntimePhaseRecord?,
-    auditGapIterationCount: Int,
-  ): IdeStatusCurrentPhaseExecution? = when {
-    auditGapIterationCount >= 1 -> IdeStatusCurrentPhaseExecution(
-      phaseId = phaseId,
-      kind = IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP,
-      count = auditGapIterationCount,
-    )
-    phaseStatus.attemptCount >= 1 || record != null -> IdeStatusCurrentPhaseExecution(
-      phaseId = phaseId,
-      kind = IdeStatusCurrentPhaseExecutionKind.PASS,
-      count = 1,
-    )
-    else -> null
-  }
-
-  private fun reviewExecution(
-    phaseId: String,
-    phaseStatus: FeatureTaskRuntimePhaseStatus,
-    record: FeatureTaskRuntimePhaseRecord?,
-    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-  ): IdeStatusCurrentPhaseExecution? = activeReviewPassNumber(record, ledger)?.let { pass ->
-    IdeStatusCurrentPhaseExecution(
-      phaseId = phaseId,
-      kind = IdeStatusCurrentPhaseExecutionKind.PASS,
-      count = pass,
-    )
-  } ?: attemptExecution(phaseId, phaseStatus.attemptCount)
-
-  private fun validationExecution(
-    phaseId: String,
-    phaseStatus: FeatureTaskRuntimePhaseStatus,
-    gateRunCount: Int?,
-  ): IdeStatusCurrentPhaseExecution? = gateRunExecution(phaseId, phaseStatus, gateRunCount)
-
-  private fun buildExecution(
-    phaseId: String,
-    phaseStatus: FeatureTaskRuntimePhaseStatus,
-    gateRunCount: Int?,
-  ): IdeStatusCurrentPhaseExecution? = gateRunExecution(phaseId, phaseStatus, gateRunCount)
-
-  private fun gateRunExecution(
-    phaseId: String,
-    phaseStatus: FeatureTaskRuntimePhaseStatus,
-    gateRunCount: Int?,
-  ): IdeStatusCurrentPhaseExecution? = gateRunCount?.takeIf { it >= 1 }?.let { count ->
-    IdeStatusCurrentPhaseExecution(
-      phaseId = phaseId,
-      kind = IdeStatusCurrentPhaseExecutionKind.GATE_RUN,
-      count = count,
-    )
-  } ?: attemptExecution(phaseId, phaseStatus.attemptCount)
-
-  private fun edgeExecution(
-    phaseId: String,
-    record: FeatureTaskRuntimePhaseRecord?,
-    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-  ): IdeStatusCurrentPhaseExecution? {
-    val (loopId, edgeIteration) = activeEdgeContext(phaseId, record, ledger) ?: return null
-    val edge = FeatureTaskRuntimePhaseWorkflowDefinition.backwardEdgeForLoop(loopId) ?: return null
-    return IdeStatusCurrentPhaseExecution(
-      phaseId = phaseId,
-      kind = if (edge.perEdgeCap == null) {
-        IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP
-      } else {
-        IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE
-      },
-      count = edgeIteration,
-      total = edge.perEdgeCap,
-    )
-  }
-
-  /**
-   * Active review pass for the current review phase. A completed prior review record is omitted
-   * when a newer review_fix LOOP_EDGE has reopened review.
-   */
-  private fun activeReviewPassNumber(
-    record: FeatureTaskRuntimePhaseRecord?,
-    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-  ): Int? {
-    val pass = record?.reviewPassNumber ?: return null
-    if (record.status != PHASE_STATUS_COMPLETED) return pass
-    val latestReviewFixEdge = ledger
-      .filter {
-        it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
-          it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID &&
-          it.edgeIteration != null
-      }
-      .maxByOrNull { it.sequenceNumber }
-    val ledgerEdge = latestReviewFixEdge?.edgeIteration
-    val reenteredReview = record.takeIf {
-      it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
-    }?.edgeIteration
-    return ledgerEdge?.let { edge ->
-      reenteredReview?.takeIf { it >= edge }
-    }?.let { pass }
-  }
-
-  /**
-   * Prefer the latest LOOP_EDGE targeting the current phase, falling back to the phase-record
-   * watermark when no targeting edge exists.
-   */
-  private fun activeEdgeContext(
-    phaseId: String,
-    record: FeatureTaskRuntimePhaseRecord?,
-    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-  ): Pair<String, Int>? {
-    val edgeEntry = ledger
-      .filter {
-        it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
-          it.phaseId == phaseId &&
-          it.loopId != null &&
-          it.edgeIteration != null
-      }
-      .maxByOrNull { it.sequenceNumber }
-    if (edgeEntry != null) return edgeEntry.loopId!! to edgeEntry.edgeIteration!!
-    record?.loopId?.let { loopId ->
-      record.edgeIteration?.let { return loopId to it }
-    }
-    return null
-  }
-
-  private fun attemptExecution(phaseId: String, attemptCount: Int): IdeStatusCurrentPhaseExecution? =
-    attemptCount.takeIf { it >= 1 }?.let { count ->
-      IdeStatusCurrentPhaseExecution(
-        phaseId = phaseId,
-        kind = IdeStatusCurrentPhaseExecutionKind.ATTEMPT,
-        count = count,
-      )
-    }
-}
-
-private fun phaseStatuses(
-  records: Map<String, FeatureTaskRuntimePhaseRecord>,
-  blockedPhaseIds: Set<String>,
-  ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-): List<FeatureTaskRuntimePhaseStatus> = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.map { phaseId ->
-  records[phaseId].toPhaseStatus(
-    phaseId = phaseId,
-    blocked = phaseId in blockedPhaseIds,
-    continuationKind = latestContinuationKind(ledger, phaseId),
-  )
-}
-
-private fun resolveCurrentPhaseId(
-  terminalDecomposeRecorded: Boolean,
-  records: Map<String, FeatureTaskRuntimePhaseRecord>,
-  phases: List<FeatureTaskRuntimePhaseStatus>,
-  ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-  qualityGateSelection: FeatureTaskRuntimeQualityGateSelection,
-): String? {
-  if (terminalDecomposeRecorded) return null
-  return currentReentryPhaseId(records, ledger) ?: phases.firstOrNull {
-    it.status != PHASE_STATUS_COMPLETED &&
-      !shouldSkipPendingLoopOnlyPhase(it.phaseId, it.status, records, qualityGateSelection)
-  }?.phaseId
-}
-
-private fun shouldSkipPendingLoopOnlyPhase(
-  phaseId: String,
-  status: String,
-  records: Map<String, FeatureTaskRuntimePhaseRecord>,
-  qualityGateSelection: FeatureTaskRuntimeQualityGateSelection,
-): Boolean {
-  if (status != PHASE_STATUS_PENDING || phaseId !in LOOP_ONLY_PHASE_IDS) {
-    return false
-  }
-  val buildStampedCurrent =
-    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD &&
-      qualityGateSelection == FeatureTaskRuntimeQualityGateSelection.BUILD &&
-      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]?.status == PHASE_STATUS_COMPLETED &&
-      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD]?.status != PHASE_STATUS_COMPLETED
-  if (buildStampedCurrent) {
-    return false
-  }
-  return true
-}
-
-private fun currentReentryPhaseId(
-  records: Map<String, FeatureTaskRuntimePhaseRecord>,
-  ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-): String? {
-  val edge = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges
-    .mapNotNull { declaration ->
-      ledger
-        .filter {
-          it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == declaration.loopId
-        }
-        .maxByOrNull { it.sequenceNumber }
-        ?.let { declaration to it }
-    }
-    .maxByOrNull { (_, entry) -> entry.sequenceNumber }
-    ?: return null
-  val (declaration, edgeEntry) = edge
-  val destinationIndex = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
-    .indexOf(declaration.destinationPhaseId)
-  val sourceIndex = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
-    .indexOf(declaration.fromPhaseId)
-  val reopenedSpan = when {
-    destinationIndex <= sourceIndex ->
-      FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
-        .subList(destinationIndex, sourceIndex + 1)
-    else ->
-      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds[destinationIndex])
-  }
-  val completedAfterEdge = ledger
-    .asSequence()
-    .filter { it.sequenceNumber > edgeEntry.sequenceNumber }
-    .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
-    .map { it.phaseId }
-    .filter { phaseId -> records[phaseId]?.status == PHASE_STATUS_COMPLETED }
-    .toMutableSet()
-  records.values
-    .filter {
-      it.status == PHASE_STATUS_COMPLETED &&
-        it.loopId == declaration.loopId &&
-        it.edgeIteration == edgeEntry.edgeIteration
-    }
-    .mapTo(completedAfterEdge) { it.phaseId }
-  return reopenedSpan.firstOrNull { it !in completedAfterEdge }
-}
-
-private fun operatorDecisionPause(
-  records: Map<String, FeatureTaskRuntimePhaseRecord>,
-  auditGapPause: FeatureTaskRuntimeAuditGapPause?,
-): FeatureTaskRuntimeOperatorDecisionPause? {
-  // The audit-gap pause artifact is the authority for its kind-distinct reason (no-progress vs
-  // warn-threshold), distinct from output-gate/schema failures. A consumed grant (the retry was taken
-  // and the run moved on) is no longer an active pause.
-  auditGapPause?.takeIf { !it.grantConsumed }?.let { pause ->
-    return FeatureTaskRuntimeOperatorDecisionPause(
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      reason = pause.reason,
-    )
-  }
-  return records.values
-    .firstOrNull { record ->
-      record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED &&
-        record.failureDisposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION
-    }
-    ?.let { record ->
-      FeatureTaskRuntimeOperatorDecisionPause(
-        phaseId = record.phaseId,
-        reason = record.blockedReason?.takeIf(String::isNotBlank),
-      )
-    }
-}
-
-private fun latestContinuationKind(ledger: List<FeatureTaskRuntimePhaseLedgerEntry>, phaseId: String): String? = ledger
-  .filter { it.phaseId == phaseId && it.action in CONTINUATION_KIND_ACTIONS }
-  .sortedByDescending { it.sequenceNumber }
-  .firstNotNullOfOrNull { FeatureTaskRuntimeContinuationKind.fromLedgerDetail(it.blockedReason) }
-  ?.wireValue
-
-private fun FeatureTaskRuntimePhaseRecord?.toPhaseStatus(
-  phaseId: String,
-  blocked: Boolean,
-  continuationKind: String? = null,
-): FeatureTaskRuntimePhaseStatus = if (this == null) {
-  FeatureTaskRuntimePhaseStatus(
-    phaseId = phaseId,
-    status = if (blocked) PHASE_STATUS_BLOCKED else PHASE_STATUS_PENDING,
-    attemptCount = 0,
-    resolvedAgentId = null,
-    finished = false,
-    continuationKind = continuationKind,
-  )
-} else {
-  FeatureTaskRuntimePhaseStatus(
-    phaseId = phaseId,
-    status = if (blocked && status != PHASE_STATUS_COMPLETED) PHASE_STATUS_BLOCKED else status,
-    attemptCount = attemptCount,
-    resolvedAgentId = resolvedAgentId.takeUnless { it == GOAL_PLANNING_IMPORT_AGENT_SENTINEL },
-    finished = finishedAt != null,
-    executionOrigin = executionOrigin.wireValue,
-    continuationKind = continuationKind,
-    launchedModel = launchedModel,
-    launchedEffort = launchedEffort,
-  )
 }

@@ -1,3 +1,13 @@
+## [2026-08-29] SKILL-220 subtask 4 — Oversized feature-task runtime decomposition
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime(+model), runtime-infra-fs/contracts/workflow, scripts
+- Split `FeatureTaskRuntimeRunLoop` and neighbouring >500-line types into named collaborators (recorders, run-loop drive/launch/checkpoint/verification, handoff projection, structural repair, persistence models); every scoped production file ≤500 lines.
+- Keep single-caller extractions internal/private (canonicalization Record/Transform/Canonicalization; CorrectiveRepairPromptProjection); Canonicalizer.canonicalize facade and wire encodings unchanged.
+- Preserve transaction, lease, and fencing boundaries; no new public ports/modules; composition remains the sole runtime-graph construction site.
+- Pattern: extract by responsibility with visibility as narrow as callers allow; order files top-down; delete suppressions the split removes (leftover method-level @Suppress → SKILL-221). reusable
+- Limitation: validate-phase owns scripts/validate and test-pass proof; no tests added by design.
+Feature flag: N/A
+Acceptance criteria: 5/7 implemented (validate gate deferred)
+
 ## [2026-08-29] SKILL-220 subtask 3 — Failure identity and exhaustive dispatch
 Areas: runtime-kotlin/{contracts/error,domain/workflow,application/{featuretask,goalrunner,review,workflow},cli,infra-fs,infra-sqlite,ports}, intellij-plugin
 - Shared failure case-to-code contract on in-scope hierarchies; unknown wire tokens are typed violations (no `SCHEMA_INVALID` collapse); conformance test asserts totality and injectivity.
