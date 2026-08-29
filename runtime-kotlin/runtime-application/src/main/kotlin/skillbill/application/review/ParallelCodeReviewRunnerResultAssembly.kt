@@ -13,6 +13,7 @@ import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewIntegrationPassRecord
+import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.ReviewLaneAggregation
 import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.ReviewStageDegradationSelection
@@ -392,7 +393,7 @@ private fun parallelAccountingSummary(
   val accountedLanes = listOf(outcomes.lane1)
   val specialists = accountedLanes.flatMap { it.specialistAccounting }
   if (specialists.isEmpty()) return null
-  fun skillbill.ports.review.model.ReviewLaneAccounting.toInput() = ReviewAccountingInput(
+  fun ReviewLaneAccounting.toInput() = ReviewAccountingInput(
     lane = lane,
     assignmentDigest = assignmentDigest,
     counters = ReviewAccountingCounters(

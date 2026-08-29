@@ -63,6 +63,9 @@ internal fun Project.configureKotlinJvm() {
         environment(gate, value.get())
       }
     }
+    if (project.hasProperty("update-snapshots")) {
+      systemProperty("update-snapshots", "true")
+    }
     testLogging {
       events("skipped", "failed")
       exceptionFormat = TestExceptionFormat.FULL

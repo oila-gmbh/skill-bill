@@ -64,9 +64,3 @@ listOf("processResources", "processTestResources", "sourcesJar").forEach { consu
     dependsOn(copyGoalPlanningDiscoveryExclusions, copyGoalVerificationBoundaryCaps)
   }
 }
-
-tasks.withType<Test>().configureEach {
-  if (project.hasProperty("update-snapshots")) {
-    systemProperty("update-snapshots", "true")
-  }
-}

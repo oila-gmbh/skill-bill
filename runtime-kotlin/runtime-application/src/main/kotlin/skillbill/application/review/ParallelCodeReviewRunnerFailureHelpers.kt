@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.application.goalrunner.agentFailureExcerpt
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
@@ -76,7 +77,7 @@ internal class ParallelCodeReviewRunnerFailureHelpers(
     facts.timedOut -> "agent timed out"
     facts.spawnFailed -> buildString {
       append("agent process failed to spawn")
-      skillbill.application.goalrunner.agentFailureExcerpt(
+      agentFailureExcerpt(
         facts.stderr,
         facts.stdout,
         PARALLEL_REVIEW_STDERR_EXCERPT_MAX_LENGTH,
@@ -88,7 +89,7 @@ internal class ParallelCodeReviewRunnerFailureHelpers(
     facts.exitStatus == null -> "agent exited with unknown status"
     facts.exitStatus != 0 -> buildString {
       append("agent exited with status ${facts.exitStatus}")
-      skillbill.application.goalrunner.agentFailureExcerpt(
+      agentFailureExcerpt(
         facts.stderr,
         facts.stdout,
         PARALLEL_REVIEW_STDERR_EXCERPT_MAX_LENGTH,
@@ -137,7 +138,7 @@ internal fun parallelCodeReviewNoOpResumeOutcome(agentId: String) = ParallelRevi
 )
 
 internal fun parallelCodeReviewInlineTerminalStatus(
-  facts: skillbill.ports.agentrun.model.AgentRunLaunchFacts,
+  facts: AgentRunLaunchFacts,
   disposition: ReviewLaneReviewDisposition,
 ): String = when {
   disposition == ReviewLaneReviewDisposition.INCOMPLETE -> "incomplete"

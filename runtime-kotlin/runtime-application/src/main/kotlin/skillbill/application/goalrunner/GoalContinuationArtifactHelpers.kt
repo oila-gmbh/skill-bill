@@ -16,6 +16,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toSnapshot
+import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
@@ -45,7 +46,7 @@ internal data class GoalContinuationCandidate(
   val family: WorkflowFamily,
   val snapshot: WorkflowStateSnapshot,
   val goalContinuation: GoalContinuation,
-  val outcome: skillbill.goalrunner.model.GoalRunnerStoredOutcome?,
+  val outcome: GoalRunnerStoredOutcome?,
 )
 
 internal data class GoalRunnerBlockWrite(
@@ -161,12 +162,12 @@ internal fun goalContinuationOutcome(
   issueKey: String,
   subtaskId: Int,
   suppressPr: Boolean,
-): skillbill.goalrunner.model.GoalRunnerStoredOutcome? = (artifacts["goal_continuation_outcome"] as? Map<*, *>)
+): GoalRunnerStoredOutcome? = (artifacts["goal_continuation_outcome"] as? Map<*, *>)
   ?.takeIf { outcome -> outcome["issue_key"]?.toString() == issueKey }
   ?.takeIf { outcome -> outcome["subtask_id"].asGoalRunnerIntOrNull() == subtaskId }
   ?.let { outcome ->
     goalContinuationTerminalStatus(outcome["status"]?.toString())?.let { status ->
-      skillbill.goalrunner.model.GoalRunnerStoredOutcome(
+      GoalRunnerStoredOutcome(
         status = status,
         workflowId = outcome["workflow_id"]?.toString().orEmpty(),
         commitSha = outcome["commit_sha"]?.toString()?.takeIf(String::isNotBlank),

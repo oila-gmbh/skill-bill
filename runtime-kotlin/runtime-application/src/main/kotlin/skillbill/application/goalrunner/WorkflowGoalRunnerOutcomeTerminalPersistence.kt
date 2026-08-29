@@ -2,6 +2,7 @@ package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
+import skillbill.application.workflow.WorkflowFamily
 import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
@@ -10,6 +11,7 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
 import java.time.Instant
@@ -198,8 +200,8 @@ internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
 
   fun recoverMissingResultPrefixTerminalOutcome(
     workflowStates: WorkflowStateRepository,
-    family: skillbill.application.workflow.WorkflowFamily,
-    record: skillbill.workflow.engine.model.WorkflowStateSnapshot,
+    family: WorkflowFamily,
+    record: WorkflowStateSnapshot,
     output: Map<String, Any?>,
     issueKey: String,
     subtaskId: Int,

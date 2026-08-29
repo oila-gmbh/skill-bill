@@ -13,6 +13,7 @@ import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
@@ -41,7 +42,7 @@ internal class GoalRunnerChildRepairOperations(
   private val wedgeDiagnosis = GoalRunnerChildRepairWedgeDiagnosis(gitOperations)
 
   fun diagnose(
-    workflowStates: skillbill.ports.workflow.WorkflowStateRepository,
+    workflowStates: WorkflowStateRepository,
     workflowId: String,
     issueKey: String,
     subtaskId: Int,

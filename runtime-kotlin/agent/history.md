@@ -1,3 +1,13 @@
+## [2026-08-29] SKILL-220 subtask 7 — Principle enforcement and build-convention promotion
+Areas: runtime-core/architecture, build-logic/convention, runtime-contracts, runtime-infra-fs, runtime-application/{goalrunner,review}
+- Six architecture guards (package clustering, 500-line ceiling, failure-code totality, typed parse boundaries, inline FQN, convention reapplication) plus PrincipleEnforcementInventory; each fails a synthetic fixture and passes the clean tree.
+- Hoisted `update-snapshots` Test systemProperty into `configureKotlinJvm`; removed local copies from runtime-contracts and runtime-infra-fs module build files.
+- Pattern: declaration-level source scan via ArchitectureScanSupport; inventory lists enforceable rules, parse-boundary sites, FQN keep-list roots, and four review-only rules. reusable
+- Cleared eight leftover inline FQNs in runtime-application so the general FQN guard passes; line-ceiling exemptions empty at 500.
+- Limitation: validate owns scripts/validate (AC-010); comment quality, naming taste, deeper relatedness, and open harness keys stay review-only.
+Feature flag: N/A
+Acceptance criteria: 9/10 implemented (validate gate deferred)
+
 ## [2026-08-29] SKILL-220 subtask 6 — Oversized remaining-unit decomposition
 Areas: runtime-cli/{goal,featuretask,scaffold,install}, runtime-application/{featuretask,review,workflow}, runtime-infra-fs/{scaffold,launcher,infrastructure,skillremove}, runtime-infra-sqlite/{db/core,db/workflow}, runtime-domain/{review/context,install,workflow/engine}, runtime-contracts/error, runtime-core/di, runtime-ports/workflow/gitops
 - Split leftover >500-line production types (CLI command bags, ParallelCodeReviewRunner, ShellContentLoader/ScaffoldService, WorkflowService/Engine/StateStore, process/launcher, sqlite migrations/schema, contract-error dump, RuntimeComponent helpers) into same-package collaborators; production line-count scan reports 0 src/main files over 500.

@@ -7,6 +7,7 @@ import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.engine.WorkflowEngine
@@ -28,7 +29,7 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
     unitOfWork: UnitOfWork,
     issueKey: String,
     activeWorkflowIds: Set<String>,
-    gate: skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate,
+    gate: GoalRunnerReconcileGate,
     repoRoot: Path?,
   ): Map<Int, GoalRunnerStoredOutcome> {
     val normalizedIssueKey = issueKey.trim()

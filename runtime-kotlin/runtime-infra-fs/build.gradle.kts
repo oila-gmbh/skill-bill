@@ -642,12 +642,6 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimeCheckpointIdentitySchema)
 }
 
-tasks.withType<Test>().configureEach {
-  if (project.hasProperty("update-snapshots")) {
-    systemProperty("update-snapshots", "true")
-  }
-}
-
 tasks.register<JavaExec>("platformPackSubstanceReport") {
   group = "verification"
   description = "Emit the maintained platform-pack substance report in text or JSON form."

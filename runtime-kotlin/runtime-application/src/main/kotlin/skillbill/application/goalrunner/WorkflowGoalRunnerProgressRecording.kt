@@ -9,6 +9,7 @@ import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
@@ -105,7 +106,7 @@ internal class WorkflowGoalRunnerProgressRecording(
   }
 
   fun recordAttemptLedgerEntry(
-    request: skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest,
+    request: GoalRunnerAttemptLedgerRecordRequest,
     dbPathOverride: String?,
   ): Boolean = appendHistoryArtifact(
     HistoryArtifactAppend(
