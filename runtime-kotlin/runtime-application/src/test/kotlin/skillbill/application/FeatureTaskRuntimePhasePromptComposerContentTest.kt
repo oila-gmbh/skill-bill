@@ -280,7 +280,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
     assertContains(
       composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
-        promptComposerBriefingFor("implement", auditGapReentry = true),
+        promptComposerBriefingFor("implement", PromptComposerBriefingOptions(auditGapReentry = true)),
       ),
       "Follow every gap named there completely",
       false,

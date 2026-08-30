@@ -37,8 +37,6 @@ private data class ResolvedReviewFacts(
 class ReviewPreparationService(
   private val ports: ReviewFactPorts,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
-  @Suppress("UNUSED_PARAMETER")
-  budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   private val hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
     FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
 ) {

@@ -50,21 +50,31 @@ internal fun promptComposerProjectionExampleCases() = listOf(
   Pair(promptComposerImplementPhase, promptComposerBriefingFor(promptComposerImplementPhase)),
 )
 
+internal data class PromptComposerBriefingOptions(
+  val featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+  val priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
+  val auditGapReentry: Boolean = false,
+  val auditOutput: String = validJsonOutput("audit"),
+  val acceptanceCriteria: List<String> = listOf("AC-1"),
+)
+
 internal fun promptComposerBriefingFor(
   phaseId: String,
   featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-  priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
-  auditGapReentry: Boolean = false,
-  auditOutput: String = validJsonOutput("audit"),
-  acceptanceCriteria: List<String> = listOf("AC-1"),
+): FeatureTaskRuntimePhaseLaunchBriefing =
+  promptComposerBriefingFor(phaseId, PromptComposerBriefingOptions(featureSize = featureSize))
+
+internal fun promptComposerBriefingFor(
+  phaseId: String,
+  options: PromptComposerBriefingOptions,
 ): FeatureTaskRuntimePhaseLaunchBriefing {
   val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
-  val declaration = if (auditGapReentry && phaseId == promptComposerImplementPhase) {
-    phaseDeclaration(phaseId, featureSize).copy(
+  val declaration = if (options.auditGapReentry && phaseId == promptComposerImplementPhase) {
+    phaseDeclaration(phaseId, options.featureSize).copy(
       projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.auditRemediationProjections(),
     )
   } else {
-    phaseDeclaration(phaseId, featureSize)
+    phaseDeclaration(phaseId, options.featureSize)
   }
   return FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     FeatureTaskRuntimeHandoffContract.assembleHandoff(
@@ -72,15 +82,15 @@ internal fun promptComposerBriefingFor(
         declaration = declaration,
         runInvariants = FeatureTaskRuntimeRunInvariants(
           specReference = PROMPT_COMPOSER_SPEC_REFERENCE,
-          featureSize = featureSize,
-          acceptanceCriteria = acceptanceCriteria,
+          featureSize = options.featureSize,
+          acceptanceCriteria = options.acceptanceCriteria,
           mandatesAndOverrides = emptyList(),
         ),
         recordedOutputs = listOf(
           FeatureTaskRuntimePhaseOutput("preplan", 1, PROMPT_COMPOSER_PREPLAN_OUTPUT),
           FeatureTaskRuntimePhaseOutput("plan", 1, PROMPT_COMPOSER_PLAN_OUTPUT),
           FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
-          FeatureTaskRuntimePhaseOutput("audit", 1, auditOutput),
+          FeatureTaskRuntimePhaseOutput("audit", 1, options.auditOutput),
           FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
           verifyFindingsPhaseOutput(),
           FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
@@ -90,7 +100,7 @@ internal fun promptComposerBriefingFor(
         repositoryCheckpoint = checkpoint,
         expectedRepositoryCheckpoint = checkpoint,
         validationDepth = ValidationDepth.DEFAULT,
-        priorGapMemory = priorGapMemory,
+        priorGapMemory = options.priorGapMemory,
       ),
     ),
   )

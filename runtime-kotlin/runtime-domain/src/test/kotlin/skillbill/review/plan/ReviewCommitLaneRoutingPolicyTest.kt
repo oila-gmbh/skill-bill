@@ -337,11 +337,7 @@ class ReviewCommitLaneRoutingPolicyTest {
   // AC-010
   @Test fun `routing analysis no longer hard-fails on former pair or byte prep budgets`() {
     val commits = (0..3).map { commit(it, hunk("ui/Screen$it.kt", "+@Composable fun S() {}")) }
-    val matrix = ReviewCommitLaneRoutingPolicy.route(
-      commits,
-      allLanes,
-      ReviewContextBudgetPolicy.DEFAULT.copy(maxRoutingAnalysisPairs = 4, maxRoutingAnalysisBytes = 16),
-    )
+    val matrix = ReviewCommitLaneRoutingPolicy.route(commits, allLanes)
     assertEquals(commits.size * allLanes.size, matrix.decisions.size)
   }
 
@@ -354,7 +350,6 @@ class ReviewCommitLaneRoutingPolicyTest {
     val matrix = ReviewCommitLaneRoutingPolicy.route(
       listOf(commit(0, hunk("ui/Screen.kt", content))),
       allLanes,
-      ReviewContextBudgetPolicy.DEFAULT.copy(maxRoutingAnalysisBytes = uniqueBytes),
     )
     assertEquals(allLanes.size, matrix.decisions.size)
   }
