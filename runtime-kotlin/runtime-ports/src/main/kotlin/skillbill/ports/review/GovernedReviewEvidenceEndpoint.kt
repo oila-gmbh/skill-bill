@@ -11,6 +11,10 @@ interface GovernedReviewEvidenceEndpointHandle : AutoCloseable {
  * Binds a per-launch endpoint over an already-constructed operation protocol. Implementations
  * loud-fail rather than degrading to an ungoverned path.
  */
-fun interface GovernedReviewEvidenceEndpointBinder {
-  fun bind(lane: String, protocol: NativeReviewOperationProtocol): GovernedReviewEvidenceEndpointHandle
+interface GovernedReviewEvidenceEndpointBinder {
+  fun bind(
+    lane: String,
+    protocol: NativeReviewOperationProtocol,
+    onEvidenceRead: (() -> Unit)? = null,
+  ): GovernedReviewEvidenceEndpointHandle
 }

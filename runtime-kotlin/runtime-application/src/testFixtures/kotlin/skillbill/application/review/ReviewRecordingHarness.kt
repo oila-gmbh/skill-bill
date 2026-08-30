@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewRunnerDeps
 import skillbill.application.review.model.ParallelReviewScope
@@ -152,8 +153,9 @@ data class ReviewHarnessConfig(
   val commits: List<RecordedCommit> = emptyList(),
 )
 
-fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): ParallelCodeReviewRunner =
-  ParallelCodeReviewRunner(
+fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): ParallelCodeReviewRunner {
+  val database = recordingDatabase(recorder)
+  return ParallelCodeReviewRunner(
     ParallelCodeReviewRunnerDeps(
       parentReviewLauncher = GoalRunnerSubtaskLauncher { request ->
         recorder.parentLaunches += request
@@ -202,7 +204,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       },
       reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
       reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
-      database = recordingDatabase(recorder),
+      database = database,
       specIntentProjectionResolver = SpecIntentProjectionResolver(
         FileSystemDecompositionManifestFileStore(),
         DecompositionManifestValidatorAdapter(),
@@ -216,7 +218,9 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       reviewEvidenceBrokerFactory = config.evidenceBrokerFactory,
       governedEvidenceEndpointBinder = config.evidenceEndpointBinder,
     ),
+    AgentActivityStampWriter(database),
   )
+}
 
 /** The base revision every harness request declares; the root commit of a fixture range parents onto it. */
 const val HARNESS_BASE_REVISION: String = "base-revision"

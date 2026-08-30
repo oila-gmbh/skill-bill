@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.workflow.repoRoot
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
@@ -23,6 +24,7 @@ internal data class FeatureTaskRuntimeRunLoopDependencies(
   val phaseGates: FeatureTaskRuntimePhaseGates,
   val subtaskLauncher: GoalRunnerSubtaskLauncher,
   val phaseSettlementService: FeatureTaskPhaseSettlementService,
+  val activityStampWriter: AgentActivityStampWriter,
 )
 
 internal data class FeatureTaskRuntimeRunLoopContext(
@@ -115,6 +117,7 @@ internal class FeatureTaskRuntimeRunLoop(
   internal val phaseGates get() = dependencies.phaseGates
   internal val subtaskLauncher get() = dependencies.subtaskLauncher
   internal val phaseSettlementService get() = dependencies.phaseSettlementService
+  internal val activityStampWriter get() = dependencies.activityStampWriter
   internal val branchSetupRunner get() = phaseGates.branchSetupRunner
   internal val planningStopper get() = phaseGates.planningStopper
   internal val gitOperations get() = phaseGates.gitOperations

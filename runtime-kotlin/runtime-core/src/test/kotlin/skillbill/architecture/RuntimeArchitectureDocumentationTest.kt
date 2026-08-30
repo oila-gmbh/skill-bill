@@ -96,6 +96,7 @@ class RuntimeArchitectureDocumentationTest {
         "skillbill.featurespec",
         "skillbill.goalplanning",
         "skillbill.goalrunner",
+        "skillbill.idestatus",
         "skillbill.install",
         "skillbill.infrastructure",
         "skillbill.launcher",

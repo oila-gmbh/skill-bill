@@ -398,4 +398,21 @@ class IdeStatusSchemaValidatorTest {
       "message" to "No matching Skill Bill work for this repository.",
     ),
   )
+
+  @Test
+  fun `partial agent activity pair fails loudly`() {
+    val onlyAt = validIdleSnapshot().apply {
+      put("last_agent_activity_at", "2026-08-30T10:00:00Z")
+    }
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(onlyAt, "test-agent-activity-partial-at")
+    }
+    val badLabel = validIdleSnapshot().apply {
+      put("last_agent_activity_at", "2026-08-30T10:00:00Z")
+      put("last_agent_activity_label", "grep")
+    }
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(badLabel, "test-agent-activity-bad-label")
+    }
+  }
 }

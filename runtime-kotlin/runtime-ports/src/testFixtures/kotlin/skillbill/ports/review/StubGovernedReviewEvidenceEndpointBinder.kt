@@ -8,8 +8,12 @@ import java.nio.file.Path
  * supplied-together requirement a governed launch carries.
  */
 fun stubGovernedReviewEvidenceEndpointBinder(root: Path): GovernedReviewEvidenceEndpointBinder =
-  GovernedReviewEvidenceEndpointBinder { lane, _ ->
-    object : GovernedReviewEvidenceEndpointHandle {
+  object : GovernedReviewEvidenceEndpointBinder {
+    override fun bind(
+      lane: String,
+      protocol: NativeReviewOperationProtocol,
+      onEvidenceRead: (() -> Unit)?,
+    ): GovernedReviewEvidenceEndpointHandle = object : GovernedReviewEvidenceEndpointHandle {
       override val descriptor = GovernedReviewEvidenceEndpointDescriptor(
         lane = lane,
         socketPath = root.resolve("evidence.sock"),

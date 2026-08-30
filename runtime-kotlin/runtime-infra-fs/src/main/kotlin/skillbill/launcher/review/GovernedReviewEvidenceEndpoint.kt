@@ -35,8 +35,16 @@ private const val SOCKET_FILE_NAME = "evidence.sock"
 class UnixSocketGovernedReviewEvidenceEndpointBinder(
   private val environment: EnvironmentContext,
 ) : GovernedReviewEvidenceEndpointBinder {
-  override fun bind(lane: String, protocol: NativeReviewOperationProtocol): GovernedReviewEvidenceEndpointHandle =
-    GovernedReviewEvidenceEndpoint.bind(lane, protocol, bridgeCommand(environment.environment, environment.userHome))
+  override fun bind(
+    lane: String,
+    protocol: NativeReviewOperationProtocol,
+    onEvidenceRead: (() -> Unit)?,
+  ): GovernedReviewEvidenceEndpointHandle = GovernedReviewEvidenceEndpoint.bind(
+    lane,
+    protocol,
+    bridgeCommand(environment.environment, environment.userHome),
+    onEvidenceRead,
+  )
 }
 internal fun bridgeCommand(environment: Map<String, String>, userHome: Path): List<String> {
   val configured = environment["SKILL_BILL_RUNTIME_MCP_BIN"]?.takeIf(String::isNotBlank)
@@ -62,6 +70,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
   private val protocol: NativeReviewOperationProtocol,
   private val channel: ServerSocketChannel,
   private val directory: Path,
+  private val onEvidenceRead: (() -> Unit)?,
 ) : GovernedReviewEvidenceEndpointHandle {
   private val issuedExpansions = ConcurrentHashMap<String, ReviewExpansionRecord>()
 
@@ -183,7 +192,9 @@ class GovernedReviewEvidenceEndpoint private constructor(
       arguments,
       issuedExpansions::get,
     )
-    return GovernedReviewEvidenceCodec.payload(protocol.read(request))
+    val payload = GovernedReviewEvidenceCodec.payload(protocol.read(request))
+    onEvidenceRead?.invoke()
+    return payload
   }
   private fun expand(arguments: Map<String, Any?>): Map<String, Any?> {
     val record = protocol.authorizeExpansion(
@@ -197,6 +208,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
       lane: String,
       protocol: NativeReviewOperationProtocol,
       bridgeCommand: List<String>,
+      onEvidenceRead: (() -> Unit)? = null,
     ): GovernedReviewEvidenceEndpoint {
       val directory = privateDirectory()
       val socketPath = directory.resolve(SOCKET_FILE_NAME)
@@ -217,6 +229,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
           protocol,
           channel,
           directory,
+          onEvidenceRead,
         )
       } catch (error: CancellationException) {
         rollbackGovernedReviewBindArtifacts(channel, socketPath, directory)

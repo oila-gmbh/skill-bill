@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
 import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.testActivityStampWriter
 import skillbill.application.workflow.repoRoot
 import java.nio.file.Path
 import kotlin.test.Test
@@ -19,6 +20,7 @@ class GoalRunnerDirectRuntimeContinuationTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = RecordingOutcomeStore(),
+      activityStampWriter = testActivityStampWriter(),
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -50,6 +52,7 @@ class GoalRunnerDirectRuntimeContinuationTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = RecordingOutcomeStore(),
+      activityStampWriter = testActivityStampWriter(),
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(

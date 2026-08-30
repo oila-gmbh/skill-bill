@@ -35,6 +35,7 @@ import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateP
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore
 import skillbill.application.featuretask.validation.ValidationGateResolver
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.SpecIntentProjectionExtractor
 import skillbill.application.review.SpecIntentProjectionResolver
 import skillbill.application.review.model.ParallelReviewLaneStatus
@@ -908,6 +909,7 @@ private fun harnessRunner(deps: HarnessRunnerDeps): FeatureTaskRuntimeRunner {
       phaseSettlementService = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
       diagnostics = deps.diagnostics,
     ),
+    AgentActivityStampWriter(deps.database),
   )
 }
 
@@ -998,6 +1000,7 @@ internal fun telemetryRunnerHarness(
       crashReconciler = FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
       phaseSettlementService = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
     ),
+    AgentActivityStampWriter(database),
   )
   val request = telemetryHarnessRequest(runtimeConfig)
   return TelemetryRunnerHarness(runner, lifecycle, request, database, recorder)

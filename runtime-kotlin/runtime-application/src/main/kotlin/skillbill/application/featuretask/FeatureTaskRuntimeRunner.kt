@@ -5,12 +5,14 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunnerDependencies
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 @Inject
 class FeatureTaskRuntimeRunner(
   internal val dependencies: FeatureTaskRuntimeRunnerDependencies,
+  internal val activityStampWriter: AgentActivityStampWriter,
 ) {
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
     val reconciliation = dependencies.crashReconciler.reconcile(request.dbPathOverride)

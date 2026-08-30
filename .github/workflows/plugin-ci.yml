@@ -37,7 +37,7 @@ jobs:
           cache: gradle
 
       - name: Run plugin checks
-        run: (cd intellij-plugin && ./gradlew check)
+        run: (cd intellij-plugin && ./gradlew clean check --no-build-cache)
 
   verify:
     if: github.event_name == 'schedule'

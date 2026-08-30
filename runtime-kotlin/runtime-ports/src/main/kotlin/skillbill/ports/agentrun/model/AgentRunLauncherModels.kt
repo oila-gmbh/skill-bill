@@ -60,6 +60,7 @@ data class SkillRunRequest(
   val nativeReviewWorkerName: String? = null,
   val reviewFanOut: Boolean = false,
   val spawnAuthorization: AgentRunSpawnAuthorization? = null,
+  val activityStampSink: AgentRunActivityStampSink = AgentRunActivityStampSink.NONE,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }

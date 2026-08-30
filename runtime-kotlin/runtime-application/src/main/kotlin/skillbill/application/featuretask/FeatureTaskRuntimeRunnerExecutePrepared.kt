@@ -67,6 +67,7 @@ internal fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
       phaseGates,
       subtaskLauncher,
       phaseSettlementService,
+      activityStampWriter,
     ),
     FeatureTaskRuntimeRunLoopContext(
       runRequest,

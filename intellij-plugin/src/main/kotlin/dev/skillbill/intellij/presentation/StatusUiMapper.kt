@@ -85,6 +85,8 @@ object StatusUiMapper {
                     activeDurationAsOf = outcome.activeDurationAsOf,
                     subtaskActiveDurationMs = outcome.subtaskActiveDurationMs,
                     subtaskActiveDurationAsOf = outcome.subtaskActiveDurationAsOf,
+                    lastAgentActivityAt = outcome.lastAgentActivityAt,
+                    lastAgentActivityLabel = outcome.lastAgentActivityLabel,
                 )
 
             is SkillBillStatusOutcome.Paused ->
@@ -125,6 +127,8 @@ object StatusUiMapper {
                     currentPhaseExecution = outcome.currentPhaseExecution,
                     pauseReason = outcome.pauseReason,
                     problemSummary = problemSummaryWith(null, outcome.diagnostic),
+                    lastAgentActivityAt = outcome.lastAgentActivityAt,
+                    lastAgentActivityLabel = outcome.lastAgentActivityLabel,
                 )
 
             is SkillBillStatusOutcome.Stale ->
@@ -169,6 +173,8 @@ object StatusUiMapper {
                     // that missing row is the cache being honest, not a parse failure.
                     currentModel = outcome.currentModel,
                     currentPhaseExecution = outcome.currentPhaseExecution,
+                    lastAgentActivityAt = outcome.lastAgentActivityAt,
+                    lastAgentActivityLabel = outcome.lastAgentActivityLabel,
                 )
 
             is SkillBillStatusOutcome.Blocked ->

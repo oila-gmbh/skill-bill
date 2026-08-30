@@ -6,12 +6,16 @@ import skillbill.application.goalrunner.model.GoalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 
 @Inject
-class GoalRunner(deps: GoalRunnerDeps) {
+class GoalRunner(
+  deps: GoalRunnerDeps,
+  activityStampWriter: AgentActivityStampWriter,
+) {
   private val manifestStore = deps.manifestStore
   private val subtaskLauncher = deps.subtaskLauncher
   private val outcomeStore = deps.outcomeStore
@@ -28,7 +32,7 @@ class GoalRunner(deps: GoalRunnerDeps) {
   private val pendingReAttemptCause: MutableMap<Int, String> = mutableMapOf()
   private val pendingCausingLoopEntry: MutableMap<Int, String> = mutableMapOf()
   private val workerRequestHandler = GoalRunnerWorkerRequestHandler(manifestStore, outcomeStore)
-  private val reconciler = GoalRunnerLaunchReconciler(manifestStore, outcomeStore, diagnostics)
+  private val reconciler = GoalRunnerLaunchReconciler(manifestStore, outcomeStore, activityStampWriter, diagnostics)
   private val progressReader = GoalRunnerProgressReader(outcomeStore)
   private val pauseBoundary = GoalRunnerPauseBoundary(manifestStore)
   private val runPreparation = GoalRunnerRunPreparation(manifestStore)

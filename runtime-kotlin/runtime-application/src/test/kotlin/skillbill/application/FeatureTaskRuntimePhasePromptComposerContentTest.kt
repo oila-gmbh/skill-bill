@@ -149,15 +149,15 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
   fun `small prompts encode lighter ceremony and current unit review scope without skipping gates`() {
     val preplanPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
-      promptComposerBriefingFor("preplan", FeatureTaskRuntimeFeatureSize.SMALL),
+      promptComposerBriefingFor("preplan", PromptComposerBriefingOptions(FeatureTaskRuntimeFeatureSize.SMALL)),
     )
     val reviewPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
-      promptComposerBriefingFor("review", FeatureTaskRuntimeFeatureSize.SMALL),
+      promptComposerBriefingFor("review", PromptComposerBriefingOptions(FeatureTaskRuntimeFeatureSize.SMALL)),
     )
     val auditPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
-      promptComposerBriefingFor("audit", FeatureTaskRuntimeFeatureSize.SMALL),
+      promptComposerBriefingFor("audit", PromptComposerBriefingOptions(FeatureTaskRuntimeFeatureSize.SMALL)),
     )
 
     assertContains(preplanPrompt, "feature_size: SMALL")

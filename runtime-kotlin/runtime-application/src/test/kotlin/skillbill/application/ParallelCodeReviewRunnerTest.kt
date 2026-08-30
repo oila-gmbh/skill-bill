@@ -4,6 +4,7 @@ import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewClaimVerificationRunner
@@ -1461,6 +1462,7 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
       governedEvidenceEndpointBinder = stubGovernedReviewEvidenceEndpointBinder(endpointRoot),
       registerParse = config.registerParse,
     ),
+    AgentActivityStampWriter(config.database),
   )
 }
 

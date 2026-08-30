@@ -127,6 +127,7 @@ object SkillBillStatusBarPresentation {
                 subtaskElapsedText = subtaskText,
                 elapsedNoun = elapsedNoun(anchored),
                 lastUpdateText = anchored.lastUpdated?.let { lastUpdateFormatter.format(it) },
+                agentActivityText = agentActivityText(anchored),
                 problemSummary = anchored.problemSummary ?: anchored.detail,
                 staleNote = STALE_NOTE.takeIf { anchored.stale },
                 pauseReasonText = pauseReasonText(anchored),
@@ -159,6 +160,28 @@ object SkillBillStatusBarPresentation {
         if (text.length <= maxLength) return text
         if (maxLength <= 1) return "…"
         return text.take(maxLength - 1) + "…"
+    }
+
+    internal fun agentActivityText(state: SkillBillStatusUiState): String? {
+        val label: String?
+        val at: Instant?
+        when (state) {
+            is SkillBillStatusUiState.Active -> {
+                label = state.lastAgentActivityLabel
+                at = state.lastAgentActivityAt
+            }
+            is SkillBillStatusUiState.Paused -> {
+                label = state.lastAgentActivityLabel
+                at = state.lastAgentActivityAt
+            }
+            is SkillBillStatusUiState.Stale -> {
+                label = state.lastAgentActivityLabel
+                at = state.lastAgentActivityAt
+            }
+            else -> return null
+        }
+        if (label.isNullOrBlank() || at == null) return null
+        return "$label | ${lastUpdateFormatter.format(at)}"
     }
 
     fun elapsedLabel(duration: Duration?): String =
@@ -371,6 +394,7 @@ object SkillBillStatusBarPresentation {
         /** "elapsed" while live, "ran" once settled — the duration stops advancing. */
         val elapsedNoun: String,
         val lastUpdateText: String?,
+        val agentActivityText: String? = null,
         val problemSummary: String?,
         /** Caveat for surfaces that render these numbers; null when the reading is live. */
         val staleNote: String?,

@@ -144,6 +144,7 @@ class ProcessAgentRunAdapter(
       mcpStartupProbe = request.mcpStartupProbe,
       progressEmitter = request.progressEmitter,
       activityProbe = WorktreeActivityProbe(command.workingDirectory),
+      activityStampSink = request.activityStampSink,
       idlePolicy = command.idlePolicy,
     ),
     environmentFields = AgentRunProcessEnvironmentFields(

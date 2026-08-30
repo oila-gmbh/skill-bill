@@ -122,6 +122,7 @@ class IdeStatusProjector(
       IdeStatusProgress(completed = projection.completeCount, total = it)
     }
     val currentSubtask = goalCurrentSubtask(projection, context)
+    val (activityAt, activityLabel) = agentActivityFields(context.unitOfWork, candidate.workflowId)
     return IdeStatusSnapshot(
       repositoryIdentity = context.repositoryIdentity,
       issueKey = issueKey,
@@ -140,6 +141,8 @@ class IdeStatusProjector(
       pauseReason = goalPauseReason(lifecycle, projection, childContext),
       activeDurationMs = projection?.recordedActiveDurationMs(),
       activeDurationAsOf = projection?.liveActiveDurationAnchor(),
+      lastAgentActivityAt = activityAt,
+      lastAgentActivityLabel = activityLabel,
       updatedAt = candidate.updatedAt,
       freshness = freshness,
       summary = planningStep?.takeIf { lifecycle != IdeStatusLifecycleState.PAUSED }
@@ -273,6 +276,7 @@ class IdeStatusProjector(
     // Retention, freshness, and the emitted updated_at must share one anchor; the candidate
     // already carries the snapshot-preferred value, so never re-derive it here.
     val updatedAt = candidate.updatedAt
+    val (activityAt, activityLabel) = agentActivityFields(context.unitOfWork, candidate.workflowId)
     return IdeStatusSnapshot(
       repositoryIdentity = context.repositoryIdentity,
       issueKey = candidate.issueKey,
@@ -291,6 +295,8 @@ class IdeStatusProjector(
         ?.let { pause ->
           IdeStatusPauseReason.of(IdeStatusPauseReasonCode.AWAITING_OPERATOR_DECISION, pause.reason)
         },
+      lastAgentActivityAt = activityAt,
+      lastAgentActivityLabel = activityLabel,
       updatedAt = updatedAt,
       freshness = IdeStatusFreshnessClassifier.classify(updatedAt, context.observedAt),
       summary = familySummary(
@@ -322,6 +328,7 @@ class IdeStatusProjector(
     val progress = IdeStatusProgress(completed = completed, total = total).takeIf { total > 0 }
     val startedAt = parseInstantOrNull(snapshot.startedAt) ?: candidate.startedAt
     val updatedAt = candidate.updatedAt
+    val (activityAt, activityLabel) = agentActivityFields(context.unitOfWork, candidate.workflowId)
     val wireFamily = when (family) {
       WorkflowFamily.VERIFY -> IdeStatusWorkflowFamily.FEATURE_VERIFY
       WorkflowFamily.TASK_RUNTIME -> IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME
@@ -335,6 +342,8 @@ class IdeStatusProjector(
       currentStep = IdeStatusStep(id = stepId, label = stepLabel),
       progress = progress,
       startedAt = startedAt,
+      lastAgentActivityAt = activityAt,
+      lastAgentActivityLabel = activityLabel,
       updatedAt = updatedAt,
       freshness = IdeStatusFreshnessClassifier.classify(updatedAt, context.observedAt),
       summary = familySummary(wireFamily, candidate.issueKey, candidate.lifecycleState, stepLabel),

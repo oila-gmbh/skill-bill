@@ -1,5 +1,6 @@
 package skillbill.launcher.process
 
+import skillbill.ports.agentrun.model.AgentRunActivityStampSink
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.AgentRunOutputSink
@@ -34,6 +35,7 @@ data class AgentRunProcessProbeFields(
   val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
   val progressEmitter: AgentRunProgressEmitter = AgentRunProgressEmitter.NONE,
   val activityProbe: AgentRunActivityProbe = AgentRunActivityProbe.NONE,
+  val activityStampSink: AgentRunActivityStampSink = AgentRunActivityStampSink.NONE,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
 )
 
@@ -72,6 +74,7 @@ data class AgentRunProcessRequest(
   val mcpStartupProbe: AgentRunMcpStartupProbe get() = probes.mcpStartupProbe
   val progressEmitter: AgentRunProgressEmitter get() = probes.progressEmitter
   val activityProbe: AgentRunActivityProbe get() = probes.activityProbe
+  val activityStampSink: AgentRunActivityStampSink get() = probes.activityStampSink
   val idlePolicy: AgentRunIdlePolicy get() = probes.idlePolicy
   val environment: Map<String, String> get() = environmentFields.environment
   val inheritEnvironment: Boolean get() = environmentFields.inheritEnvironment
@@ -127,6 +130,7 @@ class AgentRunProcessRequestDsl {
   var mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE
   var progressEmitter: AgentRunProgressEmitter = AgentRunProgressEmitter.NONE
   var activityProbe: AgentRunActivityProbe = AgentRunActivityProbe.NONE
+  var activityStampSink: AgentRunActivityStampSink = AgentRunActivityStampSink.NONE
   var idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY
   var environment: Map<String, String> = emptyMap()
   var inheritEnvironment: Boolean = true
@@ -157,6 +161,7 @@ class AgentRunProcessRequestDsl {
       mcpStartupProbe = mcpStartupProbe,
       progressEmitter = progressEmitter,
       activityProbe = activityProbe,
+      activityStampSink = activityStampSink,
       idlePolicy = idlePolicy,
     ),
     environmentFields = AgentRunProcessEnvironmentFields(

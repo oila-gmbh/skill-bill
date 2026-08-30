@@ -82,6 +82,8 @@ sealed class SkillBillStatusOutcome {
         val currentModel: CurrentPhaseModel? = null,
         /** See [CurrentPhaseExecution]; null when the snapshot carried none or it was unusable. */
         val currentPhaseExecution: CurrentPhaseExecution? = null,
+        val lastAgentActivityAt: Instant? = null,
+        val lastAgentActivityLabel: String? = null,
     ) : SkillBillStatusOutcome()
 
     /**
@@ -117,6 +119,8 @@ sealed class SkillBillStatusOutcome {
         val currentModel: CurrentPhaseModel? = null,
         val currentPhaseExecution: CurrentPhaseExecution? = null,
         val pauseReason: PauseReason? = null,
+        val lastAgentActivityAt: Instant? = null,
+        val lastAgentActivityLabel: String? = null,
     ) : SkillBillStatusOutcome()
 
     data class Stale(
@@ -142,6 +146,8 @@ sealed class SkillBillStatusOutcome {
         val subtaskActiveDurationAsOf: Instant? = null,
         val currentModel: CurrentPhaseModel? = null,
         val currentPhaseExecution: CurrentPhaseExecution? = null,
+        val lastAgentActivityAt: Instant? = null,
+        val lastAgentActivityLabel: String? = null,
     ) : SkillBillStatusOutcome()
 
     data class Blocked(

@@ -5,7 +5,7 @@ package skillbill.contracts.workflow
  * schema's `contract_version`. The parity test fails the build if this constant
  * and the schema's `properties.contract_version.const` diverge.
  */
-const val IDE_STATUS_CONTRACT_VERSION: String = "0.1"
+const val IDE_STATUS_CONTRACT_VERSION: String = "0.2"
 
 /**
  * Single source of truth for the canonical IDE status schema path. The Gradle

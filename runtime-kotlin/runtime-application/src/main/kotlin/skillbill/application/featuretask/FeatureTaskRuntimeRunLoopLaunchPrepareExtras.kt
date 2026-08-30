@@ -75,6 +75,11 @@ internal fun FeatureTaskRuntimeRunLoop.executeSubtaskLaunch(
         readOnlyPhase = isReviewPhase || isVerifyFindingsPhase,
         progressIdleTimeout = READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES.minutes
           .takeIf { isReviewPhase || isVerifyFindingsPhase },
+        activityStampSink = activityStampWriter.sink(
+          workflowId = run.request.workflowId,
+          parentWorkflowId = run.request.goalContinuation?.parentWorkflowId,
+          dbOverride = run.request.dbPathOverride,
+        ),
       ),
     ),
   )
