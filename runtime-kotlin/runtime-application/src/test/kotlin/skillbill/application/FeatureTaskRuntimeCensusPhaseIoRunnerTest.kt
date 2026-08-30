@@ -178,20 +178,25 @@ class FeatureTaskRuntimeCensusPhaseIoRunnerTest {
 
   private fun seededVerifyHarness(verifyOutput: String, implementFixOutput: String? = null): RunnerHarness {
     val git = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "before-fix" }
-    val harness = runnerHarness(RuntimeHarnessConfig(
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         repoRoot = Files.createTempDirectory("skillbill-census-seeded"),
-      ).copy(launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "verify_findings" -> facts(verifyOutput)
-          "implement_fix" -> {
-            git.repositoryFingerprintValue = "after-fix"
-            facts(implementFixOutput ?: validJsonOutput(phaseId))
+      ).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          when (phaseId) {
+            "verify_findings" -> facts(verifyOutput)
+            "implement_fix" -> {
+              git.repositoryFingerprintValue = "after-fix"
+              facts(implementFixOutput ?: validJsonOutput(phaseId))
+            }
+            else -> facts(validJsonOutput(phaseId))
           }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      }, validator = realFeatureTaskRuntimePhaseOutputValidator))
+        },
+        validator = realFeatureTaskRuntimePhaseOutputValidator,
+      ),
+    )
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, validJsonOutput("implement"))
@@ -210,7 +215,8 @@ class FeatureTaskRuntimeCensusPhaseIoRunnerTest {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also { it.headCommitShaValue = "f".repeat(40) }
       .also { it.repositoryFingerprintValue = "before-fix" }
-    return runnerHarness(RuntimeHarnessConfig(
+    return runnerHarness(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
@@ -223,18 +229,23 @@ class FeatureTaskRuntimeCensusPhaseIoRunnerTest {
         ),
         useRealDecompositionPlanner = true,
         reviewDriver = censusReviewDriver(findings),
-      ).copy(launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "verify_findings" -> facts(verifyOutput)
-          "implement_fix" -> {
-            git.repositoryFingerprintValue = "after-fix"
-            git.goalReviewTrackedDelta = "census-fix\n"
-            facts(implementFixOutput)
+      ).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          when (phaseId) {
+            "verify_findings" -> facts(verifyOutput)
+            "implement_fix" -> {
+              git.repositoryFingerprintValue = "after-fix"
+              git.goalReviewTrackedDelta = "census-fix\n"
+              facts(implementFixOutput)
+            }
+            else -> facts(validJsonOutput(phaseId))
           }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      }, validator = realFeatureTaskRuntimePhaseOutputValidator, agentAssignment = phasePerAgentAssignment())).also { harness ->
+        },
+        validator = realFeatureTaskRuntimePhaseOutputValidator,
+        agentAssignment = phasePerAgentAssignment(),
+      ),
+    ).also { harness ->
       harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
       harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
       harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, validJsonOutput("implement"))

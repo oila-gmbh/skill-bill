@@ -11,14 +11,14 @@ import skillbill.application.updatecheck.UpdateCheckService
 import skillbill.application.workflow.WorkflowService
 
 @Inject
-internal data class McpInsightServices(
+data class McpInsightServices(
   val learningService: LearningService,
   val lifecycleTelemetryService: LifecycleTelemetryService,
   val telemetryService: TelemetryService,
 )
 
 @Inject
-internal data class McpOperationsServices(
+data class McpOperationsServices(
   val reviewService: ReviewService,
   val systemService: SystemService,
   val workflowService: WorkflowService,

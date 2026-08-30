@@ -129,12 +129,17 @@ private fun <T> asTypedFailure(dbPath: Path, operation: DatabaseAccessOperation,
   throw databaseAccessError(dbPath, operation, error)
 }
 
-@Suppress("TooGenericExceptionCaught")
-private fun <T> Connection.closingOnFailure(block: () -> T): T = try {
-  block()
-} catch (error: Throwable) {
-  closeQuietly()
-  throw error
+private fun <T> Connection.closingOnFailure(block: () -> T): T {
+  var succeeded = false
+  return try {
+    val result = block()
+    succeeded = true
+    result
+  } finally {
+    if (!succeeded) {
+      closeQuietly()
+    }
+  }
 }
 
 internal fun databaseAccessError(
@@ -147,11 +152,6 @@ internal fun databaseAccessError(
   condition = "sqlite result code ${error.errorCode}: ${error.message.orEmpty()}",
 )
 
-@Suppress("SwallowedException")
 internal fun Connection.closeQuietly() {
-  try {
-    close()
-  } catch (ignored: SQLException) {
-    // A failed close on an already-broken connection must not mask the typed access error.
-  }
+  runCatching { close() }
 }

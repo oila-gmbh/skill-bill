@@ -4,7 +4,6 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.mcp.core.McpStdioServer
-import skillbill.mcp.core.McpToolSpec
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import skillbill.telemetry.model.GoalFinishedRecord
@@ -15,7 +14,6 @@ import java.nio.file.Path
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-
 
 internal fun assertStrictSchemaCoveragePublished(tools: List<*>) {
   assertQualityCheckSchemaCoverage(tools)
@@ -105,7 +103,6 @@ private fun assertMiscToolSchemaCoverage(tools: List<*>) {
   tools.schemaFor("triage_findings").assertRequired("review_run_id", "decisions")
 }
 
-
 internal val expectedToolInventory =
   listOf(
     "doctor",
@@ -188,7 +185,7 @@ internal val removedToolNames =
     "readian_get_spotlight",
     "readian_mark_story_status",
     "readian_save_candidate",
-        "feature_task_prose_started",
+    "feature_task_prose_started",
     "feature_task_prose_finished",
     "feature_task_prose_stats",
     "feature_task_prose_workflow_get",
@@ -272,7 +269,11 @@ internal fun enabledStdioTelemetryEnvironment(tempDir: Path): Map<String, String
   )
 }
 
-internal const val TEST_TELEMETRY_PROXY_URL = "http:
+internal const val TEST_TELEMETRY_PROXY_URL = "http://127.0.0.1:9/skill-bill-test-telemetry"
+
+internal fun Map<String, String>.withTestTelemetryProxy(): Map<String, String> =
+  this + (TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to TEST_TELEMETRY_PROXY_URL)
+
 internal fun toolCallRequest(id: Int, name: String, arguments: Map<String, Any?>): String = JsonSupport.mapToJsonString(
   mapOf(
     "jsonrpc" to "2.0",

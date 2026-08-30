@@ -50,7 +50,10 @@ internal class FileSystemReviewEvidenceBrokerReadState(
   val deniedUnits = mutableListOf<String>()
 }
 
-private fun readOneEvidence(state: FileSystemReviewEvidenceBrokerReadState, request: ReviewEvidenceRequest): ReviewEvidenceResult {
+private fun readOneEvidence(
+  state: FileSystemReviewEvidenceBrokerReadState,
+  request: ReviewEvidenceRequest,
+): ReviewEvidenceResult {
   val exactPath = request.path
   if (!exactPath.startsWith('/') && !exactPath.startsWith('\\')) {
     requireRepositoryRelativePath(exactPath)
@@ -205,5 +208,7 @@ private fun serveEvidence(
   )
 }
 
-private fun refusedEvidence(state: FileSystemReviewEvidenceBrokerReadState, forbidden: ForbiddenReviewOperation): ReviewEvidenceResult =
-  forbiddenResult(forbidden, state.cumulativeBytes, state.expansionLedger.size)
+private fun refusedEvidence(
+  state: FileSystemReviewEvidenceBrokerReadState,
+  forbidden: ForbiddenReviewOperation,
+): ReviewEvidenceResult = forbiddenResult(forbidden, state.cumulativeBytes, state.expansionLedger.size)

@@ -111,7 +111,7 @@ internal fun resolveReviewLaunchAreaWinners(
 }.sortedWith(compareBy<ReviewLaunchAreaCandidate>({ it.depth }, { it.pack.slug }, { it.area }))
 
 internal fun reviewLaunchLanesFromWinners(
-  routedSlug: String,
+  @Suppress("UNUSED_PARAMETER") routedSlug: String,
   winners: List<ReviewLaunchAreaCandidate>,
 ): List<ReviewLaunchLane> = winners.mapIndexed { index, winner ->
   val skillName = "bill-${winner.pack.slug}-code-review-${winner.area}"

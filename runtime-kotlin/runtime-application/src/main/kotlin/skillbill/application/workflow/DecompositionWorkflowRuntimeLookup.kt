@@ -4,7 +4,6 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.asStringAnyMapOrNull
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.decodeDecompositionManifestMap
-import skillbill.application.decomposition.parentSpecPath
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode

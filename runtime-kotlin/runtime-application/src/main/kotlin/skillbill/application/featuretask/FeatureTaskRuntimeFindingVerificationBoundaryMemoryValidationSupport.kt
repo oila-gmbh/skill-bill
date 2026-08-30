@@ -20,14 +20,13 @@ internal fun dispositionBoundaryContextFailure(
   }
 }
 
-internal fun validateDeliveredWithPersisted(
+internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateDeliveredWithPersisted(
   sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
   dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
   persisted: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
   pending: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
 ): String? {
-  val matchFailure = FeatureTaskRuntimeFindingVerificationBoundaryMemory
-    .validatePersistedBoundarySelectionsMatch(sections, dispositions, persisted)
+  val matchFailure = validatePersistedBoundarySelectionsMatch(sections, dispositions, persisted)
   if (matchFailure != null) return matchFailure
   return pendingDeliveredMismatch(pending, persisted)
 }

@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
-import skillbill.config.model.PhaseModelDirective
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
@@ -151,7 +150,9 @@ internal fun FeatureTaskRuntimeRunObservability.loopEdge(
 }
 
 internal val FeatureTaskRuntimeRunObservability.observabilityRequest get() = request
-internal fun FeatureTaskRuntimeRunObservability.emitSafely(event: skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent) {
+internal fun FeatureTaskRuntimeRunObservability.emitSafely(
+  event: skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent,
+) {
   emitFeatureTaskRuntimeEventSafely(
     diagnostics = observabilityDiagnostics,
     seam = "event-sink emission (${event::class.simpleName})",

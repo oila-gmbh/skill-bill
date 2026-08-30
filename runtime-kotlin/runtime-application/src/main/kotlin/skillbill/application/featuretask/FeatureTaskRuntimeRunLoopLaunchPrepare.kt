@@ -21,12 +21,10 @@ internal fun FeatureTaskRuntimeRunLoop.findingPathsForBoundaryMemory(
 internal fun FeatureTaskRuntimeRunLoop.verifyFindingsSpecIntentSection(run: PhaseRun): String {
   if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return ""
   val checkpoint = recorder.loadFindingVerificationCheckpoint(run.request.workflowId, run.request.dbPathOverride)
-  val boundarySelection = phaseGates.findingVerificationBoundaryMemory.boundarySelectionsForResolvedBodies(
-    persisted = recorder.loadFindingVerificationBoundarySelection(
-      run.request.workflowId,
-      run.request.dbPathOverride,
-    ),
-  )
+  val boundarySelection = recorder.loadFindingVerificationBoundarySelection(
+    run.request.workflowId,
+    run.request.dbPathOverride,
+  )?.takeIf { it.isNotEmpty() }
   val resolution = phaseGates.specIntentProjectionResolver.resolve(
     SpecIntentProjectionResolveRequest(
       repoRoot = run.request.repoRoot,

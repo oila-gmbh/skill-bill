@@ -41,20 +41,21 @@ internal fun decodeReviewDiffGitPath(value: String): String {
   return decodeReviewDiffQuotedGitPath(trimmed.substring(1, trimmed.length - 1))
 }
 
-internal fun reviewDiffRepositoryPath(value: String, prefix: String?): String? = value.takeUnless { it.trim() == "/dev/null" }
-  ?.let(::decodeReviewDiffGitPath)?.let { path ->
-    if (prefix == null) {
-      path
-    } else {
-      require(path.startsWith(prefix)) { "Git path source must carry the '$prefix' prefix." }
-      path.removePrefix(prefix)
+internal fun reviewDiffRepositoryPath(value: String, prefix: String?): String? =
+  value.takeUnless { it.trim() == "/dev/null" }
+    ?.let(::decodeReviewDiffGitPath)?.let { path ->
+      if (prefix == null) {
+        path
+      } else {
+        require(path.startsWith(prefix)) { "Git path source must carry the '$prefix' prefix." }
+        path.removePrefix(prefix)
+      }
     }
-  }
-  ?.also {
-    require(it.isNotBlank() && !it.startsWith("/") && ".." !in it.split('/')) {
-      "Malformed Git diff record has a non-repository path '$it'."
+    ?.also {
+      require(it.isNotBlank() && !it.startsWith("/") && ".." !in it.split('/')) {
+        "Malformed Git diff record has a non-repository path '$it'."
+      }
     }
-  }
 
 private fun decodeReviewDiffQuotedGitPath(body: String): String {
   val decoded = StringBuilder()

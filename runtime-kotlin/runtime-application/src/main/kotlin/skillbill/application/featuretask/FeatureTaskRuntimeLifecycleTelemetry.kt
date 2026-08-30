@@ -26,7 +26,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     )["session_id"]?.toString().orEmpty()
   }
 
-  fun finished(report: FeatureTaskRuntimeRunReport, context: FeatureTaskRuntimeFinishedTelemetryContext) {
+  internal fun finished(report: FeatureTaskRuntimeRunReport, context: FeatureTaskRuntimeFinishedTelemetryContext) {
     if (context.telemetrySessionId.isBlank()) {
       return
     }
@@ -40,7 +40,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     }
   }
 
-  fun finishedError(context: FeatureTaskRuntimeFinishedTelemetryContext) {
+  internal fun finishedError(context: FeatureTaskRuntimeFinishedTelemetryContext) {
     if (context.telemetrySessionId.isBlank()) {
       return
     }

@@ -7,6 +7,7 @@ import skillbill.config.model.PhaseModelDirective
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import kotlin.coroutines.cancellation.CancellationException
 
 internal enum class FeatureTaskRuntimeContinuationKind(val wireValue: String) {
   IMPLEMENTATION_CONTINUATION("implementation_continuation"),
@@ -40,21 +41,17 @@ internal data class FeatureTaskRuntimePhaseStartReentry(
 }
 
 internal fun emitFeatureTaskRuntimeEventSafely(diagnostics: RuntimeDiagnostics, seam: String, emit: () -> Unit) {
-  try {
-    emit()
-  } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
-    throw cancellation
-  } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
-    try {
-      diagnostics.warning(
-        "Feature-task-runtime $seam failed; the run is unaffected.",
-        error,
-      )
-    } catch (cancellation: kotlin.coroutines.cancellation.CancellationException) {
-      throw cancellation
-    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+  runCatching { emit() }
+    .exceptionOrNull()
+    ?.let { error ->
+      if (error is CancellationException) throw error
+      runCatching {
+        diagnostics.warning(
+          "Feature-task-runtime $seam failed; the run is unaffected.",
+          error,
+        )
+      }
     }
-  }
 }
 
 internal class FeatureTaskRuntimeRunObservability(
@@ -144,8 +141,7 @@ internal class FeatureTaskRuntimeRunObservability(
     )
   }
 
-  fun validationGateProgress() {
-  }
+  fun validationGateProgress() = Unit
 }
 
 internal fun featureTaskRuntimeStartContinuationKind(

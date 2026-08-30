@@ -9,7 +9,6 @@ import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.goalrunner.model.GoalRunnerWedgeFinding
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder

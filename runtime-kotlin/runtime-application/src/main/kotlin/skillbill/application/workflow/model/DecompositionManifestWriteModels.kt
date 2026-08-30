@@ -52,6 +52,7 @@ data class DecompositionManifestWorkflowProjectionInput(
   val repoRoot: Path,
   val existingArtifactsJson: String,
   val validator: DecompositionManifestValidator,
+  @OpenBoundaryMap("Caller-supplied JSON patch for durable workflow artifacts")
   val artifactsPatch: Map<String, Any?>? = null,
   val runtimeUpdate: DecompositionManifestRuntimeUpdate = DecompositionManifestRuntimeUpdate(),
   val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,

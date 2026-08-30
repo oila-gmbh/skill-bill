@@ -1,46 +1,20 @@
 package skillbill.launcher
 
-import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
-import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
-import skillbill.launcher.agentrun.ProcessAgentRunAdapter
-import skillbill.launcher.agentrun.WorktreeActivityProbe
 import skillbill.launcher.agentrun.headlessAgentRunAdapters
-import skillbill.launcher.process.AgentRunActivityProbe
-import skillbill.launcher.process.AgentRunIdlePolicy
-import skillbill.launcher.process.AgentRunProcessRequest
 import skillbill.launcher.process.AgentRunProcessResult
-import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.launcher.process.JvmAgentRunProcessRunner
-import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
-import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.agentrun.model.AgentRunProgressEmission
-import skillbill.ports.agentrun.model.AgentRunProgressEmitter
-import skillbill.ports.agentrun.model.AgentRunProgressProbe
-import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
-import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.workflow.goal.model.GoalProgressEvent
-import skillbill.workflow.goal.model.GoalProgressEventKind
-import skillbill.workflow.goal.model.GoalProgressOutcome
-import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Collections
-import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 class AgentRunLauncherProcessTest {
@@ -188,12 +162,12 @@ class AgentRunLauncherProcessTest {
     val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "printf stdout-line; printf stderr-line >&2"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 3.seconds
-  outputSink = { stream, text -> synchronized(events) { events += stream to text } }
-},
+        listOf("sh", "-c", "printf stdout-line; printf stderr-line >&2"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 3.seconds
+        outputSink = { stream, text -> synchronized(events) { events += stream to text } }
+      },
     )
 
     assertEquals(0, result.exitStatus)
@@ -211,11 +185,11 @@ class AgentRunLauncherProcessTest {
   fun `jvm process runner closes child stdin for non-interactive runs`() {
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "if read line; then printf got; else printf eof; fi"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 3.seconds
-},
+        listOf("sh", "-c", "if read line; then printf got; else printf eof; fi"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 3.seconds
+      },
     )
 
     assertEquals(0, result.exitStatus)
@@ -226,17 +200,15 @@ class AgentRunLauncherProcessTest {
   fun `jvm process runner writes configured stdin text before closing child stdin`() {
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "cat"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 3.seconds
-  stdinText = "prompt over stdin"
-},
+        listOf("sh", "-c", "cat"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 3.seconds
+        stdinText = "prompt over stdin"
+      },
     )
 
     assertEquals(0, result.exitStatus)
     assertEquals("prompt over stdin", result.stdout)
   }
-
 }
-

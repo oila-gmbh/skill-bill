@@ -9,7 +9,6 @@ import skillbill.db.telemetry.GoalTelemetryMigration
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import java.nio.file.Files
-import java.nio.file.Path
 import java.sql.DriverManager
 import java.sql.SQLException
 import java.util.concurrent.CountDownLatch
@@ -522,7 +521,6 @@ class DatabaseMigrationsTest {
       rows.forEach { row -> assertTrue(row.appliedAt.isNotBlank()) }
     }
   }
-
 }
 
 class DatabaseMigrationsEnsureDatabaseTest {
@@ -1024,7 +1022,6 @@ class DatabaseMigrationsEnsureDatabaseTest {
       "Migration must never drop an applied-migration record.",
     )
   }
-
 }
 
 class DatabaseMigrationsReviewAttributionTest {
@@ -1484,5 +1481,4 @@ class DatabaseMigrationsReviewAttributionTest {
       assertEquals(0, executionModeGaps(connection), "Every run must carry an execution_mode after migration.")
     }
   }
-
 }

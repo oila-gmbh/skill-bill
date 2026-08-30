@@ -1,6 +1,5 @@
 package skillbill.cli.core
 
-import com.github.ajalt.clikt.core.CliktCommand
 import me.tatarka.inject.annotations.Inject
 import skillbill.cli.agentaddon.AgentAddonCommand
 import skillbill.cli.codereview.CodeReviewCommand
@@ -19,7 +18,7 @@ import skillbill.cli.work.WorkTopLevelCommands
 import skillbill.cli.workflow.WorkflowTopLevelCommands
 
 @Inject
-internal class WorkflowGoalFeatureCliCommands(
+class WorkflowGoalFeatureCliCommands(
   val workflowCommands: WorkflowTopLevelCommands,
   val repoValidationCommands: RepoValidationCliCommands,
   val goalRunCommand: GoalRunCommand,
@@ -28,7 +27,7 @@ internal class WorkflowGoalFeatureCliCommands(
 )
 
 @Inject
-internal class SystemMaintenanceCliCommands(
+class SystemMaintenanceCliCommands(
   val versionCommand: VersionCommand,
   val updateCommand: UpdateCommand,
   val updateCheckCommand: UpdateCheckCommand,
@@ -38,7 +37,7 @@ internal class SystemMaintenanceCliCommands(
 )
 
 @Inject
-internal class MiscCliCommands(
+class MiscCliCommands(
   val codeReviewCommand: CodeReviewCommand,
   val configCommand: ConfigCommand,
   val workCommands: WorkTopLevelCommands,

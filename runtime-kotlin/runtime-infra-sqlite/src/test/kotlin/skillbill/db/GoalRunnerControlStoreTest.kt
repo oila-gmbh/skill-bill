@@ -6,6 +6,10 @@ import skillbill.db.workflow.LEGACY_UNKNOWN_PAUSED_AT
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
+import skillbill.ports.goalrunner.acquireExecutionLease
+import skillbill.ports.goalrunner.executionLease
+import skillbill.ports.goalrunner.heartbeatExecutionLease
+import skillbill.ports.goalrunner.releaseExecutionLease
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.workflow.goal.model.CodeReviewExecutionMode

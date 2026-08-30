@@ -13,14 +13,11 @@ interface WorkflowGitCommitHistoryOperations {
     error = "This git operations implementation cannot soft-reset HEAD to '$commitSha'.",
   )
 
-  fun isCommitAncestor(
-    repoRoot: Path,
-    ancestorSha: String,
-    descendantSha: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(
-    status = "error",
-    error = "This git operations implementation cannot test commit ancestry.",
-  )
+  fun isCommitAncestor(repoRoot: Path, ancestorSha: String, descendantSha: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(
+      status = "error",
+      error = "This git operations implementation cannot test commit ancestry.",
+    )
 
   fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
     status = "error",

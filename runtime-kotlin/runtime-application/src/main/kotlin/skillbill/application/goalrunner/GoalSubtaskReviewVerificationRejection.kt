@@ -44,9 +44,7 @@ internal object GoalSubtaskReviewVerificationRejection {
     }
   }
 
-  private fun rejectedVerificationFinding(
-    input: RejectedVerificationFindingInput,
-  ): UnaddressedFinding? {
+  private fun rejectedVerificationFinding(input: RejectedVerificationFindingInput): UnaddressedFinding? {
     val map = JsonSupport.anyToStringAnyMap(input.entry) ?: return null
     val disposition = (map["disposition"] as? String)?.trim()?.lowercase()
     if (disposition != UNADDRESSED_FINDING_REJECTED_DISPOSITION) return null

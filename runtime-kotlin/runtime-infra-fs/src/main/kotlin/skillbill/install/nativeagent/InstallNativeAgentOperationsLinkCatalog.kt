@@ -7,11 +7,7 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
-internal fun stageReviewCatalogPacks(
-  platformPacksRoot: Path,
-  selectedPlatforms: List<String>?,
-  staging: Path,
-) {
+internal fun stageReviewCatalogPacks(platformPacksRoot: Path, selectedPlatforms: List<String>?, staging: Path) {
   val selected = selectedPlatforms?.toSet()
   val desiredPacks = Files.list(platformPacksRoot).use { packs ->
     packs.filter(Files::isDirectory)
@@ -50,11 +46,7 @@ private fun stageReviewCatalogPack(source: Path, staging: Path) {
   }
 }
 
-internal fun journalReviewCatalogSwap(
-  catalogRoot: Path,
-  staging: Path,
-  journal: ProviderMutationJournal,
-) {
+internal fun journalReviewCatalogSwap(catalogRoot: Path, staging: Path, journal: ProviderMutationJournal) {
   if (Files.exists(catalogRoot, LinkOption.NOFOLLOW_LINKS)) {
     Files.walk(catalogRoot).use { paths -> paths.sorted().forEach(journal::beforeMutation) }
   }
@@ -65,11 +57,7 @@ internal fun journalReviewCatalogSwap(
   }
 }
 
-internal fun swapReviewCatalogIntoPlace(
-  catalogRoot: Path,
-  staging: Path,
-  superseded: Path,
-) {
+internal fun swapReviewCatalogIntoPlace(catalogRoot: Path, staging: Path, superseded: Path) {
   if (Files.exists(catalogRoot, LinkOption.NOFOLLOW_LINKS)) {
     Files.move(catalogRoot, superseded, ATOMIC_MOVE)
   }

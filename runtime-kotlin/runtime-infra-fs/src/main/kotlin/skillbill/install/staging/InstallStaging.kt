@@ -1,17 +1,9 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.install.staging
 
-import skillbill.agentaddon.AgentAddonPointer
 import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
-import skillbill.install.identity.SkillContentIdentity
-import skillbill.install.identity.routeInstalledSkillBody
 import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.RenderedSkill
-import skillbill.install.support.writeRenderedSupportPointerFiles
-import skillbill.scaffold.authoring.AuthoringTarget
-import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
@@ -23,6 +15,7 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.util.logging.Level
 import java.util.logging.Logger
+import kotlin.coroutines.cancellation.CancellationException
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStaging")
 
@@ -136,12 +129,14 @@ internal fun stageInstalledSkill(input: StageInstalledSkillInput): RenderedSkill
   val prepared = prepareStageInstalledSkill(input)
   tryReusePreparedStageInstalledSkill(prepared, input.suppliedCompactIdentity)?.let { reused ->
     log.fine(
-      "stageInstalledSkill reuse=true skill=${prepared.skillName} hash=${prepared.contentHash} dir=${prepared.finalStagingDir}",
+      "stageInstalledSkill reuse=true skill=${prepared.skillName} " +
+        "hash=${prepared.contentHash} dir=${prepared.finalStagingDir}",
     )
     return reused
   }
   log.fine(
-    "stageInstalledSkill reuse=false skill=${prepared.skillName} hash=${prepared.contentHash} dir=${prepared.finalStagingDir}",
+    "stageInstalledSkill reuse=false skill=${prepared.skillName} " +
+      "hash=${prepared.contentHash} dir=${prepared.finalStagingDir}",
   )
   return buildFreshInstallStaging(
     FreshInstallInputs(
@@ -165,25 +160,39 @@ private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill 
   Files.createDirectories(installedSkillsCacheRoot(inputs.home))
   val tempDir = Files.createTempDirectory(installedSkillsCacheRoot(inputs.home), ".staging-tmp-")
   var promoted = false
-  return try {
+  var failure: Throwable? = null
+  var stagedResult: RenderedSkill? = null
+  try {
     val staged = populateFreshInstallStagingTemp(inputs, tempDir)
     promoteInstallStagingDir(tempDir, inputs.finalStagingDir)
     promoted = true
-    finalizeFreshInstallStaging(inputs, tempDir, staged)
-  } catch (error: Throwable) {
-    // F-007: catch every Throwable so any failure path (render error, IO error, programmer error,
-    // OOM, etc.) leaves zero staging residue. Cleanup is best-effort and never shadows the
-    // primary failure (each delete is wrapped + suppressed inside cleanupInstallStagingOnFailure).
-    log.log(
-      Level.SEVERE,
-      "stageInstalledSkill failure skill=${inputs.sourceSkillDir.fileName} hash=${inputs.contentHash} " +
-        "source=${inputs.sourceSkillDir} tempDir=$tempDir finalDir=${inputs.finalStagingDir} " +
-        "promoted=$promoted error=${error::class.simpleName}",
-      error,
-    )
-    cleanupInstallStagingOnFailure(tempDir, inputs.finalStagingDir, promoted)
-    throw error
+    stagedResult = finalizeFreshInstallStaging(inputs, tempDir, staged)
+  } catch (error: CancellationException) {
+    logInstallStagingFailure(inputs, tempDir, promoted, error)
+    failure = error
+  } catch (error: IOException) {
+    logInstallStagingFailure(inputs, tempDir, promoted, error)
+    failure = error
+  } catch (error: IllegalArgumentException) {
+    logInstallStagingFailure(inputs, tempDir, promoted, error)
+    failure = error
+  } catch (error: IllegalStateException) {
+    logInstallStagingFailure(inputs, tempDir, promoted, error)
+    failure = error
   }
+  failure?.let { throw it }
+  return stagedResult!!
+}
+
+private fun logInstallStagingFailure(inputs: FreshInstallInputs, tempDir: Path, promoted: Boolean, error: Throwable) {
+  log.log(
+    Level.SEVERE,
+    "stageInstalledSkill failure skill=${inputs.sourceSkillDir.fileName} hash=${inputs.contentHash} " +
+      "source=${inputs.sourceSkillDir} tempDir=$tempDir finalDir=${inputs.finalStagingDir} " +
+      "promoted=$promoted error=${error::class.simpleName}",
+    error,
+  )
+  cleanupInstallStagingOnFailure(tempDir, inputs.finalStagingDir, promoted)
 }
 
 internal fun writeInstallStagingMarkers(tempDir: Path, inputs: FreshInstallInputs) {
@@ -213,45 +222,4 @@ internal fun resolveStagedSymlinkTarget(input: StagedSymlinkTargetInput): Path {
       suppliedCompactIdentity = suppliedSkillContentIdentity(input.resolvedSkill).compact(),
     ),
   ).stagingDir.toAbsolutePath().normalize()
-}
-
-private fun pruneStaleStagingDirs(home: Path, resolvedSource: Path, currentHash: String) {
-  val cacheRoot = installedSkillsCacheRoot(home)
-  val slug = installedSkillSlug(resolvedSource)
-  if (!Files.isDirectory(cacheRoot) || slug.isEmpty()) {
-    return
-  }
-  val currentLeaf = "$slug-$currentHash"
-  val hashRegex = Regex("^${Regex.escape(slug)}-[0-9a-f]{${INSTALL_CACHE_KEY_BYTES * 2}}$")
-  val candidates = try {
-    Files.list(cacheRoot).use { stream ->
-      stream
-        .filter { entry -> Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS) }
-        .filter { entry ->
-          val name = entry.fileName.toString()
-          name.matches(hashRegex) && name != currentLeaf
-        }
-        .toList()
-    }
-  } catch (error: IOException) {
-    log.log(Level.WARNING, "pruneStaleStagingDirs list failure cacheRoot=$cacheRoot", error)
-    emptyList()
-  }
-  candidates.forEach { stale ->
-    try {
-      deleteInstallStagingDirectory(stale)
-    } catch (error: IOException) {
-      log.log(
-        Level.WARNING,
-        "pruneStaleStagingDirs delete failure dir=$stale (suppressed; install completed successfully)",
-        error,
-      )
-    } catch (error: RuntimeException) {
-      log.log(
-        Level.WARNING,
-        "pruneStaleStagingDirs delete failure dir=$stale (suppressed; install completed successfully)",
-        error,
-      )
-    }
-  }
 }

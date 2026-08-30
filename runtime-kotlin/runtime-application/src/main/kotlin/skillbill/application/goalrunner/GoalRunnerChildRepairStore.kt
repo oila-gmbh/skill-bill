@@ -4,7 +4,6 @@ import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosisRequest
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeRepairRequest
-import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 
 interface GoalRunnerChildRepairStore {
   fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis

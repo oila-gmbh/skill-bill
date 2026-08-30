@@ -289,18 +289,18 @@ private enum class DesktopOs {
   WINDOWS,
 }
 
-private data class LauncherRemoval(
+internal data class LauncherRemoval(
   val path: Path,
   val expectedTarget: Path,
 )
 
-private data class DesktopRemoval(
+internal data class DesktopRemoval(
   val launcher: LauncherRemoval?,
   val files: List<Path>,
   val directories: List<Path>,
 )
 
-private data class UninstallPlan(
+internal data class UninstallPlan(
   val home: Path,
   val stateRoot: Path,
   val skillNames: List<String>,

@@ -70,10 +70,7 @@ internal class FeatureTaskRuntimeRemediationBaseReconciler(
     }
   }
 
-  private fun readRemediationSnapshot(
-    workflowId: String,
-    dbOverride: String?,
-  ): RemediationReconcileSnapshot? =
+  private fun readRemediationSnapshot(workflowId: String, dbOverride: String?): RemediationReconcileSnapshot? =
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)

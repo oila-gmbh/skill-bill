@@ -5,6 +5,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionTemplate
 
 /**
  * The experimental runtime-driven feature-task pipeline definition, fully independent

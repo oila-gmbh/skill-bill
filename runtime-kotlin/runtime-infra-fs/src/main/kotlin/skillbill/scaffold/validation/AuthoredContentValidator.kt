@@ -1,4 +1,3 @@
-@file:Suppress("MaxLineLength", "ktlint:standard:max-line-length")
 
 package skillbill.scaffold.validation
 
@@ -9,7 +8,8 @@ import java.nio.file.Path
 
 private val UNRESOLVED_PLACEHOLDER_PATTERN = Regex("""(?m)^\s*(?:[-*]\s*)?(?:TODO|FIXME)\b""")
 private val GOVERNED_SCAFFOLD_PROMPT_PATTERN = Regex(
-  """^\s*[-*]\s+TODO(?::|\s+rule\s+\d+\s+\()[^\n]*(?:repository files|backticked repository-specific|mechanism for|failure ownership)[^\n]*$""",
+  """^\s*[-*]\s+TODO(?::|\s+rule\s+\d+\s+\()[^\n]*""" +
+    """(?:repository files|backticked repository-specific|mechanism for|failure ownership)[^\n]*$""",
 )
 private val WRAPPER_BOILERPLATE_HEADING_PATTERN = Regex("""^##\s+(Descriptor|Execution|Ceremony)\s*$""")
 private val SELF_REFERENTIAL_CONTENT_POINTER_PATTERN =

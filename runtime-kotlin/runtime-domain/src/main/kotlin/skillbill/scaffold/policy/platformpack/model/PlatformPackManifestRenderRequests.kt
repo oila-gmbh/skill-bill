@@ -1,4 +1,4 @@
-package skillbill.scaffold.policy.platformpack
+package skillbill.scaffold.policy.platformpack.model
 
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import java.nio.file.Path

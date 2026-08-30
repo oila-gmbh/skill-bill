@@ -1,38 +1,52 @@
 package skillbill.cli
 
+import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.db.core.DatabaseRuntime
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
-import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
+import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
+import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
+import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
+import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
+import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
+import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
+import skillbill.workflow.goal.model.GoalObservabilityDiffStat
+import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
 import java.nio.file.Path
+import java.sql.DriverManager
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
-
 
 internal data class FeatureTaskRuntimeCliContextOptions(
-  val environment: Map<String, String> = emptyMap(),
-  val liveStdout: (String) -> Unit = {},
-  val liveStderr: (String) -> Unit = {},
-  val workflowGitOperations: WorkflowGitOperations = FakeRuntimeGitOperations(),
-  val requester: HttpRequester = UnconfiguredHttpRequester,
+  var environment: Map<String, String> = emptyMap(),
+  var liveStdout: (String) -> Unit = {},
+  var liveStderr: (String) -> Unit = {},
+  var workflowGitOperations: WorkflowGitOperations = FakeRuntimeGitOperations(),
+  var requester: HttpRequester = UnconfiguredHttpRequester,
 )
 
 internal data class FeatureTaskRuntimeCliFixture(
@@ -45,23 +59,25 @@ internal data class FeatureTaskRuntimeCliFixture(
     configure: FeatureTaskRuntimeCliContextOptions.() -> Unit = {},
   ): CliRuntimeContext = context(launcher, FeatureTaskRuntimeCliContextOptions().apply(configure))
 
-  fun context(
-    launcher: AgentRunLauncher,
-    options: FeatureTaskRuntimeCliContextOptions,
-  ): CliRuntimeContext = CliRuntimeContext(
-    userHome = tempDir.also { installFakeRuntimeMcpBin(it) },
-    agentRunLauncher = launcher,
-    environment = options.environment,
-    requester = options.requester,
-    liveStdout = options.liveStdout,
-    liveStderr = options.liveStderr,
-    workflowGitOperations = options.workflowGitOperations,
-    executableLookup = ExecutableLookup { true },
-    reviewNativeAgentPreflight = ReviewNativeAgentPreflightPort.NONE,
-  )
+  fun context(launcher: AgentRunLauncher, options: FeatureTaskRuntimeCliContextOptions): CliRuntimeContext =
+    CliRuntimeContext(
+      userHome = tempDir.also { installFakeRuntimeMcpBin(it) },
+      agentRunLauncher = launcher,
+      environment = options.environment,
+      requester = options.requester,
+      liveStdout = options.liveStdout,
+      liveStderr = options.liveStderr,
+      workflowGitOperations = options.workflowGitOperations,
+      executableLookup = ExecutableLookup { true },
+      reviewNativeAgentPreflight = ReviewNativeAgentPreflightPort.NONE,
+    )
 
-  fun materializeDatabaseWithTelemetry(level: String, requester: HttpRequester) =
-    materializeTelemetryDatabase(tempDir, dbPath, level, context(RecordingPhaseLauncher()) { requester = requester })
+  fun materializeDatabaseWithTelemetry(level: String, requester: HttpRequester) = materializeTelemetryDatabase(
+    tempDir,
+    dbPath,
+    level,
+    context(RecordingPhaseLauncher()) { this.requester = requester },
+  )
 
   fun runCommand(extra: List<String> = emptyList()): List<String> = buildList {
     add("--db")
@@ -452,6 +468,12 @@ internal val ALL_PHASES =
     "pr",
   )
 internal val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" || it == "implement_fix" || it == "build" }
+
+internal fun goalChildLaunchedPhases(): List<String> =
+  AGENT_LAUNCHED_PHASES.filterNot { it == "pr" || it == "validate" }
+
+internal const val GOAL_CHILD_COMPLETED_PHASES =
+  "preplan, plan, implement, audit, review, verify_findings, build, write_history, commit_push"
 internal const val COMPLETED_PHASES_CLEAN_RUN =
   "preplan, plan, implement, audit, review, verify_findings, validate, write_history, commit_push, pr"
 
@@ -583,4 +605,3 @@ internal class FakeRuntimeGitOperations(
       )
     }
 }
-

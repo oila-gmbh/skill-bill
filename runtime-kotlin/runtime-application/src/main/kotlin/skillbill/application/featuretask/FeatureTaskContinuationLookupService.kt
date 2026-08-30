@@ -2,10 +2,9 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
-import skillbill.application.featuretask.model.FeatureTaskContinuationLookupQuery
 import skillbill.application.featuretask.model.FeatureTaskContinuationLiveness
+import skillbill.application.featuretask.model.FeatureTaskContinuationLookupQuery
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
-import skillbill.application.workflow.goalContinuationFor
 import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError

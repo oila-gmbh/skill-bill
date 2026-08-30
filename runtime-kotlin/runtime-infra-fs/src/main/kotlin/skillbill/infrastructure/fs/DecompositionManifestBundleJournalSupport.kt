@@ -12,7 +12,10 @@ internal object DecompositionManifestBundleJournalRecovery {
 
   fun recoverPendingUnlocked(parent: Path?, journal: DecompositionManifestBundleJournal) {
     if (parent == null || !Files.isDirectory(parent)) return
-    Files.newDirectoryStream(parent, "${DecompositionManifestBundleJournal.BUNDLE_PREFIX}*${DecompositionManifestBundleJournal.MARKER_SUFFIX}")
+    val markerGlob =
+      "${DecompositionManifestBundleJournal.BUNDLE_PREFIX}*" +
+        "${DecompositionManifestBundleJournal.MARKER_SUFFIX}"
+    Files.newDirectoryStream(parent, markerGlob)
       .use { markers ->
         markers.toList().forEach { marker ->
           val transaction = journal.read(marker)
@@ -24,7 +27,10 @@ internal object DecompositionManifestBundleJournalRecovery {
 
   fun failIfPending(parent: Path?) {
     if (parent == null || !Files.isDirectory(parent)) return
-    Files.newDirectoryStream(parent, "${DecompositionManifestBundleJournal.BUNDLE_PREFIX}*${DecompositionManifestBundleJournal.MARKER_SUFFIX}")
+    val markerGlob =
+      "${DecompositionManifestBundleJournal.BUNDLE_PREFIX}*" +
+        "${DecompositionManifestBundleJournal.MARKER_SUFFIX}"
+    Files.newDirectoryStream(parent, markerGlob)
       .use { markers ->
         if (markers.iterator().hasNext()) {
           throw InvalidDecompositionManifestSchemaError(
@@ -54,7 +60,8 @@ internal object DecompositionManifestBundleJournalCreate {
   ): DecompositionManifestBundleTransaction {
     val transactionId = java.util.UUID.randomUUID().toString()
     val stagingDirectory = parent.resolve(
-      "${DecompositionManifestBundleJournal.BUNDLE_PREFIX}$transactionId${DecompositionManifestBundleJournal.STAGING_SUFFIX}",
+      "${DecompositionManifestBundleJournal.BUNDLE_PREFIX}$transactionId" +
+        DecompositionManifestBundleJournal.STAGING_SUFFIX,
     )
     Files.createDirectories(stagingDirectory)
     val entries = writes.mapIndexed { index, (path, content) ->
@@ -64,7 +71,8 @@ internal object DecompositionManifestBundleJournalCreate {
       DecompositionManifestBundleEntry(target, staged, DecompositionManifestBundleJournalIo.sha256(content))
     }
     val marker = parent.resolve(
-      "${DecompositionManifestBundleJournal.BUNDLE_PREFIX}$transactionId${DecompositionManifestBundleJournal.MARKER_SUFFIX}",
+      "${DecompositionManifestBundleJournal.BUNDLE_PREFIX}$transactionId" +
+        DecompositionManifestBundleJournal.MARKER_SUFFIX,
     )
     journal.writeAtomically(
       marker,
@@ -139,7 +147,12 @@ internal object DecompositionManifestBundleJournalIo {
   internal fun moveAtomically(source: Path, target: Path) {
     Files.createDirectories(requireNotNull(target.parent))
     try {
-      Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+      Files.move(
+        source,
+        target,
+        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+      )
     } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
       Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     }

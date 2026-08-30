@@ -24,10 +24,13 @@ internal fun branchSetupReattachMissingReason(branch: String, currentBranch: Str
     "divergent branch in its place or run file-mutating phases on the default branch; restore " +
     "or recreate '$branch' before resuming."
 
-internal fun branchSetupReattachExistenceUnreadableReason(branch: String, currentBranch: String, error: String): String =
-  "Feature-task-runtime could not verify whether the persisted feature branch '$branch' still " +
-    "exists (HEAD is on '$currentBranch')" + error.detailSuffix() +
-    " Refusing to re-attach or run file-mutating phases until existence can be confirmed."
+internal fun branchSetupReattachExistenceUnreadableReason(
+  branch: String,
+  currentBranch: String,
+  error: String,
+): String = "Feature-task-runtime could not verify whether the persisted feature branch '$branch' still " +
+  "exists (HEAD is on '$currentBranch')" + error.detailSuffix() +
+  " Refusing to re-attach or run file-mutating phases until existence can be confirmed."
 
 internal fun branchSetupReattachProtectedReason(branch: String): String =
   "Feature-task-runtime resolved persisted branch '$branch' is a protected branch. Refusing to " +

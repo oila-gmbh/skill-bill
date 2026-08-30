@@ -137,7 +137,7 @@ class RenderSkillsCommand(
   }
 }
 
-internal open class WrapperRegenerationCommand(
+open class WrapperRegenerationCommand(
   name: String,
   private val state: CliRunState,
   private val scaffoldService: ScaffoldService,

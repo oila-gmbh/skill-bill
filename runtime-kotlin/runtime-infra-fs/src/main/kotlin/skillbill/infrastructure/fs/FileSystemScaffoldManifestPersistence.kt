@@ -13,6 +13,7 @@ import skillbill.scaffold.manifest.appendCodeReviewArea
 import skillbill.scaffold.manifest.appendGovernedAddonManifestRegistration
 import skillbill.scaffold.manifest.renderGovernedAddonManifestRegistration
 import skillbill.scaffold.manifest.setDeclaredQualityCheckFile
+import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRequest
 import java.nio.file.Files
 import java.nio.file.Path
 import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest as policyRenderPlatformPackManifest
@@ -48,16 +49,18 @@ class FileSystemScaffoldManifestPersistence : ScaffoldManifestPersistencePort {
 
   override fun renderPlatformPackManifest(request: ScaffoldManifestRenderPlatformPackRequest): String =
     policyRenderPlatformPackManifest(
-      platform = request.platform,
-      displayName = request.displayName,
-      strongSignals = request.strongSignals,
-      tieBreakers = request.tieBreakers,
-      declaredCodeReviewAreas = request.declaredCodeReviewAreas,
-      baselineContentPath = request.baselineContentPath,
-      declaredAreaFiles = request.declaredAreaFiles,
-      declaredQualityCheckFile = request.declaredQualityCheckFile,
-      areaMetadata = request.areaMetadata,
-      baselineLayers = request.baselineLayers,
+      PlatformPackManifestRenderRequest(
+        platform = request.platform,
+        displayName = request.displayName,
+        strongSignals = request.strongSignals,
+        tieBreakers = request.tieBreakers,
+        declaredCodeReviewAreas = request.declaredCodeReviewAreas,
+        baselineContentPath = request.baselineContentPath,
+        declaredAreaFiles = request.declaredAreaFiles,
+        declaredQualityCheckFile = request.declaredQualityCheckFile,
+        areaMetadata = request.areaMetadata,
+        baselineLayers = request.baselineLayers,
+      ),
     )
 
   override fun appendCodeReviewArea(request: ScaffoldManifestAppendCodeReviewAreaRequest) {

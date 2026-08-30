@@ -1,9 +1,5 @@
 package skillbill.install
 
-import org.junit.jupiter.api.Assumptions
-import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
-import skillbill.error.MissingInstalledNativeAgentError
-import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
 import skillbill.install.apply.currentNativeAgentApplyCacheRoot
 import skillbill.install.model.AgentTarget
 import skillbill.install.model.InstallAgent
@@ -18,24 +14,11 @@ import skillbill.install.nativeagent.NativeAgentLinkOwnership
 import skillbill.install.nativeagent.installNativeAgentFile
 import skillbill.install.runtime.InstallOperations
 import skillbill.install.support.createNewSymlinkWithGuidance
-import skillbill.model.EnvironmentContext
-import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
-import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
-import skillbill.testing.HARBOR_ARCHITECTURE_WORKER
-import skillbill.testing.HARBOR_COMPANION_NAME
-import skillbill.testing.HARBOR_ENTRYPOINT_MARKER
-import skillbill.testing.HARBOR_ENTRYPOINT_NAME
-import skillbill.testing.HARBOR_PACK_SLUG
-import skillbill.testing.seedHarborAddonPack
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.nio.file.Path
-import java.nio.file.attribute.PosixFilePermission
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -342,5 +325,4 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
       }
     }
   }
-
 }

@@ -1,9 +1,9 @@
 package skillbill.application.featuretask.model
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 internal data class CompletedUpstreamRepairRequest(
   val phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,

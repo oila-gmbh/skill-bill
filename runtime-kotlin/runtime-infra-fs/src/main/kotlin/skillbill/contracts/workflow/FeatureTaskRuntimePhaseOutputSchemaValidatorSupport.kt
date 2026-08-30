@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
@@ -13,6 +12,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
 import java.util.logging.Logger
+import kotlin.coroutines.cancellation.CancellationException
 
 internal val featureTaskRuntimePhaseOutputLog: Logger =
   Logger.getLogger("skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaValidator")
@@ -24,6 +24,7 @@ internal const val FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_REPO_RELATIVE_PATH: 
   FeatureTaskRuntimePhaseOutputSchemaPaths.REPO_RELATIVE_PATH
 
 internal fun loadFeatureTaskRuntimePhaseOutputSchema(): JsonSchema {
+  var failure: Throwable? = null
   try {
     val yamlText = readFeatureTaskRuntimePhaseOutputSchemaText()
     val yamlNode = YAMLMapper().readTree(yamlText)
@@ -31,17 +32,27 @@ internal fun loadFeatureTaskRuntimePhaseOutputSchema(): JsonSchema {
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
-  } catch (error: Throwable) {
-    featureTaskRuntimePhaseOutputLog.log(
-      Level.SEVERE,
-      "Failed to load canonical feature-task-runtime phase output schema: " +
-        "classpath='$FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_CLASSPATH_RESOURCE' " +
-        "repoRelativePath='$FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_REPO_RELATIVE_PATH' " +
-        "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
-      error,
-    )
-    throw error
+  } catch (cancellation: CancellationException) {
+    failure = cancellation
+  } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    logFeatureTaskRuntimePhaseOutputSchemaLoadFailure(error)
+    failure = error
+  } catch (error: JsonProcessingException) {
+    logFeatureTaskRuntimePhaseOutputSchemaLoadFailure(error)
+    failure = error
   }
+  throw failure
+}
+
+private fun logFeatureTaskRuntimePhaseOutputSchemaLoadFailure(error: Throwable) {
+  featureTaskRuntimePhaseOutputLog.log(
+    Level.SEVERE,
+    "Failed to load canonical feature-task-runtime phase output schema: " +
+      "classpath='$FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_CLASSPATH_RESOURCE' " +
+      "repoRelativePath='$FEATURE_TASK_RUNTIME_PHASE_OUTPUT_SCHEMA_REPO_RELATIVE_PATH' " +
+      "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
+    error,
+  )
 }
 
 internal fun readFeatureTaskRuntimePhaseOutputSchemaText(): String {

@@ -1,14 +1,11 @@
 package skillbill.infrastructure.sqlite.goal
 
-import skillbill.goalrunner.model.ReviewFindingOutcome
-import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.review.model.ReviewSeverityAdjustmentDirection
-import java.sql.Connection
 import java.sql.ResultSet
 
 internal fun readUnaddressedFinding(rows: ResultSet): UnaddressedFinding = UnaddressedFinding(

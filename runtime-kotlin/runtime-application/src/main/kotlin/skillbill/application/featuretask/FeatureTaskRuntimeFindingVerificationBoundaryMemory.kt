@@ -8,7 +8,6 @@ import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBodyResolutionCaps
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 import java.nio.file.Path
 
 @Inject
@@ -29,10 +28,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
       ),
     )
   }
-
-  fun boundarySelectionsForResolvedBodies(
-    persisted: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>?,
-  ): Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>? = persisted?.takeIf { it.isNotEmpty() }
 
   fun resolveSelectedBodies(
     repoRoot: Path,

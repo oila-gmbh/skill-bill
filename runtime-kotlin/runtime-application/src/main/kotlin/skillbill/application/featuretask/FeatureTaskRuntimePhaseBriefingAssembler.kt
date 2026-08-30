@@ -1,22 +1,20 @@
 package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.application.featuretask.model.FeatureTaskRuntimeBriefingProjectionInputs
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
-import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
-import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionShape
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
-import skillbill.application.featuretask.model.FeatureTaskRuntimeBriefingProjectionInputs
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionShape
 
 /**
  * Per-phase allowlist of prompt-visible run invariants (AC-012). Run identity stays durable runtime
@@ -80,7 +78,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
   ): FeatureTaskRuntimePhaseLaunchBriefing {
     val boundedAddonSelection = FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor(
-      handoff.phaseId,
       agentAddonSelection,
     )
     val promptDeclarations = handoff.projectionDeclarations +

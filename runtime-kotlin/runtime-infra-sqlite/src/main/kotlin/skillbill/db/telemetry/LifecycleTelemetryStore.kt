@@ -10,9 +10,8 @@ import skillbill.ports.telemetry.QualityCheckLifecycleTelemetryRepository
 import skillbill.ports.telemetry.ReviewStageTelemetryMeasurementRepository
 import java.sql.Connection
 
-class LifecycleTelemetryStore(
-  connection: Connection,
-  adapters: LifecycleTelemetryStoreAdapters = LifecycleTelemetryStoreAdapters(connection),
+class LifecycleTelemetryStore private constructor(
+  adapters: LifecycleTelemetryStoreAdapters,
 ) : LifecycleTelemetryRepository,
   FeatureTaskRuntimeTelemetryMeasurementRepository by adapters.measurements,
   ReviewStageTelemetryMeasurementRepository by adapters.measurements,
@@ -20,4 +19,9 @@ class LifecycleTelemetryStore(
   QualityCheckLifecycleTelemetryRepository by adapters.qualityCheckSessions,
   FeatureVerifyLifecycleTelemetryRepository by adapters.featureVerifySessions,
   PrDescriptionLifecycleTelemetryRepository by adapters.prDescriptionSessions,
-  GoalLifecycleTelemetryRepository by adapters.goalSessions
+  GoalLifecycleTelemetryRepository by adapters.goalSessions {
+  companion object {
+    operator fun invoke(connection: Connection): LifecycleTelemetryStore =
+      LifecycleTelemetryStore(LifecycleTelemetryStoreAdapters(connection))
+  }
+}

@@ -2,7 +2,6 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
 import skillbill.scaffold.authoring.renderAuthoringTarget
 import java.nio.file.Files
 import java.nio.file.Path
@@ -438,12 +437,4 @@ private fun sectionFixtureRepo(repoRoot: Path, skillName: String): Path {
     """.trimIndent() + "\n",
   )
   return repoRoot
-}
-
-private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonSupport.parseObjectOrNull(rawJson)
-  require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
-  require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
-  return decoded
 }

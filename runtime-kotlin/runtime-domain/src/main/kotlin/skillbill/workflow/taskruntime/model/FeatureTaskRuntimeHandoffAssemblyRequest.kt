@@ -1,14 +1,6 @@
-package skillbill.workflow.taskruntime
+package skillbill.workflow.taskruntime.model
 
 import skillbill.workflow.goal.model.ValidationDepth
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 data class FeatureTaskRuntimeHandoffAssemblyRequest(
   val declaration: FeatureTaskRuntimePhaseDeclaration,

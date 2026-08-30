@@ -1,5 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught", "MagicNumber", "UnusedParameter")
-
 package skillbill.mcp.scaffold
 
 import skillbill.di.RuntimeComponent
@@ -10,6 +8,9 @@ import java.nio.file.Path
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
+
+private const val NEW_SKILL_SESSION_ID_SUFFIX_LENGTH = 4
 
 object McpScaffoldRuntime {
   fun newSkillScaffold(
@@ -20,7 +21,7 @@ object McpScaffoldRuntime {
   ): Map<String, Any?> {
     val sessionId = generateNewSkillSessionId()
     val repoRoot = findRepoRoot()
-    return try {
+    val outcome = runCatching {
       val request = parseMcpScaffoldCommandRequest(payload + ("repo_root" to repoRoot.toString()))
       val result =
         RuntimeComponent::class.create(context.toRuntimeContext())
@@ -33,19 +34,27 @@ object McpScaffoldRuntime {
         dryRun = dryRun,
         orchestrated = orchestrated,
       )
-    } catch (error: Throwable) {
-      scaffoldFailureMap(
-        sessionId = sessionId,
-        payload = payload,
-        orchestrated = orchestrated,
-        error = error,
-      )
+    }
+    val error = outcome.exceptionOrNull()
+    return if (error == null) {
+      outcome.getOrThrow()
+    } else {
+      when (error) {
+        is CancellationException -> throw error
+        is Exception -> scaffoldFailureMap(
+          sessionId = sessionId,
+          payload = payload,
+          orchestrated = orchestrated,
+          error = error,
+        )
+        else -> throw error
+      }
     }
   }
 
   private fun generateNewSkillSessionId(): String {
     val date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
-    val suffix = UUID.randomUUID().toString().take(4)
+    val suffix = UUID.randomUUID().toString().take(NEW_SKILL_SESSION_ID_SUFFIX_LENGTH)
     return "nss-$date-$suffix"
   }
 

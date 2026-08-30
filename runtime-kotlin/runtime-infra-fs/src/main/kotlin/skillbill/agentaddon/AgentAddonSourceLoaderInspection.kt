@@ -1,7 +1,6 @@
 package skillbill.agentaddon
 
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
-import skillbill.agentaddon.model.AgentAddonCatalogueInspection
 import skillbill.agentaddon.model.InvalidAgentAddonCatalogueEntry
 import java.nio.file.Files
 import java.nio.file.Path
@@ -74,11 +73,9 @@ internal fun reconcileAgentAddonCatalogueIncoherence(
   }
 }
 
-internal fun agentAddonInspectionRoots(
-  repoRoot: Path,
-  externalSourceRoots: List<Path>,
-): List<Path> = listOf(repoRoot.toAbsolutePath().normalize().resolve(AGENT_ADDONS_DIRECTORY)) +
-  externalSourceRoots.map { it.toAbsolutePath().normalize() }
+internal fun agentAddonInspectionRoots(repoRoot: Path, externalSourceRoots: List<Path>): List<Path> =
+  listOf(repoRoot.toAbsolutePath().normalize().resolve(AGENT_ADDONS_DIRECTORY)) +
+    externalSourceRoots.map { it.toAbsolutePath().normalize() }
 
 private const val AGENT_ADDONS_DIRECTORY = "agent-addons"
 private const val MANIFEST_FILE = "agent-addon.yaml"

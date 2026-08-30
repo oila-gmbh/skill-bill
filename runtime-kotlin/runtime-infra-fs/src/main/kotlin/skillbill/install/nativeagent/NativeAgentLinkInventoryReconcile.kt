@@ -1,15 +1,12 @@
 package skillbill.install.nativeagent
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.networknt.schema.JsonSchema
 import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 
-internal fun reconcileNativeAgentLinkInventoryLocked(
-  request: NativeAgentLinkInventoryLockedReconcileRequest,
-) {
+internal fun reconcileNativeAgentLinkInventoryLocked(request: NativeAgentLinkInventoryLockedReconcileRequest) {
   val trustedRoots = NativeAgentLinkInventorySupport.canonicalManagedCacheRoots(request.home, request.managedRoots)
   val previous = loadPreviousNativeAgentLinkInventory(
     request.path,
@@ -31,6 +28,7 @@ internal fun reconcileNativeAgentLinkInventoryLocked(
       false
     }
   }
+  var failure: Throwable? = null
   try {
     NativeAgentLinkInventoryWrite.write(
       NativeAgentLinkInventoryWriteRequest(
@@ -45,13 +43,24 @@ internal fun reconcileNativeAgentLinkInventoryLocked(
       ),
     )
   } catch (error: InvalidNativeAgentLinkInventorySchemaError) {
-    throw error
-  } catch (error: Exception) {
-    throw InvalidNativeAgentLinkInventorySchemaError(
+    failure = error
+  } catch (error: IOException) {
+    failure = InvalidNativeAgentLinkInventorySchemaError(
+      "Invalid native-agent link inventory publication '${request.path}': ${error.message}",
+      error,
+    )
+  } catch (error: IllegalArgumentException) {
+    failure = InvalidNativeAgentLinkInventorySchemaError(
+      "Invalid native-agent link inventory publication '${request.path}': ${error.message}",
+      error,
+    )
+  } catch (error: IllegalStateException) {
+    failure = InvalidNativeAgentLinkInventorySchemaError(
       "Invalid native-agent link inventory publication '${request.path}': ${error.message}",
       error,
     )
   }
+  failure?.let { throw it }
 }
 
 private fun loadPreviousNativeAgentLinkInventory(

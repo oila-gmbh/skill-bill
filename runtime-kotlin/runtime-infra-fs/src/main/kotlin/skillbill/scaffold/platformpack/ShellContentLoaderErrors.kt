@@ -8,7 +8,7 @@ import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
 
-internal fun invalidManifestSchema(slug: String, message: String): Nothing {
+internal fun invalidManifestSchema(@Suppress("UNUSED_PARAMETER") slug: String, message: String): Nothing {
   throw InvalidManifestSchemaError(message)
 }
 

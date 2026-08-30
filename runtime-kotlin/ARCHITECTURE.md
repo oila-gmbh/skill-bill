@@ -382,7 +382,10 @@ runtime-ports
 
     <!-- open-boundary-allowlist:start -->
 
-    - `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore.progressEvents`
+    - `skillbill.application.workflow.model.DecompositionPlanManifestInput.plan`
+    - `skillbill.application.workflow.model.DecompositionPlanManifestInput.artifactsPatch`
+    - `skillbill.application.workflow.model.DecompositionPlanManifestInput.existingArtifacts`
+    - `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowProgressStore.progressEvents`
     - `skillbill.workflow.engine.WorkflowEngine.snapshotMap`
     - `skillbill.workflow.engine.WorkflowEngine.summaryMap`
     - `skillbill.workflow.engine.WorkflowEngine.resumeMap`
@@ -400,7 +403,7 @@ runtime-ports
     - `skillbill.install.model.InstallPlanWireValidator.validate`
     - `skillbill.workflow.decomposition.DecompositionManifestValidator.validate`
     - `skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText`
-    - `skillbill.ports.workflow.decomposition.DecompositionManifestFileStore.encodeManifestYaml`
+    - `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
     - `skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap`
     - `skillbill.workflow.decomposition.toWireMap`
     - `skillbill.application.decomposition.decodeDecompositionManifestMap`
@@ -572,6 +575,7 @@ runtime-ports
     - `skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.stepUpdates`
     - `skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
     - `skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
+    - `skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput.artifactsPatch`
     - `skillbill.install.model.buildInstallPlanWireMap`
     - `skillbill.scaffold.model.PlatformManifest.customFields`
     - `skillbill.telemetry.model.TelemetryConfigDocument.payload`
@@ -1194,11 +1198,15 @@ Categories:
 
 ### open_extension (@OpenBoundaryMap)
 
+- `skillbill.application.workflow.model.DecompositionPlanManifestInput.plan`
+- `skillbill.application.workflow.model.DecompositionPlanManifestInput.artifactsPatch`
+- `skillbill.application.workflow.model.DecompositionPlanManifestInput.existingArtifacts`
+- `skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput.artifactsPatch`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
 - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
-- `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore.progressEvents`
+- `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowProgressStore.progressEvents`
 - `skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator.validate`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
 - `skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
@@ -1224,7 +1232,7 @@ Categories:
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.workflow.decomposition.DecompositionManifestValidator.validate`
 - `skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText`
-- `skillbill.ports.workflow.decomposition.DecompositionManifestFileStore.encodeManifestYaml`
+- `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
 - `skillbill.application.workflow.WorkflowFamily.sessionSummary`
 - `skillbill.workflow.goal.GoalObservabilityEventValidator.validate`
 - `skillbill.workflow.goal.model.GoalObservabilityEvent.toArtifactMap`

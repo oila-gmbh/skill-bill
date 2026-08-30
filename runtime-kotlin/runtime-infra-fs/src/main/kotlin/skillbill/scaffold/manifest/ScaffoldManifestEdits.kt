@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber", "MaxLineLength")
 
 package skillbill.scaffold.manifest
 

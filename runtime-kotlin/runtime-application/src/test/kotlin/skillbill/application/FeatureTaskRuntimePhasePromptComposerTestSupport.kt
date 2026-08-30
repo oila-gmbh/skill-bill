@@ -1,4 +1,3 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.application
 
@@ -14,6 +13,7 @@ import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
@@ -39,6 +39,11 @@ internal fun promptComposerProjectionEnvelope(phaseId: String, producedOutputs: 
   """{"contract_version":"0.6","phase_id":"$phaseId","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
 
+internal fun composePromptForPhase(phaseId: String) = composePhasePrompt(
+  PROMPT_COMPOSER_ISSUE_KEY,
+  promptComposerBriefingFor(phaseId),
+)
+
 internal fun promptComposerProjectionExampleCases() = listOf(
   Pair(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN, promptComposerBriefingFor(promptComposerPhasePreplan)),
   Pair(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, promptComposerBriefingFor(promptComposerPhasePlan)),
@@ -62,28 +67,30 @@ internal fun promptComposerBriefingFor(
   }
   return FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = declaration,
-      runInvariants = FeatureTaskRuntimeRunInvariants(
-        specReference = PROMPT_COMPOSER_SPEC_REFERENCE,
-        featureSize = featureSize,
-        acceptanceCriteria = listOf("AC-1"),
-        mandatesAndOverrides = emptyList(),
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = declaration,
+        runInvariants = FeatureTaskRuntimeRunInvariants(
+          specReference = PROMPT_COMPOSER_SPEC_REFERENCE,
+          featureSize = featureSize,
+          acceptanceCriteria = listOf("AC-1"),
+          mandatesAndOverrides = emptyList(),
+        ),
+        recordedOutputs = listOf(
+          FeatureTaskRuntimePhaseOutput("preplan", 1, PROMPT_COMPOSER_PREPLAN_OUTPUT),
+          FeatureTaskRuntimePhaseOutput("plan", 1, PROMPT_COMPOSER_PLAN_OUTPUT),
+          FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
+          FeatureTaskRuntimePhaseOutput("audit", 1, auditOutput),
+          FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
+          verifyFindingsPhaseOutput(),
+          FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
+          FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
+          FeatureTaskRuntimePhaseOutput("commit_push", 1, FINALISED_COMMIT_PUSH_OUTPUT),
+        ),
+        repositoryCheckpoint = checkpoint,
+        expectedRepositoryCheckpoint = checkpoint,
+        validationDepth = ValidationDepth.DEFAULT,
+        priorGapMemory = priorGapMemory,
       ),
-      recordedOutputs = listOf(
-        FeatureTaskRuntimePhaseOutput("preplan", 1, PROMPT_COMPOSER_PREPLAN_OUTPUT),
-        FeatureTaskRuntimePhaseOutput("plan", 1, PROMPT_COMPOSER_PLAN_OUTPUT),
-        FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
-        FeatureTaskRuntimePhaseOutput("audit", 1, auditOutput),
-        FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
-        verifyFindingsPhaseOutput(),
-        FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
-        FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
-        FeatureTaskRuntimePhaseOutput("commit_push", 1, FINALISED_COMMIT_PUSH_OUTPUT),
-      ),
-      repositoryCheckpoint = checkpoint,
-      expectedRepositoryCheckpoint = checkpoint,
-      validationDepth = ValidationDepth.DEFAULT,
-      priorGapMemory = priorGapMemory,
     ),
   )
 }
@@ -96,10 +103,13 @@ internal fun assertSchemaCorrectionSuppressesContinuation(context: FeatureTaskRu
   val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
     PROMPT_COMPOSER_ISSUE_KEY,
     promptComposerBriefingFor("implement"),
-    implementationContinuation = promptComposerImplementationContinuation(),
-    priorSchemaFailure = "produced_outputs must be an object.",
-    correctiveRepairContext = context,
-  )
+  ) {
+    copy(
+      implementationContinuation = promptComposerImplementationContinuation(),
+      priorSchemaFailure = "produced_outputs must be an object.",
+      correctiveRepairContext = context,
+    )
+  }
   assertContains(prompt, "Previous attempt was REJECTED by the schema gate")
   assertContains(prompt, "Untrusted prior phase output")
   assertTrue(prompt.contains("SKILL187-SHOULD-NOT-APPEAR"))
@@ -111,16 +121,18 @@ internal fun assertTerminalAndContinuationRetriesOmitRepairContext() {
   val terminalOnly = FeatureTaskRuntimePhasePromptComposer.compose(
     PROMPT_COMPOSER_ISSUE_KEY,
     promptComposerBriefingFor("implement"),
-    priorTerminalFailure = "blocked: waiting on operator",
-  )
+  ) {
+    copy(priorTerminalFailure = "blocked: waiting on operator")
+  }
   assertFalse(terminalOnly.contains("Untrusted prior phase output"))
   assertFalse(terminalOnly.contains("SKILL187-SHOULD-NOT-APPEAR"))
 
   val continuationOnly = FeatureTaskRuntimePhasePromptComposer.compose(
     PROMPT_COMPOSER_ISSUE_KEY,
     promptComposerBriefingFor("implement"),
-    implementationContinuation = promptComposerImplementationContinuation(),
-  )
+  ) {
+    copy(implementationContinuation = promptComposerImplementationContinuation())
+  }
   assertFalse(continuationOnly.contains("Untrusted prior phase output"))
   assertFalse(continuationOnly.contains("SKILL187-SHOULD-NOT-APPEAR"))
 }

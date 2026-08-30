@@ -1,5 +1,3 @@
-@file
-
 package skillbill.nativeagent.composition
 
 import skillbill.nativeagent.rendering.composeGovernedAgentBody

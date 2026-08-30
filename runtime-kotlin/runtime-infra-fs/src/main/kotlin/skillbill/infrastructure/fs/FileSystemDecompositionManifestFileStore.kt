@@ -8,11 +8,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 @Inject
-class FileSystemDecompositionManifestFileStore(
-  private val bundleJournal: DecompositionManifestBundleJournal = DecompositionManifestBundleJournal(),
-) : DecompositionManifestFileStore,
-  DecompositionManifestFileDiscoveryStore by FileSystemDecompositionManifestFileStoreDiscovery(bundleJournal) {
+class FileSystemDecompositionManifestFileStore :
+  DecompositionManifestFileStore,
+  DecompositionManifestFileDiscoveryStore by FileSystemDecompositionManifestFileStoreDiscoveryHolder.discovery {
+  private val bundleJournal = FileSystemDecompositionManifestFileStoreDiscoveryHolder.bundleJournal
   private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
+
+  private object FileSystemDecompositionManifestFileStoreDiscoveryHolder {
+    val bundleJournal = DecompositionManifestBundleJournal()
+    val discovery = FileSystemDecompositionManifestFileStoreDiscovery(bundleJournal)
+  }
 
   override fun readText(path: Path): String {
     return withDecompositionManifestBundleLock(path.parent) {
@@ -38,11 +43,29 @@ class FileSystemDecompositionManifestFileStore(
     return Files.isRegularFile(path)
   }
 
-  override fun <T> writeBundleAtomically(writes: List<Pair<Path, String>>, verify: () -> T): T {
+  fun <T> writeBundleAtomically(writes: List<Pair<Path, String>>, verify: () -> T): T {
     val distinctWrites = writes.distinctBy { (path, _) -> path.toAbsolutePath().normalize() }
     val parents = distinctWrites.map { (path, _) -> path.toAbsolutePath().normalize().parent }.distinct()
     if (parents.size != 1 || distinctWrites.isEmpty()) {
-      return super<DecompositionManifestFileStore>.writeBundleAtomically(writes, verify)
+      val snapshots = writes.distinctBy { (path, _) -> path }.map { (path, _) ->
+        val existed = isRegularFile(path)
+        DecompositionManifestBundleSnapshot(path, existed, if (existed) readText(path) else null)
+      }
+      return runCatching {
+        writes.forEach { (path, content) -> writeTextAtomically(path, content) }
+        verify()
+      }.getOrElse { failure ->
+        snapshots.asReversed().forEach { snapshot ->
+          runCatching {
+            if (snapshot.existed) {
+              writeTextAtomically(snapshot.path, requireNotNull(snapshot.content))
+            } else {
+              deleteIfExists(snapshot.path)
+            }
+          }.onFailure(failure::addSuppressed)
+        }
+        throw failure
+      }
     }
 
     val parent = requireNotNull(parents.single())

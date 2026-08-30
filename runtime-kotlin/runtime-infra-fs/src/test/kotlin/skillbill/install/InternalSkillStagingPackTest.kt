@@ -1,34 +1,17 @@
 package skillbill.install
 
-import skillbill.error.InternalSkillSidecarCollisionError
-import skillbill.error.InvalidAuthoredSkillSidecarError
 import skillbill.error.InvalidInternalSkillClassificationError
-import skillbill.install.apply.nativeAgentSourceRoots
-import skillbill.install.apply.standaloneInstallableSkills
 import skillbill.install.model.AgentTarget
-import skillbill.install.model.InstallPlanSkill
-import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.plan.InstallContext
 import skillbill.install.plan.installSkill
 import skillbill.install.plan.uninstallTargets
-import skillbill.install.staging.InternalSidecarCompanion
-import skillbill.install.staging.InternalSidecarTarget
-import skillbill.install.staging.discoverInternalSidecarTargets
-import skillbill.install.staging.promoteInstallStagingDir
 import skillbill.install.staging.StageInstalledSkillInput
 import skillbill.install.staging.stageInstalledSkill
-import skillbill.install.staging.validateInternalSidecarFileNames
-import skillbill.install.staging.writeInternalSidecarFiles
 import skillbill.scaffold.authoring.renderWrapper
 import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.runtime.RepoValidationRuntime
-import skillbill.scaffold.runtime.supportingFileTargets
-import skillbill.testsupport.SkillClassFixtures
-import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
-import java.nio.file.Path
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -355,5 +338,4 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
     assertEquals(first.contentHash, second.contentHash)
     assertTrue(Files.isRegularFile(second.stagingDir.resolve("specialist-contract.md")))
   }
-
 }

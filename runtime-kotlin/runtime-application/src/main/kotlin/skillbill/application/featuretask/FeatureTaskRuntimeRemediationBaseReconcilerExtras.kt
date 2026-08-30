@@ -7,7 +7,6 @@ import skillbill.application.featuretask.model.RemediationReconciliationApplyReq
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
-import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity

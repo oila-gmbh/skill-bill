@@ -1,6 +1,10 @@
-@file:Suppress("MaxLineLength", "MagicNumber", "ktlint:standard:max-line-length")
-
 package skillbill.scaffold.rendering
+
+private const val CODE_REVIEW_STATE_LIFECYCLE_RULE_COUNT = 4
+private const val CODE_REVIEW_CONTRACT_DATA_RULE_COUNT = 3
+private const val CODE_REVIEW_RESOURCE_TOOLCHAIN_RULE_COUNT = 3
+private const val CODE_REVIEW_CONTRACT_DATA_RULE_NUMBER_OFFSET = 5
+private const val CODE_REVIEW_RESOURCE_TOOLCHAIN_RULE_NUMBER_OFFSET = 8
 
 internal fun qualityCheckContent(summary: String): String = buildString {
   appendLine("## Purpose")
@@ -46,24 +50,7 @@ internal fun areaReviewContent(summary: String, area: String, stackLabel: String
     appendLine()
     appendLine(summary)
     appendLine()
-    appendLine("## Ignore")
-    appendLine()
-    appendLine("- Findings outside $areaLabel concerns or unsupported by a concrete consequence.")
-    appendLine("- Style-only preferences, formatting, and naming bikeshedding.")
-    when (area) {
-      "ui" -> {
-        appendLine(
-          "- Defer accessibility concerns to the ux-accessibility specialist " +
-            "and security concerns to the security specialist.",
-        )
-      }
-      "ux-accessibility" -> {
-        appendLine(
-          "- Defer UI correctness concerns to the ui specialist " +
-            "and security concerns to the security specialist.",
-        )
-      }
-    }
+    appendAreaReviewIgnoreSection(areaLabel, area)
     appendLine()
     appendLine("## Applicability")
     appendLine()
@@ -74,19 +61,59 @@ internal fun areaReviewContent(summary: String, area: String, stackLabel: String
     appendLine("### Review Rules")
     appendLine()
     appendLine(areaStarterRule(stackLabel, area))
-    appendLine()
-    appendLine("### State, Lifecycle, and Ordering Failures")
-    appendLine()
-    repeat(4) { index -> appendLine(todoRule(stackLabel, area, "state/lifecycle/ordering", index + 1)) }
-    appendLine()
-    appendLine("### Contract, Data, and Security Failures")
-    appendLine()
-    repeat(3) { index -> appendLine(todoRule(stackLabel, area, "contract/data/security", index + 5)) }
-    appendLine()
-    appendLine("### Resource, Toolchain, and Operational Failures")
-    appendLine()
-    repeat(3) { index -> appendLine(todoRule(stackLabel, area, "resource/toolchain/operational", index + 8)) }
+    appendAreaReviewRuleSections(stackLabel, area)
     appendLine(canonicalSeverityCloser(area))
+  }
+}
+
+private fun StringBuilder.appendAreaReviewIgnoreSection(areaLabel: String, area: String) {
+  appendLine("## Ignore")
+  appendLine()
+  appendLine("- Findings outside $areaLabel concerns or unsupported by a concrete consequence.")
+  appendLine("- Style-only preferences, formatting, and naming bikeshedding.")
+  when (area) {
+    "ui" -> {
+      appendLine(
+        "- Defer accessibility concerns to the ux-accessibility specialist " +
+          "and security concerns to the security specialist.",
+      )
+    }
+    "ux-accessibility" -> {
+      appendLine(
+        "- Defer UI correctness concerns to the ui specialist " +
+          "and security concerns to the security specialist.",
+      )
+    }
+  }
+}
+
+private fun StringBuilder.appendAreaReviewRuleSections(stackLabel: String, area: String) {
+  appendLine()
+  appendLine("### State, Lifecycle, and Ordering Failures")
+  appendLine()
+  repeat(CODE_REVIEW_STATE_LIFECYCLE_RULE_COUNT) { index ->
+    appendLine(todoRule(stackLabel, area, "state/lifecycle/ordering", index + 1))
+  }
+  appendLine()
+  appendLine("### Contract, Data, and Security Failures")
+  appendLine()
+  repeat(CODE_REVIEW_CONTRACT_DATA_RULE_COUNT) { index ->
+    appendLine(
+      todoRule(stackLabel, area, "contract/data/security", index + CODE_REVIEW_CONTRACT_DATA_RULE_NUMBER_OFFSET),
+    )
+  }
+  appendLine()
+  appendLine("### Resource, Toolchain, and Operational Failures")
+  appendLine()
+  repeat(CODE_REVIEW_RESOURCE_TOOLCHAIN_RULE_COUNT) { index ->
+    appendLine(
+      todoRule(
+        stackLabel,
+        area,
+        "resource/toolchain/operational",
+        index + CODE_REVIEW_RESOURCE_TOOLCHAIN_RULE_NUMBER_OFFSET,
+      ),
+    )
   }
 }
 

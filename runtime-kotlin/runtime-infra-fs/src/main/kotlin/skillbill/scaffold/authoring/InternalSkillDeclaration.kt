@@ -1,5 +1,3 @@
-@file:Suppress("MatchingDeclarationName")
-
 package skillbill.scaffold.authoring
 
 import skillbill.error.InvalidInternalSkillClassificationError

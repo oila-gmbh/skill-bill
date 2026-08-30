@@ -1,7 +1,6 @@
 package skillbill.install.staging
 
 import skillbill.agentaddon.AgentAddonPointer
-import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.nio.file.Path

@@ -1,63 +1,17 @@
 package skillbill.cli
 
-import kotlinx.serialization.json.JsonElement
 import skillbill.SkillBillVersion
-import skillbill.application.workflow.model.WorkflowFamilyKind
-import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.goal.GOAL_EXIT_BLOCKED
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
-import skillbill.db.core.DatabaseRuntime
-import skillbill.di.RuntimeComponent
-import skillbill.di.create
-import skillbill.install.model.InstallAgent
-import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.AgentRunLaunchRequest
-import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.goalrunner.runner.GoalPullRequestPort
-import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
-import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.time.NoopRuntimeTimingPort
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.goal.model.GoalObservabilityDiffStat
-import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunk
-import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
-import java.nio.file.Files
-import java.nio.file.Path
 import java.sql.DriverManager
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.minutes
 
 class CliGoalRuntimeExecutionTest {
   @Test
@@ -501,9 +455,3 @@ class CliGoalRuntimeExecutionTest {
     assertContains(resumed.stdout, "Could not capture the goal-subtask review baseline")
   }
 }
-
-/**
- * SKILL-160 subtask 2: `--include-shared-preplan` cascade + relaunch. Kept in its own class so it
- * does not push [CliGoalRuntimeTest] over the detekt LargeClass threshold.
- */}
-

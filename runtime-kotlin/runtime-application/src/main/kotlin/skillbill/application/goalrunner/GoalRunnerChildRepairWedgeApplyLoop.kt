@@ -2,8 +2,8 @@ package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.goalrunner.model.GoalRunnerAppliedRepair
-import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyRequest
+import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.ports.workflow.WorkflowStateRepository
@@ -12,9 +12,9 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.taskruntime.model.ValidationDepth
 
 internal class GoalRunnerChildRepairWedgeApplyLoop(
   private val engine: WorkflowEngine,

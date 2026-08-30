@@ -19,7 +19,7 @@ import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
 @Inject
-internal class GoalControlFlowCommands(
+class GoalControlFlowCommands(
   val pause: GoalPauseCommand,
   val stop: GoalStopCommand,
   val resume: GoalResumeCommand,
@@ -27,7 +27,7 @@ internal class GoalControlFlowCommands(
 )
 
 @Inject
-internal class GoalControlOperatorCommands(
+class GoalControlOperatorCommands(
   val replan: GoalReplanCommand,
   val accept: GoalAcceptCommand,
   val repair: GoalRepairCommand,
@@ -35,13 +35,13 @@ internal class GoalControlOperatorCommands(
 )
 
 @Inject
-internal class GoalControlSubcommands(
+class GoalControlSubcommands(
   val flow: GoalControlFlowCommands,
   val operator: GoalControlOperatorCommands,
 )
 
 @Inject
-internal class GoalRunSubcommands(
+class GoalRunSubcommands(
   val preflight: GoalPreflightCommand,
   val status: GoalStatusCommand,
   val watch: GoalWatchCommand,

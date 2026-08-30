@@ -70,7 +70,8 @@ internal fun editSkillResult(args: EditSkillRunArgs): CliExecutionResult = when 
 }
 
 internal fun fillSkillResult(args: FillSkillRunArgs): CliExecutionResult = when {
-  args.body != null && args.bodyFile != null -> errorResult("--body and --body-file are mutually exclusive.", args.format)
+  args.body != null && args.bodyFile != null ->
+    errorResult("--body and --body-file are mutually exclusive.", args.format)
   args.body == null && args.bodyFile == null -> errorResult("Either --body or --body-file is required.", args.format)
   else ->
     authoringResult(args.format) {

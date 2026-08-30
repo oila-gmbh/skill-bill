@@ -3,23 +3,13 @@ package skillbill.mcp
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
 import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpStdioServer
-import skillbill.mcp.core.McpToolSpec
-import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
-import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
-import skillbill.telemetry.model.GoalFinishedRecord
-import skillbill.telemetry.model.GoalStartedRecord
-import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -190,6 +180,4 @@ class McpStdioServerDispatchTest {
     val topBlocked = payload["top_blocked_subtasks"] as List<*>
     assertTrue(topBlocked.isEmpty())
   }
-}
-
 }

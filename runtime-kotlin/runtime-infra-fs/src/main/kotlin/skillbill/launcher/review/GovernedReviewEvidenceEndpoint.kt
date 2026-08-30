@@ -2,6 +2,7 @@ package skillbill.launcher.review
 import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
 import skillbill.error.GovernedReviewEvidenceTransportError
+import skillbill.error.ShellContentContractException
 import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
 import skillbill.model.EnvironmentContext
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
@@ -23,11 +24,13 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
+import kotlin.coroutines.cancellation.CancellationException
 private const val TOKEN_BYTES = 24
 private const val UNIX_SOCKET_PATH_LIMIT = 103
 private const val TEMP_SUFFIX_DIGITS = 20
 private const val PER_LAUNCH_PREFIX = "skill-bill-review-evidence-"
 private const val SOCKET_FILE_NAME = "evidence.sock"
+
 @Inject
 class UnixSocketGovernedReviewEvidenceEndpointBinder(
   private val environment: EnvironmentContext,
@@ -48,6 +51,7 @@ internal fun bridgeCommand(environment: Map<String, String>, userHome: Path): Li
   }
   return listOf(bin.toAbsolutePath().normalize().toString())
 }
+
 /**
  * Per-launch listener that serves the two governed evidence operations by delegating verbatim to
  * the supplied protocol. It holds no filesystem access of its own and re-implements no policy,
@@ -60,6 +64,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
   private val directory: Path,
 ) : GovernedReviewEvidenceEndpointHandle {
   private val issuedExpansions = ConcurrentHashMap<String, ReviewExpansionRecord>()
+
   @Volatile
   private var closed = false
   private val acceptor = thread(name = "skill-bill-review-evidence-${descriptor.lane}", isDaemon = true) {
@@ -145,7 +150,27 @@ class GovernedReviewEvidenceEndpoint private constructor(
         "Unknown governed operation: $name",
       )
     }
-  } catch (error: Exception) {
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: ShellContentContractException) {
+    governedReviewEvidenceErrorResponse(
+      id,
+      GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
+      error.message.orEmpty(),
+    )
+  } catch (error: IOException) {
+    governedReviewEvidenceErrorResponse(
+      id,
+      GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
+      error.message.orEmpty(),
+    )
+  } catch (error: IllegalArgumentException) {
+    governedReviewEvidenceErrorResponse(
+      id,
+      GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
+      error.message.orEmpty(),
+    )
+  } catch (error: IllegalStateException) {
     governedReviewEvidenceErrorResponse(
       id,
       GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
@@ -176,19 +201,10 @@ class GovernedReviewEvidenceEndpoint private constructor(
       val directory = privateDirectory()
       val socketPath = directory.resolve(SOCKET_FILE_NAME)
       val token = newToken()
-      @Suppress("TooGenericExceptionCaught")
-      val channel = try {
-        ServerSocketChannel.open(StandardProtocolFamily.UNIX)
-          .bind(UnixDomainSocketAddress.of(socketPath))
-      } catch (error: Exception) {
-        runCatching { Files.deleteIfExists(directory) }
-        throw GovernedReviewEvidenceTransportError(
-          "Failed to bind the governed review evidence endpoint for lane '$lane'.",
-          error,
-        )
-      }
-      @Suppress("TooGenericExceptionCaught")
-      return try {
+      val channel = openGovernedReviewChannel(lane, socketPath, directory)
+      var failure: Throwable? = null
+      var endpoint: GovernedReviewEvidenceEndpoint? = null
+      try {
         val configPath = GovernedReviewMcpConfigWriter.write(
           configPath = directory.resolve("mcp.json"),
           bridgeCommand = bridgeCommand,
@@ -196,28 +212,74 @@ class GovernedReviewEvidenceEndpoint private constructor(
           token = token,
           lane = lane,
         )
-        GovernedReviewEvidenceEndpoint(
+        endpoint = GovernedReviewEvidenceEndpoint(
           GovernedReviewEvidenceEndpointDescriptor(lane, socketPath, configPath, token),
           protocol,
           channel,
           directory,
         )
-      } catch (error: Exception) {
-        runCatching { channel.close() }
-        runCatching { Files.deleteIfExists(socketPath) }
-        runCatching { Files.deleteIfExists(directory.resolve("mcp.json")) }
-        runCatching {
-          Files.deleteIfExists(
-            GovernedReviewMcpConfigWriter.tomlConfigPath(directory.resolve("mcp.json")),
-          )
-        }
-        val cursorConfig = directory.resolve(".cursor").resolve("mcp.json")
-        runCatching { Files.deleteIfExists(cursorConfig) }
-        runCatching { Files.deleteIfExists(directory.resolve(".cursor").resolve("cli.json")) }
-        runCatching { Files.deleteIfExists(cursorConfig.parent) }
-        runCatching { Files.deleteIfExists(directory) }
-        throw error
+      } catch (error: CancellationException) {
+        rollbackGovernedReviewBindArtifacts(channel, socketPath, directory)
+        failure = error
+      } catch (error: IOException) {
+        rollbackGovernedReviewBindArtifacts(channel, socketPath, directory)
+        failure = error
+      } catch (error: IllegalArgumentException) {
+        rollbackGovernedReviewBindArtifacts(channel, socketPath, directory)
+        failure = error
+      } catch (error: IllegalStateException) {
+        rollbackGovernedReviewBindArtifacts(channel, socketPath, directory)
+        failure = error
       }
+      failure?.let { throw it }
+      return endpoint!!
+    }
+
+    private fun openGovernedReviewChannel(lane: String, socketPath: Path, directory: Path): ServerSocketChannel {
+      var failure: Throwable? = null
+      var channel: ServerSocketChannel? = null
+      try {
+        channel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)
+          .bind(UnixDomainSocketAddress.of(socketPath))
+      } catch (error: CancellationException) {
+        failure = error
+      } catch (error: IOException) {
+        runCatching { Files.deleteIfExists(directory) }
+        failure = GovernedReviewEvidenceTransportError(
+          "Failed to bind the governed review evidence endpoint for lane '$lane'.",
+          error,
+        )
+      } catch (error: IllegalArgumentException) {
+        runCatching { Files.deleteIfExists(directory) }
+        failure = GovernedReviewEvidenceTransportError(
+          "Failed to bind the governed review evidence endpoint for lane '$lane'.",
+          error,
+        )
+      } catch (error: IllegalStateException) {
+        runCatching { Files.deleteIfExists(directory) }
+        failure = GovernedReviewEvidenceTransportError(
+          "Failed to bind the governed review evidence endpoint for lane '$lane'.",
+          error,
+        )
+      }
+      failure?.let { throw it }
+      return channel!!
+    }
+
+    private fun rollbackGovernedReviewBindArtifacts(channel: ServerSocketChannel, socketPath: Path, directory: Path) {
+      runCatching { channel.close() }
+      runCatching { Files.deleteIfExists(socketPath) }
+      runCatching { Files.deleteIfExists(directory.resolve("mcp.json")) }
+      runCatching {
+        Files.deleteIfExists(
+          GovernedReviewMcpConfigWriter.tomlConfigPath(directory.resolve("mcp.json")),
+        )
+      }
+      val cursorConfig = directory.resolve(".cursor").resolve("mcp.json")
+      runCatching { Files.deleteIfExists(cursorConfig) }
+      runCatching { Files.deleteIfExists(directory.resolve(".cursor").resolve("cli.json")) }
+      runCatching { Files.deleteIfExists(cursorConfig.parent) }
+      runCatching { Files.deleteIfExists(directory) }
     }
     private fun privateDirectory(): Path = try {
       Files.createTempDirectory(

@@ -86,6 +86,7 @@ import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import java.io.IOException
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
@@ -1736,7 +1737,10 @@ private class RealProcessDiffResolver : DiffResolverPort {
     val output = process.inputStream.bufferedReader().readText()
     val exitCode = process.waitFor()
     if (exitCode == 0) output else null
-  } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") e: Exception) {
+  } catch (_: IOException) {
+    null
+  } catch (_: InterruptedException) {
+    Thread.currentThread().interrupt()
     null
   }
 }

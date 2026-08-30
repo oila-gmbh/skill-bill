@@ -1,43 +1,27 @@
 package skillbill.launcher
 
-import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
 import skillbill.launcher.agentrun.ProcessAgentRunAdapter
-import skillbill.launcher.agentrun.WorktreeActivityProbe
 import skillbill.launcher.agentrun.headlessAgentRunAdapters
-import skillbill.launcher.process.AgentRunActivityProbe
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.launcher.process.AgentRunProcessRequest
 import skillbill.launcher.process.AgentRunProcessResult
 import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
-import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
-import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
-import skillbill.workflow.goal.model.GoalProgressOutcome
-import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Collections
-import kotlin.concurrent.thread
 import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
@@ -49,17 +33,17 @@ class SupervisorProcessLoopEndToEndTest {
     val store = SharedDeclaredProgressStore()
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 0.8"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 3.seconds
-  progressIdleTimeout = 100.milliseconds
-  operationDeadline = 10.seconds
-  statusHeartbeatInterval = 100.milliseconds
+        listOf("sh", "-c", "sleep 0.8"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 3.seconds
+        progressIdleTimeout = 100.milliseconds
+        operationDeadline = 10.seconds
+        statusHeartbeatInterval = 100.milliseconds
         progressProbe = AgentRunProgressProbe { null }
-  progressEmitter = AgentRunProgressEmitter { store.record(it) }
-  declaredProgressProbe = AgentRunDeclaredProgressProbe { store.snapshot() }
-},
+        progressEmitter = AgentRunProgressEmitter { store.record(it) }
+        declaredProgressProbe = AgentRunDeclaredProgressProbe { store.snapshot() }
+      },
     )
 
     assertFalse(
@@ -242,14 +226,14 @@ class ReadOnlyPhaseLivenessTest {
   fun `read-only phase alive process is not idle-killed when it emits no durable progress`() {
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 0.4"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 5.seconds
-  progressIdleTimeout = 100.milliseconds
-  progressProbe = AgentRunProgressProbe { null }
-  idlePolicy = AgentRunIdlePolicy.HEARTBEAT_EXTENDED
-},
+        listOf("sh", "-c", "sleep 0.4"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 5.seconds
+        progressIdleTimeout = 100.milliseconds
+        progressProbe = AgentRunProgressProbe { null }
+        idlePolicy = AgentRunIdlePolicy.HEARTBEAT_EXTENDED
+      },
     )
 
     assertFalse(
@@ -263,14 +247,14 @@ class ReadOnlyPhaseLivenessTest {
   fun `a process producing no durable progress and no heartbeat extension is killed by the idle timeout`() {
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 5"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 10.seconds
-  progressIdleTimeout = 100.milliseconds
-  progressProbe = AgentRunProgressProbe { null }
-  idlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY
-},
+        listOf("sh", "-c", "sleep 5"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 10.seconds
+        progressIdleTimeout = 100.milliseconds
+        progressProbe = AgentRunProgressProbe { null }
+        idlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY
+      },
     )
 
     assertTrue(

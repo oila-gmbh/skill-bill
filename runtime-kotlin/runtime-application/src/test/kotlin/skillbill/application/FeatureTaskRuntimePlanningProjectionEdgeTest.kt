@@ -1,4 +1,3 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.application
 
@@ -7,6 +6,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
@@ -133,7 +133,13 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       prose = "   ",
     )
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      assemble(BriefingAssembleFixture(edge.consumer, listOf(edge.declaration), listOf(phaseOutput(edge.producer, edge.payload))))
+      assemble(
+        BriefingAssembleFixture(
+          edge.consumer,
+          listOf(edge.declaration),
+          listOf(phaseOutput(edge.producer, edge.payload)),
+        ),
+      )
     }
     assertContains(error.message.orEmpty(), "non-blank prose")
   }
@@ -147,7 +153,13 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       options = ProseEdgeOptions(omitValue = true),
     )
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      assemble(BriefingAssembleFixture(edge.consumer, listOf(edge.declaration), listOf(phaseOutput(edge.producer, edge.payload))))
+      assemble(
+        BriefingAssembleFixture(
+          edge.consumer,
+          listOf(edge.declaration),
+          listOf(phaseOutput(edge.producer, edge.payload)),
+        ),
+      )
     }
     assertContains(error.message.orEmpty(), "produced_outputs.value is required")
   }
@@ -413,14 +425,16 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
 
   private fun assemble(fixture: BriefingAssembleFixture) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseDeclaration(
-        fixture.consumer,
-        fixture.declarations,
-        fixture.derivedContextKeys,
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = FeatureTaskRuntimePhaseDeclaration(
+          fixture.consumer,
+          fixture.declarations,
+          fixture.derivedContextKeys,
+        ),
+        runInvariants = runInvariants(),
+        recordedOutputs = fixture.recordedOutputs,
+        repositoryCheckpoint = fixture.checkpoint,
       ),
-      runInvariants = runInvariants(),
-      recordedOutputs = fixture.recordedOutputs,
-      repositoryCheckpoint = fixture.checkpoint,
     ),
     sharedReviewEvidence = fixture.sharedReviewEvidence,
   )

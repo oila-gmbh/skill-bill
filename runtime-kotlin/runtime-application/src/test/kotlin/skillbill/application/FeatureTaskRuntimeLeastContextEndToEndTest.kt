@@ -33,7 +33,7 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimeLeastContextEndToEndTest {
   @Test
   fun `every forward consumer receives exactly its declared bounded projection and no private evidence`() {
-    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment())))
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
 
     val report = harness.runner.run(harness.request())
 
@@ -85,7 +85,7 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
     val expectedDeclarations = declared.filter { it.required || it.projectionName in deliveredNames }
     val envelope = delivered.envelope
 
-    assertConsumerEnvelopeIdentity(phaseId, briefing, envelope, declaration, expectedDeclarations)
+    assertConsumerEnvelopeIdentity(phaseId, briefing, envelope, expectedDeclarations)
     assertConsumerProjectionFields(phaseId, envelope, declared, deliveredNames, expectedDeclarations)
     assertConsumerEnvelopeMetadata(phaseId, envelope, delivered, declaration, briefing)
     assertConsumerDeliveredWireBoundaries(phaseId, delivered)
@@ -95,7 +95,6 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
     phaseId: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     envelope: FeatureTaskRuntimeHandoffEnvelope,
-    declaration: FeatureTaskRuntimePhaseDeclaration,
     expectedDeclarations: List<PhaseHandoffProjectionDeclaration>,
   ) {
     assertEquals(phaseId, briefing.phaseId)

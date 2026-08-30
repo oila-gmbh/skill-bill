@@ -13,14 +13,14 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import java.nio.file.Path
 import kotlin.time.Duration
 
-internal data class AgentRunProcessLaunchFields(
+data class AgentRunProcessLaunchFields(
   val command: List<String>,
   val workingDirectory: Path,
   val stdinText: String? = null,
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
 )
 
-internal data class AgentRunProcessTimingFields(
+data class AgentRunProcessTimingFields(
   val timeout: Duration? = null,
   val progressIdleTimeout: Duration? = null,
   val fileActivityGraceTimeout: Duration = DEFAULT_FILE_ACTIVITY_GRACE_TIMEOUT,
@@ -28,7 +28,7 @@ internal data class AgentRunProcessTimingFields(
   val operationDeadline: Duration? = null,
 )
 
-internal data class AgentRunProcessProbeFields(
+data class AgentRunProcessProbeFields(
   val progressProbe: AgentRunProgressProbe = AgentRunProgressProbe.NONE,
   val declaredProgressProbe: AgentRunDeclaredProgressProbe = AgentRunDeclaredProgressProbe.NONE,
   val mcpStartupProbe: AgentRunMcpStartupProbe = AgentRunMcpStartupProbe.NONE,
@@ -37,13 +37,13 @@ internal data class AgentRunProcessProbeFields(
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
 )
 
-internal data class AgentRunProcessEnvironmentFields(
+data class AgentRunProcessEnvironmentFields(
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,
   val environmentPassthroughKeys: Set<String> = emptySet(),
 )
 
-internal data class AgentRunProcessReviewFields(
+data class AgentRunProcessReviewFields(
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
   val nativeReviewOperations: NativeReviewOperationProtocol? = null,
@@ -114,7 +114,7 @@ fun agentRunProcessRequest(
   configure: AgentRunProcessRequestDsl.() -> Unit = {},
 ): AgentRunProcessRequest = AgentRunProcessRequestDsl().apply(configure).build(command, workingDirectory)
 
-internal class AgentRunProcessRequestDsl {
+class AgentRunProcessRequestDsl {
   var stdinText: String? = null
   var outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE
   var timeout: Duration? = null

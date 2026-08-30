@@ -1,6 +1,7 @@
 package skillbill.contracts.goalplanning
 
 import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.error.YAMLException
 import skillbill.error.InvalidGoalPlanningDiscoveryExclusionsSchemaError
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -79,7 +80,9 @@ object GoalPlanningDiscoveryExclusions {
       Yaml().load<Any?>(document) as? Map<*, *>
     } catch (error: CancellationException) {
       throw error
-    } catch (_: Exception) {
+    } catch (_: YAMLException) {
+      null
+    } catch (_: ClassCastException) {
       null
     }
     return loaded ?: throw InvalidGoalPlanningDiscoveryExclusionsSchemaError(

@@ -20,7 +20,7 @@ internal fun resolveCheckpointRefCommit(
   return resolved.value.orEmpty().trim().takeIf(String::isNotBlank)
 }
 
-private val remediationBlockedCause: (String?, Boolean, String?) -> String = { stored, storedResolves, failedRef ->
+internal val remediationBlockedCause: (String?, Boolean, String?) -> String = { stored, storedResolves, failedRef ->
   when {
     stored != null && !storedResolves ->
       "stored remediation_base_sha '$stored' did not resolve to a commit"

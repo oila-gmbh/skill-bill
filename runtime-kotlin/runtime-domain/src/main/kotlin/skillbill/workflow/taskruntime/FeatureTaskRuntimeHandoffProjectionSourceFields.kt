@@ -90,12 +90,11 @@ internal fun runInvariantProjectionFields(
 internal fun addonContentProjectionFields(
   inputs: FeatureTaskRuntimeHandoffProjectionInputs,
   slug: String,
-): List<FeatureTaskRuntimeHandoffProjectionField>? =
-  inputs.addonContentBySlug[slug]?.let { content ->
-    listOf(
-      FeatureTaskRuntimeHandoffProjectionField(
-        name = FeatureTaskRuntimeHandoffProjectionValidator.ADDON_CONTENT_FIELD,
-        value = FeatureTaskRuntimeHandoffProjectionValue.Text(content),
-      ),
-    )
-  }
+): List<FeatureTaskRuntimeHandoffProjectionField>? = inputs.addonContentBySlug[slug]?.let { content ->
+  listOf(
+    FeatureTaskRuntimeHandoffProjectionField(
+      name = FeatureTaskRuntimeHandoffProjectionValidator.ADDON_CONTENT_FIELD,
+      value = FeatureTaskRuntimeHandoffProjectionValue.Text(content),
+    ),
+  )
+}

@@ -4,47 +4,20 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.goalrunner.outcomeStoreDeps
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
-import skillbill.application.workflow.WorkflowFamily
-import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
-import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
-import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
-import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
-import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.goal.model.GoalProgressEvent
-import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Path
 import java.time.Instant
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -277,7 +250,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     workflows.saveFeatureTaskRuntimeWorkflow(
       runtimeCandidateRecordNoDeclaredEvent(
         "wftr-old-updatedat",
-        updatedAt = sqliteTimestamp(Instant.now().minus(2, ChronoUnit.HOURS)),
+        updatedAt = outcomeStoreSqliteTimestamp(Instant.now().minus(2, ChronoUnit.HOURS)),
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
@@ -308,7 +281,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     workflows.saveFeatureTaskRuntimeWorkflow(
       runtimeCandidateRecordNoDeclaredEvent(
         "wftr-recent-updatedat",
-        updatedAt = sqliteTimestamp(Instant.now().minus(5, ChronoUnit.MINUTES)),
+        updatedAt = outcomeStoreSqliteTimestamp(Instant.now().minus(5, ChronoUnit.MINUTES)),
       ),
     )
     val store = testWorkflowGoalRunnerOutcomeStore(
@@ -458,6 +431,4 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       requireNotNull(liveProcess.getFeatureTaskRuntimeWorkflow("wftr-live-process")).workflowStatus,
     )
   }
-
-
 }

@@ -1,6 +1,5 @@
 package skillbill.scaffold.validation
 
-import skillbill.error.InvalidSkillMdShapeError
 import skillbill.scaffold.runtime.REQUIRED_GOVERNED_SECTIONS
 import java.nio.file.Path
 

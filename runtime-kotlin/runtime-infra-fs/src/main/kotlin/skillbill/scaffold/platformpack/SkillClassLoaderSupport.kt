@@ -1,13 +1,15 @@
-@file:Suppress("MaxLineLength", "TooGenericExceptionCaught")
 package skillbill.scaffold.platformpack
 
 import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.error.YAMLException
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.scaffold.model.SkillClassManifest
 import skillbill.scaffold.model.SkillClassMatcher
 import skillbill.scaffold.model.SkillClassSection
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 
 internal fun SkillClassManifest.matchesSkillName(skillName: String): Boolean {
   if (matchers.any { matcher -> matcher.excludeExact.contains(skillName) }) {
@@ -25,7 +27,14 @@ internal fun SkillClassMatcher.matchesSkillName(skillName: String): Boolean {
 
 internal fun readClassManifestYaml(classFile: Path, classId: String): Any? = try {
   Yaml().load<Any?>(Files.readString(classFile))
-} catch (error: Exception) {
+} catch (error: CancellationException) {
+  throw error
+} catch (error: IOException) {
+  throw InvalidManifestSchemaError(
+    "Skill class '$classId': manifest '$classFile' is not valid YAML: ${error.message}",
+    error,
+  )
+} catch (error: YAMLException) {
   throw InvalidManifestSchemaError(
     "Skill class '$classId': manifest '$classFile' is not valid YAML: ${error.message}",
     error,
@@ -70,7 +79,12 @@ internal fun parseSkillClassSections(manifest: Map<*, *>, classId: String): List
   return list.mapIndexed { index, entry -> parseSkillClassSection(classId, index, entry) }
 }
 
-internal fun parseSkillClassStringList(manifest: Map<*, *>, classId: String, field: String, required: Boolean): List<String> {
+internal fun parseSkillClassStringList(
+  manifest: Map<*, *>,
+  classId: String,
+  field: String,
+  required: Boolean,
+): List<String> {
   val raw = manifest[field]
   if (raw == null) {
     if (required) {

@@ -1,9 +1,9 @@
 package skillbill.application.decomposition
 
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.model.DecompositionManifestWriteResult
-import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.application.workflow.model.DecompositionPlanManifestInput
 import skillbill.application.workflow.repoRoot
 import skillbill.error.InvalidDecompositionManifestSchemaError
@@ -22,16 +22,12 @@ private const val DECOMPOSITION_MODE: String = "decompose"
 internal const val DECOMPOSITION_RUNTIME_ARTIFACT_KEY: String = "decomposition_runtime"
 
 object DecompositionManifestWriter {
-  fun writeFromWorkflowUpdate(
-    input: DecompositionManifestWorkflowProjectionInput,
-  ): DecompositionManifestWriteResult? {
+  fun writeFromWorkflowUpdate(input: DecompositionManifestWorkflowProjectionInput): DecompositionManifestWriteResult? {
     val manifest = manifestFromWorkflowUpdate(input) ?: return null
     return writeProjection(input.repoRoot, manifest, input.validator, fileStore = input.fileStore)
   }
 
-  fun manifestFromWorkflowUpdate(
-    input: DecompositionManifestWorkflowProjectionInput,
-  ): DecompositionManifest? {
+  fun manifestFromWorkflowUpdate(input: DecompositionManifestWorkflowProjectionInput): DecompositionManifest? {
     val existingArtifacts = decodeArtifacts(input.existingArtifactsJson)
     val update = input.runtimeUpdate.copy(
       artifactsPatch = input.artifactsPatch,
@@ -54,9 +50,8 @@ object DecompositionManifestWriter {
     }
   }
 
-  fun maybeWriteFromWorkflowUpdate(
-    input: DecompositionManifestWorkflowProjectionInput,
-  ): Path? = writeFromWorkflowUpdate(input)?.manifestPath
+  fun maybeWriteFromWorkflowUpdate(input: DecompositionManifestWorkflowProjectionInput): Path? =
+    writeFromWorkflowUpdate(input)?.manifestPath
 
   fun writeProjectionFromWorkflowState(
     repoRoot: Path,
@@ -128,12 +123,11 @@ object DecompositionManifestWriter {
     )
   }
 
-  private fun manifestFromDecompositionPlan(
-    input: DecompositionPlanManifestInput,
-  ): DecompositionManifest {
+  private fun manifestFromDecompositionPlan(input: DecompositionPlanManifestInput): DecompositionManifest {
     val parentSpecPath = Path.of(parentSpecPath(input.plan))
     assertParentSpecIsNotDecomposedSubtask(input.repoRoot, parentSpecPath, input.validator, input.fileStore)
-    val branchName = branchName(input.artifactsPatch?.get("branch")).ifBlank { branchName(input.existingArtifacts["branch"]) }
+    val branchName = branchName(input.artifactsPatch?.get("branch"))
+      .ifBlank { branchName(input.existingArtifacts["branch"]) }
     val executionModel = executionModel(input.plan)
     val request = DecompositionManifestWriteRequest(
       repoRoot = input.repoRoot,

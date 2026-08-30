@@ -5,7 +5,6 @@ import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.workflow.goal.model.GoalProgressEvent
-import skillbill.workflow.goal.model.GoalProgressEventKind
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Collections

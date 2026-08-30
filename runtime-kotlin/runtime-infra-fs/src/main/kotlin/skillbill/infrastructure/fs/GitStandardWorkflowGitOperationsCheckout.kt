@@ -3,11 +3,7 @@ package skillbill.infrastructure.fs
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
-internal fun gitCheckoutBranch(
-  repoRoot: Path,
-  branch: String,
-  baseBranch: String?,
-): WorkflowGitOperationResult {
+internal fun gitCheckoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
   val normalizedBranch = branch.trim()
   if (normalizedBranch.isBlank()) {
     return WorkflowGitOperationResult(status = "error", error = "Branch name is required.")

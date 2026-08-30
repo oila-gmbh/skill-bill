@@ -1,15 +1,9 @@
 package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
-import skillbill.cli.model.CliExecutionResult
-import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
 import skillbill.nativeagent.composition.NativeAgentSource
-import skillbill.nativeagent.composition.parseNativeAgentSource
 import skillbill.nativeagent.composition.renderNativeAgentSource
-import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -239,5 +233,4 @@ class CliInstallMcpRuntimeTest {
     }
     assertEquals("work", decodeJsonObject(Files.readString(workConfig))["theme"])
   }
-
 }

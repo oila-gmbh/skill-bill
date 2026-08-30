@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import skillbill.launcher.review.GovernedReviewEvidenceEndpoint
+import skillbill.launcher.testAgentRunProcessRequest
 import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.ConversationIsolation
@@ -27,9 +28,9 @@ class JvmAgentRunProcessRunnerTest {
         """printf "{\"type\":\"result\",\"result\":\"TERMINAL\"}\n"}'"""
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", flood),
-  Path.of("."),
-),
+        listOf("sh", "-c", flood),
+        Path.of("."),
+      ),
     )
 
     assertEquals(0, result.exitStatus)
@@ -52,9 +53,9 @@ class JvmAgentRunProcessRunnerTest {
   fun `foreground process result is returned once as the bounded terminal result`() {
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "printf terminal-result"),
-  Path.of("."),
-),
+        listOf("sh", "-c", "printf terminal-result"),
+        Path.of("."),
+      ),
     )
 
     assertEquals(0, result.exitStatus)
@@ -69,11 +70,11 @@ class JvmAgentRunProcessRunnerTest {
   fun `MCP startup is counted only when an explicit launcher probe observes it`() {
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "printf terminal-result"),
-  Path.of("."),
-) {
-  mcpStartupProbe = AgentRunMcpStartupProbe { true }
-},
+        listOf("sh", "-c", "printf terminal-result"),
+        Path.of("."),
+      ) {
+        mcpStartupProbe = AgentRunMcpStartupProbe { true }
+      },
     )
 
     assertTrue(result.mcpStartupObserved)
@@ -85,16 +86,16 @@ class JvmAgentRunProcessRunnerTest {
     var authorizationExited = false
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "printf terminal-result"),
-  Path.of("."),
-) {
-  spawnAuthorization = object : AgentRunSpawnAuthorization {
+        listOf("sh", "-c", "printf terminal-result"),
+        Path.of("."),
+      ) {
+        spawnAuthorization = object : AgentRunSpawnAuthorization {
           override fun <T> withAuthorization(spawn: () -> T): T {
             authorizationEntered = true
             return spawn().also { authorizationExited = true }
           }
         }
-},
+      },
     )
 
     assertEquals(0, result.exitStatus)
@@ -199,13 +200,13 @@ class JvmAgentRunProcessRunnerTest {
     configureLaunchEnvironment(
       builder,
       testAgentRunProcessRequest(
-  listOf("echo"),
-  Path.of("."),
-) {
-  environment = mapOf("SKILL_BILL_GOAL_CONTINUATION" to "1")
-  inheritEnvironment = false
-  environmentPassthroughKeys = setOf("ANTHROPIC_API_KEY")
-},
+        listOf("echo"),
+        Path.of("."),
+      ) {
+        environment = mapOf("SKILL_BILL_GOAL_CONTINUATION" to "1")
+        inheritEnvironment = false
+        environmentPassthroughKeys = setOf("ANTHROPIC_API_KEY")
+      },
     )
 
     assertEquals("/home/dev", builder.environment()["HOME"])
@@ -225,15 +226,15 @@ class JvmAgentRunProcessRunnerTest {
 
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 30"),
-  Path.of("."),
-) {
-  timeout = 1.seconds
-  conversationIsolation = ConversationIsolation.NONE
-  reviewEvidenceBroker = TeardownProbeBroker
-  nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(TeardownProbeBroker)
-  reviewEvidenceEndpoint = endpoint
-},
+        listOf("sh", "-c", "sleep 30"),
+        Path.of("."),
+      ) {
+        timeout = 1.seconds
+        conversationIsolation = ConversationIsolation.NONE
+        reviewEvidenceBroker = TeardownProbeBroker
+        nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(TeardownProbeBroker)
+        reviewEvidenceEndpoint = endpoint
+      },
     )
 
     assertTrue(result.timedOut)

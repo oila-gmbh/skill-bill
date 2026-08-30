@@ -1,10 +1,7 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.cli.skillremove
 
-import skillbill.application.scaffold.SkillRemoveService
 import skillbill.cli.core.CliOutput
-import skillbill.cli.core.CliRunState
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
 import skillbill.domain.skillremove.SkillRemovalRefusedException

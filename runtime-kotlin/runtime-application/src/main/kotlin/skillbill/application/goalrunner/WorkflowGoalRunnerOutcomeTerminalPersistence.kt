@@ -10,7 +10,6 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
-import java.time.Instant
 
 internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
   private val engine: WorkflowEngine,

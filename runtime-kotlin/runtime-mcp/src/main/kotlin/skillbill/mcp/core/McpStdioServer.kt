@@ -48,7 +48,6 @@ object McpStdioServer {
   private fun callToolResponse(id: JsonElement, params: Map<String, Any?>, context: McpRuntimeContext): String =
     successResponse(id, callToolResult(params, context))
 
-  @Suppress("TooGenericExceptionCaught")
   private fun callToolResult(params: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
     val toolName = params["name"]?.toString().orEmpty()
     val arguments = JsonSupport.anyToStringAnyMap(params["arguments"]).orEmpty()
@@ -85,18 +84,22 @@ private fun dispatchMcpToolCall(
   toolName: String,
   arguments: Map<String, Any?>,
   context: McpRuntimeContext,
-): Map<String, Any?> = try {
-  val payload = McpToolDispatcher.call(toolName, arguments, context)
-  mcpToolResult(payload, isError = false)
-} catch (error: ShellContentContractException) {
-  mcpToolErrorResult(toolName, error)
-} catch (error: IllegalArgumentException) {
-  mcpToolErrorResult(toolName, error)
-} catch (error: IllegalStateException) {
-  mcpToolErrorResult(toolName, error)
-} catch (error: Exception) {
-  McpRuntimeLifecycle.captureException(workflowPhase = toolName, error = error, context = context)
-  mcpToolErrorResult(toolName, error)
+): Map<String, Any?> {
+  val outcome = runCatching {
+    val payload = McpToolDispatcher.call(toolName, arguments, context)
+    mcpToolResult(payload, isError = false)
+  }
+  if (outcome.isSuccess) return outcome.getOrThrow()
+  val error = outcome.exceptionOrNull()!!
+  return when (error) {
+    is ShellContentContractException, is IllegalArgumentException, is IllegalStateException ->
+      mcpToolErrorResult(toolName, error)
+    is Exception -> {
+      McpRuntimeLifecycle.captureException(workflowPhase = toolName, error = error, context = context)
+      mcpToolErrorResult(toolName, error)
+    }
+    else -> throw error
+  }
 }
 
 private fun mcpToolErrorResult(toolName: String, error: Exception): Map<String, Any?> = mcpToolResult(

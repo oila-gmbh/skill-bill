@@ -1,17 +1,25 @@
-@file:Suppress("MaxLineLength", "TooGenericExceptionCaught")
 
 package skillbill.scaffold.platformpack
 
 import org.yaml.snakeyaml.Yaml
-import skillbill.error.InvalidManifestSchemaError
+import org.yaml.snakeyaml.error.YAMLException
 import skillbill.scaffold.model.PlatformManifest
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 
 internal fun readManifest(manifestPath: Path, slug: String): Any? = try {
   Yaml().load<Any?>(Files.readString(manifestPath))
-} catch (error: Exception) {
-  invalidManifestSchema(slug, 
+} catch (error: CancellationException) {
+  throw error
+} catch (error: IOException) {
+  invalidManifestSchemaFromPath(
+    "Platform pack '$slug': manifest '$manifestPath' is not valid YAML: ${error.message}",
+    error,
+  )
+} catch (error: YAMLException) {
+  invalidManifestSchemaFromPath(
     "Platform pack '$slug': manifest '$manifestPath' is not valid YAML: ${error.message}",
     error,
   )
@@ -83,7 +91,8 @@ internal fun assemblePlatformManifest(
 
 internal fun validatePlatformSlug(slug: String, declaredPlatform: String) {
   if (declaredPlatform != slug) {
-    invalidManifestSchema(slug, 
+    invalidManifestSchema(
+      slug,
       "Platform pack '$slug': manifest 'platform' field is '$declaredPlatform', " +
         "expected '$slug' to match the directory name.",
     )
@@ -92,11 +101,13 @@ internal fun validatePlatformSlug(slug: String, declaredPlatform: String) {
 
 internal fun parseFallbackCapabilities(manifest: Map<*, *>, slug: String): Set<String> {
   val raw = manifest["fallback_capabilities"] ?: return emptySet()
-  val values = raw as? List<*> ?: invalidManifestSchema(slug, 
+  val values = raw as? List<*> ?: invalidManifestSchema(
+    slug,
     "Platform pack '$slug': 'fallback_capabilities' must be a list.",
   )
   return values.mapIndexed { index, value ->
-    (value as? String)?.trim()?.takeIf(String::isNotEmpty) ?: invalidManifestSchema(slug, 
+    (value as? String)?.trim()?.takeIf(String::isNotEmpty) ?: invalidManifestSchema(
+      slug,
       "Platform pack '$slug': 'fallback_capabilities[$index]' must be a non-blank string.",
     )
   }.toSet()
@@ -114,7 +125,8 @@ internal fun validatedCustomFields(slug: String, manifestPath: Path, manifest: M
 }
 
 internal fun requireManifestMap(slug: String, manifestPath: Path, raw: Any?): Map<*, *> = raw as? Map<*, *>
-  ?: invalidManifestSchema(slug, 
+  ?: invalidManifestSchema(
+    slug,
     "Platform pack '$slug': manifest '$manifestPath' must be a YAML mapping at the top level.",
   )
 
@@ -127,7 +139,8 @@ internal fun validateAgainstCanonicalSchema(
     val stringKey = key as? String
       ?: run {
         val keyType = key?.let { it::class.simpleName } ?: "null"
-        invalidManifestSchema(slug, 
+        invalidManifestSchema(
+          slug,
           "Platform pack '$slug': manifest top-level keys must be strings, but found '$key' ($keyType).",
         )
       }

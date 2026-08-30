@@ -1,10 +1,7 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
-import com.networknt.schema.ValidationMessage
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import java.util.logging.Level
 
@@ -117,7 +114,10 @@ private fun parseObjectNodeStrict(text: String, sourceLabel: String): JsonNode {
 }
 
 internal fun phaseOutputObjectNodeToMap(node: JsonNode, sourceLabel: String): Map<String, Any?> = try {
-  FeatureTaskRuntimePhaseOutputSchemaValidator.mapper.convertValue(node, FeatureTaskRuntimePhaseOutputSchemaValidator.mapType)
+  FeatureTaskRuntimePhaseOutputSchemaValidator.mapper.convertValue(
+    node,
+    FeatureTaskRuntimePhaseOutputSchemaValidator.mapType,
+  )
 } catch (error: IllegalArgumentException) {
   throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
     sourceLabel = sourceLabel,

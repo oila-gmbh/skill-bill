@@ -15,6 +15,6 @@ internal object FeatureTaskRuntimeProjectionCanonicalizerMapOps {
   }
 
   fun Map<*, *>.stringKeyedView(): Map<String, Any?> =
-  @Suppress("UNCHECKED_CAST")
-  if (keys.all { it is String }) this as Map<String, Any?> else LinkedHashMap()
+    @Suppress("UNCHECKED_CAST")
+    if (keys.all { it is String }) this as Map<String, Any?> else LinkedHashMap()
 }

@@ -152,7 +152,7 @@ internal fun validJsonOutputForGitPhase(phaseId: String, git: RecordingWorkflowG
 internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<String>? = null): String =
   when (phaseId) {
     "validate" -> validateProducedOutputs()
-    "write_history" -> writeHistoryProducedOutputs()
+    "write_history" -> WRITE_HISTORY_PRODUCED_OUTPUTS
     "commit_push" -> commitPushProducedOutputs(
       commitSha = null,
       changedPaths = commitPushChangedPaths ?: listOf("src/Foo.kt"),
@@ -167,39 +167,34 @@ internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<
     else -> """{"tasks":["task-1"]}"""
   }
 
-private fun validateProducedOutputs(): String =
-  """{"validation_result":{
+private fun validateProducedOutputs(): String = """{"validation_result":{
       "validation_status":"passed",
       "checks":["FooTest"],
       "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
       "gate_run_count":1,
       "gate_runs":[{"duration_ms":1,"outcome":"passed","cache_mode":"forced_full","executed_work_units":1}]
     }}
-  """.trimIndent()
+""".trimIndent()
 
-private fun writeHistoryProducedOutputs(): String =
+private const val WRITE_HISTORY_PRODUCED_OUTPUTS =
   """{"history_result":{"changed_paths":["agent/history.md"],"decisions_recorded":[]}}"""
 
-private fun preplanProducedOutputs(): String =
-  """{
+private fun preplanProducedOutputs(): String = """{
       "value":"Fixture preplan prose for downstream plan."
     }
-  """.trimIndent()
+""".trimIndent()
 
-private fun planProducedOutputs(): String =
-  """{
+private fun planProducedOutputs(): String = """{
       "value":"Fixture plan prose for downstream implement and audit."
     }
-  """.trimIndent()
+""".trimIndent()
 
-private fun implementProducedOutputs(): String =
-  """{
+private fun implementProducedOutputs(): String = """{
       "value":"Fixture implement prose for downstream audit."
     }
-  """.trimIndent()
+""".trimIndent()
 
-private fun implementFixProducedOutputs(): String =
-  """{
+private fun implementFixProducedOutputs(): String = """{
       "repair_receipt": {
         "contract_version": "0.3",
         "entries": [{
@@ -209,7 +204,7 @@ private fun implementFixProducedOutputs(): String =
       },
       "reconciled_state": {"reconciled": true, "evidence": "Fixture tree at target state."}
     }
-  """.trimIndent()
+""".trimIndent()
 
 // SKILL-140 Subtask 3 (task-6/task-7): the enumerable parity corpus. Each entry carries a stable id
 // used verbatim in parity-failure messages.

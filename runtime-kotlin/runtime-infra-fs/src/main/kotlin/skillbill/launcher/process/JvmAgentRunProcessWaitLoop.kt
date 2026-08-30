@@ -5,7 +5,6 @@ import skillbill.goalrunner.model.GoalRunnerLivenessInputs
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
-import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind

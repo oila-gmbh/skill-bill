@@ -1,5 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.install.staging
 
 import skillbill.agentaddon.AgentAddonPointer

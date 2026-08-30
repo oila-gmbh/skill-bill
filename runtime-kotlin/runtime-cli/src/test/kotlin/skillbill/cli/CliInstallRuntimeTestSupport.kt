@@ -3,7 +3,6 @@ package skillbill.cli
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
 import skillbill.nativeagent.composition.NativeAgentSource
 import skillbill.nativeagent.composition.parseNativeAgentSource
 import skillbill.nativeagent.composition.renderNativeAgentSource
@@ -16,105 +15,104 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 internal fun runInstall(fixture: InstallFixture, command: String, vararg extraArgs: String): CliExecutionResult =
-    CliRuntime.run(
-      listOf(
-        "install",
-        command,
-        "--platform-packs",
-        fixture.platformPacks.toString(),
-        "--skills",
-        fixture.skills.toString(),
-      ) + extraArgs,
-      installCliContext(fixture.home),
-    )
-
-internal fun installCliContext(home: Path): CliRuntimeContext = CliRuntimeContext(
-    userHome = home,
-    environment = isolatedCliEnvironment(home),
+  CliRuntime.run(
+    listOf(
+      "install",
+      command,
+      "--platform-packs",
+      fixture.platformPacks.toString(),
+      "--skills",
+      fixture.skills.toString(),
+    ) + extraArgs,
+    installCliContext(fixture.home),
   )
 
+internal fun installCliContext(home: Path): CliRuntimeContext = CliRuntimeContext(
+  userHome = home,
+  environment = isolatedCliEnvironment(home),
+)
+
 internal fun installFixture(): InstallFixture {
-    val home = Files.createTempDirectory("skillbill-cli-install-native")
-    Files.createDirectories(home.resolve(".claude"))
-    Files.createDirectories(home.resolve(".codex"))
-    Files.createDirectories(home.resolve(".junie"))
-    Files.createDirectories(home.resolve(".cursor"))
-    val platformPacks = home.resolve("platform-packs")
-    val skills = home.resolve("skills")
-    val baseCodexAgents = skills.resolve("bill-code-review/codex-agents")
-    val baseJunieAgents = skills.resolve("bill-code-review/junie-agents")
-    val baseNativeAgents = skills.resolve("bill-code-review/native-agents")
-    val codexAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/codex-agents")
-    val junieAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/junie-agents")
-    val nativeAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/native-agents")
-    val kmpCodexAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/codex-agents")
-    val kmpJunieAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/junie-agents")
-    val kmpNativeAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/native-agents")
-    Files.createDirectories(baseNativeAgents)
-    Files.createDirectories(nativeAgents)
-    Files.createDirectories(kmpNativeAgents)
-    val baseCodexToml = baseCodexAgents.resolve("bill-code-review-worker.toml")
-    val baseJunieMd = baseJunieAgents.resolve("bill-code-review-worker.md")
-    val codexToml = codexAgents.resolve("bill-kotlin-code-review-testing.toml")
-    val junieMd = junieAgents.resolve("bill-kotlin-code-review-testing.md")
-    val cursorMd = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/cursor-agents")
-      .resolve("bill-kotlin-code-review-testing.md")
-    val kmpCodexToml = kmpCodexAgents.resolve("bill-kmp-code-review-ui.toml")
-    val kmpJunieMd = kmpJunieAgents.resolve("bill-kmp-code-review-ui.md")
-    val fixture = InstallFixture(
-      home,
-      platformPacks,
-      skills,
-      baseCodexToml,
-      baseJunieMd,
-      codexToml,
-      junieMd,
-      kmpCodexToml,
-      kmpJunieMd,
-      cursorMd,
-    )
-    writeInstallFixtureFiles(fixture)
-    return fixture
-  }
+  val home = Files.createTempDirectory("skillbill-cli-install-native")
+  Files.createDirectories(home.resolve(".claude"))
+  Files.createDirectories(home.resolve(".codex"))
+  Files.createDirectories(home.resolve(".junie"))
+  Files.createDirectories(home.resolve(".cursor"))
+  val platformPacks = home.resolve("platform-packs")
+  val skills = home.resolve("skills")
+  val baseCodexAgents = skills.resolve("bill-code-review/codex-agents")
+  val baseJunieAgents = skills.resolve("bill-code-review/junie-agents")
+  val baseNativeAgents = skills.resolve("bill-code-review/native-agents")
+  val codexAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/codex-agents")
+  val junieAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/junie-agents")
+  val nativeAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/native-agents")
+  val kmpCodexAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/codex-agents")
+  val kmpJunieAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/junie-agents")
+  val kmpNativeAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/native-agents")
+  Files.createDirectories(baseNativeAgents)
+  Files.createDirectories(nativeAgents)
+  Files.createDirectories(kmpNativeAgents)
+  val baseCodexToml = baseCodexAgents.resolve("bill-code-review-worker.toml")
+  val baseJunieMd = baseJunieAgents.resolve("bill-code-review-worker.md")
+  val codexToml = codexAgents.resolve("bill-kotlin-code-review-testing.toml")
+  val junieMd = junieAgents.resolve("bill-kotlin-code-review-testing.md")
+  val cursorMd = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/cursor-agents")
+    .resolve("bill-kotlin-code-review-testing.md")
+  val kmpCodexToml = kmpCodexAgents.resolve("bill-kmp-code-review-ui.toml")
+  val kmpJunieMd = kmpJunieAgents.resolve("bill-kmp-code-review-ui.md")
+  val fixture = InstallFixture(
+    home,
+    platformPacks,
+    skills,
+    baseCodexToml,
+    baseJunieMd,
+    codexToml,
+    junieMd,
+    kmpCodexToml,
+    kmpJunieMd,
+    cursorMd,
+  )
+  writeInstallFixtureFiles(fixture)
+  return fixture
+}
 
 internal fun writeInstallFixtureFiles(fixture: InstallFixture) {
-    writeMinimalPackManifest(fixture.platformPacks.resolve("kotlin"), "*.kt")
-    writeMinimalPackManifest(fixture.platformPacks.resolve("kmp"), "commonMain")
-    writeNativeAgentSet(fixture.baseCodexToml, "bill-code-review-worker", "Review changed code.")
-    writeNativeAgentSet(fixture.codexToml, "bill-kotlin-code-review-testing", "Review Kotlin tests.")
-    writeNativeAgentSet(fixture.kmpCodexToml, "bill-kmp-code-review-ui", "Review KMP UI.")
-  }
+  writeMinimalPackManifest(fixture.platformPacks.resolve("kotlin"), "*.kt")
+  writeMinimalPackManifest(fixture.platformPacks.resolve("kmp"), "commonMain")
+  writeNativeAgentSet(fixture.baseCodexToml, "bill-code-review-worker", "Review changed code.")
+  writeNativeAgentSet(fixture.codexToml, "bill-kotlin-code-review-testing", "Review Kotlin tests.")
+  writeNativeAgentSet(fixture.kmpCodexToml, "bill-kmp-code-review-ui", "Review KMP UI.")
+}
 
 internal fun assertGeneratedAgentLinked(path: Path, expected: Path?) {
-    assertTrue(Files.isSymbolicLink(path))
-    assertContains(path.toRealPath().toString(), ".skill-bill")
-    if (expected != null) {
-      val provider = NativeAgentProvider.entries.first { provider ->
-        provider.directoryName == expected.parent.fileName.toString()
-      }
-      val name = expected.fileName.toString().removeSuffix(".${provider.extension}")
-      val source = parseNativeAgentSource(expected.parent.parent.resolve("native-agents/$name.md"))
-      assertEquals(provider.render(source), Files.readString(path))
+  assertTrue(Files.isSymbolicLink(path))
+  assertContains(path.toRealPath().toString(), ".skill-bill")
+  if (expected != null) {
+    val provider = NativeAgentProvider.entries.first { provider ->
+      provider.directoryName == expected.parent.fileName.toString()
     }
+    val name = expected.fileName.toString().removeSuffix(".${provider.extension}")
+    val source = parseNativeAgentSource(expected.parent.parent.resolve("native-agents/$name.md"))
+    assertEquals(provider.render(source), Files.readString(path))
   }
+}
 
 internal fun writeNativeAgentSet(codexPath: Path, name: String, description: String) {
-    val skillDir = codexPath.parent.parent
-    val source = NativeAgentSource(name = name, description = description, body = "# $name\n\nDo the work.")
-    Files.writeString(skillDir.resolve("native-agents/$name.md"), renderNativeAgentSource(source))
-  }
+  val skillDir = codexPath.parent.parent
+  val source = NativeAgentSource(name = name, description = description, body = "# $name\n\nDo the work.")
+  Files.writeString(skillDir.resolve("native-agents/$name.md"), renderNativeAgentSource(source))
+}
 
 internal fun snapshotInstallRepo(fixture: InstallFixture): Map<String, String> =
-    listOf(fixture.skills, fixture.platformPacks).flatMap { root ->
-      Files.walk(root).use { stream ->
-        stream
-          .filter(Files::isRegularFile)
-          .sorted()
-          .toList()
-          .map { path -> root.relativize(path).toString() to Files.readString(path) }
-      }
-    }.toMap()
-}
+  listOf(fixture.skills, fixture.platformPacks).flatMap { root ->
+    Files.walk(root).use { stream ->
+      stream
+        .filter(Files::isRegularFile)
+        .sorted()
+        .toList()
+        .map { path -> root.relativize(path).toString() to Files.readString(path) }
+    }
+  }.toMap()
 
 internal fun writeMinimalPackManifest(packRoot: Path, strongSignal: String) {
   Files.writeString(
@@ -214,10 +212,6 @@ internal fun mcpJsonCase(
     assertFalse("skill-bill" in (settings["mcpServers"] as Map<*, *>))
   },
 )
-
-internal fun decodeJsonObject(rawJson: String): Map<String, Any?> =
-  JsonSupport.anyToStringAnyMap(JsonSupport.parseObjectOrNull(rawJson)?.let(JsonSupport::jsonElementToValue))
-    ?: emptyMap()
 
 internal fun mcpProfileEntries(result: CliExecutionResult): List<Map<*, *>> =
   (result.payload?.get("profiles") as? List<*>).orEmpty().filterIsInstance<Map<*, *>>()

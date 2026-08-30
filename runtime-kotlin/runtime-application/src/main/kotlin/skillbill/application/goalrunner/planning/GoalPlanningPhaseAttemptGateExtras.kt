@@ -3,6 +3,7 @@ package skillbill.application.goalrunner.planning
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.boundedSchemaGateDetail
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
 import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.goalrunner.EmptyOrStoppedArgs
 import skillbill.application.goalrunner.planning.model.GoalPlanningPhaseProduction
@@ -12,9 +13,9 @@ import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.goal.model.GoalProgressOutcome
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 
 internal fun DefaultGoalPlanningSweep.composePlanningPrompt(args: GoalPlanningProduceAttemptArgs): String {
   val phase = args.phase
@@ -34,10 +35,12 @@ internal fun DefaultGoalPlanningSweep.composePlanningPrompt(args: GoalPlanningPr
     agentAddonSelection = phase.request.agentAddonSelection,
   )
   val basePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
-    issueKey = phase.request.issueKey,
-    briefing = briefing,
-    suppressDecomposition = true,
-    priorSchemaFailure = args.priorSchemaFailure,
+    FeatureTaskRuntimePhasePromptComposeInputs(
+      issueKey = phase.request.issueKey,
+      briefing = briefing,
+      suppressDecomposition = true,
+      priorSchemaFailure = args.priorSchemaFailure,
+    ),
   )
   return GoalPlanningContextPromptFormatter.append(
     basePrompt,

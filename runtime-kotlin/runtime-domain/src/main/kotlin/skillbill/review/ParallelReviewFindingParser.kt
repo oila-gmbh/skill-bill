@@ -1,5 +1,3 @@
-@file:Suppress("MagicNumber")
-
 package skillbill.review
 
 import skillbill.review.context.model.requireRepositoryRelativePath
@@ -10,8 +8,18 @@ import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
 
 object ParallelReviewFindingParser {
+  const val PARALLEL_REVIEW_FINDING_ID_MIN: Int = 0
+
+  const val PARALLEL_REVIEW_FINDING_ID_PAD_CHAR: Char = '0'
+
+  const val PARALLEL_REVIEW_FINDING_ID_PAD_WIDTH: Int = 3
+
+  const val PARALLEL_REVIEW_FINDING_ID_MAX: Int = 999
+
+  const val PARALLEL_REVIEW_MIN_SOURCE_LINE: Int = 1
+
   val parallelFindingPattern: Regex = Regex(
-    "^\\s*(?:-\\s+)?\\[(?<findingId>F-\\d{3})]\\s+" +
+    "^\\s*(?:-\\s+)?\\[(?<findingId>F-\\d{${PARALLEL_REVIEW_FINDING_ID_PAD_WIDTH}})]\\s+" +
       "(?<severity>[A-Za-z]+)\\s+\\|\\s+" +
       "(?<confidenceLevel>High|Medium|Low)\\s+\\|\\s+" +
       "(?:specialist=(?<specialistSkillName>[a-z0-9-]+)(?:\\[[^\\]]*\\])?\\s+\\|\\s+)?" +
@@ -32,6 +40,10 @@ object ParallelReviewFindingParser {
   private val nearMissFindingIdLine: Regex = Regex(
     """^(\s*(?:-\s+)?)(?:\|\s*)?(?:\*{1,2}|_{1,2})?\[F-(\d+)](?:\*{1,2}|_{1,2})?(?:\s*\|)?\s+(.*)$""",
   )
+
+  private const val FINDING_BODY_WITHOUT_ID_PREFIX_GROUP: Int = 1
+
+  private const val FINDING_ID_TRAILING_BODY_GROUP: Int = 3
 
   private val findingBodyWithoutId: Regex = Regex(
     """^(\s*(?:-\s+)?)(?!(?:\|\s*)?(?:\*{1,2}|_{1,2})?\[F-)""" +
@@ -85,9 +97,13 @@ object ParallelReviewFindingParser {
       val line = working[index]
       if (!findingCandidatePattern.containsMatchIn(line)) {
         findingBodyWithoutId.matchEntire(line)?.let { body ->
-          next = (next + 1).coerceAtMost(999)
-          val id = "F-" + next.toString().padStart(3, '0')
-          working[index] = "${body.groupValues[1]}[$id] ${line.drop(body.groupValues[1].length)}"
+          next = (next + 1).coerceAtMost(PARALLEL_REVIEW_FINDING_ID_MAX)
+          val id = "F-" + next.toString().padStart(
+            PARALLEL_REVIEW_FINDING_ID_PAD_WIDTH,
+            PARALLEL_REVIEW_FINDING_ID_PAD_CHAR,
+          )
+          working[index] = "${body.groupValues[FINDING_BODY_WITHOUT_ID_PREFIX_GROUP]}[$id] " +
+            line.drop(body.groupValues[FINDING_BODY_WITHOUT_ID_PREFIX_GROUP].length)
         }
       }
     }
@@ -97,8 +113,10 @@ object ParallelReviewFindingParser {
   internal fun normalizeRegisterLine(line: String): String {
     val match = nearMissFindingIdLine.matchEntire(line) ?: return line
     val number = match.groupValues[2].toIntOrNull() ?: return line
-    val paddedId = "F-" + number.coerceIn(0, 999).toString().padStart(3, '0')
-    return "${match.groupValues[1]}[$paddedId] ${match.groupValues[3]}"
+    val paddedId = "F-" + number.coerceIn(PARALLEL_REVIEW_FINDING_ID_MIN, PARALLEL_REVIEW_FINDING_ID_MAX)
+      .toString()
+      .padStart(PARALLEL_REVIEW_FINDING_ID_PAD_WIDTH, PARALLEL_REVIEW_FINDING_ID_PAD_CHAR)
+    return "${match.groupValues[1]}[$paddedId] ${match.groupValues[FINDING_ID_TRAILING_BODY_GROUP]}"
   }
 
   private fun maxFindingNumberIn(line: String): Int =
@@ -127,7 +145,7 @@ object ParallelReviewFindingParser {
     resolvedPath.reason?.let { return MatchOutcome(reason = it) }
     val path = resolvedPath.path
     val lineText = match.groups["line"]?.value ?: match.groups["legacyLine"]?.value
-    val line = lineText?.toIntOrNull()?.takeIf { it > 0 }
+    val line = lineText?.toIntOrNull()?.takeIf { it >= PARALLEL_REVIEW_MIN_SOURCE_LINE }
       ?: return MatchOutcome(reason = ParallelReviewFindingRejectionReason.INVALID_LINE_NUMBER)
     val peeled = peelTrailingStructuredFields(match.groups["description"]?.value.orEmpty().trim())
     return MatchOutcome(

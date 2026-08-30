@@ -1,10 +1,10 @@
 package skillbill.infrastructure.fs
 
+import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.plan.ReviewContentMatcher
 import skillbill.review.plan.ReviewPathMatcher
 import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.GovernedAddonSelection
-import skillbill.ports.review.model.ReviewOwnedFileEvidence
 
 internal fun governedAddonSelectionMatches(
   selection: GovernedAddonSelection,

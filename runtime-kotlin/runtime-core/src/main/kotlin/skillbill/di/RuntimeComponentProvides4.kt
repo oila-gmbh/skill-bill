@@ -1,169 +1,52 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
-import skillbill.application.agentrun.AgentRunGoalRunnerSubtaskLauncher
-import skillbill.application.agentrun.AgentRunService
-import skillbill.application.config.ConfigResolutionService
-import skillbill.application.featuretask.FeatureTaskContinuationLookupService
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeRunner
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
-import skillbill.application.goalrunner.DefaultGoalRunnerExecutionCoordinator
-import skillbill.application.goalrunner.GoalOperatorDecisionService
-import skillbill.application.goalrunner.GoalPreflightService
-import skillbill.application.goalrunner.GoalRunner
-import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
-import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
-import skillbill.application.goalrunner.planning.ChildAwareGoalPlanningRefreshLiveness
-import skillbill.application.goalrunner.planning.DefaultGoalPlanningSweep
-import skillbill.application.goalrunner.planning.DurableGoalPlanningAttemptRecorder
-import skillbill.application.goalrunner.planning.DurableGoalPlanningRejectionRecorder
-import skillbill.application.goalrunner.planning.GoalPlanningLogService
-import skillbill.application.goalrunner.planning.LaunchAlignedGoalPlanningStatusReasonCoherence
-import skillbill.application.install.ExternalAddonOverlayService
-import skillbill.application.install.InstallService
-import skillbill.application.learning.LearningService
-import skillbill.application.review.ParallelCodeReviewRunner
-import skillbill.application.review.ReviewService
-import skillbill.application.review.ReviewSnapshotPruneService
-import skillbill.application.scaffold.InstallAgentService
-import skillbill.application.scaffold.McpRegistrationService
-import skillbill.application.scaffold.NativeAgentInstallService
-import skillbill.application.scaffold.RepoSourceDiscoveryService
-import skillbill.application.scaffold.RepoValidationService
-import skillbill.application.scaffold.ScaffoldCatalogService
-import skillbill.application.scaffold.ScaffoldService
-import skillbill.application.scaffold.SkillRemoveService
-import skillbill.application.scaffold.UnsupportedScaffoldService
-import skillbill.application.system.SystemService
-import skillbill.application.system.UninstallFileSystemService
-import skillbill.application.telemetry.LifecycleTelemetryService
-import skillbill.application.telemetry.TelemetryLevelMutationService
-import skillbill.application.telemetry.TelemetryService
-import skillbill.application.work.IdeStatusService
-import skillbill.application.work.WorkListService
-import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
-import skillbill.application.workflow.WorkflowService
-import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
-import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
-import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
-import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
-import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
-import skillbill.infrastructure.fs.FeatureTaskRuntimeBuildReceiptValidatorAdapter
-import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
-import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
-import skillbill.infrastructure.fs.FeatureTaskRuntimeImplementationAttemptValidatorAdapter
-import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
-import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
-import skillbill.infrastructure.fs.FeatureTaskRuntimeQuarantineValidatorAdapter
-import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
-import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
-import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
-import skillbill.infrastructure.fs.FileSystemCheckedOutBranchSource
 import skillbill.infrastructure.fs.FileSystemDeclaredReviewSpecialists
-import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
-import skillbill.infrastructure.fs.FileSystemDiffResolver
-import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
-import skillbill.infrastructure.fs.FileSystemFeatureSpecPathResolver
-import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
-import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSharedEvidenceStore
-import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSpecStatusWriter
-import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
-import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
-import skillbill.infrastructure.fs.FileSystemInstallMcpRegistration
-import skillbill.infrastructure.fs.FileSystemInstallNativeAgentLinks
-import skillbill.infrastructure.fs.FileSystemInstallPlanningFacts
-import skillbill.infrastructure.fs.FileSystemInstallPlatformSkillMaterialization
-import skillbill.infrastructure.fs.FileSystemInstallReconcile
-import skillbill.infrastructure.fs.FileSystemInstallReconcileApply
-import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
-import skillbill.infrastructure.fs.FileSystemInstallSkillLink
-import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
 import skillbill.infrastructure.fs.FileSystemInstalledPlatformPackCatalog
-import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
-import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
-import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
-import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
-import skillbill.infrastructure.fs.FileSystemReviewAttribution
-import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
-import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemReviewLaunchAgentStaging
 import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
-import skillbill.infrastructure.fs.FileSystemReviewRubricResolver
-import skillbill.infrastructure.fs.FileSystemReviewSnapshotGateway
-import skillbill.infrastructure.fs.FileSystemScaffoldCatalogGateway
-import skillbill.infrastructure.fs.FileSystemScaffoldGateway
-import skillbill.infrastructure.fs.FileSystemScaffoldGeneratedStaging
-import skillbill.infrastructure.fs.FileSystemScaffoldInstallLink
-import skillbill.infrastructure.fs.FileSystemScaffoldManifestPersistence
-import skillbill.infrastructure.fs.FileSystemScaffoldRepoValidation
-import skillbill.infrastructure.fs.FileSystemScaffoldSourceLoader
-import skillbill.infrastructure.fs.FileSystemSkillRemoveFileSystem
-import skillbill.infrastructure.fs.FileSystemSpecScratchStore
-import skillbill.infrastructure.fs.FileSystemUninstallFileSystemGateway
-import skillbill.infrastructure.fs.FileSystemUnsupportedScaffoldGateway
-import skillbill.infrastructure.fs.FileTelemetryConfigStore
-import skillbill.infrastructure.fs.GhGoalPullRequestPort
-import skillbill.infrastructure.fs.GitWorkflowGitOperations
-import skillbill.infrastructure.fs.GoalObservabilityEventValidatorAdapter
-import skillbill.infrastructure.fs.GoalPlanningPreparationEnvelopeValidatorAdapter
-import skillbill.infrastructure.fs.GoalProgressEventValidatorAdapter
-import skillbill.infrastructure.fs.IdeStatusValidatorAdapter
-import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
-import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkRuntimeDiagnostics
 import skillbill.infrastructure.fs.JdkRuntimeTimingPort
-import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
-import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
-import skillbill.infrastructure.fs.validation.FileSystemValidationGateRunner
-import skillbill.infrastructure.http.HttpTelemetryClient
-import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
-import skillbill.launcher.review.UnixSocketGovernedReviewEvidenceEndpointBinder
-import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
-import skillbill.model.RuntimeContext
-import skillbill.model.WorkflowOpsContext
-import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
-import skillbill.ports.featurespec.FeatureSpecPathResolverPort
-import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
-import skillbill.ports.install.selection.InstallSelectionPersistencePort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
-import skillbill.ports.telemetry.TelemetryConfigStore
-import skillbill.ports.telemetry.TelemetryLevelMutator
-import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 
 internal interface RuntimeComponentProvides4 {
   @Provides @JvmSynthetic
   fun runtimeTimingPort(callbacks: OptionalCallbacks, adapter: JdkRuntimeTimingPort) =
     RuntimeComponentBindingsA5.runtimeTimingPort(callbacks, adapter)
+
   @Provides @JvmSynthetic
-  fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics) =
-    RuntimeComponentBindingsA5.runtimeDiagnostics(adapter)
+  fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics) = RuntimeComponentBindingsA5.runtimeDiagnostics(adapter)
+
   @Provides @JvmSynthetic
-  fun reviewNativeAgentPreflightPort(
-    callbacks: OptionalCallbacks,
-    adapter: FileSystemReviewNativeAgentPreflight,
+  fun reviewNativeAgentPreflightPort(callbacks: OptionalCallbacks, adapter: FileSystemReviewNativeAgentPreflight) =
+    RuntimeComponentBindingsA5.reviewNativeAgentPreflightPort(callbacks, adapter)
+
   @Provides @JvmSynthetic
   fun reviewLaunchAgentStagingPort(adapter: FileSystemReviewLaunchAgentStaging) =
     RuntimeComponentBindingsA6.reviewLaunchAgentStagingPort(adapter)
+
   @Provides @JvmSynthetic
   fun declaredReviewSpecialistsPort(adapter: FileSystemDeclaredReviewSpecialists) =
     RuntimeComponentBindingsA6.declaredReviewSpecialistsPort(adapter)
+
   @Provides @JvmSynthetic
   fun installedPlatformPackCatalogPort(adapter: FileSystemInstalledPlatformPackCatalog) =
     RuntimeComponentBindingsA6.installedPlatformPackCatalogPort(adapter)
+
   @Provides @JvmSynthetic
   fun goalRunnerManifestStore(adapter: WorkflowGoalRunnerManifestStore) =
     RuntimeComponentBindingsA6.goalRunnerManifestStore(adapter)
+
   @Provides @JvmSynthetic
   fun goalRunnerWorkflowOutcomeStore(adapter: WorkflowGoalRunnerOutcomeStore) =
     RuntimeComponentBindingsA6.goalRunnerWorkflowOutcomeStore(adapter)
+
   @Provides @JvmSynthetic
   fun goalRunnerAttemptLedgerStore(adapter: WorkflowGoalRunnerOutcomeStore) =
     RuntimeComponentBindingsA6.goalRunnerAttemptLedgerStore(adapter)
+
   @Provides @JvmSynthetic
   fun goalRunnerChildRepairStore(adapter: WorkflowGoalRunnerOutcomeStore) =
     RuntimeComponentBindingsA6.goalRunnerChildRepairStore(adapter)

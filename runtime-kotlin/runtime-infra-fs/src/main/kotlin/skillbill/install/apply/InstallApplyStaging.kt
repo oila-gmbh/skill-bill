@@ -13,6 +13,9 @@ import skillbill.install.model.RenderedSkill
 import skillbill.install.staging.GeneratedSupportPointer
 import skillbill.install.staging.InstallContentHashInputs
 import skillbill.install.staging.InternalStagingPreparation
+import skillbill.install.staging.PreparedInternalStaging
+import skillbill.install.staging.ReuseInstallStagingInput
+import skillbill.install.staging.StageInstalledSkillInput
 import skillbill.install.staging.agentAddonPointersForSkill
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
@@ -23,8 +26,8 @@ import skillbill.install.staging.installedSkillStagingDir
 import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.staging.isReusableInstallStaging
 import skillbill.install.staging.prepareInternalStaging
-import skillbill.install.staging.ReuseInstallStagingInput
-import skillbill.install.staging.StageInstalledSkillInput
+import skillbill.install.staging.reuseInstallStaging
+import skillbill.install.staging.stageInstalledSkill
 import skillbill.install.staging.validateAgentAddonPointerNamespace
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
@@ -108,7 +111,7 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
 private fun reuseOrFreshPlannedStaging(
   inputs: PlannedStagingMaterialization,
   pointers: List<Pair<PlatformManifest, PointerSpec>>,
-  internal: InternalStagingPreparation,
+  internal: PreparedInternalStaging,
   agentAddonPointers: List<AgentAddonPointer>,
   selectedPackSkills: List<InstallPlanSkill>,
 ): RenderedSkill {

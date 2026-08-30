@@ -1,7 +1,8 @@
 package skillbill.scaffold.policy.platformpack
 
 import skillbill.scaffold.model.CodeReviewBaselineLayer
-import java.nio.file.Path
+import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestContentRenderRequest
+import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRequest
 
 /**
  * SKILL-52.1 subtask 2: pure-policy YAML renderer for platform-pack manifests.

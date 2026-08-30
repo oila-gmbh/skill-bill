@@ -1,37 +1,17 @@
 package skillbill.cli
 
-import skillbill.SAMPLE_REVIEW
-import skillbill.SkillBillVersion
 import skillbill.cli.core.CliRuntime
-import skillbill.cli.core.ExternalCommand
-import skillbill.cli.core.ExternalCommandResult
-import skillbill.cli.core.ExternalCommandRunner
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
-import skillbill.db.core.DatabaseRuntime
-import skillbill.db.telemetry.LifecycleTelemetryStore
-import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.infrastructure.fs.GitWorkflowGitOperations
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
-import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
-import skillbill.telemetry.INSTALL_ID_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
-import skillbill.telemetry.model.GoalFinishedRecord
-import skillbill.telemetry.model.GoalStartedRecord
-import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertTrue
-import kotlin.test.fail
 
 class CliRuntimeTelemetryTest {
   @Test
@@ -153,5 +133,4 @@ class CliRuntimeTelemetryTest {
     assertEquals(true, payload["supports_stats"])
     assertEquals(listOf(expectedCliRemoteStatsRequests().first()), capturedRequests)
   }
-
 }

@@ -1,5 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
@@ -55,10 +53,7 @@ internal fun buildSchemaDriftLog(sourceLabel: String, errors: Set<ValidationMess
 
 internal data class PhaseOutputViolationReasons(val valueBearing: String, val payloadFree: String)
 
-internal fun formatViolationReasons(
-  sorted: List<ValidationMessage>,
-  instance: JsonNode,
-): PhaseOutputViolationReasons {
+internal fun formatViolationReasons(sorted: List<ValidationMessage>, instance: JsonNode): PhaseOutputViolationReasons {
   val violations = sorted.map { error ->
     val location = error.instanceLocation?.toString().orEmpty()
     val fieldPath = featureTaskRuntimePhaseOutputDottedFieldPath(location).ifBlank { "<root>" }

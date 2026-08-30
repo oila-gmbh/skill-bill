@@ -1,6 +1,5 @@
 package skillbill.application.review
 
-import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecAdjudicationOutcome
 import skillbill.application.review.model.ReviewSpecAdjudicationRunRequest
 import skillbill.contracts.JsonSupport
@@ -26,7 +25,7 @@ import java.nio.file.Path
 import java.time.Instant
 import kotlin.time.Duration
 
-class ReviewSpecAdjudicationRunner(
+internal class ReviewSpecAdjudicationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
 ) {
@@ -38,19 +37,21 @@ class ReviewSpecAdjudicationRunner(
     survivorState.earlyOutcome?.let { return it }
     val recordedAt = Instant.now().toString()
     val launched = survivorState.pending.map { finding ->
-      when (val job = prepareLaunch(
-        AdjudicationPrepareInput(
-          packet = request.packet,
-          finding = finding,
-          stage1 = survivorState.stage1ByRef.getValue(finding.fNumber),
-          projection = request.projection,
-          launch = AdjudicationPrepareLaunch(
-            budget = request.launch.budget,
-            brokerId = request.launch.brokerId,
-            recordedAt = recordedAt,
+      when (
+        val job = prepareLaunch(
+          AdjudicationPrepareInput(
+            packet = request.packet,
+            finding = finding,
+            stage1 = survivorState.stage1ByRef.getValue(finding.fNumber),
+            projection = request.projection,
+            launch = AdjudicationPrepareLaunch(
+              budget = request.launch.budget,
+              brokerId = request.launch.brokerId,
+              recordedAt = recordedAt,
+            ),
           ),
-        ),
-      )) {
+        )
+      ) {
         is PreparedAdjudicationRejected -> job.verdict
         is PreparedAdjudicationReady -> launchOne(
           job,
@@ -69,9 +70,7 @@ class ReviewSpecAdjudicationRunner(
     )
   }
 
-  private fun resolveAdjudicationSurvivors(
-    request: ReviewSpecAdjudicationRunRequest,
-  ): AdjudicationSurvivorResolution {
+  private fun resolveAdjudicationSurvivors(request: ReviewSpecAdjudicationRunRequest): AdjudicationSurvivorResolution {
     val stage1ByRef = request.existingVerdicts
       .filter { it.stage == ReviewStage.VERIFICATION }
       .associateBy { it.findingRef }

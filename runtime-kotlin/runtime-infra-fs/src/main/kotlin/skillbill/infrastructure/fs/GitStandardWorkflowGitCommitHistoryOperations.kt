@@ -8,8 +8,7 @@ internal object GitStandardWorkflowGitCommitHistoryOperations : WorkflowGitCommi
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
     gitCreateCommit(repoRoot, message)
 
-  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    runGitCommand(repoRoot, "rev-parse", "HEAD")
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult = runGitCommand(repoRoot, "rev-parse", "HEAD")
 
   override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult =
     gitResetSoftToCommit(repoRoot, commitSha)

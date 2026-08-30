@@ -28,7 +28,7 @@ class PlanningProjectionNoopValidatorGuardTest {
 
   // File name -> why this test may leave the canonical schema unenforced.
   private val permittedConsumers: Map<String, String> = mapOf(
-    "FeatureTaskRuntimeRunnerTest.kt" to
+    "FeatureTaskRuntimeRunnerTestSupport.kt" to
       "Shared run-loop harness default; runner-behavior tests do not assert schema-projection " +
       "enforcement (covered by the RealValidator* integration suites).",
     "GoalPlanningSweepTest.kt" to

@@ -1,5 +1,3 @@
-@file:Suppress("MatchingDeclarationName", "ktlint:standard:filename")
-
 package skillbill.scaffold.validation
 
 import skillbill.error.ShellContentContractException

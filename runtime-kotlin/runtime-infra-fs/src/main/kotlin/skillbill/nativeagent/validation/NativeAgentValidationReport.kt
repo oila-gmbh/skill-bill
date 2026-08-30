@@ -1,5 +1,3 @@
-@file:Suppress("MatchingDeclarationName")
-
 package skillbill.nativeagent.validation
 
 import skillbill.nativeagent.composition.NATIVE_AGENT_SOURCE_DIR

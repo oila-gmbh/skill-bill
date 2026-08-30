@@ -55,14 +55,13 @@ internal fun assembleRenderedWrapper(
   appendLine()
 }
 
-internal fun renderedWrapperTemplateContext(target: AuthoringTarget): TemplateContext =
-  TemplateContext(
-    skillName = target.skillName,
-    family = target.family,
-    platform = target.platform,
-    area = target.area,
-    displayName = target.displayName,
-  )
+internal fun renderedWrapperTemplateContext(target: AuthoringTarget): TemplateContext = TemplateContext(
+  skillName = target.skillName,
+  family = target.family,
+  platform = target.platform,
+  area = target.area,
+  displayName = target.displayName,
+)
 
 internal fun resolvedWrapperSkillClass(target: AuthoringTarget) =
   resolveSkillClassForSkill(target.skillName, target.contentFile)

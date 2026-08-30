@@ -6,7 +6,6 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 
 internal const val PHASE_PROMPT_TEMPLATE_INDENT = "      "
 

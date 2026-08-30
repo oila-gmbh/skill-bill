@@ -1,9 +1,9 @@
-@file:Suppress("TooGenericExceptionCaught", "MaxLineLength")
 
 package skillbill.scaffold.runtime
 
 import skillbill.error.ScaffoldRollbackError
 import skillbill.install.plan.uninstallTargets
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -22,56 +22,56 @@ internal fun rollback(txn: ScaffoldTransaction) {
 }
 
 internal fun rollbackInstallTargets(txn: ScaffoldTransaction, errors: MutableList<String>) {
-  try {
+  recordRollbackFailure(errors, "install rollback") {
     uninstallTargets(txn.installTargets)
-  } catch (error: Exception) {
-    errors += "install rollback: ${error.message}"
   }
 }
 
 internal fun rollbackSymlinks(txn: ScaffoldTransaction, errors: MutableList<String>) {
   for (link in txn.createdSymlinks.asReversed()) {
-    try {
+    recordRollbackFailure(errors, "symlink $link") {
       if (Files.isSymbolicLink(link) || Files.exists(link)) {
         Files.deleteIfExists(link)
       }
-    } catch (error: Exception) {
-      errors += "symlink $link: ${error.message}"
     }
   }
 }
 
 internal fun rollbackManifests(txn: ScaffoldTransaction, errors: MutableList<String>) {
   for (snapshot in txn.manifestSnapshots.asReversed()) {
-    try {
+    recordRollbackFailure(errors, "manifest ${snapshot.manifestPath}") {
       Files.write(snapshot.manifestPath, snapshot.originalBytes)
-    } catch (error: Exception) {
-      errors += "manifest ${snapshot.manifestPath}: ${error.message}"
     }
   }
 }
 
 internal fun rollbackFiles(txn: ScaffoldTransaction, errors: MutableList<String>) {
   for (path in txn.createdPaths.asReversed()) {
-    try {
+    recordRollbackFailure(errors, "file $path") {
       if (Files.isRegularFile(path) || Files.isSymbolicLink(path)) {
         Files.deleteIfExists(path)
       }
-    } catch (error: Exception) {
-      errors.add("file $path: ${error.message}")
     }
   }
 }
 
 internal fun rollbackDirs(txn: ScaffoldTransaction, errors: MutableList<String>) {
   for (directory in txn.createdDirs.asReversed()) {
-    try {
+    recordRollbackFailure(errors, "dir $directory") {
       if (Files.isDirectory(directory) && Files.list(directory).use { !it.findAny().isPresent }) {
         Files.deleteIfExists(directory)
       }
-    } catch (error: Exception) {
-      errors.add("dir $directory: ${error.message}")
     }
+  }
+}
+
+private fun recordRollbackFailure(errors: MutableList<String>, label: String, action: () -> Unit) {
+  try {
+    action()
+  } catch (error: IOException) {
+    errors += "$label: ${error.message}"
+  } catch (error: IllegalStateException) {
+    errors += "$label: ${error.message}"
   }
 }
 

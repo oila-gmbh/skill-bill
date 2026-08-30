@@ -63,14 +63,11 @@ internal fun forceWithLeaseRecord(
   "'${identity.issueKey}/${identity.subtaskId}' was reopened after its commit had already been " +
   "published, so finalisation rewrote a commit the remote already carries"
 
-internal fun leaseAbortRecord(
-  identity: FeatureTaskRuntimeSubtaskCommitIdentity,
-  branch: String,
-  error: String,
-) = "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='an unpushed local tip' " +
-  "value_expected='origin/$branch' still at the value this repository last observed for subtask " +
-  "'${identity.issueKey}/${identity.subtaskId}' cause=the lease was rejected, so the remote moved " +
-  "under this run and the push was abandoned without touching it ($error)"
+internal fun leaseAbortRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, branch: String, error: String) =
+  "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='an unpushed local tip' " +
+    "value_expected='origin/$branch' still at the value this repository last observed for subtask " +
+    "'${identity.issueKey}/${identity.subtaskId}' cause=the lease was rejected, so the remote moved " +
+    "under this run and the push was abandoned without touching it ($error)"
 
 internal fun isGovernedSpecPath(path: String): Boolean = normalizeRepoPath(path).startsWith(GOVERNED_SPEC_ROOT)
 

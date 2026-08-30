@@ -47,7 +47,7 @@ internal fun gitPushBranch(repoRoot: Path, branch: String, withLease: Boolean): 
   } else {
     listOf("push", "-u", "origin", normalized)
   }
-  return runGitCommand(repoRoot, *args.toTypedArray()).withValue(normalized)
+  return runGitCommand(repoRoot, args).withValue(normalized)
 }
 
 internal fun gitLocalBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult {

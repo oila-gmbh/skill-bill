@@ -57,8 +57,10 @@ internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validatePersist
   val sectionByFindingId = sections.associateBy(FeatureTaskRuntimeFindingBoundaryMemorySection::findingId)
   return persisted.firstNotNullOfOrNull { (findingId, persistedForFinding) ->
     val disposition = dispositions.firstOrNull { it.findingId == findingId }
-      ?: return@firstNotNullOfOrNull "finding verification disposition must cover every finding whose boundary headings were " +
-        "delivered; missing finding_id $findingId."
+      ?: return@firstNotNullOfOrNull (
+        "finding verification disposition must cover every finding whose boundary headings were " +
+          "delivered; missing finding_id $findingId."
+        )
     val catalog = sectionByFindingId[findingId]?.discovery?.boundaryCatalog.orEmpty()
     val validated = catalogValidatedBoundaryHeadings(catalog, disposition.selectedBoundaryHeadings)
     if (!boundaryHeadingsMatch(persistedForFinding, validated)) {

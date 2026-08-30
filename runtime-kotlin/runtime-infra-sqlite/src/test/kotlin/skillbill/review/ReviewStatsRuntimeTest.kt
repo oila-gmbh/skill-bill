@@ -6,6 +6,7 @@ import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.telemetry.listJson
 import skillbill.infrastructure.sqlite.SQLiteLearningStore
+import skillbill.infrastructure.sqlite.review.ReviewFinishedPayloadBuildRequest
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
@@ -335,10 +336,7 @@ class ReviewStatsRuntimeTest {
     }
   }
 
-  private fun persistFeatureTaskRuntimeTelemetryPair(
-    store: LifecycleTelemetryStore,
-    includeAuditCounters: Boolean,
-  ) {
+  private fun persistFeatureTaskRuntimeTelemetryPair(store: LifecycleTelemetryStore, includeAuditCounters: Boolean) {
     store.featureTaskRuntimeStarted(
       FeatureTaskRuntimeStartedRecord(
         sessionId = "ftr-1",

@@ -36,14 +36,12 @@ internal data class UnreachableReviewRepairContext(
   val baselineUntrackedPaths: List<String>,
 )
 
-internal fun unreachableReviewFailedSha(
-  wedgeClass: GoalRunnerWedgeClass,
-  review: GoalSubtaskReviewState,
-): String? = when (wedgeClass) {
-  GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE -> review.reviewBaseSha
-  GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE -> review.remediationBaseSha
-  else -> null
-}
+internal fun unreachableReviewFailedSha(wedgeClass: GoalRunnerWedgeClass, review: GoalSubtaskReviewState): String? =
+  when (wedgeClass) {
+    GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE -> review.reviewBaseSha
+    GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE -> review.remediationBaseSha
+    else -> null
+  }
 
 internal data class UnreachableReviewRepairLookup(
   val wedgeClass: GoalRunnerWedgeClass,
@@ -54,9 +52,7 @@ internal data class UnreachableReviewRepairLookup(
   val continuation: FeatureTaskRuntimeGoalContinuationArtifact?,
 )
 
-internal fun unreachableReviewRepairContext(
-  lookup: UnreachableReviewRepairLookup,
-): UnreachableReviewRepairContext? {
+internal fun unreachableReviewRepairContext(lookup: UnreachableReviewRepairLookup): UnreachableReviewRepairContext? {
   val wedgeClass = lookup.wedgeClass
   val review = lookup.review
   val continuation = lookup.continuation
@@ -230,9 +226,7 @@ internal fun childRepairWedgeEvidenceMap(repair: GoalRunnerAppliedRepair): Map<S
   "repaired_at" to Instant.now().toString(),
 )
 
-internal fun continuationArtifactFromMap(
-  artifacts: Map<String, Any?>,
-): FeatureTaskRuntimeGoalContinuationArtifact? {
+internal fun continuationArtifactFromMap(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
   val raw = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as? Map<*, *> ?: return null
   @Suppress("UNCHECKED_CAST")
   return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw as Map<String, Any?>)

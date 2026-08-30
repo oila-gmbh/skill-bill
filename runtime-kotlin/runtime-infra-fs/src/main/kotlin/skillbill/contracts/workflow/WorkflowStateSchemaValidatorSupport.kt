@@ -9,7 +9,11 @@ internal val workflowStateSchemaViolationOrdering: Comparator<ValidationMessage>
   { it.message.orEmpty() },
 )
 
-internal fun buildWorkflowStateSchemaDriftLog(slug: String, errors: Set<ValidationMessage>, instance: JsonNode): String {
+internal fun buildWorkflowStateSchemaDriftLog(
+  slug: String,
+  errors: Set<ValidationMessage>,
+  instance: JsonNode,
+): String {
   val sorted = errors.sortedWith(workflowStateSchemaViolationOrdering)
   val topTwo = sorted.take(2)
   val parts = topTwo.map { error ->

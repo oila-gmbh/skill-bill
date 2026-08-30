@@ -74,7 +74,12 @@ class FeatureTaskRuntimeBranchSetupRunner(
   ): FeatureTaskRuntimeBranchSetupOutcome {
     val blockedReason = reattachBlockedReason(request, persistedBranch, currentBranch)
     return blockedReason?.let(FeatureTaskRuntimeBranchSetupOutcome::blocked) ?: run {
-      observability.branchResolved(featureTaskRuntimeBranchSetupGuardPhase, persistedBranch, created = false, reused = true)
+      observability.branchResolved(
+        featureTaskRuntimeBranchSetupGuardPhase,
+        persistedBranch,
+        created = false,
+        reused = true,
+      )
       FeatureTaskRuntimeBranchSetupOutcome.established(persistedBranch)
     }
   }

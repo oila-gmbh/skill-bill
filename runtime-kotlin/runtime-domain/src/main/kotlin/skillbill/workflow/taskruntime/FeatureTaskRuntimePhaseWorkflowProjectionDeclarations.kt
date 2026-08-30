@@ -12,23 +12,23 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEviden
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDelivery
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionShape
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionTemplate
 
 internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
-  private fun upstreamPlanningProjection(
-    spec: UpstreamPlanningProjectionSpec,
-  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
-    consumerPhaseId = spec.consumerPhaseId,
-    sourceRef = spec.sourceRef,
-    shape = PhaseHandoffProjectionShape(
-      projectionName = spec.projectionName,
-      projectionContractId = spec.projectionContractId,
-      projectionContractVersion = spec.projectionContractVersion,
-      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-      declaredFieldNames = spec.declaredFieldNames,
-    ),
-    delivery = spec.delivery,
-  )
+  private fun upstreamPlanningProjection(spec: UpstreamPlanningProjectionSpec): PhaseHandoffProjectionDeclaration =
+    PhaseHandoffProjectionDeclaration(
+      consumerPhaseId = spec.consumerPhaseId,
+      sourceRef = spec.sourceRef,
+      shape = PhaseHandoffProjectionShape(
+        projectionName = spec.projectionName,
+        projectionContractId = spec.projectionContractId,
+        projectionContractVersion = spec.projectionContractVersion,
+        promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+        budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
+        declaredFieldNames = spec.declaredFieldNames,
+      ),
+      delivery = spec.delivery,
+    )
 
   fun phaseProjection(template: PhaseHandoffProjectionTemplate): PhaseHandoffProjectionDeclaration =
     upstreamPlanningProjection(
@@ -96,17 +96,16 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
       ),
     )
 
-  fun repairLedgerDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
-    upstreamPlanningProjection(
-      UpstreamPlanningProjectionSpec(
-        consumerPhaseId = consumerPhaseId,
-        sourceRef = FeatureTaskRuntimeHandoffSourceRef.RepairLedger,
-        projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.REPAIR_LEDGER_PROJECTION_NAME,
-        projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REPAIR_LEDGER,
-        declaredFieldNames = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.REPAIR_LEDGER_PROJECTION_NAME),
-        delivery = PhaseHandoffProjectionDelivery(required = false),
-      ),
-    )
+  fun repairLedgerDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration = upstreamPlanningProjection(
+    UpstreamPlanningProjectionSpec(
+      consumerPhaseId = consumerPhaseId,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.RepairLedger,
+      projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.REPAIR_LEDGER_PROJECTION_NAME,
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REPAIR_LEDGER,
+      declaredFieldNames = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.REPAIR_LEDGER_PROJECTION_NAME),
+      delivery = PhaseHandoffProjectionDelivery(required = false),
+    ),
+  )
 
   fun priorGapMemoryDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
     upstreamPlanningProjection(
@@ -200,9 +199,9 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
           name = "validation_request",
           contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
           fields = listOf(
-          "changed_paths",
-          "repository_checkpoint",
-        ),
+            "changed_paths",
+            "repository_checkpoint",
+          ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = true,
         ),
@@ -231,9 +230,9 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
           name = "validation_request",
           contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
           fields = listOf(
-          "changed_paths",
-          "repository_checkpoint",
-        ),
+            "changed_paths",
+            "repository_checkpoint",
+          ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = true,
         ),
@@ -273,12 +272,12 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
           name = "validation_receipt",
           contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
           fields = listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
-        ),
+            "validation_status",
+            "checks",
+            "repository_checkpoint",
+            "gate_run_count",
+            "gate_runs",
+          ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = true,
         ),
@@ -290,12 +289,12 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
           name = "build_receipt",
           contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
           fields = listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
-        ),
+            "validation_status",
+            "checks",
+            "repository_checkpoint",
+            "gate_run_count",
+            "gate_runs",
+          ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = false,
         ),
@@ -313,12 +312,12 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
           name = "commit_request",
           contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
           fields = listOf(
-          "path_inventory",
-          "required_inclusions",
-          "branch_identity",
-          "gate_attestations",
-          "repository_checkpoint",
-        ),
+            "path_inventory",
+            "required_inclusions",
+            "branch_identity",
+            "gate_attestations",
+            "repository_checkpoint",
+          ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = true,
         ),
@@ -330,12 +329,12 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
           name = "validation_receipt",
           contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
           fields = listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
-        ),
+            "validation_status",
+            "checks",
+            "repository_checkpoint",
+            "gate_run_count",
+            "gate_runs",
+          ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = true,
         ),
@@ -347,12 +346,12 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
           name = "build_receipt",
           contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
           fields = listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
-        ),
+            "validation_status",
+            "checks",
+            "repository_checkpoint",
+            "gate_run_count",
+            "gate_runs",
+          ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = false,
         ),
@@ -381,11 +380,11 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
           name = "pr_request",
           contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
           fields = listOf(
-          "changed_paths",
-          "validation_summary",
-          "base_branch",
-          "diff_reference",
-        ),
+            "changed_paths",
+            "validation_summary",
+            "base_branch",
+            "diff_reference",
+          ),
           checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
           required = true,
         ),

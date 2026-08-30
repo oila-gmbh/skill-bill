@@ -26,36 +26,36 @@ internal data class TriageReviewRequest(
 internal fun triageReview(request: TriageReviewRequest): TriageResult =
   if (request.listOnly || (request.decisions.isEmpty() && request.listWhenNoDecisions)) {
     request.database.read(request.dbOverride) { unitOfWork ->
-    val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(request.runId)
-    TriageResult(
-      kind = TriageResultKind.LIST,
-      dbPath = unitOfWork.dbPath.toString(),
-      reviewRunId = request.runId,
-      findings = numberedFindings,
-    )
-  }
-} else {
+      val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(request.runId)
+      TriageResult(
+        kind = TriageResultKind.LIST,
+        dbPath = unitOfWork.dbPath.toString(),
+        reviewRunId = request.runId,
+        findings = numberedFindings,
+      )
+    }
+  } else {
     request.database.transaction(request.dbOverride) { unitOfWork ->
-    val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(request.runId)
-    val applied = applyTriageDecisions(
-      TriageDecisionsRequest(
-        settingsProvider = request.settingsProvider,
-        reviewRepository = unitOfWork.reviews,
-        runId = request.runId,
-        numberedFindings = numberedFindings,
-        decisions = request.decisions,
-        routedSkillPlatformSlugs = request.routedSkillPlatformSlugs,
-      ),
-    )
-    TriageResult(
-      kind = TriageResultKind.RECORDED,
-      dbPath = unitOfWork.dbPath.toString(),
-      reviewRunId = request.runId,
-      recorded = applied.recorded,
-      telemetry = applied.telemetry,
-    )
+      val numberedFindings = unitOfWork.reviews.fetchNumberedFindings(request.runId)
+      val applied = applyTriageDecisions(
+        TriageDecisionsRequest(
+          settingsProvider = request.settingsProvider,
+          reviewRepository = unitOfWork.reviews,
+          runId = request.runId,
+          numberedFindings = numberedFindings,
+          decisions = request.decisions,
+          routedSkillPlatformSlugs = request.routedSkillPlatformSlugs,
+        ),
+      )
+      TriageResult(
+        kind = TriageResultKind.RECORDED,
+        dbPath = unitOfWork.dbPath.toString(),
+        reviewRunId = request.runId,
+        recorded = applied.recorded,
+        telemetry = applied.telemetry,
+      )
+    }
   }
-}
 
 internal data class TriageDecisionsRequest(
   val settingsProvider: TelemetrySettingsProvider,

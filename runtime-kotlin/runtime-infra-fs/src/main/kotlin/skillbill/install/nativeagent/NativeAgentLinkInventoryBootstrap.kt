@@ -2,7 +2,6 @@ package skillbill.install.nativeagent
 
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
 
 internal object NativeAgentLinkInventoryBootstrap {

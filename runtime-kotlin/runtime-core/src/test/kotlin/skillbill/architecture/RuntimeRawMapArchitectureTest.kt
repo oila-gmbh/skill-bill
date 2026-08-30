@@ -27,7 +27,6 @@ class RuntimeRawMapArchitectureTest {
     )
   }
 
-
   @Test
   fun `open-boundary allow-list documents required exceptions`() {
     val architecture = Files.readString(runtimeArchitectureRoot.resolve("ARCHITECTURE.md"))
@@ -49,7 +48,6 @@ class RuntimeRawMapArchitectureTest {
     assertContains(architecture, "grandfathers")
   }
 
-
   @Test
   fun `every OpenBoundaryMap annotated declaration is documented in the architecture allow-list`() {
     val boundaryFiles = sourceFiles().filter { file ->
@@ -70,7 +68,6 @@ class RuntimeRawMapArchitectureTest {
     )
   }
 
-
   @Test
   fun `SKILL-52_2 inventory classifies every public raw-map declaration exactly once`() {
     val architecture = Files.readString(runtimeArchitectureRoot.resolve("ARCHITECTURE.md"))
@@ -85,7 +82,6 @@ class RuntimeRawMapArchitectureTest {
     assertAnnotatedDeclarationsAreOpenExtension(inventory)
     assertSubtaskIdsPresentForGatedCategories(inventory)
   }
-
 
   @Test
   fun `SKILL-52_2 inventory parser fires on synthetic fixture`() {
@@ -132,7 +128,6 @@ class RuntimeRawMapArchitectureTest {
     assertEquals(null, subtaskById["skillbill.fake.OpenExtensionOne"])
   }
 
-
   @Test
   fun `raw map violation scanner fires on known violation fixtures`() {
     val fixture = SourceFile(
@@ -148,5 +143,4 @@ class RuntimeRawMapArchitectureTest {
       violatingNames.sorted(),
     )
   }
-
 }

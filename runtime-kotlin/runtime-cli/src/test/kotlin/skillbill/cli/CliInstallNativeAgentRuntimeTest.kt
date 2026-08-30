@@ -1,20 +1,13 @@
 package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
-import skillbill.cli.model.CliExecutionResult
-import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
-import skillbill.nativeagent.composition.NativeAgentSource
 import skillbill.nativeagent.composition.parseNativeAgentSource
-import skillbill.nativeagent.composition.renderNativeAgentSource
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 class CliInstallNativeAgentRuntimeTest {
   @Test
@@ -163,5 +156,4 @@ class CliInstallNativeAgentRuntimeTest {
     assertFalse(Files.exists(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")))
     assertGeneratedAgentLinked(fixture.home.resolve(".junie/agents/${fixture.kmpJunieMd.fileName}"), fixture.kmpJunieMd)
   }
-
 }

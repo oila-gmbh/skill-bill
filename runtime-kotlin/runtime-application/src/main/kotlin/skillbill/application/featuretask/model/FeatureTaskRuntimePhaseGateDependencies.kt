@@ -1,14 +1,13 @@
 package skillbill.application.featuretask.model
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.FeatureTaskRuntimeUnreadableDiffResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeFindingVerificationBoundaryMemory
 import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
 import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseGateDependencies
+import skillbill.application.featuretask.FeatureTaskRuntimeUnreadableDiffResolver
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
 import skillbill.application.featuretask.validation.ValidationGateResolver
@@ -21,7 +20,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 
 @Inject
-internal data class FeatureTaskRuntimePhaseGateDependencies(
+data class FeatureTaskRuntimePhaseGateDependencies(
   val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
   val planningStopper: FeatureTaskRuntimePlanningStopper,
   val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,

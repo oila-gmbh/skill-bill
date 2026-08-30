@@ -1,43 +1,20 @@
 package skillbill.launcher
 
-import skillbill.goalrunner.model.GoalRunnerLivenessState
-import skillbill.install.model.InstallAgent
-import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
-import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
-import skillbill.launcher.agentrun.ProcessAgentRunAdapter
-import skillbill.launcher.agentrun.WorktreeActivityProbe
-import skillbill.launcher.agentrun.headlessAgentRunAdapters
 import skillbill.launcher.process.AgentRunActivityProbe
 import skillbill.launcher.process.AgentRunIdlePolicy
-import skillbill.launcher.process.AgentRunProcessRequest
 import skillbill.launcher.process.AgentRunProcessResult
-import skillbill.launcher.process.AgentRunProcessRunner
 import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
-import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
-import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
-import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
-import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.workflow.goal.model.GoalProgressEvent
-import skillbill.workflow.goal.model.GoalProgressEventKind
-import skillbill.workflow.goal.model.GoalProgressOutcome
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.Collections
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertContains
-import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
@@ -55,16 +32,16 @@ class AgentRunLauncherLivenessTest {
 
       val result = JvmAgentRunProcessRunner().run(
         testAgentRunProcessRequest(
-  listOf(bashExecutable().toString(), script.toString()),
-  fixtureRoot,
-) {
-  timeout = 3.seconds
-  environment = mapOf(
+          listOf(bashExecutable().toString(), script.toString()),
+          fixtureRoot,
+        ) {
+          timeout = 3.seconds
+          environment = mapOf(
             "HOME" to fixtureRoot.resolve("home").toString(),
             "SKILL_BILL_GOAL_CONTINUATION" to "1",
           )
-  inheritEnvironment = false
-},
+          inheritEnvironment = false
+        },
       )
 
       assertEquals(64, result.exitStatus, "$scriptName stdout=${result.stdout} stderr=${result.stderr}")
@@ -78,12 +55,12 @@ class AgentRunLauncherLivenessTest {
   fun `jvm process runner stops a live process after workflow progress stays idle without wall clock cap`() {
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 5"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  progressIdleTimeout = 100.milliseconds
-  progressProbe = AgentRunProgressProbe { null }
-},
+        listOf("sh", "-c", "sleep 5"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        progressIdleTimeout = 100.milliseconds
+        progressProbe = AgentRunProgressProbe { null }
+      },
     )
 
     assertTrue(result.timedOut)
@@ -98,13 +75,13 @@ class AgentRunLauncherLivenessTest {
 
     val streamed = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  emitting,
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  progressIdleTimeout = 600.milliseconds
-  progressProbe = AgentRunProgressProbe { null }
-  idlePolicy = AgentRunIdlePolicy.OUTPUT_EXTENDED
-},
+        emitting,
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        progressIdleTimeout = 600.milliseconds
+        progressProbe = AgentRunProgressProbe { null }
+        idlePolicy = AgentRunIdlePolicy.OUTPUT_EXTENDED
+      },
     )
 
     assertFalse(streamed.timedOut, "output arriving inside the idle window must extend it")
@@ -112,13 +89,13 @@ class AgentRunLauncherLivenessTest {
 
     val unstreamed = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  emitting,
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  progressIdleTimeout = 600.milliseconds
-  progressProbe = AgentRunProgressProbe { null }
-  idlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY
-},
+        emitting,
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        progressIdleTimeout = 600.milliseconds
+        progressProbe = AgentRunProgressProbe { null }
+        idlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY
+      },
     )
 
     assertTrue(unstreamed.timedOut, "the same output must not rescue a db-progress-only launch")
@@ -128,13 +105,13 @@ class AgentRunLauncherLivenessTest {
   fun `a silent process still dies at the idle deadline under output-extended liveness`() {
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 5"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  progressIdleTimeout = 300.milliseconds
-  progressProbe = AgentRunProgressProbe { null }
-  idlePolicy = AgentRunIdlePolicy.OUTPUT_EXTENDED
-},
+        listOf("sh", "-c", "sleep 5"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        progressIdleTimeout = 300.milliseconds
+        progressProbe = AgentRunProgressProbe { null }
+        idlePolicy = AgentRunIdlePolicy.OUTPUT_EXTENDED
+      },
     )
 
     assertTrue(result.timedOut)
@@ -147,16 +124,16 @@ class AgentRunLauncherLivenessTest {
     var probeCount = 0
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 0.4"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 3.seconds
-  progressProbe = object : AgentRunProgressProbe {
+        listOf("sh", "-c", "sleep 0.4"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 3.seconds
+        progressProbe = object : AgentRunProgressProbe {
           override fun progressToken(): String = "token-${probeCount++}"
           override fun progressLabel(): String = "subtask 7 workflow wfl-child step implement"
         }
-  outputSink = { stream, text -> events += stream to text }
-},
+        outputSink = { stream, text -> events += stream to text }
+      },
     )
 
     assertEquals(0, result.exitStatus)
@@ -174,19 +151,19 @@ class AgentRunLauncherLivenessTest {
     var activityProbeCount = 0
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 0.8"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 3.seconds
-  progressIdleTimeout = 500.milliseconds
-  fileActivityGraceTimeout = 2.seconds
-  progressProbe = AgentRunProgressProbe { "workflow-token" }
-  activityProbe = object : AgentRunActivityProbe {
+        listOf("sh", "-c", "sleep 0.8"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 3.seconds
+        progressIdleTimeout = 500.milliseconds
+        fileActivityGraceTimeout = 2.seconds
+        progressProbe = AgentRunProgressProbe { "workflow-token" }
+        activityProbe = object : AgentRunActivityProbe {
           override fun activityToken(): String = if (activityProbeCount++ < 2) "files-before" else "files-after"
           override fun activityLabel(): String = "worktree files changed"
         }
-  outputSink = { stream, text -> events += stream to text }
-},
+        outputSink = { stream, text -> events += stream to text }
+      },
     )
 
     assertEquals(0, result.exitStatus)
@@ -204,17 +181,17 @@ class AgentRunLauncherLivenessTest {
     val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 0.35"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 3.seconds
-  statusHeartbeatInterval = 100.milliseconds
-  progressProbe = object : AgentRunProgressProbe {
+        listOf("sh", "-c", "sleep 0.35"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 3.seconds
+        statusHeartbeatInterval = 100.milliseconds
+        progressProbe = object : AgentRunProgressProbe {
           override fun progressToken(): String = "workflow-token"
           override fun progressLabel(): String = "subtask 4 workflow wfl-child step preplan"
         }
-  outputSink = { stream, text -> events += stream to text }
-},
+        outputSink = { stream, text -> events += stream to text }
+      },
     )
 
     assertEquals(0, result.exitStatus)
@@ -233,16 +210,16 @@ class AgentRunLauncherLivenessTest {
     val providerProgress = SharedDeclaredProgressStore()
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 5"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 5.seconds
-  progressIdleTimeout = 100.milliseconds
-  declaredProgressProbe = providerProgress::snapshot
-  progressEmitter = AgentRunProgressEmitter { emission ->
+        listOf("sh", "-c", "sleep 5"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 5.seconds
+        progressIdleTimeout = 100.milliseconds
+        declaredProgressProbe = AgentRunDeclaredProgressProbe(providerProgress::snapshot)
+        progressEmitter = AgentRunProgressEmitter { emission ->
           if (emission.authoritative) providerProgress.record(emission)
         }
-},
+      },
     )
 
     assertTrue(result.timedOut)
@@ -258,18 +235,18 @@ class AgentRunLauncherLivenessTest {
     var activityProbeCount = 0
     val result = JvmAgentRunProcessRunner().run(
       testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 5"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 5.seconds
-  progressIdleTimeout = 100.milliseconds
-  fileActivityGraceTimeout = 300.milliseconds
-  progressProbe = AgentRunProgressProbe { "workflow-token" }
-  activityProbe = object : AgentRunActivityProbe {
+        listOf("sh", "-c", "sleep 5"),
+        Path.of(".").toAbsolutePath().normalize(),
+      ) {
+        timeout = 5.seconds
+        progressIdleTimeout = 100.milliseconds
+        fileActivityGraceTimeout = 300.milliseconds
+        progressProbe = AgentRunProgressProbe { "workflow-token" }
+        activityProbe = object : AgentRunActivityProbe {
           override fun activityToken(): String = "files-${activityProbeCount++}"
           override fun activityLabel(): String = "worktree files changed"
         }
-},
+      },
     )
 
     assertTrue(result.timedOut)
@@ -284,11 +261,11 @@ class AgentRunLauncherLivenessTest {
     val worker = thread(start = true) {
       result = runner.run(
         testAgentRunProcessRequest(
-  listOf("sh", "-c", "sleep 30"),
-  Path.of(".").toAbsolutePath().normalize(),
-) {
-  timeout = 30.seconds
-},
+          listOf("sh", "-c", "sleep 30"),
+          Path.of(".").toAbsolutePath().normalize(),
+        ) {
+          timeout = 30.seconds
+        },
       )
     }
 
@@ -304,6 +281,4 @@ class AgentRunLauncherLivenessTest {
     assertEquals("parent_interrupted", completed.liveness?.reason)
     assertEquals("killed", completed.liveness?.processState)
   }
-
 }
-

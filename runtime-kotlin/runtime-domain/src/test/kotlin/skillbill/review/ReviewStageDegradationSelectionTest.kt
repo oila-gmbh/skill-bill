@@ -3,6 +3,7 @@ package skillbill.review
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.review.model.ReviewStageDegradationReason
+import skillbill.review.model.ReviewStageDegradationSelectionRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

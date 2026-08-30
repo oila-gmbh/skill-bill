@@ -26,7 +26,7 @@ internal object FeatureTaskRuntimeScopedReviewBaseline {
     // An unreadable listing cannot widen the exclusion set, so fall back to the durable baseline
     // rather than inventing a scope: the pre-existing behavior, never something looser.
     if (!current.ok) return resolved.baselineUntrackedPaths
-    return FeatureTaskRuntimeCheckpointScope.reviewUntrackedExclusions(
+    return reviewUntrackedExclusions(
       baselineUntrackedPaths = resolved.baselineUntrackedPaths,
       currentUntrackedPaths = current.value.orEmpty()
         .split(SCOPED_REVIEW_PATH_DELIMITER)

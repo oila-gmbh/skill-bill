@@ -1,20 +1,14 @@
 package skillbill.architecture
 
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import skillbill.architecture.RuntimeImplementationImportRules.jdbcSqliteConnectionSitesOutsideDatabaseRuntime
 
 class RuntimeArchitectureTest {
-  private val runtimeRoot = runtimeArchitectureRoot
-  private val sourceRoots = runtimeArchitectureSourceRoots
-  private val mcpScaffoldRuntime = mcpScaffoldRuntimePath
-
-@Test
+  @Test
   fun `touched domain contract foundation stays free of concrete adapters`() {
     assertNoBannedImports(
       files =
@@ -38,7 +32,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `runtime schema validators and schema resources are owned by runtime infra-fs`() {
     assertRegularFiles(
       listOf(
@@ -100,7 +94,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `runtime contracts main source is free of networknt jackson and nio files`() {
     val contractsFiles =
       sourceFiles().filter { file -> file.relativePath.startsWith("runtime-contracts/src/main/kotlin/") }
@@ -119,7 +113,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `runtime contracts purity scanner fires on synthetic fixtures`() {
     val fixtureSource =
       """
@@ -143,13 +137,17 @@ class RuntimeArchitectureTest {
         "java.nio.file.Files",
       ),
       fixture.imports,
-      "Production RuntimeArchitectureScanConstants.importPattern must parse the fixture's three forbidden imports from source.",
+      "Production RuntimeArchitectureScanConstants.importPattern must parse the fixture's three " +
+        "forbidden imports from source.",
     )
     assertFailsWith<AssertionError>(
       "assertNoBannedImports must THROW on the contracts fixture; otherwise the runtime-contracts " +
         "import purity lock is not actually exercised.",
     ) {
-      assertNoBannedImports(files = listOf(fixture), bannedImports = RuntimeArchitectureScanConstants.contractsForbiddenImports)
+      assertNoBannedImports(
+        files = listOf(fixture),
+        bannedImports = RuntimeArchitectureScanConstants.contractsForbiddenImports,
+      )
     }
     val sourceViolations = RuntimeArchitectureScanConstants.contractsForbiddenSourceReferences
       .filter { reference -> fixture.source.lines().any { line -> line.containsBannedReference(reference) } }
@@ -160,7 +158,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `runtime contracts purity scanner does not flag benign Files-like tokens`() {
     val cleanFixture = syntheticSourceFile(
       "test-fixture/ContractsClean.kt",
@@ -179,11 +177,15 @@ class RuntimeArchitectureTest {
     )
     assertEquals(
       emptyList(),
-      cleanFixture.imports.filter { importedName -> RuntimeArchitectureScanConstants.contractsForbiddenImports.any(importedName::startsWith) },
+      cleanFixture.imports.filter { importedName ->
+        RuntimeArchitectureScanConstants.contractsForbiddenImports.any(importedName::startsWith)
+      },
       "Clean fixture must declare no forbidden imports.",
     )
     val cleanSourceViolations = cleanFixture.source.lines().flatMap { line ->
-      RuntimeArchitectureScanConstants.contractsForbiddenSourceReferences.filter { reference -> line.containsBannedReference(reference) }
+      RuntimeArchitectureScanConstants.contractsForbiddenSourceReferences.filter { reference ->
+        line.containsBannedReference(reference)
+      }
     }
     assertEquals(
       emptyList(),
@@ -193,7 +195,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `runtime domain workflow source must not import contract schema validators or contract mappers`() {
     val guardedDomainFiles =
       sourceFiles().filter { file ->
@@ -213,7 +215,7 @@ class RuntimeArchitectureTest {
     assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
   }
 
-@Test
+  @Test
   fun `decomposition manifest application projection declares final parse seam ownership`() {
     val architecture = Files.readString(runtimeArchitectureRoot.resolve("ARCHITECTURE.md"))
     val projectionIo = Files.readString(
@@ -230,7 +232,7 @@ class RuntimeArchitectureTest {
     assertContains(projectionIo, "DecompositionManifestFileStore")
   }
 
-@Test
+  @Test
   fun `telemetry ports and adapters are explicit package surfaces`() {
     val portFiles =
       listOf(
@@ -264,7 +266,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `review and telemetry domain models do not own json payload contracts`() {
     val violations =
       sourceFiles()
@@ -286,7 +288,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `contract package stays dto only without upward runtime dependencies`() {
     assertNoBannedImports(
       files = sourceFiles().filter { it.packageName.startsWith("skillbill.contracts") },
@@ -305,7 +307,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `telemetry sync orchestration avoids concrete db filesystem and http APIs`() {
     assertNoBannedImports(
       files =
@@ -328,7 +330,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `cli and mcp learning payloads use contract DTO mappers`() {
     val cliPayloads = Files.readString(sourcePath("skillbill/cli/learning/LearningCliPayloads.kt"))
     val mcpPayloads = Files.readString(sourcePath("skillbill/mcp/learning/McpLearningPayloads.kt"))
@@ -345,7 +347,7 @@ class RuntimeArchitectureTest {
     assertTrue("learningEntryPayload" !in mcpPayloads)
   }
 
-@Test
+  @Test
   fun `runtime context does not depend on infrastructure defaults`() {
     assertNoBannedImports(
       files = listOf(sourceFile(sourcePath("skillbill/model/RuntimeContext.kt"))),
@@ -357,9 +359,11 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `gradle module split has an explicit evaluation decision`() {
-    val evaluation = Files.readString(runtimeArchitectureRoot.resolve("docs/architecture/gradle-module-split-evaluation.md"))
+    val evaluation = Files.readString(
+      runtimeArchitectureRoot.resolve("docs/architecture/gradle-module-split-evaluation.md"),
+    )
 
     assertContains(evaluation, "Status: Deeper Split Implemented")
     assertContains(evaluation, "physical Gradle split")
@@ -378,7 +382,7 @@ class RuntimeArchitectureTest {
     assertContains(evaluation, "Deeper Split Readiness Criteria")
   }
 
-@Test
+  @Test
   fun `install ports expose typed capability APIs instead of retired gateways`() {
     val installPortFiles = sourceFiles()
       .filter { sourceFile ->
@@ -431,7 +435,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `crash reconciliation liveness stays behind the injectable supervisor and out of the process runner`() {
     val reconciliationSources = sourceFiles().filter { file ->
       file.relativePath.endsWith("featuretask/FeatureTaskRuntimeCrashReconciler.kt") ||
@@ -471,7 +475,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `every main source package is declared under an owned subsystem`() {
     val ownershipPrefixes = RuntimeModuleCatalog.declaredSubsystemPackages.sortedByDescending(String::length)
     val unowned = declaredMainSourceFiles()
@@ -490,7 +494,7 @@ class RuntimeArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `inner layer test sources do not import adapters or infrastructure packages`() {
     val forbiddenPrefixes = listOf(
       "skillbill.infrastructure.",

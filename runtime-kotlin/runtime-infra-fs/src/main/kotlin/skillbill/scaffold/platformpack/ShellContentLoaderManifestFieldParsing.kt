@@ -1,8 +1,6 @@
-@file:Suppress("MaxLineLength", "TooGenericExceptionCaught")
 
 package skillbill.scaffold.platformpack
 
-import skillbill.error.InvalidManifestSchemaError
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.CodeReviewCompositionMode
@@ -63,7 +61,8 @@ internal fun parseLaneConditions(
   }.toMap()
   val missing = declaredAreas.toSet() - parsed.keys
   if (missing.isNotEmpty()) {
-    invalidManifestSchema(slug, 
+    invalidManifestSchema(
+      slug,
       "Platform pack '$slug': 'lane_conditions' is missing declared areas ${missing.sorted()}.",
     )
   }
@@ -77,11 +76,13 @@ internal fun parseDeclaredAreas(manifest: Map<*, *>, slug: String): List<String>
   }
   return rawAreas.map { entry ->
     val area = entry as? String
-      ?: invalidManifestSchema(slug, 
+      ?: invalidManifestSchema(
+        slug,
         "Platform pack '$slug': every entry in 'declared_code_review_areas' must be a string.",
       )
     if (area !in APPROVED_CODE_REVIEW_AREAS) {
-      invalidManifestSchema(slug, 
+      invalidManifestSchema(
+        slug,
         "Platform pack '$slug': declared area '$area' is not approved; " +
           "must be one of ${APPROVED_CODE_REVIEW_AREAS.sorted()}.",
       )
@@ -100,7 +101,8 @@ internal fun parseDeclaredFiles(
   val baselinePath = parseDeclaredBaselinePath(rawFiles, slug, packRoot)
   val areaFiles = parseDeclaredAreaFileEntries(rawFiles, slug, packRoot, declaredAreas)
   if (baselinePath == null && areaFiles.isNotEmpty()) {
-    invalidManifestSchema(slug, 
+    invalidManifestSchema(
+      slug,
       "Platform pack '$slug': 'declared_files.areas' is set but 'declared_files.baseline' is missing.",
     )
   }
@@ -125,13 +127,15 @@ internal fun parseAreaMetadata(manifest: Map<*, *>, slug: String, declaredAreas:
     val metadata = value as? Map<*, *>
       ?: invalidManifestSchema(slug, "Platform pack '$slug': area_metadata['$area'] must be a mapping.")
     val focus = metadata["focus"] as? String
-      ?: invalidManifestSchema(slug, 
+      ?: invalidManifestSchema(
+        slug,
         "Platform pack '$slug': area_metadata['$area'].focus must be a non-empty string.",
       )
     areaMetadata[area] = focus
   }
   if (extraAreaMetadata.isNotEmpty()) {
-    invalidManifestSchema(slug, 
+    invalidManifestSchema(
+      slug,
       "Platform pack '$slug': area_metadata contains entries ${extraAreaMetadata.sorted()} " +
         "that are not listed in 'declared_code_review_areas'.",
     )
@@ -143,15 +147,18 @@ internal fun parseAreaMetadata(manifest: Map<*, *>, slug: String, declaredAreas:
 internal fun parseCodeReviewComposition(manifest: Map<*, *>, slug: String): CodeReviewComposition? {
   val raw = manifest["code_review_composition"] ?: return null
   val composition = raw as? Map<*, *>
-    ?: invalidManifestSchema(slug, 
+    ?: invalidManifestSchema(
+      slug,
       "Platform pack '$slug': 'code_review_composition' must be a mapping when provided.",
     )
   val layersRaw = composition["baseline_layers"]
-    ?: invalidManifestSchema(slug, 
+    ?: invalidManifestSchema(
+      slug,
       "Platform pack '$slug': 'code_review_composition.baseline_layers' is required.",
     )
   val layers = layersRaw as? List<*>
-    ?: invalidManifestSchema(slug, 
+    ?: invalidManifestSchema(
+      slug,
       "Platform pack '$slug': 'code_review_composition.baseline_layers' must be a list.",
     )
   return CodeReviewComposition(
@@ -161,7 +168,8 @@ internal fun parseCodeReviewComposition(manifest: Map<*, *>, slug: String): Code
 
 internal fun parseCodeReviewBaselineLayer(slug: String, index: Int, raw: Any?): CodeReviewBaselineLayer {
   val layer = raw as? Map<*, *>
-    ?: invalidManifestSchema(slug, 
+    ?: invalidManifestSchema(
+      slug,
       "Platform pack '$slug': 'code_review_composition.baseline_layers[$index]' must be a mapping.",
     )
   val fieldPrefix = "code_review_composition.baseline_layers[$index]"
@@ -174,12 +182,14 @@ internal fun parseCodeReviewBaselineLayer(slug: String, index: Int, raw: Any?): 
     platform = requireStringInMap(slug, layer, "$fieldPrefix.platform", "platform"),
     skill = requireStringInMap(slug, layer, "$fieldPrefix.skill", "skill"),
     scope = CodeReviewCompositionScope.fromWireValue(scopeValue)
-      ?: invalidManifestSchema(slug, 
+      ?: invalidManifestSchema(
+        slug,
         "Platform pack '$slug': '$fieldPrefix.scope' has unsupported value '$scopeValue'.",
       ),
     required = required,
     mode = CodeReviewCompositionMode.fromWireValue(modeValue)
-      ?: invalidManifestSchema(slug, 
+      ?: invalidManifestSchema(
+        slug,
         "Platform pack '$slug': '$fieldPrefix.mode' has unsupported value '$modeValue'.",
       ),
   )

@@ -1,8 +1,7 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -13,11 +12,14 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
+import skillbill.contracts.logSchemaLoadFailure
 import skillbill.error.InvalidDecompositionManifestSchemaError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
 import java.util.logging.Logger
+import kotlin.coroutines.cancellation.CancellationException
 
 private val decompositionManifestLog: Logger =
   Logger.getLogger("skillbill.contracts.workflow.DecompositionManifestSchemaValidator")
@@ -78,7 +80,9 @@ object DecompositionManifestSchemaValidator {
       require(parser.nextToken() == null) { "YAML contains trailing content or multiple documents." }
       parsed
     }
-  } catch (error: Exception) {
+  } catch (error: CancellationException) {
+    throw error
+  } catch (error: JsonProcessingException) {
     val duplicate = error.message.orEmpty().contains("duplicate", ignoreCase = true)
     throw InvalidDecompositionManifestSchemaError(
       sourceLabel = sourceLabel,
@@ -88,6 +92,13 @@ object DecompositionManifestSchemaValidator {
         "YAML is malformed: ${error.message.orEmpty()}"
       },
       failureCode = if (duplicate) "duplicate_key" else "malformed",
+      cause = error,
+    )
+  } catch (error: IllegalArgumentException) {
+    throw InvalidDecompositionManifestSchemaError(
+      sourceLabel = sourceLabel,
+      reason = "YAML is malformed: ${error.message.orEmpty()}",
+      failureCode = "malformed",
       cause = error,
     )
   }
@@ -178,6 +189,7 @@ internal const val DECOMPOSITION_MANIFEST_SCHEMA_REPO_RELATIVE_PATH: String =
   DecompositionManifestSchemaPaths.REPO_RELATIVE_PATH
 
 private fun loadDecompositionManifestSchema(): JsonSchema {
+  var failure: Throwable? = null
   try {
     val yamlText = readDecompositionManifestSchemaText()
     val yamlNode = YAMLMapper().readTree(yamlText)
@@ -185,17 +197,35 @@ private fun loadDecompositionManifestSchema(): JsonSchema {
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
-  } catch (error: Throwable) {
-    decompositionManifestLog.log(
-      Level.SEVERE,
-      "Failed to load canonical decomposition manifest schema: " +
-        "classpath='$DECOMPOSITION_MANIFEST_SCHEMA_CLASSPATH_RESOURCE' " +
-        "repoRelativePath='$DECOMPOSITION_MANIFEST_SCHEMA_REPO_RELATIVE_PATH' " +
-        "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
+  } catch (error: InvalidDecompositionManifestSchemaError) {
+    logSchemaLoadFailure(
+      decompositionManifestLog,
+      "decomposition manifest",
+      DECOMPOSITION_MANIFEST_SCHEMA_CLASSPATH_RESOURCE,
+      DECOMPOSITION_MANIFEST_SCHEMA_REPO_RELATIVE_PATH,
       error,
     )
-    throw error
+    failure = error
+  } catch (error: IOException) {
+    logSchemaLoadFailure(
+      decompositionManifestLog,
+      "decomposition manifest",
+      DECOMPOSITION_MANIFEST_SCHEMA_CLASSPATH_RESOURCE,
+      DECOMPOSITION_MANIFEST_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
+  } catch (error: JsonProcessingException) {
+    logSchemaLoadFailure(
+      decompositionManifestLog,
+      "decomposition manifest",
+      DECOMPOSITION_MANIFEST_SCHEMA_CLASSPATH_RESOURCE,
+      DECOMPOSITION_MANIFEST_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
   }
+  throw failure
 }
 
 private fun readDecompositionManifestSchemaText(): String {

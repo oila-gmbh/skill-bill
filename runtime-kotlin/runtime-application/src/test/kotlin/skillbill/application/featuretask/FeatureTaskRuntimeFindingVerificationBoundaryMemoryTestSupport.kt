@@ -29,15 +29,13 @@ private fun boundaryMemoryFindingRequests() = listOf(
   ),
 )
 
-private fun verifiedDisposition(
-  findingId: String,
-  heading: FeatureTaskRuntimeVerificationBoundaryHeadingProvenance,
-) = FeatureTaskRuntimeFindingVerificationDisposition(
-  findingId = findingId,
-  disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
-  reason = "Matches intent",
-  selectedBoundaryHeadings = listOf(heading),
-)
+private fun verifiedDisposition(findingId: String, heading: FeatureTaskRuntimeVerificationBoundaryHeadingProvenance) =
+  FeatureTaskRuntimeFindingVerificationDisposition(
+    findingId = findingId,
+    disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
+    reason = "Matches intent",
+    selectedBoundaryHeadings = listOf(heading),
+  )
 
 internal fun assertPersistedBoundarySelectionsCoverCurrentFindings(
   memory: FeatureTaskRuntimeFindingVerificationBoundaryMemory,

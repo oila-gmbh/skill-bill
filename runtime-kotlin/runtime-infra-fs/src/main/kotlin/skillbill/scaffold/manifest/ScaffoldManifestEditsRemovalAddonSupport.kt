@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber", "MaxLineLength")
 
 package skillbill.scaffold.manifest
 
@@ -9,7 +8,7 @@ internal fun removeNamedPointerEntries(text: String, blockName: String, pointerN
   var idx = block.first + 1
   while (idx <= block.last && idx < lines.size) {
     val line = lines[idx]
-    if (leadingSpaces(line) == 4 && namedListEntryValue(line, "name") == pointerName) {
+    if (leadingSpaces(line) == NESTED_LIST_ITEM_INDENT && namedListEntryValue(line, "name") == pointerName) {
       val end = listItemEnd(lines, idx, maxExclusive = block.last + 1)
       repeat(end - idx) { lines.removeAt(idx) }
       changed = true

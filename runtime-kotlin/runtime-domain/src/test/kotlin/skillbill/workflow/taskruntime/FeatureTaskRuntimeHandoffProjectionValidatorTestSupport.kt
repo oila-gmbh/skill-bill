@@ -1,10 +1,10 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -16,7 +16,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoi
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDelivery
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionShape
@@ -34,22 +33,22 @@ internal const val HANDOFF_VALIDATOR_COMMIT_PUSH_PHASE_PAYLOAD: String =
     """"base_branch":"main","pushed":true}}}"""
 
 internal data class HandoffProjectionDeclarationFixture(
-  val consumerPhaseId: String = HANDOFF_VALIDATOR_TEST_CONSUMER,
-  val sourceRef: FeatureTaskRuntimeHandoffSourceRef =
+  var consumerPhaseId: String = HANDOFF_VALIDATOR_TEST_CONSUMER,
+  var sourceRef: FeatureTaskRuntimeHandoffSourceRef =
     FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(HANDOFF_VALIDATOR_TEST_PRODUCER),
-  val projectionName: String = "plan_receipt",
-  val projectionContractId: String = "test.upstream_phase_receipt",
-  val contractVersion: String = "0.1",
-  val promptVisibility: FeatureTaskRuntimeHandoffPromptVisibility =
+  var projectionName: String = "plan_receipt",
+  var projectionContractId: String = "test.upstream_phase_receipt",
+  var contractVersion: String = "0.1",
+  var promptVisibility: FeatureTaskRuntimeHandoffPromptVisibility =
     FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-  val budget: FeatureTaskRuntimeHandoffProjectionBudget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
-  val declaredFieldNames: List<String> =
+  var budget: FeatureTaskRuntimeHandoffProjectionBudget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+  var declaredFieldNames: List<String> =
     listOf(FeatureTaskRuntimeHandoffProjectionValidator.PHASE_OUTPUT_RECEIPT_FIELD),
-  val checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
+  var checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
     FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-  val required: Boolean = true,
-  val allowsPrivateArtifactReference: Boolean = false,
-  val inlineAlternative: FeatureTaskRuntimeCompactReferenceKind? = null,
+  var required: Boolean = true,
+  var allowsPrivateArtifactReference: Boolean = false,
+  var inlineAlternative: FeatureTaskRuntimeCompactReferenceKind? = null,
 ) {
   fun build(): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
     consumerPhaseId = consumerPhaseId,
@@ -73,15 +72,15 @@ internal data class HandoffProjectionDeclarationFixture(
 }
 
 internal data class HandoffProjectionValidatorInputsFixture(
-  val consumerPhaseId: String = HANDOFF_VALIDATOR_TEST_CONSUMER,
-  val declarations: List<PhaseHandoffProjectionDeclaration> = listOf(handoffProjectionDeclaration()),
-  val resolvedUpstream: FeatureTaskRuntimeResolvedUpstreamOutputs = handoffProjectionUpstream(),
-  val runInvariants: FeatureTaskRuntimeRunInvariants = handoffProjectionRunInvariants(),
-  val resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
-  val expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
-  val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
-  val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = VALIDATE,
-  val priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
+  var consumerPhaseId: String = HANDOFF_VALIDATOR_TEST_CONSUMER,
+  var declarations: List<PhaseHandoffProjectionDeclaration> = listOf(handoffProjectionDeclaration()),
+  var resolvedUpstream: FeatureTaskRuntimeResolvedUpstreamOutputs = handoffProjectionUpstream(),
+  var runInvariants: FeatureTaskRuntimeRunInvariants = handoffProjectionRunInvariants(),
+  var resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+  var expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+  var validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+  var qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = VALIDATE,
+  var priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
 ) {
   fun build(): FeatureTaskRuntimeHandoffProjectionInputs = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = consumerPhaseId,
@@ -99,8 +98,7 @@ internal data class HandoffProjectionValidatorInputsFixture(
 
 internal inline fun handoffProjectionValidatorInputs(
   block: HandoffProjectionValidatorInputsFixture.() -> Unit = {},
-): FeatureTaskRuntimeHandoffProjectionInputs =
-  HandoffProjectionValidatorInputsFixture().apply(block).build()
+): FeatureTaskRuntimeHandoffProjectionInputs = HandoffProjectionValidatorInputsFixture().apply(block).build()
 
 internal fun handoffProjectionValidatorInputs(
   fixture: HandoffProjectionValidatorInputsFixture,
@@ -108,23 +106,23 @@ internal fun handoffProjectionValidatorInputs(
 
 internal inline fun handoffProjectionDeclaration(
   block: HandoffProjectionDeclarationFixture.() -> Unit = {},
-): PhaseHandoffProjectionDeclaration =
-  HandoffProjectionDeclarationFixture().apply(block).build()
+): PhaseHandoffProjectionDeclaration = HandoffProjectionDeclarationFixture().apply(block).build()
 
 internal fun handoffProjectionDeclaration(
   fixture: HandoffProjectionDeclarationFixture,
 ): PhaseHandoffProjectionDeclaration = fixture.build()
 
-internal fun handoffProjectionUpstream(payload: String = """{"plan":"ok"}"""): FeatureTaskRuntimeResolvedUpstreamOutputs =
-  FeatureTaskRuntimeResolvedUpstreamOutputs(
-    mapOf(
-      HANDOFF_VALIDATOR_TEST_PRODUCER to FeatureTaskRuntimePhaseOutput(
-        phaseId = HANDOFF_VALIDATOR_TEST_PRODUCER,
-        iteration = 1,
-        payload = payload,
-      ),
+internal fun handoffProjectionUpstream(
+  payload: String = """{"plan":"ok"}""",
+): FeatureTaskRuntimeResolvedUpstreamOutputs = FeatureTaskRuntimeResolvedUpstreamOutputs(
+  mapOf(
+    HANDOFF_VALIDATOR_TEST_PRODUCER to FeatureTaskRuntimePhaseOutput(
+      phaseId = HANDOFF_VALIDATOR_TEST_PRODUCER,
+      iteration = 1,
+      payload = payload,
     ),
-  )
+  ),
+)
 
 internal fun handoffProjectionRunInvariants(acceptanceCriteria: List<String> = listOf("AC-1")) =
   FeatureTaskRuntimeRunInvariants(

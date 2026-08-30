@@ -1,4 +1,3 @@
-@file:Suppress("MaxLineLength", "TooGenericExceptionCaught")
 
 package skillbill.scaffold.platformpack
 

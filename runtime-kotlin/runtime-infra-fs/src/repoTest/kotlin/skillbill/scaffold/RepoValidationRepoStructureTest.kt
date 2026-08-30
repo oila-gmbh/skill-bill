@@ -3,16 +3,9 @@ package skillbill.scaffold
 import skillbill.nativeagent.composition.NativeAgentSource
 import skillbill.nativeagent.composition.renderNativeAgentSource
 import skillbill.scaffold.runtime.RepoValidationRuntime
-import skillbill.scaffold.runtime.requiredSupportingFilesForSkill
-import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.testing.seedConformingPlatformPack
-import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
-import java.nio.file.Path
-import java.security.MessageDigest
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -267,5 +260,4 @@ class RepoValidationRepoStructureTest {
       report.issues.joinToString("\n"),
     )
   }
-
 }

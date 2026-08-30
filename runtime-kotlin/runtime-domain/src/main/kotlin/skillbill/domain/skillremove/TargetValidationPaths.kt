@@ -1,6 +1,5 @@
 package skillbill.domain.skillremove
 
-import java.nio.file.InvalidPathException
 import java.nio.file.Path
 import java.nio.file.Paths
 
@@ -69,16 +68,9 @@ private fun validateExternalAddOnFileNameResolved(sourceRootAbsolutePath: String
   }
 }
 
-private fun parseRelativePath(value: String, label: String): Pair<Path?, String?> = try {
-  Paths.get(value) to null
-} catch (error: InvalidPathException) {
-  @Suppress("SwallowedException")
-  null to "$label: ${error.message.orEmpty()}"
-}
+private fun parseRelativePath(value: String, label: String): Pair<Path?, String?> =
+  runCatching { Paths.get(value) to null }
+    .getOrElse { error -> null to "$label: ${error.message.orEmpty()}" }
 
-private fun parseAbsolutePath(value: String): Path? = try {
-  Paths.get(value).toAbsolutePath().normalize()
-} catch (error: InvalidPathException) {
-  @Suppress("SwallowedException")
-  null
-}
+private fun parseAbsolutePath(value: String): Path? =
+  runCatching { Paths.get(value).toAbsolutePath().normalize() }.getOrNull()

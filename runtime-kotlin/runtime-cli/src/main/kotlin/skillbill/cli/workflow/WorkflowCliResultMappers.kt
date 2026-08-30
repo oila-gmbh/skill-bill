@@ -8,7 +8,6 @@ import skillbill.application.workflow.model.WorkflowResumeResult
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRunState
-import skillbill.cli.scaffold.toWireMap
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 

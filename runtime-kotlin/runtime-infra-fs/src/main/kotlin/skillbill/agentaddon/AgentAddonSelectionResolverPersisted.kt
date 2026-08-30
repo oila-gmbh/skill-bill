@@ -2,7 +2,6 @@ package skillbill.agentaddon
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.agentaddon.model.AgentAddonConsumer
-import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.error.AgentAddonSelectionDriftError
@@ -77,8 +76,7 @@ private fun hydratePersistedAgentAddonEntry(
   )
 }
 
-internal fun invalidAgentAddonSelection(message: String): Nothing =
-  throw InvalidAgentAddonSelectionError(message)
+internal fun invalidAgentAddonSelection(message: String): Nothing = throw InvalidAgentAddonSelectionError(message)
 
 internal fun persistedAgentAddonSha256(bytes: ByteArray): String =
   MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }

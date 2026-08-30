@@ -154,10 +154,7 @@ internal fun prepareStageInstalledSkill(input: StageInstalledSkillInput): Prepar
   )
 }
 
-private fun resolveStageContentIdentity(
-  resolvedSource: Path,
-  suppliedCompactIdentity: String?,
-): SkillContentIdentity {
+private fun resolveStageContentIdentity(resolvedSource: Path, suppliedCompactIdentity: String?): SkillContentIdentity {
   val suppliedIdentity = suppliedCompactIdentity?.let { compact ->
     val supplied = SkillContentIdentity.fromCompact(compact, "supplied session skill")
     SkillContentIdentity.requireMatch(

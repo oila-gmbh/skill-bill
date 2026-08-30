@@ -5,6 +5,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.sqlite.SQLiteReviewRunCompletenessRepository
+import skillbill.infrastructure.sqlite.review.ReviewFinishedPayloadBuildRequest
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
@@ -31,6 +32,7 @@ import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageDegradationReason
+import skillbill.review.model.ReviewStageDegradationSelectionRequest
 import skillbill.review.model.ReviewStageReached
 import skillbill.tempDbConnection
 import java.sql.Connection

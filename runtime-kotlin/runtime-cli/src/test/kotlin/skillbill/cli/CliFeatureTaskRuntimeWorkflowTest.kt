@@ -1,52 +1,9 @@
 package skillbill.cli
 
-import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
-import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.error.InvalidAgentAddonSelectionError
-import skillbill.error.MalformedMachineConfigError
-import skillbill.install.model.InstallAgent
-import skillbill.ports.agentrun.AgentRunLauncher
-import skillbill.ports.agentrun.ExecutableLookup
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.AgentRunLaunchRequest
-import skillbill.ports.review.ReviewNativeAgentPreflightPort
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
-import skillbill.workflow.goal.model.GoalObservabilityDiffStat
-import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
-import java.nio.file.Files
-import java.nio.file.Path
-import java.sql.DriverManager
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
@@ -87,7 +44,10 @@ class CliFeatureTaskRuntimeWorkflowTest {
 
     val result = CliRuntime.run(
       fixture.runCommand(extra = listOf("--agent", "codex", "--monitor")),
-      fixture.context(launcher) { liveStdout = { live.append(it) }, workflowGitOperations = git },
+      fixture.context(launcher) {
+        liveStdout = { live.append(it) }
+        workflowGitOperations = git
+      },
     )
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -245,5 +205,4 @@ class CliFeatureTaskRuntimeWorkflowTest {
       }
     }
   }
-
 }

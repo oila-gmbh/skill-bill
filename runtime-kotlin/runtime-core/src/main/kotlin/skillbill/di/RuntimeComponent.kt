@@ -1,6 +1,7 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Component
+import me.tatarka.inject.annotations.Provides
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
@@ -32,14 +33,18 @@ import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.application.system.SystemService
 import skillbill.application.system.UninstallFileSystemService
 import skillbill.application.telemetry.LifecycleTelemetryService
-import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
+import skillbill.model.EnvironmentContext
+import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
+import skillbill.model.TransportContext
+import skillbill.model.WorkflowOpsContext
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
+import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
@@ -61,6 +66,25 @@ abstract class RuntimeComponent(
   RuntimeComponentProvides8,
   RuntimeComponentProvides9,
   RuntimeComponentProvides10 {
+  @Provides @JvmSynthetic
+  fun runtimeContext(): RuntimeContext = RuntimeComponentBindingsA1.runtimeContext(inputRuntimeContext)
+
+  @Provides @JvmSynthetic
+  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = RuntimeComponentBindingsA1.environmentContext(ctx)
+
+  @Provides @JvmSynthetic
+  fun transportContext(ctx: RuntimeContext): TransportContext = RuntimeComponentBindingsA1.transportContext(ctx)
+
+  @Provides @JvmSynthetic
+  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = RuntimeComponentBindingsA1.workflowOpsContext(ctx)
+
+  @Provides @JvmSynthetic
+  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = RuntimeComponentBindingsA1.optionalCallbacks(ctx)
+
+  @Provides @JvmSynthetic
+  fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
+    RuntimeComponentBindingsA1.databaseSessionFactory(context)
+
   abstract val featureTaskContinuationLookupService: FeatureTaskContinuationLookupService
   abstract val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService
 

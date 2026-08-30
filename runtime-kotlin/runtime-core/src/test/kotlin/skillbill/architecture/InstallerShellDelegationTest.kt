@@ -1,7 +1,5 @@
 package skillbill.architecture
 
-import org.junit.jupiter.api.Assumptions
-import org.junit.jupiter.api.BeforeEach
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -90,13 +88,9 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `installer copy-in materializes self-contained source so deleting the clone keeps skills resolving`() {
-
-
-
     val run = runInstallerShell(input = "1\nclaude\nbase only\noff\nskip\n")
 
     assertCopyInPopulatedRealFiles(run)
-
 
     Files.walk(run.repoRoot).use { stream ->
       stream.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
@@ -119,10 +113,6 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `pre-install wipe preserves copied source reserved baseline and state dbs`() {
-
-
-
-
     val fixtures = seedStateDirForWipe()
     val run = runUninstaller(fixtures, preserveSource = true, goalContinuation = false)
 
@@ -155,10 +145,6 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `goal continuation exit-64 guard preserves the entire state dir including the active goal db`() {
-
-
-
-
     val fixtures = seedStateDirForWipe()
     val run = runUninstaller(fixtures, preserveSource = true, goalContinuation = true)
 
@@ -173,8 +159,6 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `explicit uninstall fully removes the state dir even with copied source present`() {
-
-
     val fixtures = seedStateDirForWipe()
     val run = runUninstaller(fixtures, preserveSource = false, goalContinuation = false)
 
@@ -271,8 +255,6 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `from-source keeps gradle skip-build install behavior`() {
-
-
     val run = runInstallerShell(input = "1\nclaude\nbase only\noff\nskip\n", fromSource = true)
 
     assertContains(run.output, "Installing runtime from source (--from-source)")
@@ -281,8 +263,6 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `prebuilt auto-falls back to source when host token has no matching asset`() {
-
-
     val run = runPrebuiltInstaller(releaseValid = true, options = PrebuiltOptions(omitRuntimeAssets = true))
 
     assertEquals(0, run.exitCode, run.output)
@@ -291,8 +271,6 @@ class InstallerShellDelegationTest {
 
   @Test
   fun `install plan summary is printed before any mutation`() {
-
-
     val run = runPrebuiltInstaller(
       releaseValid = true,
       options = PrebuiltOptions(skipPreinstallUninstall = false, seedPriorInstall = true),

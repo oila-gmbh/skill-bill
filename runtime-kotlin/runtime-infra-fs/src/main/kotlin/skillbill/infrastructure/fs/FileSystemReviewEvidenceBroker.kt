@@ -67,6 +67,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       assignment.evidenceTargets.map { it.path } + assignment.expansions.map { it.requestedPath }
     admitted.distinct().forEach { validateRepositoryMapping(root, it) }
   }
+
   @Synchronized
   override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord {
     require(request.lane == assignment.lane) { "Expansion lane does not own this assignment." }
@@ -89,6 +90,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     authorizedExpansionLedger += expansion
     return expansion
   }
+
   @Synchronized
   override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult {
     require(request.lane == assignment.lane) { "Evidence lane does not own this assignment." }
@@ -96,7 +98,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       val terminated = request.requests.map {
         terminalResult(outcome, readState.cumulativeBytes, readState.expansionLedger.size)
       }
-      return batchResult(terminated, outcome)
+      return buildBatchResult(terminated, outcome)
     }
     val results = mutableListOf<ReviewEvidenceResult>()
     for (evidenceRequest in request.requests) {
@@ -113,6 +115,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     }
     return buildBatchResult(results, readState.terminalOutcome)
   }
+
   @Synchronized
   override fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult {
     require(call.lane == assignment.lane) { "Tool call lane does not own this assignment." }
@@ -129,6 +132,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     )
     return ReviewToolCallResult(budgetExceeded = outcome?.also { readState.terminalOutcome = it })
   }
+
   @Synchronized
   override fun recordModelTurn(): ReviewBudgetOutcome? {
     readState.terminalOutcome?.let { return it }
@@ -140,22 +144,28 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       modelTurns.toLong(),
     )?.also { readState.terminalOutcome = it }
   }
+
   @Synchronized
   override fun validateLaneResult(result: String): ReviewBudgetOutcome? {
     laneResultObserved = true
     readState.terminalOutcome?.let { return it }
     resultBytes = maxOf(resultBytes, result.toByteArray(StandardCharsets.UTF_8).size.toLong())
-    return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)?.also { readState.terminalOutcome = it }
+    return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)
+      ?.also { readState.terminalOutcome = it }
   }
+
   @Synchronized
   override fun observeLaneResultChunk(chunk: String): ReviewBudgetOutcome? {
     laneResultObserved = true
     readState.terminalOutcome?.let { return it }
     resultBytes += chunk.toByteArray(StandardCharsets.UTF_8).size.toLong()
-    return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)?.also { readState.terminalOutcome = it }
+    return ReviewBudgetEvaluator.laneResultOutcome(identity, budget, resultBytes)
+      ?.also { readState.terminalOutcome = it }
   }
+
   @Synchronized
   override fun hasObservedLaneResult(): Boolean = laneResultObserved
+
   @Synchronized
   override fun accounting(): ReviewLaneAccounting {
     val terminal = readState.terminalOutcome
@@ -175,6 +185,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       unreviewedUnits = if (evidenceIncomplete) readState.deniedUnits.distinct() else emptyList(),
     )
   }
+
   @Synchronized
   override fun terminalOutcome(): ReviewBudgetOutcome? = readState.terminalOutcome
 

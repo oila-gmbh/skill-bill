@@ -7,7 +7,7 @@ import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
-import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
+import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import java.nio.file.Files
 import java.sql.DriverManager
@@ -440,7 +440,6 @@ class GoalPlanningPreparationStoreTest {
       assertNull(store.findByGoalAndSubtask("goal-1", 1))
     }
   }
-
 }
 
 class GoalPlanningPreparationStoreMutationTest {
@@ -777,5 +776,4 @@ class GoalPlanningPreparationStoreMutationTest {
       assertFailsWith<InvalidGoalPlanningPreparationSchemaError> { store.replaceSubtaskPlan(planCheckpoint(1, 0)) }
     }
   }
-
 }

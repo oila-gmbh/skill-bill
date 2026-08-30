@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber", "MaxLineLength")
 
 package skillbill.scaffold.manifest
 
@@ -30,8 +29,11 @@ internal fun removeAreaFromDeclaredFiles(text: String, area: String): String {
   val match = AREAS_FILES_PATTERN.find(text) ?: return text
   val prefix = match.groupValues[1]
   val header = match.groupValues[2]
-  val body = match.groupValues[3]
-  val areaEntryPattern = Regex("^    ${Regex.escape(area)}:[^\\n]*\\n", RegexOption.MULTILINE)
+  val body = match.groupValues[MANIFEST_AREAS_BODY_GROUP_INDEX]
+  val areaEntryPattern = Regex(
+    "^$MANIFEST_AREAS_ENTRY_INDENT${Regex.escape(area)}:[^\\n]*\\n",
+    RegexOption.MULTILINE,
+  )
   val newBody = areaEntryPattern.replace(body, "")
   if (newBody == body) {
     return text

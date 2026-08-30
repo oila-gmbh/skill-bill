@@ -16,36 +16,39 @@ internal fun WorkflowContinueResult.DecompositionStandard.toDecompositionStandar
   )
 
 internal fun WorkflowContinueResult.DecompositionMissingSubtaskWorkflow.toDecompositionMissingSubtaskWorkflowMcpMap():
-  Map<String, Any?> = linkedMapOf(
-  "status" to "error",
-  "continue_status" to "blocked",
-  "subtask_id" to subtaskId,
-  "blocked_reason" to blockedReason,
-  "db_path" to dbPath,
-)
+  Map<String, Any?> =
+  linkedMapOf(
+    "status" to "error",
+    "continue_status" to "blocked",
+    "subtask_id" to subtaskId,
+    "blocked_reason" to blockedReason,
+    "db_path" to dbPath,
+  )
 
 internal fun WorkflowContinueResult.DecompositionBlockedSubtask.toDecompositionBlockedSubtaskMcpMap():
-  Map<String, Any?> = linkedMapOf(
-  "status" to "error",
-  "continue_status" to "blocked",
-  "workflow_id" to workflowId,
-  "issue_key" to issueKey,
-  "decomposition_subtask_id" to subtaskId,
-  "decomposition_subtask_spec_path" to subtaskSpecPath,
-  "blocked_reason" to blockedReason,
-  "error" to blockedReason,
-  "db_path" to dbPath,
-)
+  Map<String, Any?> =
+  linkedMapOf(
+    "status" to "error",
+    "continue_status" to "blocked",
+    "workflow_id" to workflowId,
+    "issue_key" to issueKey,
+    "decomposition_subtask_id" to subtaskId,
+    "decomposition_subtask_spec_path" to subtaskSpecPath,
+    "blocked_reason" to blockedReason,
+    "error" to blockedReason,
+    "db_path" to dbPath,
+  )
 
 internal fun WorkflowContinueResult.DecompositionBlockedBranchStart.toDecompositionBlockedBranchStartMcpMap():
-  Map<String, Any?> = linkedMapOf(
-  "status" to "error",
-  "continue_status" to "blocked",
-  "workflow_id" to workflowId,
-  "issue_key" to issueKey,
-  "error" to blockedReason,
-  "db_path" to dbPath,
-)
+  Map<String, Any?> =
+  linkedMapOf(
+    "status" to "error",
+    "continue_status" to "blocked",
+    "workflow_id" to workflowId,
+    "issue_key" to issueKey,
+    "error" to blockedReason,
+    "db_path" to dbPath,
+  )
 
 internal fun WorkflowContinueResult.DecompositionDone.toDecompositionDoneMcpMap(): Map<String, Any?> = linkedMapOf(
   "status" to "ok",
@@ -57,16 +60,17 @@ internal fun WorkflowContinueResult.DecompositionDone.toDecompositionDoneMcpMap(
 )
 
 internal fun WorkflowContinueResult.DecompositionSubtaskOutcome.toDecompositionSubtaskOutcomeMcpMap():
-  Map<String, Any?> = linkedMapOf(
-  "status" to "ok",
-  "continue_status" to "done",
-  "workflow_id" to workflowId,
-  "issue_key" to issueKey,
-  "decomposition_subtask_id" to subtaskId,
-  "decomposition_subtask_spec_path" to subtaskSpecPath,
-  "goal_continuation_outcome" to outcome.toWireMap(),
-  "db_path" to dbPath,
-)
+  Map<String, Any?> =
+  linkedMapOf(
+    "status" to "ok",
+    "continue_status" to "done",
+    "workflow_id" to workflowId,
+    "issue_key" to issueKey,
+    "decomposition_subtask_id" to subtaskId,
+    "decomposition_subtask_spec_path" to subtaskSpecPath,
+    "goal_continuation_outcome" to outcome.toWireMap(),
+    "db_path" to dbPath,
+  )
 
 internal fun WorkflowContinueResult.DecompositionBlockedGit.toDecompositionBlockedGitMcpMap(): Map<String, Any?> =
   linkedMapOf(

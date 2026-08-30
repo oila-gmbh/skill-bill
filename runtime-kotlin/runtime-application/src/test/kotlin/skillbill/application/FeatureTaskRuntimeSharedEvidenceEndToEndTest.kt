@@ -38,11 +38,13 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
     val repoRoot = createTempDirectory("shared-evidence-e2e")
     val store = CountingSharedEvidenceStore()
     val diffResolver = CountingDiffResolver()
-    val harness = telemetryRunnerHarness(RuntimeHarnessConfig(
+    val harness = telemetryRunnerHarness(
+      RuntimeHarnessConfig(
         repoRoot = repoRoot,
         sharedEvidenceResolver = store,
         diffResolver = diffResolver,
-      ))
+      ),
+    )
 
     val report = harness.runner.run(harness.request)
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
@@ -59,12 +61,14 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
       it.ownedPathsValue = listOf("src/A.kt")
     }
     val fingerprintsAtAudit = mutableListOf<String>()
-    val harness = runnerHarness(RuntimeHarnessConfig(
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
         repoRoot = repoRoot,
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         sharedEvidenceResolver = store,
         diffResolver = CountingDiffResolver(),
-      ).copy(launcher = auditGapLauncher(repoRoot, git, fingerprintsAtAudit)))
+      ).copy(launcher = auditGapLauncher(repoRoot, git, fingerprintsAtAudit)),
+    )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     assertAuditGapCheckpointMovement(repoRoot, store, fingerprintsAtAudit)

@@ -11,6 +11,7 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -82,7 +83,9 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
 
   private fun blockStaleRunningCandidates(request: StaleRunningCandidatesBlockRequest) {
     request.candidates
-      .filter { candidate -> isStaleRunningCandidate(candidate, request.initialAuthoritative, request.activeSet, request.gate) }
+      .filter { candidate ->
+        isStaleRunningCandidate(candidate, request.initialAuthoritative, request.activeSet, request.gate)
+      }
       .forEach { stale ->
         val authoritative = request.initialAuthoritative[stale.goalContinuation.subtaskId]
         val blockedReason = staleRunningReason(

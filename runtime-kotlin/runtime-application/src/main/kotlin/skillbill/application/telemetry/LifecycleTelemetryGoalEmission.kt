@@ -27,10 +27,7 @@ internal class LifecycleTelemetryGoalEmission(
     }
   }
 
-  override fun goalSubtaskFinished(
-    request: GoalSubtaskFinishedRequest,
-    dbOverride: String?,
-  ) {
+  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) {
     enabledStandaloneResult(settingsProvider, request.workflowId) { settings ->
       val reconciledRequest = request.reconcileBlockedReason()
       database.transaction(dbOverride) { unitOfWork ->
@@ -47,10 +44,7 @@ internal class LifecycleTelemetryGoalEmission(
     }
   }
 
-  override fun goalIssueFinished(
-    request: GoalIssueFinishedRequest,
-    dbOverride: String?,
-  ) {
+  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) {
     enabledStandaloneResult(settingsProvider, request.parentWorkflowId) { settings ->
       database.transaction(dbOverride) { unitOfWork ->
         unitOfWork.lifecycleTelemetry.goalIssueFinished(request.toRecord(), settings.level)

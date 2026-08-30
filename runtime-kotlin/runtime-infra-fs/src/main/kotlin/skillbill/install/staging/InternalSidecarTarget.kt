@@ -1,5 +1,3 @@
-@file:Suppress("MatchingDeclarationName", "ktlint:standard:filename")
-
 package skillbill.install.staging
 
 import skillbill.error.InternalSkillSidecarCollisionError

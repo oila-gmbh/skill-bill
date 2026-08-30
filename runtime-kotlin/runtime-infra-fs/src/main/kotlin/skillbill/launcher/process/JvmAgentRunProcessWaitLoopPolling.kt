@@ -4,8 +4,7 @@ import skillbill.goalrunner.model.GoalRunnerLivenessState
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
-internal fun ProcessWaitLoop.elapsedMillis(): Long =
-  TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)
+internal fun ProcessWaitLoop.elapsedMillis(): Long = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startNanos)
 
 internal fun ProcessWaitLoop.waitMillisBeforeNextPoll(): Long? {
   val configuredTimeoutMillis = timeoutMillis ?: return PROGRESS_POLL_INTERVAL_MILLIS

@@ -1,14 +1,12 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.goalrunner.model.CrashReconcileExpiredWorkerRequest
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
+import skillbill.application.goalrunner.model.CrashReconcileExpiredWorkerRequest
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.time.Instant
 
 internal fun crashReconcileExpiredWorkerToResumable(

@@ -2,6 +2,8 @@ package skillbill.mcp.scaffold
 
 import skillbill.scaffold.model.ScaffoldResult
 
+private const val SCAFFOLD_TELEMETRY_DURATION_SECONDS = 0
+
 internal fun scaffoldSuccessMap(
   sessionId: String,
   payload: Map<String, Any?>,
@@ -19,7 +21,7 @@ internal fun scaffoldSuccessMap(
       "family" to payload["family"].orEmpty(),
       "area" to payload["area"].orEmpty(),
       "result" to outcome,
-      "duration_seconds" to 0,
+      "duration_seconds" to SCAFFOLD_TELEMETRY_DURATION_SECONDS,
       "skill" to "skill-bill-scaffold",
     )
   return if (orchestrated) {
@@ -56,7 +58,7 @@ internal fun scaffoldFailureMap(
         "family" to payload["family"].orEmpty(),
         "area" to payload["area"].orEmpty(),
         "result" to "failed",
-        "duration_seconds" to 0,
+        "duration_seconds" to SCAFFOLD_TELEMETRY_DURATION_SECONDS,
         "skill" to "skill-bill-scaffold",
         "error" to error.message.orEmpty(),
       ) - "session_id",

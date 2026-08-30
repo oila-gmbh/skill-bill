@@ -11,6 +11,7 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
@@ -114,8 +115,8 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
         ),
       ),
     )
-    val selections = memory.boundarySelectionsForResolvedBodies(persisted = null)
-    assertTrue(selections == null)
+    val unsetPersisted: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>? = null
+    assertNull(unsetPersisted?.takeIf { it.isNotEmpty() })
     val persistedSelections = mapOf(
       "F-001" to listOf(
         FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
@@ -127,7 +128,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val resolvedPrompt = memory.resolvedBodiesPromptSection(
       repo,
       sections,
-      selectionsByFindingId = memory.boundarySelectionsForResolvedBodies(persisted = persistedSelections)!!,
+      selectionsByFindingId = persistedSelections,
     )
 
     assertTrue(resolvedPrompt.contains("selected body sentence"))
@@ -300,7 +301,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
 
     assertEquals(null, memory.validateDispositionBoundaryProvenance(sections, listOf(disposition)))
     assertTrue(
-      memory.catalogValidatedBoundaryHeadings(
+      catalogValidatedBoundaryHeadings(
         sections.single().discovery.boundaryCatalog,
         disposition.selectedBoundaryHeadings,
       ).isEmpty(),
@@ -338,7 +339,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       ),
     )
 
-    val validated = memory.catalogValidatedBoundaryHeadings(
+    val validated = catalogValidatedBoundaryHeadings(
       sections.single().discovery.boundaryCatalog,
       disposition.selectedBoundaryHeadings,
     )

@@ -26,7 +26,6 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -124,21 +123,18 @@ internal class WorkflowGoalRunnerChildRepairBridge(
   private val decompositionManifestValidator: DecompositionManifestValidator?,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
 ) : GoalRunnerChildRepairStore {
-  override fun diagnoseChildWedges(
-    request: GoalRunnerChildWedgeDiagnosisRequest,
-  ): GoalRunnerChildWedgeDiagnosis = database.read(request.dbPathOverride) { unitOfWork ->
-    childRepair.diagnose(
-      workflowStates = unitOfWork.workflowStates,
-      workflowId = request.workflowId,
-      issueKey = request.issueKey,
-      subtaskId = request.subtaskId,
-      repoRoot = request.repoRoot,
-    )
-  }
+  override fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis =
+    database.read(request.dbPathOverride) { unitOfWork ->
+      childRepair.diagnose(
+        workflowStates = unitOfWork.workflowStates,
+        workflowId = request.workflowId,
+        issueKey = request.issueKey,
+        subtaskId = request.subtaskId,
+        repoRoot = request.repoRoot,
+      )
+    }
 
-  override fun applyChildWedgeRepairs(
-    request: GoalRunnerChildWedgeRepairRequest,
-  ): GoalRunnerChildRepairApplyResult {
+  override fun applyChildWedgeRepairs(request: GoalRunnerChildWedgeRepairRequest): GoalRunnerChildRepairApplyResult {
     val result = database.transaction(request.dbPathOverride) { unitOfWork ->
       childRepair.apply(
         GoalRunnerChildRepairApplyRequest(
@@ -155,7 +151,7 @@ internal class WorkflowGoalRunnerChildRepairBridge(
       val validator = decompositionManifestValidator ?: return@let
       checkNotNull(
         DecompositionManifestWriter.writeProjectionFromWorkflowState(
-          repoRoot = repoRoot,
+          repoRoot = request.repoRoot,
           artifactsJson = artifactsJson,
           validator = validator,
           fileStore = decompositionManifestFileStore,

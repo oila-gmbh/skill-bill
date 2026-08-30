@@ -47,7 +47,7 @@ class CliScaffoldRuntimeTest {
           userHome = tempDir,
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
 
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals("ok", payload.stringValue("status"))
@@ -83,7 +83,7 @@ class CliScaffoldRuntimeTest {
           liveStdout = { liveStdout.append(it) },
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
     val output = liveStdout.toString()
     val preview = platformManifestPreview(payload)
 
@@ -121,7 +121,7 @@ class CliScaffoldRuntimeTest {
           liveStdout = { liveStdout.append(it) },
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
     val createdFiles = payload["created_files"]?.jsonArray.orEmpty().map { it.jsonPrimitive.content }
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -144,7 +144,7 @@ class CliScaffoldRuntimeTest {
           liveStdout = { liveStdout.append(it) },
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
     val preview = platformManifestPreview(payload)
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -169,7 +169,7 @@ class CliScaffoldRuntimeTest {
           liveStdout = { liveStdout.append(it) },
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
     val preview = platformManifestPreview(payload)
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -200,7 +200,7 @@ class CliScaffoldRuntimeTest {
           liveStdout = { liveStdout.append(it) },
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
     val preview = platformManifestPreview(payload)
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -233,7 +233,7 @@ class CliScaffoldRuntimeTest {
           liveStdout = { liveStdout.append(it) },
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
 
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals("ok", payload.stringValue("status"))
@@ -253,7 +253,7 @@ class CliScaffoldRuntimeTest {
           userHome = tempDir,
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
 
     assertEquals(1, result.exitCode)
     assertEquals("error", payload.stringValue("status"))
@@ -271,7 +271,7 @@ class CliScaffoldRuntimeTest {
           userHome = tempDir,
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
 
     assertEquals(1, result.exitCode)
     assertEquals("error", payload.stringValue("status"))
@@ -325,7 +325,7 @@ class CliScaffoldRuntimeTest {
           listOf("create-and-fill", "--payload", "-", "--body", "Authored content.", "--dry-run", "--format", "json"),
           CliRuntimeContext(stdinText = stdin, userHome = tempDir),
         )
-      val payload = decodeJsonObject(result.stdout)
+      val payload = parseJsonObject(result.stdout)
 
       assertEquals(1, result.exitCode)
       assertEquals("error", payload.stringValue("status"))
@@ -414,7 +414,7 @@ class CliScaffoldRuntimeTest {
           userHome = tempDir,
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
     val manifestPath = repoRoot.resolve("platform-packs/$platform/platform.yaml").toString()
     val preview =
       payload["manifest_edit_previews"]
@@ -452,7 +452,7 @@ class CliScaffoldRuntimeTest {
         ),
         CliRuntimeContext(userHome = tempDir),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
     val composition = payload["review_composition"]?.jsonObject
     val layer = composition?.get("baseline_layers")?.jsonArray?.single()?.jsonObject
 
@@ -480,7 +480,7 @@ class CliScaffoldRuntimeTest {
           userHome = tempDir,
         ),
       )
-    val payload = decodeJsonObject(result.stdout)
+    val payload = parseJsonObject(result.stdout)
 
     assertEquals(1, result.exitCode)
     assertEquals("error", payload.stringValue("status"))
@@ -489,7 +489,7 @@ class CliScaffoldRuntimeTest {
 }
 
 private fun assertNewSkillScaffoldGolden(result: CliExecutionResult) {
-  val payload = decodeJsonObject(result.stdout)
+  val payload = parseJsonObject(result.stdout)
   val sessionId = payload.stringValue("session_id")
   val skillPath = payload.stringValue("skill_path")
 
@@ -572,7 +572,7 @@ private fun assertCreateAndFillNativePayloads(context: CliRuntimeContext, bodyFi
       listOf("create-and-fill", "--payload", "-", "--editor", "--dry-run", "--format", "json"),
       context,
     )
-  val editorPayload = decodeJsonObject(editorResult.stdout)
+  val editorPayload = parseJsonObject(editorResult.stdout)
 
   assertEquals("ok", payload.stringValue("status"))
   assertTrue(payload.stringValue("skill_path").endsWith("/skills/bill-horizontal-fill"))
@@ -610,7 +610,7 @@ private fun assertNativeBodyConflictErrors(prefix: List<String>, context: CliRun
       ),
       context,
     )
-  val payload = decodeJsonObject(result.stdout)
+  val payload = parseJsonObject(result.stdout)
 
   assertEquals(1, result.exitCode)
   assertEquals("error", payload.stringValue("status"))
@@ -634,7 +634,7 @@ private fun scaffoldPayload(command: String, context: CliRuntimeContext): JsonOb
 
 private fun scaffoldPayload(arguments: List<String>, context: CliRuntimeContext): JsonObject {
   val result = scaffoldResult(arguments, context)
-  return decodeJsonObject(result.stdout)
+  return parseJsonObject(result.stdout)
 }
 
 private fun scaffoldResult(command: String, context: CliRuntimeContext): CliExecutionResult =
@@ -646,7 +646,7 @@ private fun scaffoldResult(arguments: List<String>, context: CliRuntimeContext):
   return result
 }
 
-private fun decodeJsonObject(rawJson: String): JsonObject {
+private fun parseJsonObject(rawJson: String): JsonObject {
   val parsed = JsonSupport.parseObjectOrNull(rawJson)
   require(parsed != null) { "Expected JSON object but got: $rawJson" }
   return parsed
@@ -662,10 +662,6 @@ private fun platformManifestPreview(payload: JsonObject): String {
     ?.jsonPrimitive
     ?.contentOrNull
     .orEmpty()
-}
-
-private fun assertMatchesPattern(pattern: Regex, value: String, label: String) {
-  assertTrue(pattern.matches(value), "Expected $label to match ${pattern.pattern}, got $value")
 }
 
 private fun compositionFixtureRepo(kmpLayerRequired: Boolean = true): Path {

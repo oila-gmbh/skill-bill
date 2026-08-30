@@ -1,29 +1,32 @@
-@file:Suppress("MagicNumber", "MaxLineLength")
 
 package skillbill.scaffold.manifest
 
-internal fun appendManifestPointer(text: String, skillRelativeDir: String, pointerName: String, target: String): String =
-  appendPointerLikeEntry(
-    PointerLikeEntryAppendRequest(
-      text = text,
-      blockName = "pointers",
-      skillRelativeDir = skillRelativeDir,
-      entryName = pointerName,
-      renderBlock = {
-        "  $skillRelativeDir:\n" +
-          "    - name: ${yamlScalar(pointerName)}\n" +
-          "      target: ${yamlScalar(target)}\n"
-      },
-      renderEntry = {
+internal fun appendManifestPointer(
+  text: String,
+  skillRelativeDir: String,
+  pointerName: String,
+  target: String,
+): String = appendPointerLikeEntry(
+  PointerLikeEntryAppendRequest(
+    text = text,
+    blockName = "pointers",
+    skillRelativeDir = skillRelativeDir,
+    entryName = pointerName,
+    renderBlock = {
+      "  $skillRelativeDir:\n" +
         "    - name: ${yamlScalar(pointerName)}\n" +
-          "      target: ${yamlScalar(target)}\n"
-      },
-      existingEntryPattern = Regex(
-        "^    - name:\\s*['\"]?${Regex.escape(pointerName)}['\"]?\\s*$",
-        RegexOption.MULTILINE,
-      ),
+        "      target: ${yamlScalar(target)}\n"
+    },
+    renderEntry = {
+      "    - name: ${yamlScalar(pointerName)}\n" +
+        "      target: ${yamlScalar(target)}\n"
+    },
+    existingEntryPattern = Regex(
+      "^    - name:\\s*['\"]?${Regex.escape(pointerName)}['\"]?\\s*$",
+      RegexOption.MULTILINE,
     ),
-  )
+  ),
+)
 
 internal fun appendAddonUsage(text: String, skillRelativeDir: String, addonSlug: String, pointerName: String): String =
   appendPointerLikeEntry(
@@ -41,7 +44,10 @@ internal fun appendAddonUsage(text: String, skillRelativeDir: String, addonSlug:
         "    - slug: ${yamlScalar(addonSlug)}\n" +
           "      entrypoint: ${yamlScalar(pointerName)}\n"
       },
-      existingEntryPattern = Regex("^    - slug:\\s*['\"]?${Regex.escape(addonSlug)}['\"]?\\s*$", RegexOption.MULTILINE),
+      existingEntryPattern = Regex(
+        "^    - slug:\\s*['\"]?${Regex.escape(addonSlug)}['\"]?\\s*$",
+        RegexOption.MULTILINE,
+      ),
     ),
   )
 

@@ -1,10 +1,12 @@
 package skillbill.install.nativeagent
 
 import skillbill.contracts.nativeagent.NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION
+import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import kotlin.coroutines.cancellation.CancellationException
 
 internal object NativeAgentLinkInventoryWrite {
   fun write(request: NativeAgentLinkInventoryWriteRequest) {
@@ -32,7 +34,7 @@ internal object NativeAgentLinkInventoryWrite {
     NativeAgentLinkInventoryDecode.validateSemanticEntries(request.entries, request.home, request.managedRoots)
     val temporary = Files.createTempFile(request.path.parent, "${request.path.fileName}.", ".tmp")
     request.afterTemporaryCreation(temporary)
-    var initiatingFailure: Exception? = null
+    var initiatingFailure: Throwable? = null
     try {
       Files.write(temporary, bytes)
       request.beforeMutation(request.path)
@@ -41,13 +43,19 @@ internal object NativeAgentLinkInventoryWrite {
       } catch (_: AtomicMoveNotSupportedException) {
         Files.move(temporary, request.path, StandardCopyOption.REPLACE_EXISTING)
       }
-    } catch (error: Exception) {
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: IOException) {
+      initiatingFailure = error
+    } catch (error: IllegalArgumentException) {
+      initiatingFailure = error
+    } catch (error: IllegalStateException) {
       initiatingFailure = error
     }
     val cleanupFailure = runCatching { Files.deleteIfExists(temporary) }.exceptionOrNull()
     cleanupFailure?.let { initiatingFailure?.addSuppressed(it) }
-    initiatingFailure?.let { throw it }
-    cleanupFailure?.let { throw it }
+    val terminalFailure = initiatingFailure ?: cleanupFailure
+    terminalFailure?.let { throw it }
   }
 
   private fun journalMissingAncestors(path: Path, beforeMutation: (Path) -> Unit) {

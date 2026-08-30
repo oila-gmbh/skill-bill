@@ -8,7 +8,8 @@ internal object GoalPlanningSharedContextPacketLegacy {
     require(GoalPlanningSharedContextPacketValidation.isStringMap(packet["platform_packs"])) {
       "shared context platform packs are invalid for version '${GoalPlanningSharedContextPacket.LEGACY_VERSION_0_1}'"
     }
-    require(packet["integrity_sha256"] == GoalPlanningSharedContextPacketValidation.digest(packet - "integrity_sha256")) {
+    val integrityPayload = packet - "integrity_sha256"
+    require(packet["integrity_sha256"] == GoalPlanningSharedContextPacketValidation.digest(integrityPayload)) {
       "shared context packet integrity is invalid"
     }
     val withoutLegacy = linkedMapOf<String, Any?>()
@@ -29,7 +30,8 @@ internal object GoalPlanningSharedContextPacketLegacy {
     require(GoalPlanningSharedContextPacketValidation.isStringMap(packet["boundary_memory"])) {
       "shared context boundary memory is invalid for version '${GoalPlanningSharedContextPacket.LEGACY_VERSION_0_2}'"
     }
-    require(packet["integrity_sha256"] == GoalPlanningSharedContextPacketValidation.digest(packet - "integrity_sha256")) {
+    val integrityPayload = packet - "integrity_sha256"
+    require(packet["integrity_sha256"] == GoalPlanningSharedContextPacketValidation.digest(integrityPayload)) {
       "shared context packet integrity is invalid"
     }
     val migrated = linkedMapOf<String, Any?>()
@@ -50,7 +52,8 @@ internal object GoalPlanningSharedContextPacketLegacy {
     require(GoalPlanningSharedContextPacketValidation.isStringMap(packet["boundary_memory"])) {
       "shared context boundary memory is invalid for version '${GoalPlanningSharedContextPacket.LEGACY_VERSION_0_3}'"
     }
-    require(packet["integrity_sha256"] == GoalPlanningSharedContextPacketValidation.digest(packet - "integrity_sha256")) {
+    val integrityPayload = packet - "integrity_sha256"
+    require(packet["integrity_sha256"] == GoalPlanningSharedContextPacketValidation.digest(integrityPayload)) {
       "shared context packet integrity is invalid"
     }
     val migrated = linkedMapOf<String, Any?>()

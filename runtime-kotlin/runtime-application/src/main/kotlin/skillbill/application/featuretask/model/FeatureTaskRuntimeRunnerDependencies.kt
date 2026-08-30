@@ -1,19 +1,19 @@
 package skillbill.application.featuretask.model
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.FeatureTaskPhaseSettlementService
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
 import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseGates
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
-import skillbill.application.featuretask.FeatureTaskPhaseSettlementService
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 
 @Inject
-internal data class FeatureTaskRuntimeRunnerDependencies(
+data class FeatureTaskRuntimeRunnerDependencies(
   val subtaskLauncher: GoalRunnerSubtaskLauncher,
   val recorder: FeatureTaskRuntimePhaseRecorder,
   val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,

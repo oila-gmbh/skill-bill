@@ -109,8 +109,6 @@ internal object FeatureTaskRuntimeProjectionCanonicalizerMutations {
     )
   }
 
-  fun textFreeRecord(
-    fieldPath: String,
-    transforms: List<FeatureTaskRuntimeProjectionCanonicalizationTransform>,
-  ) = FeatureTaskRuntimeProjectionCanonicalizationRecord(fieldPath = fieldPath, transforms = transforms)
+  fun textFreeRecord(fieldPath: String, transforms: List<FeatureTaskRuntimeProjectionCanonicalizationTransform>) =
+    FeatureTaskRuntimeProjectionCanonicalizationRecord(fieldPath = fieldPath, transforms = transforms)
 }

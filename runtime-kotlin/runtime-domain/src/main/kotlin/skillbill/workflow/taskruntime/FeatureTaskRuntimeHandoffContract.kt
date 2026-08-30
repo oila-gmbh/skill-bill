@@ -1,17 +1,11 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 /**
  * Pure, deterministic resolution of the three-layer phase handoff: always-injected

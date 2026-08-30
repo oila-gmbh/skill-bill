@@ -11,7 +11,8 @@ internal fun FeatureTaskRuntimeRunState.recordPhaseLaunched(phaseId: String) {
 
 internal fun FeatureTaskRuntimeRunState.persistedBlockedReason(phaseId: String): String? = blockedRecords[phaseId]
 
-internal fun FeatureTaskRuntimeRunState.hasBranchSetupBlock(phaseId: String): Boolean = phaseId in branchSetupBlockedPhases
+internal fun FeatureTaskRuntimeRunState.hasBranchSetupBlock(phaseId: String): Boolean =
+  phaseId in branchSetupBlockedPhases
 
 internal fun FeatureTaskRuntimeRunState.clearBranchSetupBlock(phaseId: String) {
   branchSetupBlockedPhases.remove(phaseId)

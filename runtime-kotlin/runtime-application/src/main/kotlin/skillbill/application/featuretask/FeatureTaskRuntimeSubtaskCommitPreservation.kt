@@ -15,16 +15,21 @@ internal fun WorkflowGitOperations.writeSubtaskCommitPreservingHistory(
   if (request.decision !is FeatureTaskRuntimeSubtaskCommitAmend) {
     return createCommit(request.repoRoot, request.message)
   }
-  return amendSubtaskCommitPreservingHistory(this, request)
+  return amendSubtaskCommitPreservingHistory(this, request, request.decision)
 }
 
 private fun amendSubtaskCommitPreservingHistory(
   gitOperations: WorkflowGitOperations,
   request: SubtaskCommitPreservationRequest,
+  decision: FeatureTaskRuntimeSubtaskCommitAmend,
 ): WorkflowGitOperationResult {
-  val decision = request.decision
   if (decision.recoveredFromTrailer) {
-    request.record(FeatureTaskRuntimeSubtaskCommitResolver.trailerFallbackRecord(request.identity, decision.ownedHeadSha))
+    request.record(
+      FeatureTaskRuntimeSubtaskCommitResolver.trailerFallbackRecord(
+        request.identity,
+        decision.ownedHeadSha,
+      ),
+    )
   }
   if (decision.rewritesPublishedHistory) {
     request.record(

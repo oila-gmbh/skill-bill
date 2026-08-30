@@ -2,15 +2,8 @@ package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
-import skillbill.ports.workflow.gitops.runtimePhaseChangedPathsBetweenCommits
-import skillbill.ports.workflow.gitops.runtimePhaseHeadCommit
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -312,5 +305,4 @@ class GitWorkflowGitOperationsDiffTest {
     assertTrue(result.ok, result.error)
     assertEquals(git(repoRoot, "rev-parse", "HEAD"), requireNotNull(result.baseline).reviewBaseSha)
   }
-
 }

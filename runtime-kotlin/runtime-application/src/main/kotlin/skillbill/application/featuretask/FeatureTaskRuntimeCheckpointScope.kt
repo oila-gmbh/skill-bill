@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
-import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import java.util.Locale
 
 private const val RUNTIME_PRIVATE_ROOT = ".skill-bill/"

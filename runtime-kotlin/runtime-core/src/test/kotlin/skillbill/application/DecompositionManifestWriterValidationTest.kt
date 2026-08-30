@@ -1,8 +1,8 @@
 package skillbill.application
 
 import skillbill.application.decomposition.DecompositionManifestWriter
-import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
+import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter

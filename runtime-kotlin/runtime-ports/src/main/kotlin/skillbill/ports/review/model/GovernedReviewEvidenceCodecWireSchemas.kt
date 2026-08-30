@@ -13,7 +13,9 @@ internal object GovernedReviewEvidenceCodecWireSchemas {
             "properties" to linkedMapOf(
               "path" to stringProperty("Repository-relative path inside the assignment surface."),
               "reachability_reason" to stringProperty("Why the path is reachable from the assignment."),
-              "expansion_id" to stringProperty("Identifier returned by ${GovernedReviewEvidenceCodec.REQUEST_EXPANSION}."),
+              "expansion_id" to stringProperty(
+                "Identifier returned by ${GovernedReviewEvidenceCodec.REQUEST_EXPANSION}.",
+              ),
               "offset" to linkedMapOf("type" to "integer"),
               "limit" to linkedMapOf("type" to "integer"),
               "pagination_token" to stringProperty("Continuation token from a previous read."),

@@ -1,15 +1,7 @@
 package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
-import skillbill.cli.model.CliExecutionResult
-import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
-import skillbill.nativeagent.composition.NativeAgentSource
-import skillbill.nativeagent.composition.parseNativeAgentSource
-import skillbill.nativeagent.composition.renderNativeAgentSource
-import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -224,5 +216,4 @@ class CliInstallRootsRuntimeTest {
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(home.resolve(".claude/skills").toString(), result.stdout.trim())
   }
-
 }

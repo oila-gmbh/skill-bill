@@ -1,43 +1,18 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
-import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
-import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
-import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.featuretask.phaseDeclaration
-import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
-import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
-import skillbill.workflow.goal.model.ValidationDepth
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
-import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairBudget
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `a real schema failure still receives the schema-correction directive and not the terminal one`() {
-    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       priorSchemaFailure = "produced_outputs must be an object.",
@@ -56,7 +31,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
       retriedAt = "2026-07-21T16:30:00Z",
     )
 
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       operatorBlockRetry = retry,
@@ -65,7 +40,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     assertContains(prompt, "Operator-applied blocked-phase retry decision")
     assertContains(prompt, reason)
     assertFailsWith<IllegalArgumentException> {
-      FeatureTaskRuntimePhasePromptComposer.compose(
+      composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("audit"),
         operatorBlockRetry = retry,
@@ -75,7 +50,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `salvage retry names the expected shape and that a second failure blocks`() {
-    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure = "verdict: must be a top-level string",
@@ -91,12 +66,12 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `an unparseable-root failure appends a phase-correct fill-in skeleton`() {
-                val auditRetry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val auditRetry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure = "<root> must be an object.",
     )
-    val reviewRetry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val reviewRetry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("review"),
       priorSchemaFailure = "<root> must be an object.",
@@ -121,7 +96,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `a malformed-output failure also appends the fill-in skeleton`() {
-    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure = "Phase output is malformed: unexpected end-of-input",
@@ -133,7 +108,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `a field-level violation still carries the expected salvage shape`() {
-    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure = "summary: must be a non-empty string",
@@ -149,7 +124,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `an oversized audit value receives compression retry guidance`() {
-    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure =
@@ -162,7 +137,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `an oversized reconciliation evidence field is told to compress rather than restate`() {
-                val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       priorSchemaFailure =
@@ -182,7 +157,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `any other over-length field receives the compression guidance naming that field`() {
-    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       priorSchemaFailure = "\$.deviations[0].note: must be at most 4,096 characters long",
@@ -194,7 +169,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `a non-length field violation adds no compression guidance`() {
-        val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       priorSchemaFailure =
@@ -207,7 +182,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `a length violation whose cap was truncated away adds no guidance and does not crash`() {
-        val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       priorSchemaFailure = "Projection validation failed: \$.reconciliation_evidence.ev… [truncated]",
@@ -219,7 +194,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `a maxLength violation with no readable figure still compresses without naming a cap`() {
-    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       priorSchemaFailure = "\$.unresolved_items[0]: maxLength constraint violated",
@@ -231,6 +206,9 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
 
   @Test
   fun `audit remediation names the audit prose it must implement in this invocation`() {
+    val auditGapPayload =
+      """{\"gaps\":[{\"criterion\":\"AC-004\",\"note\":\"gap four\"},""" +
+        """{\"criterion\":\"AC-005\",\"note\":\"gap five\"}],\"non_blocking_findings\":[]}"""
     val auditOutput = """
     {
       "contract_version": "0.6",
@@ -239,7 +217,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
       "summary": "Audit found gaps.",
       "verdict": "gaps_found",
       "produced_outputs": {
-        "value": "{\"gaps\":[{\"criterion\":\"AC-004\",\"note\":\"gap four\"},{\"criterion\":\"AC-005\",\"note\":\"gap five\"}],\"non_blocking_findings\":[]}"
+        "value": "$auditGapPayload"
       }
     }
     """.trimIndent()
@@ -249,7 +227,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
       auditOutput = auditOutput,
     )
 
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, briefing)
+    val prompt = composePhasePrompt(PROMPT_COMPOSER_ISSUE_KEY, briefing)
 
     assertContains(prompt, "AUDIT-GAP REMEDIATION")
     assertContains(prompt, "AC-004")
@@ -264,7 +242,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
       round = 2,
       priorAuditValues = listOf("""{"gaps":[{"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}]}"""),
     )
-    val remediation = FeatureTaskRuntimePhasePromptComposer.compose(
+    val remediation = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement", priorGapMemory = memory, auditGapReentry = true),
     )
@@ -272,7 +250,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     assertContains(remediation, "AC-002")
     assertContains(remediation, "prior_audit_values")
 
-    val forward = FeatureTaskRuntimePhasePromptComposer.compose(
+    val forward = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
     )

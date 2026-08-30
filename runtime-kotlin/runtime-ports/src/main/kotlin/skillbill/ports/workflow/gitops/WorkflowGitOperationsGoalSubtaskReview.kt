@@ -3,7 +3,6 @@ package skillbill.ports.workflow.gitops
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import java.nio.file.Path
 

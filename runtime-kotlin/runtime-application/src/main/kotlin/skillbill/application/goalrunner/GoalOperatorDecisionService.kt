@@ -33,7 +33,7 @@ class GoalOperatorDecisionService(
     }
   }
 
-  private fun resolveChildWorkflow(request: GoalRunnerOperatorDecisionRequest): ResolvedChildWorkflow? {
+  private fun resolveChildWorkflow(request: GoalRunnerOperatorDecisionRequest): ResolvedChildWorkflow {
     val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
     val subtask = loaded?.manifest?.subtasks?.firstOrNull { it.id == request.subtaskId }
     val workflowId = subtask?.workflowId?.takeIf(String::isNotBlank)

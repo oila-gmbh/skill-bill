@@ -1,6 +1,5 @@
 package skillbill.application.featuretask.model
 
-import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.workflow.goal.model.CodeReviewExecutionMode

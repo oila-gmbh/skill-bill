@@ -24,7 +24,7 @@ internal fun FeatureTaskRuntimeRunLoop.establishRemediationCheckpointStage(
 ): Boolean {
   if (scope.adoptedPaths.isNotEmpty()) {
     runCatching {
-      diagnostics.warning(FeatureTaskRuntimeCheckpointScope.adoptionWarning(branch, scope.adoptedPaths))
+      diagnostics.warning(adoptionWarning(branch, scope.adoptedPaths))
     }
   }
   val committed = commitRemediationCheckpoint(

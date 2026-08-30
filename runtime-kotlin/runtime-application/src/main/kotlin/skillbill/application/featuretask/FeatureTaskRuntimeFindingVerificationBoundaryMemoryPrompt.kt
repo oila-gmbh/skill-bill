@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.contracts.JsonSupport
 import skillbill.error.GoalVerificationBoundaryCapExceededError
-import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 import java.nio.file.Path
@@ -25,7 +24,7 @@ internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateDisposi
   }
 }
 
-private fun dispositionBoundaryBodyFailure(
+private fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.dispositionBoundaryBodyFailure(
   repoRoot: Path,
   section: FeatureTaskRuntimeFindingBoundaryMemorySection?,
   disposition: FeatureTaskRuntimeFindingVerificationDisposition,

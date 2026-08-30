@@ -3,7 +3,6 @@ package skillbill.application.goalrunner.planning
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
-import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 
 internal object GoalPlanningSharedContextPacket {

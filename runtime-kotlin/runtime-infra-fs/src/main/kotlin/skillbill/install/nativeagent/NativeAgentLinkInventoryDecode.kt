@@ -2,10 +2,10 @@ package skillbill.install.nativeagent
 
 import com.fasterxml.jackson.databind.JsonNode
 import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
-import skillbill.nativeagent.rendering.NativeAgentProvider
+import java.io.IOException
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 
 internal object NativeAgentLinkInventoryDecode {
   fun decode(
@@ -15,7 +15,9 @@ internal object NativeAgentLinkInventoryDecode {
     mapper: com.fasterxml.jackson.databind.ObjectMapper,
     schema: com.networknt.schema.JsonSchema,
   ): List<NativeAgentLinkInventoryEntry> {
-    return try {
+    var failure: Throwable? = null
+    var decoded: List<NativeAgentLinkInventoryEntry>? = null
+    try {
       require(Files.size(path) <= NativeAgentLinkInventoryLimits.MAX_BYTES) {
         "inventory exceeds ${NativeAgentLinkInventoryLimits.MAX_BYTES} bytes"
       }
@@ -33,20 +35,32 @@ internal object NativeAgentLinkInventoryDecode {
         )
       }?.toList() ?: error("entries is required")
       validateDecodedEntries(entries, home, managedRoots)
-      entries
-    } catch (error: Exception) {
-      throw InvalidNativeAgentLinkInventorySchemaError(
+      decoded = entries
+    } catch (error: CancellationException) {
+      failure = error
+    } catch (error: InvalidNativeAgentLinkInventorySchemaError) {
+      failure = error
+    } catch (error: IOException) {
+      failure = InvalidNativeAgentLinkInventorySchemaError(
+        "Invalid native-agent link inventory '$path': ${error.message}. Delete it and reinstall.",
+        error,
+      )
+    } catch (error: IllegalArgumentException) {
+      failure = InvalidNativeAgentLinkInventorySchemaError(
+        "Invalid native-agent link inventory '$path': ${error.message}. Delete it and reinstall.",
+        error,
+      )
+    } catch (error: IllegalStateException) {
+      failure = InvalidNativeAgentLinkInventorySchemaError(
         "Invalid native-agent link inventory '$path': ${error.message}. Delete it and reinstall.",
         error,
       )
     }
+    if (failure != null) throw failure
+    return decoded!!
   }
 
-  fun validateSemanticEntries(
-    entries: List<NativeAgentLinkInventoryEntry>,
-    home: Path,
-    managedRoots: List<Path>,
-  ) {
+  fun validateSemanticEntries(entries: List<NativeAgentLinkInventoryEntry>, home: Path, managedRoots: List<Path>) {
     require(entries.map { it.provider to it.installedPath.normalize() }.distinct().size == entries.size) {
       "duplicate provider/installed_path entry"
     }
@@ -85,11 +99,7 @@ internal object NativeAgentLinkInventoryDecode {
     }
   }
 
-  fun isSemanticallyValid(
-    entry: NativeAgentLinkInventoryEntry,
-    home: Path,
-    managedRoots: List<Path>,
-  ): Boolean {
+  fun isSemanticallyValid(entry: NativeAgentLinkInventoryEntry, home: Path, managedRoots: List<Path>): Boolean {
     return runCatching {
       val provider = NativeAgentLinkInventorySupport.provider(entry.provider)
       val raw = Files.readSymbolicLink(entry.installedPath)

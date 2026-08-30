@@ -1,46 +1,8 @@
 package skillbill.cli
 
-import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
-import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.error.MalformedMachineConfigError
-import skillbill.install.model.InstallAgent
-import skillbill.ports.agentrun.AgentRunLauncher
-import skillbill.ports.agentrun.ExecutableLookup
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.AgentRunLaunchRequest
-import skillbill.ports.review.ReviewNativeAgentPreflightPort
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
-import skillbill.workflow.goal.model.GoalObservabilityDiffStat
-import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
-import java.nio.file.Path
-import java.sql.DriverManager
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -48,7 +10,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.minutes
 
 class CliFeatureTaskRuntimeModelDirectiveTest {
   @Test
@@ -614,7 +575,7 @@ class CliFeatureTaskRuntimeSpecLookupTest {
 
     val run = CliRuntime.run(
       fixture.runCommand(extra = listOf("--agent", "codex")),
-      fixture.context(RecordingPhaseLauncher()) { requester = requester },
+      fixture.context(RecordingPhaseLauncher()) { this.requester = requester },
     )
 
     assertEquals(0, run.exitCode, run.stdout)
@@ -637,7 +598,7 @@ class CliFeatureTaskRuntimeSpecLookupTest {
 
     val run = CliRuntime.run(
       fixture.runCommand(extra = listOf("--agent", "codex")),
-      fixture.context(RecordingPhaseLauncher()) { requester = requester },
+      fixture.context(RecordingPhaseLauncher()) { this.requester = requester },
     )
 
     assertEquals(0, run.exitCode, run.stdout)
@@ -647,13 +608,10 @@ class CliFeatureTaskRuntimeSpecLookupTest {
   }
 
   @Test
-  @Suppress("TooGenericExceptionThrown")
   fun `a throwing telemetry drain leaves the feature-task runtime outcome byte-for-byte unchanged`() {
     val passing = runtimeDrainOutcome(RecordingTelemetryRequester())
     val throwing = runtimeDrainOutcome(
-      // RuntimeException is caught by neither autoSyncTelemetry nor CliRuntime, so it is the type
-      // that would reach the operator's result if the drain were not isolated.
-      RecordingTelemetryRequester(failure = { throw RuntimeException("telemetry proxy exploded") }),
+      RecordingTelemetryRequester(failure = { throw TelemetryProxyExplosion("telemetry proxy exploded") }),
     )
 
     assertEquals(0, passing.exitCode)
@@ -672,7 +630,10 @@ class CliFeatureTaskRuntimeSpecLookupTest {
 
     val run = CliRuntime.run(
       fixture.runCommand(extra = listOf("--agent", "codex")),
-      fixture.context(RecordingPhaseLauncher()) { requester = requester, liveStderr = { stderr.append(it) } },
+      fixture.context(RecordingPhaseLauncher()) {
+        this.requester = requester
+        liveStderr = { stderr.append(it) }
+      },
     )
 
     // workflow_id is minted per run, so it is the one field two runs may legitimately differ on.
@@ -810,3 +771,5 @@ class CursorAgentRuntimeCliTest {
     assertEquals(emptyList(), launcher.requests)
   }
 }
+
+private class TelemetryProxyExplosion(message: String) : RuntimeException(message)

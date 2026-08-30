@@ -9,13 +9,8 @@ import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.testGoalRunnerStatusService
-import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
-import skillbill.application.idestatus.model.IdeStatusFreshness
-import skillbill.application.idestatus.model.IdeStatusLifecycleState
-import skillbill.application.idestatus.model.IdeStatusProblemCode
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusResult
-import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
@@ -65,7 +60,6 @@ import skillbill.workflow.idestatus.IdeStatusValidator
 import skillbill.workflow.idestatus.NoopIdeStatusValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
@@ -73,134 +67,157 @@ import java.nio.file.Path
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 
 internal val ideStatusObservedAt: Instant = Instant.parse("2026-08-06T12:00:00Z")
 internal val ideStatusClock: Clock = Clock.fixed(ideStatusObservedAt, ZoneOffset.UTC)
 
 internal fun goalWireMapUnderControls(
-    fixtureName: String,
-    controlState: GoalRunnerControlState,
-    assertSnapshot: (IdeStatusResult) -> Unit,
-  ): Map<String, Any?> {
-    val fixture = gitRepoFixture(fixtureName)
-    val identity = goalRepositoryIdentity(fixture)
-    val service = service(
-      goalOnlyDatabase(),
-      manifestStore = StubGoalManifestStore(
-        goalManifestState(fixture, identity, childWorkflowId = "w-child")
-          .copy(controlState = controlState.copy(repositoryIdentity = identity)),
-      ),
-    )
+  fixtureName: String,
+  controlState: GoalRunnerControlState,
+  assertSnapshot: (IdeStatusResult) -> Unit,
+): Map<String, Any?> {
+  val fixture = gitRepoFixture(fixtureName)
+  val identity = goalRepositoryIdentity(fixture)
+  val service = service(
+    goalOnlyDatabase(),
+    manifestStore = StubGoalManifestStore(
+      goalManifestState(fixture, identity, childWorkflowId = "w-child")
+        .copy(controlState = controlState.copy(repositoryIdentity = identity)),
+    ),
+  )
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
+  val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
 
-    assertSnapshot(result)
-    return result.snapshot.toStatusWireMap()
-  }
+  assertSnapshot(result)
+  return result.snapshot.toStatusWireMap()
+}
 
 internal fun nestedWireMap(wire: Map<String, Any?>, key: String): Map<String, Any?> {
-    val value = wire[key]
-    require(value is Map<*, *>) { "expected nested map at '$key'" }
-    return buildMap {
-      for ((nestedKey, nestedValue) in value) {
-        if (nestedKey is String) put(nestedKey, nestedValue)
-      }
+  val value = wire[key]
+  require(value is Map<*, *>) { "expected nested map at '$key'" }
+  return buildMap {
+    for ((nestedKey, nestedValue) in value) {
+      if (nestedKey is String) put(nestedKey, nestedValue)
     }
   }
+}
 
 internal fun goalOnlyDatabase(goalState: String = "running"): TrackingDatabase = TrackingDatabase(
-    work = listOf(workItem("goal-1", WorkItemKind.FEATURE_GOAL, goalState, "2026-08-06T10:00:00Z")),
-    workflows = IdeStatusWorkflowStates(),
+  work = listOf(workItem("goal-1", WorkItemKind.FEATURE_GOAL, goalState, "2026-08-06T10:00:00Z")),
+  workflows = IdeStatusWorkflowStates(),
+)
+
+internal fun goalWithLaunchedChildDatabase(
+  identity: String,
+  childStarted: Instant,
+  childArtifactsJson: String = "{}",
+  childCurrentStep: String = "implement",
+): TrackingDatabase {
+  val workflows = IdeStatusWorkflowStates()
+  workflows.saveFeatureImplementWorkflow(
+    runtimeRecord("w-child", "2026-08-06T11:00:00Z", currentStep = childCurrentStep)
+      .copy(startedAt = childStarted.toString(), artifactsJson = childArtifactsJson),
   )
+  workflows.saveFeatureTaskExecutionIdentity(
+    identityFor("w-child", identity).copy(routeScope = FeatureTaskRouteScope.GOAL_CHILD),
+  )
+  val controls = object : GoalRunnerControlRepository by EmptyGoalRunnerControlRepository {
+    override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
+      GoalRunnerControlState(repositoryIdentity = identity)
+  }
+  return TrackingDatabase(
+    work = listOf(
+      workItem("goal-1", WorkItemKind.FEATURE_GOAL, "running", "2026-08-06T10:00:00Z"),
+      workItem("w-child", WorkItemKind.FEATURE_TASK_RUNTIME, "running", "2026-08-06T11:00:00Z")
+        .copy(startedAt = childStarted),
+    ),
+    workflows = workflows,
+    controls = controls,
+  )
+}
 
 internal fun planningSnapshot(state: GoalPlanningStatusState): GoalPlanningStatusSnapshot = GoalPlanningStatusSnapshot(
-    state = state,
-    sharedPreplanPrepared = true,
-    plannedSubtaskCount = 1,
-    totalSubtaskCount = 2,
-    currentPlanningSubtaskId = 2,
-    reason = null,
-  )
+  state = state,
+  sharedPreplanPrepared = true,
+  plannedSubtaskCount = 1,
+  totalSubtaskCount = 2,
+  currentPlanningSubtaskId = 2,
+  reason = null,
+)
 
 internal fun goalManifestState(fixture: Path, identity: String, childWorkflowId: String): GoalRunnerManifestState =
-    GoalRunnerManifestState(
-      parentWorkflowId = "goal-1",
-      dbPath = "/fake/ide-status.db",
-      manifest = DecompositionManifest(
-        issueKey = "SKILL-148",
-        featureName = "ide-status",
-        parentSpecPath = ".feature-specs/SKILL-148/spec.md",
-        baseBranch = "main",
-        featureBranch = "feat/SKILL-148",
-        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "start"),
-        subtasks = listOf(
-          DecompositionSubtask(
-            id = 1,
-            name = "One",
-            specPath = "spec_1.md",
-            status = "complete",
-            workflowId = "w-done",
-          ),
-          DecompositionSubtask(
-            id = 2,
-            name = "Two",
-            specPath = "spec_2.md",
-            status = "in_progress",
-            workflowId = childWorkflowId,
-            lastResumableStep = "implement",
-          ),
+  GoalRunnerManifestState(
+    parentWorkflowId = "goal-1",
+    dbPath = "/fake/ide-status.db",
+    manifest = DecompositionManifest(
+      issueKey = "SKILL-148",
+      featureName = "ide-status",
+      parentSpecPath = ".feature-specs/SKILL-148/spec.md",
+      baseBranch = "main",
+      featureBranch = "feat/SKILL-148",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "start"),
+      subtasks = listOf(
+        DecompositionSubtask(
+          id = 1,
+          name = "One",
+          specPath = "spec_1.md",
+          status = "complete",
+          workflowId = "w-done",
+        ),
+        DecompositionSubtask(
+          id = 2,
+          name = "Two",
+          specPath = "spec_2.md",
+          status = "in_progress",
+          workflowId = childWorkflowId,
+          lastResumableStep = "implement",
         ),
       ),
-      controlState = GoalRunnerControlState(repositoryIdentity = identity),
-      repoRoot = fixture,
-    )
+    ),
+    controlState = GoalRunnerControlState(repositoryIdentity = identity),
+    repoRoot = fixture,
+  )
 
 internal fun service(
-    database: TrackingDatabase,
-    manifestStore: GoalRunnerManifestStore = EmptyManifestStore,
-    outcomeStore: GoalRunnerWorkflowOutcomeStore = EmptyOutcomeStore,
-  ): IdeStatusService {
-    val snapshotValidator = object : WorkflowSnapshotValidator {
-      override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
-    }
-    val phaseRecorder = featureTaskRuntimePhaseRecorder(
-      database,
-      snapshotValidator,
-      AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
-      AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
-    )
-    val runtimeStatusService = FeatureTaskRuntimeStatusService(
-      recorder = phaseRecorder,
-      runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, snapshotValidator),
-      decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, snapshotValidator),
-    )
-    val projector = IdeStatusProjector(
-      workflowSnapshotValidator = snapshotValidator,
-      goalRunnerStatusService = testGoalRunnerStatusService(
-        goalRunnerStatusServiceDeps(
-          manifestStore = manifestStore,
-          outcomeStore = outcomeStore,
-          phaseRecorder = phaseRecorder,
-        ).copy(
-          clock = ideStatusClock,
-          runtimeStatusService = runtimeStatusService,
-        ),
-      ),
-      featureTaskRuntimeStatusService = runtimeStatusService,
-    )
-    return IdeStatusService(
-      database = database,
-      projector = projector,
-      ideStatusValidator = EmitShapeValidator,
-      branchSource = CheckedOutBranchSource(::fixtureCheckedOutBranch),
-      clock = ideStatusClock,
-    )
+  database: TrackingDatabase,
+  manifestStore: GoalRunnerManifestStore = EmptyManifestStore,
+  outcomeStore: GoalRunnerWorkflowOutcomeStore = EmptyOutcomeStore,
+): IdeStatusService {
+  val snapshotValidator = object : WorkflowSnapshotValidator {
+    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
   }
+  val phaseRecorder = featureTaskRuntimePhaseRecorder(
+    database,
+    snapshotValidator,
+    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+  )
+  val runtimeStatusService = FeatureTaskRuntimeStatusService(
+    recorder = phaseRecorder,
+    runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, snapshotValidator),
+    decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, snapshotValidator),
+  )
+  val projector = IdeStatusProjector(
+    workflowSnapshotValidator = snapshotValidator,
+    goalRunnerStatusService = testGoalRunnerStatusService(
+      goalRunnerStatusServiceDeps(
+        manifestStore = manifestStore,
+        outcomeStore = outcomeStore,
+        phaseRecorder = phaseRecorder,
+      ).copy(
+        clock = ideStatusClock,
+        runtimeStatusService = runtimeStatusService,
+      ),
+    ),
+    featureTaskRuntimeStatusService = runtimeStatusService,
+  )
+  return IdeStatusService(
+    database = database,
+    projector = projector,
+    ideStatusValidator = EmitShapeValidator,
+    branchSource = CheckedOutBranchSource(::fixtureCheckedOutBranch),
+    clock = ideStatusClock,
+  )
 }
 
 internal fun fixtureCheckedOutBranch(repoRoot: Path): String? =

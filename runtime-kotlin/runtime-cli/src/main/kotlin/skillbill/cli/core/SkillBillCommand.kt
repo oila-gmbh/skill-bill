@@ -1,5 +1,3 @@
-@file:Suppress("SpreadOperator")
-
 package skillbill.cli.core
 
 import com.github.ajalt.clikt.completion.completionOption
@@ -28,7 +26,7 @@ class SkillBillCommand(
 
   init {
     completionOption()
-    subcommands(*commands.rootCommands.toTypedArray())
+    subcommands(commands.rootCommands)
   }
 
   override fun aliases(): Map<String, List<String>> = mapOf(

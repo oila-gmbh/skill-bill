@@ -42,7 +42,8 @@ internal object NativeAgentLinkInventorySupport {
       children.filter { child ->
         Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS) &&
           child.fileName.toString().removePrefix(prefix).let { leaf ->
-            child.fileName.toString().startsWith(prefix) && NativeAgentLinkInventoryLimits.CACHE_GENERATION.matches(leaf)
+            child.fileName.toString().startsWith(prefix) &&
+              NativeAgentLinkInventoryLimits.CACHE_GENERATION.matches(leaf)
           }
       }.map { it.toAbsolutePath().normalize() }.toList()
     }

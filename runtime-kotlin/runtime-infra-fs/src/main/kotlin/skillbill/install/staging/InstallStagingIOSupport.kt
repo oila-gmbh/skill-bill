@@ -1,5 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.install.staging
 
 import java.io.IOException
@@ -31,9 +29,6 @@ internal fun promoteByBackupAndMove(tempDir: Path, finalStagingDir: Path) {
   } catch (error: IOException) {
     restoreInstallStagingBackup(backup, finalStagingDir, error)
     throw error
-  } catch (error: RuntimeException) {
-    restoreInstallStagingBackup(backup, finalStagingDir, error)
-    throw error
   }
   suppressedDelete(backup)
 }
@@ -50,7 +45,10 @@ internal fun restoreInstallStagingBackup(backup: Path, finalStagingDir: Path, pr
   suppressedDelete(finalStagingDir)
   try {
     moveWithAtomicFallback(backup, finalStagingDir)
-  } catch (restoreError: Exception) {
+  } catch (restoreError: IOException) {
+    primaryError.addSuppressed(restoreError)
+    stagingSupportLog.log(Level.SEVERE, "Failed to restore install staging backup '$backup'.", restoreError)
+  } catch (restoreError: IllegalStateException) {
     primaryError.addSuppressed(restoreError)
     stagingSupportLog.log(Level.SEVERE, "Failed to restore install staging backup '$backup'.", restoreError)
   }
@@ -64,7 +62,7 @@ internal fun suppressedDelete(path: Path) {
     deleteInstallStagingDirectory(path)
   } catch (error: IOException) {
     stagingSupportLog.log(Level.WARNING, "suppressedDelete failed path=$path (cleanup error suppressed)", error)
-  } catch (error: RuntimeException) {
+  } catch (error: IllegalStateException) {
     stagingSupportLog.log(Level.WARNING, "suppressedDelete failed path=$path (cleanup error suppressed)", error)
   }
 }

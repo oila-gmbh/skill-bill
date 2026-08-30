@@ -151,7 +151,7 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
 
   private fun readValidationGuidance(repoRoot: Path): String {
     val canonical = GoalPlanningRepositoryScope.includedRegularFile(repoRoot, "AGENTS.md") ?: return ""
-    val read = GoalPlanningRepositoryScope.readFileOrNull(
+    val read = goalPlanningReadFileOrNull(
       canonical,
       GoalPlanningContext.MAX_VALIDATION_GUIDANCE_BYTES.toLong(),
     ) ?: return ""

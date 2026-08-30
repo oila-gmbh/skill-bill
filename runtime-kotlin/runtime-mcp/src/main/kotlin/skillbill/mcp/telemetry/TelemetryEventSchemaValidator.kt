@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.mcp.telemetry
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
@@ -11,7 +10,9 @@ import com.networknt.schema.PathType
 import com.networknt.schema.SchemaValidatorsConfig
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.logSchemaLoadFailure
 import skillbill.error.InvalidTelemetryEventSchemaError
+import java.io.IOException
 import java.util.Locale
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -206,6 +207,7 @@ internal const val TELEMETRY_EVENT_SCHEMA_REPO_RELATIVE_PATH: String =
  * is authored.
  */
 private fun loadSchema(): JsonSchema {
+  var failure: Throwable? = null
   try {
     val yamlText = readSchemaText()
     val yamlNode = YAMLMapper().readTree(yamlText)
@@ -214,45 +216,46 @@ private fun loadSchema(): JsonSchema {
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
   } catch (typed: InvalidTelemetryEventSchemaError) {
-    // F-403 (carried over from 2a/2b): a misbuilt deploy artifact
-    // (missing classpath resource, corrupt YAML, or a shadowed copy)
-    // would otherwise silently disable every telemetry parse seam —
-    // the validator throws on first use but there is no boot-time
-    // signal. The typed canonical error is already in the right shape;
-    // log it and rethrow without re-wrapping so callers see one stable
-    // error class at every telemetry parse seam.
-    log.log(
-      Level.SEVERE,
-      "Failed to load canonical telemetry-event schema: classpath='$TELEMETRY_EVENT_SCHEMA_CLASSPATH_RESOURCE' " +
-        "repoRelativePath='$TELEMETRY_EVENT_SCHEMA_REPO_RELATIVE_PATH' " +
-        "errorType='${typed::class.qualifiedName}' message='${typed.message.orEmpty()}'",
+    logSchemaLoadFailure(
+      log,
+      "telemetry-event",
+      TELEMETRY_EVENT_SCHEMA_CLASSPATH_RESOURCE,
+      TELEMETRY_EVENT_SCHEMA_REPO_RELATIVE_PATH,
       typed,
     )
-    throw typed
-  } catch (error: Throwable) {
-    // F-004 (review-run rvw-20260519-162500-a2d4): wrap any non-typed
-    // failure (`JsonParseException`, `IOException`, networknt compile
-    // errors, etc.) as the canonical `InvalidTelemetryEventSchemaError`
-    // so the lazy schema-load path surfaces a single, greppable error
-    // class at every telemetry parse seam. Without this, a corrupted /
-    // tampered classpath YAML escaped as a raw Jackson/IO exception
-    // and bypassed the typed-error catch arms in `McpStdioServer`,
-    // killing the stdio loop on the first `tools/call` (root cause of
-    // F-001).
-    log.log(
-      Level.SEVERE,
-      "Failed to load canonical telemetry-event schema: classpath='$TELEMETRY_EVENT_SCHEMA_CLASSPATH_RESOURCE' " +
-        "repoRelativePath='$TELEMETRY_EVENT_SCHEMA_REPO_RELATIVE_PATH' " +
-        "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
+    failure = typed
+  } catch (error: IOException) {
+    logSchemaLoadFailure(
+      log,
+      "telemetry-event",
+      TELEMETRY_EVENT_SCHEMA_CLASSPATH_RESOURCE,
+      TELEMETRY_EVENT_SCHEMA_REPO_RELATIVE_PATH,
       error,
     )
-    throw InvalidTelemetryEventSchemaError(
+    failure = InvalidTelemetryEventSchemaError(
       fieldPath = "",
       eventName = null,
       reason = "Canonical telemetry-event schema document failed to load: ${error.message.orEmpty()}",
       cause = error,
     )
+  } catch (error: JsonProcessingException) {
+    logSchemaLoadFailure(
+      log,
+      "telemetry-event",
+      TELEMETRY_EVENT_SCHEMA_CLASSPATH_RESOURCE,
+      TELEMETRY_EVENT_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error.let {
+      InvalidTelemetryEventSchemaError(
+        fieldPath = "",
+        eventName = null,
+        reason = "Canonical telemetry-event schema document failed to load: ${error.message.orEmpty()}",
+        cause = error,
+      )
+    }
   }
+  throw failure
 }
 
 private fun readSchemaText(): String {

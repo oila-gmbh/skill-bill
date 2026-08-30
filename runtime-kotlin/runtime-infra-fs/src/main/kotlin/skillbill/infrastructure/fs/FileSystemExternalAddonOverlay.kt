@@ -8,7 +8,6 @@ import skillbill.ports.install.addon.model.ExternalAddonOverlayResult
 import skillbill.ports.install.addon.model.SkippedExternalAddonSource
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
-import java.nio.file.Path
 
 internal const val ADDONS_DIR = "addons"
 internal const val MANIFEST_FILE = "platform.yaml"

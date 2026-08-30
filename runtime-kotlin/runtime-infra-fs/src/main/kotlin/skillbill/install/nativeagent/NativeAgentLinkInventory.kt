@@ -1,4 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught")
 package skillbill.install.nativeagent
 
 import com.fasterxml.jackson.core.JsonParser

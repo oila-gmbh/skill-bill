@@ -1,8 +1,6 @@
 package skillbill.ports.review.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.review.context.model.ForbiddenReviewOperation
-import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
 
 object GovernedReviewEvidenceCodec {
@@ -49,5 +47,6 @@ object GovernedReviewEvidenceCodec {
   )
 
   @OpenBoundaryMap("JSON-RPC wire maps at the governed review evidence MCP seam")
-  fun payload(record: ReviewExpansionRecord): Map<String, Any?> = GovernedReviewEvidenceCodecWire.expansionPayload(record)
+  fun payload(record: ReviewExpansionRecord): Map<String, Any?> =
+    GovernedReviewEvidenceCodecWire.expansionPayload(record)
 }

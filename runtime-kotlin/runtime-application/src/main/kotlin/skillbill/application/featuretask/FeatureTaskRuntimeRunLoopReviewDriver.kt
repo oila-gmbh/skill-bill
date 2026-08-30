@@ -19,6 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import kotlin.coroutines.cancellation.CancellationException
 
 internal fun FeatureTaskRuntimeRunLoop.prepareRuntimeOwnedReview(
   run: PhaseRun,
@@ -158,46 +159,46 @@ internal fun FeatureTaskRuntimeRunLoop.executePreparedReviewDriver(
   }
 }
 
-internal fun FeatureTaskRuntimeRunLoop.invokeReviewDriver(request: ParallelCodeReviewRequest): ReviewDriverAttempt =
-  try {
-    ReviewDriverReady(phaseGates.reviewDriver.run(request))
-  } catch (error: DiffResolutionException) {
-    ReviewDriverFailed(
+internal fun FeatureTaskRuntimeRunLoop.invokeReviewDriver(request: ParallelCodeReviewRequest): ReviewDriverAttempt {
+  val outcome = runCatching { phaseGates.reviewDriver.run(request) }
+  val error = outcome.exceptionOrNull()
+  if (error == null) {
+    return ReviewDriverReady(outcome.getOrThrow())
+  }
+  val mapped: ReviewDriverAttempt? = when (error) {
+    is CancellationException -> null
+    is DiffResolutionException -> ReviewDriverFailed(
       "Runtime-owned review could not resolve the child-owned diff: ${error.message.orEmpty()}",
     )
-  } catch (error: UsageValidationException) {
-    ReviewDriverFailed(
+    is UsageValidationException -> ReviewDriverFailed(
       "Runtime-owned review failed: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
     )
-  } catch (error: StackDetectionException) {
-    ReviewDriverFailed(
+    is StackDetectionException -> ReviewDriverFailed(
       "Runtime-owned review failed: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
     )
-  } catch (error: ReviewContextBudgetExceededException) {
-    ReviewDriverFailed(
+    is ReviewContextBudgetExceededException -> ReviewDriverFailed(
       "Runtime-owned review exceeded a review-context budget: ${error.message.orEmpty()}",
     )
-  } catch (error: UnreadableSpecIntentProjectionError) {
-    ReviewDriverFailed(
+    is UnreadableSpecIntentProjectionError -> ReviewDriverFailed(
       "Runtime-owned review could not read the spec intent projection: ${error.message.orEmpty()}",
     )
-  } catch (error: InvalidReviewContextSchemaError) {
-    ReviewDriverFailed(
+    is InvalidReviewContextSchemaError -> ReviewDriverFailed(
       "Runtime-owned review produced an invalid review-context envelope: ${error.message.orEmpty()}",
     )
-  } catch (error: RuntimeOwnedFactUnavailable) {
-    ReviewDriverFailed(
+    is RuntimeOwnedFactUnavailable -> ReviewDriverFailed(
       "Runtime-owned review could not establish a required persistence fact: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
     )
-  } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
-    ReviewDriverFailed(
+    is Exception -> ReviewDriverFailed(
       "Runtime-owned review failed: ${error::class.simpleName}: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
     )
+    else -> null
   }
+  return mapped ?: throw error
+}
 
 internal fun FeatureTaskRuntimeRunLoop.settleReviewDriverResult(
   prepared: RuntimeOwnedReviewReady,

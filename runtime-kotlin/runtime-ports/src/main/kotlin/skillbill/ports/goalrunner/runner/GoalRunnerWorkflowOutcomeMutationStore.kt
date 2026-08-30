@@ -1,8 +1,8 @@
 package skillbill.ports.goalrunner.runner
 
+import skillbill.goalrunner.model.GoalRunnerStoredOutcome
+import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
-import skillbill.ports.goalrunner.runner.model.GoalRunnerStoredOutcome
-import skillbill.ports.goalrunner.runner.model.GoalRunnerSupervisionEvent
 import java.nio.file.Path
 
 interface GoalRunnerWorkflowOutcomeMutationStore {

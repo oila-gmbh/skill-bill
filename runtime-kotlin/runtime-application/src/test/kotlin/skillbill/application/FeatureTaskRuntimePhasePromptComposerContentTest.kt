@@ -1,32 +1,8 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
-import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
-import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
-import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.featuretask.phaseDeclaration
-import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
-import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
-import skillbill.workflow.goal.model.ValidationDepth
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
-import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairBudget
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
@@ -37,12 +13,12 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `each phase carries its own task directive`() {
-    val preplanPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("preplan"))
-    val planPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("plan"))
-    val implementPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("implement"))
-    val historyPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("write_history"))
-    val commitPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("commit_push"))
-    val prPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("pr"))
+    val preplanPrompt = composePromptForPhase("preplan")
+    val planPrompt = composePromptForPhase("plan")
+    val implementPrompt = composePromptForPhase("implement")
+    val historyPrompt = composePromptForPhase("write_history")
+    val commitPrompt = composePromptForPhase("commit_push")
+    val prPrompt = composePromptForPhase("pr")
 
     assertContains(preplanPrompt, "scaled pre-planning digest")
     assertContains(preplanPrompt, "full preplan covering boundaries")
@@ -87,7 +63,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
     )
     presentPhases.forEach { phaseId ->
-      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor(phaseId))
+      val prompt = composePromptForPhase(phaseId)
       assertContains(prompt, TEST_VALUE_DISCIPLINE_TITLE, false, "title for $phaseId")
       assertContains(prompt, "name the realistic bug", false, "nameable-bug element for $phaseId")
       assertContains(prompt, "critical paths", false, "critical-path element for $phaseId")
@@ -123,7 +99,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
     )
     absentPhases.forEach { phaseId ->
-      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor(phaseId))
+      val prompt = composePromptForPhase(phaseId)
       assertFalse(
         prompt.contains(TEST_VALUE_DISCIPLINE_TITLE),
         "phase $phaseId must not carry the test-value discipline section",
@@ -137,7 +113,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
     ).forEach { phaseId ->
-      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor(phaseId))
+      val prompt = composePromptForPhase(phaseId)
       val minimalismIdx = prompt.indexOf("## Minimalism discipline")
       val testValueIdx = prompt.indexOf(TEST_VALUE_DISCIPLINE_TITLE)
       assertTrue(minimalismIdx >= 0, "minimalism present for $phaseId")
@@ -149,7 +125,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
       )
     }
 
-    val planPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val planPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN),
     )
@@ -159,7 +135,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
       "plan must not render minimalism; test-value uses its own phase predicate",
     )
 
-        val preplanPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val preplanPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN),
     )
@@ -171,15 +147,15 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `small prompts encode lighter ceremony and current unit review scope without skipping gates`() {
-    val preplanPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val preplanPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("preplan", FeatureTaskRuntimeFeatureSize.SMALL),
     )
-    val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val reviewPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("review", FeatureTaskRuntimeFeatureSize.SMALL),
     )
-    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val auditPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit", FeatureTaskRuntimeFeatureSize.SMALL),
     )
@@ -194,16 +170,16 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `upstream outputs flow into the prompt through the briefing text`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("implement"))
+    val prompt = composePromptForPhase("implement")
 
     assertContains(prompt, "### from: plan")
-        assertContains(prompt, "Fixture plan prose for downstream implement and audit.")
+    assertContains(prompt, "Fixture plan prose for downstream implement and audit.")
     assertTrue(!prompt.contains("Phase produced a validated output."))
   }
 
   @Test
   fun `does not instruct the goal-continuation activation flow`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("plan"))
+    val prompt = composePromptForPhase("plan")
 
     assertTrue(!prompt.contains("goal-continuation mode"))
     assertTrue(!prompt.contains("First execute this exact command"))
@@ -212,7 +188,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `goal-continuation plan does not treat future acceptance work as a prerequisite`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("plan"),
       suppressDecomposition = true,
@@ -230,7 +206,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `commit_push prompt carries the feature-spec exclusion directive`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("commit_push"))
+    val prompt = composePromptForPhase("commit_push")
 
     assertContains(prompt, "Feature-spec commit exclusion")
     assertContains(prompt, ".feature-specs/$PROMPT_COMPOSER_ISSUE_KEY-")
@@ -246,7 +222,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `feature-spec exclusion directive is absent on non-commit phases`() {
-    val implementPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val implementPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
     )
@@ -257,14 +233,14 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
   @Test
   fun `a blank issue key loud-fails`() {
     assertFailsWith<IllegalArgumentException> {
-      FeatureTaskRuntimePhasePromptComposer.compose(" ", promptComposerBriefingFor("plan"))
+      composePhasePrompt(" ", promptComposerBriefingFor("plan"))
     }
   }
 
   @Test
   fun `verifying phases name the structured signal the schema gate keys on`() {
-    val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("review"))
-    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("audit"))
+    val reviewPrompt = composePromptForPhase("review")
+    val auditPrompt = composePromptForPhase("audit")
 
     assertContains(reviewPrompt, "VERIFYING phase", false, "review names itself a verifying phase")
     assertContains(reviewPrompt, "\"findings\" array", false, "review names the findings signal")
@@ -282,7 +258,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `audit prompt scopes gaps to production and routes tests to validation`() {
-    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("audit"))
+    val auditPrompt = composePromptForPhase("audit")
 
     assertContains(auditPrompt, "TEST EXCLUSION", false, "audit makes the test-only exclusion explicit")
     assertContains(auditPrompt, "NEVER unmet criteria", false, "audit rejects test-only findings")
@@ -296,14 +272,14 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `audit prompt requires a complete blast-radius-aware fix plan in each gap note`() {
-    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("audit"))
+    val auditPrompt = composePromptForPhase("audit")
 
     assertContains(auditPrompt, "fix plan", false, "each gap note should guide the repair")
     assertContains(auditPrompt, "blast radius", false, "audit should consider blast radius before naming a gap")
     assertContains(auditPrompt, "free-form note prose", false, "plan quality is guidance, not a wire template")
     assertContains(auditPrompt, "does not block on note length", false, "audit schema is recommendation only")
     assertContains(
-      FeatureTaskRuntimePhasePromptComposer.compose(
+      composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("implement", auditGapReentry = true),
       ),
@@ -313,10 +289,9 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
     )
   }
 
-
   @Test
   fun `review prompt is the producer seam for commit-focused accounting`() {
-    val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("review"))
+    val reviewPrompt = composePromptForPhase("review")
 
     assertContains(reviewPrompt, "\"commit_focused_accounting\"", false, "review names the accounting key")
     assertContains(reviewPrompt, "commit_sequence_digest", false, "the sequence identity is required")
@@ -325,7 +300,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
     assertContains(reviewPrompt, "incomplete_lanes", false, "incomplete lanes are reported as non-clean coverage")
     assertContains(reviewPrompt, "OMITS the key entirely", false, "an inline pass omits rather than fabricates")
     assertFalse(
-      FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("audit"))
+      composePromptForPhase("audit")
         .contains("commit_focused_accounting"),
       "only the review phase produces the accounting record",
     )
@@ -333,7 +308,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `carried disposition observation enumeration failure names the closed token set`() {
-    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure =
@@ -347,7 +322,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `audit prompt separates blocking gaps from non blocking findings`() {
-    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("audit"))
+    val auditPrompt = composePromptForPhase("audit")
 
     assertContains(auditPrompt, "non_blocking_findings", false, "minor and nit findings have their own sink")
     assertContains(auditPrompt, "non_blocking_findings", false, "audit preserves minor and nit findings")
@@ -363,18 +338,18 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
   @Test
   fun `non-verifying phases carry no verifying-signal addendum`() {
     listOf("preplan", "plan", "implement", "validate", "write_history", "commit_push", "pr").forEach { phaseId ->
-      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor(phaseId))
+      val prompt = composePromptForPhase(phaseId)
       assertTrue(!prompt.contains("VERIFYING phase"), "$phaseId must not carry the verifying-signal addendum")
     }
   }
 
   @Test
   fun `a prior schema-gate failure is surfaced as a corrective directive on retry`() {
-            val reason = "Audit phase reported 'completed' without a verification signal"
+    val reason = "Audit phase reported 'completed' without a verification signal"
 
     listOf("review", "audit").forEach { phaseId ->
-      val firstAttempt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor(phaseId))
-      val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      val firstAttempt = composePromptForPhase(phaseId)
+      val retry = composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor(phaseId),
         priorSchemaFailure = reason,
@@ -388,9 +363,9 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
 
   @Test
   fun `a retryable terminal envelope is prompted to retry, not told it was rejected`() {
-            val reason = "Implement phase reported blocked: the target module does not compile on this branch."
+    val reason = "Implement phase reported blocked: the target module does not compile on this branch."
 
-    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+    val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       priorTerminalFailure = reason,

@@ -1,82 +1,27 @@
 package skillbill.application.work
 
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.goalRepositoryIdentity
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
-import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
 import skillbill.application.idestatus.model.IdeStatusProblemCode
 import skillbill.application.idestatus.model.IdeStatusRequest
-import skillbill.application.idestatus.model.IdeStatusResult
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
-import skillbill.contracts.JsonSupport
-import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerControlState
-import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.goalrunner.model.GoalRunnerStoredOutcome
-import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
-import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import skillbill.ports.learning.LearningRepository
-import skillbill.ports.review.ReviewRepository
-import skillbill.ports.system.CheckedOutBranchSource
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
-import skillbill.ports.telemetry.TelemetryOutboxRepository
-import skillbill.ports.telemetry.TelemetryReconciliationRepository
-import skillbill.ports.work.WorkListRepository
-import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
-import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.model.FeatureImplementSessionSummary
-import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.model.FeatureVerifySessionSummary
-import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
-import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.idestatus.IdeStatusValidator
-import skillbill.workflow.idestatus.NoopIdeStatusValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
-import java.nio.file.Files
 import java.nio.file.Path
-import java.time.Clock
 import java.time.Instant
-import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class IdeStatusServiceBranchScopingTest {
@@ -91,7 +36,7 @@ class IdeStatusServiceBranchScopingTest {
         goalManifestState(fixture, identity, childWorkflowId = "w-child"),
         planning = planningSnapshot(GoalPlanningStatusState.PARTIALLY_PLANNED),
       ),
-    ).status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
 
     assertEquals("planning", result.snapshot.currentStep.id)
     assertEquals(GoalPlanningStatusState.PARTIALLY_PLANNED, result.snapshot.planning?.state)
@@ -122,7 +67,7 @@ class IdeStatusServiceBranchScopingTest {
     val result = service(
       database,
       manifestStore = StubGoalManifestStore(goalManifestState(fixture, identity, childWorkflowId = "w-child")),
-    ).status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
 
     val execution = requireNotNull(result.snapshot.currentPhaseExecution)
     assertEquals("review", result.snapshot.currentStep.id)
@@ -172,7 +117,7 @@ class IdeStatusServiceBranchScopingTest {
         override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? =
           staleProgress.takeIf { workflowId == "w-child" }
       },
-    ).status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
 
     assertEquals("validate", result.snapshot.currentStep.id)
   }
@@ -190,9 +135,13 @@ class IdeStatusServiceBranchScopingTest {
     )
     val service = service(database)
 
-    val first = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val first = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
     val second = service.status(
-      IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt.plusSeconds(60)),
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt.plusSeconds(60)),
     )
 
     assertEquals(first.snapshot.startedAt, second.snapshot.startedAt)
@@ -210,7 +159,11 @@ class IdeStatusServiceBranchScopingTest {
     )
     val service = service(database)
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
     assertNull(result.snapshot.workflowId)
@@ -234,7 +187,11 @@ class IdeStatusServiceBranchScopingTest {
     )
     val service = service(database)
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
     assertNull(result.snapshot.workflowId)
@@ -257,7 +214,11 @@ class IdeStatusServiceBranchScopingTest {
     )
     val service = service(database)
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(0, result.exitCode)
     assertNull(result.snapshot.problem)
@@ -277,7 +238,11 @@ class IdeStatusServiceBranchScopingTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service(database).status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
     assertEquals("No recent Skill Bill work for branch 'feat/OTHER-9-unrelated'.", result.snapshot.summary)
@@ -285,7 +250,7 @@ class IdeStatusServiceBranchScopingTest {
 
   @Test
   fun `branch scoping requires a whole issue-key token, not a prefix hit`() {
-        val fixture = gitRepoFixture("ide-status-branch-token", branch = "feat/SKILL-14-prefix")
+    val fixture = gitRepoFixture("ide-status-branch-token", branch = "feat/SKILL-14-prefix")
     val identity = goalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-active", "2026-08-06T10:00:00Z"))
@@ -295,7 +260,11 @@ class IdeStatusServiceBranchScopingTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service(database).status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
   }
@@ -312,7 +281,11 @@ class IdeStatusServiceBranchScopingTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service(database).status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME, result.snapshot.workflowFamily)
     assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
@@ -320,7 +293,7 @@ class IdeStatusServiceBranchScopingTest {
 
   @Test
   fun `protected base branch disables scoping so pre-branch work stays visible`() {
-                val fixture = gitRepoFixture("ide-status-branch-protected", branch = "main")
+    val fixture = gitRepoFixture("ide-status-branch-protected", branch = "main")
     val identity = goalRepositoryIdentity(fixture)
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(runtimeRecord("w-active", "2026-08-06T10:00:00Z"))
@@ -330,7 +303,11 @@ class IdeStatusServiceBranchScopingTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service(database).status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME, result.snapshot.workflowFamily)
     assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
@@ -347,7 +324,11 @@ class IdeStatusServiceBranchScopingTest {
       ),
     )
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusLifecycleState.TERMINAL, result.snapshot.lifecycleState)
     assertEquals("done", result.snapshot.currentStep.id)
@@ -357,7 +338,7 @@ class IdeStatusServiceBranchScopingTest {
 
   @Test
   fun `blocked or failed goal row with every subtask settled projects terminal complete`() {
-                listOf("blocked", "failed").forEach { stuckState ->
+    listOf("blocked", "failed").forEach { stuckState ->
       val fixture = gitRepoFixture("ide-status-goal-settled-$stuckState")
       val identity = goalRepositoryIdentity(fixture)
       val service = service(
@@ -367,7 +348,11 @@ class IdeStatusServiceBranchScopingTest {
         ),
       )
 
-      val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+      val result = service.status(
+
+        IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+      )
 
       assertEquals(IdeStatusLifecycleState.TERMINAL, result.snapshot.lifecycleState, stuckState)
       assertEquals("Goal SKILL-148 is complete.", result.snapshot.summary, stuckState)
@@ -397,7 +382,11 @@ class IdeStatusServiceBranchScopingTest {
       ),
     )
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals("goal-1", result.snapshot.workflowId)
     assertEquals(IdeStatusWorkflowFamily.FEATURE_GOAL, result.snapshot.workflowFamily)
@@ -410,10 +399,14 @@ class IdeStatusServiceBranchScopingTest {
   fun `feature-goal freshness follows the newest same-repo child workflow write`() {
     val fixture = gitRepoFixture("ide-status-goal-freshness")
     val identity = goalRepositoryIdentity(fixture)
-        val database = goalWithChildWrittenAt(identity, childUpdatedAt = "2026-08-06T11:45:00Z")
+    val database = goalWithChildWrittenAt(identity, childUpdatedAt = "2026-08-06T11:45:00Z")
     val service = service(database)
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusWorkflowFamily.FEATURE_GOAL, result.snapshot.workflowFamily)
     assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
@@ -428,7 +421,11 @@ class IdeStatusServiceBranchScopingTest {
     val database = goalWithChildWrittenAt(identity, childUpdatedAt = "2026-08-06 11:45:00")
     val service = service(database)
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(Instant.parse("2026-08-06T11:45:00Z"), result.snapshot.updatedAt)
     assertEquals(IdeStatusFreshness.FRESH, result.snapshot.freshness)
@@ -443,7 +440,11 @@ class IdeStatusServiceBranchScopingTest {
     )
     val service = service(database)
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(Instant.parse("2026-08-06T10:00:00Z"), result.snapshot.updatedAt)
     assertEquals(IdeStatusFreshness.STALE, result.snapshot.freshness)
@@ -510,9 +511,13 @@ class IdeStatusServiceBranchScopingTest {
       ),
     )
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
 
-            assertEquals("planning", result.snapshot.currentStep.id)
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
+
+    assertEquals("planning", result.snapshot.currentStep.id)
     assertEquals("Planning", result.snapshot.currentStep.label)
     assertEquals("Goal SKILL-148 is planning subtasks (1/2 planned).", result.snapshot.summary)
     assertEquals(GoalPlanningStatusState.PARTIALLY_PLANNED, result.snapshot.planning?.state)

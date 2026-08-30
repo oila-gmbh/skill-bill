@@ -85,7 +85,7 @@ internal fun FeatureTaskRuntimeRunLoop.writingPhaseIntroducedPaths(worktreeDelta
   // A writing phase owns both what it created and what it left dirty when it finished. A path that
   // only appears later, while a reader phase is running, was written by somebody else and stays out.
   val introduced = writingRecords.flatMap { it.fileManifestIntroduced + it.fileManifestAfter }.distinct()
-  return FeatureTaskRuntimeCheckpointScope.phaseWrittenPaths(worktreeDelta, introduced)
+  return phaseWrittenPaths(worktreeDelta, introduced)
 }
 
 /**
@@ -117,7 +117,7 @@ internal fun FeatureTaskRuntimeRunLoop.phaseWrittenPaths(
   val owned = persistedInventory.toSet()
   val ownedStillDirty = record.fileManifestAfter.filter { it in owned }
   val manifest = (record.fileManifestIntroduced + ownedStillDirty).distinct()
-  return FeatureTaskRuntimeCheckpointScope.phaseWrittenPaths(worktreeDelta, manifest)
+  return phaseWrittenPaths(worktreeDelta, manifest)
 }
 
 internal fun FeatureTaskRuntimeRunLoop.persistOwnedInventory(inventory: List<String>, persisted: List<String>) {

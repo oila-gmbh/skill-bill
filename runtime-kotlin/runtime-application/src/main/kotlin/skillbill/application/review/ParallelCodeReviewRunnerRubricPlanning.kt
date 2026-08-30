@@ -11,8 +11,8 @@ import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewPerAreaFallbackExclusion
 import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewLaunchLane
-import skillbill.review.plan.model.ReviewRootLanes
 import skillbill.review.plan.model.ReviewReconciledLane
+import skillbill.review.plan.model.ReviewRootLanes
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 

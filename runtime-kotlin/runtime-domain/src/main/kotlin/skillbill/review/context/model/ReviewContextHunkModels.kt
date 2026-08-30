@@ -1,5 +1,3 @@
-@file:Suppress("SpreadOperator", "MagicNumber")
-
 package skillbill.review.context.model
 
 import java.nio.charset.StandardCharsets
@@ -62,7 +60,10 @@ data class ReviewChangedHunk(
 ) {
   init {
     requireRepositoryRelativePath(path)
-    require(oldStart >= 0 && oldCount >= 0 && newStart >= 0 && newCount >= 0)
+    require(
+      oldStart >= REVIEW_MIN_HUNK_LINE && oldCount >= REVIEW_MIN_HUNK_LINE &&
+        newStart >= REVIEW_MIN_HUNK_LINE && newCount >= REVIEW_MIN_HUNK_LINE,
+    )
     require(commitScope == null || commitScope.isNotBlank()) { "Changed hunk commit scope must not be blank." }
     indexedContentDigest?.let {
       require(it.matches(SHA256_HEX)) { "Changed hunk content digest must be lowercase SHA-256." }

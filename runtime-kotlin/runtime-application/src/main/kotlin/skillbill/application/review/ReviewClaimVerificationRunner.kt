@@ -1,10 +1,10 @@
 package skillbill.application.review
 
+import skillbill.agent.model.AgentPhaseInput
+import skillbill.agent.model.AgentPhaseOutput
 import skillbill.application.review.model.ReviewClaimVerificationOutcome
 import skillbill.application.review.model.ReviewClaimVerificationRunRequest
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
-import skillbill.agent.model.AgentPhaseInput
-import skillbill.agent.model.AgentPhaseOutput
 import skillbill.contracts.JsonSupport
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -28,7 +28,7 @@ import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewStage
 import java.time.Instant
 
-class ReviewClaimVerificationRunner(
+internal class ReviewClaimVerificationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
 ) {

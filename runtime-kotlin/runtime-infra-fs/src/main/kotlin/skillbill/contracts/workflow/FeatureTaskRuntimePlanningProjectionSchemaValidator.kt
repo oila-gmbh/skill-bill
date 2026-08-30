@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -12,8 +11,10 @@ import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Draft 2020-12 validator for the implementation receipt planning projection.
@@ -97,7 +98,21 @@ private fun loadPlanningProjectionsSchemaDocument(): JsonNode = try {
   yamlNode
 } catch (error: InvalidFeatureTaskRuntimePlanningProjectionSchemaError) {
   throw error
-} catch (error: Exception) {
+} catch (error: CancellationException) {
+  throw error
+} catch (error: JsonProcessingException) {
+  throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+    sourceLabel = FeatureTaskRuntimePlanningProjectionsSchemaPaths.CLASSPATH_RESOURCE,
+    reason = error.message ?: error::class.simpleName.orEmpty(),
+    cause = error,
+  )
+} catch (error: IOException) {
+  throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+    sourceLabel = FeatureTaskRuntimePlanningProjectionsSchemaPaths.CLASSPATH_RESOURCE,
+    reason = error.message ?: error::class.simpleName.orEmpty(),
+    cause = error,
+  )
+} catch (error: IllegalArgumentException) {
   throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
     sourceLabel = FeatureTaskRuntimePlanningProjectionsSchemaPaths.CLASSPATH_RESOURCE,
     reason = error.message ?: error::class.simpleName.orEmpty(),

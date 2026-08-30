@@ -1,3 +1,11 @@
+## [2026-08-30] SKILL-221 subtask 2 — Remaining detekt suppressions
+Areas: runtime-kotlin/{runtime-domain/review,runtime-infra-fs/scaffold,runtime-mcp,runtime-cli,runtime-core/di,runtime-domain/{scaffold,workflow/taskruntime}}
+- Cleared remaining non-compiler detekt/ktlint suppressions (TooGenericExceptionCaught, MagicNumber, MaxLineLength, MatchingDeclarationName, related style) by typed catches, named constants, wraps/extracts, and file/type renames; no empty or success-shaped catch left at former silence sites.
+- Pattern: map broad catch to the boundary's typed failure family (rethrow CancellationException first); resolve filename mismatch by renaming, not silencing. reusable
+- Limitation: compiler suppressions (UNCHECKED_CAST, UNUSED_*) and the architecture-test ban stay for subtask 3; no new failure hierarchies.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-30] SKILL-221 subtask 1 — Pin complexity rules and resolve suppressions
 Areas: runtime-kotlin/{config/detekt,build-logic,runtime-application,runtime-cli,runtime-core,runtime-domain,runtime-infra-fs,runtime-infra-sqlite,runtime-mcp,runtime-ports,runtime-contracts}
 - Pinned TooManyFunctions, LargeClass, LongMethod, CyclomaticComplexMethod, ComplexCondition, NestedBlockDepth, LongParameterList under `complexity:`; ReturnCount/ThrowsCount live under `style:` (detekt 1.23.8 rejects them under complexity; thresholds unchanged at max 4 / max 2).

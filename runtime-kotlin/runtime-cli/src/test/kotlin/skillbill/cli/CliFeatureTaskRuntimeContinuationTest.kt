@@ -1,54 +1,13 @@
 package skillbill.cli
 
-import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
-import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.error.InvalidAgentAddonSelectionError
-import skillbill.error.MalformedMachineConfigError
-import skillbill.install.model.InstallAgent
-import skillbill.ports.agentrun.AgentRunLauncher
-import skillbill.ports.agentrun.ExecutableLookup
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.AgentRunLaunchRequest
-import skillbill.ports.review.ReviewNativeAgentPreflightPort
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
-import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
-import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
-import skillbill.workflow.goal.model.GoalObservabilityDiffStat
-import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
-import java.nio.file.Files
-import java.nio.file.Path
 import java.sql.DriverManager
-import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.minutes
 
 class CliFeatureTaskRuntimeContinuationTest {
   @Test
@@ -148,7 +107,7 @@ class CliFeatureTaskRuntimeContinuationTest {
     assertContains(result.stdout, "status: complete")
     assertContains(result.stdout, "subtask_outcome:")
     assertEquals(
-      AGENT_LAUNCHED_PHASES.filterNot { it == "pr" },
+      goalChildLaunchedPhases(),
       launcher.phaseOrder().filterNot { it == "pr" },
     )
 
@@ -268,15 +227,14 @@ class CliFeatureTaskRuntimeContinuationTest {
     assertContains(goalRun.stdout, "resolved_branch: feat/pre-created-runtime-branch")
     assertContains(
       goalRun.stdout,
-      "completed_phases: preplan, plan, implement, audit, review, verify_findings, validate, " +
-        "write_history, commit_push",
+      "completed_phases: $GOAL_CHILD_COMPLETED_PHASES",
     )
     assertContains(goalRun.stdout, "subtask_outcome:")
     assertContains(goalRun.stdout, "  last_resumable_step: commit_push")
     assertEquals(emptyList(), goalGit.checkoutBranches, goalRun.stdout)
     assertEquals(
-      AGENT_LAUNCHED_PHASES.filterNot { it == "pr" },
-      goalLauncher.phaseOrder(),
+      goalChildLaunchedPhases(),
+      goalLauncher.phaseOrder().filterNot { it == "pr" },
       goalRun.stdout,
     )
   }
@@ -592,5 +550,4 @@ class CliFeatureTaskRuntimeContinuationTest {
     )
     assertEquals(AGENT_LAUNCHED_PHASES, launcher.phaseOrder())
   }
-}
 }

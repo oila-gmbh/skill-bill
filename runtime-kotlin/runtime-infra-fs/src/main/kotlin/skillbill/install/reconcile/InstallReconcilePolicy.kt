@@ -1,5 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught", "MagicNumber", "MaxLineLength")
-
 package skillbill.install.reconcile
 
 import skillbill.agentaddon.discoverAgentAddons
@@ -150,19 +148,23 @@ private fun classifySkill(
       localHash = localHash,
       baselineHash = baselineHash,
     )
-  localHash == upstreamHash ->
+  upstreamHash != null && localHash == upstreamHash ->
     SkillReconciliationOutcome.Unchanged(
       skillRelativePath = skillRelativePath,
       upstreamHash = upstreamHash,
       baselineHash = baselineHash,
     )
-  else ->
+  upstreamHash != null ->
     SkillReconciliationOutcome.Adopt(
       skillRelativePath = skillRelativePath,
       upstreamHash = upstreamHash,
       localHash = localHash,
       baselineHash = baselineHash,
     )
+  else -> throw ReconciliationConflictError(
+    skillRelativePath = skillRelativePath,
+    reason = "skill reconciliation reached an unreachable state.",
+  )
 }
 
 /**
@@ -213,13 +215,15 @@ private fun agentAddonEntries(roots: ReconcileSourceRoots): Map<String, Reconcil
     )
   }
 
+private const val AGENT_ADDON_HASH_FIELD_SEPARATOR: Byte = 0
+
 private fun hashAgentAddonSource(manifestPath: Path, contentPath: Path): String {
   val digest = MessageDigest.getInstance("SHA-256")
   listOf("agent-addon.yaml" to manifestPath, "content.md" to contentPath).forEach { (name, path) ->
     digest.update(name.toByteArray(Charsets.UTF_8))
-    digest.update(0)
+    digest.update(AGENT_ADDON_HASH_FIELD_SEPARATOR)
     digest.update(Files.readAllBytes(path))
-    digest.update(0)
+    digest.update(AGENT_ADDON_HASH_FIELD_SEPARATOR)
   }
   return digest.digest().take(INSTALL_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
 }

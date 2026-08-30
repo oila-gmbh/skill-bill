@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber", "MaxLineLength")
 
 package skillbill.scaffold.manifest
 
@@ -48,11 +47,14 @@ internal fun appendAreaToDeclaredFiles(text: String, area: String, relativePath:
     ?: throw InvalidScaffoldPayloadError("Manifest is missing 'declared_files.areas:' block; refusing to edit.")
   val prefix = match.groupValues[1]
   val header = match.groupValues[2]
-  val body = match.groupValues[3]
-  if (Regex("^    ${Regex.escape(area)}:\\s", RegexOption.MULTILINE).containsMatchIn(body)) {
+  val body = match.groupValues[MANIFEST_AREAS_BODY_GROUP_INDEX]
+  if (
+    Regex("^$MANIFEST_AREAS_ENTRY_INDENT${Regex.escape(area)}:\\s", RegexOption.MULTILINE)
+      .containsMatchIn(body)
+  ) {
     return text
   }
-  val insertion = "    $area: ${yamlScalar(relativePath)}\n"
+  val insertion = "$MANIFEST_AREAS_ENTRY_INDENT$area: ${yamlScalar(relativePath)}\n"
   return text.replaceRange(match.range, prefix + header + body + insertion)
 }
 

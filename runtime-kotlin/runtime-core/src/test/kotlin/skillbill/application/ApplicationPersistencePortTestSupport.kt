@@ -6,34 +6,19 @@ import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.goalrunner.toRecord
-import skillbill.application.learning.LearningService
-import skillbill.application.learning.model.AddLearningInput
 import skillbill.application.review.ReviewService
-import skillbill.application.review.model.GoalStatsResult
-import skillbill.application.telemetry.RUNTIME_EXCEPTION_EVENT
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.telemetry.model.GoalFinishedRequest
 import skillbill.application.telemetry.model.GoalStartedRequest
 import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
-import skillbill.application.telemetry.toRecord
 import skillbill.application.workflow.WorkflowService
-import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.application.workflow.model.WorkflowFamilyKind
-import skillbill.application.workflow.model.WorkflowGetResult
-import skillbill.application.workflow.model.WorkflowLatestResult
 import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.model.WorkflowResumeResult
-import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
-import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.application.workflow.openFeatureTask
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
-import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
-import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
-import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.MissingCompositionLayerError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
@@ -42,7 +27,6 @@ import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningRecord
-import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.learnings.model.UpdateLearningRequest
@@ -52,10 +36,8 @@ import skillbill.ports.db.UnitOfWork
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
-import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
-import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRepository
@@ -89,36 +71,24 @@ import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
-import skillbill.review.model.GoalBlockedSubtaskSummary
-import skillbill.review.model.GoalRunSummary
 import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewLaunchPlan
-import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
-import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
-import skillbill.telemetry.model.FeatureVerifyFinishedRecord
-import skillbill.telemetry.model.FeatureVerifyStartedRecord
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
 import skillbill.telemetry.model.GoalStartedRecord
 import skillbill.telemetry.model.GoalSubtaskFinishedRecord
-import skillbill.telemetry.model.PrDescriptionGeneratedRecord
-import skillbill.telemetry.model.QualityCheckFinishedRecord
-import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -130,16 +100,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisib
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
-import java.nio.file.Files
-import java.nio.file.Path
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 
 @Suppress("UNCHECKED_CAST")
 internal fun <T> noopPort(type: Class<T>): T = Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, _ ->
@@ -1208,12 +1176,12 @@ internal fun corruptDurableEnvelope(
 }
 
 internal fun telemetrySyncService(reconciliation: RecordingTelemetryReconciliationRepository): TelemetryService =
-    TelemetryService(
-      database = FakeDatabaseSessionFactory(
-        telemetryOutbox = InMemoryTelemetryOutboxRepository(),
-        telemetryReconciliation = reconciliation,
-      ),
-      settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
-      configStore = FakeTelemetryConfigStore,
-      telemetryClient = FakeTelemetryClient(),
-    )
+  TelemetryService(
+    database = FakeDatabaseSessionFactory(
+      telemetryOutbox = InMemoryTelemetryOutboxRepository(),
+      telemetryReconciliation = reconciliation,
+    ),
+    settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
+    configStore = FakeTelemetryConfigStore,
+    telemetryClient = FakeTelemetryClient(),
+  )

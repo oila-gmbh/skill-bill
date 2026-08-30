@@ -1,7 +1,7 @@
 package skillbill.application.work
 
-import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
+import skillbill.application.workflow.WorkflowFamily
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.work.model.WorkItem
 import java.time.Instant

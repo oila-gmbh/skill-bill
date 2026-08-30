@@ -1,5 +1,3 @@
-@file
-
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject

@@ -11,6 +11,7 @@ import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
@@ -127,15 +128,17 @@ internal fun FeatureTaskRuntimeRunLoop.immediateConsumerProjectionGateReason(
   val checkpoint = resolvedFingerprint
     ?.let(::FeatureTaskRuntimeRepositoryCheckpoint)
   val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-    declaration = declaration,
-    runInvariants = run.request.runInvariants,
-    recordedOutputs = outputs,
-    repositoryCheckpoint = checkpoint,
-    expectedRepositoryCheckpoint = checkpoint,
-    branchIdentity = resolvedBranch,
-    baseBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
-      ?.baseBranch
-      ?: "main",
+    FeatureTaskRuntimeHandoffAssemblyRequest(
+      declaration = declaration,
+      runInvariants = run.request.runInvariants,
+      recordedOutputs = outputs,
+      repositoryCheckpoint = checkpoint,
+      expectedRepositoryCheckpoint = checkpoint,
+      branchIdentity = resolvedBranch,
+      baseBranch = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+        ?.baseBranch
+        ?: "main",
+    ),
   )
   return try {
     FeatureTaskRuntimePhaseBriefingAssembler.assemble(

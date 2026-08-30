@@ -2,7 +2,6 @@ package skillbill.goalplanning
 
 import skillbill.error.GoalVerificationBoundaryCapExceededError
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBody
-import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBodyResolutionCaps
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import java.nio.file.Path
 
@@ -19,10 +18,11 @@ internal data class BoundaryBodyResolutionStep(
   val truncated: Boolean,
 )
 
-internal fun resolveBoundaryHeading(
-  input: BoundaryHeadingResolutionInput,
-): BoundaryBodyResolutionStep {
-  if (input.state.bodies.size >= input.caps.maxSelectedBodies || input.state.totalBytes >= input.caps.maxTotalBodyBytes) {
+internal fun resolveBoundaryHeading(input: BoundaryHeadingResolutionInput): BoundaryBodyResolutionStep {
+  if (
+    input.state.bodies.size >= input.caps.maxSelectedBodies ||
+    input.state.totalBytes >= input.caps.maxTotalBodyBytes
+  ) {
     return capExceededStep(input.index, input.requested, input.loudFailOnCapExceeded, input.state)
   }
   val entry = entryForBoundary(input.canonicalRoot, input.headingId, input.catalogHeadingIds, input.state.parsedByPath)

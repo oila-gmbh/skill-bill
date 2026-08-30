@@ -1,7 +1,6 @@
 package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
-import skillbill.contracts.JsonSupport
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import java.nio.file.Files
@@ -89,12 +88,4 @@ private fun runJson(vararg arguments: String): Map<String, Any?> {
   val result = CliRuntime.run(arguments.toList())
   assertEquals(0, result.exitCode, result.stdout)
   return decodeJsonObject(result.stdout)
-}
-
-private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonSupport.parseObjectOrNull(rawJson)
-  require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
-  require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
-  return decoded
 }

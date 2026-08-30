@@ -9,10 +9,12 @@ import skillbill.nativeagent.composition.parseNativeAgentSourceFile
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntriesInRoots
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.security.MessageDigest
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 
@@ -107,7 +109,6 @@ object NativeAgentOperations {
     override fun hashCode(): Int = System.identityHashCode(this)
   }
 
-  @Suppress("TooGenericExceptionCaught")
   fun renderInstallArtifacts(request: NativeAgentInstallRenderRequest): NativeAgentInstallRenderResult {
     val repoRoot = nativeAgentCompositionRepoRoot(request.platformPacksRoot, request.skillsRoot)
     validateNativeAgentInstallSources(request, repoRoot)
@@ -135,13 +136,19 @@ object NativeAgentOperations {
           cacheRoot = cacheRoot,
         ),
       )
-    } catch (error: Exception) {
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: IOException) {
+      initiatingFailure = error
+    } catch (error: IllegalArgumentException) {
+      initiatingFailure = error
+    } catch (error: IllegalStateException) {
       initiatingFailure = error
     }
     val cleanupFailure = runCatching { deleteNativeAgentRenderStaging(staging) }.exceptionOrNull()
     cleanupFailure?.let { initiatingFailure?.addSuppressed(it) }
-    initiatingFailure?.let { throw it }
-    cleanupFailure?.let { throw it }
+    val terminalFailure = initiatingFailure ?: cleanupFailure
+    terminalFailure?.let { throw it }
     return requireNotNull(result)
   }
 
@@ -157,10 +164,7 @@ object NativeAgentOperations {
     }
   }
 
-  private fun composeRenderedAgents(
-    request: NativeAgentInstallRenderRequest,
-    repoRoot: Path,
-  ): List<RenderedAgent> {
+  private fun composeRenderedAgents(request: NativeAgentInstallRenderRequest, repoRoot: Path): List<RenderedAgent> {
     val sources = request.overrides.sourceRoots
       ?.let(::discoverNativeAgentSourceEntriesInRoots)
       ?: discoverNativeAgentSourceEntries(request.platformPacksRoot, request.skillsRoot, request.selectedPlatforms)

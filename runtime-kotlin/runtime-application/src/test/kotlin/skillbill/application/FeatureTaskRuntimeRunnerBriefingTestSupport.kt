@@ -1,27 +1,29 @@
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimeHandoffContract
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.contracts.JsonSupport
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
-import skillbill.workflow.goal.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewDisposition
-import skillbill.workflow.goal.model.GoalSubtaskReviewInput
-import skillbill.workflow.goal.model.GoalSubtaskReviewInputFailureReason
-import skillbill.workflow.goal.model.GoalSubtaskReviewInputResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Files
 import java.nio.file.Path
@@ -58,17 +60,17 @@ private fun briefingsForCompletedPhases(
 ) = COMPLETED_PHASES_CLEAN_RUN.associateWith { phaseId ->
   val declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(phaseId, invariants.featureSize)
   val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-    declaration = declaration,
-    runInvariants = invariants,
-    recordedOutputs = recorded,
-    repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
+    FeatureTaskRuntimeHandoffAssemblyRequest(
+      declaration = declaration,
+      runInvariants = invariants,
+      recordedOutputs = recorded,
+      repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
+    ),
   )
   FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
 }
 
-private fun assertBriefingRunInvariants(
-  briefings: Map<String, FeatureTaskRuntimePhaseLaunchBriefing>,
-) {
+private fun assertBriefingRunInvariants(briefings: Map<String, FeatureTaskRuntimePhaseLaunchBriefing>) {
   briefings.forEach { (phaseId, briefing) ->
     assertEquals(RUNNER_TEST_SPEC_REFERENCE, briefing.specReference, "spec reference for $phaseId")
     assertEquals("SMALL", briefing.featureSize, "feature size for $phaseId")
@@ -135,9 +137,7 @@ private fun seedPreReviewPhases(harness: RunnerHarness) {
   harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
 }
 
-private fun pausedReviewState(
-  reviewedDeltaDigest: String,
-) = GoalSubtaskReviewState.initial(
+private fun pausedReviewState(reviewedDeltaDigest: String) = GoalSubtaskReviewState.initial(
   reviewBaseSha = "0".repeat(40),
   baselineUntrackedPaths = emptyList(),
   codeReviewMode = CodeReviewExecutionMode.INLINE,

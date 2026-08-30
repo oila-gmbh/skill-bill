@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyRequest
+import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations

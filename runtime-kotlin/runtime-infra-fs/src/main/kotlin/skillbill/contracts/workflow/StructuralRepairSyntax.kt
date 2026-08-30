@@ -1,5 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat

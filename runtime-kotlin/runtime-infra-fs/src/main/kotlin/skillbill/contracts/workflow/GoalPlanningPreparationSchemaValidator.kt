@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
@@ -10,7 +9,9 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
+import skillbill.contracts.logSchemaLoadFailure
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
@@ -138,6 +139,7 @@ internal const val GOAL_PLANNING_PREPARATION_SCHEMA_REPO_RELATIVE_PATH: String =
   GoalPlanningPreparationSchemaPaths.REPO_RELATIVE_PATH
 
 private fun loadGoalPlanningPreparationSchema(): JsonSchema {
+  var failure: Throwable? = null
   try {
     val yamlText = readGoalPlanningPreparationSchemaText()
     val yamlNode = YAMLMapper().readTree(yamlText)
@@ -145,17 +147,35 @@ private fun loadGoalPlanningPreparationSchema(): JsonSchema {
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
-  } catch (error: Throwable) {
-    goalPlanningPreparationLog.log(
-      Level.SEVERE,
-      "Failed to load canonical goal planning preparation schema: " +
-        "classpath='$GOAL_PLANNING_PREPARATION_SCHEMA_CLASSPATH_RESOURCE' " +
-        "repoRelativePath='$GOAL_PLANNING_PREPARATION_SCHEMA_REPO_RELATIVE_PATH' " +
-        "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
+  } catch (error: InvalidGoalPlanningPreparationSchemaError) {
+    logSchemaLoadFailure(
+      goalPlanningPreparationLog,
+      "goal planning preparation",
+      GOAL_PLANNING_PREPARATION_SCHEMA_CLASSPATH_RESOURCE,
+      GOAL_PLANNING_PREPARATION_SCHEMA_REPO_RELATIVE_PATH,
       error,
     )
-    throw error
+    failure = error
+  } catch (error: IOException) {
+    logSchemaLoadFailure(
+      goalPlanningPreparationLog,
+      "goal planning preparation",
+      GOAL_PLANNING_PREPARATION_SCHEMA_CLASSPATH_RESOURCE,
+      GOAL_PLANNING_PREPARATION_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
+  } catch (error: JsonProcessingException) {
+    logSchemaLoadFailure(
+      goalPlanningPreparationLog,
+      "goal planning preparation",
+      GOAL_PLANNING_PREPARATION_SCHEMA_CLASSPATH_RESOURCE,
+      GOAL_PLANNING_PREPARATION_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
   }
+  throw failure
 }
 
 private fun readGoalPlanningPreparationSchemaText(): String {

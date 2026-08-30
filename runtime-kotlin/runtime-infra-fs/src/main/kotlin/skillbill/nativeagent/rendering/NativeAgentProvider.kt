@@ -1,5 +1,3 @@
-@file:Suppress("MatchingDeclarationName")
-
 package skillbill.nativeagent.rendering
 
 import skillbill.install.plan.detectCodexAgentsTargets

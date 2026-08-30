@@ -10,7 +10,7 @@ import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentrun.ExecutableLookup
 
 @Inject
-internal data class GoalRunDependencies(
+data class GoalRunDependencies(
   val goalRunner: GoalRunner,
   val runtimeProvenanceService: RuntimeProvenanceService,
   val agentAddonSelectionPort: AgentAddonSelectionPort,

@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.install
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
@@ -10,7 +9,9 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
+import skillbill.contracts.logSchemaLoadFailure
 import skillbill.error.InvalidInstallPlanSchemaError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
@@ -158,6 +159,7 @@ internal const val INSTALL_PLAN_SCHEMA_REPO_RELATIVE_PATH: String =
  * is authored.
  */
 private fun loadSchema(): JsonSchema {
+  var failure: Throwable? = null
   try {
     val yamlText = readSchemaText()
     val yamlNode = YAMLMapper().readTree(yamlText)
@@ -165,20 +167,35 @@ private fun loadSchema(): JsonSchema {
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
-  } catch (error: Throwable) {
-    // F-403 (carried over from 2a): a misbuilt deploy artifact (missing
-    // classpath resource, corrupt YAML, or a shadowed copy) would
-    // otherwise silently disable every install parse seam — the
-    // validator throws on first use but there is no boot-time signal.
-    log.log(
-      Level.SEVERE,
-      "Failed to load canonical install-plan schema: classpath='$INSTALL_PLAN_SCHEMA_CLASSPATH_RESOURCE' " +
-        "repoRelativePath='$INSTALL_PLAN_SCHEMA_REPO_RELATIVE_PATH' " +
-        "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
+  } catch (error: InvalidInstallPlanSchemaError) {
+    logSchemaLoadFailure(
+      log,
+      "install-plan",
+      INSTALL_PLAN_SCHEMA_CLASSPATH_RESOURCE,
+      INSTALL_PLAN_SCHEMA_REPO_RELATIVE_PATH,
       error,
     )
-    throw error
+    failure = error
+  } catch (error: IOException) {
+    logSchemaLoadFailure(
+      log,
+      "install-plan",
+      INSTALL_PLAN_SCHEMA_CLASSPATH_RESOURCE,
+      INSTALL_PLAN_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
+  } catch (error: JsonProcessingException) {
+    logSchemaLoadFailure(
+      log,
+      "install-plan",
+      INSTALL_PLAN_SCHEMA_CLASSPATH_RESOURCE,
+      INSTALL_PLAN_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
   }
+  throw failure
 }
 
 private fun readSchemaText(): String {

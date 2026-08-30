@@ -2,10 +2,10 @@ package skillbill.application.goalrunner.model
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.ports.agentrun.model.AgentRunOutputSink
+import skillbill.ports.db.UnitOfWork
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_LINES
-import skillbill.ports.db.UnitOfWork
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision

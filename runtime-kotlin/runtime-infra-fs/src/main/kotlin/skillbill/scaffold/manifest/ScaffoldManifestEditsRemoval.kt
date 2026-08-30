@@ -1,4 +1,3 @@
-@file:Suppress("MagicNumber", "MaxLineLength")
 
 package skillbill.scaffold.manifest
 
@@ -42,7 +41,7 @@ internal fun removePointersBlockKey(manifestPath: Path, key: String) {
   if (keyIdx < 0) return
   val endIdx = lines.asSequence()
     .drop(keyIdx + 1)
-    .indexOfFirst { line -> line.isNotBlank() && line.takeWhile { ch -> ch == ' ' }.length < 4 }
+    .indexOfFirst { line -> line.isNotBlank() && line.takeWhile { ch -> ch == ' ' }.length < NESTED_LIST_ITEM_INDENT }
     .let { offset -> if (offset < 0) lines.size else keyIdx + 1 + offset }
   val stripped = (lines.subList(0, keyIdx) + lines.subList(endIdx, lines.size)).joinToString("\n")
   val updated = collapseEmptyPointersBlock(stripped)
@@ -66,7 +65,7 @@ internal fun removeSkillClassPointer(manifestPath: Path, pointerSlug: String) {
   val block = topLevelBlockLineRange(lines, "pointers") ?: return
   val removeIdx = (block.first + 1..block.last).firstOrNull { idx ->
     val line = lines.getOrNull(idx) ?: return@firstOrNull false
-    leadingSpaces(line) == 2 && yamlListScalar(line) == pointerSlug
+    leadingSpaces(line) == NESTED_MAPPING_INDENT && yamlListScalar(line) == pointerSlug
   } ?: return
   lines.removeAt(removeIdx)
   val updated = lines.joinToString("\n")
@@ -79,7 +78,11 @@ internal fun removeDeclaredQualityCheckFile(manifestPath: Path) {
   val original = manifestPath.toFile().readText()
   val match = QUALITY_CHECK_KEY_PATTERN.find(original) ?: return
   val lineStart = match.range.first
-  val precedingBlankStart = if (lineStart >= 2 && original[lineStart - 1] == '\n' && original[lineStart - 2] == '\n') {
+  val precedingBlankStart = if (
+    lineStart >= MANIFEST_DOUBLE_NEWLINE_LENGTH &&
+    original[lineStart - 1] == '\n' &&
+    original[lineStart - MANIFEST_DOUBLE_NEWLINE_LENGTH] == '\n'
+  ) {
     lineStart - 1
   } else {
     lineStart

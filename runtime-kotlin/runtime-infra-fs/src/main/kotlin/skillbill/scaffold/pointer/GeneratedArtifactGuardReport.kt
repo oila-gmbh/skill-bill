@@ -1,5 +1,3 @@
-@file:Suppress("MatchingDeclarationName", "ktlint:standard:filename")
-
 package skillbill.scaffold.pointer
 
 import skillbill.error.ShellContentContractException

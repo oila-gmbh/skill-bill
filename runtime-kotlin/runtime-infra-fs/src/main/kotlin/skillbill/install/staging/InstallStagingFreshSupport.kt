@@ -3,6 +3,7 @@ package skillbill.install.staging
 import skillbill.agentaddon.AgentAddonPointer
 import skillbill.install.identity.SkillContentIdentity
 import skillbill.install.model.RenderedSkill
+import skillbill.install.support.writeRenderedSupportPointerFiles
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
@@ -18,10 +19,7 @@ internal data class FreshInstallStagingArtifacts(
   val sidecarFilesInTemp: List<Path>,
 )
 
-internal fun populateFreshInstallStagingTemp(
-  inputs: FreshInstallInputs,
-  tempDir: Path,
-): FreshInstallStagingArtifacts {
+internal fun populateFreshInstallStagingTemp(inputs: FreshInstallInputs, tempDir: Path): FreshInstallStagingArtifacts {
   val copiedInTemp = copyAuthoredIntoStaging(inputs.sourceSkillDir, tempDir, inputs.authored)
   val skillFileInTemp = writeRenderedSkillFile(tempDir, inputs.target)
   val pointerFilesInTemp = writeRenderedPointerFiles(inputs.repoRoot, tempDir, inputs.platformPointers)

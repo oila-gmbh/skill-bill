@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRequest
 import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
 import skillbill.scaffold.rendering.inferSkillDescription
 import skillbill.scaffold.rendering.renderContentBody
@@ -85,10 +86,12 @@ private fun seedKmpPack(repo: Path) {
   Files.writeString(
     packRoot.resolve("platform.yaml"),
     renderPlatformPackManifest(
-      platform = "kmp",
-      displayName = "KMP",
-      strongSignals = listOf(".kt"),
-      baselineContentPath = "code-review/bill-kmp-code-review/content.md",
+      PlatformPackManifestRenderRequest(
+        platform = "kmp",
+        displayName = "KMP",
+        strongSignals = listOf(".kt"),
+        baselineContentPath = "code-review/bill-kmp-code-review/content.md",
+      ),
     ),
   )
   Files.writeString(

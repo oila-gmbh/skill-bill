@@ -14,11 +14,15 @@ internal fun FeatureTaskRuntimeRunState.spanBlockedByEntryGate(span: List<String
   return span.any { phaseId -> transitions.entryGateViolation(phaseId, settledVerdicts) != null }
 }
 
-internal fun FeatureTaskRuntimeRunState.unresolvedReviewFindings(phaseId: String): List<FeatureTaskRuntimeReviewFinding> =
+internal fun FeatureTaskRuntimeRunState.unresolvedReviewFindings(
+  phaseId: String,
+): List<FeatureTaskRuntimeReviewFinding> =
   FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings(parsedOutput(outputFor(phaseId)))
 
-internal fun FeatureTaskRuntimeRunState.durableVerdictFor(phaseId: String): FeatureTaskRuntimeVerdict =
-  FeatureTaskRuntimeOutputVerification.verdictFor(
+internal fun FeatureTaskRuntimeRunState.durableVerdictFor(phaseId: String): FeatureTaskRuntimeVerdict {
+  val record = initialRecords[phaseId] ?: return verdictFor(phaseId)
+  return FeatureTaskRuntimeOutputVerification.verdictFor(
     phaseId,
-    parsedOutput(validatedRecordToOutput(initialRecords[phaseId])),
+    parsedOutput(validatedRecordToOutput(record)),
   )
+}

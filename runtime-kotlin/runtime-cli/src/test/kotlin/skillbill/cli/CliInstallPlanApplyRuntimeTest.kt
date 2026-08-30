@@ -252,7 +252,7 @@ class CliInstallPlanApplyRuntimeTest {
     assertTrue(Files.exists(overrideConfig), "off must rewrite the config in place, not delete it")
     val disabledConfig = Files.readString(overrideConfig)
     assertTrue("\"level\":\"off\"" in disabledConfig, disabledConfig)
-    assertTrue("\"install_id\":\"test-install\"" in disabledConfig, disabledConfig)
+    assertTrue("\"install_id\":\"test-install-id\"" in disabledConfig, disabledConfig)
     assertTrue(Files.exists(componentConfig))
     assertEquals(0, pendingTelemetryEvents(overrideDb))
     assertEquals(1, pendingTelemetryEvents(componentDb))
@@ -958,19 +958,6 @@ private fun createDetectedAgentHomes(home: Path) {
   Files.createDirectories(home.resolve(".codex"))
   Files.createDirectories(home.resolve(".junie"))
   Files.createDirectories(home.resolve(".cursor"))
-}
-
-private fun writeTelemetryConfig(home: Path, level: String): Path {
-  val configPath = home.resolve(".skill-bill/config.json").toAbsolutePath().normalize()
-  Files.createDirectories(configPath.parent)
-  Files.writeString(
-    configPath,
-    """
-    |{"install_id":"test-install","telemetry":{"level":"$level","batch_size":100}}
-    |
-    """.trimMargin(),
-  )
-  return configPath
 }
 
 private fun enqueueTelemetryEvent(dbPath: Path) {

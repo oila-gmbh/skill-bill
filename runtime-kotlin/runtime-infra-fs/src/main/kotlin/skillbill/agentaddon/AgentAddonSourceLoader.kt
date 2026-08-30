@@ -5,7 +5,6 @@ import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.agentaddon.model.AgentAddonCatalogueInspection
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonDeclaration
-import skillbill.agentaddon.model.InvalidAgentAddonCatalogueEntry
 import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.install.model.InstallAgent
 import java.nio.file.Files

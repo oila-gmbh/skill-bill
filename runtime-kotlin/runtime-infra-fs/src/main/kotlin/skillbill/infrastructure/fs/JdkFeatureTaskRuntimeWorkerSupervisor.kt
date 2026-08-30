@@ -10,6 +10,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import java.io.IOException
 import java.net.InetAddress
 import java.nio.file.Files
 import java.nio.file.Path
@@ -19,6 +20,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.cancellation.CancellationException
 
 private const val INIT_PID: Long = 1L
 private const val BOOT_IDENTITY_UNAVAILABLE: String = "boot-identity-unavailable"
@@ -177,11 +179,20 @@ private class HeartbeatLoop(
 
   override fun fencingLostReason(): String? = fencingLost.get()
 
-  @Suppress("TooGenericExceptionCaught")
   private fun runTick() {
     val tick = try {
       heartbeat()
-    } catch (error: Exception) {
+    } catch (cancellation: CancellationException) {
+      throw cancellation
+    } catch (error: IOException) {
+      reportFailure(error)
+      scheduleNext(plan.retryDelaySeconds)
+      return
+    } catch (error: IllegalArgumentException) {
+      reportFailure(error)
+      scheduleNext(plan.retryDelaySeconds)
+      return
+    } catch (error: IllegalStateException) {
       reportFailure(error)
       scheduleNext(plan.retryDelaySeconds)
       return
@@ -202,7 +213,7 @@ private class HeartbeatLoop(
     runCatching { executor.schedule(::runTick, delaySeconds, TimeUnit.SECONDS) }
   }
 
-  private fun reportFailure(error: Exception) {
+  private fun reportFailure(error: Throwable) {
     val failures = consecutiveFailures.incrementAndGet()
     val staleSeconds = (System.nanoTime() - lastRenewalNanos.get()) / NANOS_PER_SECOND
     val detail = "Worker heartbeat tick failed for '${plan.label}': consecutive failures=$failures, " +

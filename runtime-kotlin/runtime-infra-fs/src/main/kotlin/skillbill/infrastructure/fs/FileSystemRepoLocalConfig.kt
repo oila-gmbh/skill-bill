@@ -1,4 +1,3 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.infrastructure.fs
 
@@ -228,8 +227,9 @@ private val REVIEW_CONTEXT_BUDGET_KEYS = setOf(
   "max_routing_analysis_bytes",
 )
 
-private fun BigInteger.longValueExactOrNull(): Long? = try {
-  longValueExact()
-} catch (@Suppress("SwallowedException") ignored: ArithmeticException) {
-  null
+private fun BigInteger.longValueExactOrNull(): Long? {
+  if (this > BigInteger.valueOf(Long.MAX_VALUE) || this < BigInteger.valueOf(Long.MIN_VALUE)) {
+    return null
+  }
+  return toLong()
 }

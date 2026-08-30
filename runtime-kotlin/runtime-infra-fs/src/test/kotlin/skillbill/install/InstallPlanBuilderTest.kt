@@ -10,14 +10,11 @@ import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
-import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallTelemetryLevel
-import skillbill.install.model.InstallationTargetPaths
 import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
-import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
@@ -26,8 +23,9 @@ import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
-import skillbill.testing.seedConformingPlatformPack
 import java.io.FileNotFoundException
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

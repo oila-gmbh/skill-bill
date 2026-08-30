@@ -10,18 +10,10 @@ import skillbill.cli.install.InstallCodexAgentsPathCommand
 import skillbill.cli.install.InstallCodexRootsCommand
 import skillbill.cli.install.InstallCursorAgentsPathCommand
 import skillbill.cli.install.InstallJunieAgentsPathCommand
-import skillbill.cli.install.InstallLinkClaudeAgentsCommand
-import skillbill.cli.install.InstallLinkCodexAgentsCommand
-import skillbill.cli.install.InstallLinkCursorAgentsCommand
-import skillbill.cli.install.InstallLinkJunieAgentsCommand
 import skillbill.cli.install.InstallPlanCommand
 import skillbill.cli.install.InstallReconcileCommand
 import skillbill.cli.install.InstallRegisterMcpCommand
 import skillbill.cli.install.InstallReplayLastSelectionCommand
-import skillbill.cli.install.InstallUnlinkClaudeAgentsCommand
-import skillbill.cli.install.InstallUnlinkCodexAgentsCommand
-import skillbill.cli.install.InstallUnlinkCursorAgentsCommand
-import skillbill.cli.install.InstallUnlinkJunieAgentsCommand
 import skillbill.cli.install.InstallUnregisterMcpCommand
 
 @Inject

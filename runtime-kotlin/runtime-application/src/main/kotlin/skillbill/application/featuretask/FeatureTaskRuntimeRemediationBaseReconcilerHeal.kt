@@ -3,12 +3,9 @@ package skillbill.application.featuretask
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.PersistHealedRemediationBaseRequest
 import skillbill.application.workflow.WorkflowFamily
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
-import java.nio.file.Path
 
 internal fun remediationBaseHealReason(
   stored: String?,

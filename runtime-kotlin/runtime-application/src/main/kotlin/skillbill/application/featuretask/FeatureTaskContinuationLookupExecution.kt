@@ -4,16 +4,21 @@ import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupQuery
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.workflow.goalContinuationFor
+import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
-import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 
 internal fun executeFeatureTaskContinuationLookup(
   query: FeatureTaskContinuationLookupQuery,
   unitOfWork: UnitOfWork,
   decompositionManifestValidator: skillbill.workflow.decomposition.DecompositionManifestValidator,
-  project: (FeatureTaskWorkflowCandidate, skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership?, FeatureTaskRouteScope) -> FeatureTaskContinuationCandidate,
+  project: (
+    FeatureTaskWorkflowCandidate,
+    FeatureTaskRuntimeWorkerOwnership?,
+    FeatureTaskRouteScope,
+  ) -> FeatureTaskContinuationCandidate,
   classify: (List<FeatureTaskContinuationCandidate>) -> FeatureTaskContinuationLookupResult,
 ): FeatureTaskContinuationLookupResult {
   val normalizedIssueKey = FeatureTaskExecutionIdentityPolicy.validateLookupRequest(

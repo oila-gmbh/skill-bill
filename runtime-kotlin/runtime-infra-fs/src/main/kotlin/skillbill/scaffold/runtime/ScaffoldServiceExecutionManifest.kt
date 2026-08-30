@@ -1,4 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught", "MaxLineLength")
 
 package skillbill.scaffold.runtime
 
@@ -64,7 +63,11 @@ private fun applyCodeReviewAreaManifestEdit(txn: ScaffoldTransaction, plan: Scaf
   return listOf(manifestPath)
 }
 
-private fun applyPlatformOverrideManifestEdit(txn: ScaffoldTransaction, plan: ScaffoldPlan, repoRoot: Path): List<Path> {
+private fun applyPlatformOverrideManifestEdit(
+  txn: ScaffoldTransaction,
+  plan: ScaffoldPlan,
+  repoRoot: Path,
+): List<Path> {
   if (!plan.isShelled || plan.family != "quality-check") {
     return emptyList()
   }

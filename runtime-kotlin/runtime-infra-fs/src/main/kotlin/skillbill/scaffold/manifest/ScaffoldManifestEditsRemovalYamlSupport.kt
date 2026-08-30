@@ -1,11 +1,4 @@
-@file:Suppress("MagicNumber", "MaxLineLength")
-
 package skillbill.scaffold.manifest
-
-internal const val NESTED_MAPPING_INDENT = 2
-internal const val NESTED_LIST_ITEM_INDENT = 4
-internal const val COMPANION_POINTER_HEADER_INDENT = 6
-internal const val COMPANION_POINTER_ITEM_INDENT = 8
 
 internal fun leadingSpaces(line: String): Int = line.takeWhile { it == ' ' }.length
 

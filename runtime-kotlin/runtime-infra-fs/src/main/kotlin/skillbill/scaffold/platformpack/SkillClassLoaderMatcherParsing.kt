@@ -1,21 +1,21 @@
-@file:Suppress("MaxLineLength", "TooGenericExceptionCaught")
 package skillbill.scaffold.platformpack
 
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.scaffold.model.SkillClassMatcher
 
-internal fun parseExcludeExactList(classId: String, index: Int, excludeExactRaw: Any?): List<String> = when (excludeExactRaw) {
-  null -> emptyList()
-  is List<*> -> excludeExactRaw.map { value ->
-    value as? String
-      ?: throw InvalidManifestSchemaError(
-        "Skill class '$classId': matcher #$index 'exclude_exact' entries must be strings.",
-      )
+internal fun parseExcludeExactList(classId: String, index: Int, excludeExactRaw: Any?): List<String> =
+  when (excludeExactRaw) {
+    null -> emptyList()
+    is List<*> -> excludeExactRaw.map { value ->
+      value as? String
+        ?: throw InvalidManifestSchemaError(
+          "Skill class '$classId': matcher #$index 'exclude_exact' entries must be strings.",
+        )
+    }
+    else -> throw InvalidManifestSchemaError(
+      "Skill class '$classId': matcher #$index 'exclude_exact' must be a list of strings.",
+    )
   }
-  else -> throw InvalidManifestSchemaError(
-    "Skill class '$classId': matcher #$index 'exclude_exact' must be a list of strings.",
-  )
-}
 
 internal fun parseMatcherPattern(classId: String, index: Int, patternString: String?): Regex? =
   patternString?.let { source ->
@@ -53,12 +53,7 @@ private fun parseSkillClassMatcherPattern(classId: String, index: Int, entry: Ma
       ?: throw InvalidManifestSchemaError("Skill class '$classId': matcher #$index field 'pattern' must be a string.")
   }
 
-private fun validateSkillClassMatcherShape(
-  classId: String,
-  index: Int,
-  exact: String?,
-  patternString: String?,
-) {
+private fun validateSkillClassMatcherShape(classId: String, index: Int, exact: String?, patternString: String?) {
   if (exact == null && patternString == null) {
     throw InvalidManifestSchemaError(
       "Skill class '$classId': matcher #$index must declare either 'exact' or 'pattern'.",

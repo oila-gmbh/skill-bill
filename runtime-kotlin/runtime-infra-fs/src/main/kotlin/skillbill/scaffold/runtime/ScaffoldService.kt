@@ -1,13 +1,12 @@
-@file:Suppress("TooGenericExceptionCaught", "MaxLineLength")
 
 package skillbill.scaffold.runtime
 
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ScaffoldResult
+import skillbill.scaffold.payload.detectKind
+import skillbill.scaffold.payload.validatePayloadVersion
 import java.nio.file.Path
-import skillbill.scaffold.payload.detectKind as policyDetectKind
-import skillbill.scaffold.payload.validatePayloadVersion as policyValidatePayloadVersion
 
 internal data class ManifestSnapshot(
   val manifestPath: Path,
@@ -86,8 +85,8 @@ internal fun scaffoldWithAdapters(
     "Scaffold payload must be a JSON object mapping string keys to values."
   }
 
-  policyValidatePayloadVersion(payload)
-  val kind = policyDetectKind(payload)
+  validatePayloadVersion(payload)
+  val kind = detectKind(payload)
   val repoRoot = resolveRepoRoot(payload)
   val plan = planScaffold(payload, repoRoot, kind, adapters)
   return if (dryRun) {
@@ -127,9 +126,11 @@ internal fun renderDryRunResult(plan: ScaffoldPlan, repoRoot: Path): ScaffoldRes
 
 internal fun runScaffold(plan: ScaffoldPlan, repoRoot: Path, adapters: ScaffoldAdapterSeams): ScaffoldResult {
   val txn = ScaffoldTransaction()
-  return try {
+  var committed = false
+  try {
     val execution = executeScaffold(txn, plan, repoRoot, adapters)
-    ScaffoldResult(
+    committed = true
+    return ScaffoldResult(
       kind = plan.kind,
       skillName = plan.skillName,
       skillPath = plan.skillPath,
@@ -139,8 +140,9 @@ internal fun runScaffold(plan: ScaffoldPlan, repoRoot: Path, adapters: ScaffoldA
       installTargets = execution.installTargets,
       notes = plan.notes + execution.notes,
     )
-  } catch (error: Throwable) {
-    rollback(txn)
-    throw error
+  } finally {
+    if (!committed) {
+      rollback(txn)
+    }
   }
 }

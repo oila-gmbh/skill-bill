@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
-internal fun FeatureTaskRuntimeRunState.edgeIterationCount(loopId: String): Int =
-  edgeIterationByLoop[loopId] ?: 0
+internal fun FeatureTaskRuntimeRunState.edgeIterationCount(loopId: String): Int = edgeIterationByLoop[loopId] ?: 0
 
 internal fun FeatureTaskRuntimeRunState.recordEdgeIteration(loopId: String, edgeIteration: Int) {
   edgeIterationByLoop[loopId] = edgeIteration

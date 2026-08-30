@@ -1,5 +1,3 @@
-@file:Suppress("SpreadOperator", "MagicNumber")
-
 package skillbill.review.context.model
 
 import java.nio.charset.StandardCharsets

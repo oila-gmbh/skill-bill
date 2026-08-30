@@ -47,6 +47,7 @@ import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 internal fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {

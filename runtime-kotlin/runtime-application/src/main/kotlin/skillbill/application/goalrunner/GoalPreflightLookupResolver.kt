@@ -15,13 +15,22 @@ internal class GoalPreflightLookupResolver(
   private val gateBlockBuilder: GoalPreflightGateBlockBuilder,
 ) {
   fun resolve(input: GoalPreflightLookupInput): GoalPreflightResult = when (input.lookup) {
-    FeatureTaskContinuationLookupResult.NoMatch -> noMatchResult(input.normalizedIssueKey, input.manifest, input.request, input.root)
-    is FeatureTaskContinuationLookupResult.Resumable -> resumableResult(input.lookup, input.normalizedIssueKey, input.manifestState, input.request, input.root)
-    is FeatureTaskContinuationLookupResult.AlreadyRunning -> alreadyRunningResult(input.lookup, input.normalizedIssueKey)
+    FeatureTaskContinuationLookupResult.NoMatch ->
+      noMatchResult(input.normalizedIssueKey, input.manifest, input.request, input.root, input.manifestState)
+    is FeatureTaskContinuationLookupResult.Resumable ->
+      resumableResult(input.lookup, input.normalizedIssueKey, input.manifestState, input.request, input.root)
+    is FeatureTaskContinuationLookupResult.AlreadyRunning ->
+      alreadyRunningResult(input.lookup, input.normalizedIssueKey)
     is FeatureTaskContinuationLookupResult.Ambiguous -> ambiguousResult(input.lookup, input.normalizedIssueKey)
     is FeatureTaskContinuationLookupResult.TerminalOnly -> terminalOnlyResult(input.lookup, input.normalizedIssueKey)
     is FeatureTaskContinuationLookupResult.GoalContinuation ->
-      goalContinuationResult(input.normalizedIssueKey, input.lookup.candidate, input.manifestState, input.request, input.root)
+      goalContinuationResult(
+        input.normalizedIssueKey,
+        input.lookup.candidate,
+        input.manifestState,
+        input.request,
+        input.root,
+      )
     is FeatureTaskContinuationLookupResult.NeedsIdentityRepair ->
       throw InvalidFeatureTaskExecutionIdentitySchemaError(input.lookup.workflowId, input.lookup.summary)
   }
@@ -31,12 +40,15 @@ internal class GoalPreflightLookupResolver(
     manifest: DecompositionManifest?,
     request: GoalPreflightRequest,
     root: Path,
+    manifestState: GoalRunnerManifestState?,
   ): GoalPreflightResult {
     val activeManifest = manifest?.takeUnless { it.status in setOf("complete", "skipped") }
     return GoalPreflightResult(
       verdict = "new_work",
       issueKey = issueKey,
-      gateBlock = activeManifest?.let { gateBlockBuilder.build(request, it, root, parentWorkflowId = null) },
+      gateBlock = activeManifest?.let {
+        gateBlockBuilder.build(request, it, root, manifestState?.parentWorkflowId)
+      },
       rehydrateTargets = activeManifest?.let { gateBlockBuilder.rehydrateTargets(root, it) }.orEmpty(),
       manifestMissing = manifest == null,
     )

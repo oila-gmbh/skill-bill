@@ -1,6 +1,4 @@
-package skillbill.workflow.taskruntime
-
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
+package skillbill.workflow.taskruntime.model
 
 data class PhaseHandoffProjectionTemplate(
   val consumerPhaseId: String,

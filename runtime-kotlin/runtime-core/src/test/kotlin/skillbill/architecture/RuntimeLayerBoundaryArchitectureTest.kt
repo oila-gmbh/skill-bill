@@ -1,19 +1,12 @@
 package skillbill.architecture
 
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
-import skillbill.architecture.RuntimeImplementationImportRules.jdbcSqliteConnectionSitesOutsideDatabaseRuntime
 
 class RuntimeLayerBoundaryArchitectureTest {
-  private val runtimeRoot = runtimeArchitectureRoot
-  private val sourceRoots = runtimeArchitectureSourceRoots
-  private val mcpScaffoldRuntime = mcpScaffoldRuntimePath
-
   @Test
   fun `DatabaseRuntime is the only main-source jdbc sqlite connection site`() {
     assertEquals(
@@ -24,7 +17,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `only the prune gateway may delete review-metrics snapshots`() {
     val deletionSites = runtimeArchitectureSourceRoots
       .filter { root -> Files.isDirectory(root) }
@@ -49,7 +42,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `runtime cli check task depends on validate agent configs`() {
     val buildFile = Files.readString(runtimeArchitectureRoot.resolve("runtime-cli/build.gradle.kts"))
     assertContains(buildFile, "val validateAgentConfigs by tasks.registering(JavaExec::class)")
@@ -72,7 +65,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     assertContains(checkBlock.groups["body"]?.value.orEmpty(), "dependsOn(validateAgentConfigs)")
   }
 
-@Test
+  @Test
   fun `application layer stays independent of entrypoint frameworks`() {
     assertNoBannedImports(
       files = sourceFiles().filter { it.packageName.startsWith("skillbill.application") },
@@ -87,7 +80,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `application services use persistence ports instead of sqlite infrastructure`() {
     val applicationFiles = sourceFiles()
       .filter { it.packageName.startsWith("skillbill.application") }
@@ -109,7 +102,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `runtime application owns no direct timing logging or threading environment APIs`() {
     val applicationMainFiles = sourceFilesIn(runtimeArchitectureRoot.resolve("runtime-application/src/main/kotlin"))
     assertTrue(applicationMainFiles.isNotEmpty(), "runtime-application main source scan must be non-vacuous.")
@@ -140,7 +133,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `application domain and ports avoid direct file IO`() {
     val boundaryFiles =
       sourceFiles()
@@ -161,7 +154,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `domain and ports avoid JDBC HTTP and entrypoint frameworks`() {
     val domainAndPortFiles =
       sourceFiles()
@@ -181,7 +174,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `no main source unions declaredCodeReviewAreas across all installed manifests`() {
     val unionSites = sourceFiles()
       .filter { file -> file.relativePath.contains("/src/main/kotlin/") }
@@ -202,7 +195,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `domain avoids random ids clock reads and java util logging`() {
     val domainFiles =
       sourceFiles()
@@ -217,7 +210,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `application domain and ports use Path only as an inert value type`() {
     val architecture = Files.readString(runtimeArchitectureRoot.resolve("ARCHITECTURE.md"))
     assertContains(architecture, "`java.nio.file.Path` is allowed")
@@ -258,7 +251,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `learnings domain owns learning records without persistence dependencies`() {
     assertNoBannedImports(
       files = sourceFiles().filter { it.packageName.startsWith("skillbill.learnings") },
@@ -277,7 +270,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     assertContains(learningRecord, "data class LearningRecord")
   }
 
-@Test
+  @Test
   fun `public model declarations live in model packages`() {
     val violations =
       sourceFiles()
@@ -294,7 +287,8 @@ class RuntimeLayerBoundaryArchitectureTest {
           val tracker = ScopeTracker()
           lines.mapIndexedNotNull { index, line ->
             tracker.consume(line)
-            val match = RuntimeArchitectureScanConstants.publicModelDeclarationPattern.find(line) ?: return@mapIndexedNotNull null
+            val match = RuntimeArchitectureScanConstants.publicModelDeclarationPattern.find(line)
+              ?: return@mapIndexedNotNull null
             val trimmed = line.trim()
             if (Regex("""^(?:private|internal)\s+""").containsMatchIn(trimmed)) return@mapIndexedNotNull null
             if (tracker.insideNonPublicScope) return@mapIndexedNotNull null
@@ -306,7 +300,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     assertTrue(violations.isEmpty(), violations.joinToString(separator = "\n"))
   }
 
-@Test
+  @Test
   fun `review package is separated from sqlite runtime support`() {
     assertNoBannedImports(
       files = sourceFiles().filter { it.packageName == "skillbill.review" },
@@ -328,7 +322,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     }
   }
 
-@Test
+  @Test
   fun `cli workflow commands delegate to application instead of low level runtimes`() {
     assertNoBannedImports(
       files =
@@ -350,7 +344,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `mcp workflow calls delegate to application instead of low level runtimes`() {
     assertNoBannedImports(
       files = sourceFiles().filter { file -> file.packageName.startsWith("skillbill.mcp") },
@@ -366,7 +360,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
   }
 
-@Test
+  @Test
   fun `mcp adapter avoids direct filesystem http sql dependencies except scaffold root discovery`() {
     val mcpFiles =
       sourceFiles()
@@ -389,7 +383,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     assertNoBannedSourceReferences(
       files =
       mcpFiles.filterNot { file ->
-        file.relativePath == mcpScaffoldRuntimePath
+        file.relativePath == MCP_SCAFFOLD_RUNTIME_PATH
       },
       bannedReferences = listOf("java.nio.file.Files", "Files."),
       description = "direct filesystem dependency",
@@ -397,7 +391,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     assertMcpScaffoldRuntimeOnlyUsesFilesForRepoRootDiscovery(mcpFiles)
   }
 
-@Test
+  @Test
   fun `learning service exposes typed results instead of map payloads`() {
     val serviceSource = Files.readString(sourcePath("skillbill/application/learning/LearningService.kt"))
     val mapReturningLearningFunctions =
@@ -414,7 +408,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     assertContains(serviceSource, "LearningResolveResult")
   }
 
-@Test
+  @Test
   fun `future domain packages stay infrastructure free`() {
     assertNoBannedImports(
       files = sourceFiles().filter { it.packageName.startsWith("skillbill.domain") },

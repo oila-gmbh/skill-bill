@@ -135,5 +135,4 @@ object GoalRunnerStatusProjector {
     val context = buildGoalRunnerStatusProjectionContext(manifest, extras)
     return assembleGoalRunnerStatusProjection(manifest, activeAgent, extras, context)
   }
-
 }

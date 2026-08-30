@@ -24,6 +24,7 @@ import skillbill.review.model.ReviewLaneAggregationInput
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
+import skillbill.review.model.ReviewStageDegradationSelectionRequest
 import skillbill.review.model.ReviewStageReached
 import skillbill.review.model.ReviewStageResumeReport
 import java.time.Instant

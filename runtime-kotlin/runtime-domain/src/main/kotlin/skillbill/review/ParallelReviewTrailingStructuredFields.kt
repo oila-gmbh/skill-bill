@@ -14,6 +14,10 @@ internal data class ParallelReviewTrailingStructuredFields(
   val severityAdjustment: ReviewSeverityAdjustment? = null,
 )
 
+private const val JSON_UNICODE_ESCAPE_HEX_LENGTH = 4
+
+private const val JSON_UNICODE_ESCAPE_RADIX = 16
+
 internal fun peelTrailingStructuredFields(rawDescription: String): ParallelReviewTrailingStructuredFields {
   val parts = rawDescription.split(" | ").toMutableList()
   var peeled = ParallelReviewTrailingStructuredFields(description = "")
@@ -44,9 +48,15 @@ internal fun decodeParallelReviewStructuredString(encoded: String): String {
       'r' -> result.append('\r')
       't' -> result.append('\t')
       'u' -> {
-        require(index + 4 <= body.length) { "Malformed Unicode escape in finding path." }
-        result.append(body.substring(index, index + 4).toInt(16).toChar())
-        index += 4
+        require(index + JSON_UNICODE_ESCAPE_HEX_LENGTH <= body.length) {
+          "Malformed Unicode escape in finding path."
+        }
+        result.append(
+          body.substring(index, index + JSON_UNICODE_ESCAPE_HEX_LENGTH)
+            .toInt(JSON_UNICODE_ESCAPE_RADIX)
+            .toChar(),
+        )
+        index += JSON_UNICODE_ESCAPE_HEX_LENGTH
       }
       else -> error("Unsupported structured finding path escape '$escaped'.")
     }

@@ -1,5 +1,7 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.review.model.FindingOutcomeRow
+import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
 data class ReviewFinishedPayloadBuildRequest(

@@ -115,7 +115,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     }
   }
   private fun recordRejectionMeasurement(unitOfWork: UnitOfWork, request: RejectedOutputDiagnosticRequest) {
-    try {
+    runCatching {
       unitOfWork.lifecycleTelemetry.featureTaskRuntimeRejection(
         FeatureTaskRuntimeRejectionMeasurement(
           workflowId = request.workflowId,
@@ -127,7 +127,6 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
           declaredCap = featureTaskRuntimeRejectionCapOf(request.reason),
         ),
       )
-    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
     }
   }
 
@@ -244,7 +243,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     signal: FeatureTaskRuntimeDiagnosticSignal,
     dbOverride: String?,
   ) {
-    try {
+    runCatching {
       database.transaction(dbOverride) { unitOfWork ->
         unitOfWork.lifecycleTelemetry.featureTaskRuntimeDiagnosticDegradation(
           FeatureTaskRuntimeDiagnosticDegradationMeasurement(
@@ -259,7 +258,6 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
           ),
         )
       }
-    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
     }
   }
   private fun persistDiagnosticSignal(
@@ -267,7 +265,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     signal: FeatureTaskRuntimeDiagnosticSignal,
     dbOverride: String?,
   ) {
-    try {
+    runCatching {
       database.transaction(dbOverride) { unitOfWork ->
         val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
           ?: return@transaction
@@ -283,7 +281,6 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
           ),
         )
       }
-    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
     }
   }
   override fun loadDiagnosticSignals(

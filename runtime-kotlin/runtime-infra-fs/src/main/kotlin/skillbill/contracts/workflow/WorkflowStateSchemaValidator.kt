@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
@@ -10,7 +9,9 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
+import skillbill.contracts.logSchemaLoadFailure
 import skillbill.error.InvalidWorkflowStateSchemaError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
@@ -102,6 +103,7 @@ internal const val WORKFLOW_STATE_SCHEMA_REPO_RELATIVE_PATH: String =
  * being shadowed onto the classpath by a sibling jar.
  */
 private fun loadSchema(): JsonSchema {
+  var failure: Throwable? = null
   try {
     val yamlText = readSchemaText()
     val yamlNode = YAMLMapper().readTree(yamlText)
@@ -109,24 +111,35 @@ private fun loadSchema(): JsonSchema {
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
-  } catch (error: Throwable) {
-    // F-403: a misbuilt deploy artifact (missing classpath resource,
-    // corrupt YAML, or a shadowed copy) would otherwise silently
-    // disable every workflow read/write seam — the validator throws on
-    // first use but there is no boot-time signal. Emit a structured
-    // ERROR log that names the resolved classpath resource + the
-    // underlying error type before re-throwing so the loud-fail signal
-    // also reaches dashboards. The throw still propagates so callers
-    // see the typed exception.
-    log.log(
-      Level.SEVERE,
-      "Failed to load canonical workflow-state schema: classpath='${WORKFLOW_STATE_SCHEMA_CLASSPATH_RESOURCE}' " +
-        "repoRelativePath='${WORKFLOW_STATE_SCHEMA_REPO_RELATIVE_PATH}' errorType='${error::class.qualifiedName}' " +
-        "message='${error.message.orEmpty()}'",
+  } catch (error: InvalidWorkflowStateSchemaError) {
+    logSchemaLoadFailure(
+      log,
+      "workflow-state",
+      WORKFLOW_STATE_SCHEMA_CLASSPATH_RESOURCE,
+      WORKFLOW_STATE_SCHEMA_REPO_RELATIVE_PATH,
       error,
     )
-    throw error
+    failure = error
+  } catch (error: IOException) {
+    logSchemaLoadFailure(
+      log,
+      "workflow-state",
+      WORKFLOW_STATE_SCHEMA_CLASSPATH_RESOURCE,
+      WORKFLOW_STATE_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
+  } catch (error: JsonProcessingException) {
+    logSchemaLoadFailure(
+      log,
+      "workflow-state",
+      WORKFLOW_STATE_SCHEMA_CLASSPATH_RESOURCE,
+      WORKFLOW_STATE_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
   }
+  throw failure
 }
 
 // Visible to tests so they can drive the assertion with synthesized

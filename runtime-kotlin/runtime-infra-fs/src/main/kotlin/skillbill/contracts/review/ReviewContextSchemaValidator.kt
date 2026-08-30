@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.review
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -11,7 +10,9 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
+import skillbill.contracts.logSchemaLoadFailure
 import skillbill.error.InvalidReviewContextSchemaError
+import java.io.IOException
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -225,7 +226,19 @@ internal class ReviewContextSchemas(private val envelope: JsonSchema, private va
     )
 }
 
+private fun logReviewContextSchemaFailure(error: Throwable): Throwable {
+  logSchemaLoadFailure(
+    reviewContextLog,
+    "review context",
+    REVIEW_CONTEXT_SCHEMA_CLASSPATH_RESOURCE,
+    REVIEW_CONTEXT_SCHEMA_REPO_RELATIVE_PATH,
+    error,
+  )
+  return error
+}
+
 private fun loadReviewContextSchema(): ReviewContextSchemas {
+  var failure: Throwable? = null
   try {
     val yamlText = readReviewContextSchemaText()
     val yamlNode = YAMLMapper().readTree(yamlText)
@@ -255,15 +268,12 @@ private fun loadReviewContextSchema(): ReviewContextSchemas {
       factory.getSchema(mapper.writeValueAsString(wrapper), LOCALE_STABLE_SCHEMA_CONFIG)
     }
     return ReviewContextSchemas(envelopeSchema, branches)
-  } catch (error: Throwable) {
-    reviewContextLog.log(
-      Level.SEVERE,
-      "Failed to load canonical review context schema: " +
-        "classpath='$REVIEW_CONTEXT_SCHEMA_CLASSPATH_RESOURCE' " +
-        "repoRelativePath='$REVIEW_CONTEXT_SCHEMA_REPO_RELATIVE_PATH' " +
-        "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
-      error,
-    )
-    throw error
+  } catch (error: InvalidReviewContextSchemaError) {
+    failure = logReviewContextSchemaFailure(error)
+  } catch (error: IOException) {
+    failure = logReviewContextSchemaFailure(error)
+  } catch (error: JsonProcessingException) {
+    failure = logReviewContextSchemaFailure(error)
   }
+  throw failure
 }

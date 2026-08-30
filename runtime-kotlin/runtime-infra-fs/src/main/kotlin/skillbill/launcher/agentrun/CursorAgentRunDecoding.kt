@@ -1,5 +1,3 @@
-@file:Suppress("MagicNumber")
-
 package skillbill.launcher.agentrun
 
 import com.fasterxml.jackson.databind.JsonNode
@@ -8,6 +6,7 @@ import skillbill.infrastructure.fs.CursorReviewStreamForbiddenOperationError
 import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.infrastructure.fs.CursorReviewStreamProviderFailureError
 import skillbill.infrastructure.fs.CursorReviewStreamTerminationError
+import skillbill.review.ParallelReviewFindingParser
 
 internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
   if (stdout.isBlank()) {
@@ -46,15 +45,13 @@ private fun parseCursorStreamLines(lines: List<String>): CursorStreamParse {
   var errorType: String? = null
   var errorMessage: String? = null
   var totalByteCount = 0
-  val maxTotalBytes = 10_000_000
-  val cursorStreamPreviewLength = 100
   lines.asSequence().takeWhile { line ->
     totalByteCount += line.toByteArray().size
-    totalByteCount <= maxTotalBytes
+    totalByteCount <= CURSOR_STREAM_MAX_TOTAL_BYTES
   }.filter(String::isNotBlank).forEach { line ->
     val event = runCatching { structuredOutputMapper.readTree(line) }.getOrElse {
       throw CursorReviewStreamMalformedError(
-        "Malformed Cursor stream JSONL line: ${line.take(cursorStreamPreviewLength)}",
+        "Malformed Cursor stream JSONL line: ${line.take(CURSOR_STREAM_MALFORMED_LINE_PREVIEW_CHARS)}",
         it,
       )
     }
@@ -162,8 +159,14 @@ private fun cursorAssistantText(event: JsonNode): String? {
 }
 
 private const val NO_FINDINGS_TOKEN = "NO_FINDINGS"
-private val FINDING_LINE_START = Regex("^\\s*(?:-\\s+)?\\[F-\\d{3}]")
+private const val CURSOR_STREAM_MAX_TOTAL_BYTES = 10_000_000
+private const val CURSOR_STREAM_MALFORMED_LINE_PREVIEW_CHARS = 100
+private val FINDING_LINE_START = Regex(
+  "^\\s*(?:-\\s+)?\\[F-\\d{${ParallelReviewFindingParser.PARALLEL_REVIEW_FINDING_ID_PAD_WIDTH}}]",
+)
 private val FINDING_CANDIDATE = Regex("\\[F-\\d+]")
 private val TRAILING_NO_FINDINGS = Regex("(?:^|[^A-Z0-9_])NO_FINDINGS\\s*$")
-private val GLUED_FINDING_START = Regex("(?<![\\n\\r])(\\[F-\\d{3}])")
+private val GLUED_FINDING_START = Regex(
+  "(?<![\\n\\r])(\\[F-\\d{${ParallelReviewFindingParser.PARALLEL_REVIEW_FINDING_ID_PAD_WIDTH}}])",
+)
 private val GLUED_TRAILING_NO_FINDINGS = Regex("(?<![\\n\\r])(NO_FINDINGS)\\s*$")

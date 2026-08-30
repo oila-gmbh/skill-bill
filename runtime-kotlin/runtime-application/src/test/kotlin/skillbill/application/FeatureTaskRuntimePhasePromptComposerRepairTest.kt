@@ -1,32 +1,14 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
-import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.featuretask.phaseDeclaration
-import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
-import skillbill.workflow.goal.model.ValidationDepth
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
@@ -41,7 +23,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
       round = 2,
       priorAuditValues = listOf("""{"gaps":[{"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}]}"""),
     )
-    val remediation = FeatureTaskRuntimePhasePromptComposer.compose(
+    val remediation = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit", priorGapMemory = memory, auditGapReentry = true),
     )
@@ -50,14 +32,14 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     assertContains(remediation, "AC-002")
     assertTrue(!remediation.contains("nothing to carry forward"))
 
-    val firstAudit = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("audit"))
+    val firstAudit = composePromptForPhase("audit")
     assertContains(firstAudit, "nothing to carry forward")
   }
 
   @Test
   fun `a blank prior schema failure yields no correction directive`() {
-            listOf("", "   ", "\n").forEach { blank ->
-      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    listOf("", "   ", "\n").forEach { blank ->
+      val prompt = composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("audit"),
         priorSchemaFailure = blank,
@@ -68,9 +50,9 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
 
   @Test
   fun `verifying-phase prompts name the exact keys the runtime gate reads`() {
-                val keys = FeatureTaskRuntimeVerificationSignalKeys
-    val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("review"))
-    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("audit"))
+    val keys = FeatureTaskRuntimeVerificationSignalKeys
+    val reviewPrompt = composePromptForPhase("review")
+    val auditPrompt = composePromptForPhase("audit")
 
     assertContains(reviewPrompt, keys.REVIEW_FINDINGS, false, "review names the findings key")
     assertContains(reviewPrompt, keys.VERDICT, false, "review names the verdict key")
@@ -83,7 +65,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
   @Test
   fun `preplan plan and implement embed a produced_outputs example with a non-blank value`() {
     promptComposerProjectionExampleCases().forEach { (phaseId, briefing) ->
-      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, briefing)
+      val prompt = composePhasePrompt(PROMPT_COMPOSER_ISSUE_KEY, briefing)
       val exampleJson = prompt.substringAfter("Required produced_outputs shape")
         .substringAfter("```json")
         .substringBefore("```")
@@ -101,7 +83,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
 
   @Test
   fun `plan prompt inner example populates representative collection fields`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor(phasePlan))
+    val prompt = composePromptForPhase(promptComposerPhasePlan)
     val innerExampleJson = prompt.substringAfter("Inner object to stuff into value:")
       .substringAfter("```json")
       .substringBefore("```")
@@ -119,9 +101,9 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     )
   }
 
-      @Test
+  @Test
   fun `an incomplete-work retry carries the continuation directive and not the schema-correction directive`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
@@ -149,7 +131,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
 
   @Test
   fun `a real schema failure carries the schema-correction directive and no continuation directive`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
       priorSchemaFailure = "produced_outputs did not validate against implementation_receipt",
@@ -179,7 +161,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
 
     listOf(jsonBody, yamlBody).forEach { body ->
       val context = promptComposerCorrectiveContext(body)
-      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      val prompt = composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("audit"),
         priorSchemaFailure = constraint,
@@ -198,7 +180,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
         "payload-free constraint must remain outside the untrusted body framing",
       )
       assertNoRawResponseSpanOutsideAuthorizedRepairSection(prompt, body)
-            assertTrue(prompt.contains("<<<END_CORRECTIVE_REPAIR_RESPONSE marker=1>>>"))
+      assertTrue(prompt.contains("<<<END_CORRECTIVE_REPAIR_RESPONSE marker=1>>>"))
     }
   }
 
@@ -207,7 +189,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     val context = promptComposerCorrectiveContext("""{"sentinel":"SKILL187-SHOULD-NOT-APPEAR"}""")
 
     assertFailsWith<IllegalArgumentException> {
-      FeatureTaskRuntimePhasePromptComposer.compose(
+      composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("implement"),
         priorTerminalFailure = "blocked: waiting on operator",
@@ -217,16 +199,6 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     assertSchemaCorrectionSuppressesContinuation(context)
     assertTerminalAndContinuationRetriesOmitRepairContext()
   }
-
-
-
-  private fun promptComposerImplementationContinuation() = FeatureTaskRuntimeImplementationContinuation(
-    phaseId = "implement",
-    segmentNumber = 2,
-    priorValueSegments = listOf("segment one prose"),
-    latestPrompt = "optional directive",
-    failureDisposition = null,
-  )
 
   @Test
   fun `unavailable repair context emits a payload-free fallback without a misleading excerpt`() {
@@ -240,7 +212,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
       diagnosticLocator = CorrectiveRepairDiagnosticLocator("opaque-diagnostic-unavailable"),
       captured = unavailable,
     )
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure = "<root> must be an object",
@@ -268,7 +240,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
       ),
       acceptedAfterStructuralRepair = true,
     )
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure = "verdict: must be a top-level string",
@@ -283,7 +255,8 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
 
   @Test
   fun `capture exceeding the response budget emits a payload-free fallback never labeled exact`() {
-        val oversizeBody = "€".repeat(40)     val budget = FeatureTaskRuntimeCorrectiveRepairBudget(
+    val oversizeBody = "€".repeat(40)
+    val budget = FeatureTaskRuntimeCorrectiveRepairBudget(
       maxResponseUtf8Bytes = 64,
       maxPromptUtf8Bytes = 10_000,
       maxCollectionItems = 4,
@@ -304,7 +277,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
       captured = captured,
       budget = budget,
     )
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure = "verdict: must be a top-level string",
@@ -321,11 +294,11 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
 
   @Test
   fun `first launch omits the repair section while a matching schema-invalid launch includes it`() {
-        val body = """{"sentinel":"SKILL187-FIRST-VS-CORRECTIVE"}"""
-    val first = FeatureTaskRuntimePhasePromptComposer.compose(PROMPT_COMPOSER_ISSUE_KEY, promptComposerBriefingFor("audit"))
+    val body = """{"sentinel":"SKILL187-FIRST-VS-CORRECTIVE"}"""
+    val first = composePromptForPhase("audit")
     assertOmitsAuthorizedRepairSection(first, "SKILL187-FIRST-VS-CORRECTIVE")
 
-    val corrective = FeatureTaskRuntimePhasePromptComposer.compose(
+    val corrective = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
       priorSchemaFailure = "verdict: must be a top-level string",

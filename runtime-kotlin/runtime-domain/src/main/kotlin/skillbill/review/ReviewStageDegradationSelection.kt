@@ -8,6 +8,7 @@ import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.review.model.ReviewStageDegradationReason
+import skillbill.review.model.ReviewStageDegradationSelectionRequest
 import skillbill.review.model.ReviewStageReached
 
 object ReviewStageDegradationSelection {

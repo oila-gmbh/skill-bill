@@ -51,10 +51,7 @@ internal class WorkflowGoalRunnerStaleBlockedOutcomeDisplacement(
     )
   }
 
-  private fun persistDisplacement(
-    workflowStates: WorkflowStateRepository,
-    context: DisplacementContext,
-  ) {
+  private fun persistDisplacement(workflowStates: WorkflowStateRepository, context: DisplacementContext) {
     val evidenceAlreadyPresent = context.artifacts[GOAL_CONTINUATION_OUTCOME_DISPLACEMENT_ARTIFACT_KEY] != null
     val derived = derivedTerminalOutcomeFor(context.record, context.artifacts, context.continuation) { null }
     val updated = engine.updateRecord(

@@ -1,23 +1,14 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
@@ -205,8 +196,6 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       declarations.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN).derivedContextKeys,
     )
   }
-
-
 }
 
 internal fun phaseWorkflowDependenciesOf(phaseId: String): List<String> =

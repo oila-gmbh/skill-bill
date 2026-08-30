@@ -1,89 +1,26 @@
 package skillbill.application.work
 
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
-import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
-import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
-import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.goalRepositoryIdentity
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
-import skillbill.application.goalrunner.testGoalRunnerStatusService
-import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
-import skillbill.application.idestatus.model.IdeStatusFreshness
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
-import skillbill.application.idestatus.model.IdeStatusProblemCode
 import skillbill.application.idestatus.model.IdeStatusRequest
-import skillbill.application.idestatus.model.IdeStatusResult
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
-import skillbill.contracts.JsonSupport
-import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.goalrunner.model.GoalRunnerStoredOutcome
-import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
-import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
-import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
-import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
-import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import skillbill.ports.learning.LearningRepository
-import skillbill.ports.review.ReviewRepository
-import skillbill.ports.system.CheckedOutBranchSource
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
-import skillbill.ports.telemetry.TelemetryOutboxRepository
-import skillbill.ports.telemetry.TelemetryReconciliationRepository
-import skillbill.ports.work.WorkListRepository
-import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
-import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.model.FeatureImplementSessionSummary
-import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.ports.workflow.model.FeatureVerifySessionSummary
-import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
-import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.idestatus.IdeStatusValidator
-import skillbill.workflow.idestatus.NoopIdeStatusValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
-import java.nio.file.Files
-import java.nio.file.Path
-import java.time.Clock
 import java.time.Instant
-import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 class IdeStatusServiceGoalProjectionTest {
 
   @Test
   fun `running goal whose parent lease expired projects paused anchored at the last heartbeat`() {
-            val fixture = gitRepoFixture("ide-status-goal-lease-expired")
+    val fixture = gitRepoFixture("ide-status-goal-lease-expired")
     val identity = goalRepositoryIdentity(fixture)
     val heartbeatAt = Instant.parse("2026-08-06T11:50:00Z")
     val lease = expiredLease(heartbeatAt)
@@ -97,21 +34,25 @@ class IdeStatusServiceGoalProjectionTest {
         workflows = IdeStatusWorkflowStates(),
         controls = controls,
       ),
-                  manifestStore = StubGoalManifestStore(
+      manifestStore = StubGoalManifestStore(
         goalManifestState(fixture, identity, childWorkflowId = ""),
         planning = planningSnapshot(GoalPlanningStatusState.PREPLANNED),
         lease = lease,
       ),
     )
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusLifecycleState.PAUSED, result.snapshot.lifecycleState)
-        assertEquals(heartbeatAt, result.snapshot.updatedAt)
-            val wire = result.snapshot.toStatusWireMap()
+    assertEquals(heartbeatAt, result.snapshot.updatedAt)
+    val wire = result.snapshot.toStatusWireMap()
     assertFalse(wire.containsKey("paused_at"))
     assertEquals(heartbeatAt.toString(), wire["updated_at"])
-            assertEquals("Goal SKILL-148 is paused.", result.snapshot.summary)
+    assertEquals("Goal SKILL-148 is paused.", result.snapshot.summary)
     assertEquals("planning", result.snapshot.currentStep.id)
   }
 
@@ -138,7 +79,11 @@ class IdeStatusServiceGoalProjectionTest {
       ),
     )
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals("implement", result.snapshot.currentStep.id)
     assertEquals("implement", result.snapshot.currentStep.label)
@@ -158,7 +103,11 @@ class IdeStatusServiceGoalProjectionTest {
       ),
     )
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals("implement", result.snapshot.currentStep.id)
     assertEquals("implement", result.snapshot.currentStep.label)
@@ -179,7 +128,11 @@ class IdeStatusServiceGoalProjectionTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service(database).status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME, result.snapshot.workflowFamily)
     assertNull(result.snapshot.planning)
@@ -202,7 +155,11 @@ class IdeStatusServiceGoalProjectionTest {
         ),
       )
 
-      val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+      val result = service.status(
+
+        IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+      )
 
       assertEquals(IdeStatusLifecycleState.BLOCKED, result.snapshot.lifecycleState)
       assertEquals("Goal SKILL-148 is blocked.", result.snapshot.summary)
@@ -226,7 +183,7 @@ class IdeStatusServiceGoalProjectionTest {
 
   @Test
   fun `active goal candidate with an unconsumed pause request stays active and reports the request`() {
-            val wire = goalWireMapUnderControls(
+    val wire = goalWireMapUnderControls(
       "ide-status-goal-active-pause-requested",
       GoalRunnerControlState(pauseRequested = true),
     ) { result ->
@@ -324,7 +281,11 @@ class IdeStatusServiceGoalProjectionTest {
       ),
     )
 
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service.status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
     assertEquals(45_000L, result.snapshot.currentSubtask?.activeDurationMs)
@@ -380,7 +341,11 @@ class IdeStatusServiceGoalProjectionTest {
       workflows = workflows,
     )
 
-    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), ideStatusObservedAt = ideStatusObservedAt))
+    val result = service(database).status(
+
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+
+    )
 
     val wire = result.snapshot.toStatusWireMap()
     assertEquals(IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME, result.snapshot.workflowFamily)

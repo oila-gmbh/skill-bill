@@ -13,6 +13,7 @@ import skillbill.featurespec.model.FeatureSpecWriteRequest
 import skillbill.featurespec.model.FeatureSpecWriteResult
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.writeBundleAtomically
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.SpecSource
 import java.nio.file.Path

@@ -1,5 +1,7 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
+import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
 import skillbill.contracts.JsonSupport
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import java.time.Instant
@@ -14,10 +16,12 @@ class FeatureTaskPhaseSettlementServiceTest {
   fun `complete then findEnvelope returns stuffed value`() {
     val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository())
     service.complete(
-      workflowId = "wftr-test",
-      phaseId = "implement",
-      attempt = 1,
-      value = """{"projection_kind":"implementation_receipt","completed_task_ids":["task-1"]}""",
+      FeatureTaskPhaseSettlementCompleteRequest(
+        workflowId = "wftr-test",
+        phaseId = "implement",
+        attempt = 1,
+        value = """{"projection_kind":"implementation_receipt","completed_task_ids":["task-1"]}""",
+      ),
     )
     val envelope = assertNotNull(service.findEnvelope("wftr-test", "implement", 1))
     assertEquals("completed", envelope["status"])
@@ -28,8 +32,22 @@ class FeatureTaskPhaseSettlementServiceTest {
   @Test
   fun `last write wins for the same attempt`() {
     val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository())
-    service.complete("wftr-test", "plan", 1, value = "first")
-    service.complete("wftr-test", "plan", 1, value = "second")
+    service.complete(
+      FeatureTaskPhaseSettlementCompleteRequest(
+        workflowId = "wftr-test",
+        phaseId = "plan",
+        attempt = 1,
+        value = "first",
+      ),
+    )
+    service.complete(
+      FeatureTaskPhaseSettlementCompleteRequest(
+        workflowId = "wftr-test",
+        phaseId = "plan",
+        attempt = 1,
+        value = "second",
+      ),
+    )
     val envelope = assertNotNull(service.findEnvelope("wftr-test", "plan", 1))
     val produced = assertNotNull(JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]))
     assertEquals("second", produced["value"])
@@ -38,7 +56,14 @@ class FeatureTaskPhaseSettlementServiceTest {
   @Test
   fun `block stores blocked status`() {
     val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository())
-    service.block("wftr-test", "preplan", 1, reason = "needs human")
+    service.block(
+      FeatureTaskPhaseSettlementBlockRequest(
+        workflowId = "wftr-test",
+        phaseId = "preplan",
+        attempt = 1,
+        reason = "needs human",
+      ),
+    )
     val envelope = assertNotNull(service.findEnvelope("wftr-test", "preplan", 1))
     assertEquals("blocked", envelope["status"])
   }
@@ -50,15 +75,15 @@ class FeatureTaskPhaseSettlementServiceTest {
     repo.upsert(
       FeatureTaskPhaseSettlement(
         workflowId = "wftr-test",
-        phaseId = "implement",
+        phaseId = "plan",
         attempt = 1,
-        kind = "corrupt",
+        kind = FeatureTaskPhaseSettlementService.KIND_COMPLETE,
         envelopeJson = """{"status":"completed"}""",
         recordedAt = Instant.now().toString(),
       ),
     )
-    assertNotNull(service.findEnvelope("wftr-test", "implement", 1))
-    assertTrue(service.clear("wftr-test", "implement", 1))
-    assertNull(service.findEnvelope("wftr-test", "implement", 1))
+    assertNotNull(service.findEnvelope("wftr-test", "plan", 1))
+    assertTrue(service.clear("wftr-test", "plan", 1))
+    assertNull(service.findEnvelope("wftr-test", "plan", 1))
   }
 }

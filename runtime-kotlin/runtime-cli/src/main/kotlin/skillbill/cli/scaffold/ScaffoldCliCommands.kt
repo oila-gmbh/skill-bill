@@ -1,4 +1,3 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.cli.scaffold
 

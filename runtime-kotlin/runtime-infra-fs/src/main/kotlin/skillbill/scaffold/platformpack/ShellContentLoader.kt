@@ -1,10 +1,6 @@
-@file:Suppress("MaxLineLength", "TooGenericExceptionCaught")
 
 package skillbill.scaffold.platformpack
 
-import skillbill.error.ContractVersionMismatchError
-import skillbill.error.InvalidFallbackCapabilityError
-import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingManifestError
 import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.PlatformManifest
@@ -118,7 +114,8 @@ internal fun validatePlatformPack(
   val declaredAreaFiles = pack.declaredFiles.areas
   val missingAreaSlots = pack.declaredCodeReviewAreas.toSet() - declaredAreaFiles.keys
   if (missingAreaSlots.isNotEmpty()) {
-    invalidManifestSchema(slug, 
+    invalidManifestSchema(
+      pack.slug,
       "Platform pack '${pack.slug}': declared_files.areas is missing entries for ${missingAreaSlots.sorted()}.",
     )
   }

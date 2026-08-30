@@ -1,12 +1,11 @@
-@file:Suppress("TooGenericExceptionCaught", "MaxLineLength")
 
 package skillbill.scaffold.runtime
 
+import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestContentRenderRequest
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
 import skillbill.scaffold.rendering.renderContentBody
 import java.nio.file.Path
-import skillbill.scaffold.policy.platformpack.PlatformPackManifestContentRenderRequest
 import skillbill.scaffold.policy.platformpack.renderPlatformPackManifestContent as renderPackManifest
 
 internal fun renderPlatformPackManifestContent(

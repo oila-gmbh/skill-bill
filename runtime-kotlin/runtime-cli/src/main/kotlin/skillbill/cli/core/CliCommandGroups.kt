@@ -8,7 +8,7 @@ import skillbill.cli.scaffold.ScaffoldTopLevelCommands
 import skillbill.cli.telemetry.TelemetryCommand
 
 @Inject
-internal class ReviewCliCommandGroup(
+class ReviewCliCommandGroup(
   reviewCommands: ReviewTopLevelCommands,
   learningsCommand: LearningsCommand,
   telemetryCommand: TelemetryCommand,
@@ -21,14 +21,14 @@ internal class ReviewCliCommandGroup(
 }
 
 @Inject
-internal class ScaffoldCliCommandGroup(
+class ScaffoldCliCommandGroup(
   scaffoldCommands: ScaffoldTopLevelCommands,
 ) {
   val commands: List<CliktCommand> = scaffoldCommands.commands
 }
 
 @Inject
-internal class UtilityCliCommandGroup(
+class UtilityCliCommandGroup(
   workflowGoalFeature: WorkflowGoalFeatureCliCommands,
   systemMaintenance: SystemMaintenanceCliCommands,
   misc: MiscCliCommands,
@@ -54,7 +54,7 @@ internal class UtilityCliCommandGroup(
 }
 
 @Inject
-internal class TopLevelCliCommands(
+class TopLevelCliCommands(
   reviewCommands: ReviewCliCommandGroup,
   scaffoldCommands: ScaffoldCliCommandGroup,
   utilityCommands: UtilityCliCommandGroup,
