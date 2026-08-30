@@ -168,15 +168,13 @@ internal fun FileSystemValidationGateRunner.parseJUnitXmlFile(path: Path): List<
         ?: continue
       val classname = testcase.getAttribute("classname").ifBlank { path.parent?.fileName?.toString().orEmpty() }
       val name = testcase.getAttribute("name").ifBlank { "unknown" }
+      val failureBody = failure.textContent?.trim().orEmpty()
       add(
         ValidationGateFinding(
           module = classname.substringBeforeLast('.').ifBlank { classname },
           ruleOrTestId = name,
-          message = failure.getAttribute("message").ifBlank { failure.textContent?.trim().orEmpty() },
-          location = listOfNotNull(
-            testcase.getAttribute("file").takeIf(String::isNotBlank),
-            testcase.getAttribute("line").takeIf(String::isNotBlank),
-          ).joinToString(":").ifBlank { null },
+          message = junitFailureMessage(failure),
+          location = junitFailureLocation(testcase, failureBody),
         ),
       )
     }
