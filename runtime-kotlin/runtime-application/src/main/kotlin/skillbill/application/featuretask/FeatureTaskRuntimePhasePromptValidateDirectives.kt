@@ -105,15 +105,13 @@ internal data class PhaseTaskDirectiveArgs(
   val auditGapImplement: Boolean = false,
 )
 
-internal fun phaseTaskDirective(phaseId: String, args: PhaseTaskDirectiveArgs = PhaseTaskDirectiveArgs()): String {
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
-    return when {
+internal fun phaseTaskDirective(phaseId: String, args: PhaseTaskDirectiveArgs = PhaseTaskDirectiveArgs()): String =
+  when (phaseId) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> when {
       args.validationGateTriage -> buildGateTriagePhaseTask(args.packBuildCommand)
       else -> runtimeOwnedBuildPhaseTask(args.packBuildCommand)
     }
-  }
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
-    return when {
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> when {
       args.validationGateTriage -> validateGateTriagePhaseTask()
       args.validationGateRepair -> validateRepairPhaseTask()
       else -> validatePhaseTask(
@@ -121,15 +119,12 @@ internal fun phaseTaskDirective(phaseId: String, args: PhaseTaskDirectiveArgs = 
         packGateDeclared = !args.agentRunValidateFallback,
       )
     }
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+      auditPhaseTaskDirective(args.priorGapMemory, args.acceptanceCriteria)
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT ->
+      implementPhaseTaskDirective(args.auditGapImplement, args.acceptanceCriteria)
+    else -> phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
   }
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-    return auditPhaseTaskDirective(args.priorGapMemory, args.acceptanceCriteria)
-  }
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) {
-    return implementPhaseTaskDirective(args.auditGapImplement, args.acceptanceCriteria)
-  }
-  return phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
-}
 
 internal fun gateRepairNoOutputSchemaDirective(phaseId: String, triage: Boolean = false): String {
   if (triage) {

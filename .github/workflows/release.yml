@@ -89,14 +89,15 @@ jobs:
 
       # AC1/AC5: self-contained per-OS runtime images for CLI + MCP. runtimeZip is
       # finalizedBy its .sha256 task, so each produces archive + .sha256. Badass
-      # Runtime tasks are not configuration-cache compatible, so do NOT pass
-      # --configuration-cache here. bash + the Unix-style ./gradlew launcher works
-      # on every hosted runner (Git Bash on Windows runs the POSIX wrapper).
+      # Runtime tasks are not configuration-cache compatible; opt out explicitly
+      # because gradle.properties enables configuration-cache by default. bash +
+      # the Unix-style ./gradlew launcher works on every hosted runner (Git Bash
+      # on Windows runs the POSIX wrapper).
       - name: Build runtime images
         shell: bash
         run: |
           cd runtime-kotlin
-          ./gradlew :runtime-cli:runtimeZip :runtime-mcp:runtimeZip
+          ./gradlew --no-configuration-cache :runtime-cli:runtimeZip :runtime-mcp:runtimeZip
 
       - name: Bundle skills archive
         if: matrix.host_token == 'linux-x64'

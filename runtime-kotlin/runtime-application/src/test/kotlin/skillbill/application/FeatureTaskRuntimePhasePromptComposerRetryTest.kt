@@ -223,9 +223,11 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     }
     """.trimIndent()
     val briefing = promptComposerBriefingFor(
-      phaseId = "implement",
-      auditGapReentry = true,
-      auditOutput = auditOutput,
+      "implement",
+      PromptComposerBriefingOptions(
+        auditGapReentry = true,
+        auditOutput = auditOutput,
+      ),
     )
 
     val prompt = composePhasePrompt(PROMPT_COMPOSER_ISSUE_KEY, briefing)
@@ -245,7 +247,10 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     )
     val remediation = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
-      promptComposerBriefingFor("implement", priorGapMemory = memory, auditGapReentry = true),
+      promptComposerBriefingFor(
+        "implement",
+        PromptComposerBriefingOptions(priorGapMemory = memory, auditGapReentry = true),
+      ),
     )
     assertContains(remediation, "Prior-gap memory — re-justify recurrence against prior audit prose")
     assertContains(remediation, "AC-002")
