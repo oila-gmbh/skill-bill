@@ -11,7 +11,7 @@ rules.
 
 ### Pin the rules
 
-In `runtime-kotlin/config/detekt/detekt.yml` under `complexity:`, mark as
+In `../../../runtime-kotlin/config/detekt/detekt.yml` under `complexity:`, mark as
 `active: true` with an explicit numeric threshold:
 
 - `TooManyFunctions` (files, classes, interfaces, objects, enums)
@@ -41,7 +41,7 @@ Delete every `@Suppress` / `@file:Suppress` of:
 `NestedBlockDepth`, `ReturnCount`, `ThrowsCount`,
 `LoopWithTooManyJumpStatements`, `DestructuringDeclarationWithTooManyEntries`
 
-in authored Kotlin under `runtime-kotlin/` and `runtime-kotlin/build-logic/`,
+in authored Kotlin under `../../../runtime-kotlin` and `../../../runtime-kotlin/build-logic`,
 including tests.
 
 Resolve by extraction: collaborators, parameter objects, fewer returns via
@@ -72,7 +72,7 @@ removed some.
 5. No new public type exists whose only caller is the file it was extracted
    from.
 6. Existing tests pass without assertion weakening.
-7. `scripts/validate` passes.
+7. `../../../scripts/validate` passes.
 8. No test is added except where extraction changes an observable failure
    path (then one test, named for that regression).
 
@@ -94,7 +94,7 @@ goal.
 
 ## Validation Strategy
 
-`scripts/validate`. Grep the complexity rule names inside `@Suppress` and
+`../../../scripts/validate`. Grep the complexity rule names inside `@Suppress` and
 confirm zero authored hits. Open `detekt.yml` and confirm each key.
 
 ## Next Path

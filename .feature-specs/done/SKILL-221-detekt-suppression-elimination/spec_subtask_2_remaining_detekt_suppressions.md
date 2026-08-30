@@ -51,7 +51,7 @@ Compiler names (`UNCHECKED_CAST`, `UNUSED_PARAMETER`, `UNUSED_VARIABLE`,
 4. Existing tests pass without assertion weakening. One test is added only
    when a previously swallowed throwable becomes a typed failure the suite
    did not cover.
-5. `scripts/validate` passes.
+5. `../../../scripts/validate` passes.
 
 ## Failure And Recovery Behavior
 
@@ -71,7 +71,7 @@ Runs after subtask 1. Must not run concurrently with it.
 
 ## Validation Strategy
 
-`scripts/validate`. Grep `@Suppress` and classify remaining names: complexity
+`../../../scripts/validate`. Grep `@Suppress` and classify remaining names: complexity
 must be zero; remaining detekt/ktlint names are either gone or queued for
 subtask 3's allow-list; compiler names wait for subtask 3.
 

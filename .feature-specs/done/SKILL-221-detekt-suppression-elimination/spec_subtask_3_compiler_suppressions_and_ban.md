@@ -35,7 +35,7 @@ or use it.
 
 ### Allow-list
 
-Live in `runtime-kotlin/agent/decisions.md` (or a sibling inventory the
+Live in `../../../runtime-kotlin/agent/decisions.md` (or a sibling inventory the
 architecture test parses — one place, dated). Starts empty at the beginning
 of this subtask; ends containing only sites that survived the judgment
 above. Complexity rule names never appear on the allow-list.
@@ -47,8 +47,8 @@ Generated `build/` / `generated/` trees stay out of scope.
 Add one source-scanning test in `skillbill.architecture`:
 
 - Fail on any complexity-rule `@Suppress` / `@file:Suppress` /
-  `@SuppressWarnings` in authored Kotlin under `runtime-kotlin/` and
-  `runtime-kotlin/build-logic/` (excluding `**/build/**`, `**/generated/**`).
+  `@SuppressWarnings` in authored Kotlin under `../../../runtime-kotlin` and
+  `../../../runtime-kotlin/build-logic` (excluding `**/build/**`, `**/generated/**`).
 - Fail on any other authored `@Suppress` whose (file, rule) pair is not on
   the allow-list.
 - Prove against fixtures: a `TooManyFunctions` suppression fails; an
@@ -71,12 +71,12 @@ Add one source-scanning test in `skillbill.architecture`:
    symbol, rule, and one-line why; allow-list and tree are 1:1.
 3. No allow-list entry exists for a site that was fixed, or for a complexity
    rule.
-4. `scripts/validate` passes with `detekt` at `maxIssues: 0` and no baseline.
+4. `../../../scripts/validate` passes with `detekt` at `maxIssues: 0` and no baseline.
 5. Architecture fixtures prove: complexity suppression fails; allow-listed
    cast passes; non-allow-listed cast fails; removing a pinned complexity
    key from `detekt.yml` fails.
 6. No test duplicates SKILL-220's line-ceiling or FQN scanners.
-7. `scripts/validate` passes.
+7. `../../../scripts/validate` passes.
 
 ## Failure And Recovery Behavior
 
@@ -100,10 +100,10 @@ Runs last. Depends on subtasks 1 and 2.
 Introduce a local `@Suppress("TooManyFunctions")`, confirm failure, revert.
 Introduce a non-allow-listed `@Suppress("UNCHECKED_CAST")`, confirm failure,
 revert. Confirm each allow-listed site still compiles and is listed. Run
-`scripts/validate`.
+`../../../scripts/validate`.
 
 ## Next Path
 
 Program complete. Record the allow-list policy in
-`runtime-kotlin/agent/decisions.md`. SKILL-220 documentation reconciliation
+`../../../runtime-kotlin/agent/decisions.md`. SKILL-220 documentation reconciliation
 may cite this gate if that goal is still open.

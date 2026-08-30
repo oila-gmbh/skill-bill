@@ -4,7 +4,7 @@
 
 Detekt is already on the `check` path (`skillbill.quality`,
 `buildUponDefaultConfig = true`, `maxIssues: 0`), but
-`runtime-kotlin/config/detekt/detekt.yml` only names a handful of rules.
+`../../../runtime-kotlin/config/detekt/detekt.yml` only names a handful of rules.
 Complexity rules such as `TooManyFunctions`, `LargeClass`, `LongMethod`, and
 `CyclomaticComplexMethod` are therefore implicit defaults, and the tree
 silences them with `@Suppress` instead of fixing the code.
@@ -42,7 +42,7 @@ a weird workaround rather than a clearer design.
 Every retained suppression is narrow (declaration-scoped, not `@file:` when
 one site suffices), names the rule, and is listed in a dated allow-list
 entry (path + symbol + rule + one-line why) in
-`runtime-kotlin/agent/decisions.md`. The allow-list starts empty and grows
+`../../../runtime-kotlin/agent/decisions.md`. The allow-list starts empty and grows
 only for sites that survive an honest "fix vs keep" judgment — not as a
 pre-filled exemption dump.
 
@@ -55,7 +55,7 @@ scope** (already excluded from detekt).
 
 ## Principle Sources
 
-- skill-bill-v2 `docs/code-principles.md` Build And Tooling: auto-fixers are
+- skill-bill-v2 `../../../docs/code-principles.md` Build And Tooling: auto-fixers are
   convenience; the corresponding check stays in the validation gate. A fixer
   never replaces an enforcer.
 - This repository's AGENTS.md: prefer extraction over comments; do not add
@@ -76,7 +76,7 @@ scope** (already excluded from detekt).
 ## Scope
 
 - Pin complexity rules as `active: true` with explicit numeric thresholds in
-  `runtime-kotlin/config/detekt/detekt.yml` (and build-logic's detekt block
+  `../../../runtime-kotlin/config/detekt/detekt.yml` (and build-logic's detekt block
   if it has one).
 - Remove every complexity suppression by fixing the code.
 - Remove other detekt/ktlint suppressions when a straightforward fix exists;
@@ -127,12 +127,12 @@ this program.
    (path, symbol, rule, one-line why). Sites that were fixed are not listed.
 5. No retained suppression exists only to dodge a rule whose fix is
    extraction, a named constant, a rename, or deleting an unused symbol.
-6. `./gradlew detekt` (via `scripts/validate`) reports zero issues with
+6. `./gradlew detekt` (via `../../../scripts/validate`) reports zero issues with
    `maxIssues: 0` and no baseline file.
 7. No production file exceeds SKILL-220's 500-line ceiling.
 8. An architecture test fails on a new complexity suppression and on any
    `@Suppress` not on the allow-list, proved against fixtures.
-9. `scripts/validate` passes at every subtask boundary and at program
+9. `../../../scripts/validate` passes at every subtask boundary and at program
    completion.
 10. Tests may change structure but must not weaken assertions to pass.
 
@@ -143,7 +143,7 @@ None. Detekt configuration is a build gate, not a runtime wire contract.
 ## Constraints
 
 - Do not start until SKILL-220 subtasks 4–6 are complete.
-- One subtask per commit, each green under `scripts/validate`.
+- One subtask per commit, each green under `../../../scripts/validate`.
 - Do not add a detekt baseline. Do not set `maxIssues` above 0.
 - Do not disable a rule to clear suppressions.
 - Do not invent typed wrappers, extra modules, or API churn whose only
@@ -172,11 +172,11 @@ detekt, then compiler + allow-list lock.
 
 ## Validation Strategy
 
-Each subtask runs `scripts/validate`. Subtask 3 proves the architecture
+Each subtask runs `../../../scripts/validate`. Subtask 3 proves the architecture
 scanner against fixtures (complexity suppression; non-allow-listed
 suppression), then reverts. Program complete when complexity suppressions
 are gone, remaining suppressions match the allow-list 1:1, and
-`scripts/validate` passes.
+`../../../scripts/validate` passes.
 
 ## Next Path
 
