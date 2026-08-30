@@ -412,16 +412,18 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
       recordFailure
     },
   ).finalise(
-    identity = identity,
-    durableCommitSha = durableCommitSha,
-    sequenceNumber = sequenceNumber,
-    handoff = FeatureTaskRuntimeCommitPushHandoff(outcomeMessage = agentSubject, changedPaths = paths),
-    metadata = FeatureTaskRuntimeCheckpointMetadata(
-      phaseId = "commit_push",
-      loopId = null,
-      generation = 0,
-      branch = branch,
-      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
+    FeatureTaskRuntimeSubtaskFinaliseRequest(
+      identity = identity,
+      durableCommitSha = durableCommitSha,
+      sequenceNumber = sequenceNumber,
+      handoff = FeatureTaskRuntimeCommitPushHandoff(outcomeMessage = agentSubject, changedPaths = paths),
+      metadata = FeatureTaskRuntimeCheckpointMetadata(
+        phaseId = "commit_push",
+        loopId = null,
+        generation = 0,
+        branch = branch,
+        intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
+      ),
     ),
   )
 

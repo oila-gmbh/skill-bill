@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.DecompositionManifestWriteRequest
+import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
@@ -52,11 +53,12 @@ class DecompositionManifestWriterValidationTest {
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
       DecompositionManifestWriter.writeFromWorkflowUpdate(
-        repoRoot = repoRoot,
-        existingArtifactsJson = invalidDurableRuntimeArtifactsJson(initial.manifest),
-        artifactsPatch = null,
-        validator = validator,
-        fileStore = fileStore,
+        DecompositionManifestWorkflowProjectionInput(
+          repoRoot = repoRoot,
+          existingArtifactsJson = invalidDurableRuntimeArtifactsJson(initial.manifest),
+          validator = validator,
+          fileStore = fileStore,
+        ),
       )
     }
 

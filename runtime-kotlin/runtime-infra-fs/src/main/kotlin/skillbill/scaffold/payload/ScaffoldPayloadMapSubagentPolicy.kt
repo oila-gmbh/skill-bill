@@ -7,9 +7,8 @@ import skillbill.scaffold.policy.scaffold.model.OptionalSubagents
 
 /**
  * SKILL-52.2 subtask 2 (Task 11): subagent-policy helpers split out of `ScaffoldPayloadMapPolicy`
- * so each file stays under the detekt `TooManyFunctions` threshold and each function stays under
- * the per-function `ThrowsCount` cap. See the doc comment in `ScaffoldPayloadMapPolicy.kt` for the
- * relocation rationale.
+ * so each file stays small and each function keeps a narrow failure surface. See the doc comment in
+ * `ScaffoldPayloadMapPolicy.kt` for the relocation rationale.
  */
 
 internal fun optionalSpecialistSubagents(payload: Map<String, Any?>, kind: String): OptionalSubagents {

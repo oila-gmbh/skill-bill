@@ -113,15 +113,10 @@ class FeatureTaskRuntimeProsePhaseIoRunnerTest {
     assertEquals(listOf(1), loopEdges.mapNotNull { it.edgeIteration })
   }
 
-  private fun proseHarness(outputFor: (String) -> String): RunnerHarness = runnerHarness(
-    launcher = RuntimeRecordingLauncher { request ->
+  private fun proseHarness(outputFor: (String) -> String): RunnerHarness = runnerHarness(RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator).copy(launcher = RuntimeRecordingLauncher { request ->
       val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
       facts(outputFor(phaseId))
-    },
-    validator = realFeatureTaskRuntimePhaseOutputValidator,
-    agentAssignment = phasePerAgentAssignment(),
-    runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
-  )
+    }, validator = realFeatureTaskRuntimePhaseOutputValidator, agentAssignment = phasePerAgentAssignment()))
 
   private fun seededThroughImplementHarness(outputFor: (String) -> String): RunnerHarness {
     val harness = proseHarness(outputFor)

@@ -1,0 +1,602 @@
+package skillbill.application.work
+
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
+import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
+import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.application.goalrunner.goalRepositoryIdentity
+import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
+import skillbill.application.goalrunner.testGoalRunnerStatusService
+import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
+import skillbill.application.idestatus.model.IdeStatusFreshness
+import skillbill.application.idestatus.model.IdeStatusLifecycleState
+import skillbill.application.idestatus.model.IdeStatusProblemCode
+import skillbill.application.idestatus.model.IdeStatusRequest
+import skillbill.application.idestatus.model.IdeStatusResult
+import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
+import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalPlanningStatusState
+import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.goalrunner.model.GoalRunnerExecutionLease
+import skillbill.goalrunner.model.GoalRunnerStoredOutcome
+import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
+import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
+import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
+import skillbill.ports.goalrunner.GoalRunnerControlRepository
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
+import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.review.ReviewRepository
+import skillbill.ports.system.CheckedOutBranchSource
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
+import skillbill.ports.work.WorkListRepository
+import skillbill.ports.work.model.WorkItem
+import skillbill.ports.work.model.WorkItemKind
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionSubtask
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.idestatus.IdeStatusValidator
+import skillbill.workflow.idestatus.NoopIdeStatusValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+
+internal val ideStatusObservedAt: Instant = Instant.parse("2026-08-06T12:00:00Z")
+internal val ideStatusClock: Clock = Clock.fixed(ideStatusObservedAt, ZoneOffset.UTC)
+
+internal fun goalWireMapUnderControls(
+    fixtureName: String,
+    controlState: GoalRunnerControlState,
+    assertSnapshot: (IdeStatusResult) -> Unit,
+  ): Map<String, Any?> {
+    val fixture = gitRepoFixture(fixtureName)
+    val identity = goalRepositoryIdentity(fixture)
+    val service = service(
+      goalOnlyDatabase(),
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child")
+          .copy(controlState = controlState.copy(repositoryIdentity = identity)),
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
+
+    assertSnapshot(result)
+    return result.snapshot.toStatusWireMap()
+  }
+
+internal fun nestedWireMap(wire: Map<String, Any?>, key: String): Map<String, Any?> {
+    val value = wire[key]
+    require(value is Map<*, *>) { "expected nested map at '$key'" }
+    return buildMap {
+      for ((nestedKey, nestedValue) in value) {
+        if (nestedKey is String) put(nestedKey, nestedValue)
+      }
+    }
+  }
+
+internal fun goalOnlyDatabase(goalState: String = "running"): TrackingDatabase = TrackingDatabase(
+    work = listOf(workItem("goal-1", WorkItemKind.FEATURE_GOAL, goalState, "2026-08-06T10:00:00Z")),
+    workflows = IdeStatusWorkflowStates(),
+  )
+
+internal fun planningSnapshot(state: GoalPlanningStatusState): GoalPlanningStatusSnapshot = GoalPlanningStatusSnapshot(
+    state = state,
+    sharedPreplanPrepared = true,
+    plannedSubtaskCount = 1,
+    totalSubtaskCount = 2,
+    currentPlanningSubtaskId = 2,
+    reason = null,
+  )
+
+internal fun goalManifestState(fixture: Path, identity: String, childWorkflowId: String): GoalRunnerManifestState =
+    GoalRunnerManifestState(
+      parentWorkflowId = "goal-1",
+      dbPath = "/fake/ide-status.db",
+      manifest = DecompositionManifest(
+        issueKey = "SKILL-148",
+        featureName = "ide-status",
+        parentSpecPath = ".feature-specs/SKILL-148/spec.md",
+        baseBranch = "main",
+        featureBranch = "feat/SKILL-148",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "start"),
+        subtasks = listOf(
+          DecompositionSubtask(
+            id = 1,
+            name = "One",
+            specPath = "spec_1.md",
+            status = "complete",
+            workflowId = "w-done",
+          ),
+          DecompositionSubtask(
+            id = 2,
+            name = "Two",
+            specPath = "spec_2.md",
+            status = "in_progress",
+            workflowId = childWorkflowId,
+            lastResumableStep = "implement",
+          ),
+        ),
+      ),
+      controlState = GoalRunnerControlState(repositoryIdentity = identity),
+      repoRoot = fixture,
+    )
+
+internal fun service(
+    database: TrackingDatabase,
+    manifestStore: GoalRunnerManifestStore = EmptyManifestStore,
+    outcomeStore: GoalRunnerWorkflowOutcomeStore = EmptyOutcomeStore,
+  ): IdeStatusService {
+    val snapshotValidator = object : WorkflowSnapshotValidator {
+      override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+    }
+    val phaseRecorder = featureTaskRuntimePhaseRecorder(
+      database,
+      snapshotValidator,
+      AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+      AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    )
+    val runtimeStatusService = FeatureTaskRuntimeStatusService(
+      recorder = phaseRecorder,
+      runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, snapshotValidator),
+      decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, snapshotValidator),
+    )
+    val projector = IdeStatusProjector(
+      workflowSnapshotValidator = snapshotValidator,
+      goalRunnerStatusService = testGoalRunnerStatusService(
+        goalRunnerStatusServiceDeps(
+          manifestStore = manifestStore,
+          outcomeStore = outcomeStore,
+          phaseRecorder = phaseRecorder,
+        ).copy(
+          clock = ideStatusClock,
+          runtimeStatusService = runtimeStatusService,
+        ),
+      ),
+      featureTaskRuntimeStatusService = runtimeStatusService,
+    )
+    return IdeStatusService(
+      database = database,
+      projector = projector,
+      ideStatusValidator = EmitShapeValidator,
+      branchSource = CheckedOutBranchSource(::fixtureCheckedOutBranch),
+      clock = ideStatusClock,
+    )
+  }
+}
+
+internal fun fixtureCheckedOutBranch(repoRoot: Path): String? =
+  runCatching { Files.readString(repoRoot.resolve(".git").resolve("HEAD")) }.getOrNull()
+    ?.trim()
+    ?.takeIf { it.startsWith("ref: refs/heads/") }
+    ?.removePrefix("ref: refs/heads/")
+
+internal object EmitShapeValidator : IdeStatusValidator by NoopIdeStatusValidator {
+  override fun validate(snapshot: Map<String, Any?>, sourceLabel: String) {
+    require(snapshot["contract_version"] == "0.1")
+    require(snapshot["repository_identity"] is String)
+    require(snapshot["lifecycle_state"] is String)
+  }
+}
+
+internal fun gitRepoFixture(prefix: String, branch: String? = "feat/SKILL-148-fixture"): Path {
+  val root = Files.createTempDirectory(prefix)
+  Files.createDirectory(root.resolve(".git"))
+  if (branch != null) {
+    Files.writeString(root.resolve(".git").resolve("HEAD"), "ref: refs/heads/$branch\n")
+  }
+  return root.toRealPath()
+}
+
+internal fun workItem(workflowId: String, kind: WorkItemKind, state: String, updatedAt: String): WorkItem = WorkItem(
+  issueKey = "SKILL-148",
+  workflowKind = kind,
+  workflowId = workflowId,
+  startedAt = Instant.parse("2026-08-06T08:00:00Z"),
+  currentState = state,
+  stateEnteredAt = Instant.parse(updatedAt),
+  stateEnteredAtEstimated = false,
+)
+
+internal fun identityFor(workflowId: String, repositoryIdentity: String): FeatureTaskExecutionIdentity =
+  FeatureTaskExecutionIdentity(
+    workflowId = workflowId,
+    normalizedIssueKey = "SKILL-148",
+    repositoryIdentity = repositoryIdentity,
+    governedSpecPath = "spec.md",
+    mode = FeatureTaskWorkflowMode.RUNTIME,
+  )
+
+internal data class PhaseRecordOptions(
+  val effort: String? = null,
+  val attemptCount: Int = 1,
+  val reviewPassNumber: Int? = null,
+  val loopId: String? = null,
+  val edgeIteration: Int? = null,
+)
+
+internal fun phaseRecordWire(
+  phaseId: String,
+  status: String,
+  launchedModel: String?,
+  options: PhaseRecordOptions = PhaseRecordOptions(),
+): Map<String, Any?> = FeatureTaskRuntimePhaseRecord(
+  phaseId = phaseId,
+  status = status,
+  attemptCount = options.attemptCount,
+  startedAt = "2026-08-06T09:00:00Z",
+  finishedAt = if (status == "completed") "2026-08-06T09:30:00Z" else null,
+  resolvedAgentId = "claude",
+  launchedModel = launchedModel,
+  launchedEffort = options.effort,
+  reviewPassNumber = options.reviewPassNumber,
+  loopId = options.loopId,
+  edgeIteration = options.edgeIteration,
+).toArtifactMap()
+
+internal fun phaseRecordsArtifactsJson(vararg records: Pair<String, Map<String, Any?>>): String =
+  JsonSupport.mapToJsonString(
+    mapOf(FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to records.toMap()),
+  )
+
+internal fun runtimeRecord(
+  workflowId: String,
+  updatedAt: String,
+  currentStep: String = "implement",
+): WorkflowStateRecord = WorkflowStateRecord(
+  workflowId = workflowId,
+  sessionId = "session-$workflowId",
+  workflowName = "bill-feature-task",
+  contractVersion = "0.1",
+  workflowStatus = if (currentStep == "pr") "completed" else "running",
+  currentStepId = currentStep,
+  stepsJson = pipelineStepsJson(FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds, currentStep),
+  artifactsJson = "{}",
+  startedAt = "2026-08-06T08:00:00Z",
+  updatedAt = updatedAt,
+  finishedAt = if (currentStep == "pr") updatedAt else null,
+  issueKey = "SKILL-148",
+  mode = FeatureTaskWorkflowMode.RUNTIME,
+)
+
+internal fun verifyRecord(
+  workflowId: String,
+  updatedAt: String,
+  currentStep: String = "code_review",
+): WorkflowStateRecord = WorkflowStateRecord(
+  workflowId = workflowId,
+  sessionId = "session-$workflowId",
+  workflowName = "bill-feature-verify",
+  contractVersion = "0.1",
+  workflowStatus = "running",
+  currentStepId = currentStep,
+  stepsJson = pipelineStepsJson(FeatureVerifyWorkflowDefinition.definition.stepIds, currentStep),
+  artifactsJson = "{}",
+  startedAt = "2026-08-06T08:00:00Z",
+  updatedAt = updatedAt,
+  finishedAt = null,
+  issueKey = "SKILL-148",
+)
+
+internal fun pipelineStepsJson(stepIds: List<String>, currentStep: String): String {
+  val currentIndex = stepIds.indexOf(currentStep).takeIf { it >= 0 }
+    ?: error("Unknown step id '$currentStep' for fixture pipeline.")
+  return stepIds.mapIndexed { index, stepId ->
+    val status = when {
+      index < currentIndex -> "completed"
+      index == currentIndex && currentStep == "pr" -> "completed"
+      index == currentIndex -> "running"
+      else -> "pending"
+    }
+    """{"step_id":"$stepId","status":"$status","attempt_count":1}"""
+  }.joinToString(prefix = "[", postfix = "]")
+}
+
+internal class TrackingDatabase(
+  internal val work: List<WorkItem>,
+  internal val workflows: WorkflowStateRepository,
+  internal val exists: Boolean = true,
+  internal val controls: GoalRunnerControlRepository = EmptyGoalRunnerControlRepository,
+) : DatabaseSessionFactory {
+  var readCalls: Int = 0
+    internal set
+  var writeCalls: Int = 0
+    internal set
+
+  override fun resolveDbPath(dbOverride: String?): Path = Path.of("/fake/ide-status.db")
+
+  override fun databaseExists(dbOverride: String?): Boolean = exists
+
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+    readCalls += 1
+    return block(unitOfWork())
+  }
+
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T {
+    writeCalls += 1
+    return block(unitOfWork())
+  }
+
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
+    writeCalls += 1
+    return block(unitOfWork())
+  }
+
+  internal fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+    override val dbPath: Path = Path.of("/fake/ide-status.db")
+    override val workflowStates = workflows
+    override val workList: WorkListRepository = object : WorkListRepository {
+      override fun list(limit: Int?): List<WorkItem> = limit?.let(work::take) ?: work
+    }
+    override val goalRunnerControls = controls
+    override val learnings: LearningRepository
+      get() = error("Not exercised by IdeStatusServiceTest.")
+    override val reviews: ReviewRepository
+      get() = error("Not exercised by IdeStatusServiceTest.")
+    override val lifecycleTelemetry: LifecycleTelemetryRepository
+      get() = error("Not exercised by IdeStatusServiceTest.")
+    override val telemetryReconciliation: TelemetryReconciliationRepository
+      get() = error("Not exercised by IdeStatusServiceTest.")
+    override val telemetryOutbox: TelemetryOutboxRepository
+      get() = error("Not exercised by IdeStatusServiceTest.")
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val featureTaskRuntimeAuditGenerations = EmptyFeatureTaskRuntimeAuditGenerationRepository
+  }
+}
+
+internal class OrphanedIdentityWorkflowStates(
+  internal val message: String,
+) : WorkflowStateRepository by IdeStatusWorkflowStates() {
+  override fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
+    throw InvalidWorkflowStateSchemaError(message)
+}
+
+internal class IdeStatusWorkflowStates : WorkflowStateRepository {
+  internal val implement = mutableMapOf<String, WorkflowStateRecord>()
+  internal val verify = mutableMapOf<String, WorkflowStateRecord>()
+  internal val identities = mutableMapOf<String, FeatureTaskExecutionIdentity>()
+
+  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) {
+    identities[identity.workflowId] = identity
+  }
+
+  override fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
+    identities[workflowId]
+
+  override fun findStandaloneFeatureTaskCandidates(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> = emptyList()
+
+  override fun findGoalChildFeatureTaskCandidates(
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): List<FeatureTaskWorkflowCandidate> = identities.values
+    .filter {
+      it.routeScope == FeatureTaskRouteScope.GOAL_CHILD &&
+        it.normalizedIssueKey == normalizedIssueKey &&
+        it.repositoryIdentity == repositoryIdentity
+    }
+    .mapNotNull { identity ->
+      implement[identity.workflowId]?.let { FeatureTaskWorkflowCandidate(identity = identity, workflow = it) }
+    }
+
+  override fun countGoalChildIdentities(normalizedIssueKey: String): Int = identities.values.count {
+    it.normalizedIssueKey == normalizedIssueKey && it.routeScope == FeatureTaskRouteScope.GOAL_CHILD
+  }
+
+  override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
+    implement[row.workflowId] = row
+  }
+
+  override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = implement[workflowId]
+
+  override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> =
+    implement.values.toList().take(limit)
+
+  override fun latestFeatureImplementWorkflow(): WorkflowStateRecord? = implement.values.lastOrNull()
+
+  override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
+
+  override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) {
+    verify[row.workflowId] = row
+  }
+
+  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = verify[workflowId]
+
+  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> = verify.values.toList().take(limit)
+
+  override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = verify.values.lastOrNull()
+
+  override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+  override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
+    implement[row.workflowId] = row
+  }
+
+  override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = implement[workflowId]
+
+  override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =
+    implement.values.toList().take(limit)
+
+  override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = implement.values.lastOrNull()
+}
+
+internal class StubGoalManifestStore(
+  internal val state: GoalRunnerManifestState,
+  internal val planning: GoalPlanningStatusSnapshot? = null,
+  internal val lease: GoalRunnerExecutionLease? = null,
+) : GoalRunnerManifestStore {
+  override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? = lease
+
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    state.takeIf { it.manifest.issueKey.equals(issueKey, ignoreCase = true) }
+
+  override fun planningStatus(
+    parentWorkflowId: String,
+    orderedSubtaskIds: List<Int>,
+    blockedSubtaskId: Int?,
+    blockedReason: String?,
+    dbPathOverride: String?,
+  ): GoalPlanningStatusSnapshot? = planning
+
+  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+
+  override fun acquireExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    expectedOwnerToken: String?,
+    dbPathOverride: String?,
+  ): Boolean = false
+
+  override fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String?,
+  ): Boolean = false
+
+  override fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String?,
+  ): Boolean = false
+}
+
+internal object EmptyManifestStore : GoalRunnerManifestStore {
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    null
+
+  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+
+  override fun acquireExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    expectedOwnerToken: String?,
+    dbPathOverride: String?,
+  ): Boolean = false
+
+  override fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String?,
+  ): Boolean = false
+
+  override fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String?,
+  ): Boolean = false
+}
+
+internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
+  override fun terminalOutcome(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    dbPathOverride: String?,
+  ): GoalRunnerStoredOutcome? = null
+
+  override fun recoverAndPersistTerminalOutcome(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    repoRoot: Path,
+    dbPathOverride: String?,
+  ): GoalRunnerStoredOutcome? = null
+
+  override fun recoverMissingResultPrefixOutput(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    output: Map<String, Any?>,
+    dbPathOverride: String?,
+  ): GoalRunnerStoredOutcome? = null
+
+  override fun reconcileAuthoritativeOutcomes(
+    issueKey: String,
+    activeWorkflowIds: Set<String>,
+    gate: GoalRunnerReconcileGate,
+    repoRoot: Path?,
+    dbPathOverride: String?,
+  ): Map<Int, GoalRunnerStoredOutcome> = emptyMap()
+
+  override fun markBlocked(
+    workflowId: String,
+    blockedReason: String,
+    lastResumableStep: String,
+    supervisionEvent: GoalRunnerSupervisionEvent?,
+    dbPathOverride: String?,
+  ): String? = null
+
+  override fun progress(workflowId: String, dbPathOverride: String?): GoalRunnerWorkflowProgress? = null
+
+  override fun recordObservabilityEvent(
+    request: GoalRunnerObservabilityRecordRequest,
+    dbPathOverride: String?,
+  ): Boolean = false
+
+  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String?): Boolean =
+    false
+
+  override fun recordAttemptLedgerEntry(
+    request: GoalRunnerAttemptLedgerRecordRequest,
+    dbPathOverride: String?,
+  ): Boolean = false
+
+  override fun recordWorkerSubtaskRequestOutcomes(
+    workflowId: String,
+    outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
+    dbPathOverride: String?,
+  ): Boolean = false
+
+  override fun ledgerSequenceWatermarks(
+    issueKey: String,
+    dbPathOverride: String?,
+  ): GoalRunnerLedgerSequenceWatermarks = GoalRunnerLedgerSequenceWatermarks()
+
+  override fun reopenBlockedPhaseForOperatorResume(
+    workflowId: String,
+    preferredPhaseId: String,
+    reason: String,
+    dbPathOverride: String?,
+  ): Boolean = false
+}

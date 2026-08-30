@@ -25,78 +25,55 @@ const val PLATFORM_PACK_SHELL_CONTRACT_VERSION: String = "1.7"
  * arguments must already be absolute or pack-root-relative; this function does no IO and never
  * reads from disk.
  */
-@Suppress("LongParameterList")
-fun renderPlatformPackManifest(
-  platform: String,
-  displayName: String,
-  strongSignals: List<String>,
-  tieBreakers: List<String> = emptyList(),
-  declaredCodeReviewAreas: List<String> = emptyList(),
-  baselineContentPath: String,
-  declaredAreaFiles: Map<String, String> = emptyMap(),
-  declaredQualityCheckFile: String? = null,
-  areaMetadata: Map<String, String> = emptyMap(),
-  baselineLayers: List<CodeReviewBaselineLayer> = emptyList(),
-  notes: String? = null,
-): String {
+fun renderPlatformPackManifest(request: PlatformPackManifestRenderRequest): String {
   val lines = mutableListOf<String>()
-  lines += "platform: ${yamlScalar(platform)}"
+  lines += "platform: ${yamlScalar(request.platform)}"
   lines += "contract_version: ${yamlScalar(PLATFORM_PACK_SHELL_CONTRACT_VERSION)}"
-  lines += "display_name: ${yamlScalar(displayName)}"
+  lines += "display_name: ${yamlScalar(request.displayName)}"
   lines += ""
-  appendRoutingSignals(lines, strongSignals, tieBreakers)
+  appendRoutingSignals(lines, request.strongSignals, request.tieBreakers)
   lines += ""
-  appendDeclaredCodeReviewAreas(lines, declaredCodeReviewAreas)
+  appendDeclaredCodeReviewAreas(lines, request.declaredCodeReviewAreas)
   lines += ""
-  appendDeclaredFiles(lines, baselineContentPath, declaredCodeReviewAreas, declaredAreaFiles)
-  appendAreaMetadata(lines, declaredCodeReviewAreas, areaMetadata)
-  appendQualityCheckDeclaration(lines, declaredQualityCheckFile)
-  appendPointers(lines, baselineContentPath, declaredCodeReviewAreas, declaredAreaFiles, declaredQualityCheckFile)
-  appendBaselineLayers(lines, baselineLayers)
-  if (notes != null) {
+  appendDeclaredFiles(lines, request.baselineContentPath, request.declaredCodeReviewAreas, request.declaredAreaFiles)
+  appendAreaMetadata(lines, request.declaredCodeReviewAreas, request.areaMetadata)
+  appendQualityCheckDeclaration(lines, request.declaredQualityCheckFile)
+  appendPointers(
+    lines,
+    request.baselineContentPath,
+    request.declaredCodeReviewAreas,
+    request.declaredAreaFiles,
+    request.declaredQualityCheckFile,
+  )
+  appendBaselineLayers(lines, request.baselineLayers)
+  if (request.notes != null) {
     lines += ""
-    lines += "notes: ${yamlScalar(notes)}"
+    lines += "notes: ${yamlScalar(request.notes)}"
   }
   return lines.joinToString("\n") + "\n"
 }
 
-/**
- * Pure helper used by the infra-fs scaffold seam to translate plan + path inputs into the
- * relative-path strings the renderer expects, then invoke [renderPlatformPackManifest]. The
- * `packRoot.relativize(...)` calls are pure path arithmetic and produce stable forward-slash
- * strings on every platform.
- */
-@Suppress("LongParameterList")
-fun renderPlatformPackManifestContent(
-  platform: String,
-  displayName: String,
-  routingSignals: List<String>,
-  tieBreakers: List<String>,
-  specialistAreas: List<String>,
-  specialistAreaMetadata: Map<String, String>,
-  baselineLayers: List<CodeReviewBaselineLayer>,
-  packRoot: Path,
-  baselineSkillPath: Path,
-  qualityCheckSkillPath: Path,
-  specialistSkillPaths: Map<String, Path>,
-): String = renderPlatformPackManifest(
-  platform = platform,
-  displayName = displayName,
-  strongSignals = routingSignals,
-  tieBreakers = tieBreakers,
-  declaredCodeReviewAreas = specialistAreas,
-  baselineContentPath = packRoot.relativize(baselineSkillPath.resolve("content.md"))
-    .toString()
-    .replace('\\', '/'),
-  declaredAreaFiles = specialistSkillPaths.mapValues { (_, path) ->
-    packRoot.relativize(path.resolve("content.md")).toString().replace('\\', '/')
-  },
-  declaredQualityCheckFile = packRoot.relativize(qualityCheckSkillPath.resolve("content.md"))
-    .toString()
-    .replace('\\', '/'),
-  areaMetadata = specialistAreaMetadata,
-  baselineLayers = baselineLayers,
-)
+fun renderPlatformPackManifestContent(request: PlatformPackManifestContentRenderRequest): String =
+  renderPlatformPackManifest(
+    PlatformPackManifestRenderRequest(
+      platform = request.platform,
+      displayName = request.displayName,
+      strongSignals = request.routingSignals,
+      tieBreakers = request.tieBreakers,
+      declaredCodeReviewAreas = request.specialistAreas,
+      baselineContentPath = request.packRoot.relativize(request.baselineSkillPath.resolve("content.md"))
+        .toString()
+        .replace('\\', '/'),
+      declaredAreaFiles = request.specialistSkillPaths.mapValues { (_, path) ->
+        request.packRoot.relativize(path.resolve("content.md")).toString().replace('\\', '/')
+      },
+      declaredQualityCheckFile = request.packRoot.relativize(request.qualityCheckSkillPath.resolve("content.md"))
+        .toString()
+        .replace('\\', '/'),
+      areaMetadata = request.specialistAreaMetadata,
+      baselineLayers = request.baselineLayers,
+    ),
+  )
 
 private fun appendRoutingSignals(lines: MutableList<String>, strongSignals: List<String>, tieBreakers: List<String>) {
   lines += "routing_signals:"

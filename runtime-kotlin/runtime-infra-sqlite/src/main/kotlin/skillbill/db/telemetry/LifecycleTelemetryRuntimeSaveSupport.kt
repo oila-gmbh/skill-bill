@@ -65,7 +65,6 @@ fun saveFeatureTaskRuntimeFinished(
   return TerminalSaveOutcome.FIRST_TERMINAL
 }
 
-@Suppress("LongMethod")
 private fun updateFeatureTaskRuntimeFinished(
   connection: Connection,
   record: FeatureTaskRuntimeFinishedRecord,
@@ -103,34 +102,43 @@ private fun updateFeatureTaskRuntimeFinished(
       AND (finished_event_emitted_at IS NULL OR completion_status = 'stale')
     """.trimIndent(),
   ).use { statement ->
-    statement.bind(
-      record.completionStatus,
-      completedPhaseIdsJson,
-      phaseOutcomesJson,
-      record.lastIncompletePhase,
-      record.blockedReason,
-      record.resolvedBranch,
-      record.reviewFixIterationCount,
-      record.auditGapIterationCount,
-      record.auditFirstPassConvergence,
-      record.auditRecurringGapCount,
-      record.auditNewGapCount,
-      record.auditAttemptedRepairItemCount,
-      record.auditResolvedRepairItemCount,
-      record.regenerationActivationCount,
-      record.regenerationAttemptCount,
-      regenerationOutcomeCountsJson(record),
-      record.crashReconciliationCount,
-      crashReconciliationReasonCountsJson(record),
-      record.estimatedPhaseTokenBreakdownJson,
-      record.estimatedTotalTokens,
-      record.findingVerificationVerifiedCount,
-      record.findingVerificationRejectedCount,
-      if (record.reviewFixCapExhausted) 1 else 0,
-      record.sessionId,
-    )
+    bindFeatureTaskRuntimeFinishedUpdate(statement, record, completedPhaseIdsJson, phaseOutcomesJson)
     statement.executeUpdate()
   }
+}
+
+private fun bindFeatureTaskRuntimeFinishedUpdate(
+  statement: java.sql.PreparedStatement,
+  record: FeatureTaskRuntimeFinishedRecord,
+  completedPhaseIdsJson: String,
+  phaseOutcomesJson: String,
+) {
+  statement.bind(
+    record.completionStatus,
+    completedPhaseIdsJson,
+    phaseOutcomesJson,
+    record.lastIncompletePhase,
+    record.blockedReason,
+    record.resolvedBranch,
+    record.reviewFixIterationCount,
+    record.auditGapIterationCount,
+    record.auditFirstPassConvergence,
+    record.auditRecurringGapCount,
+    record.auditNewGapCount,
+    record.auditAttemptedRepairItemCount,
+    record.auditResolvedRepairItemCount,
+    record.regenerationActivationCount,
+    record.regenerationAttemptCount,
+    regenerationOutcomeCountsJson(record),
+    record.crashReconciliationCount,
+    crashReconciliationReasonCountsJson(record),
+    record.estimatedPhaseTokenBreakdownJson,
+    record.estimatedTotalTokens,
+    record.findingVerificationVerifiedCount,
+    record.findingVerificationRejectedCount,
+    if (record.reviewFixCapExhausted) 1 else 0,
+    record.sessionId,
+  )
 }
 
 private fun regenerationOutcomeCountsJson(record: FeatureTaskRuntimeFinishedRecord): String? =

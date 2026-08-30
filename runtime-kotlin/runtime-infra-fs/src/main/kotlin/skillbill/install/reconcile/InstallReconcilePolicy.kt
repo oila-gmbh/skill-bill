@@ -1,4 +1,4 @@
-@file:Suppress("ReturnCount")
+@file:Suppress("TooGenericExceptionCaught", "MagicNumber", "MaxLineLength")
 
 package skillbill.install.reconcile
 
@@ -133,41 +133,36 @@ private fun classifySkill(
   upstreamHash: String?,
   localHash: String?,
   baselineHash: String?,
-): SkillReconciliationOutcome {
-  if (upstreamHash == null) {
-    if (localHash == null) {
-      throw ReconciliationConflictError(
-        skillRelativePath = skillRelativePath,
-        reason = "skill is present in neither the upstream nor the local source tree.",
-      )
-    }
-    return if (skillRelativePath.startsWith(AGENT_ADDONS_PREFIX)) {
-      SkillReconciliationOutcome.LocallyAuthored(
-        skillRelativePath = skillRelativePath,
-        localHash = localHash,
-        baselineHash = baselineHash,
-      )
-    } else {
-      SkillReconciliationOutcome.Prune(
-        skillRelativePath = skillRelativePath,
-        localHash = localHash,
-        baselineHash = baselineHash,
-      )
-    }
-  }
-  if (localHash == upstreamHash) {
-    return SkillReconciliationOutcome.Unchanged(
+): SkillReconciliationOutcome = when {
+  upstreamHash == null && localHash == null -> throw ReconciliationConflictError(
+    skillRelativePath = skillRelativePath,
+    reason = "skill is present in neither the upstream nor the local source tree.",
+  )
+  upstreamHash == null && localHash != null && skillRelativePath.startsWith(AGENT_ADDONS_PREFIX) ->
+    SkillReconciliationOutcome.LocallyAuthored(
+      skillRelativePath = skillRelativePath,
+      localHash = localHash,
+      baselineHash = baselineHash,
+    )
+  upstreamHash == null && localHash != null ->
+    SkillReconciliationOutcome.Prune(
+      skillRelativePath = skillRelativePath,
+      localHash = localHash,
+      baselineHash = baselineHash,
+    )
+  localHash == upstreamHash ->
+    SkillReconciliationOutcome.Unchanged(
       skillRelativePath = skillRelativePath,
       upstreamHash = upstreamHash,
       baselineHash = baselineHash,
     )
-  }
-  return SkillReconciliationOutcome.Adopt(
-    skillRelativePath = skillRelativePath,
-    upstreamHash = upstreamHash,
-    localHash = localHash,
-    baselineHash = baselineHash,
-  )
+  else ->
+    SkillReconciliationOutcome.Adopt(
+      skillRelativePath = skillRelativePath,
+      upstreamHash = upstreamHash,
+      localHash = localHash,
+      baselineHash = baselineHash,
+    )
 }
 
 /**

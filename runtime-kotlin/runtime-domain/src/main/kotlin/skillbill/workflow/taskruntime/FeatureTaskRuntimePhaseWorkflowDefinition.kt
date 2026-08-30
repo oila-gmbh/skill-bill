@@ -125,25 +125,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     const val PRIOR_GAP_MEMORY: String = "feature_task_runtime.prior_gap_memory"
   }
 
-  @Suppress("LongParameterList")
-  fun phaseProjection(
-    consumerPhaseId: String,
-    producingPhaseId: String,
-    name: String,
-    contractId: String,
-    fields: List<String>,
-    checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-    required: Boolean = true,
-  ): PhaseHandoffProjectionDeclaration = FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.phaseProjection(
-    consumerPhaseId,
-    producingPhaseId,
-    name,
-    contractId,
-    fields,
-    checkpointPolicy,
-    required,
-  )
+  fun phaseProjection(template: PhaseHandoffProjectionTemplate): PhaseHandoffProjectionDeclaration =
+    FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.phaseProjection(template)
 
   fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> =
     FeatureTaskRuntimePhaseWorkflowProjectionDeclarations.auditRemediationProjections()

@@ -22,42 +22,44 @@ internal const val REPO_VALIDATION_GOVERNED_ADDON_PATH_PART_COUNT = 4
 internal val repoValidationAddonSlugPattern = Regex("""^[a-z0-9]+(?:-[a-z0-9]+)*$""")
 internal val repoValidationSidecarReferencePattern = Regex("`([a-z0-9][a-z0-9-]*)\\.md`")
 
-@Suppress("LongParameterList")
-internal fun validateInstallableSkill(
-  skillName: String,
-  contentFile: Path,
-  root: Path,
-  issues: MutableList<String>,
-  validateSourceSidecars: Boolean,
-  portableReviewSkills: Set<String>,
-) {
-  val text = Files.readString(contentFile)
+internal data class ValidateInstallableSkillArgs(
+  val skillName: String,
+  val contentFile: Path,
+  val root: Path,
+  val issues: MutableList<String>,
+  val validateSourceSidecars: Boolean,
+  val portableReviewSkills: Set<String>,
+)
+
+internal fun validateInstallableSkill(args: ValidateInstallableSkillArgs) {
+  val text = Files.readString(args.contentFile)
   val frontmatter = parseFrontmatter(text)
-  if (frontmatter["name"] != skillName) {
-    issues += "$contentFile: frontmatter name '${frontmatter["name"].orEmpty()}' does not match " +
-      "directory '$skillName'"
+  if (frontmatter["name"] != args.skillName) {
+    args.issues += "${args.contentFile}: frontmatter name '${frontmatter["name"].orEmpty()}' does not match " +
+      "directory '${args.skillName}'"
   }
   if (frontmatter["description"].isNullOrBlank()) {
-    issues += "$contentFile: frontmatter description is missing"
+    args.issues += "${args.contentFile}: frontmatter description is missing"
   }
   try {
-    validateSkillMdShape(contentFile, validateBodyShape = false)
+    validateSkillMdShape(args.contentFile, validateBodyShape = false)
   } catch (error: InvalidSkillMdShapeError) {
-    issues += error.message.orEmpty()
+    args.issues += error.message.orEmpty()
   }
-  requiredSupportingFilesForSkill(skillName, root).forEach { fileName ->
-    val expectedTarget = supportingFileTargets(root)[fileName]
+  requiredSupportingFilesForSkill(args.skillName, args.root).forEach { fileName ->
+    val expectedTarget = supportingFileTargets(args.root)[fileName]
     if (expectedTarget == null) {
-      issues += "$contentFile: supporting file '$fileName' has no registered target"
+      args.issues += "${args.contentFile}: supporting file '$fileName' has no registered target"
     } else if (!Files.exists(expectedTarget)) {
-      issues += "$contentFile: supporting file '$fileName' target is missing at ${expectedTarget.relativeTo(root)}"
+      args.issues += "${args.contentFile}: supporting file '$fileName' target is missing at " +
+        "${expectedTarget.relativeTo(args.root)}"
     }
-    if (validateSourceSidecars && isAuthoredSourceSidecar(contentFile, fileName, expectedTarget)) {
-      validateSupportingSidecar(contentFile, fileName, expectedTarget, root, issues)
+    if (args.validateSourceSidecars && isAuthoredSourceSidecar(args.contentFile, fileName, expectedTarget)) {
+      validateSupportingSidecar(args.contentFile, fileName, expectedTarget, args.root, args.issues)
     }
   }
-  validatePortableReviewWording(skillName, text, contentFile, issues, portableReviewSkills)
-  validateGovernedContentFile(contentFile, issues)
+  validatePortableReviewWording(args.skillName, text, args.contentFile, args.issues, args.portableReviewSkills)
+  validateGovernedContentFile(args.contentFile, args.issues)
 }
 
 internal fun validateSkillSourceShape(contentFiles: Collection<Path>, root: Path, issues: MutableList<String>) {

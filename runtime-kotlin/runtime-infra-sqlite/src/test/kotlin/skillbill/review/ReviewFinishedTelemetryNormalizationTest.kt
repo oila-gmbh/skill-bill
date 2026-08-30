@@ -189,8 +189,10 @@ private fun reviewFinishedPayload(
   reviewRunId: String,
   routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
 ): Map<String, Any?> = ReviewStatsRuntime.buildReviewFinishedPayload(
-  connection = connection,
-  reviewRunId = reviewRunId,
-  level = "anonymous",
-  routedSkillPlatformSlugs = routedSkillPlatformSlugs,
+  ReviewFinishedPayloadBuildRequest(
+    connection = connection,
+    reviewRunId = reviewRunId,
+    level = "anonymous",
+    routedSkillPlatformSlugs = routedSkillPlatformSlugs,
+  ),
 ).toReviewFinishedTelemetryPayload().toPayload()

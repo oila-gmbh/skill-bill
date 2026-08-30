@@ -9,11 +9,14 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionShape
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -30,7 +33,7 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimeLeastContextEndToEndTest {
   @Test
   fun `every forward consumer receives exactly its declared bounded projection and no private evidence`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment())))
 
     val report = harness.runner.run(harness.request())
 
@@ -68,7 +71,6 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
     }
   }
 
-  @Suppress("LongMethod")
   private fun assertConsumerDelivery(
     phaseId: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
@@ -78,14 +80,24 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
       phaseId,
       FeatureTaskRuntimeFeatureSize.valueOf(briefing.featureSize),
     )
-    // required=false declarations (shared_review_evidence) may omit when the resolver has no
-    // store path; the closed world still forbids undeclared projections and requires every
-    // required declaration plus all run-invariant projections.
     val declared = declaration.projectionDeclarations + invariantDeclarations(phaseId)
     val deliveredNames = delivered.envelope.projections.map { it.projectionName }.toSet()
     val expectedDeclarations = declared.filter { it.required || it.projectionName in deliveredNames }
     val envelope = delivered.envelope
 
+    assertConsumerEnvelopeIdentity(phaseId, briefing, envelope, declaration, expectedDeclarations)
+    assertConsumerProjectionFields(phaseId, envelope, declared, deliveredNames, expectedDeclarations)
+    assertConsumerEnvelopeMetadata(phaseId, envelope, delivered, declaration, briefing)
+    assertConsumerDeliveredWireBoundaries(phaseId, delivered)
+  }
+
+  private fun assertConsumerEnvelopeIdentity(
+    phaseId: String,
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    envelope: FeatureTaskRuntimeHandoffEnvelope,
+    declaration: FeatureTaskRuntimePhaseDeclaration,
+    expectedDeclarations: List<PhaseHandoffProjectionDeclaration>,
+  ) {
     assertEquals(phaseId, briefing.phaseId)
     assertEquals(phaseId, envelope.consumerPhaseId)
     assertEquals(briefing.handoffEnvelope, envelope)
@@ -94,6 +106,15 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
       envelope.projections.map { it.projectionName },
       "$phaseId received a projection outside its closed declaration or missed a required projection",
     )
+  }
+
+  private fun assertConsumerProjectionFields(
+    phaseId: String,
+    envelope: FeatureTaskRuntimeHandoffEnvelope,
+    declared: List<PhaseHandoffProjectionDeclaration>,
+    deliveredNames: Set<String>,
+    expectedDeclarations: List<PhaseHandoffProjectionDeclaration>,
+  ) {
     declared.filter { it.required }.forEach { required ->
       assertTrue(
         required.projectionName in deliveredNames,
@@ -107,11 +128,11 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
         actual.projectionContractId to actual.projectionContractVersion,
         "${actual.projectionName} changed contract identity",
       )
-      val deliveredNames = actual.fields.map { it.name }
+      val fieldNames = actual.fields.map { it.name }
       assertTrue(
-        deliveredNames.all { it in declaredProjection.declaredFieldNames },
+        fieldNames.all { it in declaredProjection.declaredFieldNames },
         "${actual.projectionName} delivered undeclared fields: " +
-          "${deliveredNames - declaredProjection.declaredFieldNames.toSet()}",
+          "${fieldNames - declaredProjection.declaredFieldNames.toSet()}",
       )
       val requiredNames = declaredProjection.declaredFieldNames.filterNot { name ->
         declaredProjection.projectionContractId ==
@@ -119,10 +140,19 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
           name == "directive"
       }
       assertTrue(
-        requiredNames.all { it in deliveredNames },
-        "${actual.projectionName} missing required fields: ${requiredNames - deliveredNames.toSet()}",
+        requiredNames.all { it in fieldNames },
+        "${actual.projectionName} missing required fields: ${requiredNames - fieldNames.toSet()}",
       )
     }
+  }
+
+  private fun assertConsumerEnvelopeMetadata(
+    phaseId: String,
+    envelope: FeatureTaskRuntimeHandoffEnvelope,
+    delivered: FeatureTaskRuntimeDeliveredProjectionRecord,
+    declaration: FeatureTaskRuntimePhaseDeclaration,
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+  ) {
     assertEquals(declaration.derivedContextKeys, briefing.derivedContextKeys)
     assertTrue(
       envelope.projections.all {
@@ -140,7 +170,12 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
       delivered.repositoryCheckpointFingerprint,
       "$phaseId delivered record and envelope disagree on repository identity",
     )
+  }
 
+  private fun assertConsumerDeliveredWireBoundaries(
+    phaseId: String,
+    delivered: FeatureTaskRuntimeDeliveredProjectionRecord,
+  ) {
     val deliveredWire = delivered.toArtifactMap()
     assertNoForbiddenStructuralField(deliveredWire, phaseId)
     assertFalse(
@@ -159,17 +194,19 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
         } else {
           FeatureTaskRuntimeHandoffSourceRef.RunInvariantField(field)
         },
-        projectionName = "run_invariant_${field.wireValue}",
-        projectionContractId = "feature_task_runtime.run_invariant",
-        projectionContractVersion = "0.1",
-        promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-        budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
-        declaredFieldNames = listOf(
-          if (ceremonyScaling) {
-            FeatureTaskRuntimeHandoffProjectionValidator.CEREMONY_SCALING_FIELD
-          } else {
-            field.wireValue
-          },
+        shape = PhaseHandoffProjectionShape(
+          projectionName = "run_invariant_${field.wireValue}",
+          projectionContractId = "feature_task_runtime.run_invariant",
+          projectionContractVersion = "0.1",
+          promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+          budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+          declaredFieldNames = listOf(
+            if (ceremonyScaling) {
+              FeatureTaskRuntimeHandoffProjectionValidator.CEREMONY_SCALING_FIELD
+            } else {
+              field.wireValue
+            },
+          ),
         ),
       )
     }

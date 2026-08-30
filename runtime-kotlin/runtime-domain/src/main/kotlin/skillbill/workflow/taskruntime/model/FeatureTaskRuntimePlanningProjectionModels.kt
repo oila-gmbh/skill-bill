@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions", "MaxLineLength")
+@file:Suppress("MaxLineLength")
 
 package skillbill.workflow.taskruntime.model
 

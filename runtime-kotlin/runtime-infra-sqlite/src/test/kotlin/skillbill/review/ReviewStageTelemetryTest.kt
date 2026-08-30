@@ -51,7 +51,9 @@ class ReviewStageTelemetryTest {
         "refuted" to 0,
         "refutation_rate" to 0.01,
       )
-      val payload = ReviewStatsRuntime.buildReviewFinishedPayload(it, review.reviewRunId)
+      val payload = ReviewStatsRuntime.buildReviewFinishedPayload(
+        ReviewFinishedPayloadBuildRequest(connection = it, reviewRunId = review.reviewRunId),
+      )
         .toReviewFinishedTelemetryPayload()
         .toPayload()
       val snapshot = ReviewStatsRuntime.statsSnapshot(it, review.reviewRunId)
@@ -299,11 +301,13 @@ class ReviewStageTelemetryTest {
     val repository = SQLiteReviewRunCompletenessRepository(connection)
     val store = LifecycleTelemetryStore(connection)
     ReviewStageDegradationSelection.select(
-      reviewRunId = reviewRunId,
-      spec = repository.fetchSpecProjectionReference(reviewRunId),
-      boundaries = repository.fetchStageBoundaries(reviewRunId),
-      verdicts = repository.fetchFindingVerdicts(reviewRunId),
-      claims = repository.fetchReviewPassClaims(reviewRunId),
+      ReviewStageDegradationSelectionRequest(
+        reviewRunId = reviewRunId,
+        spec = repository.fetchSpecProjectionReference(reviewRunId),
+        boundaries = repository.fetchStageBoundaries(reviewRunId),
+        verdicts = repository.fetchFindingVerdicts(reviewRunId),
+        claims = repository.fetchReviewPassClaims(reviewRunId),
+      ),
     ).forEach(store::reviewStageDegradation)
   }
 

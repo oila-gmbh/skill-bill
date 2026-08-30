@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseGateDependencies
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
 import skillbill.application.featuretask.validation.ValidationGateResolver
@@ -11,33 +12,27 @@ import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
-import java.nio.file.Path
 
-@Suppress("LongParameterList") // one gate seam; every parameter is a mandatory gate dependency
 @Inject
 class FeatureTaskRuntimePhaseGates(
-  val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
-  val planningStopper: FeatureTaskRuntimePlanningStopper,
-  val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
-  val gitOperations: WorkflowGitOperations,
-  val specGate: FeatureTaskRuntimeSpecGate,
-  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
-  val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator,
-  val validationGateResolver: ValidationGateResolver,
-  val validationGateRunner: ValidationGateRunner,
-  val validationGateCoordinator: FeatureTaskRuntimeValidationGateCoordinator,
-  val buildGateCoordinator: FeatureTaskRuntimeBuildGateCoordinator,
-  // The checkpoint-keyed shared review evidence seam. Defaulted so a suite constructing the gates
-  // directly gets the pre-store behaviour (derive in line, persist nothing) rather than a new argument.
-  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
-    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-  val diffResolver: DiffResolverPort = UnreadableDiffResolver,
-  val reviewDriver: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver.EMPTY,
-  val specIntentProjectionResolver: SpecIntentProjectionResolver,
-  val findingVerificationBoundaryMemory: FeatureTaskRuntimeFindingVerificationBoundaryMemory,
-)
-
-/** No repository access at all: every derivation reports the diff as unreadable and yields no evidence. */
-private object UnreadableDiffResolver : DiffResolverPort {
-  override fun runProcess(args: List<String>, workDir: Path): String? = null
+  dependencies: FeatureTaskRuntimePhaseGateDependencies,
+) {
+  val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner = dependencies.branchSetupRunner
+  val planningStopper: FeatureTaskRuntimePlanningStopper = dependencies.planningStopper
+  val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry = dependencies.lifecycleTelemetry
+  val gitOperations: WorkflowGitOperations = dependencies.gitOperations
+  val specGate: FeatureTaskRuntimeSpecGate = dependencies.specGate
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
+    dependencies.planningProjectionValidator
+  val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator = dependencies.buildReceiptValidator
+  val validationGateResolver: ValidationGateResolver = dependencies.validationGateResolver
+  val validationGateRunner: ValidationGateRunner = dependencies.validationGateRunner
+  val validationGateCoordinator: FeatureTaskRuntimeValidationGateCoordinator = dependencies.validationGateCoordinator
+  val buildGateCoordinator: FeatureTaskRuntimeBuildGateCoordinator = dependencies.buildGateCoordinator
+  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort = dependencies.sharedEvidenceResolver
+  val diffResolver: DiffResolverPort = dependencies.diffResolver
+  val reviewDriver: FeatureTaskRuntimeReviewDriver = dependencies.reviewDriver
+  val specIntentProjectionResolver: SpecIntentProjectionResolver = dependencies.specIntentProjectionResolver
+  val findingVerificationBoundaryMemory: FeatureTaskRuntimeFindingVerificationBoundaryMemory =
+    dependencies.findingVerificationBoundaryMemory
 }

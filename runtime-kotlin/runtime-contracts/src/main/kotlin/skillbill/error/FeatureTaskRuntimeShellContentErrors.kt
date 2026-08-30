@@ -103,24 +103,26 @@ enum class FeatureTaskRuntimeHandoffProjectionFailureKind(
  * caller-supplied [reason]. Call sites pass a diagnosis, never payload or field content, so a
  * rejection is actionable without echoing the private evidence it refused to project.
  */
-@Suppress("LongParameterList") // each identifier is required by the actionable-message contract
 class InvalidFeatureTaskRuntimeHandoffProjectionError(
-  val workflowId: String?,
-  val consumerPhaseId: String,
-  val projectionName: String,
-  val projectionContractId: String,
-  val projectionContractVersion: String,
-  val failureKind: FeatureTaskRuntimeHandoffProjectionFailureKind,
-  val reason: String,
+  val context: InvalidFeatureTaskRuntimeHandoffProjectionContext,
   cause: Throwable? = null,
 ) : ShellContentContractException(
-  "Feature-task-runtime handoff projection '${projectionName.ifBlank { "<unknown>" }}' " +
-    "(contract ${projectionContractId.ifBlank { "<unknown>" }}@${projectionContractVersion.ifBlank { "<unknown>" }}) " +
-    "for consumer phase '${consumerPhaseId.ifBlank { "<unknown>" }}' " +
-    "in workflow '${workflowId?.ifBlank { null } ?: "<unknown>"}' " +
-    "was rejected [$failureKind]: $reason",
+  "Feature-task-runtime handoff projection '${context.projectionName.ifBlank { "<unknown>" }}' " +
+    "(contract ${context.projectionContractId.ifBlank { "<unknown>" }}@" +
+    "${context.projectionContractVersion.ifBlank { "<unknown>" }}) " +
+    "for consumer phase '${context.consumerPhaseId.ifBlank { "<unknown>" }}' " +
+    "in workflow '${context.workflowId?.ifBlank { null } ?: "<unknown>"}' " +
+    "was rejected [${context.failureKind}]: ${context.reason}",
   cause,
-)
+) {
+  val workflowId: String? get() = context.workflowId
+  val consumerPhaseId: String get() = context.consumerPhaseId
+  val projectionName: String get() = context.projectionName
+  val projectionContractId: String get() = context.projectionContractId
+  val projectionContractVersion: String get() = context.projectionContractVersion
+  val failureKind: FeatureTaskRuntimeHandoffProjectionFailureKind get() = context.failureKind
+  val reason: String get() = context.reason
+}
 
 /**
  * Surfaced when the non-projection framing of a phase briefing exceeds its byte ceiling before any

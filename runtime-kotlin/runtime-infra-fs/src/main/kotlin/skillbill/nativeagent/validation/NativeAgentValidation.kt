@@ -1,4 +1,4 @@
-@file:Suppress("MatchingDeclarationName", "TooManyFunctions")
+@file:Suppress("MatchingDeclarationName")
 
 package skillbill.nativeagent.validation
 
@@ -86,7 +86,7 @@ private fun validateNativeAgentSources(root: Path, sources: List<NativeAgentSour
       issues += "${nativeAgentSourceDisplay(root, source)}: native agent source name '${source.name}' duplicates " +
         nativeAgentSourceDisplay(root, duplicate)
     }
-    if (containsProviderConditional(source.body)) {
+    if (containsNativeAgentProviderConditional(source.body)) {
       issues += "${nativeAgentSourceDisplay(root, source)}: " +
         "native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     }
@@ -95,7 +95,7 @@ private fun validateNativeAgentSources(root: Path, sources: List<NativeAgentSour
         issues += "${nativeAgentSourceDisplay(root, source)}: ${error.message.orEmpty()}"
         return@forEach
       }
-    if (composed !== source && containsProviderConditional(composed.body)) {
+    if (composed !== source && containsNativeAgentProviderConditional(composed.body)) {
       issues += "${nativeAgentSourceDisplay(root, source)}: " +
         "composed native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     }
@@ -150,24 +150,6 @@ internal fun nativeAgentSourceDisplay(root: Path, source: NativeAgentSource): St
   } else {
     "$base entry '${source.bundleEntryName}'"
   }
-}
-
-private val PROVIDER_CONDITIONAL_HANDLEBARS_REGEX: Regex = Regex(
-  "\\{\\{\\s*#\\s*(${NativeAgentProvider.entries.joinToString("|") { it.name.lowercase() }})\\s*\\}\\}",
-  RegexOption.IGNORE_CASE,
-)
-
-private val PROVIDER_CONDITIONAL_CASE_INSENSITIVE: List<String> = listOf(
-  "if provider ==",
-  "if (provider",
-)
-
-private fun containsProviderConditional(body: String): Boolean {
-  if (PROVIDER_CONDITIONAL_HANDLEBARS_REGEX.containsMatchIn(body)) {
-    return true
-  }
-  val lowered = body.lowercase()
-  return PROVIDER_CONDITIONAL_CASE_INSENSITIVE.any { token -> token in lowered }
 }
 
 private fun validateNoCheckedInGeneratedArtifacts(root: Path, issues: MutableList<String>) {

@@ -11,68 +11,20 @@ internal fun FeatureTaskRuntimeRunLoop.resolveCheckpointScope(
   branch: String,
   blockedReason: (String, String) -> String,
 ): FeatureTaskRuntimeCheckpointDecision? {
+  val preparation = prepareCheckpointScope(precedingPhaseId, branch, blockedReason) ?: return null
+  val ownedInventory = checkpointOwnedInventory(preparation)
   val resolved = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
-  val worktreeDelta = checkpointWorktreeDelta(resolved?.baselineOwnedPathsForCheckpoint().orEmpty())
-    ?: return blockCheckpointScope(
-      precedingPhaseId,
-      branch,
-      "the owned-path inventory could not be read",
-      blockedReason,
-    )
-  val staged = phaseGates.gitOperations.stagedPaths(request.repoRoot)
-  if (!staged.ok) {
-    return blockCheckpointScope(precedingPhaseId, branch, staged.error, blockedReason)
-  }
-  val stagedPaths = staged.value.orEmpty().split(OWNED_PATH_DELIMITER)
-    .map(String::trim)
-    .filter(String::isNotBlank)
-  val persistedOwned = resolved?.workflowOwnedPaths.orEmpty()
-  // Governed feature specs a previous checkpoint already recorded as owned: the guard must not
-  // re-report them as newly introduced, or the run hard-blocks forever on its own leftover state.
-  val evictedFeatureSpecs = persistedOwned
-    .filter { path -> isFeatureSpecPathForIssue(path, request.issueKey) }
-    .toSet()
-  val phaseWritten = phaseWrittenPaths(precedingPhaseId, worktreeDelta, persistedOwned)
-    .filterNot { it in evictedFeatureSpecs }
-  val writingIntroduced = writingPhaseIntroducedPaths(worktreeDelta)
-  val seedOwned = (
-    resolved?.workflowOwnedPaths.orEmpty() +
-      phaseWritten.takeIf { mayExtendOwnedInventory(precedingPhaseId) }.orEmpty() +
-      writingIntroduced
-    ).distinct()
-  val deletedPaths = absorbableDeletedPaths(
-    deleted = checkpointDeletedPaths(),
-    ownedOrIntroduced = seedOwned + phaseWritten,
-  )
-  val ownedInventory = reconcileCheckpointPathInventory(
-    repoRoot = request.repoRoot,
-    issueKey = request.issueKey,
-    specReference = request.runInvariants.specReference,
-    // The persisted inventory is the sole ownership authority. It is extended with the paths the
-    // writing phases themselves wrote — never with whatever else happens to be dirty, which is how
-    // someone else's concurrent edit used to be adopted and committed as this run's work.
-    // Governed feature specs never become owned, so the persisted inventory contains implementation
-    // paths only. The runtime never stages them; a human operator may already have committed them.
-    // Delete sources that share a move parent with owned/introduced destinations are absorbed so a
-    // package move can stage both halves.
-    paths = (seedOwned + deletedPaths)
-      .filterNot { path -> isFeatureSpecPathForIssue(path, request.issueKey) },
-  )
   persistOwnedInventory(ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
   checkpointOwnershipDecided = true
-  // Nothing has been staged by this checkpoint yet, so every entry in the index arrived from
-  // outside it. The scope decision keeps only the ones this run also owns: those are the genuinely
-  // ambiguous overlaps. A purely foreign staged path is left alone, which is what lets a
-  // concurrently prepared issue coexist without producing a false block.
   return FeatureTaskRuntimeCheckpointScope.decide(
     FeatureTaskRuntimeCheckpointScopeInput(
       issueKey = request.issueKey,
       ownedPaths = ownedInventory,
-      phaseIntroducedPaths = phaseWritten,
-      worktreeDeltaPaths = worktreeDelta,
-      foreignStagedPaths = stagedPaths,
+      phaseIntroducedPaths = preparation.phaseWritten,
+      worktreeDeltaPaths = preparation.worktreeDelta,
+      foreignStagedPaths = preparation.stagedPaths,
       concurrentlyModifiedOwnedPaths = concurrentlyModifiedOwnedPaths(precedingPhaseId, ownedInventory),
-      deletedPaths = deletedPaths,
+      deletedPaths = preparation.deletedPaths,
     ),
   )
 }

@@ -1,4 +1,4 @@
-@file:Suppress("TooGenericExceptionCaught", "ThrowsCount", "MaxLineLength", "InstanceOfCheckForException")
+@file:Suppress("TooGenericExceptionCaught", "MaxLineLength", "InstanceOfCheckForException")
 
 package skillbill.domain.skillremove
 
@@ -94,14 +94,14 @@ class SkillRemove(
       is SkillRemovalTarget.HorizontalSkill -> {
         val candidate = repoRoot.resolve("skills/${target.skillName}").normalize()
         if (candidate.startsWith(billSharedSkillRoot)) {
-          throw SkillRemovalRefusedException(
+          refuseSkillRemoval(
             SkillRemovalRefusalReason.BILL_SHARED_PROTECTED,
             "Removal of '$BILL_SHARED_NAME' is not allowed — it is a built-in shared surface.",
           )
         }
         val protectedShipped = target.skillName.startsWith(SkillRemovalTarget.HORIZONTAL_PRODUCT_PREFIX)
         if (!target.allowShipped && protectedShipped) {
-          throw SkillRemovalRefusedException(
+          refuseSkillRemoval(
             SkillRemovalRefusalReason.SHIPPED_REQUIRES_ALLOW_SHIPPED,
             "Refusing to remove shipped surface '${target.skillName}' without --allow-shipped.",
           )
@@ -110,7 +110,7 @@ class SkillRemove(
       is SkillRemovalTarget.PlatformPack -> {
         // F-S03: `.bill-shared` is never deletable, whether requested as a skill OR a platform pack.
         if (target.platform == BILL_SHARED_NAME) {
-          throw SkillRemovalRefusedException(
+          refuseSkillRemoval(
             SkillRemovalRefusalReason.BILL_SHARED_PROTECTED,
             "Removal of platform pack '$BILL_SHARED_NAME' is not allowed — it is a built-in shared surface.",
           )

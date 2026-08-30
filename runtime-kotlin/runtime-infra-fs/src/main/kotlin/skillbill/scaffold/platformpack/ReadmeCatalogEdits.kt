@@ -1,4 +1,4 @@
-@file:Suppress("MaxLineLength", "ReturnCount")
+@file:Suppress("MaxLineLength")
 
 package skillbill.scaffold.platformpack
 
@@ -64,19 +64,23 @@ object ReadmeCatalogEdits {
       "Canonical Skills heading with count badge not found in README.md.",
     )
     val current = match.groupValues[2].toIntOrNull()
-      ?: return ReadmeEditOutcome.LandmarksMissing("Canonical Skills heading count is not an integer.")
-    if (current <= 0) {
-      return ReadmeEditOutcome.LandmarksMissing("Canonical Skills heading count is already 0.")
+    val outcome = when {
+      current == null -> ReadmeEditOutcome.LandmarksMissing("Canonical Skills heading count is not an integer.")
+      current <= 0 -> ReadmeEditOutcome.LandmarksMissing("Canonical Skills heading count is already 0.")
+      else -> {
+        val next = current - 1
+        val suffix = if (next == 1) " skill)" else " skills)"
+        val replacement = "${match.groupValues[1]}$next$suffix"
+        val updated = original.replaceRange(match.range, replacement)
+        if (updated == original) {
+          ReadmeEditOutcome.LandmarksMissing("Canonical Skills heading count did not change.")
+        } else {
+          readmePath.toFile().writeText(updated)
+          ReadmeEditOutcome.Applied
+        }
+      }
     }
-    val next = current - 1
-    val suffix = if (next == 1) " skill)" else " skills)"
-    val replacement = "${match.groupValues[1]}$next$suffix"
-    val updated = original.replaceRange(match.range, replacement)
-    if (updated == original) {
-      return ReadmeEditOutcome.LandmarksMissing("Canonical Skills heading count did not change.")
-    }
-    readmePath.toFile().writeText(updated)
-    return ReadmeEditOutcome.Applied
+    return outcome
   }
 }
 

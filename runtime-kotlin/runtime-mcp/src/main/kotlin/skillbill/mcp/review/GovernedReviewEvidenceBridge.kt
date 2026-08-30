@@ -76,21 +76,8 @@ object GovernedReviewEvidenceBridge {
     }
   }
 
-  @Suppress("ThrowsCount")
   private fun connect(socketPath: Path, token: String): Connection {
-    val connection = try {
-      SocketChannel.open(UnixDomainSocketAddress.of(socketPath))
-    } catch (error: IOException) {
-      throw GovernedReviewEvidenceTransportError(
-        "Governed review evidence endpoint at '$socketPath' is unreachable.",
-        error,
-      )
-    } catch (error: UnsupportedOperationException) {
-      throw GovernedReviewEvidenceTransportError(
-        "This platform cannot reach the governed review evidence endpoint at '$socketPath'.",
-        error,
-      )
-    }
+    val connection = openSocketChannel(socketPath)
     val writer = Channels.newOutputStream(connection).bufferedWriter()
     val reader = Channels.newInputStream(connection).bufferedReader()
     writer.appendLine(
@@ -102,6 +89,20 @@ object GovernedReviewEvidenceBridge {
     reader.readLine()
       ?: throw GovernedReviewEvidenceTransportError("Governed review evidence endpoint refused this launch's token.")
     return Connection(connection, reader, writer)
+  }
+
+  private fun openSocketChannel(socketPath: Path): SocketChannel = try {
+    SocketChannel.open(UnixDomainSocketAddress.of(socketPath))
+  } catch (error: IOException) {
+    throw GovernedReviewEvidenceTransportError(
+      "Governed review evidence endpoint at '$socketPath' is unreachable.",
+      error,
+    )
+  } catch (error: UnsupportedOperationException) {
+    throw GovernedReviewEvidenceTransportError(
+      "This platform cannot reach the governed review evidence endpoint at '$socketPath'.",
+      error,
+    )
   }
 
   private fun initializeResult(): Map<String, Any?> = linkedMapOf(

@@ -1,6 +1,8 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecAdjudicationOutcome
+import skillbill.application.review.model.ReviewSpecAdjudicationRunRequest
 import skillbill.contracts.JsonSupport
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -28,120 +30,131 @@ class ReviewSpecAdjudicationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
 ) {
-  @Suppress("LongParameterList")
-  fun run(
-    packet: ReviewContextPacket?,
-    findings: List<ParallelReviewMergedFinding>,
-    existingVerdicts: List<ReviewFindingVerdict>,
-    projection: SpecIntentProjection?,
-    budget: ReviewContextBudgetPolicy,
-    brokerId: String,
-    repoRoot: Path,
-    timeout: Duration?,
-    modelOverride: String? = null,
-    promptSuffix: String = "",
-  ): ReviewSpecAdjudicationOutcome {
-    if (projection == null || packet == null) {
+  fun run(request: ReviewSpecAdjudicationRunRequest): ReviewSpecAdjudicationOutcome {
+    if (request.projection == null || request.packet == null) {
       return ReviewSpecAdjudicationOutcome(verdicts = emptyList(), skipReason = SPEC_CONTEXT_NONE)
     }
-    val stage1ByRef = existingVerdicts
-      .filter { it.stage == ReviewStage.VERIFICATION }
-      .associateBy { it.findingRef }
-    val durableAdj = existingVerdicts
-      .filter { it.stage == ReviewStage.ADJUDICATION }
-      .associateBy { it.findingRef }
-    val survivors = findings.sortedBy { it.fNumber }.filter { finding ->
-      val stage1 = stage1ByRef[finding.fNumber] ?: return@filter false
-      stage1.claimVerdict != ReviewClaimVerdict.REFUTED
-    }
-    if (survivors.isEmpty()) {
-      return ReviewSpecAdjudicationOutcome(
-        verdicts = durableAdj.values.toList(),
-        skipReason = "no confirmed or unresolved findings to adjudicate",
-      )
-    }
-    val pending = survivors.filterNot { it.fNumber in durableAdj.keys }
-    if (pending.isEmpty()) {
-      return ReviewSpecAdjudicationOutcome(
-        verdicts = survivors.mapNotNull { durableAdj[it.fNumber] },
-        skipReason = "every surviving finding already holds a durable adjudication verdict",
-      )
-    }
+    val survivorState = resolveAdjudicationSurvivors(request)
+    survivorState.earlyOutcome?.let { return it }
     val recordedAt = Instant.now().toString()
-    val prepared = pending.map { finding ->
-      prepareLaunch(
-        packet = packet,
-        finding = finding,
-        stage1 = stage1ByRef.getValue(finding.fNumber),
-        projection = projection,
-        budget = budget,
-        brokerId = brokerId,
-        recordedAt = recordedAt,
-      )
-    }
-    val launched = prepared.map { job ->
-      when (job) {
+    val launched = survivorState.pending.map { finding ->
+      when (val job = prepareLaunch(
+        AdjudicationPrepareInput(
+          packet = request.packet,
+          finding = finding,
+          stage1 = survivorState.stage1ByRef.getValue(finding.fNumber),
+          projection = request.projection,
+          launch = AdjudicationPrepareLaunch(
+            budget = request.launch.budget,
+            brokerId = request.launch.brokerId,
+            recordedAt = recordedAt,
+          ),
+        ),
+      )) {
         is PreparedAdjudicationRejected -> job.verdict
         is PreparedAdjudicationReady -> launchOne(
           job,
-          AdjudicationLaunchEnv(repoRoot, timeout, modelOverride, promptSuffix),
+          AdjudicationLaunchEnv(
+            repoRoot = request.launch.repoRoot,
+            timeout = request.launch.timeout,
+            modelOverride = request.launch.modelOverride,
+            promptSuffix = request.launch.promptSuffix,
+          ),
           recordedAt,
         )
       }
     }
     return ReviewSpecAdjudicationOutcome(
-      verdicts = survivors.mapNotNull { durableAdj[it.fNumber] } + launched,
+      verdicts = survivorState.survivors.mapNotNull { survivorState.durableAdj[it.fNumber] } + launched,
     )
   }
 
-  @Suppress("LongParameterList")
-  private fun prepareLaunch(
-    packet: ReviewContextPacket,
-    finding: ParallelReviewMergedFinding,
-    stage1: ReviewFindingVerdict,
-    projection: SpecIntentProjection,
-    budget: ReviewContextBudgetPolicy,
-    brokerId: String,
-    recordedAt: String,
-  ): PreparedAdjudication {
-    val region = citedRegionOf(finding)
+  private fun resolveAdjudicationSurvivors(
+    request: ReviewSpecAdjudicationRunRequest,
+  ): AdjudicationSurvivorResolution {
+    val stage1ByRef = request.existingVerdicts
+      .filter { it.stage == ReviewStage.VERIFICATION }
+      .associateBy { it.findingRef }
+    val durableAdj = request.existingVerdicts
+      .filter { it.stage == ReviewStage.ADJUDICATION }
+      .associateBy { it.findingRef }
+    val survivors = request.findings.sortedBy { it.fNumber }.filter { finding ->
+      val stage1 = stage1ByRef[finding.fNumber] ?: return@filter false
+      stage1.claimVerdict != ReviewClaimVerdict.REFUTED
+    }
+    if (survivors.isEmpty()) {
+      return AdjudicationSurvivorResolution(
+        survivors = emptyList(),
+        durableAdj = durableAdj,
+        stage1ByRef = stage1ByRef,
+        pending = emptyList(),
+        earlyOutcome = ReviewSpecAdjudicationOutcome(
+          verdicts = durableAdj.values.toList(),
+          skipReason = "no confirmed or unresolved findings to adjudicate",
+        ),
+      )
+    }
+    val pending = survivors.filterNot { it.fNumber in durableAdj.keys }
+    if (pending.isEmpty()) {
+      return AdjudicationSurvivorResolution(
+        survivors = survivors,
+        durableAdj = durableAdj,
+        stage1ByRef = stage1ByRef,
+        pending = emptyList(),
+        earlyOutcome = ReviewSpecAdjudicationOutcome(
+          verdicts = survivors.mapNotNull { durableAdj[it.fNumber] },
+          skipReason = "every surviving finding already holds a durable adjudication verdict",
+        ),
+      )
+    }
+    return AdjudicationSurvivorResolution(
+      survivors = survivors,
+      durableAdj = durableAdj,
+      stage1ByRef = stage1ByRef,
+      pending = pending,
+      earlyOutcome = null,
+    )
+  }
+
+  private fun prepareLaunch(input: AdjudicationPrepareInput): PreparedAdjudication {
+    val region = citedRegionOf(input.finding)
       ?: return PreparedAdjudicationRejected(
         ReviewFindingVerdict(
           stage = ReviewStage.ADJUDICATION,
-          findingRef = finding.fNumber,
-          claimVerdict = stage1.claimVerdict,
+          findingRef = input.finding.fNumber,
+          claimVerdict = input.stage1.claimVerdict,
           scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
-          recordedAt = recordedAt,
+          recordedAt = input.launch.recordedAt,
           rejectionReason = "finding has no cited file:line region",
         ),
       )
     val launch = GovernedReviewAdjudicationLaunch(
-      packet = packet,
-      finding = finding,
-      stage1Verdict = stage1,
-      specIntentProjection = projection,
+      packet = input.packet,
+      finding = input.finding,
+      stage1Verdict = input.stage1,
+      specIntentProjection = input.projection,
       citedRegion = region,
       evidenceSurfaceRules = ReviewPreparationService.adjudicationEvidenceSurfaceRules(),
-      dependencyAllowlist = ReviewDependencyAllowlist(packet.dependencyAllowlist.normalized),
-      brokerId = brokerId,
-      budget = budget,
+      dependencyAllowlist = ReviewDependencyAllowlist(input.packet.dependencyAllowlist.normalized),
+      brokerId = input.launch.brokerId,
+      budget = input.launch.budget,
     )
     val envelope = launch.toAdjudicationLaunchEnvelope().asWireMap()
     val launchBytes = JsonSupport.mapToJsonString(envelope).toByteArray(Charsets.UTF_8).size.toLong()
-    if (launchBytes > budget.maxLaneLaunchBytes) {
+    if (launchBytes > input.launch.budget.maxLaneLaunchBytes) {
       return PreparedAdjudicationRejected(
         ReviewFindingVerdict(
           stage = ReviewStage.ADJUDICATION,
-          findingRef = finding.fNumber,
-          claimVerdict = stage1.claimVerdict,
+          findingRef = input.finding.fNumber,
+          claimVerdict = input.stage1.claimVerdict,
           scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
-          recordedAt = recordedAt,
+          recordedAt = input.launch.recordedAt,
           rejectionReason = "adjudication launch exceeded max_lane_launch_bytes",
         ),
       )
     }
-    envelopeValidator.validate(envelope, "review adjudication launch for ${finding.fNumber}")
-    return PreparedAdjudicationReady(finding, stage1, projection, launch)
+    envelopeValidator.validate(envelope, "review adjudication launch for ${input.finding.fNumber}")
+    return PreparedAdjudicationReady(input.finding, input.stage1, input.projection, launch)
   }
 
   private data class AdjudicationLaunchEnv(
@@ -250,6 +263,28 @@ class ReviewSpecAdjudicationRunner(
     const val SPEC_CONTEXT_NONE: String = "spec_context: none"
   }
 }
+
+private data class AdjudicationSurvivorResolution(
+  val survivors: List<ParallelReviewMergedFinding>,
+  val durableAdj: Map<String, ReviewFindingVerdict>,
+  val stage1ByRef: Map<String, ReviewFindingVerdict>,
+  val pending: List<ParallelReviewMergedFinding>,
+  val earlyOutcome: ReviewSpecAdjudicationOutcome?,
+)
+
+private data class AdjudicationPrepareInput(
+  val packet: ReviewContextPacket,
+  val finding: ParallelReviewMergedFinding,
+  val stage1: ReviewFindingVerdict,
+  val projection: SpecIntentProjection,
+  val launch: AdjudicationPrepareLaunch,
+)
+
+private data class AdjudicationPrepareLaunch(
+  val budget: ReviewContextBudgetPolicy,
+  val brokerId: String,
+  val recordedAt: String,
+)
 
 private sealed class PreparedAdjudication
 private data class PreparedAdjudicationReady(

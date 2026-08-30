@@ -10,9 +10,6 @@ import skillbill.application.system.UninstallFileSystemService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
-import skillbill.install.model.ClaudeMcpProfileFailure
-import skillbill.ports.install.model.NativeAgentLinkProvider
-import skillbill.ports.install.model.NativeAgentLinkRequest
 import java.nio.file.Path
 
 @Inject
@@ -107,50 +104,9 @@ class UninstallCommand(
     val skipped = mutableListOf<String>()
     val warnings = mutableListOf<String>()
 
-    plan.agentTargets.forEach { target ->
-      runCatching {
-        installAgentService.cleanupAgentTarget(
-          targetDir = target,
-          skillNames = plan.skillNames,
-          legacyNames = plan.legacyNames,
-          managedInstallMarker = MANAGED_INSTALL_MARKER,
-          home = plan.home,
-        )
-      }.onSuccess { cleanup ->
-        removed += cleanup.removed.map(Path::toString)
-        skipped += cleanup.skipped.map(Path::toString)
-      }.onFailure { error ->
-        warnings += "agent cleanup failed for $target: ${error.message.orEmpty()}"
-      }
-    }
-
-    if (plan.nativeSourceRoots.any(uninstallFileSystem::exists)) {
-      val request = NativeAgentLinkRequest(
-        platformPacksRoot = plan.stateRoot.resolve("platform-packs"),
-        skillsRoot = plan.stateRoot.resolve("skills"),
-        home = plan.home,
-      )
-      NativeAgentLinkProvider.entries.forEach { provider ->
-        runCatching { nativeAgentInstallService.unlinkNativeAgents(provider, request) }
-          .onSuccess { unlinked -> removed += unlinked.map(Path::toString) }
-          .onFailure { error ->
-            warnings += "native agent cleanup failed for ${provider.name.lowercase()}: ${error.message.orEmpty()}"
-          }
-      }
-    }
-
-    plan.mcpAgents.forEach { agent ->
-      runCatching { mcpRegistrationService.unregisterMcp(agent, plan.home) }
-        .onSuccess { mutation ->
-          if (mutation.changed) removed += mutation.configPath.toString()
-        }
-        .onFailure { error ->
-          if (error is ClaudeMcpProfileFailure) {
-            removed += error.succeeded.filter { it.changed }.map { it.configPath.toString() }
-          }
-          warnings += "MCP cleanup failed for $agent: ${error.message.orEmpty()}"
-        }
-    }
+    cleanupAgentInstallTargets(plan, installAgentService, removed, skipped, warnings)
+    cleanupNativeAgentInstallLinks(plan, nativeAgentInstallService, uninstallFileSystem, removed, warnings)
+    cleanupMcpRegistrations(plan, mcpRegistrationService, removed, warnings)
 
     plan.launchers.forEach { launcher ->
       removeLauncher(uninstallFileSystem, launcher, removed, skipped, warnings)
@@ -183,7 +139,6 @@ class UninstallCommand(
 
 private const val GOAL_CONTINUATION_ENV = "SKILL_BILL_GOAL_CONTINUATION"
 private const val GOAL_CONTINUATION_REFUSAL_EXIT_CODE = 64
-private const val MANAGED_INSTALL_MARKER = "Managed by skill-bill install.sh"
 private val STAGED_SKILL_DIRECTORY = Regex("""^(.+)-[0-9a-f]{16}$""")
 
 private val RENAMED_SKILL_PAIRS = listOf(

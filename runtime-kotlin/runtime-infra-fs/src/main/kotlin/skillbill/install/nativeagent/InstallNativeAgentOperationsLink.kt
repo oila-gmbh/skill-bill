@@ -8,13 +8,10 @@ import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
-import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption.ATOMIC_MOVE
-import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.nio.file.attribute.DosFileAttributeView
 import java.nio.file.attribute.PosixFileAttributeView
 import java.nio.file.attribute.PosixFilePermission
@@ -72,68 +69,17 @@ internal fun publishInstalledReviewCatalog(
   val catalogRoot = catalogParent.resolve("platform-packs")
   val staging = catalogParent.resolve(".platform-packs.staging")
   val superseded = catalogParent.resolve(".platform-packs.superseded")
-  val selected = selectedPlatforms?.toSet()
-  val desiredPacks = Files.list(platformPacksRoot).use { packs ->
-    packs.filter(Files::isDirectory)
-      .filter { selected == null || it.fileName.toString() in selected }
-      .toList()
-  }
 
   journal.beforeMutation(catalogParent)
   Files.createDirectories(catalogParent)
-  // A prior crash can leave either scratch directory behind; neither is readable as a catalog.
   deleteRecursively(staging)
   deleteRecursively(superseded)
   journal.afterTemporaryCreation(staging)
   Files.createDirectories(staging)
 
-  // Staging holds exactly the desired packs, so deselected packs are pruned by the swap itself.
-  desiredPacks.forEach { source ->
-    val stagedPack = staging.resolve(source.fileName.toString())
-    val manifest = loadPlatformManifest(source)
-    val runtimeFiles = buildList {
-      add(source.resolve("platform.yaml"))
-      manifest.declaredFiles.baseline?.let(::add)
-      addAll(manifest.declaredFiles.areas.values)
-      val declaredAddons = manifest.addonUsage.flatMap { it.addons } +
-        manifest.featureAddonUsage.flatMap { it.addons }
-      declaredAddons.forEach { addon ->
-        add(source.resolve("addons").resolve(addon.entrypoint))
-        addon.companionPointers.forEach { pointer -> add(source.resolve("addons").resolve(pointer)) }
-      }
-    }.distinct()
-    runtimeFiles.forEach { path ->
-      val relative = source.relativize(path.toAbsolutePath().normalize())
-      require(!relative.startsWith("..")) {
-        "Installed review catalog path escapes platform pack '${manifest.slug}'."
-      }
-      val target = stagedPack.resolve(relative).normalize()
-      require(target.startsWith(staging)) { "Installed review catalog path escapes its cache root." }
-      require(Files.isRegularFile(path) && !Files.isSymbolicLink(path)) {
-        "Installed review catalog source must be a regular manifest-declared file: '$path'."
-      }
-      target.parent?.let(Files::createDirectories)
-      Files.copy(path, target, REPLACE_EXISTING)
-    }
-  }
-
-  // Journal the outgoing and incoming trees path by path, parents first, so an in-process failure
-  // after the swap still unwinds: pre-existing paths keep their captured snapshot and are
-  // rewritten, paths only the new catalog introduces record as absent and are deleted.
-  if (Files.exists(catalogRoot, LinkOption.NOFOLLOW_LINKS)) {
-    Files.walk(catalogRoot).use { paths -> paths.sorted().forEach(journal::beforeMutation) }
-  }
-  Files.walk(staging).use { paths ->
-    paths.sorted().forEach { staged ->
-      journal.beforeMutation(catalogRoot.resolve(staging.relativize(staged)))
-    }
-  }
-
-  if (Files.exists(catalogRoot, LinkOption.NOFOLLOW_LINKS)) {
-    Files.move(catalogRoot, superseded, ATOMIC_MOVE)
-  }
-  Files.move(staging, catalogRoot, ATOMIC_MOVE)
-  deleteRecursively(superseded)
+  stageReviewCatalogPacks(platformPacksRoot, selectedPlatforms, staging)
+  journalReviewCatalogSwap(catalogRoot, staging, journal)
+  swapReviewCatalogIntoPlace(catalogRoot, staging, superseded)
 }
 
 internal fun deleteRecursively(root: Path) {

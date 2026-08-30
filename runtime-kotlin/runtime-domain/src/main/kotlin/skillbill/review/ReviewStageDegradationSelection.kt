@@ -23,25 +23,17 @@ object ReviewStageDegradationSelection {
     "unparseable adjudication output",
   )
 
-  @Suppress("LongParameterList")
-  fun select(
-    reviewRunId: String,
-    spec: ReviewSpecProjectionReference?,
-    boundaries: List<ReviewStageBoundary>,
-    verdicts: List<ReviewFindingVerdict>,
-    claims: ReviewPassClaimSnapshot?,
-    evidenceBoundaries: List<ReviewEvidenceBoundaryAccounting> = emptyList(),
-  ): List<ReviewStageDegradationMeasurement> {
-    val byStage = boundaries.associateBy { it.stage }
-    val specNone = spec?.absenceReason != null
+  fun select(request: ReviewStageDegradationSelectionRequest): List<ReviewStageDegradationMeasurement> {
+    val byStage = request.boundaries.associateBy { it.stage }
+    val specNone = request.spec?.absenceReason != null
     return buildList {
-      specAbsence(reviewRunId, spec)?.let(::add)
+      specAbsence(request.reviewRunId, request.spec)?.let(::add)
       if (adjudicationSkipped(specNone, byStage)) {
-        add(adjudicationSkip(reviewRunId, specNone))
+        add(adjudicationSkip(request.reviewRunId, specNone))
       }
-      workerFailure(reviewRunId, verdicts)?.let(::add)
-      addAll(unreachedBoundaries(reviewRunId, specNone, byStage, claims))
-      evidenceBoundaries.forEach { addAll(evidenceBoundaryRecords(reviewRunId, it)) }
+      workerFailure(request.reviewRunId, request.verdicts)?.let(::add)
+      addAll(unreachedBoundaries(request.reviewRunId, specNone, byStage, request.claims))
+      request.evidenceBoundaries.forEach { addAll(evidenceBoundaryRecords(request.reviewRunId, it)) }
     }
   }
 
@@ -136,61 +128,9 @@ object ReviewStageDegradationSelection {
     reviewRunId: String,
     accounting: ReviewEvidenceBoundaryAccounting,
   ): List<ReviewStageDegradationMeasurement> = buildList {
-    accounting.unboundSeam?.let { seam ->
-      add(
-        ReviewStageDegradationMeasurement(
-          reviewRunId = reviewRunId,
-          seam = seam,
-          expected = "bound",
-          actual = "unbound",
-          reason = ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER,
-        ),
-      )
-    }
-    if (
-      accounting.unboundSeam == null &&
-      accounting.governedLaunchCount > 0 &&
-      accounting.authorizedReadCount == 0
-    ) {
-      add(
-        ReviewStageDegradationMeasurement(
-          reviewRunId = reviewRunId,
-          seam = ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
-          expected = "authorized_reads>0",
-          actual = "authorized_reads=0",
-          reason = ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED,
-        ),
-      )
-    }
-    if (accounting.refusedOperationCount > 0) {
-      add(
-        ReviewStageDegradationMeasurement(
-          reviewRunId = reviewRunId,
-          seam = ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
-          expected = "refused_operations=0",
-          actual = "refused_operations=${accounting.refusedOperationCount}" +
-            accounting.refusedCategories
-              .groupingBy { it }
-              .eachCount()
-              .entries
-              .sortedBy { it.key }
-              .joinToString(",", prefix = " [", postfix = "]") { "${it.key}=${it.value}" }
-              .takeIf { accounting.refusedCategories.isNotEmpty() }
-              .orEmpty(),
-          reason = ReviewStageDegradationReason.EVIDENCE_BOUNDARY_OPERATION_REFUSED,
-        ),
-      )
-    }
-    if (accounting.rejectedCandidateCount > 0) {
-      add(
-        ReviewStageDegradationMeasurement(
-          reviewRunId = reviewRunId,
-          seam = "review.register.parse",
-          expected = "rejected_candidates=0",
-          actual = "rejected_candidates=${accounting.rejectedCandidateCount}",
-          reason = ReviewStageDegradationReason.REGISTER_CANDIDATES_REJECTED,
-        ),
-      )
-    }
+    evidenceBoundaryUnboundRecord(reviewRunId, accounting)?.let(::add)
+    evidenceBoundaryUnexercisedRecord(reviewRunId, accounting)?.let(::add)
+    evidenceBoundaryRefusedRecord(reviewRunId, accounting)?.let(::add)
+    evidenceBoundaryRejectedRecord(reviewRunId, accounting)?.let(::add)
   }
 }

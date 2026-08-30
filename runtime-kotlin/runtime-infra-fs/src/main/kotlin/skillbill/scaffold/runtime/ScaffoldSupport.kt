@@ -1,15 +1,9 @@
-@file:Suppress("CyclomaticComplexMethod", "MaxLineLength")
+@file:Suppress("MaxLineLength")
 
 package skillbill.scaffold.runtime
 
 import skillbill.error.MissingSupportingFileTargetError
 import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.model.PointerSpec
-import skillbill.scaffold.platformpack.FEATURE_TASK_ADDON_CONSUMER
-import skillbill.scaffold.platformpack.SKILL_CLASSES_DIR
-import skillbill.scaffold.platformpack.discoverSkillClasses
-import skillbill.scaffold.platformpack.resolveSkillClass
-import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.relativeTo
 import skillbill.scaffold.policy.platformpack.PLATFORM_PACK_SHELL_CONTRACT_VERSION as POLICY_SHELL_CONTRACT_VERSION
@@ -108,17 +102,6 @@ internal fun supportingFileTargets(repoRoot: Path): Map<String, Path> = mapOf(
  * is absent (non-governed test fixtures, ad-hoc repos) or no class matches; production repos
  * always carry the directory and the matched class declares the canonical pointer set.
  */
-internal fun requiredSupportingFilesForSkill(
-  skillName: String,
-  repoRoot: Path,
-  selectedPlatformManifests: List<PlatformManifest> = emptyList(),
-): List<String> {
-  if (!Files.isDirectory(repoRoot.resolve(SKILL_CLASSES_DIR))) return emptyList()
-  val skillClass = resolveSkillClass(skillName, discoverSkillClasses(repoRoot))
-  val classPointers = skillClass?.pointers?.map { "$it.md" }.orEmpty()
-  return classPointers + featureAddonPointerSpecsFor(skillName, selectedPlatformManifests).map { it.name }
-}
-
 internal fun requireSupportingFileTarget(
   skillName: String,
   fileName: String,
@@ -131,30 +114,6 @@ internal fun requireSupportingFileTarget(
   ?: throw MissingSupportingFileTargetError(
     "Runtime supporting file '$fileName' is not registered for '$skillName'.",
   )
-
-private fun featureAddonPointerSpecsFor(
-  skillName: String,
-  selectedPlatformManifests: List<PlatformManifest>,
-): List<PointerSpec> {
-  if (skillName != "bill-feature") {
-    return emptyList()
-  }
-  val collected = mutableListOf<PointerSpec>()
-  selectedPlatformManifests.forEach { manifest ->
-    val pointersByName = manifest.pointers
-      .filter { spec -> spec.skillRelativeDir == FEATURE_TASK_ADDON_CONSUMER }
-      .associateBy { it.name }
-    manifest.featureAddonUsage
-      .filter { usage -> usage.consumer == FEATURE_TASK_ADDON_CONSUMER }
-      .flatMap { usage ->
-        usage.addons.flatMap { addon -> listOf(addon.entrypoint) + addon.companionPointers }
-      }
-      .forEach { pointerName ->
-        pointersByName[pointerName]?.let(collected::add)
-      }
-  }
-  return collected.distinctBy { spec -> spec.name }
-}
 
 /**
  * Cross-validates the static [supportingFileTargets] map against every pack's `pointers:` block.

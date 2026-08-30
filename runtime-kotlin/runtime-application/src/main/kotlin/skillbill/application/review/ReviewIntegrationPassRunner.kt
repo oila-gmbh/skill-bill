@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewIntegrationPassRunRequest
 import skillbill.application.review.model.ReviewLaneIntegrationInput
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -10,15 +11,13 @@ import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewIntegrationLaunch
-import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewSpecialistSummary
+import skillbill.review.context.model.ReviewSpecialistSummaryCoverage
 import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewRawFinding
-import java.nio.file.Path
-import kotlin.time.Duration
 
 /**
  * Runs the single bounded integration pass after every specialist lane reaches a terminal state.
@@ -31,44 +30,32 @@ class ReviewIntegrationPassRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
 ) {
-  @Suppress("LongParameterList")
-  fun run(
-    packet: ReviewContextPacket,
-    lanes: List<ReviewLaneIntegrationInput>,
-    budget: ReviewContextBudgetPolicy,
-    brokerId: String,
-    repoRoot: Path,
-    timeout: Duration?,
-    modelOverride: String? = null,
-    promptSuffix: String = "",
-  ): ReviewIntegrationPassOutcome {
-    skipReasonFor(packet, lanes)?.let { reason ->
-      return ReviewIntegrationPassOutcome.skipped(packet.commitSequenceDigest, reason)
+  fun run(request: ReviewIntegrationPassRunRequest): ReviewIntegrationPassOutcome {
+    skipReasonFor(request.packet, request.lanes)?.let { reason ->
+      return ReviewIntegrationPassOutcome.skipped(request.packet.commitSequenceDigest, reason)
     }
     val integration = GovernedReviewIntegrationLaunch(
-      packet = packet,
-      specialistSummaries = lanes.map(::summaryOf),
+      packet = request.packet,
+      specialistSummaries = request.lanes.map(::summaryOf),
       integrationContract = ReviewPacketConsumerContract.INTEGRATION_CONTRACT,
-      brokerId = brokerId,
-      budget = budget,
+      brokerId = request.launch.brokerId,
+      budget = request.launch.budget,
     )
-    // Validating before launch is what makes the exclusion rule enforceable: a projection that grew
-    // a raw-evidence or transcript key fails here rather than reaching the integration worker.
     envelopeValidator.validate(
       integration.toIntegrationLaunchEnvelope().asWireMap(),
-      "review integration launch for ${packet.reviewId}",
+      "review integration launch for ${request.packet.reviewId}",
     )
-    val prompt = appendPromptSuffix(integrationPrompt(integration), promptSuffix)
+    val prompt = appendPromptSuffix(integrationPrompt(integration), request.launch.promptSuffix)
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = brokerId,
+        invokedAgentId = request.launch.brokerId,
         configuredAgentOverrideId = null,
         skillRunRequest = SkillRunRequest(
           issueKey = "code-review-integration",
-          repoRoot = repoRoot,
-          timeout = timeout,
+          repoRoot = request.launch.repoRoot,
+          timeout = request.launch.timeout,
           promptOverride = prompt,
-          modelOverride = modelOverride,
+          modelOverride = request.launch.modelOverride,
         ),
       ),
     )
@@ -144,12 +131,14 @@ class ReviewIntegrationPassRunner(
       lane = input.launch.assignment.lane,
       assignmentDigest = input.launch.assignment.digest,
       completion = input.completion,
-      assignedPaths = input.launch.assignment.assignedPaths,
-      commitShas = input.launch.assignment.assignedBundle.entries.map { it.commitSha },
-      findingCount = input.findingCount,
-      summary = "Specialist '${decision.specialistSkillName}' reviewed " +
-        "${input.launch.assignment.assignedPaths.size} assigned path(s) in one pass and reported " +
-        "${input.findingCount} finding(s).",
+      coverage = ReviewSpecialistSummaryCoverage(
+        assignedPaths = input.launch.assignment.assignedPaths,
+        commitShas = input.launch.assignment.assignedBundle.entries.map { it.commitSha },
+        findingCount = input.findingCount,
+        summary = "Specialist '${decision.specialistSkillName}' reviewed " +
+          "${input.launch.assignment.assignedPaths.size} assigned path(s) in one pass and reported " +
+          "${input.findingCount} finding(s).",
+      ),
     )
   }
 

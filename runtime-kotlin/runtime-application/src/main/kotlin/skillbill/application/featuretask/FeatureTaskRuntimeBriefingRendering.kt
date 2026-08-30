@@ -104,3 +104,65 @@ internal fun StringBuilder.appendAcceptanceCriteria(handoff: FeatureTaskRuntimeP
     closedCriterionRefs.sorted().forEach { criterionRef -> appendLine("  - $criterionRef") }
   }
 }
+
+private const val SHARED_EVIDENCE_PROJECTION: String =
+  skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
+
+private const val SELF_READ_DIFF_INSTRUCTION: String =
+  "read the branch diff yourself; it is not delivered in this briefing"
+
+private const val SHARED_EVIDENCE_DIFF_INSTRUCTION: String =
+  "the branch diff is already derived for you: the '$SHARED_EVIDENCE_PROJECTION' projection above " +
+    "carries its store_path, checkpoint_fingerprint, base_ref/head_ref, and per-file hunk index; " +
+    "work from that reference, and dereference store_path when you need the diff bytes themselves"
+
+private const val SHARED_EVIDENCE_UNIT_INSTRUCTION: String =
+  "the current unit of work is already derived for you: the '$SHARED_EVIDENCE_PROJECTION' projection " +
+    "above carries its store_path, checkpoint_fingerprint, base_ref/head_ref, and per-file hunk index; " +
+    "work from that reference, and dereference store_path when you need the diff bytes themselves"
+
+private const val SELF_READ_UNIT_INSTRUCTION: String =
+  "read the current unit of work yourself; the shared evidence projection is not delivered in this briefing"
+
+private fun derivedContextInstruction(key: String, sharedEvidenceDelivered: Boolean): String? = when (key) {
+  skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF ->
+    if (sharedEvidenceDelivered) SHARED_EVIDENCE_DIFF_INSTRUCTION else SELF_READ_DIFF_INSTRUCTION
+  "current_unit_of_work" ->
+    if (sharedEvidenceDelivered) SHARED_EVIDENCE_UNIT_INSTRUCTION else SELF_READ_UNIT_INSTRUCTION
+  skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE ->
+    "read the repository at the resolved checkpoint above — the diff over base_ref/head_ref plus " +
+      "the listed scoped_owned_paths — and treat that actual state, not any upstream receipt claim, " +
+      "as the evidence for every criterion"
+  skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF ->
+    SELF_READ_DIFF_INSTRUCTION
+  else -> null
+}
+
+internal fun renderFeatureTaskRuntimePhaseBriefing(
+  handoff: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff,
+  envelope: FeatureTaskRuntimeHandoffEnvelope,
+): String = buildString {
+  appendLine("# Feature-task-runtime phase briefing")
+  appendLine("phase: ${handoff.phaseId}")
+  handoff.drivingVerdict?.let { verdict -> appendLine("driving_verdict: ${verdict.wireValue}") }
+  appendLine()
+  appendAllowlistedRunInvariants(handoff)
+  appendLine()
+  appendLine("## Upstream projections (layer 2, declared and validated)")
+  appendProjections(envelope)
+  appendLine()
+  appendRepositoryCheckpoint(handoff, envelope)
+  appendLine("## Derived context (layer 3, declared)")
+  if (handoff.derivedContextKeys.isEmpty()) {
+    append("(none)")
+  } else {
+    val sharedEvidenceDelivered = envelope.projections.any { it.projectionName == SHARED_EVIDENCE_PROJECTION }
+    append(
+      handoff.derivedContextKeys.joinToString(separator = "\n") { key ->
+        derivedContextInstruction(key, sharedEvidenceDelivered)
+          ?.let { instruction -> "- $key: $instruction" }
+          ?: "- $key"
+      },
+    )
+  }
+}

@@ -1,31 +1,14 @@
-@file:Suppress("LongParameterList")
-
 package skillbill.cli.core
 
 import com.github.ajalt.clikt.core.CliktCommand
 import me.tatarka.inject.annotations.Inject
-import skillbill.cli.agentaddon.AgentAddonCommand
-import skillbill.cli.codereview.CodeReviewCommand
-import skillbill.cli.config.ConfigCommand
-import skillbill.cli.featuretask.FeatureTaskRuntimeDeprecatedRunCommand
-import skillbill.cli.featuretask.FeatureTaskRuntimeRunCommand
-import skillbill.cli.goal.GoalRunCommand
 import skillbill.cli.learning.LearningsCommand
-import skillbill.cli.repovalidation.RepoValidationCliCommands
 import skillbill.cli.review.ReviewTopLevelCommands
 import skillbill.cli.scaffold.ScaffoldTopLevelCommands
-import skillbill.cli.skillremove.RemoveCliCommand
-import skillbill.cli.system.DoctorCliCommand
-import skillbill.cli.system.UninstallCommand
-import skillbill.cli.system.UpdateCheckCommand
-import skillbill.cli.system.UpdateCommand
-import skillbill.cli.system.VersionCommand
 import skillbill.cli.telemetry.TelemetryCommand
-import skillbill.cli.work.WorkTopLevelCommands
-import skillbill.cli.workflow.WorkflowTopLevelCommands
 
 @Inject
-class ReviewCliCommandGroup(
+internal class ReviewCliCommandGroup(
   reviewCommands: ReviewTopLevelCommands,
   learningsCommand: LearningsCommand,
   telemetryCommand: TelemetryCommand,
@@ -38,50 +21,40 @@ class ReviewCliCommandGroup(
 }
 
 @Inject
-class ScaffoldCliCommandGroup(
+internal class ScaffoldCliCommandGroup(
   scaffoldCommands: ScaffoldTopLevelCommands,
 ) {
   val commands: List<CliktCommand> = scaffoldCommands.commands
 }
 
 @Inject
-class UtilityCliCommandGroup(
-  workflowCommands: WorkflowTopLevelCommands,
-  repoValidationCommands: RepoValidationCliCommands,
-  goalRunCommand: GoalRunCommand,
-  featureTaskRunCommand: FeatureTaskRuntimeRunCommand,
-  featureTaskRuntimeDeprecatedRunCommand: FeatureTaskRuntimeDeprecatedRunCommand,
-  versionCommand: VersionCommand,
-  updateCommand: UpdateCommand,
-  updateCheckCommand: UpdateCheckCommand,
-  uninstallCommand: UninstallCommand,
-  doctorCommand: DoctorCliCommand,
-  removeCommand: RemoveCliCommand,
-  codeReviewCommand: CodeReviewCommand,
-  configCommand: ConfigCommand,
-  workCommands: WorkTopLevelCommands,
-  agentAddonCommand: AgentAddonCommand,
+internal class UtilityCliCommandGroup(
+  workflowGoalFeature: WorkflowGoalFeatureCliCommands,
+  systemMaintenance: SystemMaintenanceCliCommands,
+  misc: MiscCliCommands,
 ) {
   val commands: List<CliktCommand> =
-    workflowCommands.commands + repoValidationCommands.commands + listOf(
-      goalRunCommand,
-      featureTaskRunCommand,
-      featureTaskRuntimeDeprecatedRunCommand,
-      versionCommand,
-      updateCommand,
-      updateCheckCommand,
-      uninstallCommand,
-      doctorCommand,
-      removeCommand,
-      codeReviewCommand,
-      configCommand,
-      workCommands.command,
-      agentAddonCommand,
-    )
+    workflowGoalFeature.workflowCommands.commands +
+      workflowGoalFeature.repoValidationCommands.commands +
+      listOf(
+        workflowGoalFeature.goalRunCommand,
+        workflowGoalFeature.featureTaskRunCommand,
+        workflowGoalFeature.featureTaskRuntimeDeprecatedRunCommand,
+        systemMaintenance.versionCommand,
+        systemMaintenance.updateCommand,
+        systemMaintenance.updateCheckCommand,
+        systemMaintenance.uninstallCommand,
+        systemMaintenance.doctorCommand,
+        systemMaintenance.removeCommand,
+        misc.codeReviewCommand,
+        misc.configCommand,
+        misc.workCommands.command,
+        misc.agentAddonCommand,
+      )
 }
 
 @Inject
-class TopLevelCliCommands(
+internal class TopLevelCliCommands(
   reviewCommands: ReviewCliCommandGroup,
   scaffoldCommands: ScaffoldCliCommandGroup,
   utilityCommands: UtilityCliCommandGroup,

@@ -12,9 +12,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionShape
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
-import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.application.featuretask.model.FeatureTaskRuntimeBriefingProjectionInputs
 
 /**
  * Per-phase allowlist of prompt-visible run invariants (AC-012). Run identity stays durable runtime
@@ -88,26 +90,30 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         PhaseHandoffProjectionDeclaration(
           consumerPhaseId = handoff.phaseId,
           sourceRef = FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(slug),
-          projectionName = "agent_addon_${slug.replace('-', '_')}",
-          projectionContractId = "feature_task_runtime.agent_addon_content",
-          projectionContractVersion = "0.1",
-          promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-          budget = FeatureTaskRuntimeHandoffProjectionBudget.ADDON_CONTENT,
-          declaredFieldNames = listOf(FeatureTaskRuntimeHandoffProjectionValidator.ADDON_CONTENT_FIELD),
+          shape = PhaseHandoffProjectionShape(
+            projectionName = "agent_addon_${slug.replace('-', '_')}",
+            projectionContractId = "feature_task_runtime.agent_addon_content",
+            projectionContractVersion = "0.1",
+            promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+            budget = FeatureTaskRuntimeHandoffProjectionBudget.ADDON_CONTENT,
+            declaredFieldNames = listOf(FeatureTaskRuntimeHandoffProjectionValidator.ADDON_CONTENT_FIELD),
+          ),
         )
       }
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
-      projectionInputs(
-        handoff = handoff,
-        declarations = promptDeclarations,
-        workflowId = workflowId,
-        planningProjectionValidator = planningProjectionValidator,
-        sharedReviewEvidence = sharedReviewEvidence,
-        addonContentBySlug = boundedAddonSelection.entries.associate { it.persisted.slug to it.content },
+      briefingProjectionInputs(
+        FeatureTaskRuntimeBriefingProjectionInputs(
+          handoff = handoff,
+          declarations = promptDeclarations,
+          workflowId = workflowId,
+          planningProjectionValidator = planningProjectionValidator,
+          sharedReviewEvidence = sharedReviewEvidence,
+          addonContentBySlug = boundedAddonSelection.entries.associate { it.persisted.slug to it.content },
+        ),
       ),
     )
     val projectedHandoff = handoff.copy(projectionDeclarations = promptDeclarations)
-    val briefingText = serialize(projectedHandoff, envelope, workflowId)
+    val briefingText = renderFeatureTaskRuntimePhaseBriefing(projectedHandoff, envelope)
     return FeatureTaskRuntimePhaseLaunchBriefing(
       phaseId = handoff.phaseId,
       specReference = handoff.runInvariants.specReference,
@@ -124,34 +130,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     )
   }
 
-  @Suppress("LongParameterList")
-  private fun projectionInputs(
-    handoff: FeatureTaskRuntimePhaseHandoff,
-    declarations: List<PhaseHandoffProjectionDeclaration>,
-    workflowId: String?,
-    planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
-    sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference?,
-    addonContentBySlug: Map<String, String>,
-  ): FeatureTaskRuntimeHandoffProjectionInputs = FeatureTaskRuntimeHandoffProjectionInputs(
-    consumerPhaseId = handoff.phaseId,
-    declarations = declarations,
-    resolvedUpstream = handoff.upstreamOutputs,
-    runInvariants = handoff.runInvariants,
-    resolvedCheckpoint = handoff.repositoryCheckpoint,
-    sharedReviewEvidence = sharedReviewEvidence,
-    expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
-    priorGapMemory = handoff.priorGapMemory,
-    repairLedger = handoff.repairLedger,
-    recordedFindingVerdicts = handoff.recordedFindingVerdicts,
-    branchIdentity = handoff.branchIdentity,
-    baseBranch = handoff.baseBranch,
-    workflowId = workflowId,
-    planningProjectionValidator = planningProjectionValidator,
-    addonContentBySlug = addonContentBySlug,
-    validationDepth = handoff.validationDepth,
-    qualityGateSelection = handoff.qualityGateSelection,
-  )
-
   private fun invariantDeclarations(phaseId: String): List<PhaseHandoffProjectionDeclaration> =
     FeatureTaskRuntimeRunInvariantPromptAllowlist.forPhase(phaseId).map { field ->
       val source = if (field == FeatureTaskRuntimeRunInvariantPromptField.CEREMONY_SCALING) {
@@ -167,89 +145,14 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       PhaseHandoffProjectionDeclaration(
         consumerPhaseId = phaseId,
         sourceRef = source,
-        projectionName = "run_invariant_${field.wireValue}",
-        projectionContractId = "feature_task_runtime.run_invariant",
-        projectionContractVersion = "0.1",
-        promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-        budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
-        declaredFieldNames = listOf(projectedField),
+        shape = PhaseHandoffProjectionShape(
+          projectionName = "run_invariant_${field.wireValue}",
+          projectionContractId = "feature_task_runtime.run_invariant",
+          projectionContractVersion = "0.1",
+          promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+          budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+          declaredFieldNames = listOf(projectedField),
+        ),
       )
     }
-
-  private fun serialize(
-    handoff: FeatureTaskRuntimePhaseHandoff,
-    envelope: FeatureTaskRuntimeHandoffEnvelope,
-    @Suppress("UNUSED_PARAMETER") workflowId: String?,
-  ): String = renderBriefing(handoff, envelope)
-
-  @Suppress("LongMethod")
-  private fun renderBriefing(
-    handoff: FeatureTaskRuntimePhaseHandoff,
-    envelope: FeatureTaskRuntimeHandoffEnvelope,
-  ): String = buildString {
-    appendLine("# Feature-task-runtime phase briefing")
-    appendLine("phase: ${handoff.phaseId}")
-    handoff.drivingVerdict?.let { verdict -> appendLine("driving_verdict: ${verdict.wireValue}") }
-    appendLine()
-    appendAllowlistedRunInvariants(handoff)
-    appendLine()
-    appendLine("## Upstream projections (layer 2, declared and validated)")
-    appendProjections(envelope)
-    appendLine()
-    appendRepositoryCheckpoint(handoff, envelope)
-    appendLine("## Derived context (layer 3, declared)")
-    if (handoff.derivedContextKeys.isEmpty()) {
-      append("(none)")
-    } else {
-      // A derived-context key names evidence the phase must acquire itself, so the bare key leaves the
-      // obligation implicit; each known key carries the instruction that makes it actionable, and an
-      // unknown key still renders so a newly declared one is visible rather than silently dropped.
-      // diff / current_unit_of_work name the shared_review_evidence projection only when that
-      // projection was actually delivered; on the required=false omit path they fall back to
-      // self-read so the agent is never told to dereference a missing reference.
-      val sharedEvidenceDelivered = envelope.projections.any {
-        it.projectionName == SHARED_EVIDENCE_PROJECTION
-      }
-      append(
-        handoff.derivedContextKeys.joinToString(separator = "\n") { key ->
-          derivedContextInstruction(key, sharedEvidenceDelivered)
-            ?.let { instruction -> "- $key: $instruction" }
-            ?: "- $key"
-        },
-      )
-    }
-  }
-
-  private const val SHARED_EVIDENCE_PROJECTION: String =
-    FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
-
-  private const val SELF_READ_DIFF_INSTRUCTION: String =
-    "read the branch diff yourself; it is not delivered in this briefing"
-
-  private const val SHARED_EVIDENCE_DIFF_INSTRUCTION: String =
-    "the branch diff is already derived for you: the '$SHARED_EVIDENCE_PROJECTION' projection above " +
-      "carries its store_path, checkpoint_fingerprint, base_ref/head_ref, and per-file hunk index; " +
-      "work from that reference, and dereference store_path when you need the diff bytes themselves"
-
-  private const val SHARED_EVIDENCE_UNIT_INSTRUCTION: String =
-    "the current unit of work is already derived for you: the '$SHARED_EVIDENCE_PROJECTION' projection " +
-      "above carries its store_path, checkpoint_fingerprint, base_ref/head_ref, and per-file hunk index; " +
-      "work from that reference, and dereference store_path when you need the diff bytes themselves"
-
-  private const val SELF_READ_UNIT_INSTRUCTION: String =
-    "read the current unit of work yourself; the shared evidence projection is not delivered in this briefing"
-
-  private fun derivedContextInstruction(key: String, sharedEvidenceDelivered: Boolean): String? = when (key) {
-    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF ->
-      if (sharedEvidenceDelivered) SHARED_EVIDENCE_DIFF_INSTRUCTION else SELF_READ_DIFF_INSTRUCTION
-    "current_unit_of_work" ->
-      if (sharedEvidenceDelivered) SHARED_EVIDENCE_UNIT_INSTRUCTION else SELF_READ_UNIT_INSTRUCTION
-    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE ->
-      "read the repository at the resolved checkpoint above — the diff over base_ref/head_ref plus " +
-        "the listed scoped_owned_paths — and treat that actual state, not any upstream receipt claim, " +
-        "as the evidence for every criterion"
-    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF ->
-      SELF_READ_DIFF_INSTRUCTION
-    else -> null
-  }
 }

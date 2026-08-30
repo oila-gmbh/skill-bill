@@ -1,5 +1,6 @@
 package skillbill.install
 
+import skillbill.install.staging.StageInstalledSkillInput
 import skillbill.install.staging.stageInstalledSkill
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import skillbill.testing.repoRootFromTest
@@ -33,11 +34,13 @@ class FeatureFamilyRenderingIntegrationTest {
 
     val kmpManifest = loadPlatformManifest(repoRoot.resolve("platform-packs/kmp"))
     val staged = stageInstalledSkill(
-      repoRoot,
-      repoRoot.resolve("skills/bill-feature"),
-      home,
-      manifests = listOf(kmpManifest),
-      selectedPlatformSlugs = setOf("kmp"),
+      StageInstalledSkillInput(
+        repoRoot = repoRoot,
+        sourceSkillDir = repoRoot.resolve("skills/bill-feature"),
+        home = home,
+        manifests = listOf(kmpManifest),
+        selectedPlatformSlugs = setOf("kmp"),
+      ),
     )
     val stagedReview = stageInstalledSkill(repoRoot, repoRoot.resolve("skills/bill-code-review"), home)
 

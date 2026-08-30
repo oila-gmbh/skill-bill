@@ -2,6 +2,7 @@ package skillbill.install
 
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPlanSkillKind
+import skillbill.install.staging.StageInstalledSkillInput
 import skillbill.install.staging.stageInstalledSkill
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
@@ -42,10 +43,12 @@ class InternalSkillStagingRepoTest {
     )
 
     val rendered = stageInstalledSkill(
-      repoRoot,
-      parentDir,
-      home,
-      selectedPackSkills = listOf(uiSkill),
+      StageInstalledSkillInput(
+        repoRoot = repoRoot,
+        sourceSkillDir = parentDir,
+        home = home,
+        selectedPackSkills = listOf(uiSkill),
+      ),
     )
 
     val wrapper = rendered.stagingDir.resolve("bill-kmp-code-review-ui.md")

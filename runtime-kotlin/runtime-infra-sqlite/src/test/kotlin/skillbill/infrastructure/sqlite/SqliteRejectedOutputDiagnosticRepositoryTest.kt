@@ -196,26 +196,36 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
     }
   }
 
-  @Suppress("LongParameterList")
-  private fun evidence(
-    payload: ByteArray,
-    attempt: Int = 1,
-    generation: Int = 0,
-    agentId: String = "codex",
-    phaseId: String = "review",
-    repairTurn: Int = 0,
-  ) = ProducerOutputEvidence(
+  private data class ProducerEvidenceFixture(
+    val payload: ByteArray,
+    val attempt: Int = 1,
+    val generation: Int = 0,
+    val agentId: String = "codex",
+    val phaseId: String = "review",
+    val repairTurn: Int = 0,
+  )
+
+  private fun evidence(payload: ByteArray, attempt: Int = 1, generation: Int = 0, agentId: String = "codex") =
+    evidence(ProducerEvidenceFixture(payload = payload, attempt = attempt, generation = generation, agentId = agentId))
+
+  private fun evidence(payload: ByteArray, phaseId: String, repairTurn: Int) =
+    evidence(ProducerEvidenceFixture(payload = payload, phaseId = phaseId, repairTurn = repairTurn))
+
+  private fun evidence(payload: ByteArray, attempt: Int, agentId: String) =
+    evidence(ProducerEvidenceFixture(payload = payload, attempt = attempt, agentId = agentId))
+
+  private fun evidence(fixture: ProducerEvidenceFixture) = ProducerOutputEvidence(
     workflowId = "workflow-1",
-    phaseId = phaseId,
-    attempt = attempt,
-    agentId = agentId,
+    phaseId = fixture.phaseId,
+    attempt = fixture.attempt,
+    agentId = fixture.agentId,
     model = "gpt",
     recordedAt = Instant.parse("2026-07-28T10:00:00Z"),
-    byteSize = payload.size.toLong(),
-    sha256 = MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) },
-    payload = payload,
-    generation = generation,
-    repairTurn = repairTurn,
+    byteSize = fixture.payload.size.toLong(),
+    sha256 = MessageDigest.getInstance("SHA-256").digest(fixture.payload).joinToString("") { "%02x".format(it) },
+    payload = fixture.payload,
+    generation = fixture.generation,
+    repairTurn = fixture.repairTurn,
   )
 
   private fun record(

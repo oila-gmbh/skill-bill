@@ -131,12 +131,14 @@ class ReviewStageDegradationSelectionTest {
   private fun evidenceReasons(
     vararg accounting: ReviewEvidenceBoundaryAccounting,
   ): List<ReviewStageDegradationMeasurement> = ReviewStageDegradationSelection.select(
-    reviewRunId = "rvw-195",
-    spec = null,
-    boundaries = emptyList(),
-    verdicts = emptyList(),
-    claims = null,
-    evidenceBoundaries = accounting.toList(),
+    ReviewStageDegradationSelectionRequest(
+      reviewRunId = "rvw-195",
+      spec = null,
+      boundaries = emptyList(),
+      verdicts = emptyList(),
+      claims = null,
+      evidenceBoundaries = accounting.toList(),
+    ),
   ).filter { it.reason in EVIDENCE_REASONS }
 
   private fun assertCountsOnly(measurement: ReviewStageDegradationMeasurement) {

@@ -11,6 +11,7 @@ import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionContext
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import java.nio.file.Files
 import java.nio.file.Path
@@ -30,13 +31,15 @@ object FeatureTaskRuntimeHandoffEnvelopeSchemaValidator {
     val errors: Set<ValidationMessage> = schema.validate(instance)
     if (errors.isNotEmpty()) {
       throw InvalidFeatureTaskRuntimeHandoffProjectionError(
-        workflowId = workflowId,
-        consumerPhaseId = consumerPhaseId,
-        projectionName = firstProjectionLocation(errors),
-        projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
-        projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
-        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
-        reason = formatReason(errors),
+        context = InvalidFeatureTaskRuntimeHandoffProjectionContext(
+          workflowId = workflowId,
+          consumerPhaseId = consumerPhaseId,
+          projectionName = firstProjectionLocation(errors),
+          projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
+          projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
+          failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
+          reason = formatReason(errors),
+        ),
       )
     }
   }
@@ -80,13 +83,15 @@ private fun loadHandoffEnvelopeSchema(): JsonSchema = try {
   throw error
 } catch (error: Exception) {
   throw InvalidFeatureTaskRuntimeHandoffProjectionError(
-    workflowId = null,
-    consumerPhaseId = "<schema-load>",
-    projectionName = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.CLASSPATH_RESOURCE,
-    projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
-    projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
-    failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
-    reason = error.message ?: error::class.simpleName.orEmpty(),
+    context = InvalidFeatureTaskRuntimeHandoffProjectionContext(
+      workflowId = null,
+      consumerPhaseId = "<schema-load>",
+      projectionName = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.CLASSPATH_RESOURCE,
+      projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
+      projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
+      failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
+      reason = error.message ?: error::class.simpleName.orEmpty(),
+    ),
     cause = error,
   )
 }

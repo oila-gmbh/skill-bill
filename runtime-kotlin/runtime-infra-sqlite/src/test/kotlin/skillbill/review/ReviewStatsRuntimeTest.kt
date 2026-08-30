@@ -217,15 +217,19 @@ class ReviewStatsRuntimeTest {
 
       val anonymousPayload =
         ReviewStatsRuntime.buildReviewFinishedPayload(
-          connection = connection,
-          reviewRunId = review.reviewRunId,
-          level = "anonymous",
+          ReviewFinishedPayloadBuildRequest(
+            connection = connection,
+            reviewRunId = review.reviewRunId,
+            level = "anonymous",
+          ),
         )
       val fullPayload =
         ReviewStatsRuntime.buildReviewFinishedPayload(
-          connection = connection,
-          reviewRunId = review.reviewRunId,
-          level = "full",
+          ReviewFinishedPayloadBuildRequest(
+            connection = connection,
+            reviewRunId = review.reviewRunId,
+            level = "full",
+          ),
         )
 
       assertEquals(1, anonymousPayload.learnings.appliedCount)
@@ -265,9 +269,11 @@ class ReviewStatsRuntimeTest {
 
       val payload =
         ReviewStatsRuntime.buildReviewFinishedPayload(
-          connection = connection,
-          reviewRunId = review.reviewRunId,
-          level = "anonymous",
+          ReviewFinishedPayloadBuildRequest(
+            connection = connection,
+            reviewRunId = review.reviewRunId,
+            level = "anonymous",
+          ),
         ).toReviewFinishedTelemetryPayload().toPayload()
 
       assertEquals(0, payload["total_findings"])
@@ -298,50 +304,14 @@ class ReviewStatsRuntimeTest {
   }
 
   @Test
-  @Suppress("LongMethod")
   fun `feature task runtime telemetry persists started then finished and enqueues each event once`() {
     val (_, connection) = tempDbConnection("feature-task-runtime-telemetry")
     connection.use {
       val store = LifecycleTelemetryStore(connection)
       val outbox = TelemetryOutboxStore(connection)
-      store.featureTaskRuntimeStarted(
-        FeatureTaskRuntimeStartedRecord(
-          sessionId = "ftr-1",
-          featureSize = "MEDIUM",
-          issueKey = "SKILL-65.1",
-          featureName = "lifecycle-telemetry",
-        ),
-        level = "anonymous",
-      )
+      persistFeatureTaskRuntimeTelemetryPair(store, includeAuditCounters = true)
       store.featureTaskRuntimeFinished(
-        FeatureTaskRuntimeFinishedRecord(
-          sessionId = "ftr-1",
-          completionStatus = "completed",
-          completedPhaseIds = listOf("preplan", "plan", "implement"),
-          phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
-          lastIncompletePhase = "completed",
-          blockedReason = "",
-          resolvedBranch = "feat/SKILL-65.1",
-          auditFirstPassConvergence = false,
-          auditRecurringGapCount = 1,
-          auditNewGapCount = 2,
-          auditAttemptedRepairItemCount = 4,
-          auditResolvedRepairItemCount = 3,
-          auditGapIterationCount = 2,
-        ),
-        level = "anonymous",
-      )
-      // A redundant finished call (e.g. a resume) must re-save idempotently and never re-enqueue.
-      store.featureTaskRuntimeFinished(
-        FeatureTaskRuntimeFinishedRecord(
-          sessionId = "ftr-1",
-          completionStatus = "completed",
-          completedPhaseIds = listOf("preplan", "plan", "implement"),
-          phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
-          lastIncompletePhase = "completed",
-          blockedReason = "",
-          resolvedBranch = "feat/SKILL-65.1",
-        ),
+        featureTaskRuntimeFinishedRecord(includeAuditCounters = false),
         level = "anonymous",
       )
 
@@ -353,15 +323,7 @@ class ReviewStatsRuntimeTest {
       val finishedPayload = JsonSupport.parseObjectOrNull(
         pending.single { it.eventName == "skillbill_feature_task_runtime_finished" }.payloadJson,
       )
-      assertEquals("completed", finishedPayload?.get("completion_status")?.let { it.toString().trim('"') })
-      assertEquals("completed", finishedPayload?.get("last_incomplete_phase")?.let { it.toString().trim('"') })
-      assertEquals("", finishedPayload?.get("blocked_reason")?.let { it.toString().trim('"') })
-      assertEquals("false", finishedPayload?.get("audit_first_pass_convergence")?.toString())
-      assertEquals("1", finishedPayload?.get("audit_recurring_gap_count")?.toString())
-      assertEquals("2", finishedPayload?.get("audit_new_gap_count")?.toString())
-      assertEquals("4", finishedPayload?.get("audit_attempted_repair_item_count")?.toString())
-      assertEquals("3", finishedPayload?.get("audit_resolved_repair_item_count")?.toString())
-      assertEquals("2", finishedPayload?.get("audit_gap_iteration_count")?.toString())
+      assertFeatureTaskRuntimeFinishedPayload(finishedPayload, includeAuditCounters = true)
 
       val stats = ReviewStatsRuntime.featureTaskRuntimeStats(connection)
       assertEquals(1, stats.totalRuns)
@@ -371,6 +333,72 @@ class ReviewStatsRuntimeTest {
       assertEquals(3, stats.phaseOutcomeCounts["completed"])
       assertEquals(1, stats.featureSizeCounts["MEDIUM"])
     }
+  }
+
+  private fun persistFeatureTaskRuntimeTelemetryPair(
+    store: LifecycleTelemetryStore,
+    includeAuditCounters: Boolean,
+  ) {
+    store.featureTaskRuntimeStarted(
+      FeatureTaskRuntimeStartedRecord(
+        sessionId = "ftr-1",
+        featureSize = "MEDIUM",
+        issueKey = "SKILL-65.1",
+        featureName = "lifecycle-telemetry",
+      ),
+      level = "anonymous",
+    )
+    store.featureTaskRuntimeFinished(
+      featureTaskRuntimeFinishedRecord(includeAuditCounters = includeAuditCounters),
+      level = "anonymous",
+    )
+  }
+
+  private fun featureTaskRuntimeFinishedRecord(includeAuditCounters: Boolean): FeatureTaskRuntimeFinishedRecord =
+    if (includeAuditCounters) {
+      FeatureTaskRuntimeFinishedRecord(
+        sessionId = "ftr-1",
+        completionStatus = "completed",
+        completedPhaseIds = listOf("preplan", "plan", "implement"),
+        phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
+        lastIncompletePhase = "completed",
+        blockedReason = "",
+        resolvedBranch = "feat/SKILL-65.1",
+        auditFirstPassConvergence = false,
+        auditRecurringGapCount = 1,
+        auditNewGapCount = 2,
+        auditAttemptedRepairItemCount = 4,
+        auditResolvedRepairItemCount = 3,
+        auditGapIterationCount = 2,
+      )
+    } else {
+      FeatureTaskRuntimeFinishedRecord(
+        sessionId = "ftr-1",
+        completionStatus = "completed",
+        completedPhaseIds = listOf("preplan", "plan", "implement"),
+        phaseOutcomes = mapOf("preplan" to "completed", "plan" to "completed", "implement" to "completed"),
+        lastIncompletePhase = "completed",
+        blockedReason = "",
+        resolvedBranch = "feat/SKILL-65.1",
+      )
+    }
+
+  private fun assertFeatureTaskRuntimeFinishedPayload(
+    finishedPayload: Map<String, Any?>?,
+    includeAuditCounters: Boolean,
+  ) {
+    assertEquals("completed", finishedPayload?.get("completion_status")?.let { it.toString().trim('"') })
+    assertEquals("completed", finishedPayload?.get("last_incomplete_phase")?.let { it.toString().trim('"') })
+    assertEquals("", finishedPayload?.get("blocked_reason")?.let { it.toString().trim('"') })
+    if (!includeAuditCounters) {
+      return
+    }
+    assertEquals("false", finishedPayload?.get("audit_first_pass_convergence")?.toString())
+    assertEquals("1", finishedPayload?.get("audit_recurring_gap_count")?.toString())
+    assertEquals("2", finishedPayload?.get("audit_new_gap_count")?.toString())
+    assertEquals("4", finishedPayload?.get("audit_attempted_repair_item_count")?.toString())
+    assertEquals("3", finishedPayload?.get("audit_resolved_repair_item_count")?.toString())
+    assertEquals("2", finishedPayload?.get("audit_gap_iteration_count")?.toString())
   }
 
   @Test

@@ -1,0 +1,346 @@
+package skillbill.install
+
+import org.junit.jupiter.api.Assumptions
+import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
+import skillbill.error.MissingInstalledNativeAgentError
+import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
+import skillbill.install.apply.currentNativeAgentApplyCacheRoot
+import skillbill.install.model.AgentTarget
+import skillbill.install.model.InstallAgent
+import skillbill.install.model.InstallAgentLinkStatus
+import skillbill.install.model.InstallApplyStatus
+import skillbill.install.model.McpRegistrationApplyStatus
+import skillbill.install.model.NativeAgentApplyStatus
+import skillbill.install.model.NativeAgentProviderId
+import skillbill.install.nativeagent.InstallNativeAgentResult
+import skillbill.install.nativeagent.NativeAgentLinkInventory
+import skillbill.install.nativeagent.NativeAgentLinkOwnership
+import skillbill.install.nativeagent.installNativeAgentFile
+import skillbill.install.runtime.InstallOperations
+import skillbill.install.support.createNewSymlinkWithGuidance
+import skillbill.model.EnvironmentContext
+import skillbill.nativeagent.rendering.NativeAgentOperations
+import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
+import skillbill.testing.HARBOR_ARCHITECTURE_WORKER
+import skillbill.testing.HARBOR_COMPANION_NAME
+import skillbill.testing.HARBOR_ENTRYPOINT_MARKER
+import skillbill.testing.HARBOR_ENTRYPOINT_NAME
+import skillbill.testing.HARBOR_PACK_SLUG
+import skillbill.testing.seedHarborAddonPack
+import java.nio.file.Files
+import java.nio.file.LinkOption
+import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermission
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+class InstallNativeAgentLinkApplyCursorTest : InstallNativeAgentLinkApplyTestSupport() {
+  @Test
+  fun `inventory deletion followed by multi provider apply publishes canonical readable entries`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    Files.createDirectories(fixture.home.resolve(".cursor"))
+    val request = fixture.request(
+      selectedPlatforms = setOf("kotlin"),
+      agents = setOf(InstallAgent.CODEX, InstallAgent.CURSOR),
+    )
+    val first = InstallOperations.applyInstall(InstallOperations.planInstall(request))
+    assertEquals(InstallApplyStatus.SUCCESS, first.status)
+    Files.delete(fixture.home.resolve(".skill-bill/native-agent-link-inventory.json"))
+
+    val second = InstallOperations.applyInstall(InstallOperations.planInstall(request))
+    assertEquals(InstallApplyStatus.SUCCESS, second.status)
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val entries = NativeAgentLinkInventory.read(fixture.home, listOf(cacheRoot), fixture.repoRoot)
+    assertEquals(setOf("codex", "cursor"), entries.map { it.provider }.toSet())
+    assertTrue(entries.all { it.contentDigest != "0".repeat(64) && Files.isReadable(it.cacheTargetPath) })
+  }
+
+  @Test
+  fun `apply composes declared add-on content into every provider cache artifact`() {
+    val fixture = setupApplyFixture()
+    seedHarborAddonPack(fixture.repoRoot)
+    Files.createDirectories(fixture.home.resolve(".claude"))
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    Files.createDirectories(fixture.home.resolve(".junie"))
+    Files.createDirectories(fixture.home.resolve(".cursor"))
+    val result = InstallOperations.applyInstall(
+      InstallOperations.planInstall(
+        fixture.request(
+          selectedPlatforms = setOf(HARBOR_PACK_SLUG),
+          agents = allInstallAgents,
+        ),
+      ),
+    )
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, "apply failures: ${result.failures}")
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    NativeAgentProvider.entries.forEach { provider ->
+      val artifact = provider.cacheArtifactPath(cacheRoot, HARBOR_ARCHITECTURE_WORKER)
+      assertTrue(Files.isRegularFile(artifact), "${provider.directoryName} missing $HARBOR_ARCHITECTURE_WORKER")
+      assertContains(Files.readString(artifact), HARBOR_ENTRYPOINT_MARKER)
+    }
+  }
+
+  @Test
+  fun `native agent install preserves non agent symlink inside source roots`() {
+    val targetDir = Files.createTempDirectory("skillbill-native-target").also(tempDirs::add)
+    val cacheRoot = Files.createTempDirectory("skillbill-native-cache-root").also(tempDirs::add)
+    val repoRoot = Files.createTempDirectory("skillbill-native-repo-root").also(tempDirs::add)
+    val newSource = cacheRoot.resolve("bill-worker.md")
+    val userSource = repoRoot.resolve("platform-packs/kotlin/README.md")
+    Files.createDirectories(userSource.parent)
+    Files.writeString(newSource, "new")
+    Files.writeString(userSource, "user")
+    val linkPath = targetDir.resolve("bill-worker.md")
+    createSymlinkOrSkip(linkPath, userSource)
+
+    val result = installNativeAgentFile(
+      source = newSource,
+      agentTarget = AgentTarget("codex", targetDir),
+      managedSourceRoots = listOf(cacheRoot),
+    )
+
+    assertTrue(result is InstallNativeAgentResult.Skipped)
+    assertEquals(userSource.toAbsolutePath().normalize(), readSymlinkTarget(linkPath))
+  }
+
+  @Test
+  fun `apply replaces existing native agent links from legacy generated cache`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val targetDir = fixture.home.resolve(".codex/agents")
+    Files.createDirectories(targetDir)
+    val legacyRoot = NativeAgentOperations.installCacheRoot(
+      home = fixture.home,
+      platformPacksRoot = fixture.repoRoot.resolve("platform-packs"),
+      skillsRoot = fixture.repoRoot.resolve("skills"),
+    )
+    val legacyFile = legacyRoot
+      .resolve(NativeAgentProvider.Codex.directoryName)
+      .resolve("bill-code-review-worker.${NativeAgentProvider.Codex.extension}")
+    Files.createDirectories(legacyFile.parent)
+    Files.writeString(legacyFile, "legacy")
+    val linkPath = targetDir.resolve(legacyFile.fileName)
+    createSymlinkOrSkip(linkPath, legacyFile)
+    val plan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("kotlin"),
+        agents = setOf(InstallAgent.CODEX),
+      ),
+    )
+
+    val result = InstallOperations.applyInstall(plan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, result.status)
+    val newTarget = readSymlinkTarget(linkPath)
+    assertTrue(newTarget.startsWith(fixture.home.resolve(".skill-bill/installed-skills")))
+    assertFalse(newTarget.startsWith(legacyRoot))
+  }
+
+  @Test
+  fun `replacement apply removes native agent links from deselected platforms`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val kmpPlan = InstallOperations.planInstall(
+      fixture.request(
+        selectedPlatforms = setOf("kmp"),
+        agents = setOf(InstallAgent.CODEX),
+      ),
+    )
+    val first = InstallOperations.applyInstall(kmpPlan)
+    assertEquals(InstallApplyStatus.SUCCESS, first.status)
+    val targetDir = fixture.home.resolve(".codex/agents")
+    val baseNativeAgent = targetDir.resolve("bill-code-review-worker.toml")
+    val kmpNativeAgent = targetDir.resolve("bill-kmp-code-review-worker.toml")
+    assertTrue(Files.isSymbolicLink(baseNativeAgent))
+    assertTrue(Files.isSymbolicLink(kmpNativeAgent))
+    val legacyRoot = NativeAgentOperations.installCacheRoot(
+      home = fixture.home,
+      platformPacksRoot = fixture.repoRoot.resolve("platform-packs"),
+      skillsRoot = fixture.repoRoot.resolve("skills"),
+    )
+    val legacyKmpNativeAgent = legacyRoot
+      .resolve(NativeAgentProvider.Codex.directoryName)
+      .resolve(kmpNativeAgent.fileName)
+    Files.createDirectories(legacyKmpNativeAgent.parent)
+    Files.writeString(legacyKmpNativeAgent, "legacy kmp")
+    Files.delete(kmpNativeAgent)
+    createSymlinkOrSkip(kmpNativeAgent, legacyKmpNativeAgent)
+    assertEquals(legacyKmpNativeAgent.toAbsolutePath().normalize(), readSymlinkTarget(kmpNativeAgent))
+
+    val baseOnlyReplacementPlan = InstallOperations.planInstall(
+      fixture.request(
+        agents = setOf(InstallAgent.CODEX),
+        replaceExistingSkillBillLinks = true,
+      ),
+    )
+    val second = InstallOperations.applyInstall(baseOnlyReplacementPlan)
+
+    assertEquals(InstallApplyStatus.SUCCESS, second.status)
+    assertTrue(Files.isSymbolicLink(baseNativeAgent))
+    assertFalse(Files.exists(kmpNativeAgent, LinkOption.NOFOLLOW_LINKS))
+  }
+
+  @Test
+  fun `replacement apply prunes deselected packs from installed review catalog`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val firstPlan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kmp"), agents = setOf(InstallAgent.CODEX)),
+    )
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(firstPlan).status)
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val catalog = cacheRoot.resolve("review-catalog/platform-packs")
+    assertTrue(Files.isDirectory(catalog.resolve("kmp")))
+
+    val replacementPlan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(replacementPlan).status)
+
+    assertFalse(Files.exists(catalog.resolve("kmp"), LinkOption.NOFOLLOW_LINKS))
+    assertTrue(Files.isDirectory(catalog.resolve("kotlin")))
+  }
+
+  @Test
+  fun `failed replacement apply restores the previously published review catalog`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val firstPlan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(firstPlan).status)
+    val catalog = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    ).resolve("review-catalog/platform-packs")
+    val publishedManifest = Files.readString(catalog.resolve("kotlin/platform.yaml"))
+
+    // The catalog swap moves the outgoing tree aside and deletes it, so a failure after the swap
+    // can only be undone from the journal's captured snapshots.
+    val inventory = fixture.home.resolve(".skill-bill/native-agent-link-inventory.json")
+    Files.writeString(inventory, "not-json")
+    val replacementPlan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kmp"), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    val result = InstallOperations.applyInstall(replacementPlan)
+
+    assertEquals(InstallApplyStatus.FAILURE, result.status)
+    assertEquals(publishedManifest, Files.readString(catalog.resolve("kotlin/platform.yaml")))
+    assertFalse(Files.exists(catalog.resolve("kmp"), LinkOption.NOFOLLOW_LINKS))
+  }
+
+  @Test
+  fun `installed review catalog contains only manifest and declared review content`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val sourcePack = fixture.repoRoot.resolve("platform-packs/kotlin")
+    Files.createDirectories(sourcePack.resolve("agent"))
+    Files.writeString(sourcePack.resolve("agent/history.md"), "boundary history")
+    Files.writeString(sourcePack.resolve("unrelated-custom-file.txt"), "not review runtime content")
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(plan).status)
+
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    val installedPack = cacheRoot.resolve("review-catalog/platform-packs/kotlin")
+    assertTrue(Files.isRegularFile(installedPack.resolve("platform.yaml")))
+    assertTrue(
+      Files.isRegularFile(installedPack.resolve("code-review/bill-kotlin-code-review/content.md")),
+    )
+    assertFalse(Files.exists(installedPack.resolve("agent/history.md"), LinkOption.NOFOLLOW_LINKS))
+    assertFalse(Files.exists(installedPack.resolve("unrelated-custom-file.txt"), LinkOption.NOFOLLOW_LINKS))
+  }
+
+  @Test
+  fun `installed review catalog includes addon_usage entrypoint and companions`() {
+    val fixture = setupApplyFixture()
+    seedHarborAddonPack(fixture.repoRoot)
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf(HARBOR_PACK_SLUG), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(plan).status)
+
+    val installedPack = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    ).resolve("review-catalog/platform-packs/$HARBOR_PACK_SLUG")
+    assertTrue(Files.isRegularFile(installedPack.resolve("addons/$HARBOR_ENTRYPOINT_NAME")))
+    assertTrue(Files.isRegularFile(installedPack.resolve("addons/$HARBOR_COMPANION_NAME")))
+    assertEquals(
+      "$HARBOR_ENTRYPOINT_MARKER\n",
+      Files.readString(installedPack.resolve("addons/$HARBOR_ENTRYPOINT_NAME")),
+    )
+  }
+
+  @Test
+  fun `native agent replacement preserves existing link when replacement symlink creation fails`() {
+    val targetDir = Files.createTempDirectory("skillbill-native-readonly-target").also(tempDirs::add)
+    val managedRoot = Files.createTempDirectory("skillbill-native-managed-root").also(tempDirs::add)
+    val newRoot = Files.createTempDirectory("skillbill-native-new-root").also(tempDirs::add)
+    val oldSource = managedRoot.resolve("bill-worker.md")
+    val newSource = newRoot.resolve("bill-worker.md")
+    Files.writeString(oldSource, "old")
+    Files.writeString(newSource, "new")
+    val linkPath = targetDir.resolve("bill-worker.md")
+    createSymlinkOrSkip(linkPath, oldSource)
+    val originalPermissions = readPosixPermissionsOrSkip(targetDir)
+    try {
+      Files.setPosixFilePermissions(
+        targetDir,
+        originalPermissions - PosixFilePermission.OWNER_WRITE -
+          PosixFilePermission.GROUP_WRITE -
+          PosixFilePermission.OTHERS_WRITE,
+      )
+      val probe = targetDir.resolve("probe")
+      val canStillCreateSymlink = runCatching {
+        Files.createSymbolicLink(probe, newSource)
+        Files.deleteIfExists(probe)
+      }.isSuccess
+      Assumptions.assumeFalse(canStillCreateSymlink, "read-only directory still allows symlink creation")
+
+      val failure = runCatching {
+        installNativeAgentFile(
+          source = newSource,
+          agentTarget = AgentTarget("codex", targetDir),
+          managedSourceRoots = listOf(managedRoot),
+        )
+      }.exceptionOrNull()
+
+      assertNotNull(failure, "replacement should fail in read-only target dir")
+      assertEquals(oldSource.toAbsolutePath().normalize(), readSymlinkTarget(linkPath))
+    } finally {
+      Files.setPosixFilePermissions(targetDir, originalPermissions)
+    }
+  }
+
+}

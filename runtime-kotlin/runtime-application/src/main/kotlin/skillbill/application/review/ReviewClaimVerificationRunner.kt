@@ -1,8 +1,10 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewClaimVerificationOutcome
+import skillbill.application.review.model.ReviewClaimVerificationRunRequest
+import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.agent.model.AgentPhaseInput
 import skillbill.agent.model.AgentPhaseOutput
-import skillbill.application.review.model.ReviewClaimVerificationOutcome
 import skillbill.contracts.JsonSupport
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -16,7 +18,6 @@ import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewCitedRegion
 import skillbill.review.context.model.ReviewClaimVerdictAdmission
 import skillbill.review.context.model.ReviewClaimWorkerResult
-import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.requireRepositoryRelativePath
@@ -25,113 +26,82 @@ import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewStage
-import java.nio.file.Path
 import java.time.Instant
-import kotlin.time.Duration
 
 class ReviewClaimVerificationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
 ) {
-  @Suppress("LongParameterList")
-  fun run(
-    packet: ReviewContextPacket?,
-    reviewOutput: String = "",
-    findings: List<ParallelReviewMergedFinding>,
-    existingVerdicts: List<ReviewFindingVerdict>,
-    mode: ResolvedReviewExecutionMode,
-    budget: ReviewContextBudgetPolicy,
-    brokerId: String,
-    repoRoot: Path,
-    timeout: Duration?,
-    modelOverride: String? = null,
-    promptSuffix: String = "",
-  ): ReviewClaimVerificationOutcome {
-    if (packet == null) {
+  fun run(request: ReviewClaimVerificationRunRequest): ReviewClaimVerificationOutcome {
+    if (request.packet == null) {
       return ReviewClaimVerificationOutcome(
         verdicts = emptyList(),
         skipReason = "the review compiled no packet, so there is no delta to verify against",
       )
     }
-    if (findings.isEmpty()) {
+    if (request.findings.isEmpty()) {
       return when {
-        !reviewOutputNeedsProseVerification(reviewOutput) -> ReviewClaimVerificationOutcome(
+        !reviewOutputNeedsProseVerification(request.reviewOutput) -> ReviewClaimVerificationOutcome(
           verdicts = emptyList(),
           skipReason = "the review pass emitted no findings, so there is nothing to verify",
         )
         else -> verifyReviewOutput(
-          packet = packet,
-          reviewOutput = reviewOutput,
-          mode = mode,
-          budget = budget,
-          brokerId = brokerId,
-          repoRoot = repoRoot,
-          timeout = timeout,
-          modelOverride = modelOverride,
-          promptSuffix = promptSuffix,
+          ProseVerificationInput(
+            packet = request.packet,
+            reviewOutput = request.reviewOutput,
+            mode = request.mode,
+            launch = request.launch,
+          ),
         )
       }
     }
-    val durableRefs = existingVerdicts
+    val durableRefs = request.existingVerdicts
       .filter { it.stage == ReviewStage.VERIFICATION }
       .map { it.findingRef }
       .toSet()
-    val pending = findings.sortedBy { it.fNumber }.filterNot { it.fNumber in durableRefs }
+    val pending = request.findings.sortedBy { it.fNumber }.filterNot { it.fNumber in durableRefs }
     if (pending.isEmpty()) {
       return ReviewClaimVerificationOutcome(
-        verdicts = existingVerdicts.filter { it.stage == ReviewStage.VERIFICATION },
+        verdicts = request.existingVerdicts.filter { it.stage == ReviewStage.VERIFICATION },
         skipReason = "every finding already holds a durable verification verdict",
       )
     }
     val recordedAt = Instant.now().toString()
     val verdicts = pending.map { finding ->
       verifyOne(
-        packet = packet,
-        reviewOutput = reviewOutput,
-        finding = finding,
-        mode = mode,
-        budget = budget,
-        brokerId = brokerId,
-        repoRoot = repoRoot,
-        timeout = timeout,
-        modelOverride = modelOverride,
-        recordedAt = recordedAt,
-        promptSuffix = promptSuffix,
+        VerificationFindingInput(
+          packet = request.packet,
+          reviewOutput = request.reviewOutput,
+          finding = finding,
+          mode = request.mode,
+          launch = request.launch,
+          recordedAt = recordedAt,
+        ),
       )
     }
     return ReviewClaimVerificationOutcome(
-      verdicts = existingVerdicts.filter { it.stage == ReviewStage.VERIFICATION && it.findingRef in durableRefs } +
-        verdicts,
+      verdicts = request.existingVerdicts.filter {
+        it.stage == ReviewStage.VERIFICATION && it.findingRef in durableRefs
+      } + verdicts,
     )
   }
 
-  @Suppress("LongParameterList")
-  private fun verifyReviewOutput(
-    packet: ReviewContextPacket,
-    reviewOutput: String,
-    mode: ResolvedReviewExecutionMode,
-    budget: ReviewContextBudgetPolicy,
-    brokerId: String,
-    repoRoot: Path,
-    timeout: Duration?,
-    modelOverride: String?,
-    promptSuffix: String,
-  ): ReviewClaimVerificationOutcome {
-    if (reviewOutput.isBlank()) {
+  private fun verifyReviewOutput(input: ProseVerificationInput): ReviewClaimVerificationOutcome {
+    if (input.reviewOutput.isBlank()) {
       return ReviewClaimVerificationOutcome(
         verdicts = emptyList(),
         skipReason = "the review phase produced no output to verify",
       )
     }
     val phaseInput = AgentPhaseInput(
-      input = reviewOutput,
+      input = input.reviewOutput,
       requestedAction = VERIFY_CLAIMS_ACTION,
     )
     val prompt = appendPromptSuffix(
-      proseVerificationPrompt(packet, phaseInput, mode),
-      promptSuffix,
+      proseVerificationPrompt(input.packet, phaseInput, input.mode),
+      input.launch.promptSuffix,
     )
-    if (prompt.toByteArray(Charsets.UTF_8).size.toLong() > budget.maxLaneLaunchBytes) {
+    if (prompt.toByteArray(Charsets.UTF_8).size.toLong() > input.launch.budget.maxLaneLaunchBytes) {
       return ReviewClaimVerificationOutcome(
         verdicts = emptyList(),
         skipReason = "verification phase launch exceeded max_lane_launch_bytes",
@@ -139,14 +109,14 @@ class ReviewClaimVerificationRunner(
     }
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = brokerId,
+        invokedAgentId = input.launch.brokerId,
         configuredAgentOverrideId = null,
         skillRunRequest = SkillRunRequest(
           issueKey = ISSUE_KEY,
-          repoRoot = repoRoot,
-          timeout = timeout,
+          repoRoot = input.launch.repoRoot,
+          timeout = input.launch.timeout,
           promptOverride = prompt,
-          modelOverride = modelOverride,
+          modelOverride = input.launch.modelOverride,
         ),
       ),
     )
@@ -163,64 +133,51 @@ class ReviewClaimVerificationRunner(
     }
   }
 
-  @Suppress("LongParameterList")
-  private fun verifyOne(
-    packet: ReviewContextPacket,
-    reviewOutput: String,
-    finding: ParallelReviewMergedFinding,
-    mode: ResolvedReviewExecutionMode,
-    budget: ReviewContextBudgetPolicy,
-    brokerId: String,
-    repoRoot: Path,
-    timeout: Duration?,
-    modelOverride: String?,
-    recordedAt: String,
-    promptSuffix: String,
-  ): ReviewFindingVerdict {
-    val region = citedRegionOf(finding)
-      ?: return unresolved(finding, recordedAt, "finding has no cited file:line region")
+  private fun verifyOne(input: VerificationFindingInput): ReviewFindingVerdict {
+    val region = citedRegionOf(input.finding)
+      ?: return unresolved(input.finding, input.recordedAt, "finding has no cited file:line region")
     val launch = GovernedReviewVerificationLaunch(
-      packet = packet,
-      finding = finding,
+      packet = input.packet,
+      finding = input.finding,
       citedRegion = region,
-      evidenceSurfaceRules = ReviewPreparationService.verificationEvidenceSurfaceRules(mode),
-      dependencyAllowlist = ReviewDependencyAllowlist(packet.dependencyAllowlist.normalized),
-      brokerId = brokerId,
-      budget = budget,
+      evidenceSurfaceRules = ReviewPreparationService.verificationEvidenceSurfaceRules(input.mode),
+      dependencyAllowlist = ReviewDependencyAllowlist(input.packet.dependencyAllowlist.normalized),
+      brokerId = input.launch.brokerId,
+      budget = input.launch.budget,
     )
     val envelope = launch.toVerificationLaunchEnvelope().asWireMap()
     val launchBytes = JsonSupport.mapToJsonString(envelope).toByteArray(Charsets.UTF_8).size.toLong()
-    if (launchBytes > budget.maxLaneLaunchBytes) {
+    if (launchBytes > input.launch.budget.maxLaneLaunchBytes) {
       return ReviewFindingVerdict(
         stage = ReviewStage.VERIFICATION,
-        findingRef = finding.fNumber,
+        findingRef = input.finding.fNumber,
         claimVerdict = ReviewClaimVerdict.UNRESOLVED,
-        recordedAt = recordedAt,
+        recordedAt = input.recordedAt,
         rejectionReason = "verification launch exceeded max_lane_launch_bytes",
       )
     }
-    envelopeValidator.validate(envelope, "review verification launch for ${finding.fNumber}")
+    envelopeValidator.validate(envelope, "review verification launch for ${input.finding.fNumber}")
     val prompt = appendPromptSuffix(
-      verificationPrompt(launch, AgentPhaseInput(reviewOutput, VERIFY_CLAIMS_ACTION)),
-      promptSuffix,
+      verificationPrompt(launch, AgentPhaseInput(input.reviewOutput, VERIFY_CLAIMS_ACTION)),
+      input.launch.promptSuffix,
     )
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = brokerId,
+        invokedAgentId = input.launch.brokerId,
         configuredAgentOverrideId = null,
         skillRunRequest = SkillRunRequest(
           issueKey = ISSUE_KEY,
-          repoRoot = repoRoot,
-          timeout = timeout,
+          repoRoot = input.launch.repoRoot,
+          timeout = input.launch.timeout,
           promptOverride = prompt,
-          modelOverride = modelOverride,
+          modelOverride = input.launch.modelOverride,
         ),
       ),
     )
     return when (outcome) {
       is UnsupportedAgentRunLaunch ->
-        unresolved(finding, recordedAt, "unsupported agent: ${outcome.reason}")
-      is AgentRunLaunchFacts -> fromLaunchFacts(finding, outcome, recordedAt)
+        unresolved(input.finding, input.recordedAt, "unsupported agent: ${outcome.reason}")
+      is AgentRunLaunchFacts -> fromLaunchFacts(input.finding, outcome, input.recordedAt)
     }
   }
 
@@ -285,6 +242,22 @@ class ReviewClaimVerificationRunner(
     const val VERIFY_CLAIMS_ACTION: String = "Verify each claim in that input against the repository delta."
   }
 }
+
+private data class ProseVerificationInput(
+  val packet: ReviewContextPacket,
+  val reviewOutput: String,
+  val mode: ResolvedReviewExecutionMode,
+  val launch: ReviewDelegatedStageLaunch,
+)
+
+private data class VerificationFindingInput(
+  val packet: ReviewContextPacket,
+  val reviewOutput: String,
+  val finding: ParallelReviewMergedFinding,
+  val mode: ResolvedReviewExecutionMode,
+  val launch: ReviewDelegatedStageLaunch,
+  val recordedAt: String,
+)
 
 internal fun appendPromptSuffix(prompt: String, suffix: String): String {
   if (suffix.isEmpty()) return prompt

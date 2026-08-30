@@ -12,18 +12,21 @@ import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.goal.model.GoalProgressOutcome
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 
 internal fun DefaultGoalPlanningSweep.composePlanningPrompt(args: GoalPlanningProduceAttemptArgs): String {
   val phase = args.phase
   val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-    declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
-      phase.phaseId,
-      phase.runInvariants.featureSize,
+    FeatureTaskRuntimeHandoffAssemblyRequest(
+      declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
+        phase.phaseId,
+        phase.runInvariants.featureSize,
+      ),
+      runInvariants = phase.runInvariants,
+      recordedOutputs = args.recordedOutputs,
     ),
-    runInvariants = phase.runInvariants,
-    recordedOutputs = args.recordedOutputs,
   )
   val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     handoff,

@@ -5,6 +5,8 @@ import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_LINES
+import skillbill.ports.db.UnitOfWork
+import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
@@ -423,6 +425,33 @@ data class GoalRunnerChildWedgeDiagnosis(
 ) {
   val isHealthy: Boolean get() = wedges.isEmpty()
 }
+
+data class GoalRunnerChildWedgeDiagnosisRequest(
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
+  val subtasks: List<DecompositionSubtask>,
+  val repoRoot: Path,
+  val dbPathOverride: String? = null,
+)
+
+data class GoalRunnerChildWedgeRepairRequest(
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
+  val wedgeClasses: List<GoalRunnerWedgeClass>,
+  val repoRoot: Path,
+  val dbPathOverride: String? = null,
+)
+
+internal data class GoalRunnerChildRepairApplyRequest(
+  val unitOfWork: UnitOfWork,
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
+  val wedgeClasses: List<GoalRunnerWedgeClass>,
+  val repoRoot: Path,
+)
 
 data class GoalRunnerChildRepairApplyResult(
   val repairs: List<GoalRunnerAppliedRepair> = emptyList(),

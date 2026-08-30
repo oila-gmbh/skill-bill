@@ -1,9 +1,21 @@
 package skillbill.application.goalrunner.model
 
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
+import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.featuretask.model.GoalContinuationCandidate
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
+
+internal data class GoalPreflightLookupInput(
+  val lookup: FeatureTaskContinuationLookupResult,
+  val normalizedIssueKey: String,
+  val manifest: DecompositionManifest?,
+  val manifestState: GoalRunnerManifestState?,
+  val request: GoalPreflightRequest,
+  val root: Path,
+)
 
 data class GoalPreflightRequest(
   val issueKey: String,

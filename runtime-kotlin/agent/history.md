@@ -1,3 +1,12 @@
+## [2026-08-30] SKILL-221 subtask 1 — Pin complexity rules and resolve suppressions
+Areas: runtime-kotlin/{config/detekt,build-logic,runtime-application,runtime-cli,runtime-core,runtime-domain,runtime-infra-fs,runtime-infra-sqlite,runtime-mcp,runtime-ports,runtime-contracts}
+- Pinned TooManyFunctions, LargeClass, LongMethod, CyclomaticComplexMethod, ComplexCondition, NestedBlockDepth, LongParameterList under `complexity:`; ReturnCount/ThrowsCount live under `style:` (detekt 1.23.8 rejects them under complexity; thresholds unchanged at max 4 / max 2).
+- Removed every authored complexity `@Suppress` / `@file:Suppress` across runtime-kotlin (+ build-logic) by extracting collaborators; detekt reports zero hits for the pinned complexity set; production src/main max lines 482.
+- Pattern: keep the check in the gate—resolve by extraction, never loosen thresholds or add a baseline. reusable
+- Limitation: non-complexity style findings (e.g. MaxLineLength) and scripts/validate remain validate-phase work; remaining suppression families are later SKILL-221 subtasks.
+Feature flag: N/A
+Acceptance criteria: 7/8 implemented (validate gate deferred)
+
 ## [2026-08-29] Validate repair is fix-all without mid-session proof
 Areas: runtime-kotlin/runtime-application/featuretask, skills/bill-code-check, platform-packs/{kotlin,kmp}/quality-check
 - Validate repair prompts no longer require spotlessApply at turn start or targeted detekt/compile/test proof after each checklist item.

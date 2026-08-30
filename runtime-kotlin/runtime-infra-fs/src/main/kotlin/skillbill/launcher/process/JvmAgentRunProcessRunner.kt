@@ -113,28 +113,39 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       Result.failure(interrupt)
     }
     return finishRun(
-      process,
-      request,
-      wait,
-      outputTracker,
-      stdout,
-      stderr,
-      lifecycleEmitter,
-      mcpStartupObservedAtStart,
+      FinishRunInput(
+        process = process,
+        request = request,
+        waitResult = wait,
+        outputTracker = outputTracker,
+        stdout = stdout,
+        stderr = stderr,
+        lifecycleEmitter = lifecycleEmitter,
+        mcpStartupObservedAtStart = mcpStartupObservedAtStart,
+      ),
     )
   }
 
-  @Suppress("LongParameterList")
-  private fun finishRun(
-    process: Process,
-    request: AgentRunProcessRequest,
-    waitResult: Result<ProcessWait>,
-    outputTracker: OutputObservationTracker,
-    stdout: CappedUtf8Drain,
-    stderr: CappedUtf8Drain,
-    lifecycleEmitter: ProcessLifecycleEmitter,
-    mcpStartupObservedAtStart: Boolean,
-  ): AgentRunProcessResult {
+  private data class FinishRunInput(
+    val process: Process,
+    val request: AgentRunProcessRequest,
+    val waitResult: Result<ProcessWait>,
+    val outputTracker: OutputObservationTracker,
+    val stdout: CappedUtf8Drain,
+    val stderr: CappedUtf8Drain,
+    val lifecycleEmitter: ProcessLifecycleEmitter,
+    val mcpStartupObservedAtStart: Boolean,
+  )
+
+  private fun finishRun(input: FinishRunInput): AgentRunProcessResult {
+    val process = input.process
+    val request = input.request
+    val waitResult = input.waitResult
+    val outputTracker = input.outputTracker
+    val stdout = input.stdout
+    val stderr = input.stderr
+    val lifecycleEmitter = input.lifecycleEmitter
+    val mcpStartupObservedAtStart = input.mcpStartupObservedAtStart
     var interrupted = waitResult.exceptionOrNull() is InterruptedException
     val wait = waitResult.getOrNull()
     val finished = wait?.finished == true

@@ -1,10 +1,7 @@
-@file:Suppress("MaxLineLength", "TooGenericExceptionCaught", "ThrowsCount")
+@file:Suppress("MaxLineLength", "TooGenericExceptionCaught")
 
 package skillbill.scaffold.platformpack
 
-import skillbill.error.InvalidManifestSchemaError
-import skillbill.error.MissingContentFileError
-import skillbill.error.MissingRequiredSectionError
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
 import skillbill.scaffold.validation.parseSkillFrontmatter
@@ -15,16 +12,16 @@ import java.nio.file.Path
 
 internal fun requireMappingField(manifest: Map<*, *>, slug: String, key: String): Map<*, *> =
   manifest[key] as? Map<*, *>
-    ?: throw InvalidManifestSchemaError("Platform pack '$slug': manifest field '$key' must be a mapping.")
+    ?: invalidManifestSchema(slug, "Platform pack '$slug': manifest field '$key' must be a mapping.")
 
 internal fun requireField(manifest: Map<*, *>, slug: String, key: String): Any =
-  manifest[key] ?: throw InvalidManifestSchemaError("Platform pack '$slug': manifest is missing required field '$key'.")
+  manifest[key] ?: invalidManifestSchema(slug, "Platform pack '$slug': manifest is missing required field '$key'.")
 
 internal fun requireStringField(manifest: Map<*, *>, slug: String, key: String): String {
   val value = requireField(manifest, slug, key) as? String
-    ?: throw InvalidManifestSchemaError("Platform pack '$slug': '$key' must be a string.")
+    ?: invalidManifestSchema(slug, "Platform pack '$slug': '$key' must be a string.")
   if (value.isBlank()) {
-    throw InvalidManifestSchemaError("Platform pack '$slug': '$key' must be a non-empty string.")
+    invalidManifestSchema(slug, "Platform pack '$slug': '$key' must be a non-empty string.")
   }
   return value
 }
@@ -34,14 +31,14 @@ internal fun parseStringList(slug: String, value: Any?, fieldLabel: String, requ
     return emptyList()
   }
   if (value !is List<*>) {
-    throw InvalidManifestSchemaError("Platform pack '$slug': '$fieldLabel' must be a list of strings.")
+    invalidManifestSchema(slug, "Platform pack '$slug': '$fieldLabel' must be a list of strings.")
   }
   val parsed = value.map { entry ->
     entry as? String
-      ?: throw InvalidManifestSchemaError("Platform pack '$slug': every entry in '$fieldLabel' must be a string.")
+      ?: invalidManifestSchema(slug, "Platform pack '$slug': every entry in '$fieldLabel' must be a string.")
   }
   if (required && parsed.isEmpty()) {
-    throw InvalidManifestSchemaError("Platform pack '$slug': '$fieldLabel' must contain at least one routing signal.")
+    invalidManifestSchema(slug, "Platform pack '$slug': '$fieldLabel' must contain at least one routing signal.")
   }
   return parsed
 }
@@ -54,23 +51,24 @@ internal fun validateGovernedSkill(
   @Suppress("UNUSED_PARAMETER") area: String,
 ) {
   if (skillPath.fileName?.toString() != CONTENT_BODY_FILENAME) {
-    throw InvalidManifestSchemaError(
+    invalidManifestSchema(
+      pack.slug,
       "Platform pack '${pack.slug}': declared content file for slot '$slot' must end in " +
         "'$CONTENT_BODY_FILENAME' but was '${displayPackPath(pack, skillPath)}'.",
     )
   }
   if (!Files.isRegularFile(skillPath)) {
-    throw MissingContentFileError(
+    missingManifestContent(
       "Platform pack '${pack.slug}': declared content file for slot '$slot' is missing at '$skillPath'.",
     )
   }
   val text = Files.readString(skillPath)
   validateSkillMdShape(skillPath, validateBodyShape = false)
-  // SKILL-105: declared quality-check pack skills are dispatch targets, not user commands.
   if (family == "quality-check") {
     val internalFor = parseSkillFrontmatter(text)["internal-for"]
     if (internalFor != "bill-code-check") {
-      throw InvalidManifestSchemaError(
+      invalidManifestSchema(
+        pack.slug,
         "Platform pack '${pack.slug}': declared content file for slot '$slot' must declare " +
           "'internal-for: bill-code-check' so stack-specific quality-check overrides install as " +
           "sidecars of bill-code-check.",
@@ -83,9 +81,7 @@ internal fun validateGovernedSkill(
 internal fun ensureValidAuthoredContent(slug: String, skillPath: Path, text: String) {
   val authoredIssues = validateAuthoredContent(skillPath, text)
   if (authoredIssues.isNotEmpty()) {
-    throw MissingRequiredSectionError(
-      "Platform pack '$slug': ${authoredIssues.first()}",
-    )
+    missingManifestSection("Platform pack '$slug': ${authoredIssues.first()}")
   }
 }
 

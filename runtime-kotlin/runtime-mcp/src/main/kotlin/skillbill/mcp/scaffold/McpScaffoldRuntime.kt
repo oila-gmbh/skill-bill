@@ -1,4 +1,4 @@
-@file:Suppress("LongMethod", "TooGenericExceptionCaught", "MagicNumber", "UnusedParameter")
+@file:Suppress("TooGenericExceptionCaught", "MagicNumber", "UnusedParameter")
 
 package skillbill.mcp.scaffold
 
@@ -21,69 +21,25 @@ object McpScaffoldRuntime {
     val sessionId = generateNewSkillSessionId()
     val repoRoot = findRepoRoot()
     return try {
-      // SKILL-52.2 subtask 2: parse JSON-RPC args at the MCP adapter boundary into a typed
-      // request and call the typed application overload so the application + port surface no
-      // longer accepts a raw `Map<String, Any?>` from MCP.
       val request = parseMcpScaffoldCommandRequest(payload + ("repo_root" to repoRoot.toString()))
       val result =
         RuntimeComponent::class.create(context.toRuntimeContext())
           .scaffoldService
           .scaffold(request, dryRun)
-      val outcome = if (dryRun) "dry-run" else "success"
-      val baseTelemetryPayload =
-        mapOf(
-          "session_id" to sessionId,
-          "kind" to result.kind,
-          "skill_name" to result.skillName,
-          "platform" to payload["platform"].orEmpty(),
-          "family" to payload["family"].orEmpty(),
-          "area" to payload["area"].orEmpty(),
-          "result" to outcome,
-          "duration_seconds" to 0,
-          "skill" to "skill-bill-scaffold",
-        )
-
-      if (orchestrated) {
-        mapOf(
-          "mode" to "orchestrated",
-          "telemetry_payload" to baseTelemetryPayload - "session_id",
-          "skill_path" to result.skillPath.toString(),
-          "notes" to result.notes,
-        )
-      } else {
-        mapOf(
-          "status" to "ok",
-          "session_id" to sessionId,
-          "skill_path" to result.skillPath.toString(),
-          "notes" to result.notes,
-        )
-      }
+      scaffoldSuccessMap(
+        sessionId = sessionId,
+        payload = payload,
+        result = result,
+        dryRun = dryRun,
+        orchestrated = orchestrated,
+      )
     } catch (error: Throwable) {
-      if (orchestrated) {
-        mapOf(
-          "mode" to "orchestrated",
-          "telemetry_payload" to
-            mapOf(
-              "session_id" to sessionId,
-              "kind" to payload["kind"].orEmpty(),
-              "skill_name" to payload["name"].orEmpty(),
-              "platform" to payload["platform"].orEmpty(),
-              "family" to payload["family"].orEmpty(),
-              "area" to payload["area"].orEmpty(),
-              "result" to "failed",
-              "duration_seconds" to 0,
-              "skill" to "skill-bill-scaffold",
-              "error" to error.message.orEmpty(),
-            ) - "session_id",
-          "error" to error.message.orEmpty(),
-        )
-      } else {
-        mapOf(
-          "status" to "error",
-          "session_id" to sessionId,
-          "error" to error.message.orEmpty(),
-        )
-      }
+      scaffoldFailureMap(
+        sessionId = sessionId,
+        payload = payload,
+        orchestrated = orchestrated,
+        error = error,
+      )
     }
   }
 
@@ -106,6 +62,4 @@ object McpScaffoldRuntime {
     }
     return start
   }
-
-  private fun Any?.orEmpty(): String = this as? String ?: ""
 }

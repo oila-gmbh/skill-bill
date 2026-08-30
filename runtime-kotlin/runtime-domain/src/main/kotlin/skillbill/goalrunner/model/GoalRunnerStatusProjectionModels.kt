@@ -2,7 +2,6 @@ package skillbill.goalrunner.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
 
@@ -133,62 +132,8 @@ object GoalRunnerStatusProjector {
     activeAgent: String? = null,
     extras: GoalRunnerStatusProjectionExtras = GoalRunnerStatusProjectionExtras(),
   ): GoalRunnerStatusProjection {
-    val currentSubtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId }
-    val statusOf: (DecompositionSubtask) -> String = { subtask ->
-      if (subtask.id == currentSubtask?.id && extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES) {
-        "in_progress"
-      } else {
-        subtask.status
-      }
-    }
-    // Only goal_runner_supervisor events are persisted; the per-tick foreground heartbeats are console-only.
-    // So the newest stored event still describes the process that produced it while a relaunched child runs:
-    // a block recorded when a prior run stopped, or a worker_output_summary carrying the exit status and
-    // stderr of a worker that already exited. Rendering either contradicts the live workflow status once the
-    // live child has moved past that event's phase.
-    val liveChild = extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES
-    val liveStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
-    val eventPhase = extras.latestObservabilityEvent?.get("workflow_phase")?.toString()?.takeIf(String::isNotBlank)
-    val blockEvent = extras.latestObservabilityEvent?.get("liveness_class") == "block"
-    val supersededPhaseEvent = liveStep != null && eventPhase != null && eventPhase != liveStep
-    val staleSignal = liveChild && (blockEvent || supersededPhaseEvent)
-    return GoalRunnerStatusProjection(
-      issueKey = manifest.issueKey,
-      completeCount = manifest.subtasks.count { statusOf(it) == "complete" || statusOf(it) == "skipped" },
-      pendingCount = manifest.subtasks.count { statusOf(it) !in setOf("complete", "skipped", "blocked") },
-      blockedCount = manifest.subtasks.count { statusOf(it) == "blocked" },
-      currentSubtaskId = currentSubtask?.id,
-      currentChildWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank),
-      currentSubtaskStatus = currentSubtask?.let(statusOf)?.takeIf(String::isNotBlank),
-      currentSubtaskBlockedReason = currentSubtask?.blockedReason?.takeIf(String::isNotBlank),
-      currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
-        ?: currentSubtask?.lastResumableStep
-        ?: currentSubtask?.let { s -> if (s.workflowId.isNullOrBlank()) "pending_launch" else "initializing" },
-      activeAgent = activeAgent?.takeIf(String::isNotBlank),
-      executionLiveness = extras.executionLiveness,
-      planning = extras.planning,
-      latestLivenessSignal = extras.latestLivenessSignal?.takeIf { it.isNotBlank() && !staleSignal },
-      latestObservabilityEvent = extras.latestObservabilityEvent?.takeUnless { staleSignal },
-      requestedDiffStat = extras.requestedDiffStat,
-      selectedDiffHunks = extras.selectedDiffHunks,
-      blockedAttemptCount = extras.blockedAttemptCount,
-      supervisorKillCount = extras.supervisorKillCount,
-      phaseAttemptCounts = extras.phaseAttemptCounts,
-      cumulativeFixIterations = extras.cumulativeFixIterations,
-      reAttemptCauseCounts = extras.reAttemptCauseCounts,
-      findingsInScope = extras.findingsInScope,
-      outOfBandAcceptances = extras.outOfBandAcceptances,
-      paused = extras.paused,
-      pauseRequested = extras.pauseRequested,
-      pauseReason = extras.pauseReason,
-      pausedAt = extras.pausedAt,
-      stopAfterSubtaskId = extras.stopAfterSubtaskId,
-      activeDurationMs = extras.activeDurationMs,
-      activeDurationAsOf = extras.activeDurationAsOf,
-      subtaskActiveDurationMs = extras.subtaskActiveDurationMs,
-      subtaskActiveDurationAsOf = extras.subtaskActiveDurationAsOf,
-    )
+    val context = buildGoalRunnerStatusProjectionContext(manifest, extras)
+    return assembleGoalRunnerStatusProjection(manifest, activeAgent, extras, context)
   }
 
-  private val LIVE_WORKFLOW_STATUSES = setOf("running", "pending")
 }

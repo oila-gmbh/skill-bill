@@ -4,24 +4,20 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import java.time.Instant
 
 internal class FeatureTaskRuntimePhaseStateRecorder(
-  private val database: DatabaseSessionFactory,
-  private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
-  private val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
+  internal val database: DatabaseSessionFactory,
+  internal val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
+  internal val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
   internal val implementationAttemptValidator: FeatureTaskRuntimeImplementationAttemptValidator,
 ) : FeatureTaskRuntimePhaseStateApi {
   override fun recordPhaseState(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String?): Boolean =
@@ -52,50 +48,9 @@ internal class FeatureTaskRuntimePhaseStateRecorder(
       true
     }
 
-  @Suppress("LongMethod", "CyclomaticComplexMethod", "ComplexCondition")
   override fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String?): Boolean {
     require(request.status == "completed" && request.finished)
-    return runtimeOwnedPersistence.requiredWrite(
-      seam = "FeatureTaskRuntimePhaseRecorder.recordCompletedPhase",
-      expected = "runtime-owned completed phase state",
-      dbOverride = dbOverride,
-    ) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
-        ?: return@requiredWrite false
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val existingRecords = phaseRecordsFrom(artifacts)
-      val updatedRecords = LinkedHashMap(existingRecords).apply {
-        put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString()))
-      }
-      val ledger = phaseLedgerFrom(artifacts)
-      val completion = FeatureTaskRuntimePhaseLedgerEntry(
-        action = COMPLETE,
-        sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
-        timestamp = Instant.now().toString(),
-        phaseId = request.phaseId,
-        attemptCount = request.attemptCount,
-        resolvedAgentId = request.resolvedAgentId,
-        loopId = request.loopId,
-        edgeIteration = request.edgeIteration,
-      )
-      val updatedLedger = appendBoundedHistoryBySequence(
-        ledger.map { it.toArtifactMap() },
-        completion.toArtifactMap(),
-        FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
-      )
-      workflowPersistence.persistPatch(
-        unitOfWork.workflowStates,
-        record,
-        mapOf(
-          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
-            updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
-          FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
-        ) + implementationAttemptPatch(artifacts, request, FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED) +
-          findingVerificationCheckpointPatch(request),
-        WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
-      )
-      true
-    }
+    return recordCompletedPhaseWrite(request, dbOverride)
   }
 
   override fun recordIncompleteImplementationAttempt(

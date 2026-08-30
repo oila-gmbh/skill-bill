@@ -1,4 +1,4 @@
-@file:Suppress("TooGenericExceptionCaught", "LongMethod")
+@file:Suppress("TooGenericExceptionCaught")
 
 package skillbill.contracts.workflow
 

@@ -74,14 +74,18 @@ internal object ParallelReviewPreparationCompiler {
     val revisionId = digest("${input.baseRevision}\u0000${input.headRevision}\u0000${input.diff}")
     val selection = ReviewLaneSelection(decisions, routingMatrix)
     val preparation = prepareReview(
-      input,
-      hunks,
-      routes,
-      selection,
-      revisionId,
-      budget,
-      envelopeValidator,
-      hunkLocatorReader,
+      PrepareReviewCompileInput(
+        input = input,
+        hunks = hunks,
+        routes = routes,
+        selection = selection,
+        revisionId = revisionId,
+        deps = PrepareReviewCompileDeps(
+          budget = budget,
+          envelopeValidator = envelopeValidator,
+          hunkLocatorReader = hunkLocatorReader,
+        ),
+      ),
     )
     return launchRequests(input, preparation, routes, budget, specialistContract)
   }
@@ -136,31 +140,21 @@ internal object ParallelReviewPreparationCompiler {
     }
   }
 
-  @Suppress("LongParameterList")
-  private fun prepareReview(
-    input: ParallelReviewPreparationInput,
-    hunks: List<ReviewChangedHunk>,
-    routes: List<SpecialistRoute>,
-    selection: ReviewLaneSelection,
-    revisionId: String,
-    budget: ReviewContextBudgetPolicy,
-    envelopeValidator: ReviewContextEnvelopeValidator,
-    hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
-  ) = ReviewPreparationService(
-    reviewFactPorts(input, hunks, selection),
-    envelopeValidator,
-    budget,
-    hunkLocatorReader,
+  private fun prepareReview(compileInput: PrepareReviewCompileInput) = ReviewPreparationService(
+    reviewFactPorts(compileInput.input, compileInput.hunks, compileInput.selection),
+    compileInput.deps.envelopeValidator,
+    compileInput.deps.budget,
+    compileInput.deps.hunkLocatorReader,
   ).prepare(
     ReviewPreparationRequest(
-      reviewId = input.reviewRunId ?: "code-review-$revisionId",
-      reviewRevision = ReviewRevision(revisionId, 1),
-      criteriaReferences = criteriaReferences(routes, input.specIntentResolution),
-      baselineUntrackedPolicy = input.baselineUntrackedPolicy,
-      specIntentProjection = (input.specIntentResolution as? SpecIntentResolution.Resolved)
+      reviewId = compileInput.input.reviewRunId ?: "code-review-${compileInput.revisionId}",
+      reviewRevision = ReviewRevision(compileInput.revisionId, 1),
+      criteriaReferences = criteriaReferences(compileInput.routes, compileInput.input.specIntentResolution),
+      baselineUntrackedPolicy = compileInput.input.baselineUntrackedPolicy,
+      specIntentProjection = (compileInput.input.specIntentResolution as? SpecIntentResolution.Resolved)
         ?.projection,
-      evidenceStorePath = input.evidenceStorePath,
-      repoRoot = input.repoRoot,
+      evidenceStorePath = compileInput.input.evidenceStorePath,
+      repoRoot = compileInput.input.repoRoot,
     ),
   )
 
@@ -274,6 +268,21 @@ internal object ParallelReviewPreparationCompiler {
 
   private const val PARALLEL_REVIEW_SELECTOR = "parallel-code-review"
 }
+
+private data class PrepareReviewCompileInput(
+  val input: ParallelReviewPreparationInput,
+  val hunks: List<ReviewChangedHunk>,
+  val routes: List<SpecialistRoute>,
+  val selection: ReviewLaneSelection,
+  val revisionId: String,
+  val deps: PrepareReviewCompileDeps,
+)
+
+private data class PrepareReviewCompileDeps(
+  val budget: ReviewContextBudgetPolicy,
+  val envelopeValidator: ReviewContextEnvelopeValidator,
+  val hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
+)
 
 private fun criteriaReferences(
   routes: List<SpecialistRoute>,

@@ -42,13 +42,15 @@ internal fun linkProviderAgentsBody(args: NativeAgentLinkProviderBodyArgs): Nati
   )
   desired.forEach(::verifyInstalledNativeAgent)
   NativeAgentLinkInventory.reconcile(
-    home = args.resolvedHome,
-    provider = args.provider.name.lowercase(),
-    desired = desired,
-    managedRoots = managedRoots,
-    sourceRoot = args.validationRoot,
-    beforeMutation = args.journal::beforeMutation,
-    afterTemporaryCreation = args.journal::afterTemporaryCreation,
+    NativeAgentLinkInventoryReconcileRequest(
+      home = args.resolvedHome,
+      provider = args.provider.name.lowercase(),
+      desired = desired,
+      managedRoots = managedRoots,
+      sourceRoot = args.validationRoot,
+      beforeMutation = args.journal::beforeMutation,
+      afterTemporaryCreation = args.journal::afterTemporaryCreation,
+    ),
   )
   return NativeAgentLinkOutcome(linkResults.linked, linkResults.skipped)
 }

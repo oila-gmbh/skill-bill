@@ -174,41 +174,5 @@ internal fun FeatureTaskRuntimeRunLoop.attemptOnce(args: RecordRejectionAttemptA
     ),
   )
   val launch = launchAndCapture(run, state, priorCorrection, phaseTokenAccumulator)
-  launch.providerLimitReason?.let { reason ->
-    return AttemptResult.settled(pauseAndPersistInPhase(run, iteration, reason, observability, launch.fileManifest))
-  }
-  launch.infraFailureReason?.let { reason ->
-    // Persisted before the block so the artifact exists even if the block write then degrades:
-    // the whole point is to leave something readable behind a failure that reaches no output gate.
-    persistChildProcessFailureOutput(run, iteration, reason, launch.infraFailureChildOutput)
-    return AttemptResult.settled(
-      blockAndPersistInPhase(
-        phaseBlockArgs(
-          run,
-          iteration,
-          reason,
-          observability,
-          payload = BlockAndPersistPayload(
-            childNeverLaunched = launch.childNeverLaunched,
-            fileManifest = launch.fileManifest,
-          ),
-        ).withDisposition(launch.failureDisposition),
-      ),
-    )
-  }
-  launch.recordRejection?.let { rejection ->
-    return AttemptResult.settled(
-      settleRecordRejection(run, state, iteration, observability, rejection),
-    )
-  }
-  val fileManifest = requireNotNull(launch.fileManifest)
-  return gateOutput(
-    GateOutputArgs(
-      run = run,
-      iteration = iteration,
-      captured = requireNotNull(launch.capturedPhaseOutput),
-      observability = observability,
-      fileManifest = fileManifest,
-    ),
-  )
+  return settleRecordRejectionLaunchOutcome(args, launch)
 }

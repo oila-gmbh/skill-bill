@@ -5,6 +5,7 @@ import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.model.DecompositionManifestWriteResult
 import skillbill.application.workflow.repoRoot
@@ -128,12 +129,14 @@ internal fun writeFromWorkflowUpdate(
   artifactsPatch: Map<String, Any?>?,
   runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
 ): DecompositionManifestWriteResult? = DecompositionManifestWriter.writeFromWorkflowUpdate(
-  repoRoot = repoRoot,
-  existingArtifactsJson = existingArtifactsJson,
-  artifactsPatch = artifactsPatch,
-  validator = testDecompositionManifestValidator,
-  runtimeUpdate = runtimeUpdate,
-  fileStore = TestDecompositionManifestFileStore,
+  DecompositionManifestWorkflowProjectionInput(
+    repoRoot = repoRoot,
+    existingArtifactsJson = existingArtifactsJson,
+    validator = testDecompositionManifestValidator,
+    artifactsPatch = artifactsPatch,
+    runtimeUpdate = runtimeUpdate ?: DecompositionManifestRuntimeUpdate(),
+    fileStore = TestDecompositionManifestFileStore,
+  ),
 )
 
 internal fun writeProjectionFromWorkflowState(

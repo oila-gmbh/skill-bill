@@ -30,8 +30,7 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
       .headingId
 
     var verifyLaunches = 0
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
+    val harness = runnerHarness(RuntimeHarnessConfig(repoRoot = repoRoot).copy(launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId == "verify_findings") {
           verifyLaunches += 1
@@ -49,9 +48,7 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
         } else {
           facts(validJsonOutput(phaseId))
         }
-      },
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
-    )
+      }))
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
@@ -77,8 +74,7 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
   fun `census-only verify_findings without selected_boundary_headings settles without body-delivery continue`() {
     val findingPath = "runtime-kotlin/runtime-application/src/Foo.kt"
     var verifyLaunches = 0
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
+    val harness = runnerHarness(RuntimeHarnessConfig(repoRoot = Files.createTempDirectory("skillbill-verify-census-only")).copy(launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId == "verify_findings") {
           verifyLaunches += 1
@@ -86,9 +82,7 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
         } else {
           facts(validJsonOutput(phaseId))
         }
-      },
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = Files.createTempDirectory("skillbill-verify-census-only")),
-    )
+      }))
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)

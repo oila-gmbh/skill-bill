@@ -1,5 +1,3 @@
-@file:Suppress("LoopWithTooManyJumpStatements")
-
 package skillbill.install.plan
 
 import skillbill.error.InvalidInternalSkillClassificationError
@@ -122,22 +120,31 @@ internal fun installSkill(
   )
   val created = mutableListOf<Path>()
   for (target in agentTargets) {
-    Files.createDirectories(target.path)
-    val linkPath = target.path.resolve(resolvedSkill.fileName)
-    if (Files.isSymbolicLink(linkPath)) {
-      val existingTarget = runCatching { Files.readSymbolicLink(linkPath).toAbsolutePath().normalize() }.getOrNull()
-      if (existingTarget == symlinkTarget) {
-        continue
-      }
-      Files.deleteIfExists(linkPath)
-    } else if (Files.exists(linkPath)) {
-      Files.delete(linkPath)
-    }
-    Files.createSymbolicLink(linkPath, symlinkTarget)
-    created.add(linkPath)
-    transaction?.createdSymlinks?.add(linkPath)
+    installSkillSymlink(resolvedSkill, symlinkTarget, target, transaction)?.let(created::add)
   }
   return created
+}
+
+private fun installSkillSymlink(
+  resolvedSkill: Path,
+  symlinkTarget: Path,
+  target: AgentTarget,
+  transaction: InstallTransaction?,
+): Path? {
+  Files.createDirectories(target.path)
+  val linkPath = target.path.resolve(resolvedSkill.fileName)
+  if (Files.isSymbolicLink(linkPath)) {
+    val existingTarget = runCatching { Files.readSymbolicLink(linkPath).toAbsolutePath().normalize() }.getOrNull()
+    if (existingTarget == symlinkTarget) {
+      return null
+    }
+    Files.deleteIfExists(linkPath)
+  } else if (Files.exists(linkPath)) {
+    Files.delete(linkPath)
+  }
+  Files.createSymbolicLink(linkPath, symlinkTarget)
+  transaction?.createdSymlinks?.add(linkPath)
+  return linkPath
 }
 
 internal fun uninstallTargets(createdSymlinks: Iterable<Path>): List<Path> {

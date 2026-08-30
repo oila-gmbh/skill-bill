@@ -1,4 +1,4 @@
-@file:Suppress("MaxLineLength", "TooGenericExceptionCaught", "ThrowsCount")
+@file:Suppress("MaxLineLength", "TooGenericExceptionCaught")
 
 package skillbill.scaffold.platformpack
 
@@ -17,7 +17,7 @@ import skillbill.scaffold.model.ValidationGateFindingsLocator
  */
 internal fun parseValidationGate(manifest: Map<*, *>, slug: String): ValidationGateDeclaration? {
   val raw = manifest["validation_gate"] ?: return null
-  val gate = raw as? Map<*, *> ?: throw InvalidValidationGateDeclarationError(
+  val gate = raw as? Map<*, *> ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate' must be a mapping when present.",
   )
   val collectAllFullGateCommand = requireGateArgv(gate, slug, "collect_all_full_gate_command")
@@ -56,13 +56,13 @@ internal fun validateBuildCommandsDistinctFromCollectAll(
 ) {
   if (buildCommand == null) return
   if (buildCommand == collectAllFullGateCommand) {
-    throw InvalidValidationGateDeclarationError(
+    invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.build_command' must not be byte-identical to " +
         "'validation_gate.collect_all_full_gate_command'.",
     )
   }
   if (cacheBypassingBuildCommand == cacheBypassingCollectAllFullGateCommand) {
-    throw InvalidValidationGateDeclarationError(
+    invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.cache_bypassing_build_command' must not be " +
         "byte-identical to 'validation_gate.cache_bypassing_collect_all_full_gate_command'.",
     )
@@ -76,20 +76,20 @@ internal fun validateBuildCommandsDistinctFromCollectAll(
 internal fun parseSuppressionMarkers(gate: Map<*, *>, slug: String): List<String> {
   if (!gate.containsKey("suppression_markers")) return emptyList()
   val raw = gate["suppression_markers"]
-  val values = raw as? List<*> ?: throw InvalidValidationGateDeclarationError(
+  val values = raw as? List<*> ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate.suppression_markers' must be an array when present.",
   )
   if (values.isEmpty()) return emptyList()
   return values.mapIndexed { index, value ->
     (value as? String)?.trim()?.takeIf(String::isNotEmpty)
-      ?: throw InvalidValidationGateDeclarationError(
+      ?: invalidValidationGateDeclaration(
         "Platform pack '$slug': 'validation_gate.suppression_markers[$index]' must be a non-blank string.",
       )
   }
 }
 
 internal fun requireGateArgv(gate: Map<*, *>, slug: String, key: String): List<String> {
-  val raw = gate[key] ?: throw InvalidValidationGateDeclarationError(
+  val raw = gate[key] ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate.$key' is required when validation_gate is present.",
   )
   return parseGateArgv(raw, slug, key)
@@ -101,49 +101,49 @@ internal fun optionalGateArgv(gate: Map<*, *>, slug: String, key: String): List<
 }
 
 internal fun parseGateArgv(raw: Any?, slug: String, key: String): List<String> {
-  val values = raw as? List<*> ?: throw InvalidValidationGateDeclarationError(
+  val values = raw as? List<*> ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate.$key' must be a non-empty argv array.",
   )
   if (values.isEmpty()) {
-    throw InvalidValidationGateDeclarationError(
+    invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.$key' must be a non-empty argv array.",
     )
   }
   return values.mapIndexed { index, value ->
     (value as? String)?.trim()?.takeIf(String::isNotEmpty)
-      ?: throw InvalidValidationGateDeclarationError(
+      ?: invalidValidationGateDeclaration(
         "Platform pack '$slug': 'validation_gate.$key[$index]' must be a non-blank string.",
       )
   }
 }
 
 internal fun parseValidationGateFindings(gate: Map<*, *>, slug: String): ValidationGateFindingsLocator {
-  val raw = gate["findings"] ?: throw InvalidValidationGateDeclarationError(
+  val raw = gate["findings"] ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate.findings' is required when validation_gate is present.",
   )
-  val findings = raw as? Map<*, *> ?: throw InvalidValidationGateDeclarationError(
+  val findings = raw as? Map<*, *> ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate.findings' must be a mapping.",
   )
   val formatRaw = findings["format"] as? String
-    ?: throw InvalidValidationGateDeclarationError(
+    ?: invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.findings.format' must be a string.",
     )
   val format = ValidationGateFindingsFormat.fromWire(formatRaw)
-    ?: throw InvalidValidationGateDeclarationError(
+    ?: invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.findings.format' '$formatRaw' is not a supported findings format.",
     )
   val globsRaw = findings["artifact_globs"] as? List<*>
-    ?: throw InvalidValidationGateDeclarationError(
+    ?: invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.findings.artifact_globs' must be a non-empty array.",
     )
   if (globsRaw.isEmpty()) {
-    throw InvalidValidationGateDeclarationError(
+    invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.findings.artifact_globs' must be a non-empty array.",
     )
   }
   val globs = globsRaw.mapIndexed { index, value ->
     (value as? String)?.trim()?.takeIf(String::isNotEmpty)
-      ?: throw InvalidValidationGateDeclarationError(
+      ?: invalidValidationGateDeclaration(
         "Platform pack '$slug': 'validation_gate.findings.artifact_globs[$index]' must be a non-blank string.",
       )
   }
@@ -161,34 +161,34 @@ internal fun parseCompilerDiagnosticsLocator(
   findings: Map<*, *>,
   slug: String,
 ): ValidationGateCompilerDiagnosticsLocator {
-  val raw = findings["compiler_diagnostics"] ?: throw InvalidValidationGateDeclarationError(
+  val raw = findings["compiler_diagnostics"] ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics' is required " +
       "when validation_gate is present.",
   )
-  val locator = raw as? Map<*, *> ?: throw InvalidValidationGateDeclarationError(
+  val locator = raw as? Map<*, *> ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics' must be a mapping.",
   )
   val formatRaw = locator["format"] as? String
-    ?: throw InvalidValidationGateDeclarationError(
+    ?: invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics.format' must be a string.",
     )
   val format = ValidationGateCompilerDiagnosticsFormat.fromWire(formatRaw)
-    ?: throw InvalidValidationGateDeclarationError(
+    ?: invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics.format' '$formatRaw' is not supported.",
     )
   return ValidationGateCompilerDiagnosticsLocator(format = format)
 }
 
 internal fun parseExecutedWorkSignal(raw: Any?, slug: String): ValidationGateExecutedWorkSignal {
-  val mapping = raw as? Map<*, *> ?: throw InvalidValidationGateDeclarationError(
+  val mapping = raw as? Map<*, *> ?: invalidValidationGateDeclaration(
     "Platform pack '$slug': 'validation_gate.findings.executed_work' must be a mapping when present.",
   )
   val formatRaw = mapping["format"] as? String
-    ?: throw InvalidValidationGateDeclarationError(
+    ?: invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.findings.executed_work.format' must be a string.",
     )
   val format = ValidationGateExecutedWorkFormat.fromWire(formatRaw)
-    ?: throw InvalidValidationGateDeclarationError(
+    ?: invalidValidationGateDeclaration(
       "Platform pack '$slug': 'validation_gate.findings.executed_work.format' '$formatRaw' is not supported.",
     )
   return ValidationGateExecutedWorkSignal(format = format)

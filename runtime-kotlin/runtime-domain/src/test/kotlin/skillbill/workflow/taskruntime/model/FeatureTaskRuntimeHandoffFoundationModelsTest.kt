@@ -12,18 +12,22 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
     val declaration = PhaseHandoffProjectionDeclaration(
       consumerPhaseId = "audit",
       sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput("implement"),
-      projectionName = "implement_prose",
-      projectionContractId = "feature_task_runtime.phase_prose",
-      projectionContractVersion = "0.1",
-      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = FeatureTaskRuntimeHandoffProjectionBudget(4096, 16),
-      declaredFieldNames = listOf("value", "directive"),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
-      required = false,
-      allowsPrivateArtifactReference = true,
-      producerIteration = FeatureTaskRuntimeProducerIteration("implement", 4),
-      inlineAlternative = FeatureTaskRuntimeCompactReferenceKind.PRIVATE_EVIDENCE_ARTIFACT,
-      authorizedReferenceKinds = setOf(FeatureTaskRuntimeCompactReferenceKind.PRIVATE_EVIDENCE_ARTIFACT),
+      shape = PhaseHandoffProjectionShape(
+        projectionName = "implement_prose",
+        projectionContractId = "feature_task_runtime.phase_prose",
+        projectionContractVersion = "0.1",
+        promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+        budget = FeatureTaskRuntimeHandoffProjectionBudget(4096, 16),
+        declaredFieldNames = listOf("value", "directive"),
+      ),
+      delivery = PhaseHandoffProjectionDelivery(
+        checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+        required = false,
+        allowsPrivateArtifactReference = true,
+        producerIteration = FeatureTaskRuntimeProducerIteration("implement", 4),
+        inlineAlternative = FeatureTaskRuntimeCompactReferenceKind.PRIVATE_EVIDENCE_ARTIFACT,
+        authorizedReferenceKinds = setOf(FeatureTaskRuntimeCompactReferenceKind.PRIVATE_EVIDENCE_ARTIFACT),
+      ),
     )
 
     val wire = declaration.toArtifactMap()

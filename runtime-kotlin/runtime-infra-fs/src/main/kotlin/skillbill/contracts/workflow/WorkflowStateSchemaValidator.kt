@@ -78,92 +78,9 @@ class CanonicalWorkflowStateSchemaValidator : WorkflowStateSchemaValidator {
     // their offending values) — we do NOT log the full snapshot payload
     // because the durable record may carry user content and the loud-
     // fail exception is the authoritative debug surface.
-    log.log(Level.WARNING, buildSchemaDriftLog(slug, errors, instance))
-    throw InvalidWorkflowStateSchemaError(formatValidationMessage(slug, errors, instance))
+    log.log(Level.WARNING, buildWorkflowStateSchemaDriftLog(slug, errors, instance))
+    throw InvalidWorkflowStateSchemaError(formatWorkflowStateValidationMessage(slug, errors, instance))
   }
-
-  private fun buildSchemaDriftLog(slug: String, errors: Set<ValidationMessage>, instance: JsonNode): String {
-    val sorted = errors.sortedWith(
-      compareBy(
-        { it.instanceLocation?.toString().orEmpty().let { loc -> loc.isBlank() || loc == "$" || loc == "/" } },
-        { it.instanceLocation?.toString().orEmpty() },
-        { it.message.orEmpty() },
-      ),
-    )
-    val topTwo = sorted.take(2)
-    val parts = topTwo.map { error ->
-      val location = error.instanceLocation?.toString().orEmpty()
-      val fieldPath = dottedFieldPath(location).ifBlank { "<root>" }
-      val offendingValue = extractOffendingValue(instance, location)
-      if (offendingValue.isNotBlank()) "$fieldPath=$offendingValue" else fieldPath
-    }
-    return "Workflow state snapshot failed schema validation: slug='$slug' violations=${parts.joinToString(", ")} " +
-      "totalViolations=${errors.size}"
-  }
-
-  private fun formatValidationMessage(slug: String, errors: Set<ValidationMessage>, instance: JsonNode): String {
-    // Deterministic ordering by instanceLocation so the loud-fail
-    // message is stable across runs (networknt returns a LinkedHashSet
-    // but ordering is not part of its public contract). The summary
-    // line picks the first error whose path is not the root oneOf
-    // aggregate, then we append every other error's `<path>: <detail>`
-    // so the message names every offending field. Logging the full
-    // error set means tests + humans can debug a violation without
-    // re-running the validator, and per-skill `oneOf` failures surface
-    // every branch's complaint at once.
-    val sorted = errors.sortedWith(
-      compareBy(
-        { it.instanceLocation?.toString().orEmpty().let { loc -> loc.isBlank() || loc == "$" || loc == "/" } },
-        { it.instanceLocation?.toString().orEmpty() },
-        { it.message.orEmpty() },
-      ),
-    )
-    val firstError = sorted.first()
-    val instanceLocation = firstError.instanceLocation?.toString().orEmpty()
-    val fieldPath = dottedFieldPath(instanceLocation)
-    val detail = firstError.message
-    val offendingValue = extractOffendingValue(instance, instanceLocation)
-    return buildString {
-      append("Workflow '")
-      append(slug)
-      append("': snapshot fails schema validation at '")
-      append(fieldPath.ifBlank { "<root>" })
-      append("': ")
-      append(detail)
-      if (offendingValue.isNotBlank()) {
-        append(" — offending value: ")
-        append(offendingValue)
-      }
-      // Surface every secondary error so the typed loud-fail message is
-      // self-describing (no need to enable verbose logging to debug).
-      sorted.drop(1).forEach { other ->
-        val otherLocation = other.instanceLocation?.toString().orEmpty()
-        val otherPath = dottedFieldPath(otherLocation).ifBlank { "<root>" }
-        val otherValue = extractOffendingValue(instance, otherLocation)
-        append(" | ")
-        append(otherPath)
-        append(": ")
-        append(other.message)
-        if (otherValue.isNotBlank()) {
-          append(" — offending value: ")
-          append(otherValue)
-        }
-      }
-    }
-  }
-
-  // F-303: delegated to internal pure helpers below so test code can
-  // verify offending-value extraction across both networknt reporting
-  // formats (JSONPath and JSON-Pointer) without round-tripping through
-  // the schema validator.
-  private fun extractOffendingValue(instance: JsonNode, instanceLocation: String): String =
-    extractOffendingValueFromInstance(instance, instanceLocation)
-
-  // networknt 1.5.x reports `instanceLocation` in JSONPath form like
-  // `$.steps.0.status`. JSON-Pointer form (`/steps/0/status`) is also
-  // accepted as a fallback for older builds. The resulting dotted form
-  // is human-readable and stable across library upgrades.
-  private fun dottedFieldPath(instanceLocation: String): String = workflowStateSchemaDottedFieldPath(instanceLocation)
 }
 
 internal const val WORKFLOW_STATE_SCHEMA_CLASSPATH_RESOURCE: String =

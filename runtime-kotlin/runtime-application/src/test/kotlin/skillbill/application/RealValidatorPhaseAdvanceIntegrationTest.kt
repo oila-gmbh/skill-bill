@@ -17,10 +17,7 @@ class RealValidatorPhaseAdvanceIntegrationTest {
 
   @Test
   fun `conforming projections advance through plan implement and audit with the real validator`() {
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
-    )
+    val harness = runnerHarness(RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator).copy(agentAssignment = phasePerAgentAssignment()))
 
     val report = harness.runner.run(harness.request())
 

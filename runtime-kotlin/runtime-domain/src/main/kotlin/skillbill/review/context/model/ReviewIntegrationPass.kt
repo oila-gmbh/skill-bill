@@ -35,25 +35,21 @@ data class ReviewSpecialistSummary(
   companion object {
     const val MAX_SUMMARY_LENGTH: Int = 2000
 
-    @Suppress("LongParameterList") // one lane summary; every field is part of its identity
     fun of(
       lane: String,
       assignmentDigest: String,
       completion: ReviewLaneCompletionState,
-      assignedPaths: List<String>,
-      commitShas: List<String>,
-      findingCount: Int,
-      summary: String = "",
+      coverage: ReviewSpecialistSummaryCoverage,
     ): ReviewSpecialistSummary = ReviewSpecialistSummary(
       lane = lane,
       assignmentDigest = assignmentDigest,
       disposition = completion.disposition,
-      assignedPaths = assignedPaths.distinct().sorted(),
-      commitShas = commitShas.distinct(),
-      findingCount = findingCount,
+      assignedPaths = coverage.assignedPaths.distinct().sorted(),
+      commitShas = coverage.commitShas.distinct(),
+      findingCount = coverage.findingCount,
       unreviewedSegmentIds = completion.unreviewedSegmentIds,
       unreviewedUnits = completion.unreviewedUnits,
-      summary = summary.replace("\r\n", "\n").take(MAX_SUMMARY_LENGTH),
+      summary = coverage.summary.replace("\r\n", "\n").take(MAX_SUMMARY_LENGTH),
     )
   }
 }

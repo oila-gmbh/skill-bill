@@ -149,41 +149,57 @@ internal fun validJsonOutputForGitPhase(phaseId: String, git: RecordingWorkflowG
   },
 )
 
-@Suppress("LongMethod")
 internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<String>? = null): String =
   when (phaseId) {
-    "validate" ->
-      """{"validation_result":{
+    "validate" -> validateProducedOutputs()
+    "write_history" -> writeHistoryProducedOutputs()
+    "commit_push" -> commitPushProducedOutputs(
+      commitSha = null,
+      changedPaths = commitPushChangedPaths ?: listOf("src/Foo.kt"),
+    )
+    "preplan" -> preplanProducedOutputs()
+    "plan" -> planProducedOutputs()
+    "implement" -> implementProducedOutputs()
+    "implement_fix" -> implementFixProducedOutputs()
+    "review" -> """{"findings": []}"""
+    "audit" -> """{"value": "{\"gaps\":[],\"non_blocking_findings\":[]}"}"""
+    "verify_findings" -> """{"finding_dispositions": []}"""
+    else -> """{"tasks":["task-1"]}"""
+  }
+
+private fun validateProducedOutputs(): String =
+  """{"validation_result":{
       "validation_status":"passed",
       "checks":["FooTest"],
       "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
       "gate_run_count":1,
       "gate_runs":[{"duration_ms":1,"outcome":"passed","cache_mode":"forced_full","executed_work_units":1}]
     }}
-      """.trimIndent()
-    "write_history" ->
-      """{"history_result":{"changed_paths":["agent/history.md"],"decisions_recorded":[]}}"""
-    "commit_push" -> commitPushProducedOutputs(
-      commitSha = null,
-      changedPaths = commitPushChangedPaths ?: listOf("src/Foo.kt"),
-    )
-    "preplan" ->
-      """{
+  """.trimIndent()
+
+private fun writeHistoryProducedOutputs(): String =
+  """{"history_result":{"changed_paths":["agent/history.md"],"decisions_recorded":[]}}"""
+
+private fun preplanProducedOutputs(): String =
+  """{
       "value":"Fixture preplan prose for downstream plan."
     }
-      """.trimIndent()
-    "plan" ->
-      """{
+  """.trimIndent()
+
+private fun planProducedOutputs(): String =
+  """{
       "value":"Fixture plan prose for downstream implement and audit."
     }
-      """.trimIndent()
-    "implement" ->
-      """{
+  """.trimIndent()
+
+private fun implementProducedOutputs(): String =
+  """{
       "value":"Fixture implement prose for downstream audit."
     }
-      """.trimIndent()
-    "implement_fix" ->
-      """{
+  """.trimIndent()
+
+private fun implementFixProducedOutputs(): String =
+  """{
       "repair_receipt": {
         "contract_version": "0.3",
         "entries": [{
@@ -193,12 +209,7 @@ internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<
       },
       "reconciled_state": {"reconciled": true, "evidence": "Fixture tree at target state."}
     }
-      """.trimIndent()
-    "review" -> """{"findings": []}"""
-    "audit" -> """{"value": "{\"gaps\":[],\"non_blocking_findings\":[]}"}"""
-    "verify_findings" -> """{"finding_dispositions": []}"""
-    else -> """{"tasks":["task-1"]}"""
-  }
+  """.trimIndent()
 
 // SKILL-140 Subtask 3 (task-6/task-7): the enumerable parity corpus. Each entry carries a stable id
 // used verbatim in parity-failure messages.

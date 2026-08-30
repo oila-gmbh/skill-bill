@@ -1,4 +1,4 @@
-@file:Suppress("ThrowsCount")
+@file
 
 package skillbill.infrastructure.fs
 
@@ -81,33 +81,14 @@ class FileExternalAddonSourceConfigStore : ExternalAddonSourceConfigPort {
   }
 
   private fun parseEntry(configPath: Path, userHome: Path, index: Int, entry: Any?): ExternalAddonSource? {
-    val map = entry as? Map<*, *>
-      ?: throw ExternalAddonConfigError(
-        "External addon config at '$configPath': 'external_addon_sources[$index]' must be a mapping.",
-      )
+    val map = requireExternalAddonEntryMap(configPath, index, entry)
     val kind = (map["kind"] as? String)?.trim()
     if (kind == "agent-addon") return null
-    if (kind != null && kind != "platform-pack") {
-      throw ExternalAddonConfigError(
-        "External addon config at '$configPath': 'external_addon_sources[$index].kind' " +
-          "must be 'platform-pack' or 'agent-addon'.",
-      )
-    }
-    val rawPath = (map["path"] as? String)?.takeIf(String::isNotBlank)
-      ?: throw ExternalAddonConfigError(
-        "External addon config at '$configPath': 'external_addon_sources[$index].path' must be a non-empty string.",
-      )
-    val platform = (map["platform"] as? String)?.takeIf(String::isNotBlank)
-      ?: throw ExternalAddonConfigError(
-        "External addon config at '$configPath': 'external_addon_sources[$index].platform' must be a non-empty string.",
-      )
+    validateExternalAddonEntryKind(configPath, index, kind)
+    val rawPath = requireExternalAddonEntryPath(configPath, index, map)
+    val platform = requireExternalAddonEntryPlatform(configPath, index, map)
     val resolvedPath = resolveSourcePath(userHome, rawPath)
-    if (!Files.isDirectory(resolvedPath)) {
-      throw ExternalAddonConfigError(
-        "External addon config at '$configPath': 'external_addon_sources[$index].path' '$rawPath' " +
-          "does not exist or is not a directory.",
-      )
-    }
+    validateExternalAddonEntryDirectory(configPath, index, rawPath, resolvedPath)
     return ExternalAddonSource(path = resolvedPath, platform = platform.trim())
   }
 

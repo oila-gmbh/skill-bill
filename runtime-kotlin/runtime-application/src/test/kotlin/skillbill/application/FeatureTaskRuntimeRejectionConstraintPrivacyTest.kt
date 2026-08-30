@@ -69,8 +69,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
   @Test
   fun `a terminal schema-gate block keeps every operator surface free of the constraint and the raw span`() {
     var writeHistoryAttempts = 0
-    val harness = runnerHarness(
-      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+    val harness = runnerHarness(RuntimeHarnessConfig(validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
           if (sourceLabel != "write_history") return
           writeHistoryAttempts += 1
@@ -80,8 +79,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
             payloadFreeReason = payloadFreeConstraint,
           )
         }
-      },
-    )
+      },)))
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
@@ -115,8 +113,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
       "{\"contract_version\":\"0.5\",\"phase_id\":\"audit\",\"status\":\"completed\"," +
         "\"summary\":\"SKILL187-GATEOUTPUT-SENTINEL\",\"produced_outputs\":{\"gaps\":[]}}"
     var auditAttempts = 0
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
         auditAttempts += 1
@@ -133,8 +130,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
             )
           }
         }
-      },
-    )
+      },)))
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     assertContains(blocked.blockedReason, "cap=1")
@@ -149,14 +145,12 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
 
   private fun rejectingHarness(error: (String) -> Throwable): RunnerHarness {
     var auditAttempts = 0
-    return runnerHarness(
-      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+    return runnerHarness(RuntimeHarnessConfig(validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
           if (sourceLabel != "audit") return
           auditAttempts += 1
           if (auditAttempts < 2) throw error(sourceLabel)
         }
-      },
-    )
+      },)))
   }
 }

@@ -1,4 +1,7 @@
+@file:Suppress("MagicNumber")
+
 package skillbill.launcher.agentrun
+
 import com.fasterxml.jackson.databind.JsonNode
 import skillbill.infrastructure.fs.CursorReviewStreamError
 import skillbill.infrastructure.fs.CursorReviewStreamForbiddenOperationError
@@ -6,12 +9,34 @@ import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.infrastructure.fs.CursorReviewStreamProviderFailureError
 import skillbill.infrastructure.fs.CursorReviewStreamTerminationError
 
-@Suppress("LongMethod", "CyclomaticComplexMethod", "MagicNumber")
 internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
   if (stdout.isBlank()) {
     return DecodedAgentRunOutput("")
   }
+  val lines = stdout.lineSequence().toList()
+  if (lines.isEmpty()) {
+    return DecodedAgentRunOutput("")
+  }
+  val parsed = parseCursorStreamLines(lines)
+  parsed.error?.let { throw it }
+  val harvested = pickCursorHarvest(parsed.terminalText, parsed.lastAssistantText, parsed.longestAssistantText)
+  return DecodedAgentRunOutput(
+    text = harvested,
+    assistantEventCount = parsed.assistantEventCount.takeIf { parsed.decodedEnvelope },
+    rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS).takeIf { harvested.isBlank() },
+  )
+}
 
+private data class CursorStreamParse(
+  val terminalText: String?,
+  val longestAssistantText: String?,
+  val lastAssistantText: String?,
+  val assistantEventCount: Int,
+  val decodedEnvelope: Boolean,
+  val error: Throwable?,
+)
+
+private fun parseCursorStreamLines(lines: List<String>): CursorStreamParse {
   var terminalText: String? = null
   var longestAssistantText: String? = null
   var lastAssistantText: String? = null
@@ -21,32 +46,24 @@ internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
   var errorType: String? = null
   var errorMessage: String? = null
   var totalByteCount = 0
-  val maxTotalBytes = 10_000_000 // 10MB limit for Cursor stream processing
-  val cursorStreamPreviewLength = 100 // Characters to show in error messages
-  val lines = stdout.lineSequence().toList()
-
-  if (lines.isEmpty()) {
-    return DecodedAgentRunOutput("")
-  }
-
+  val maxTotalBytes = 10_000_000
+  val cursorStreamPreviewLength = 100
   lines.asSequence().takeWhile { line ->
     totalByteCount += line.toByteArray().size
     totalByteCount <= maxTotalBytes
   }.filter(String::isNotBlank).forEach { line ->
-    val event =
-      runCatching { structuredOutputMapper.readTree(line) }.getOrElse {
-        throw CursorReviewStreamMalformedError(
-          "Malformed Cursor stream JSONL line: ${line.take(cursorStreamPreviewLength)}",
-          it,
-        )
-      }
+    val event = runCatching { structuredOutputMapper.readTree(line) }.getOrElse {
+      throw CursorReviewStreamMalformedError(
+        "Malformed Cursor stream JSONL line: ${line.take(cursorStreamPreviewLength)}",
+        it,
+      )
+    }
     decodedEnvelope = true
     when (event.path("type").takeIf { it.isTextual }?.asText()) {
       "error" -> {
         errorEvent = true
         errorType = event.path("error_type").takeIf { it.isTextual }?.asText()
         errorMessage = event.path("message").takeIf { it.isTextual }?.asText()
-        // Error is stored and thrown later after parsing completes
       }
       "assistant" -> {
         assistantEventCount += 1
@@ -60,30 +77,29 @@ internal fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
       }
     }
   }
+  val error = if (errorEvent) cursorStreamError(errorType, errorMessage) else null
+  return CursorStreamParse(
+    terminalText = terminalText,
+    longestAssistantText = longestAssistantText,
+    lastAssistantText = lastAssistantText,
+    assistantEventCount = assistantEventCount,
+    decodedEnvelope = decodedEnvelope,
+    error = error,
+  )
+}
 
-  // Throw cursor-specific errors after parsing is complete (reduces throw count)
-  if (errorEvent) {
-    throw when (errorType) {
-      "forbidden_operation" -> CursorReviewStreamForbiddenOperationError(
-        errorMessage ?: "Cursor reported a forbidden operation",
-      )
-      "provider_failure" -> CursorReviewStreamProviderFailureError(
-        errorMessage ?: "Cursor reported a provider failure",
-      )
-      "termination" -> CursorReviewStreamTerminationError(
-        errorMessage ?: "Cursor process terminated prematurely",
-      )
-      else -> CursorReviewStreamError(
-        errorMessage ?: "Cursor reported an unknown error",
-      )
-    }
-  }
-
-  val harvested = pickCursorHarvest(terminalText, lastAssistantText, longestAssistantText)
-  return DecodedAgentRunOutput(
-    text = harvested,
-    assistantEventCount = assistantEventCount.takeIf { decodedEnvelope },
-    rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS).takeIf { harvested.isBlank() },
+private fun cursorStreamError(errorType: String?, errorMessage: String?): Throwable = when (errorType) {
+  "forbidden_operation" -> CursorReviewStreamForbiddenOperationError(
+    errorMessage ?: "Cursor reported a forbidden operation",
+  )
+  "provider_failure" -> CursorReviewStreamProviderFailureError(
+    errorMessage ?: "Cursor reported a provider failure",
+  )
+  "termination" -> CursorReviewStreamTerminationError(
+    errorMessage ?: "Cursor process terminated prematurely",
+  )
+  else -> CursorReviewStreamError(
+    errorMessage ?: "Cursor reported an unknown error",
   )
 }
 

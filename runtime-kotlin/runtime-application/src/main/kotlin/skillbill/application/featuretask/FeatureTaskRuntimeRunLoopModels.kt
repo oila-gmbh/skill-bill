@@ -250,6 +250,13 @@ internal data class PersistPhaseArgs(
   val reviewRunId: String? = null,
 )
 
+internal data class PhaseReviewCompletionOutcomeArgs(
+  val persistence: PhaseReviewPersistenceArgs,
+  val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  val acceptedOutput: AcceptedFeatureTaskRuntimePhaseOutput,
+  val outputText: String,
+)
+
 internal data class PhaseReviewPersistenceArgs(
   val run: PhaseRun,
   val iteration: Int,

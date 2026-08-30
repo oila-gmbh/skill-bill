@@ -16,15 +16,13 @@ class FeatureTaskRuntimeProjectionRejectionTest {
   @Test
   fun `preplan prose value is delivered to plan`() {
     val prose = "Dense fixture preplan prose for plan."
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         facts(
           if (phaseId == "preplan") preplanEnvelope(prose) else validJsonOutput(phaseId),
         )
       },
-      agentAssignment = phasePerAgentAssignment(),
-    )
+      agentAssignment = phasePerAgentAssignment(),)))
 
     val report = harness.runner.run(harness.request())
 
@@ -39,8 +37,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
 
   @Test
   fun `oversized implement prose reaches audit without a projection budget block`() {
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         facts(
           if (phaseId == "implement") {
@@ -50,8 +47,7 @@ class FeatureTaskRuntimeProjectionRejectionTest {
           },
         )
       },
-      agentAssignment = phasePerAgentAssignment(),
-    )
+      agentAssignment = phasePerAgentAssignment(),)))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
 
@@ -63,13 +59,11 @@ class FeatureTaskRuntimeProjectionRejectionTest {
 
   @Test
   fun `an ordinary feature's implement prose reaches audit rather than overflowing its budget`() {
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         facts(if (phaseId == "implement") wideImplementProse() else validJsonOutput(phaseId))
       },
-      agentAssignment = phasePerAgentAssignment(),
-    )
+      agentAssignment = phasePerAgentAssignment(),)))
 
     val report = harness.runner.run(harness.request())
 
@@ -85,12 +79,10 @@ class FeatureTaskRuntimeProjectionRejectionTest {
 
   @Test
   fun `implement prose missing value blocks audit with a malformed-field reason`() {
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { request ->
         facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
       },
-      agentAssignment = phasePerAgentAssignment(),
-    )
+      agentAssignment = phasePerAgentAssignment(),)))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
     val legacyImplementation =
@@ -116,12 +108,10 @@ class FeatureTaskRuntimeProjectionRejectionTest {
 
   @Test
   fun `a legacy handoff-envelope launch-seam block stays durably blocked on resume`() {
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { request ->
         facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
       },
-      agentAssignment = phasePerAgentAssignment(),
-    )
+      agentAssignment = phasePerAgentAssignment(),)))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), validJsonOutput("implement"))

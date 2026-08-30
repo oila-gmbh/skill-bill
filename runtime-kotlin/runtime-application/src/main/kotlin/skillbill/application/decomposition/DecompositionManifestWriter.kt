@@ -1,10 +1,10 @@
-@file:Suppress("LongParameterList")
-
 package skillbill.application.decomposition
 
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.model.DecompositionManifestWriteResult
+import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
+import skillbill.application.workflow.model.DecompositionPlanManifestInput
 import skillbill.application.workflow.repoRoot
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
@@ -23,72 +23,40 @@ internal const val DECOMPOSITION_RUNTIME_ARTIFACT_KEY: String = "decomposition_r
 
 object DecompositionManifestWriter {
   fun writeFromWorkflowUpdate(
-    repoRoot: Path,
-    existingArtifactsJson: String,
-    artifactsPatch: Map<String, Any?>?,
-    validator: DecompositionManifestValidator,
-    workflowId: String = "",
-    workflowStatus: String = "",
-    currentStepId: String = "",
-    stepUpdates: List<Map<String, Any?>>? = null,
-    runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
-    fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+    input: DecompositionManifestWorkflowProjectionInput,
   ): DecompositionManifestWriteResult? {
-    val manifest = manifestFromWorkflowUpdate(
-      repoRoot = repoRoot,
-      existingArtifactsJson = existingArtifactsJson,
-      artifactsPatch = artifactsPatch,
-      validator = validator,
-      workflowId = workflowId,
-      workflowStatus = workflowStatus,
-      currentStepId = currentStepId,
-      stepUpdates = stepUpdates,
-      runtimeUpdate = runtimeUpdate,
-      fileStore = fileStore,
-    ) ?: return null
-    return writeProjection(repoRoot, manifest, validator, fileStore = fileStore)
+    val manifest = manifestFromWorkflowUpdate(input) ?: return null
+    return writeProjection(input.repoRoot, manifest, input.validator, fileStore = input.fileStore)
   }
 
   fun manifestFromWorkflowUpdate(
-    repoRoot: Path,
-    existingArtifactsJson: String,
-    artifactsPatch: Map<String, Any?>?,
-    validator: DecompositionManifestValidator,
-    workflowId: String = "",
-    workflowStatus: String = "",
-    currentStepId: String = "",
-    stepUpdates: List<Map<String, Any?>>? = null,
-    runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
-    fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+    input: DecompositionManifestWorkflowProjectionInput,
   ): DecompositionManifest? {
-    val existingArtifacts = decodeArtifacts(existingArtifactsJson)
-    val update = (
-      runtimeUpdate ?: DecompositionManifestRuntimeUpdate(
-        workflowId = workflowId,
-        workflowStatus = workflowStatus,
-        currentStepId = currentStepId,
-        stepUpdates = stepUpdates,
-      )
-      ).copy(
-      artifactsPatch = artifactsPatch,
+    val existingArtifacts = decodeArtifacts(input.existingArtifactsJson)
+    val update = input.runtimeUpdate.copy(
+      artifactsPatch = input.artifactsPatch,
       existingArtifacts = existingArtifacts,
     )
-    val plan = artifactsPatch?.get("plan").asStringAnyMapOrNull()
+    val plan = input.artifactsPatch?.get("plan").asStringAnyMapOrNull()
     return if (plan != null && plan["mode"] == DECOMPOSITION_MODE) {
-      manifestFromDecompositionPlan(repoRoot, plan, artifactsPatch, existingArtifacts, validator, fileStore)
+      manifestFromDecompositionPlan(
+        DecompositionPlanManifestInput(
+          repoRoot = input.repoRoot,
+          plan = plan,
+          artifactsPatch = input.artifactsPatch,
+          existingArtifacts = existingArtifacts,
+          validator = input.validator,
+          fileStore = input.fileStore,
+        ),
+      )
     } else {
-      updatedExistingManifest(repoRoot, update, validator, fileStore)
+      updatedExistingManifest(input.repoRoot, update, input.validator, input.fileStore)
     }
   }
 
   fun maybeWriteFromWorkflowUpdate(
-    repoRoot: Path,
-    existingArtifactsJson: String,
-    artifactsPatch: Map<String, Any?>?,
-    validator: DecompositionManifestValidator,
-    fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
-  ): Path? = writeFromWorkflowUpdate(repoRoot, existingArtifactsJson, artifactsPatch, validator, fileStore = fileStore)
-    ?.manifestPath
+    input: DecompositionManifestWorkflowProjectionInput,
+  ): Path? = writeFromWorkflowUpdate(input)?.manifestPath
 
   fun writeProjectionFromWorkflowState(
     repoRoot: Path,
@@ -161,34 +129,29 @@ object DecompositionManifestWriter {
   }
 
   private fun manifestFromDecompositionPlan(
-    repoRoot: Path,
-    plan: Map<String, Any?>,
-    artifactsPatch: Map<String, Any?>?,
-    existingArtifacts: Map<String, Any?>,
-    validator: DecompositionManifestValidator,
-    fileStore: DecompositionManifestFileStore,
+    input: DecompositionPlanManifestInput,
   ): DecompositionManifest {
-    val parentSpecPath = Path.of(parentSpecPath(plan))
-    assertParentSpecIsNotDecomposedSubtask(repoRoot, parentSpecPath, validator, fileStore)
-    val branchName = branchName(artifactsPatch?.get("branch")).ifBlank { branchName(existingArtifacts["branch"]) }
-    val executionModel = executionModel(plan)
+    val parentSpecPath = Path.of(parentSpecPath(input.plan))
+    assertParentSpecIsNotDecomposedSubtask(input.repoRoot, parentSpecPath, input.validator, input.fileStore)
+    val branchName = branchName(input.artifactsPatch?.get("branch")).ifBlank { branchName(input.existingArtifacts["branch"]) }
+    val executionModel = executionModel(input.plan)
     val request = DecompositionManifestWriteRequest(
-      repoRoot = repoRoot,
+      repoRoot = input.repoRoot,
       parentSpecPath = parentSpecPath,
-      planningResult = plan,
-      baseBranch = baseBranch(plan, parentSpecPath.toString()),
+      planningResult = input.plan,
+      baseBranch = baseBranch(input.plan, parentSpecPath.toString()),
       featureBranch = when (executionModel) {
         DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK ->
           branchName.ifBlank { defaultFeatureBranch(parentSpecPath) }
         DecompositionExecutionModel.STACKED_BRANCHES -> null
       },
       executionModel = executionModel,
-      stackBranches = parseStackBranches(plan),
-      specSource = specSource(plan),
+      stackBranches = parseStackBranches(input.plan),
+      specSource = specSource(input.plan),
     )
     val manifestPath = request.manifestPath()
-    val existing = runtimeManifestFromArtifacts(existingArtifacts, validator)
-      ?: loadManifestOrNull(manifestPath, validator, fileStore)
+    val existing = runtimeManifestFromArtifacts(input.existingArtifacts, input.validator)
+      ?: loadManifestOrNull(manifestPath, input.validator, input.fileStore)
     return request.toManifest()
       .assertExecutionModelCanReplace(existing, manifestPath)
       .withPreservedRuntimeState(existing)

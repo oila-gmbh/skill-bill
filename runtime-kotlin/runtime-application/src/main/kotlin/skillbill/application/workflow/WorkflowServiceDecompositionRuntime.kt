@@ -4,6 +4,7 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -22,17 +23,19 @@ internal fun WorkflowFamily.withDecompositionRuntime(
   DecompositionRuntimeInput(input = input, updated = false)
 } else {
   DecompositionManifestWriter.manifestFromWorkflowUpdate(
-    repoRoot = Path.of("").toAbsolutePath(),
-    existingArtifactsJson = existing.artifactsJson,
-    artifactsPatch = input.artifactsPatch,
-    validator = validator,
-    runtimeUpdate = DecompositionManifestRuntimeUpdate(
-      workflowId = workflowId,
-      workflowStatus = input.workflowStatus,
-      currentStepId = input.currentStepId,
-      stepUpdates = input.stepUpdates,
+    DecompositionManifestWorkflowProjectionInput(
+      repoRoot = Path.of("").toAbsolutePath(),
+      existingArtifactsJson = existing.artifactsJson,
+      validator = validator,
+      artifactsPatch = input.artifactsPatch,
+      runtimeUpdate = DecompositionManifestRuntimeUpdate(
+        workflowId = workflowId,
+        workflowStatus = input.workflowStatus,
+        currentStepId = input.currentStepId,
+        stepUpdates = input.stepUpdates,
+      ),
+      fileStore = fileStore,
     ),
-    fileStore = fileStore,
   )?.let { manifest ->
     DecompositionRuntimeInput(
       input = input.copy(

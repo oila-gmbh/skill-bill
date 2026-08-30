@@ -2,9 +2,11 @@ package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyRequest
 import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
-import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosisRequest
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeRepairRequest
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
@@ -123,38 +125,30 @@ internal class WorkflowGoalRunnerChildRepairBridge(
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
 ) : GoalRunnerChildRepairStore {
   override fun diagnoseChildWedges(
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    subtasks: List<DecompositionSubtask>,
-    repoRoot: Path,
-    dbPathOverride: String?,
-  ): GoalRunnerChildWedgeDiagnosis = database.read(dbPathOverride) { unitOfWork ->
+    request: GoalRunnerChildWedgeDiagnosisRequest,
+  ): GoalRunnerChildWedgeDiagnosis = database.read(request.dbPathOverride) { unitOfWork ->
     childRepair.diagnose(
       workflowStates = unitOfWork.workflowStates,
-      workflowId = workflowId,
-      issueKey = issueKey,
-      subtaskId = subtaskId,
-      repoRoot = repoRoot,
+      workflowId = request.workflowId,
+      issueKey = request.issueKey,
+      subtaskId = request.subtaskId,
+      repoRoot = request.repoRoot,
     )
   }
 
   override fun applyChildWedgeRepairs(
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    wedgeClasses: List<GoalRunnerWedgeClass>,
-    repoRoot: Path,
-    dbPathOverride: String?,
+    request: GoalRunnerChildWedgeRepairRequest,
   ): GoalRunnerChildRepairApplyResult {
-    val result = database.transaction(dbPathOverride) { unitOfWork ->
+    val result = database.transaction(request.dbPathOverride) { unitOfWork ->
       childRepair.apply(
-        unitOfWork = unitOfWork,
-        workflowId = workflowId,
-        issueKey = issueKey,
-        subtaskId = subtaskId,
-        wedgeClasses = wedgeClasses,
-        repoRoot = repoRoot,
+        GoalRunnerChildRepairApplyRequest(
+          unitOfWork = unitOfWork,
+          workflowId = request.workflowId,
+          issueKey = request.issueKey,
+          subtaskId = request.subtaskId,
+          wedgeClasses = request.wedgeClasses,
+          repoRoot = request.repoRoot,
+        ),
       )
     }
     result.manifestProjectionArtifactsJson?.let { artifactsJson ->

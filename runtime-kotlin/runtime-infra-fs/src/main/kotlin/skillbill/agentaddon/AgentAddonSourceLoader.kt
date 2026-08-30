@@ -40,60 +40,9 @@ fun inspectAgentAddons(
   externalSourceRoots: List<Path> = emptyList(),
   schemaValidator: AgentAddonSchemaValidator = AgentAddonSchemaValidator(),
 ): AgentAddonCatalogueInspection {
-  val roots = listOf(repoRoot.toAbsolutePath().normalize().resolve(AGENT_ADDONS_DIRECTORY)) +
-    externalSourceRoots.map { it.toAbsolutePath().normalize() }
-  val entries = mutableListOf<AgentAddonCatalogueEntry>()
-  val invalidEntries = mutableListOf<InvalidAgentAddonCatalogueEntry>()
-  roots.forEach { root ->
-    if (Files.exists(root)) {
-      Files.list(root).use { stream ->
-        stream.filter { !it.name.startsWith(".") }.sorted().forEach { sourceRoot ->
-          val manifest = sourceRoot.resolve(MANIFEST_FILE)
-          val content = sourceRoot.resolve(CONTENT_FILE)
-          runCatching { parseSource(sourceRoot, schemaValidator) }
-            .onSuccess { declaration ->
-              entries += declaration.toCatalogueEntry()
-            }
-            .onFailure { error ->
-              invalidEntries += InvalidAgentAddonCatalogueEntry(
-                identity = "agent-addon:${sourceRoot.name}",
-                slug = sourceRoot.name,
-                manifestPath = manifest,
-                contentPath = content,
-                diagnostics = listOf(error.message ?: "Agent add-on declaration is invalid."),
-              )
-            }
-        }
-      }
-    }
-  }
-  val incoherent = mutableMapOf<Path, MutableList<String>>()
-  entries.filter { it.manifestPath.parent.name != it.slug }.forEach { entry ->
-    incoherent.getOrPut(entry.manifestPath) { mutableListOf() } +=
-      "source directory '${entry.manifestPath.parent.name}' must match slug '${entry.slug}'"
-  }
-  entries.groupBy { it.slug }.filterValues { it.size > 1 }.forEach { (slug, duplicates) ->
-    duplicates.forEach { entry ->
-      incoherent.getOrPut(entry.manifestPath) { mutableListOf() } += "duplicate slug '$slug'"
-    }
-  }
-  entries.groupBy { it.manifestPath.toRealPath() }.filterValues { it.size > 1 }.forEach { (identity, duplicates) ->
-    duplicates.forEach { entry ->
-      incoherent.getOrPut(entry.manifestPath) { mutableListOf() } += "duplicate canonical source identity '$identity'"
-    }
-  }
-  entries.removeAll { entry ->
-    incoherent[entry.manifestPath]?.let { diagnostics ->
-      invalidEntries += InvalidAgentAddonCatalogueEntry(
-        identity = "agent-addon:${entry.manifestPath.parent.name}",
-        slug = entry.manifestPath.parent.name,
-        manifestPath = entry.manifestPath,
-        contentPath = entry.contentPath,
-        diagnostics = diagnostics,
-      )
-      true
-    } ?: false
-  }
+  val roots = agentAddonInspectionRoots(repoRoot, externalSourceRoots)
+  val (entries, invalidEntries) = collectAgentAddonCatalogueEntries(roots, schemaValidator)
+  reconcileAgentAddonCatalogueIncoherence(entries, invalidEntries)
   return AgentAddonCatalogueInspection(entries.sortedBy { it.slug }, invalidEntries.sortedBy { it.slug })
 }
 
@@ -137,7 +86,7 @@ private fun discoverAgentAddonRoot(
   }
 }
 
-private fun parseSource(sourceRoot: Path, validator: AgentAddonSchemaValidator): AgentAddonDeclaration {
+internal fun parseSource(sourceRoot: Path, validator: AgentAddonSchemaValidator): AgentAddonDeclaration {
   val manifest = sourceRoot.resolve(MANIFEST_FILE)
   val content = sourceRoot.resolve(CONTENT_FILE)
   val sourceLabel = manifest.toString()

@@ -1,7 +1,3 @@
-@file:Suppress("DestructuringDeclarationWithTooManyEntries")
-// FixLoopBranchContext is a deliberate parameter object: the fix-loop branch handlers each read the
-// whole set, so destructuring it is what keeps them readable rather than a smell to split.
-
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
@@ -102,7 +98,6 @@ internal fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPa
   return 1
 }
 
-@Suppress("LargeClass", "LongMethod", "LongParameterList", "TooManyFunctions")
 internal class FeatureTaskRuntimeRunLoop(
   internal val dependencies: FeatureTaskRuntimeRunLoopDependencies,
   context: FeatureTaskRuntimeRunLoopContext,

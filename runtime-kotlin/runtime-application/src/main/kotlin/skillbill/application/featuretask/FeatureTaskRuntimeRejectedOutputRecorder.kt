@@ -4,6 +4,8 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.application.featuretask.model.RejectedOutputDiagnosticDegradeRequest
+import skillbill.application.featuretask.model.RejectedOutputDiagnosticPersistRequest
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
@@ -82,14 +84,16 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     )
     return when (
       val outcome = degradeDiagnosticFailure(
-        workflowId = request.workflowId,
-        operation = "record-rejected-output",
-        conflictingKey = evidence.evidenceKey(),
-        phaseId = request.phaseId,
-        attempt = request.attempt,
-        repairTurn = request.repairTurn,
-        generation = producerGeneration,
-        dbOverride = dbOverride,
+        RejectedOutputDiagnosticDegradeRequest(
+          workflowId = request.workflowId,
+          operation = "record-rejected-output",
+          conflictingKey = evidence.evidenceKey(),
+          phaseId = request.phaseId,
+          attempt = request.attempt,
+          repairTurn = request.repairTurn,
+          generation = producerGeneration,
+          dbOverride = dbOverride,
+        ),
       ) {
         database.transaction(dbOverride) { unitOfWork ->
           val service = diagnosticService(unitOfWork)
@@ -129,14 +133,16 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
 
   override fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String?) {
     degradeDiagnosticFailure(
-      workflowId = evidence.workflowId,
-      operation = "retain-producer-output",
-      conflictingKey = evidence.evidenceKey(),
-      phaseId = evidence.phaseId,
-      attempt = evidence.attempt,
-      repairTurn = evidence.repairTurn,
-      generation = evidence.generation,
-      dbOverride = dbOverride,
+      RejectedOutputDiagnosticDegradeRequest(
+        workflowId = evidence.workflowId,
+        operation = "retain-producer-output",
+        conflictingKey = evidence.evidenceKey(),
+        phaseId = evidence.phaseId,
+        attempt = evidence.attempt,
+        repairTurn = evidence.repairTurn,
+        generation = evidence.generation,
+        dbOverride = dbOverride,
+      ),
     ) {
       database.transaction(dbOverride) { unitOfWork ->
         diagnosticService(unitOfWork).retainProducerOutput(evidence)
@@ -154,15 +160,17 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     val conflictingKey = "$workflowId:$phaseId:$generation:$attempt:*:$agentId"
     fun unreadable(failureClass: FeatureTaskRuntimeDiagnosticFailureClass): FeatureTaskRuntimeProducerOutputRead {
       persistDegradedDiagnostic(
-        workflowId = workflowId,
-        operation = "read-producer-output",
-        conflictingKey = conflictingKey,
-        phaseId = phaseId,
-        attempt = attempt,
-        repairTurn = null,
-        generation = generation,
-        dbOverride = dbOverride,
-        failureClass = failureClass,
+        RejectedOutputDiagnosticPersistRequest(
+          workflowId = workflowId,
+          operation = "read-producer-output",
+          conflictingKey = conflictingKey,
+          phaseId = phaseId,
+          attempt = attempt,
+          repairTurn = null,
+          generation = generation,
+          dbOverride = dbOverride,
+          failureClass = failureClass,
+        ),
       )
       return FeatureTaskRuntimeProducerOutputRead.Unreadable(failureClass)
     }
@@ -186,29 +194,23 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     }
   }
 
-  @Suppress("LongParameterList")
   private fun <T> degradeDiagnosticFailure(
-    workflowId: String,
-    operation: String,
-    conflictingKey: String,
-    phaseId: String,
-    attempt: Int,
-    repairTurn: Int?,
-    generation: Int,
-    dbOverride: String?,
+    request: RejectedOutputDiagnosticDegradeRequest,
     block: () -> T,
   ): DiagnosticWriteOutcome<T> {
     fun degrade(failureClass: FeatureTaskRuntimeDiagnosticFailureClass): DiagnosticWriteOutcome<T> {
       persistDegradedDiagnostic(
-        workflowId = workflowId,
-        operation = operation,
-        conflictingKey = conflictingKey,
-        phaseId = phaseId,
-        attempt = attempt,
-        repairTurn = repairTurn,
-        generation = generation,
-        dbOverride = dbOverride,
-        failureClass = failureClass,
+        RejectedOutputDiagnosticPersistRequest(
+          workflowId = request.workflowId,
+          operation = request.operation,
+          conflictingKey = request.conflictingKey,
+          phaseId = request.phaseId,
+          attempt = request.attempt,
+          repairTurn = request.repairTurn,
+          generation = request.generation,
+          dbOverride = request.dbOverride,
+          failureClass = failureClass,
+        ),
       )
       return DiagnosticWriteOutcome.Degraded(failureClass)
     }
@@ -223,30 +225,19 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
     }
   }
 
-  @Suppress("LongParameterList")
-  private fun persistDegradedDiagnostic(
-    workflowId: String,
-    operation: String,
-    conflictingKey: String,
-    phaseId: String,
-    attempt: Int,
-    repairTurn: Int?,
-    generation: Int,
-    dbOverride: String?,
-    failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
-  ) {
+  private fun persistDegradedDiagnostic(request: RejectedOutputDiagnosticPersistRequest) {
     val signal = FeatureTaskRuntimeDiagnosticSignal(
-      operation = operation,
-      failureClass = failureClass,
-      conflictingKey = conflictingKey,
-      phaseId = phaseId,
-      attempt = attempt.coerceAtLeast(0),
-      repairTurn = repairTurn?.coerceAtLeast(0),
-      generation = generation.coerceAtLeast(0),
+      operation = request.operation,
+      failureClass = request.failureClass,
+      conflictingKey = request.conflictingKey,
+      phaseId = request.phaseId,
+      attempt = request.attempt.coerceAtLeast(0),
+      repairTurn = request.repairTurn?.coerceAtLeast(0),
+      generation = request.generation.coerceAtLeast(0),
       recordedAt = Instant.now().toString(),
     )
-    persistDiagnosticSignal(workflowId, signal, dbOverride)
-    recordDegradationMeasurement(workflowId, signal, dbOverride)
+    persistDiagnosticSignal(request.workflowId, signal, request.dbOverride)
+    recordDegradationMeasurement(request.workflowId, signal, request.dbOverride)
   }
   private fun recordDegradationMeasurement(
     workflowId: String,

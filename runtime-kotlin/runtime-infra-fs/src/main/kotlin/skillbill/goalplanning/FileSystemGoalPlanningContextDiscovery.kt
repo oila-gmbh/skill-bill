@@ -80,7 +80,7 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
     var truncated = walk.incomplete || eligible.size < candidates.size
     val perFile = mutableListOf<List<GoalPlanningBoundaryHeading>>()
     for (candidate in eligible) {
-      val read = GoalPlanningRepositoryScope.readFileOrNull(
+      val read = goalPlanningReadFileOrNull(
         candidate.canonical,
         GoalPlanningContext.MAX_BOUNDARY_FILE_BYTES,
       )

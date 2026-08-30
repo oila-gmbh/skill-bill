@@ -1,0 +1,42 @@
+package skillbill.application.featuretask.model
+
+import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.FeatureTaskRuntimeUnreadableDiffResolver
+import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
+import skillbill.application.featuretask.FeatureTaskRuntimeFindingVerificationBoundaryMemory
+import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
+import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
+import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseGateDependencies
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
+import skillbill.application.featuretask.validation.ValidationGateResolver
+import skillbill.application.review.SpecIntentProjectionResolver
+import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.ports.validation.ValidationGateRunner
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+
+@Inject
+internal data class FeatureTaskRuntimePhaseGateDependencies(
+  val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
+  val planningStopper: FeatureTaskRuntimePlanningStopper,
+  val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
+  val gitOperations: WorkflowGitOperations,
+  val specGate: FeatureTaskRuntimeSpecGate,
+  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator,
+  val validationGateResolver: ValidationGateResolver,
+  val validationGateRunner: ValidationGateRunner,
+  val validationGateCoordinator: FeatureTaskRuntimeValidationGateCoordinator,
+  val buildGateCoordinator: FeatureTaskRuntimeBuildGateCoordinator,
+  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
+    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+  val diffResolver: DiffResolverPort = FeatureTaskRuntimeUnreadableDiffResolver,
+  val reviewDriver: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver.EMPTY,
+  val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  val findingVerificationBoundaryMemory: FeatureTaskRuntimeFindingVerificationBoundaryMemory,
+)

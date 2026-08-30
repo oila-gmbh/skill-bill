@@ -96,12 +96,14 @@ internal fun FeatureTaskRuntimeRunLoop.writeSubtaskCommit(
     sequenceNumber = ledger.nextSequenceNumber,
   )
   return phaseGates.gitOperations.writeSubtaskCommitPreservingHistory(
-    repoRoot = request.repoRoot,
-    decision = decision,
-    identity = identity,
-    message = message,
-    allowUnchangedIndex = false,
-    record = { record -> runCatching { diagnostics.warning(record) } },
+    SubtaskCommitPreservationRequest(
+      repoRoot = request.repoRoot,
+      decision = decision,
+      identity = identity,
+      message = message,
+      allowUnchangedIndex = false,
+      record = { record -> runCatching { diagnostics.warning(record) } },
+    ),
   )
 }
 

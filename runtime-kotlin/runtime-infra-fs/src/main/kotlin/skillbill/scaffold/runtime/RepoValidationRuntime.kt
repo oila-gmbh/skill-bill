@@ -96,61 +96,13 @@ object RepoValidationRuntime {
 
   fun validateRepo(repoRoot: Path): RepoValidationReport {
     val root = repoRoot.toAbsolutePath().normalize()
-    val issues = mutableListOf<String>()
-    val skillFiles = discoverSkillFiles(root, issues)
-    val platformSkillFiles = discoverPlatformPackSkillFiles(root, issues)
-    val skillNames = (skillFiles.keys + platformSkillFiles.keys).toSortedSet()
-    val addonFiles = discoverAllAddonFiles(root)
-    val platformPacks = validatePlatformPacks(root, issues)
-    val portableReviewSkills = discoverPortableReviewSkills(root)
-    val nativeAgentSources = runCatching { discoverRepoNativeAgentSourceEntries(root) }.getOrDefault(emptyList())
-
-    skillFiles.forEach { (skillName, skillFile) ->
-      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = true, portableReviewSkills)
-    }
-    platformSkillFiles.forEach { (skillName, skillFile) ->
-      validateInstallableSkill(skillName, skillFile, root, issues, validateSourceSidecars = false, portableReviewSkills)
-    }
-    validateInternalSidecarCollisions(skillFiles + platformSkillFiles, issues)
-    validateInternalSkillClassification(skillFiles, platformSkillFiles, issues)
-    validateInternalSidecarReferences(skillFiles + platformSkillFiles, issues)
-    validateSkillSourceShape(skillFiles.values, root, issues)
-    addonFiles.forEach { addonFile ->
-      validateAddonFile(addonFile, root, issues)
-    }
-
-    validateReadme(
-      root.resolve("README.md"),
-      skillFiles.keys.toSet(),
-      internalSkillNames(skillFiles + platformSkillFiles),
-      issues,
-    )
-    validateSkillReferences(root, skillNames, issues)
-    validateSkillOverrides(root.resolve(".agents/skill-overrides.example.md"), skillNames, required = true, issues)
-    validateSkillOverrides(root.resolve(".agents/skill-overrides.md"), skillNames, required = false, issues)
-    validateSupportingTargets(root, skillFiles.keys + platformSkillFiles.keys, issues)
-    validateFeatureAddonDeclarations(root, issues)
-    validateAgentAddons(root, issues)
-    validateWorkflowContracts(root, issues)
-    validateOrchestrationPlaybooks(root, issues)
-    validateNoInlineTelemetryContractDrift(root, issues)
-    validateSpecialistContractParity(root, issues)
-    validatePluginManifest(root.resolve(".claude-plugin/plugin.json"), issues)
-    issues += validateRepoNativeAgents(root).issues
-    issues += validatePointerTargetParityIssues(root)
-    issues += validateGovernedSkillDrift(root).issues
-    issues += validateGeneratedArtifactGuard(root).issues
-    val substanceReport = PlatformPackSubstanceAudit.audit(root)
-    issues += substanceReport.auditErrors
-    issues += substanceReport.violations.map { it.format() }
-    validateNoOrchestrationPathsInSkillBodies(root, skillFiles, platformSkillFiles, issues)
-
+    val collected = collectRepoValidationIssues(root)
     return RepoValidationReport(
-      issues = issues.sorted(),
-      skillCount = skillNames.size,
-      addonCount = addonFiles.size,
-      platformPackCount = platformPacks,
-      nativeAgentCount = nativeAgentSources.size,
+      issues = collected.issues.sorted(),
+      skillCount = collected.skillNames.size,
+      addonCount = collected.addonCount,
+      platformPackCount = collected.platformPackCount,
+      nativeAgentCount = collected.nativeAgentCount,
     )
   }
 

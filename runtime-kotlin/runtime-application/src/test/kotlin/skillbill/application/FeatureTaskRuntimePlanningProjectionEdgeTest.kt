@@ -133,7 +133,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       prose = "   ",
     )
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      assemble(edge.consumer, listOf(edge.declaration), listOf(phaseOutput(edge.producer, edge.payload)))
+      assemble(BriefingAssembleFixture(edge.consumer, listOf(edge.declaration), listOf(phaseOutput(edge.producer, edge.payload))))
     }
     assertContains(error.message.orEmpty(), "non-blank prose")
   }
@@ -147,7 +147,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       options = ProseEdgeOptions(omitValue = true),
     )
     val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
-      assemble(edge.consumer, listOf(edge.declaration), listOf(phaseOutput(edge.producer, edge.payload)))
+      assemble(BriefingAssembleFixture(edge.consumer, listOf(edge.declaration), listOf(phaseOutput(edge.producer, edge.payload))))
     }
     assertContains(error.message.orEmpty(), "produced_outputs.value is required")
   }
@@ -164,26 +164,30 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     val projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
 
     val reviewBriefing = assemble(
-      consumer = phaseReview,
-      declarations = listOf(
-        FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+      BriefingAssembleFixture(
+        consumer = phaseReview,
+        declarations = listOf(
+          FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+        ),
+        recordedOutputs = emptyList(),
+        derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF),
+        sharedReviewEvidence = evidence,
       ),
-      recordedOutputs = emptyList(),
-      derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF),
-      sharedReviewEvidence = evidence,
     )
     assertContains(reviewBriefing.briefingText, "- diff: the branch diff is already derived for you")
     assertContains(reviewBriefing.briefingText, "'$projectionName' projection")
     assertFalse(reviewBriefing.briefingText.contains("read the branch diff yourself"))
 
     val unitBriefing = assemble(
-      consumer = phaseReview,
-      declarations = listOf(
-        FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+      BriefingAssembleFixture(
+        consumer = phaseReview,
+        declarations = listOf(
+          FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+        ),
+        recordedOutputs = emptyList(),
+        derivedContextKeys = listOf("current_unit_of_work"),
+        sharedReviewEvidence = evidence,
       ),
-      recordedOutputs = emptyList(),
-      derivedContextKeys = listOf("current_unit_of_work"),
-      sharedReviewEvidence = evidence,
     )
     assertContains(unitBriefing.briefingText, "- current_unit_of_work: the current unit of work is already derived")
     assertContains(unitBriefing.briefingText, "'$projectionName' projection")
@@ -193,13 +197,15 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   @Test
   fun `omitted shared evidence falls back to self-read rather than naming a missing projection`() {
     val reviewBriefing = assemble(
-      consumer = phaseReview,
-      declarations = listOf(
-        FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+      BriefingAssembleFixture(
+        consumer = phaseReview,
+        declarations = listOf(
+          FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+        ),
+        recordedOutputs = emptyList(),
+        derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF),
+        sharedReviewEvidence = null,
       ),
-      recordedOutputs = emptyList(),
-      derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF),
-      sharedReviewEvidence = null,
     )
     assertContains(
       reviewBriefing.briefingText,
@@ -277,10 +283,12 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   @Test
   fun `pr keeps the self-read branch-diff instruction on its own derived-context key`() {
     val briefing = assemble(
-      consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
-      declarations = emptyList(),
-      recordedOutputs = emptyList(),
-      derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF),
+      BriefingAssembleFixture(
+        consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
+        declarations = emptyList(),
+        recordedOutputs = emptyList(),
+        derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF),
+      ),
     )
 
     assertContains(
@@ -352,9 +360,11 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     mustNotContain: List<String>,
   ) {
     val briefing = assemble(
-      consumer = edge.consumer,
-      declarations = listOf(edge.declaration),
-      recordedOutputs = listOf(phaseOutput(edge.producer, edge.payload)),
+      BriefingAssembleFixture(
+        consumer = edge.consumer,
+        declarations = listOf(edge.declaration),
+        recordedOutputs = listOf(phaseOutput(edge.producer, edge.payload)),
+      ),
     )
     expectedInBriefing.forEach { expected ->
       assertContains(briefing.briefingText, expected)
@@ -391,25 +401,28 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     return JsonSupport.mapToJsonString(mapOf("produced_outputs" to produced))
   }
 
-  @Suppress("LongParameterList")
-  private fun assemble(
-    consumer: String,
-    declarations: List<PhaseHandoffProjectionDeclaration>,
-    recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-    derivedContextKeys: List<String> = emptyList(),
-    sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
-    checkpoint: FeatureTaskRuntimeRepositoryCheckpoint =
-      FeatureTaskRuntimeRepositoryCheckpoint(
-        fingerprint = "fixture-checkpoint-1",
-      ),
-  ) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+  private data class BriefingAssembleFixture(
+    val consumer: String,
+    val declarations: List<PhaseHandoffProjectionDeclaration>,
+    val recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    val derivedContextKeys: List<String> = emptyList(),
+    val sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
+    val checkpoint: FeatureTaskRuntimeRepositoryCheckpoint =
+      FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
+  )
+
+  private fun assemble(fixture: BriefingAssembleFixture) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseDeclaration(consumer, declarations, derivedContextKeys),
+      declaration = FeatureTaskRuntimePhaseDeclaration(
+        fixture.consumer,
+        fixture.declarations,
+        fixture.derivedContextKeys,
+      ),
       runInvariants = runInvariants(),
-      recordedOutputs = recordedOutputs,
-      repositoryCheckpoint = checkpoint,
+      recordedOutputs = fixture.recordedOutputs,
+      repositoryCheckpoint = fixture.checkpoint,
     ),
-    sharedReviewEvidence = sharedReviewEvidence,
+    sharedReviewEvidence = fixture.sharedReviewEvidence,
   )
 
   private fun phaseOutput(phaseId: String, payload: String) =

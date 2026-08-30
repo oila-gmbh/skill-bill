@@ -66,7 +66,7 @@ data class ReviewContextPacket(
     require(targetPaths.isEmpty()) { "Evidence targets name paths the packet does not own: ${targetPaths.sorted()}." }
     val targetHunks = evidenceTargets.flatMap { it.hunkIds }.filterNot { it in ownedHunks }
     require(targetHunks.isEmpty()) { "Evidence targets name hunk ids the packet does not own." }
-    requireCommitEvidence(ownedHunks)
+    ReviewContextPacketCommitEvidenceValidator.validate(this, ownedHunks)
     requireRoutingMatrix()
   }
 
@@ -95,46 +95,6 @@ data class ReviewContextPacket(
     return commitUnits.filter { it.commitSha in focused }
       .flatMap { unit -> unit.canonicalHunks.filter { it.path in ownedPaths }.map { it.hunkId } }
       .toSet()
-  }
-
-  @Suppress("CyclomaticComplexMethod")
-  private fun requireCommitEvidence(ownedHunks: Set<String>) {
-    require(commitUnits.isNotEmpty()) {
-      "A review packet is missing its commit sequence; at least one unit is required."
-    }
-    require(commitUnits.map { it.commitSha }.distinct().size == commitUnits.size) {
-      "Review packet carries a duplicate commit identity."
-    }
-    require(commitUnits.map { it.orderIndex }.sorted() == commitUnits.indices.toList()) {
-      "Review packet commit units are out of order; order indices must form a contiguous 0..n-1 sequence."
-    }
-    require(coverageFact.commitCount == commitUnits.size) {
-      "Coverage fact counts ${coverageFact.commitCount} commits but the packet carries ${commitUnits.size}."
-    }
-    val ordered = commitUnits.sortedBy { it.orderIndex }
-    if (ordered.any { it.source.isSynthetic }) {
-      require(ordered.size == 1) { "A synthetic review unit must be the only unit in its packet." }
-    } else {
-      require(ordered.first().parentSha == baseRevision) {
-        "Review packet commit chain does not start at the base revision '$baseRevision'."
-      }
-      require(ordered.last().commitSha == headRevision) {
-        "Review packet commit chain does not end at the head revision '$headRevision'."
-      }
-      ordered.zipWithNext().forEach { (previous, next) ->
-        require(next.parentSha == previous.commitSha) {
-          "Review packet commit chain is broken: '${next.commitSha}' does not descend from '${previous.commitSha}'."
-        }
-      }
-    }
-    val unitHunkIds = ordered.flatMap { it.hunkIds }
-    require(unitHunkIds.distinct().size == unitHunkIds.size) {
-      "A changed hunk is claimed by more than one commit unit; commit units must partition the packet hunks."
-    }
-    val absent = unitHunkIds.filterNot { it in ownedHunks }
-    require(absent.isEmpty()) { "A commit unit references a hunk absent from the packet changed hunks." }
-    val unowned = ownedHunks - unitHunkIds.toSet()
-    require(unowned.isEmpty()) { "Packet changed hunks are unowned by any commit unit: ${unowned.size} hunk(s)." }
   }
 
   val ownedCommitIds: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {

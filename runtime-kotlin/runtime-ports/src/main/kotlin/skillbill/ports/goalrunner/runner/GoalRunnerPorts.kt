@@ -277,82 +277,12 @@ interface GoalRunnerReviewOutcomeStore {
   fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String? = null): Boolean = false
 }
 
-@Suppress("TooManyFunctions") // single cohesive outcome boundary: terminal, review, ledger, and loop-phase reads
-interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalRunnerReviewOutcomeStore {
-
-  fun authoritativeOutcomes(issueKey: String, dbPathOverride: String? = null): Map<Int, GoalRunnerStoredOutcome> =
-    emptyMap()
-
-  // [repoRoot] is the manifest-workflowId-independent self-heal seam (SKILL-68): when supplied, a
-  // complete-without-SHA continuation child recovers its commit SHA from measured HEAD and is
-  // durably backfilled. null keeps the read-only, no-measure behavior for pure status/read callers.
-  // [gate] carries the reconciliation-policy knobs (see [GoalRunnerReconcileGate]); SKILL-87's
-  // requireStalenessEvidence lives there so finalize cannot false-kill a still-running subtask.
-  fun reconcileAuthoritativeOutcomes(
-    issueKey: String,
-    activeWorkflowIds: Set<String> = emptySet(),
-    gate: GoalRunnerReconcileGate = GoalRunnerReconcileGate(),
-    repoRoot: Path? = null,
-    dbPathOverride: String? = null,
-  ): Map<Int, GoalRunnerStoredOutcome>
-
-  fun markBlocked(
-    workflowId: String,
-    blockedReason: String,
-    lastResumableStep: String,
-    supervisionEvent: GoalRunnerSupervisionEvent? = null,
-    dbPathOverride: String? = null,
-  ): String?
-
-  fun progress(workflowId: String, dbPathOverride: String? = null): GoalRunnerWorkflowProgress?
-
-  fun recordObservabilityEvent(request: GoalRunnerObservabilityRecordRequest, dbPathOverride: String? = null): Boolean
-
-  // SKILL-64 Subtask 3 (AC21, AC25): durable declared-progress write seam.
-  fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String? = null): Boolean
-
-  /**
-   * Read side of [recordProgressEvent], sequence-ordered oldest first. Returns the retained window
-   * only; the store prunes by the same bounded-retention rule the write seam applies.
-   */
-  @OpenBoundaryMap("Durable goal progress-event artifact maps read back at the goal-runner workflow seam")
-  fun progressEvents(workflowId: String, dbPathOverride: String? = null): List<Map<String, Any?>> = emptyList()
-
-  // SKILL-64 Subtask 3 (AC10, AC11): append-only attempt/event ledger write.
-  fun recordAttemptLedgerEntry(request: GoalRunnerAttemptLedgerRecordRequest, dbPathOverride: String? = null): Boolean
-
-  fun recordWorkerSubtaskRequestOutcomes(
-    workflowId: String,
-    outcomes: List<GoalRunnerWorkerSubtaskRequestOutcome>,
-    dbPathOverride: String? = null,
-  ): Boolean
-
-  // SKILL-64 Subtask 3 (F-D01): highest persisted sequence numbers for the
-  // append-only attempt ledger across all continuation children of an issue.
-  // The goal-runner ledger recorder seeds its monotonic counter from these so
-  // a resume run does not restart at 0 and emit duplicate, non-monotonic
-  // sequences into the append-only ledger.
-  fun ledgerSequenceWatermarks(issueKey: String, dbPathOverride: String? = null): GoalRunnerLedgerSequenceWatermarks
-
-  // SKILL-142 (AC-008): loop iteration counts aggregated from the child workflow's durable phase
-  // records. Returns a map of loopId → max edgeIteration observed across all phase records that
-  // carry a backward-edge context. Used by the parent ledger recorder to account for edges
-  // completed and edges still in progress within a single child run, beyond the stop-position
-  // inference that only catches loop-only-phase stops.
-  fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String? = null): Map<String, Int> = emptyMap()
-
-  /**
-   * Operator goal resume: reopen a durably blocked child phase so the next launch continues instead
-   * of re-surfacing `needs_user_action`. Idempotent when the preferred (or any) phase is not blocked.
-   * Returns false only when the child workflow is missing or already terminal.
-   */
-  fun reopenBlockedPhaseForOperatorResume(
-    workflowId: String,
-    preferredPhaseId: String,
-    reason: String,
-    dbPathOverride: String? = null,
-  ): Boolean
-}
+interface GoalRunnerWorkflowOutcomeStore :
+  GoalRunnerTerminalOutcomeStore,
+  GoalRunnerReviewOutcomeStore,
+  GoalRunnerWorkflowProgressStore,
+  GoalRunnerWorkflowLedgerWriteStore,
+  GoalRunnerWorkflowOutcomeMutationStore
 
 // SKILL-142 (AC-011): narrow read-only port for aggregated operator metrics from the attempt ledger.
 // Kept separate from [GoalRunnerWorkflowOutcomeStore] to stay within the interface function-count
