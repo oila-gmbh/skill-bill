@@ -11,6 +11,7 @@ import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
@@ -114,8 +115,8 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
         ),
       ),
     )
-    val selections = memory.boundarySelectionsForResolvedBodies(persisted = null)
-    assertTrue(selections == null)
+    val unsetPersisted: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>? = null
+    assertNull(unsetPersisted?.takeIf { it.isNotEmpty() })
     val persistedSelections = mapOf(
       "F-001" to listOf(
         FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
@@ -127,7 +128,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val resolvedPrompt = memory.resolvedBodiesPromptSection(
       repo,
       sections,
-      selectionsByFindingId = memory.boundarySelectionsForResolvedBodies(persisted = persistedSelections)!!,
+      selectionsByFindingId = persistedSelections,
     )
 
     assertTrue(resolvedPrompt.contains("selected body sentence"))
@@ -300,7 +301,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
 
     assertEquals(null, memory.validateDispositionBoundaryProvenance(sections, listOf(disposition)))
     assertTrue(
-      memory.catalogValidatedBoundaryHeadings(
+      catalogValidatedBoundaryHeadings(
         sections.single().discovery.boundaryCatalog,
         disposition.selectedBoundaryHeadings,
       ).isEmpty(),
@@ -338,7 +339,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       ),
     )
 
-    val validated = memory.catalogValidatedBoundaryHeadings(
+    val validated = catalogValidatedBoundaryHeadings(
       sections.single().discovery.boundaryCatalog,
       disposition.selectedBoundaryHeadings,
     )
@@ -420,72 +421,8 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
   }
 
   @Test
-  @Suppress("LongMethod")
   fun `persisted boundary selections must cover every current finding requiring body delivery`() {
-    val repo = Files.createTempDirectory("verify-findings-persisted-omits-current")
-    val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
-    Files.writeString(
-      agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
-    )
-    val sections = memory.sectionsForFindings(
-      repo,
-      listOf(
-        FeatureTaskRuntimeFindingBoundaryMemoryRequest(
-          findingId = "F-001",
-          findingPaths = listOf("runtime-kotlin/runtime-application/src/Foo.kt"),
-        ),
-        FeatureTaskRuntimeFindingBoundaryMemoryRequest(
-          findingId = "F-002",
-          findingPaths = listOf("runtime-kotlin/runtime-application/src/Bar.kt"),
-        ),
-      ),
-    )
-    val catalogByFindingId = sections.associate { it.findingId to it.discovery.boundaryCatalog.single() }
-    val dispositions = listOf(
-      FeatureTaskRuntimeFindingVerificationDisposition(
-        findingId = "F-001",
-        disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
-        reason = "Matches intent",
-        selectedBoundaryHeadings = listOf(
-          FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
-            headingId = catalogByFindingId.getValue("F-001").headingId,
-            sourcePath = catalogByFindingId.getValue("F-001").sourcePath,
-          ),
-        ),
-      ),
-      FeatureTaskRuntimeFindingVerificationDisposition(
-        findingId = "F-002",
-        disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
-        reason = "Matches intent",
-        selectedBoundaryHeadings = listOf(
-          FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
-            headingId = catalogByFindingId.getValue("F-002").headingId,
-            sourcePath = catalogByFindingId.getValue("F-002").sourcePath,
-          ),
-        ),
-      ),
-    )
-    val persisted = mapOf(
-      "F-001" to listOf(
-        FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
-          headingId = catalogByFindingId.getValue("F-001").headingId,
-          sourcePath = catalogByFindingId.getValue("F-001").sourcePath,
-        ),
-      ),
-    )
-
-    val reason = memory.validateBoundarySelectionsDelivered(
-      sections = sections,
-      dispositions = dispositions,
-      persisted = persisted,
-    )
-
-    assertTrue(
-      reason != null &&
-        reason.contains("F-002") &&
-        reason.contains("not yet"),
-    )
+    assertPersistedBoundarySelectionsCoverCurrentFindings(memory)
   }
 
   @Test

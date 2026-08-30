@@ -6,8 +6,6 @@ import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.plan.ReviewAddonSelectionPolicy
-import skillbill.review.plan.ReviewContentMatcher
-import skillbill.review.plan.ReviewPathMatcher
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
@@ -52,7 +50,6 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     )
   }
 
-  @Suppress("CyclomaticComplexMethod")
   override fun resolve(
     manifest: PlatformManifest?,
     evidence: List<ReviewOwnedFileEvidence>,
@@ -62,24 +59,8 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     if (manifest == null) return resolved
     val specialist = resolved.specialists.singleOrNull { it.rubricId == specialistSkillName } ?: resolved
     val consumer = "code-review/$specialistSkillName"
-    val selections = ReviewAddonSelectionPolicy.select(manifest, specialistSkillName)
-    val selected = selections.filter { selection ->
-      val condition = requireNotNull(selection.activation) {
-        "Governed review add-on '${selection.slug}' has no structured activation."
-      }
-      val eligible = evidence.filterNot { file ->
-        condition.excludePath.any { ReviewPathMatcher.matches(file.path, it) } ||
-          condition.excludeContent.any { ReviewContentMatcher.contains(file.changedContent, it) }
-      }
-      val eligibleContent = eligible.joinToString("\n") { it.changedContent }
-      eligible.isNotEmpty() && ReviewContentMatcher.containsAll(eligibleContent, condition.allContent) &&
-        (
-          condition.anyPath.any { signal -> eligible.any { ReviewPathMatcher.matches(it.path, signal) } } ||
-            condition.anyContent.any { ReviewContentMatcher.contains(eligibleContent, it) } ||
-            condition.anyOfAllContent.any { group -> ReviewContentMatcher.containsAll(eligibleContent, group) } ||
-            (condition.anyPath.isEmpty() && condition.anyContent.isEmpty() && condition.anyOfAllContent.isEmpty())
-          )
-    }
+    val selected = ReviewAddonSelectionPolicy.select(manifest, specialistSkillName)
+      .filter { selection -> governedAddonSelectionMatches(selection, evidence) }
     if (selected.isEmpty()) return specialist
     val appended = linkedSetOf<Path>()
     val guidance = selected.flatMap { selection ->

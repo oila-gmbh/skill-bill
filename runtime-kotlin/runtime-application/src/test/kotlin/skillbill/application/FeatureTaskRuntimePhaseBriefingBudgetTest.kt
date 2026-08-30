@@ -5,6 +5,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
@@ -26,12 +27,14 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       "fixture-checkpoint",
     )
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-        .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
-      runInvariants = multiUpstreamInvariants(),
-      recordedOutputs = multiUpstreamOutputs(oversizedBytes),
-      repositoryCheckpoint = checkpoint,
-      expectedRepositoryCheckpoint = checkpoint,
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+          .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
+        runInvariants = multiUpstreamInvariants(),
+        recordedOutputs = multiUpstreamOutputs(oversizedBytes),
+        repositoryCheckpoint = checkpoint,
+        expectedRepositoryCheckpoint = checkpoint,
+      ),
     )
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff, workflowId = "wftr-1")
@@ -53,12 +56,14 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       ),
     )
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-        .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
-      runInvariants = multiUpstreamInvariants(),
-      recordedOutputs = recordedOutputs,
-      repositoryCheckpoint = checkpoint,
-      expectedRepositoryCheckpoint = checkpoint,
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+          .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
+        runInvariants = multiUpstreamInvariants(),
+        recordedOutputs = recordedOutputs,
+        repositoryCheckpoint = checkpoint,
+        expectedRepositoryCheckpoint = checkpoint,
+      ),
     )
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
@@ -73,13 +78,14 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   @Test
   fun `an undeclared recorded output is never delivered, even when it is present in state`() {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      // `implement` declares only `plan`; the recorded `review` output has no declaration.
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-        .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
-      runInvariants = multiUpstreamInvariants(),
-      recordedOutputs = listOf(
-        phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, planProjectionOutput()),
-        phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, """{"review":"undeclared"}"""),
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+          .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
+        runInvariants = multiUpstreamInvariants(),
+        recordedOutputs = listOf(
+          phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, planProjectionOutput()),
+          phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, """{"review":"undeclared"}"""),
+        ),
       ),
     )
 
@@ -157,11 +163,13 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   @Test
   fun `the rendered briefing carries no forbidden raw-context field name`() {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
-        .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
-      runInvariants = multiUpstreamInvariants(),
-      recordedOutputs = listOf(
-        phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, planProjectionOutput()),
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+          .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT),
+        runInvariants = multiUpstreamInvariants(),
+        recordedOutputs = listOf(
+          phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, planProjectionOutput()),
+        ),
       ),
     )
 

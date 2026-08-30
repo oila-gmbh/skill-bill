@@ -142,12 +142,11 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
       .apply { headCommitShaValue = "goal-child-commit" }
     val runtime = runnerHarness(
-      launcher = phaseLauncher,
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(
           gitOperations = gitOperations,
         ),
-      ),
+      ).copy(launcher = phaseLauncher),
     )
     val manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, workflowId))
     val goalRunner = testGoalRunner(
@@ -198,12 +197,11 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val outcomes = RecordingOutcomeStore().apply { seedReviewState(workflowId) }
     val phaseLauncher = auditGapLauncher(convergeOnAudit = 2)
     val runtime = runnerHarness(
-      launcher = phaseLauncher,
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(
           gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-126-goal"),
         ),
-      ),
+      ).copy(launcher = phaseLauncher),
     )
     val goalRunner = testGoalRunner(
       goalRunnerDeps(
@@ -308,8 +306,10 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   fun `goal child parses every canonical wrapper form into the same run`() {
     val observed = GOAL_CHILD_WRAPPER_FORMS.mapValues { (_, wrap) ->
       val standalone = runnerHarness(
-        launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
-        validator = CanonicalWrapperTestValidator,
+        RuntimeHarnessConfig(
+          launcher = wrappedAuditGapLauncher(convergeOnAudit = 2, wrap = wrap),
+          validator = CanonicalWrapperTestValidator,
+        ),
       )
       assertEquals(null, standalone.request().goalContinuation)
       val standaloneReport =
@@ -496,11 +496,10 @@ private fun standaloneAndGoalChildParity(
     if (headCommitShaValue.isBlank()) headCommitShaValue = "goal-child-commit"
   }
   val standalone = runnerHarness(
-    launcher = launcher(),
-    runtimeConfig = RuntimeHarnessConfig(
+    RuntimeHarnessConfig(
       branchSetup = BranchSetupTestConfig(gitOperations = standaloneGit),
       acceptanceCriteria = acceptanceCriteria,
-    ),
+    ).copy(launcher = launcher()),
   )
   val standaloneRequest = standalone.request().copy(
     requestedCodeReviewMode = codeReviewMode,
@@ -616,12 +615,10 @@ private fun goalChildParityRun(
   }
   val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
   val runtime = runnerHarness(
-    launcher = launcher,
-    validator = config.validator,
-    runtimeConfig = RuntimeHarnessConfig(
+    RuntimeHarnessConfig(
       branchSetup = BranchSetupTestConfig(gitOperations = config.gitOperations),
       acceptanceCriteria = config.acceptanceCriteria,
-    ),
+    ).copy(launcher = launcher, validator = config.validator),
   )
   val childLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes)
   val goalRunner = testGoalRunner(

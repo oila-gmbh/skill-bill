@@ -17,7 +17,7 @@ class FeatureTaskRuntimeImplementationAttemptAtomicityTest {
       failSaveWhen = { row -> row.artifactsJson.contains(FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY) }
     }
     val harness = runnerHarness(
-      launcher = convergingImplementLauncher(closeAllOnSegment = 1),
+      RuntimeHarnessConfig(launcher = convergingImplementLauncher(closeAllOnSegment = 1)),
       repository = repository,
     )
 
@@ -37,7 +37,11 @@ class FeatureTaskRuntimeImplementationAttemptAtomicityTest {
 
   @Test
   fun `an attempt that cannot be persisted reports false rather than a silent no-op`() {
-    val harness = runnerHarness(launcher = convergingImplementLauncher(closeAllOnSegment = 1))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
+        launcher = convergingImplementLauncher(closeAllOnSegment = 1),
+      ),
+    )
 
     val persisted = harness.recorder.recordIncompleteImplementationAttempt(
       FeatureTaskRuntimePhaseStateRequest(
@@ -55,7 +59,11 @@ class FeatureTaskRuntimeImplementationAttemptAtomicityTest {
 
   @Test
   fun `a completed write leaves the attempt and the advance agreeing`() {
-    val harness = runnerHarness(launcher = convergingImplementLauncher(closeAllOnSegment = 1))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
+        launcher = convergingImplementLauncher(closeAllOnSegment = 1),
+      ),
+    )
 
     val report = harness.runner.run(harness.request())
 

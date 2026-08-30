@@ -9,12 +9,12 @@ import skillbill.nativeagent.composition.parseNativeAgentSourceFile
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntriesInRoots
 import skillbill.nativeagent.validation.validateNativeAgentArtifactsForInstall
-import java.nio.file.AtomicMoveNotSupportedException
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
 
@@ -109,128 +109,71 @@ object NativeAgentOperations {
     override fun hashCode(): Int = System.identityHashCode(this)
   }
 
-  @Suppress("LongMethod", "TooGenericExceptionCaught")
   fun renderInstallArtifacts(request: NativeAgentInstallRenderRequest): NativeAgentInstallRenderResult {
-    val platformPacksRoot = request.platformPacksRoot
-    val skillsRoot = request.skillsRoot
-    val selectedPlatforms = request.selectedPlatforms
-    val provider = request.provider
-    val repoRoot = nativeAgentCompositionRepoRoot(platformPacksRoot, skillsRoot)
-    if (request.overrides.sourceRoots == null) {
-      validateNativeAgentArtifactsForInstall(platformPacksRoot, skillsRoot, selectedPlatforms)
-    } else {
-      validateNativeAgentArtifactsForInstall(request.overrides.sourceRoots, repoRoot)
-    }
+    val repoRoot = nativeAgentCompositionRepoRoot(request.platformPacksRoot, request.skillsRoot)
+    validateNativeAgentInstallSources(request, repoRoot)
     val cacheRoot = request.overrides.cacheRoot?.toAbsolutePath()?.normalize()
-      ?: installCacheRoot(request.home, platformPacksRoot, skillsRoot)
-    val providerRoot = cacheRoot.resolve(provider.directoryName)
-    val sources = request.overrides.sourceRoots
-      ?.let(::discoverNativeAgentSourceEntriesInRoots)
-      ?: discoverNativeAgentSourceEntries(platformPacksRoot, skillsRoot, selectedPlatforms)
-    val composedSources = sources.map { source -> composeNativeAgentSource(repoRoot, source) }
-    val rendered = composedSources.map { composed ->
-      RenderedAgent(
-        targetName = "${composed.name}.${provider.extension}",
-        contents = provider.render(composed).toByteArray(Charsets.UTF_8),
-      )
-    }
+      ?: installCacheRoot(request.home, request.platformPacksRoot, request.skillsRoot)
+    val providerRoot = cacheRoot.resolve(request.provider.directoryName)
+    val rendered = composeRenderedAgents(request, repoRoot)
     request.overrides.beforeMutation(cacheRoot)
     request.overrides.beforeMutation(providerRoot)
     Files.createDirectories(providerRoot)
-    val orphanCandidates = Files.list(providerRoot).use { stream ->
-      stream.filter { path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) }
-        .filter { path -> path.fileName.toString() !in rendered.map { it.targetName }.toSet() }
-        .toList()
-    }
+    val orphanCandidates = listOrphanRenderCandidates(providerRoot, rendered)
     val staging = Files.createTempDirectory(providerRoot, ".skill-bill-native-agent-render-")
     request.overrides.afterTemporaryCreation(staging)
     var result: NativeAgentInstallRenderResult? = null
     var initiatingFailure: Throwable? = null
     try {
-      rendered.forEach { entry ->
-        Files.write(staging.resolve(entry.targetName), entry.contents)
-      }
-      val generated = promoteStagedRenders(
-        providerRoot,
-        staging,
-        rendered,
-        orphanCandidates,
-        request.overrides.beforeMutation,
+      result = stageAndPromoteNativeAgentRenders(
+        NativeAgentRenderPromotionRequest(
+          providerRoot = providerRoot,
+          staging = staging,
+          rendered = rendered,
+          orphanCandidates = orphanCandidates,
+          beforeMutation = request.overrides.beforeMutation,
+          provider = request.provider,
+          cacheRoot = cacheRoot,
+        ),
       )
-      result = NativeAgentInstallRenderResult(
-        generatedFiles = generated.sortedBy { it.toString() },
-        artifacts = generated.map { path ->
-          NativeAgentRenderedArtifact(
-            logicalName = path.fileName.toString().removeSuffix(".${provider.extension}"),
-            path = path,
-            contentDigest = sha256(Files.readAllBytes(path)),
-          )
-        }.sortedBy { it.path.toString() },
-        cacheRoot = cacheRoot,
-      )
-    } catch (error: Exception) {
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: IOException) {
+      initiatingFailure = error
+    } catch (error: IllegalArgumentException) {
+      initiatingFailure = error
+    } catch (error: IllegalStateException) {
       initiatingFailure = error
     }
-    val cleanupFailure = runCatching { deleteDirectoryRecursively(staging) }.exceptionOrNull()
+    val cleanupFailure = runCatching { deleteNativeAgentRenderStaging(staging) }.exceptionOrNull()
     cleanupFailure?.let { initiatingFailure?.addSuppressed(it) }
-    initiatingFailure?.let { throw it }
-    cleanupFailure?.let { throw it }
+    val terminalFailure = initiatingFailure ?: cleanupFailure
+    terminalFailure?.let { throw it }
     return requireNotNull(result)
   }
 
-  private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
-    .digest(bytes)
-    .joinToString("") { byte -> "%02x".format(byte) }
-
-  private data class RenderedAgent(val targetName: String, val contents: ByteArray) {
-    override fun equals(other: Any?): Boolean = this === other
-    override fun hashCode(): Int = System.identityHashCode(this)
-  }
-
-  private fun promoteStagedRenders(
-    providerRoot: Path,
-    staging: Path,
-    rendered: List<RenderedAgent>,
-    orphanCandidates: List<Path>,
-    beforeMutation: (Path) -> Unit,
-  ): List<Path> {
-    Files.createDirectories(providerRoot)
-    pruneOrphanArtifacts(orphanCandidates, beforeMutation)
-    return rendered.map { entry ->
-      val target = providerRoot.resolve(entry.targetName)
-      val source = staging.resolve(entry.targetName)
-      beforeMutation(target)
-      try {
-        Files.move(
-          source,
-          target,
-          StandardCopyOption.REPLACE_EXISTING,
-          StandardCopyOption.ATOMIC_MOVE,
-        )
-      } catch (_: AtomicMoveNotSupportedException) {
-        Files.move(
-          source,
-          target,
-          StandardCopyOption.REPLACE_EXISTING,
-        )
-      }
-      target
+  private fun validateNativeAgentInstallSources(request: NativeAgentInstallRenderRequest, repoRoot: Path) {
+    if (request.overrides.sourceRoots == null) {
+      validateNativeAgentArtifactsForInstall(
+        request.platformPacksRoot,
+        request.skillsRoot,
+        request.selectedPlatforms,
+      )
+    } else {
+      validateNativeAgentArtifactsForInstall(request.overrides.sourceRoots, repoRoot)
     }
   }
 
-  private fun pruneOrphanArtifacts(orphanCandidates: List<Path>, beforeMutation: (Path) -> Unit) {
-    orphanCandidates.forEach { path ->
-      beforeMutation(path)
-      Files.deleteIfExists(path)
-    }
-  }
-
-  private fun deleteDirectoryRecursively(root: Path) {
-    if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
-      return
-    }
-    Files.walk(root).use { stream ->
-      stream.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+  private fun composeRenderedAgents(request: NativeAgentInstallRenderRequest, repoRoot: Path): List<RenderedAgent> {
+    val sources = request.overrides.sourceRoots
+      ?.let(::discoverNativeAgentSourceEntriesInRoots)
+      ?: discoverNativeAgentSourceEntries(request.platformPacksRoot, request.skillsRoot, request.selectedPlatforms)
+    return sources.map { source ->
+      val composed = composeNativeAgentSource(repoRoot, source)
+      RenderedAgent(
+        targetName = "${composed.name}.${request.provider.extension}",
+        contents = request.provider.render(composed).toByteArray(Charsets.UTF_8),
+      )
     }
   }
 

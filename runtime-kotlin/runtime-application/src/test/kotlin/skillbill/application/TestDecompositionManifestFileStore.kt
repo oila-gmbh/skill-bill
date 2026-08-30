@@ -5,9 +5,11 @@ import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.model.DecompositionManifestWriteResult
 import skillbill.application.workflow.repoRoot
+import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -90,10 +92,8 @@ internal object TestDecompositionManifestFileStore : DecompositionManifestFileSt
 internal val testDecompositionManifestValidator: DecompositionManifestValidator =
   object : DecompositionManifestValidator {
     override fun validate(manifest: Map<String, Any?>, sourceLabel: String) = Unit
-
-    @Suppress("UNCHECKED_CAST")
-    override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> = YAMLMapper()
-      .readValue(yamlText, Map::class.java) as Map<String, Any?>
+    override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
+      requireNotNull(JsonSupport.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
   }
 
 /**
@@ -128,12 +128,14 @@ internal fun writeFromWorkflowUpdate(
   artifactsPatch: Map<String, Any?>?,
   runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
 ): DecompositionManifestWriteResult? = DecompositionManifestWriter.writeFromWorkflowUpdate(
-  repoRoot = repoRoot,
-  existingArtifactsJson = existingArtifactsJson,
-  artifactsPatch = artifactsPatch,
-  validator = testDecompositionManifestValidator,
-  runtimeUpdate = runtimeUpdate,
-  fileStore = TestDecompositionManifestFileStore,
+  DecompositionManifestWorkflowProjectionInput(
+    repoRoot = repoRoot,
+    existingArtifactsJson = existingArtifactsJson,
+    validator = testDecompositionManifestValidator,
+    artifactsPatch = artifactsPatch,
+    runtimeUpdate = runtimeUpdate ?: DecompositionManifestRuntimeUpdate(),
+    fileStore = TestDecompositionManifestFileStore,
+  ),
 )
 
 internal fun writeProjectionFromWorkflowState(

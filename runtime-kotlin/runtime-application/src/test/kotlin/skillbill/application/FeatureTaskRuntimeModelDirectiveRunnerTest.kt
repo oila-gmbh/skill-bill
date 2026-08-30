@@ -18,7 +18,9 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimeModelDirectiveRunnerTest {
   @Test
   fun `matrix directives populate phase launches and started events`() {
-    val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude")),
+    )
     val matrix = ExecutionMatrix(
       agents = mapOf(
         InstallAgent.CLAUDE to mapOf(
@@ -63,7 +65,9 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
 
   @Test
   fun `cursor model directive renders model with effort bracket syntax`() {
-    val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor"))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor")),
+    )
     val matrix = ExecutionMatrix(
       agents = mapOf(
         InstallAgent.CURSOR to mapOf(
@@ -87,7 +91,9 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
 
   @Test
   fun `cursor model-only directive renders without effort brackets`() {
-    val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor"))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor")),
+    )
     val matrix = ExecutionMatrix(
       agents = mapOf(
         InstallAgent.CURSOR to mapOf(
@@ -107,7 +113,9 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
 
   @Test
   fun `the persisted launched model is the merged string cursor was actually launched with`() {
-    val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor"))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor")),
+    )
     val matrix = ExecutionMatrix(
       agents = mapOf(
         InstallAgent.CURSOR to mapOf(
@@ -142,17 +150,19 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
   @Test
   fun `a phase whose child never spawned clears the running write's model`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = null,
-          stdout = "",
-          stderr = "Error: the agent executable could not be spawned",
-          timedOut = false,
-          spawnFailed = true,
-        )
-      },
-      agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = null,
+            stdout = "",
+            stderr = "Error: the agent executable could not be spawned",
+            timedOut = false,
+            spawnFailed = true,
+          )
+        },
+        agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"),
+      ),
     )
     val matrix = ExecutionMatrix(
       agents = mapOf(
@@ -178,17 +188,19 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
   @Test
   fun `a phase blocked after its child ran keeps the model the child was launched with`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = 1,
-          stdout = "",
-          stderr = "boom",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      },
-      agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = 1,
+            stdout = "",
+            stderr = "boom",
+            timedOut = false,
+            spawnFailed = false,
+          )
+        },
+        agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"),
+      ),
     )
     val matrix = ExecutionMatrix(
       agents = mapOf(
@@ -215,17 +227,19 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
   @Test
   fun `a phase paused at a provider usage limit keeps the model the child was launched with`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = 1,
-          stdout = "",
-          stderr = "You've hit your session limit · resets 3:40am (Europe/Berlin)",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      },
-      agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = 1,
+            stdout = "",
+            stderr = "You've hit your session limit · resets 3:40am (Europe/Berlin)",
+            timedOut = false,
+            spawnFailed = false,
+          )
+        },
+        agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"),
+      ),
     )
     val matrix = ExecutionMatrix(
       agents = mapOf(
@@ -250,7 +264,9 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
 
   @Test
   fun `cursor invoked-agent route selects cursor adapter`() {
-    val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor"))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor")),
+    )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
@@ -260,8 +276,10 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
   @Test
   fun `cursor phase-agent override route selects cursor adapter`() {
     val harness = runnerHarness(
-      agentAssignment = FeatureTaskRuntimeAgentAssignment(
-        perPhaseAgentIds = mapOf("plan" to "cursor"),
+      RuntimeHarnessConfig(
+        agentAssignment = FeatureTaskRuntimeAgentAssignment(
+          perPhaseAgentIds = mapOf("plan" to "cursor"),
+        ),
       ),
     )
 
@@ -280,14 +298,15 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
   fun `cursor review phase route selects cursor adapter`() {
     var capturedAgent1 = ""
     val harness = runnerHarness(
-      agentAssignment = FeatureTaskRuntimeAgentAssignment(
-        perPhaseAgentIds = mapOf("review" to "cursor"),
-      ),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           capturedAgent1 = request.agent1Id
           FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
         },
+      ).copy(
+        agentAssignment = FeatureTaskRuntimeAgentAssignment(
+          perPhaseAgentIds = mapOf("review" to "cursor"),
+        ),
       ),
     )
 

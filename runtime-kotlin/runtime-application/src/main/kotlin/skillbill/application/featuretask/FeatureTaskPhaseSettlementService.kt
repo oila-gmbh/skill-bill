@@ -1,6 +1,9 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementAuditRequest
+import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
+import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
@@ -14,110 +17,84 @@ import java.time.Instant
 class FeatureTaskPhaseSettlementService(
   private val repository: FeatureTaskPhaseSettlementRepository,
 ) {
-  @Suppress("LongParameterList")
   @OpenBoundaryMap("MCP feature_task_phase_complete acknowledgement wire map")
-  fun complete(
-    workflowId: String,
-    phaseId: String,
-    attempt: Int,
-    value: String,
-    prompt: String? = null,
-    summary: String? = null,
-    dbPathOverride: String? = null,
-  ): Map<String, Any?> {
-    require(ProsePhaseOutputSynthesizer.isProsePhase(phaseId)) {
+  fun complete(request: FeatureTaskPhaseSettlementCompleteRequest): Map<String, Any?> {
+    require(ProsePhaseOutputSynthesizer.isProsePhase(request.phaseId)) {
       "phase_id must be a prose phase (preplan|plan|implement|audit)."
     }
-    require(phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+    require(request.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
       "Use feature_task_audit_settle for audit completions."
     }
     val envelope = ProsePhaseOutputSynthesizer.envelopeFromSettlement(
       SettlementEnvelopeRequest(
-        phaseId = phaseId,
+        phaseId = request.phaseId,
         status = "completed",
-        value = value,
-        summary = summary?.takeIf { it.any { ch -> !ch.isWhitespace() } } ?: truncateSummary(value),
-        prompt = prompt,
+        value = request.value,
+        summary = request.summary?.takeIf { it.any { ch -> !ch.isWhitespace() } } ?: truncateSummary(request.value),
+        prompt = request.prompt,
       ),
     )
     return persist(
       PersistRequest(
-        workflowId = workflowId,
-        phaseId = phaseId,
-        attempt = attempt,
+        workflowId = request.workflowId,
+        phaseId = request.phaseId,
+        attempt = request.attempt,
         kind = KIND_COMPLETE,
         envelope = envelope,
-        dbPathOverride = dbPathOverride,
+        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
 
-  @Suppress("LongParameterList")
   @OpenBoundaryMap("MCP feature_task_phase_block acknowledgement wire map")
-  fun block(
-    workflowId: String,
-    phaseId: String,
-    attempt: Int,
-    reason: String,
-    failureDisposition: String = "needs_user_action",
-    dbPathOverride: String? = null,
-  ): Map<String, Any?> {
-    require(ProsePhaseOutputSynthesizer.isProsePhase(phaseId)) {
+  fun block(request: FeatureTaskPhaseSettlementBlockRequest): Map<String, Any?> {
+    require(ProsePhaseOutputSynthesizer.isProsePhase(request.phaseId)) {
       "phase_id must be a prose phase (preplan|plan|implement|audit)."
     }
     val envelope = ProsePhaseOutputSynthesizer.envelopeFromSettlement(
       SettlementEnvelopeRequest(
-        phaseId = phaseId,
+        phaseId = request.phaseId,
         status = "blocked",
-        value = reason,
-        summary = truncateSummary(reason),
-        failureDisposition = failureDisposition,
-        verdict = if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) "gaps_found" else null,
+        value = request.reason,
+        summary = truncateSummary(request.reason),
+        failureDisposition = request.failureDisposition,
+        verdict = if (request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) "gaps_found" else null,
       ),
     )
     return persist(
       PersistRequest(
-        workflowId = workflowId,
-        phaseId = phaseId,
-        attempt = attempt,
+        workflowId = request.workflowId,
+        phaseId = request.phaseId,
+        attempt = request.attempt,
         kind = KIND_BLOCK,
         envelope = envelope,
-        dbPathOverride = dbPathOverride,
+        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
 
-  @Suppress("LongParameterList")
   @OpenBoundaryMap("MCP feature_task_audit_settle acknowledgement wire map")
-  fun auditSettle(
-    workflowId: String,
-    phaseId: String,
-    attempt: Int,
-    verdict: String,
-    value: String,
-    summary: String? = null,
-    dbPathOverride: String? = null,
-  ): Map<String, Any?> {
-    require(phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+  fun auditSettle(request: FeatureTaskPhaseSettlementAuditRequest): Map<String, Any?> {
+    require(request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
       "feature_task_audit_settle requires phase_id=audit."
     }
     val envelope = ProsePhaseOutputSynthesizer.envelopeFromSettlement(
       SettlementEnvelopeRequest(
-        phaseId = phaseId,
+        phaseId = request.phaseId,
         status = "completed",
-        value = value,
-        summary = summary?.takeIf { it.any { ch -> !ch.isWhitespace() } } ?: truncateSummary(value),
-        verdict = verdict,
+        value = request.value,
+        summary = request.summary?.takeIf { it.any { ch -> !ch.isWhitespace() } } ?: truncateSummary(request.value),
+        verdict = request.verdict,
       ),
     )
     return persist(
       PersistRequest(
-        workflowId = workflowId,
-        phaseId = phaseId,
-        attempt = attempt,
+        workflowId = request.workflowId,
+        phaseId = request.phaseId,
+        attempt = request.attempt,
         kind = KIND_AUDIT_SETTLE,
         envelope = envelope,
-        dbPathOverride = dbPathOverride,
+        dbPathOverride = request.dbPathOverride,
       ),
     )
   }
@@ -130,9 +107,8 @@ class FeatureTaskPhaseSettlementService(
     dbPathOverride: String? = null,
   ): Map<String, Any?>? {
     val settlement = repository.find(workflowId, phaseId, attempt, dbPathOverride) ?: return null
-    @Suppress("UNCHECKED_CAST")
     return JsonSupport.parseObjectOrNull(settlement.envelopeJson)
-      ?.let { JsonSupport.jsonElementToValue(it) as? Map<String, Any?> }
+      ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
   }
 
   fun clear(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String? = null): Boolean =

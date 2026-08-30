@@ -1,5 +1,3 @@
-@file:Suppress("LargeClass")
-
 package skillbill.install
 
 import skillbill.error.ContractVersionMismatchError
@@ -12,14 +10,11 @@ import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
-import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkillKind
 import skillbill.install.model.InstallTelemetryLevel
-import skillbill.install.model.InstallationTargetPaths
 import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
-import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
@@ -28,13 +23,9 @@ import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
-import skillbill.testing.seedConformingPlatformPack
-import java.io.File
 import java.io.FileNotFoundException
 import java.nio.file.Files
-import java.nio.file.LinkOption
 import java.nio.file.Path
-import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -42,20 +33,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class InstallPlanBuilderTest {
-  private val tempDirs = mutableListOf<Path>()
-
-  @AfterTest
-  fun cleanup() {
-    tempDirs.reversed().forEach { dir ->
-      if (Files.exists(dir, LinkOption.NOFOLLOW_LINKS)) {
-        Files.walk(dir).use { stream ->
-          stream.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
-        }
-      }
-    }
-  }
-
+class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
   @Test
   fun `review capable plan includes the manifest declared fallback without slug knowledge`() {
     val fixture = setupPlanFixture()
@@ -271,7 +249,9 @@ class InstallPlanBuilderTest {
     assertEquals(fixture.home.resolve("detected-claude"), plan.agents.single().path)
     assertEquals(1, plan.agents.size)
   }
+}
 
+class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() {
   @Test
   fun `all platform selection selects every discovered pack`() {
     val fixture = setupPlanFixture()
@@ -636,164 +616,5 @@ class InstallPlanBuilderTest {
     }
 
     assertContains(error.message.orEmpty(), "mcp_registration.runtime_mcp_bin")
-  }
-
-  private fun setupPlanFixture(): PlanFixture {
-    val repoRoot = Files.createTempDirectory("skillbill-install-plan-repo").also(tempDirs::add)
-    val home = Files.createTempDirectory("skillbill-install-plan-home").also(tempDirs::add)
-    seedBaseSkill(repoRoot, "bill-code-review")
-    seedBaseSkill(repoRoot, "bill-code-check")
-    seedBaseSkill(repoRoot, "bill-update-check")
-    seedPlatformPack(repoRoot, "kotlin", areaNames = listOf("architecture", "testing"))
-    seedPlatformPack(repoRoot, "kmp", areaNames = listOf("architecture", "testing"))
-    return PlanFixture(repoRoot = repoRoot, home = home)
-  }
-
-  private fun seedBaseSkill(repoRoot: Path, skillName: String) {
-    seedBaseSkillAt(repoRoot.resolve("skills"), skillName)
-  }
-
-  private fun seedBaseSkillAt(skillsRoot: Path, skillName: String) {
-    val skillDir = skillsRoot.resolve(skillName)
-    Files.createDirectories(skillDir)
-    Files.writeString(
-      skillDir.resolve("content.md"),
-      """
-      |---
-      |name: $skillName
-      |description: Test skill.
-      |---
-      |
-      |## Execution
-      |
-      |Test body.
-      |
-      """.trimMargin(),
-    )
-  }
-
-  private fun seedPlatformPack(
-    repoRoot: Path,
-    slug: String,
-    qualityCheckName: String = "bill-$slug-code-check",
-    areaNames: List<String> = listOf("architecture"),
-    pointerTarget: String? = null,
-  ) {
-    seedConformingPlatformPack(
-      repoRoot = repoRoot,
-      slug = slug,
-      qualityCheckName = qualityCheckName,
-      areaNames = areaNames.ifEmpty { listOf("architecture") },
-      baselinePointerTarget = pointerTarget,
-    )
-  }
-
-  private fun content(name: String, internalFor: String? = null): String = buildString {
-    appendLine("---")
-    appendLine("name: $name")
-    appendLine("description: Test skill.")
-    internalFor?.let { parent -> appendLine("internal-for: $parent") }
-    appendLine("---")
-    appendLine()
-    appendLine("# $name")
-    appendLine()
-    appendLine("Test body.")
-  }
-
-  private fun seedSkillClass(repoRoot: Path, skillName: String, pointers: List<String>) {
-    val classRoot = repoRoot.resolve("orchestration/skill-classes")
-    Files.createDirectories(classRoot)
-    Files.writeString(
-      classRoot.resolve("install-plan-test.yaml"),
-      """
-      |class: install-plan-test
-      |contract_version: "1.7"
-      |matchers:
-      |  - exact: $skillName
-      |pointers:
-      |${pointers.joinToString("\n") { pointer -> "  - $pointer" }}
-      |
-      """.trimMargin(),
-    )
-  }
-
-  private fun seedSupportTarget(repoRoot: Path, relativePath: String) {
-    val target = repoRoot.resolve(relativePath)
-    Files.createDirectories(target.parent)
-    Files.writeString(target, "# Support target\n")
-  }
-
-  private fun snapshotTree(root: Path): Map<String, String> {
-    if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
-      return emptyMap()
-    }
-    return Files.walk(root).use { stream ->
-      stream
-        .sorted()
-        .toList()
-        .associate { path ->
-          val relative = root.relativize(path)
-            .toString()
-            .replace(File.separatorChar, '/')
-            .ifEmpty { "." }
-          val value = when {
-            Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS) -> "<DIR>"
-            Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) -> Files.readString(path)
-            else -> "<OTHER>"
-          }
-          relative to value
-        }
-    }
-  }
-
-  private fun declareCodeReviewFallback(repoRoot: Path, slug: String) {
-    val manifest = repoRoot.resolve("platform-packs/$slug/platform.yaml")
-    Files.writeString(
-      manifest,
-      Files.readString(manifest).replace(
-        "declared_code_review_areas:",
-        "fallback_capabilities:\n  - code-review\n\ndeclared_code_review_areas:",
-      ),
-    )
-  }
-
-  private data class PlanFixture(
-    val repoRoot: Path,
-    val home: Path,
-  ) {
-    val runtimeInstallRoot: Path = home.resolve(".skill-bill/runtime")
-    val runtimeMcpBin: Path = runtimeInstallRoot.resolve("runtime-mcp/bin/runtime-mcp")
-
-    fun targetPaths(agentTargets: List<InstallAgentTarget> = emptyList()): InstallationTargetPaths =
-      InstallationTargetPaths(
-        skillsRoot = repoRoot.resolve("skills"),
-        platformPacksRoot = repoRoot.resolve("platform-packs"),
-        agentTargets = agentTargets,
-      )
-
-    fun request(
-      agentSelection: InstallAgentSelection = InstallAgentSelection(
-        mode = InstallAgentSelectionMode.MANUAL,
-        manualAgents = setOf(InstallAgent.CODEX),
-      ),
-      platformPackSelection: PlatformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.NONE),
-      telemetryLevel: InstallTelemetryLevel = InstallTelemetryLevel.ANONYMOUS,
-      targetPaths: InstallationTargetPaths = targetPaths(),
-      windowsSymlinkPreflight: WindowsSymlinkPreflight = WindowsSymlinkPreflight(
-        state = WindowsSymlinkPreflightState.NOT_WINDOWS,
-        decision = WindowsSymlinkDecision.NOT_REQUIRED,
-      ),
-    ): InstallPlanRequest = InstallPlanRequest(
-      repoRoot = repoRoot,
-      home = home,
-      agentSelection = agentSelection,
-      platformPackSelection = platformPackSelection,
-      telemetryLevel = telemetryLevel,
-      mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = runtimeMcpBin),
-      runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot),
-      targetPaths = targetPaths,
-      windowsSymlinkPreflight = windowsSymlinkPreflight,
-      environment = installTestEnvironment(home),
-    )
   }
 }

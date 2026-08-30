@@ -107,11 +107,11 @@ IDE does not own.
 ### Troubleshooting unavailable / incompatible
 
 - **Unavailable / missing executable**: ensure `skill-bill` is on `PATH` or in
-  `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, or set an absolute path in
+  `${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}`, or set an absolute path in
   **Settings | Tools | Skill Bill**. Search-path lookup merges the platform's
   shell-aware environment with the IDE process environment: a desktop-launched IDE
-  inherits the session `PATH`, which on macOS omits `~/.local/bin` and everything else
-  a shell profile adds.
+  inherits the session `PATH`, which on macOS omits the user-local bin directory
+  and everything else a shell profile adds.
 - **Unavailable / misconfigured / process failure / timeout**: verify the CLI runs
   `skill-bill work status --format json` for the open project root outside the IDE.
 - **Incompatible**: upgrade Skill Bill CLI or the plugin so IDE status

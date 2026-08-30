@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimeImplementationConvergenceTest {
   @Test
   fun `a partial implement prose advances without plan-task closure enforcement`() {
-    val harness = runnerHarness(launcher = partialImplementLauncher())
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = partialImplementLauncher()))
 
     val report = harness.runner.run(harness.request())
 
@@ -22,7 +22,7 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
 
   @Test
   fun `a retryable blocked envelope is not relabelled schema-invalid`() {
-    val harness = runnerHarness(launcher = terminalThenConvergingLauncher(status = "blocked"))
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = terminalThenConvergingLauncher(status = "blocked")))
 
     val report = harness.runner.run(harness.request())
 

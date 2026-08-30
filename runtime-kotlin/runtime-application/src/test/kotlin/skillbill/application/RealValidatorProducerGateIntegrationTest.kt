@@ -66,17 +66,18 @@ class RealValidatorProducerGateIntegrationTest {
     implementOutput: String,
     useRealPhaseOutputValidator: Boolean = false,
   ): RunnerHarness = runnerHarness(
-    launcher = RuntimeRecordingLauncher { request ->
-      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-      facts(if (phaseId == "implement") implementOutput else validJsonOutput(phaseId))
-    },
-    validator = if (useRealPhaseOutputValidator) {
-      realFeatureTaskRuntimePhaseOutputValidator
-    } else {
-      AlwaysValidValidator
-    },
-    agentAssignment = phasePerAgentAssignment(),
-    runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
+    RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator).copy(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "implement") implementOutput else validJsonOutput(phaseId))
+      },
+      validator = if (useRealPhaseOutputValidator) {
+        realFeatureTaskRuntimePhaseOutputValidator
+      } else {
+        AlwaysValidValidator
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    ),
   )
 }
 

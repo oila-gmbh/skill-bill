@@ -29,7 +29,6 @@ data class NativeAgentLinkRequest(
   val overrides: NativeAgentLinkOverrides = NativeAgentLinkOverrides(),
 )
 
-@Suppress("TooManyFunctions", "LongMethod", "TooGenericExceptionCaught")
 object InstallNativeAgentOperations {
   fun linkClaudeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome {
     val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))

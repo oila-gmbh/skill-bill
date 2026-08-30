@@ -8,11 +8,10 @@ import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.goalrunner.model.GoalRunnerWedgeFinding
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
@@ -47,7 +46,11 @@ internal class GoalRunnerChildRepairWedgeDiagnosis(
     diagnoseValidationDepth(artifacts, wedges, passed)
     diagnoseQualityGateSelection(artifacts, wedges, passed)
     diagnoseReviewBases(artifacts, repoRoot, wedges, passed)
-    diagnoseStaleBlockedOutcome(record, artifacts, issueKey, subtaskId, wedges, passed)
+    diagnoseStaleBlockedOutcome(
+      GoalRunnerStaleBlockedOutcomeContext(record, artifacts, issueKey, subtaskId),
+      wedges,
+      passed,
+    )
     diagnoseCompletedUpstreamMissingOutput(artifacts, wedges, passed)
     diagnosePhaseOutputContract(artifacts, wedges, passed)
 
@@ -189,48 +192,9 @@ internal class GoalRunnerChildRepairWedgeDiagnosis(
     }
   }
 
-  @Suppress("LongParameterList")
-  private fun diagnoseStaleBlockedOutcome(
-    record: WorkflowStateSnapshot,
-    artifacts: Map<String, Any?>,
-    issueKey: String,
-    subtaskId: Int,
-    wedges: MutableList<GoalRunnerWedgeFinding>,
-    passed: MutableList<String>,
-  ) {
-    val identity = goalContinuation(artifacts)
-      ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
-    if (identity == null) {
-      passed += PASSED_CONTINUATION_OUTCOME
-      return
-    }
-    val stored = goalContinuationOutcome(artifacts, issueKey, subtaskId, identity.suppressPr)
-      ?.takeIf { it.status == GoalRunnerTerminalStatus.BLOCKED }
-    if (stored == null) {
-      passed += PASSED_CONTINUATION_OUTCOME
-      return
-    }
-    val derived = derivedTerminalOutcomeFor(record, artifacts, identity) { null }
-    if (
-      nonCompleteStoredOutcomeIsCorroborated(
-        stored.copy(workflowId = record.workflowId),
-        derived,
-        record,
-      )
-    ) {
-      passed += PASSED_CONTINUATION_OUTCOME
-    } else {
-      wedges += GoalRunnerWedgeFinding(
-        wedgeClass = GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME,
-        field = GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME.durableField,
-        currentValue = stored.blockedReason,
-      )
-    }
-  }
-
   private fun continuationArtifact(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
-    val raw = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as? Map<*, *> ?: return null
-    @Suppress("UNCHECKED_CAST")
-    return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw as Map<String, Any?>)
+    val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
+      ?: return null
+    return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw)
   }
 }

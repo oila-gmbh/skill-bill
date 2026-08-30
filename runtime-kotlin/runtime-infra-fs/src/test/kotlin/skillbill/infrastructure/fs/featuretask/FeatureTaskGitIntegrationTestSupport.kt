@@ -17,9 +17,12 @@ import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
+import java.lang.Boolean.TYPE
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.nio.file.Path
+import java.lang.Double.TYPE as DoubleTYPE
+import java.lang.Long.TYPE as LongTYPE
 
 internal val featureTaskGitIntegrationSnapshotValidator: WorkflowSnapshotValidator =
   object : WorkflowSnapshotValidator {
@@ -118,9 +121,9 @@ private fun defaultPortReturn(method: Method): Any? = when {
   method.returnType == Void.TYPE -> null
   List::class.java.isAssignableFrom(method.returnType) -> emptyList<Any>()
   Map::class.java.isAssignableFrom(method.returnType) -> emptyMap<Any, Any>()
-  method.returnType == java.lang.Boolean.TYPE -> false
+  method.returnType == TYPE -> false
   method.returnType == Integer.TYPE -> 0
-  method.returnType == java.lang.Long.TYPE -> 0L
-  method.returnType == java.lang.Double.TYPE -> 0.0
+  method.returnType == LongTYPE -> 0L
+  method.returnType == DoubleTYPE -> 0.0
   else -> null
 }

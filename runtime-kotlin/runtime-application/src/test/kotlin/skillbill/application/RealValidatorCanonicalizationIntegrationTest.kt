@@ -13,12 +13,13 @@ class RealValidatorCanonicalizationIntegrationTest {
   @Test
   fun `value-wrapped implement prose advances with zero fix-loop attempts`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "implement") IMPLEMENT_PROSE else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
+      RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "implement") IMPLEMENT_PROSE else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), validJsonOutput("plan"))

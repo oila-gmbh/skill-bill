@@ -1,5 +1,3 @@
-@file:Suppress("SpreadOperator", "MagicNumber")
-
 package skillbill.review.context.model
 
 data class ReviewAssignment(

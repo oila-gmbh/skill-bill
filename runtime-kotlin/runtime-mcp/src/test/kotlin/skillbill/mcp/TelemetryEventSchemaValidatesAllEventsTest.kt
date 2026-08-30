@@ -48,15 +48,27 @@ class TelemetryEventSchemaValidatesAllEventsTest {
    * events (`additionalProperties: true`), only the envelope keys are
    * required.
    */
-  @Suppress("UNCHECKED_CAST")
   private fun buildRepresentativeEnvelope(eventName: String, inputSchema: Map<String, Any?>): Map<String, Any?> {
     val envelope = linkedMapOf<String, Any?>(
       "event_name" to eventName,
       "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
     )
 
-    val required = (inputSchema["required"] as? List<String>).orEmpty()
-    val properties = (inputSchema["properties"] as? Map<String, Map<String, Any?>>).orEmpty()
+    val required = (inputSchema["required"] as? List<*>)
+      ?.mapNotNull { entry -> entry as? String }
+      .orEmpty()
+    val properties = (inputSchema["properties"] as? Map<*, *>)
+      ?.mapNotNull { (key, value) ->
+        val stringKey = key as? String ?: return@mapNotNull null
+        val fieldSchema = value as? Map<*, *> ?: return@mapNotNull null
+        stringKey to fieldSchema.entries
+          .mapNotNull { (fieldKey, fieldValue) ->
+            (fieldKey as? String)?.let { typedKey -> typedKey to fieldValue }
+          }
+          .toMap()
+      }
+      ?.toMap()
+      .orEmpty()
     required.forEach { fieldName ->
       val fieldSchema = properties[fieldName] ?: mapOf("type" to "string")
       envelope[fieldName] = representativeValue(fieldSchema)
@@ -76,8 +88,6 @@ class TelemetryEventSchemaValidatesAllEventsTest {
       else -> ""
     }
   }
-
-  @Suppress("UNCHECKED_CAST")
   private fun representativeString(fieldSchema: Map<String, Any?>): String {
     val enum = fieldSchema["enum"] as? List<*>
     if (enum != null && enum.isNotEmpty()) return enum.first().toString()

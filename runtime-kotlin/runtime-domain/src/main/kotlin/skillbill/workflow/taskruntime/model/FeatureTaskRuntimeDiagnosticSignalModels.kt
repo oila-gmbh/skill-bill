@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 
 /**
@@ -100,9 +101,8 @@ fun featureTaskRuntimeDiagnosticSignalsFromWire(raw: Any?): List<FeatureTaskRunt
   val entries = raw as? List<*>
     ?: throw InvalidWorkflowStateSchemaError("Feature-task-runtime diagnostic signals must be an array.")
   return entries.map { entry ->
-    @Suppress("UNCHECKED_CAST")
     FeatureTaskRuntimeDiagnosticSignal.fromArtifactMap(
-      entry as? Map<String, Any?>
+      JsonSupport.anyToStringAnyMap(entry)
         ?: throw InvalidWorkflowStateSchemaError("Feature-task-runtime diagnostic signal must be an object."),
     )
   }

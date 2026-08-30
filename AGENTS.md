@@ -25,7 +25,7 @@ Bundled skills and packs are defaults, not the framework boundary. Teams may rep
 ## Taxonomy
 
 - `skills/` — canonical user-facing skill sources
-- `platform-packs/<platform>/` — pack roots for review and quality-check only; `addons/` flat pack-owned add-ons. No `agent/` tree: `platform-packs/` is an excluded root in `orchestration/contracts/goal-planning-discovery-exclusions.yaml`, so packs carry no boundary memory and contribute nothing to goal planning discovery. Eligible `agent/history.md` and `agent/decisions.md` reach planning as a heading catalog, never as file excerpts; bodies are delivered only for headings preplanning selected
+- `platform-packs/<platform>/` — pack roots for review and quality-check only; `addons/` flat pack-owned add-ons. Packs are excluded from goal-planning discovery; eligible `agent/history.md` and `agent/decisions.md` reach planning as a heading catalog only — bodies arrive for headings preplanning selected.
 - `orchestration/contracts/` — runtime contract schemas
 
 Naming: `bill-<capability>`; overrides `bill-<platform>-<base-capability>`; review areas `bill-<platform>-code-review-<area>`. Approved areas: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`.
@@ -42,21 +42,17 @@ Run `./install.sh` after changing source skills, renderer behavior, or support p
 
 ## Platform Packs
 
-Packs are the extension surface; routing and install read manifests, not hard-coded platform lists. Canonical shape: `orchestration/contracts/platform-pack-schema.yaml`. Schema changes land there first; `ShellContentLoader.buildPack` rejects malformed manifests via `InvalidManifestSchemaError`. Shell contract version `1.7` is pinned by `PlatformPackSchemaContractVersionTest`. Cross-field rules JSON Schema cannot express live in Kotlin under `x-coherence-checks`: slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
+Packs are the extension surface; routing and install read manifests, not hard-coded platform lists. Canonical shape: `orchestration/contracts/platform-pack-schema.yaml`. Schema changes land there first; `ShellContentLoader.buildPack` rejects malformed manifests via `InvalidManifestSchemaError`. Cross-field rules JSON Schema cannot express live in Kotlin under `x-coherence-checks`.
 
-Per-repo customization: top-level custom fields allowed; runtime-consumed fields use `x-runtime-anchored: true` (schema-to-Kotlin parity enforced by `PlatformPackSchemaAnchoredBijectionTest`); non-anchored fields flow to `PlatformManifest.customFields`; nested objects stay `additionalProperties: false`.
+Per-repo customization: top-level custom fields allowed; runtime-consumed fields use `x-runtime-anchored: true`; non-anchored fields flow to `PlatformManifest.customFields`. Product vs extension: horizontal `skills/bill-*/` and `.bill-shared` are protected; `platform-packs/<slug>/` (including shipped `kotlin`/`kmp`) are removable — no paired `skills/<platform>/` trees.
 
-Product vs extension: horizontal `skills/bill-*/` and `.bill-shared` are protected; `platform-packs/<slug>/` (including shipped `kotlin`/`kmp`) are removable — no paired `skills/<platform>/` trees; shipped removals use CLI `--allow-shipped` only.
-
-`kmp` covers Android and Kotlin Multiplatform, declaring architecture, platform-correctness, security, persistence, reliability, UI, and UX/accessibility on top of its Kotlin baseline, and routes quality checks to `bill-kmp-code-check` (no Kotlin fallback). `bill-feature-verify` remains pre-shell.
+`kmp` covers Android and Kotlin Multiplatform on the Kotlin baseline and routes quality checks to `bill-kmp-code-check` (no Kotlin fallback). `bill-feature-verify` remains pre-shell.
 
 ## Runtime Contract Schemas
 
-Every YAML under `orchestration/contracts/` is a runtime contract. New contracts: Draft 2020-12 schema in YAML → Kotlin `*_CONTRACT_VERSION` → parity test (pattern: `PlatformPackSchemaContractVersionTest`) → typed `Invalid<Contract>SchemaError` → loud-fail at every parse seam → classpath `Copy` with `inputs.file` + `doFirst {}` existence guard. Detail: `runtime-kotlin/ARCHITECTURE.md`.
+Every YAML under `orchestration/contracts/` is a runtime contract. New contracts: Draft 2020-12 schema in YAML → Kotlin `*_CONTRACT_VERSION` → parity test → typed `Invalid<Contract>SchemaError` → loud-fail at every parse seam. Detail: `runtime-kotlin/ARCHITECTURE.md`.
 
-Schema bumps loud-fail legacy records; runtime quarantines and regenerates in-band. `WorkflowRecordMapping.toSnapshot` does not validate — the next `WorkflowEngine` read rejects drift via `InvalidWorkflowStateSchemaError`.
-
-Producer-side gate: feature-task phases owning a bounded planning projection (`preplan`, `plan`, `implement`) re-enter their own fix loop when completed output fails the projection contract; gate and consumer launch share one validator; blocked/failed outputs and decompose plans bypass it.
+Schema bumps loud-fail legacy records; runtime quarantines and regenerates in-band. Producer-side gate: feature-task phases owning a bounded planning projection (`preplan`, `plan`, `implement`) re-enter their own fix loop when completed output fails the projection contract.
 
 ## Add-ons
 
@@ -68,7 +64,7 @@ Pack-owned files (not skills): flat under `platform-packs/<slug>/addons/`, lower
 
 ## Skill Authoring
 
-Scaffold with `skill-bill new` (or `--payload <file>`). Author via `skill-bill show <skill-name>` / `explain [<skill-name>]`, `fill <skill-name> --body-file <file>` or `--section <heading>`, `edit <skill-name> --section <heading>`, `validate --skill-name <skill-name>`, `render --skill-name <skill-name>`. `create-and-fill` is one content-managed skill at a time — not horizontal, pre-shell, or pack bootstrap. Kinds: `horizontal`, `platform-pack`, `add-on`. Align payloads with `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`. Scaffolding is atomic (validator/manifest/install/link failures roll back).
+Scaffold with `skill-bill new` (or `--payload <file>`). Author via `skill-bill show`, `fill`, `edit`, `validate`, and `render`. `create-and-fill` is one content-managed skill at a time. Kinds: `horizontal`, `platform-pack`, `add-on`. Align payloads with `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md`. Scaffolding is atomic (validator/manifest/install/link failures roll back).
 
 ## Adding Platforms
 
@@ -78,7 +74,7 @@ Code review: pack root + conforming manifest/`content.md`, manifest-registered p
 
 Agent-specific behavior uses injectable strategies on `AgentRunProcessRequest`, not identity branching in the process runner: `progressProbe`, `declaredProgressProbe`, `activityProbe`, `progressEmitter`, `idlePolicy` (`HEARTBEAT_EXTENDED` | `DB_PROGRESS_ONLY`). `ProcessWaitLoop` calls strategies only; new agents add a strategy constant. Crash reconciliation: `FeatureTaskRuntimeWorkerSupervisor` self-heals expired-lease rows to resumable at startup.
 
-When goal routing selects the build quality gate and the dominant platform pack declares `validation_gate.build_command`, build is one agent session that runs only that pack's `build_command` (Kotlin: `./gradlew compileKotlin`), reads that output, fixes every finding in that session, then runs `cache_bypassing_build_command` once to confirm. Build is compile/buildability proof only: no suite tests, no full check, no substitute agent-run gate. It must not run `collect_all_full_gate_command`, `./gradlew check`, `check --continue`, `skill-bill validate`, `bill-code-check`, or any other repo-root checklist. The runtime does not start another agent for repair turns. It may still run one cache-bypassing verify after the agent signals complete; remaining findings persist `findings_open` and block, and an operator resume starts one new build session. The agent must not rerun the pack build command after each individual finding, and must not launch delegated subagents. Targeted compile tasks are allowed while repairing when they are part of that same pack gate. Default standalone runs skip build (`review -> validate`); only goal children stamped for build use `review -> build -> write_history`.
+When goal routing selects the build quality gate and the dominant platform pack declares `validation_gate.build_command`, build is one agent session that runs only that pack's `build_command` (Kotlin: `./gradlew compileKotlin`), reads that output, fixes every finding in that session, then runs `cache_bypassing_build_command` once to confirm. Build is compile/buildability proof only: no suite tests, no full check, no substitute agent-run gate. Do not run `collect_all_full_gate_command`, `./gradlew check`, `check --continue`, `skill-bill validate`, `bill-code-check`, or any other repo-root checklist. The runtime does not start another agent for repair turns. It may still run one cache-bypassing verify after the agent signals complete; remaining findings persist `findings_open` and block, and an operator resume starts one new build session. Do not rerun the pack build command after each individual finding, and do not launch delegated subagents. Targeted compile tasks are allowed while repairing when they are part of that same pack gate. Default standalone runs skip build (`review -> validate`); only goal children stamped for build use `review -> build -> write_history`.
 
 ## Commit Structure (feature-task / goal subtasks)
 
@@ -94,7 +90,7 @@ Write direct, active prose; drop filler, stale phrases, praise, and repetition, 
 
 ## Testing
 
-Tests cost tokens on every future change; write few, high-value ones instead of mirroring code 1:1. Before writing any test, name the realistic bug it would catch — a concrete wrong behavior that fails this test while the rest of the suite passes; if you cannot, do not write it. Concentrate coverage on critical paths: money and quantities, data integrity and persistence atomicity, auth and tenant isolation, external contracts and serialization, concurrency and recovery, irreversible side effects — trivial glue and non-critical paths need no test. Assert observable behavior at boundaries, never implementation structure (mock-interaction verification, call ordering, duplicated implementation steps); one strong test per rule or branch, no literal-variation siblings. `bill-unit-test-value-check` is the review-time gate and its rubric is authoritative.
+Write few, high-value tests; name the realistic bug each would catch before authoring. Assert observable boundaries, not implementation structure. `bill-unit-test-value-check` is the review gate.
 
 ## Comments
 
@@ -102,35 +98,7 @@ NO COMMENTS, DON'T WRITE ANY NEW COMMENTS. NONE!!! IF YOU SEE A COMMENT - REMOVE
 
 ## Coding Conventions
 
-Authoritative detail lives in `docs/code-principles.md`. This section records the
-delivered structure after SKILL-220.
-
-**Package clustering.** Runtime Kotlin clusters by product area, not type kind.
-Application inputs and results live under `skillbill.application.<area>.model`
-(for example `featuretask`, `goalrunner`, `review`, `telemetry`). Ports split by
-concept under `skillbill.ports.*` instead of a cross-area persistence bucket.
-Workflow code splits under `skillbill.workflow.{engine,decomposition,goal,taskruntime,idestatus,specsource}`.
-Module graph and ownership: `runtime-kotlin/ARCHITECTURE.md`.
-
-**Imports.** Reference types by imported simple name in production and test Kotlin
-under `runtime-kotlin`, `intellij-plugin`, and `runtime-kotlin/build-logic`. Use
-`import … as …` for collisions. Inline fully-qualified references in expression
-position are banned except compiler-required disambiguation. KDoc, comments,
-string literals, and generated sources are keep-list exceptions. Guard:
-`InlineFqnArchitectureTest` and `PrincipleEnforcementInventory.inlineFqnPrefixes`.
-
-**File size.** Production `src/main` Kotlin files must stay at or below 500 lines
-unless listed in `PrincipleEnforcementInventory.productionLineCeilingExemptions`
-(currently empty). Test sources are out of scope for this ceiling. Guard:
-`ProductionFileLineCeilingArchitectureTest`.
-
-**Architecture enforcement (SKILL-220 subtask 7).** Six mechanical guards plus
-`PrincipleEnforcementInventory`: package clustering, production line ceiling,
-failure wire-code totality, typed parse boundaries, inline FQN ban, and
-convention reapplication (`configureKotlinJvm` ownership). Four principles
-remain review-only (comment quality, naming taste, intra-cluster relatedness,
-open capability vocabularies). Inventory and tests:
-`runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/`.
+Follow `docs/code-principles.md` for Kotlin patterns, package clustering, imports, file-size limits, and architecture guards. Mechanical enforcement lives under `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/` (`InlineFqnArchitectureTest`, `ProductionFileLineCeilingArchitectureTest`, `PrincipleEnforcementInventory`, and siblings).
 
 ## Quality Checks
 

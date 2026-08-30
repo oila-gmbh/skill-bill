@@ -80,7 +80,7 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
     var truncated = walk.incomplete || eligible.size < candidates.size
     val perFile = mutableListOf<List<GoalPlanningBoundaryHeading>>()
     for (candidate in eligible) {
-      val read = GoalPlanningRepositoryScope.readFileOrNull(
+      val read = goalPlanningReadFileOrNull(
         candidate.canonical,
         GoalPlanningContext.MAX_BOUNDARY_FILE_BYTES,
       )
@@ -151,7 +151,7 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
 
   private fun readValidationGuidance(repoRoot: Path): String {
     val canonical = GoalPlanningRepositoryScope.includedRegularFile(repoRoot, "AGENTS.md") ?: return ""
-    val read = GoalPlanningRepositoryScope.readFileOrNull(
+    val read = goalPlanningReadFileOrNull(
       canonical,
       GoalPlanningContext.MAX_VALIDATION_GUIDANCE_BYTES.toLong(),
     ) ?: return ""

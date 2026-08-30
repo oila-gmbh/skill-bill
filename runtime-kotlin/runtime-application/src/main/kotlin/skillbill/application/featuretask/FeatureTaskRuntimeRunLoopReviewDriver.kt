@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.review.RuntimeOwnedReviewMode
@@ -11,18 +10,16 @@ import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.error.UnreadableSpecIntentProjectionError
-import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
-import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 
 internal fun FeatureTaskRuntimeRunLoop.prepareRuntimeOwnedReview(
   run: PhaseRun,
@@ -162,46 +159,46 @@ internal fun FeatureTaskRuntimeRunLoop.executePreparedReviewDriver(
   }
 }
 
-internal fun FeatureTaskRuntimeRunLoop.invokeReviewDriver(request: ParallelCodeReviewRequest): ReviewDriverAttempt =
-  try {
-    ReviewDriverReady(phaseGates.reviewDriver.run(request))
-  } catch (error: DiffResolutionException) {
-    ReviewDriverFailed(
+internal fun FeatureTaskRuntimeRunLoop.invokeReviewDriver(request: ParallelCodeReviewRequest): ReviewDriverAttempt {
+  val outcome = runCatching { phaseGates.reviewDriver.run(request) }
+  val error = outcome.exceptionOrNull()
+  if (error == null) {
+    return ReviewDriverReady(outcome.getOrThrow())
+  }
+  val mapped: ReviewDriverAttempt? = when (error) {
+    is CancellationException -> null
+    is DiffResolutionException -> ReviewDriverFailed(
       "Runtime-owned review could not resolve the child-owned diff: ${error.message.orEmpty()}",
     )
-  } catch (error: UsageValidationException) {
-    ReviewDriverFailed(
+    is UsageValidationException -> ReviewDriverFailed(
       "Runtime-owned review failed: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
     )
-  } catch (error: StackDetectionException) {
-    ReviewDriverFailed(
+    is StackDetectionException -> ReviewDriverFailed(
       "Runtime-owned review failed: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
     )
-  } catch (error: ReviewContextBudgetExceededException) {
-    ReviewDriverFailed(
+    is ReviewContextBudgetExceededException -> ReviewDriverFailed(
       "Runtime-owned review exceeded a review-context budget: ${error.message.orEmpty()}",
     )
-  } catch (error: UnreadableSpecIntentProjectionError) {
-    ReviewDriverFailed(
+    is UnreadableSpecIntentProjectionError -> ReviewDriverFailed(
       "Runtime-owned review could not read the spec intent projection: ${error.message.orEmpty()}",
     )
-  } catch (error: InvalidReviewContextSchemaError) {
-    ReviewDriverFailed(
+    is InvalidReviewContextSchemaError -> ReviewDriverFailed(
       "Runtime-owned review produced an invalid review-context envelope: ${error.message.orEmpty()}",
     )
-  } catch (error: RuntimeOwnedFactUnavailable) {
-    ReviewDriverFailed(
+    is RuntimeOwnedFactUnavailable -> ReviewDriverFailed(
       "Runtime-owned review could not establish a required persistence fact: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
     )
-  } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
-    ReviewDriverFailed(
+    is Exception -> ReviewDriverFailed(
       "Runtime-owned review failed: ${error::class.simpleName}: ${error.message.orEmpty()}",
       FeatureTaskRuntimeFailureDisposition.RETRYABLE,
     )
+    else -> null
   }
+  return mapped ?: throw error
+}
 
 internal fun FeatureTaskRuntimeRunLoop.settleReviewDriverResult(
   prepared: RuntimeOwnedReviewReady,
@@ -310,45 +307,20 @@ internal fun FeatureTaskRuntimeRunLoop.settleRuntimeOwnedReview(
       ),
     )
   }
-  val normalizedOutput = acceptedOutput.normalizedOutput
-  val outputBytes = outputText.encodeToByteArray()
-  recorder.retainProducerOutput(
-    ProducerOutputEvidence(
-      workflowId = request.workflowId,
-      phaseId = run.phaseId,
-      attempt = iteration,
-      agentId = run.resolvedAgent.resolvedAgentId,
-      model = run.modelDirective?.model ?: "unspecified",
-      recordedAt = Instant.now(),
-      byteSize = outputBytes.size.toLong(),
-      sha256 = RejectedOutputDiagnosticService.sha256(outputBytes),
-      payload = outputBytes,
-      generation = state.evidenceGeneration(run.phaseId),
+  retainRuntimeOwnedReviewEvidence(run, state, iteration, outputText)
+  persistReviewCompletionOutcome(
+    PhaseReviewCompletionOutcomeArgs(
+      persistence = PhaseReviewPersistenceArgs(run, iteration, observability, fileManifest),
+      normalizedOutput = acceptedOutput.normalizedOutput,
+      acceptedOutput = acceptedOutput,
+      outputText = outputText,
     ),
-    run.request.dbPathOverride,
-  )
-  val reviewArgs = PhaseReviewPersistenceArgs(run, iteration, observability, fileManifest)
-  if (isGoalReviewRun(run)) {
-    persistGoalReviewCompletion(
-      reviewArgs,
-      normalizedOutput,
-      acceptedOutput.repairEvidence,
-    )?.let { return it }
-  } else {
-    persistStandaloneReviewCompletion(
-      reviewArgs,
-      outputText,
-      acceptedOutput,
-    )?.let { return it }
-  }
-  observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
-  return PhaseOutcome.completed(
-    FeatureTaskRuntimePhaseOutput(
-      run.phaseId,
-      iteration,
-      normalizedOutput.canonicalJson,
-      normalizedOutput,
-      acceptedOutput.repairEvidence,
-    ),
+  )?.let { return it }
+  return completeRuntimeOwnedReviewPhase(
+    run,
+    iteration,
+    observability,
+    acceptedOutput.normalizedOutput,
+    acceptedOutput,
   )
 }

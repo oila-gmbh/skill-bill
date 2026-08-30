@@ -1,5 +1,6 @@
 package skillbill.infrastructure.fs
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
@@ -160,7 +161,7 @@ private fun intactPayloadRef(
 /** An unreadable payload is a corrupt cache entry like any other: record it and re-derive. */
 private fun readPayloadText(payload: Path): String? = try {
   Files.readString(payload)
-} catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+} catch (error: IOException) {
   degraded(
     seam = "stored_payload_read",
     used = "re-derive",
@@ -194,7 +195,14 @@ private fun readEnvelope(mapper: ObjectMapper, path: Path): ObjectNode? {
   return try {
     mapper.readTree(Files.readString(path)) as? ObjectNode
       ?: degraded("stored_envelope_parse", "re-derive", "JSON object at $path", "parsed to a non-object node")
-  } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+  } catch (error: IOException) {
+    degraded(
+      seam = "stored_envelope_parse",
+      used = "re-derive",
+      expected = "JSON object at $path",
+      cause = "${error::class.simpleName.orEmpty()}: ${error.message.orEmpty()}",
+    )
+  } catch (error: JsonProcessingException) {
     degraded(
       seam = "stored_envelope_parse",
       used = "re-derive",

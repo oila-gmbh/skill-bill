@@ -16,6 +16,8 @@ import skillbill.application.goalrunner.PASSED_REVIEW_BASE
 import skillbill.application.goalrunner.PASSED_UPSTREAM_OUTPUT
 import skillbill.application.goalrunner.PASSED_VALIDATION_DEPTH
 import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosisRequest
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
@@ -24,6 +26,7 @@ import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
+import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
@@ -99,11 +102,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val diagnosis = store.diagnoseChildWedges(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      subtasks = listOf(subtask(1, workflowId)),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeDiagnosisRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        subtasks = listOf(subtask(1, workflowId)),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(1, diagnosis.wedges.size)
@@ -129,11 +134,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val diagnosis = store.diagnoseChildWedges(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      subtasks = listOf(subtask(1, workflowId)),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeDiagnosisRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        subtasks = listOf(subtask(1, workflowId)),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(1, diagnosis.wedges.size)
@@ -159,11 +166,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val diagnosis = store.diagnoseChildWedges(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      subtasks = listOf(subtask(1, workflowId)),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeDiagnosisRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        subtasks = listOf(subtask(1, workflowId)),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertTrue(diagnosis.isHealthy)
@@ -201,11 +210,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     )
     val store = repairStore(workflows, git = ReachableGit())
     val diagnosis = store.diagnoseChildWedges(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      subtasks = listOf(subtask(1, workflowId)),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeDiagnosisRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        subtasks = listOf(subtask(1, workflowId)),
+        repoRoot = Path.of("."),
+      ),
     )
     assertFalse(diagnosis.isHealthy)
     assertEquals(
@@ -256,11 +267,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit(unreachableShas = setOf(unreachable)))
 
     val diagnosis = store.diagnoseChildWedges(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      subtasks = listOf(subtask(1, workflowId)),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeDiagnosisRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        subtasks = listOf(subtask(1, workflowId)),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE, diagnosis.wedges.single().wedgeClass)
@@ -293,11 +306,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val diagnosis = store.diagnoseChildWedges(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      subtasks = listOf(subtask(1, workflowId)),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeDiagnosisRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        subtasks = listOf(subtask(1, workflowId)),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(
@@ -338,11 +353,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val diagnosis = store.diagnoseChildWedges(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      subtasks = listOf(subtask(1, workflowId)),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeDiagnosisRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        subtasks = listOf(subtask(1, workflowId)),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(
@@ -388,11 +405,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val diagnosis = store.diagnoseChildWedges(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      subtasks = listOf(subtask(1, workflowId)),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeDiagnosisRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        subtasks = listOf(subtask(1, workflowId)),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT, diagnosis.wedges.single().wedgeClass)
@@ -447,11 +466,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val diagnosis = store.diagnoseChildWedges(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      subtasks = listOf(subtask(1, workflowId)),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeDiagnosisRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        subtasks = listOf(subtask(1, workflowId)),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT, diagnosis.wedges.single().wedgeClass)
@@ -484,11 +505,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val applied = store.applyChildWedgeRepairs(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      wedgeClasses = listOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeRepairRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        wedgeClasses = listOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(1, applied.repairs.size)
@@ -538,11 +561,13 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val applied = store.applyChildWedgeRepairs(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      wedgeClasses = listOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeRepairRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        wedgeClasses = listOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(1, applied.repairs.size)
@@ -569,14 +594,16 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     saveBlockedUnsettledUpstreamChild(workflows, workflowId)
     val store = repairStore(workflows, git = ReachableGit())
     val applied = store.applyChildWedgeRepairs(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      wedgeClasses = listOf(
-        GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
-        GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
+      GoalRunnerChildWedgeRepairRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        wedgeClasses = listOf(
+          GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
+          GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
+        ),
+        repoRoot = Path.of("."),
       ),
-      repoRoot = Path.of("."),
     )
     assertEquals(2, applied.repairs.size)
     assertEquals(
@@ -643,11 +670,13 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val applied = store.applyChildWedgeRepairs(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      wedgeClasses = listOf(GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeRepairRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        wedgeClasses = listOf(GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(1, applied.repairs.size)
@@ -692,11 +721,13 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val applied = store.applyChildWedgeRepairs(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      wedgeClasses = listOf(GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeRepairRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        wedgeClasses = listOf(GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(1, applied.repairs.size)
@@ -749,11 +780,13 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     val store = repairStore(workflows, git = ReachableGit())
 
     val applied = store.applyChildWedgeRepairs(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      wedgeClasses = listOf(GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeRepairRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        wedgeClasses = listOf(GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(1, applied.repairs.size)
@@ -801,11 +834,13 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     )
 
     val applied = store.applyChildWedgeRepairs(
-      workflowId = workflowId,
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      wedgeClasses = listOf(GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE),
-      repoRoot = Path.of("."),
+      GoalRunnerChildWedgeRepairRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        wedgeClasses = listOf(GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE),
+        repoRoot = Path.of("."),
+      ),
     )
 
     assertEquals(1, applied.repairs.size)
@@ -814,10 +849,8 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     val after = decodeArtifacts(
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
-
-    @Suppress("UNCHECKED_CAST")
     val state = GoalSubtaskReviewState.fromArtifactMap(
-      after[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] as Map<String, Any?>,
+      requireNotNull(JsonSupport.anyToStringAnyMap(after[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])),
     )
     assertEquals(recovered, state.remediationBaseSha)
     assertEquals(1, state.completedPassCount)
@@ -846,11 +879,13 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
 
     val failed = runCatching {
       store.applyChildWedgeRepairs(
-        workflowId = workflowId,
-        issueKey = ISSUE_KEY,
-        subtaskId = 1,
-        wedgeClasses = listOf(GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH),
-        repoRoot = Path.of("."),
+        GoalRunnerChildWedgeRepairRequest(
+          workflowId = workflowId,
+          issueKey = ISSUE_KEY,
+          subtaskId = 1,
+          wedgeClasses = listOf(GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH),
+          repoRoot = Path.of("."),
+        ),
       )
     }
     assertTrue(failed.isFailure)

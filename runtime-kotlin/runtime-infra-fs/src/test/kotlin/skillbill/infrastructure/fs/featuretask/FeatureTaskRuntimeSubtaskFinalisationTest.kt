@@ -9,6 +9,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation
 import skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisationBlocked
 import skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisationResult
+import skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinaliseRequest
 import skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalised
 import skillbill.application.featuretask.commitShaFromPhasePayload
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
@@ -412,16 +413,18 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
       recordFailure
     },
   ).finalise(
-    identity = identity,
-    durableCommitSha = durableCommitSha,
-    sequenceNumber = sequenceNumber,
-    handoff = FeatureTaskRuntimeCommitPushHandoff(outcomeMessage = agentSubject, changedPaths = paths),
-    metadata = FeatureTaskRuntimeCheckpointMetadata(
-      phaseId = "commit_push",
-      loopId = null,
-      generation = 0,
-      branch = branch,
-      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
+    FeatureTaskRuntimeSubtaskFinaliseRequest(
+      identity = identity,
+      durableCommitSha = durableCommitSha,
+      sequenceNumber = sequenceNumber,
+      handoff = FeatureTaskRuntimeCommitPushHandoff(outcomeMessage = agentSubject, changedPaths = paths),
+      metadata = FeatureTaskRuntimeCheckpointMetadata(
+        phaseId = "commit_push",
+        loopId = null,
+        generation = 0,
+        branch = branch,
+        intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
+      ),
     ),
   )
 

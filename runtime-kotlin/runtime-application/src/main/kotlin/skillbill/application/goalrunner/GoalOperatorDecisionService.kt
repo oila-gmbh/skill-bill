@@ -15,8 +15,25 @@ class GoalOperatorDecisionService(
   private val manifestStore: GoalRunnerManifestStore,
   private val recorder: FeatureTaskRuntimePhaseRecorder,
 ) {
-  @Suppress("ReturnCount")
   fun record(request: GoalRunnerOperatorDecisionRequest): GoalRunnerOperatorDecisionResult {
+    when (val resolved = resolveChildWorkflow(request)) {
+      is ResolvedChildWorkflow.Rejected -> return resolved.result
+      is ResolvedChildWorkflow.Ok -> {
+        val auditGapPause = recorder.loadAuditGapPause(resolved.childWorkflowId, request.dbPathOverride)
+        return if (auditGapPause != null) {
+          recordAuditGapPauseDecision(request, resolved.parentWorkflowId, resolved.childWorkflowId, auditGapPause)
+        } else {
+          GoalRunnerOperatorDecisionResult.Rejected(
+            request.issueKey,
+            "Operator decisions over review remediation are removed; " +
+              "the run advances to validate after one implement_fix round.",
+          )
+        }
+      }
+    }
+  }
+
+  private fun resolveChildWorkflow(request: GoalRunnerOperatorDecisionRequest): ResolvedChildWorkflow {
     val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
     val subtask = loaded?.manifest?.subtasks?.firstOrNull { it.id == request.subtaskId }
     val workflowId = subtask?.workflowId?.takeIf(String::isNotBlank)
@@ -29,20 +46,14 @@ class GoalOperatorDecisionService(
         "Subtask ${request.subtaskId} has no child workflow to record an operator decision against."
       else -> null
     }
-    if (rejectReason != null) {
-      return GoalRunnerOperatorDecisionResult.Rejected(request.issueKey, rejectReason)
+    return if (rejectReason != null) {
+      ResolvedChildWorkflow.Rejected(GoalRunnerOperatorDecisionResult.Rejected(request.issueKey, rejectReason))
+    } else {
+      ResolvedChildWorkflow.Ok(
+        parentWorkflowId = requireNotNull(loaded).parentWorkflowId,
+        childWorkflowId = requireNotNull(workflowId),
+      )
     }
-    val parentWorkflowId = requireNotNull(loaded).parentWorkflowId
-    val childWorkflowId = requireNotNull(workflowId)
-    val auditGapPause = recorder.loadAuditGapPause(childWorkflowId, request.dbPathOverride)
-    if (auditGapPause != null) {
-      return recordAuditGapPauseDecision(request, parentWorkflowId, childWorkflowId, auditGapPause)
-    }
-    return GoalRunnerOperatorDecisionResult.Rejected(
-      request.issueKey,
-      "Operator decisions over review remediation are removed; " +
-        "the run advances to validate after one implement_fix round.",
-    )
   }
 
   private fun recordAuditGapPauseDecision(
@@ -93,4 +104,13 @@ class GoalOperatorDecisionService(
     workflowId = childWorkflowId,
     decision = request.decision.wireValue,
   )
+
+  private sealed class ResolvedChildWorkflow {
+    data class Rejected(val result: GoalRunnerOperatorDecisionResult.Rejected) : ResolvedChildWorkflow()
+
+    data class Ok(
+      val parentWorkflowId: String,
+      val childWorkflowId: String,
+    ) : ResolvedChildWorkflow()
+  }
 }

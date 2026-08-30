@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
@@ -10,7 +9,9 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
+import skillbill.contracts.logSchemaLoadFailure
 import skillbill.error.InvalidIdeStatusSchemaError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
@@ -100,6 +101,7 @@ internal const val IDE_STATUS_SCHEMA_REPO_RELATIVE_PATH: String =
   IdeStatusSchemaPaths.REPO_RELATIVE_PATH
 
 private fun loadIdeStatusSchema(): JsonSchema {
+  var failure: Throwable? = null
   try {
     val yamlText = readIdeStatusSchemaText()
     val yamlNode = YAMLMapper().readTree(yamlText)
@@ -107,17 +109,35 @@ private fun loadIdeStatusSchema(): JsonSchema {
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
       .getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
-  } catch (error: Throwable) {
-    ideStatusLog.log(
-      Level.SEVERE,
-      "Failed to load canonical IDE status schema: " +
-        "classpath='$IDE_STATUS_SCHEMA_CLASSPATH_RESOURCE' " +
-        "repoRelativePath='$IDE_STATUS_SCHEMA_REPO_RELATIVE_PATH' " +
-        "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
+  } catch (error: InvalidIdeStatusSchemaError) {
+    logSchemaLoadFailure(
+      ideStatusLog,
+      "IDE status",
+      IDE_STATUS_SCHEMA_CLASSPATH_RESOURCE,
+      IDE_STATUS_SCHEMA_REPO_RELATIVE_PATH,
       error,
     )
-    throw error
+    failure = error
+  } catch (error: IOException) {
+    logSchemaLoadFailure(
+      ideStatusLog,
+      "IDE status",
+      IDE_STATUS_SCHEMA_CLASSPATH_RESOURCE,
+      IDE_STATUS_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
+  } catch (error: JsonProcessingException) {
+    logSchemaLoadFailure(
+      ideStatusLog,
+      "IDE status",
+      IDE_STATUS_SCHEMA_CLASSPATH_RESOURCE,
+      IDE_STATUS_SCHEMA_REPO_RELATIVE_PATH,
+      error,
+    )
+    failure = error
   }
+  throw failure
 }
 
 private fun readIdeStatusSchemaText(): String {

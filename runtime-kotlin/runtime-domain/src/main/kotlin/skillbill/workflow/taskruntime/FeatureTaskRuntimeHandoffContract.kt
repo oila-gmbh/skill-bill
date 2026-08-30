@@ -1,17 +1,11 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 /**
  * Pure, deterministic resolution of the three-layer phase handoff: always-injected
@@ -69,38 +63,23 @@ object FeatureTaskRuntimeHandoffContract {
    * byte-for-byte; [reentryGapCriteria] scopes an `audit_gap` re-entry and defaults to empty;
    * upstream resolution is unchanged so a re-entered agent never selects its own inputs.
    */
-  @Suppress("LongParameterList")
-  fun assembleHandoff(
-    declaration: FeatureTaskRuntimePhaseDeclaration,
-    runInvariants: FeatureTaskRuntimeRunInvariants,
-    recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
-    drivingVerdict: FeatureTaskRuntimeVerdict? = null,
-    reentryGapCriteria: List<String> = emptyList(),
-    durablyClosedCriterionRefs: List<String> = emptyList(),
-    repairLedger: FeatureTaskRuntimeRepairLedger? = null,
-    repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
-    expectedRepositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
-    branchIdentity: String? = null,
-    baseBranch: String = "main",
-    validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
-    qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
-    priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
-  ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
-    phaseId = declaration.phaseId,
-    runInvariants = runInvariants,
-    upstreamOutputs = resolveUpstreamOutputs(declaration, recordedOutputs),
-    derivedContextKeys = declaration.derivedContextKeys,
-    projectionDeclarations = declaration.projectionDeclarations,
-    repositoryCheckpoint = repositoryCheckpoint,
-    expectedRepositoryCheckpoint = expectedRepositoryCheckpoint,
-    branchIdentity = branchIdentity,
-    baseBranch = baseBranch,
-    validationDepth = validationDepth,
-    qualityGateSelection = qualityGateSelection,
-    drivingVerdict = drivingVerdict,
-    reentryGapCriteria = reentryGapCriteria,
-    durablyClosedCriterionRefs = durablyClosedCriterionRefs,
-    repairLedger = repairLedger,
-    priorGapMemory = priorGapMemory,
-  )
+  fun assembleHandoff(request: FeatureTaskRuntimeHandoffAssemblyRequest): FeatureTaskRuntimePhaseHandoff =
+    FeatureTaskRuntimePhaseHandoff(
+      phaseId = request.declaration.phaseId,
+      runInvariants = request.runInvariants,
+      upstreamOutputs = resolveUpstreamOutputs(request.declaration, request.recordedOutputs),
+      derivedContextKeys = request.declaration.derivedContextKeys,
+      projectionDeclarations = request.declaration.projectionDeclarations,
+      repositoryCheckpoint = request.repositoryCheckpoint,
+      expectedRepositoryCheckpoint = request.expectedRepositoryCheckpoint,
+      branchIdentity = request.branchIdentity,
+      baseBranch = request.baseBranch,
+      validationDepth = request.validationDepth,
+      qualityGateSelection = request.qualityGateSelection,
+      drivingVerdict = request.drivingVerdict,
+      reentryGapCriteria = request.reentryGapCriteria,
+      durablyClosedCriterionRefs = request.durablyClosedCriterionRefs,
+      repairLedger = request.repairLedger,
+      priorGapMemory = request.priorGapMemory,
+    )
 }

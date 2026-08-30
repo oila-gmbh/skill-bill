@@ -13,6 +13,7 @@ import skillbill.config.model.PhaseModelDirective
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
@@ -248,6 +249,13 @@ internal data class PersistPhaseArgs(
   val fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
   val launched: LaunchedModelDirective? = null,
   val reviewRunId: String? = null,
+)
+
+internal data class PhaseReviewCompletionOutcomeArgs(
+  val persistence: PhaseReviewPersistenceArgs,
+  val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  val acceptedOutput: AcceptedFeatureTaskRuntimePhaseOutput,
+  val outputText: String,
 )
 
 internal data class PhaseReviewPersistenceArgs(

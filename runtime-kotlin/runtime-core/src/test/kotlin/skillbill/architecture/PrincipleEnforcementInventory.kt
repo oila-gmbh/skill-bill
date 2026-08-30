@@ -14,7 +14,9 @@ object PrincipleEnforcementInventory {
 
   val parseBoundarySites: List<ArchitectureScanSupport.ParseBoundarySite> = listOf(
     ArchitectureScanSupport.ParseBoundarySite(
-      relativePath = "runtime-infra-sqlite/src/main/kotlin/skillbill/db/workflow/GoalRunnerControlStore.kt",
+      relativePath =
+      "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/workflow/" +
+        "GoalRunnerControlStore.kt",
       functionNames = setOf(
         "decodeControlState",
         "decodeReviewPolicy",
@@ -31,7 +33,7 @@ object PrincipleEnforcementInventory {
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
+      "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
         "FeatureTaskRuntimePhaseOutputValidationModels.kt",
       functionNames = setOf(
         "fromWire",
@@ -43,39 +45,44 @@ object PrincipleEnforcementInventory {
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeHandoffSourceRef.kt",
+      "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
+        "FeatureTaskRuntimeHandoffSourceRef.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
+      "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
         "FeatureTaskRuntimeHandoffProjectionValue.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeHandoffModels.kt",
+      "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
+        "FeatureTaskRuntimeHandoffModels.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
+      "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
         "FeatureTaskRuntimeRunInvariantPromptFields.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/FeatureTaskRuntimeRepositoryCheckpoint.kt",
+      "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/model/" +
+        "FeatureTaskRuntimeRepositoryCheckpoint.kt",
       functionNames = setOf("fromWire"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-contracts/src/main/kotlin/skillbill/contracts/goalplanning/GoalVerificationBoundaryCaps.kt",
+      "runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/goalplanning/" +
+        "GoalVerificationBoundaryCaps.kt",
       functionNames = setOf("parse", "requiredPositiveInt", "requireKnownKeysOnly", "requireSupportedVersion"),
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-contracts/src/main/kotlin/skillbill/contracts/goalplanning/GoalPlanningDiscoveryExclusions.kt",
+      "runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/goalplanning/" +
+        "GoalPlanningDiscoveryExclusions.kt",
       functionNames = setOf(
         "parse",
         "requiredStringList",
@@ -87,7 +94,8 @@ object PrincipleEnforcementInventory {
     ),
     ArchitectureScanSupport.ParseBoundarySite(
       relativePath =
-      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/platformpack/ShellContentLoaderValidationGate.kt",
+      "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/platformpack/" +
+        "ShellContentLoaderValidationGate.kt",
       functionNames = setOf(
         "parseValidationGate",
         "parseValidationGateFindings",
@@ -167,9 +175,9 @@ object PrincipleEnforcementInventory {
   )
 
   val packageClusteringSourceRoots: List<String> = listOf(
-    "runtime-application/src/main/kotlin",
-    "runtime-domain/src/main/kotlin",
-    "runtime-ports/src/main/kotlin",
+    "runtime-kotlin/runtime-application/src/main/kotlin",
+    "runtime-kotlin/runtime-domain/src/main/kotlin",
+    "runtime-kotlin/runtime-ports/src/main/kotlin",
   )
 
   val conventionOwnedTestPatterns: List<Pair<String, String>> = listOf(

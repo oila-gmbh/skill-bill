@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionContext
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
@@ -17,7 +18,6 @@ import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 object FeatureTaskRuntimeHandoffProjectionValidator {
   const val COMPACT_REFERENCE_MAX_LENGTH: Int = 512
 
-  @Suppress("ThrowsCount")
   fun validate(inputs: FeatureTaskRuntimeHandoffProjectionInputs): FeatureTaskRuntimeHandoffEnvelope {
     FeatureTaskRuntimeHandoffProjectionDeclarationChecks.rejectConflictingGateReceipts(inputs)
     FeatureTaskRuntimeHandoffProjectionDeclarationChecks.rejectDuplicateProjectionNames(inputs)
@@ -80,11 +80,13 @@ internal fun rejectFeatureTaskRuntimeHandoffProjection(
   failureKind: FeatureTaskRuntimeHandoffProjectionFailureKind,
   reason: String,
 ): Nothing = throw InvalidFeatureTaskRuntimeHandoffProjectionError(
-  workflowId = inputs.workflowId,
-  consumerPhaseId = inputs.consumerPhaseId,
-  projectionName = declaration.projectionName,
-  projectionContractId = declaration.projectionContractId,
-  projectionContractVersion = declaration.projectionContractVersion,
-  failureKind = failureKind,
-  reason = reason,
+  context = InvalidFeatureTaskRuntimeHandoffProjectionContext(
+    workflowId = inputs.workflowId,
+    consumerPhaseId = inputs.consumerPhaseId,
+    projectionName = declaration.projectionName,
+    projectionContractId = declaration.projectionContractId,
+    projectionContractVersion = declaration.projectionContractVersion,
+    failureKind = failureKind,
+    reason = reason,
+  ),
 )

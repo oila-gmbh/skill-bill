@@ -1,4 +1,3 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.application
 
@@ -16,12 +15,14 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   @Test
   fun `a preplan output missing value blocks preplan and never reaches plan`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "preplan") PREPLAN_MISSING_VALUE else validJsonOutput(phaseId))
-      },
-      validator = realFeatureTaskRuntimePhaseOutputValidator,
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "preplan") PREPLAN_MISSING_VALUE else validJsonOutput(phaseId))
+        },
+        validator = realFeatureTaskRuntimePhaseOutputValidator,
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -63,11 +64,13 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     )
 
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "implement") IMPLEMENT_LEFTOVER_RECEIPT_BODY else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "implement") IMPLEMENT_LEFTOVER_RECEIPT_BODY else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -87,7 +90,7 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
   @Test
   fun `conforming preplan plan and implement outputs each advance without a retry`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
 
     val report = harness.runner.run(harness.request())
 
@@ -129,11 +132,13 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
   private fun runTerminalProducer(targetPhase: String, terminalOutput: String): ProducerBlockOutcome {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == targetPhase) terminalOutput else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == targetPhase) terminalOutput else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
     val report = harness.runner.run(harness.request())
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
@@ -160,12 +165,13 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
   ): ProducerRejectionOutcome {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == targetPhase) malformedOutput else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = runtimeConfig,
+      runtimeConfig.copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == targetPhase) malformedOutput else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     assertEquals(targetPhase, blocked.lastIncompletePhase, "the run must settle at the rejected producer")

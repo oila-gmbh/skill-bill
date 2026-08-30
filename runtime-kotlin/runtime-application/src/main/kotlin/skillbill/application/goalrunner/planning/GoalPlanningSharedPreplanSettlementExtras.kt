@@ -99,7 +99,7 @@ internal fun DefaultGoalPlanningSweep.gatherSharedContext(
   val parentSpec = manifestFileStore.readText(resolvedParentSpecPath)
   val decomposition = manifestFileStore.readText(resolvedGovernedPath(canonicalRepository, manifestGoverningPath))
   val parentSpecHash = sha256HexUtf8(parentSpec)
-  val decompositionManifestHash = GoalPlanningSharedContextPacket.immutableDecompositionHash(state.manifest)
+  val decompositionManifestHash = goalPlanningImmutableDecompositionHash(state.manifest)
   val repositoryIdentity = "repo-root-realpath-v1:$canonicalRepository"
   val planningPacket = recoveredPacket?.let(GoalPlanningSharedContextPacket::migrate)
     ?: contextDiscovery.discover(canonicalRepository).let { discovered ->

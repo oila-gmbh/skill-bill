@@ -1,5 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught", "LongMethod")
-
 package skillbill.contracts.workflow
 
 internal class YamlFlowScalarValidator(private val text: String) {

@@ -1,5 +1,3 @@
-@file:Suppress("ReturnCount")
-
 package skillbill.install.reconcile
 
 import skillbill.agentaddon.discoverAgentAddons
@@ -133,40 +131,39 @@ private fun classifySkill(
   upstreamHash: String?,
   localHash: String?,
   baselineHash: String?,
-): SkillReconciliationOutcome {
-  if (upstreamHash == null) {
-    if (localHash == null) {
-      throw ReconciliationConflictError(
-        skillRelativePath = skillRelativePath,
-        reason = "skill is present in neither the upstream nor the local source tree.",
-      )
-    }
-    return if (skillRelativePath.startsWith(AGENT_ADDONS_PREFIX)) {
-      SkillReconciliationOutcome.LocallyAuthored(
-        skillRelativePath = skillRelativePath,
-        localHash = localHash,
-        baselineHash = baselineHash,
-      )
-    } else {
-      SkillReconciliationOutcome.Prune(
-        skillRelativePath = skillRelativePath,
-        localHash = localHash,
-        baselineHash = baselineHash,
-      )
-    }
-  }
-  if (localHash == upstreamHash) {
-    return SkillReconciliationOutcome.Unchanged(
+): SkillReconciliationOutcome = when {
+  upstreamHash == null && localHash == null -> throw ReconciliationConflictError(
+    skillRelativePath = skillRelativePath,
+    reason = "skill is present in neither the upstream nor the local source tree.",
+  )
+  upstreamHash == null && localHash != null && skillRelativePath.startsWith(AGENT_ADDONS_PREFIX) ->
+    SkillReconciliationOutcome.LocallyAuthored(
+      skillRelativePath = skillRelativePath,
+      localHash = localHash,
+      baselineHash = baselineHash,
+    )
+  upstreamHash == null && localHash != null ->
+    SkillReconciliationOutcome.Prune(
+      skillRelativePath = skillRelativePath,
+      localHash = localHash,
+      baselineHash = baselineHash,
+    )
+  upstreamHash != null && localHash == upstreamHash ->
+    SkillReconciliationOutcome.Unchanged(
       skillRelativePath = skillRelativePath,
       upstreamHash = upstreamHash,
       baselineHash = baselineHash,
     )
-  }
-  return SkillReconciliationOutcome.Adopt(
+  upstreamHash != null ->
+    SkillReconciliationOutcome.Adopt(
+      skillRelativePath = skillRelativePath,
+      upstreamHash = upstreamHash,
+      localHash = localHash,
+      baselineHash = baselineHash,
+    )
+  else -> throw ReconciliationConflictError(
     skillRelativePath = skillRelativePath,
-    upstreamHash = upstreamHash,
-    localHash = localHash,
-    baselineHash = baselineHash,
+    reason = "skill reconciliation reached an unreachable state.",
   )
 }
 
@@ -218,13 +215,15 @@ private fun agentAddonEntries(roots: ReconcileSourceRoots): Map<String, Reconcil
     )
   }
 
+private const val AGENT_ADDON_HASH_FIELD_SEPARATOR: Byte = 0
+
 private fun hashAgentAddonSource(manifestPath: Path, contentPath: Path): String {
   val digest = MessageDigest.getInstance("SHA-256")
   listOf("agent-addon.yaml" to manifestPath, "content.md" to contentPath).forEach { (name, path) ->
     digest.update(name.toByteArray(Charsets.UTF_8))
-    digest.update(0)
+    digest.update(AGENT_ADDON_HASH_FIELD_SEPARATOR)
     digest.update(Files.readAllBytes(path))
-    digest.update(0)
+    digest.update(AGENT_ADDON_HASH_FIELD_SEPARATOR)
   }
   return digest.digest().take(INSTALL_CACHE_KEY_BYTES).joinToString("") { byte -> "%02x".format(byte) }
 }

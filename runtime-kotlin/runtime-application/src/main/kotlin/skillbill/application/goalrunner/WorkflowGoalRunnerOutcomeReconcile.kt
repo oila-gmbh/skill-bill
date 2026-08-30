@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.goalrunner.model.StaleRunningCandidatesBlockRequest
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
@@ -22,7 +23,6 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
   private val blockWrites: WorkflowGoalRunnerBlockWrites,
   private val terminalPersistence: WorkflowGoalRunnerOutcomeTerminalPersistence,
 ) {
-  @Suppress("LongMethod")
   fun reconcileAuthoritativeOutcomesInTransaction(
     unitOfWork: UnitOfWork,
     issueKey: String,
@@ -32,7 +32,26 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
   ): Map<Int, GoalRunnerStoredOutcome> {
     val normalizedIssueKey = issueKey.trim()
     val activeSet = activeWorkflowIds.map(String::trim).filter(String::isNotBlank).toSet()
-    loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot = null)
+    displaceStaleBlockedOutcomes(unitOfWork, normalizedIssueKey)
+    val initialCandidates = loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot)
+    persistMeasuredCompletions(unitOfWork, initialCandidates, repoRoot)
+    val initialAuthoritative = initialCandidates.authoritativeOutcomesBySubtask()
+    blockStaleRunningCandidates(
+      StaleRunningCandidatesBlockRequest(
+        unitOfWork = unitOfWork,
+        normalizedIssueKey = normalizedIssueKey,
+        candidates = initialCandidates,
+        initialAuthoritative = initialAuthoritative,
+        activeSet = activeSet,
+        gate = gate,
+      ),
+    )
+    return loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot)
+      .authoritativeOutcomesBySubtask()
+  }
+
+  private fun displaceStaleBlockedOutcomes(unitOfWork: UnitOfWork, issueKey: String) {
+    loadContinuationCandidates(unitOfWork.workflowStates, issueKey, repoRoot = null)
       .forEach { candidate ->
         terminalPersistence.displaceStaleBlockedContinuationOutcomeIfPresent(
           unitOfWork.workflowStates,
@@ -41,45 +60,37 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
           candidate.goalContinuation.subtaskId,
         )
       }
-    val initialCandidates = loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot)
-    if (repoRoot != null) {
-      initialCandidates
-        .filter { candidate -> candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE }
-        .forEach { candidate ->
-          terminalPersistence.persistMeasuredCompletion(
-            unitOfWork.workflowStates,
-            candidate.snapshot.workflowId,
-            candidate.goalContinuation.issueKey,
-            candidate.goalContinuation.subtaskId,
-            requireNotNull(candidate.outcome),
-          )
-        }
-    }
-    val initialAuthoritative = initialCandidates.authoritativeOutcomesBySubtask()
-    initialCandidates
+  }
+
+  private fun persistMeasuredCompletions(
+    unitOfWork: UnitOfWork,
+    candidates: List<GoalContinuationCandidate>,
+    repoRoot: Path?,
+  ) {
+    if (repoRoot == null) return
+    candidates
+      .filter { candidate -> candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE }
+      .forEach { candidate ->
+        terminalPersistence.persistMeasuredCompletion(
+          unitOfWork.workflowStates,
+          candidate.snapshot.workflowId,
+          candidate.goalContinuation.issueKey,
+          candidate.goalContinuation.subtaskId,
+          requireNotNull(candidate.outcome),
+        )
+      }
+  }
+
+  private fun blockStaleRunningCandidates(request: StaleRunningCandidatesBlockRequest) {
+    request.candidates
       .filter { candidate ->
-        if (candidate.snapshot.workflowStatus != "running") {
-          return@filter false
-        }
-        if (candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE) {
-          return@filter false
-        }
-        val authoritative = initialAuthoritative[candidate.goalContinuation.subtaskId]
-        val inactive = candidate.snapshot.workflowId !in activeSet
-        val supersededByAuthoritative = authoritative?.status == GoalRunnerTerminalStatus.COMPLETE &&
-          authoritative.workflowId != candidate.snapshot.workflowId
-        val staleByInactivity = if (gate.requireStalenessEvidence) {
-          inactive && candidateIsStale(candidate)
-        } else {
-          gate.allowInactiveReconciliation && inactive
-        }
-        staleByInactivity || supersededByAuthoritative
+        isStaleRunningCandidate(candidate, request.initialAuthoritative, request.activeSet, request.gate)
       }
       .forEach { stale ->
-        val authoritative = initialAuthoritative[stale.goalContinuation.subtaskId]
+        val authoritative = request.initialAuthoritative[stale.goalContinuation.subtaskId]
         val blockedReason = staleRunningReason(
           staleWorkflowId = stale.snapshot.workflowId,
-          issueKey = normalizedIssueKey,
+          issueKey = request.normalizedIssueKey,
           subtaskId = stale.goalContinuation.subtaskId,
           authoritative = authoritative,
         )
@@ -89,13 +100,31 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
             record = stale.snapshot,
             blockedReason = blockedReason,
             lastResumableStep = stale.snapshot.currentStepId,
-            workflowStates = unitOfWork.workflowStates,
+            workflowStates = request.unitOfWork.workflowStates,
             supervisionEvent = null,
           ),
         )
       }
-    return loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot)
-      .authoritativeOutcomesBySubtask()
+  }
+
+  private fun isStaleRunningCandidate(
+    candidate: GoalContinuationCandidate,
+    initialAuthoritative: Map<Int, GoalRunnerStoredOutcome>,
+    activeSet: Set<String>,
+    gate: GoalRunnerReconcileGate,
+  ): Boolean {
+    if (candidate.snapshot.workflowStatus != "running") return false
+    if (candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE) return false
+    val authoritative = initialAuthoritative[candidate.goalContinuation.subtaskId]
+    val inactive = candidate.snapshot.workflowId !in activeSet
+    val supersededByAuthoritative = authoritative?.status == GoalRunnerTerminalStatus.COMPLETE &&
+      authoritative.workflowId != candidate.snapshot.workflowId
+    val staleByInactivity = if (gate.requireStalenessEvidence) {
+      inactive && candidateIsStale(candidate)
+    } else {
+      gate.allowInactiveReconciliation && inactive
+    }
+    return staleByInactivity || supersededByAuthoritative
   }
 
   fun loadContinuationCandidates(

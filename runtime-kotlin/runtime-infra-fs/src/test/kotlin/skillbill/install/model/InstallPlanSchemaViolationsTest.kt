@@ -19,62 +19,68 @@ import kotlin.test.assertFailsWith
  * the test exercises the validator in isolation from the builder.
  */
 class InstallPlanSchemaViolationsTest {
-  private fun validBaseWireMap(): MutableMap<String, Any?> = linkedMapOf(
-    "status" to "planned",
-    "contract_version" to INSTALL_PLAN_CONTRACT_VERSION,
-    "agents" to mutableListOf<Map<String, Any?>>(
-      linkedMapOf(
-        "agent" to "codex",
-        "path" to "/home/user/.codex/skills",
-        "source" to "manual",
-      ),
-    ),
-    "platform_packs" to listOf(
-      linkedMapOf(
-        "slug" to "kotlin",
-        "pack_root" to "/repo/platform-packs/kotlin",
-        "selected" to false,
-      ),
-    ),
-    "selected_platforms" to emptyList<String>(),
-    "skills" to mutableListOf<MutableMap<String, Any?>>(
+  private class ValidInstallPlanFixture {
+    val skills: MutableList<MutableMap<String, Any?>> = mutableListOf(
       linkedMapOf(
         "name" to "bill-code-review",
         "kind" to "base",
         "platform" to null,
         "source_dir" to "/repo/skills/bill-code-review",
       ),
-    ),
-    "staging_root" to "/home/user/.skill-bill/installed-skills",
-    "staging" to mutableListOf<MutableMap<String, Any?>>(
+    )
+    val staging: MutableList<MutableMap<String, Any?>> = mutableListOf(
       linkedMapOf(
         "skill_name" to "bill-code-review",
         "source_dir" to "/repo/skills/bill-code-review",
         "staging_dir" to "/home/user/.skill-bill/installed-skills/bill-code-review-abcdef",
         "content_hash" to "abcdef",
       ),
-    ),
-    "telemetry_level" to "anonymous",
-    "mcp_registration" to linkedMapOf(
-      "register" to true,
-      "runtime_mcp_bin" to "/home/user/.skill-bill/runtime/runtime-mcp/bin/runtime-mcp",
-      "agents" to listOf("codex"),
-    ),
-    "runtime_distribution" to linkedMapOf(
-      "runtime_install_root" to "/home/user/.skill-bill/runtime",
-      "runtime_cli_build_dir" to null,
-      "runtime_mcp_build_dir" to null,
-      "runtime_cli_install_dir" to null,
-      "runtime_mcp_install_dir" to null,
-      "runtime_launcher_bin_dir" to null,
-    ),
-    "windows_symlink_preflight" to linkedMapOf(
-      "state" to "not_windows",
-      "decision" to "not_required",
-      "message" to "",
-    ),
-    "replace_existing_skill_bill_links" to false,
-  )
+    )
+    val wireMap: MutableMap<String, Any?> = linkedMapOf(
+      "status" to "planned",
+      "contract_version" to INSTALL_PLAN_CONTRACT_VERSION,
+      "agents" to mutableListOf<Map<String, Any?>>(
+        linkedMapOf(
+          "agent" to "codex",
+          "path" to "/home/user/.codex/skills",
+          "source" to "manual",
+        ),
+      ),
+      "platform_packs" to listOf(
+        linkedMapOf(
+          "slug" to "kotlin",
+          "pack_root" to "/repo/platform-packs/kotlin",
+          "selected" to false,
+        ),
+      ),
+      "selected_platforms" to emptyList<String>(),
+      "skills" to skills,
+      "staging_root" to "/home/user/.skill-bill/installed-skills",
+      "staging" to staging,
+      "telemetry_level" to "anonymous",
+      "mcp_registration" to linkedMapOf(
+        "register" to true,
+        "runtime_mcp_bin" to "/home/user/.skill-bill/runtime/runtime-mcp/bin/runtime-mcp",
+        "agents" to listOf("codex"),
+      ),
+      "runtime_distribution" to linkedMapOf(
+        "runtime_install_root" to "/home/user/.skill-bill/runtime",
+        "runtime_cli_build_dir" to null,
+        "runtime_mcp_build_dir" to null,
+        "runtime_cli_install_dir" to null,
+        "runtime_mcp_install_dir" to null,
+        "runtime_launcher_bin_dir" to null,
+      ),
+      "windows_symlink_preflight" to linkedMapOf(
+        "state" to "not_windows",
+        "decision" to "not_required",
+        "message" to "",
+      ),
+      "replace_existing_skill_bill_links" to false,
+    )
+  }
+
+  private fun validBaseWireMap(): MutableMap<String, Any?> = ValidInstallPlanFixture().wireMap
 
   @Test
   fun `valid base wire map passes validation`() {
@@ -85,13 +91,12 @@ class InstallPlanSchemaViolationsTest {
 
   @Test
   fun `unknown skill kind value fails validation with skills field path`() {
-    val wireMap = validBaseWireMap()
+    val fixture = ValidInstallPlanFixture()
+    fixture.skills[0]["kind"] = "bogus_kind"
 
-    @Suppress("UNCHECKED_CAST")
-    val skills = wireMap["skills"] as MutableList<MutableMap<String, Any?>>
-    skills[0]["kind"] = "bogus_kind"
-
-    val error = assertFailsWith<InvalidInstallPlanSchemaError> { InstallPlanSchemaValidator.validate(wireMap) }
+    val error = assertFailsWith<InvalidInstallPlanSchemaError> {
+      InstallPlanSchemaValidator.validate(fixture.wireMap)
+    }
     assertContains(error.fieldPath, "skills")
     assertContains(error.fieldPath, "kind")
   }
@@ -132,13 +137,12 @@ class InstallPlanSchemaViolationsTest {
 
   @Test
   fun `invalid path shape empty string for staging source_dir fails validation`() {
-    val wireMap = validBaseWireMap()
+    val fixture = ValidInstallPlanFixture()
+    fixture.staging[0]["source_dir"] = ""
 
-    @Suppress("UNCHECKED_CAST")
-    val staging = wireMap["staging"] as MutableList<MutableMap<String, Any?>>
-    staging[0]["source_dir"] = ""
-
-    val error = assertFailsWith<InvalidInstallPlanSchemaError> { InstallPlanSchemaValidator.validate(wireMap) }
+    val error = assertFailsWith<InvalidInstallPlanSchemaError> {
+      InstallPlanSchemaValidator.validate(fixture.wireMap)
+    }
     assertContains(error.fieldPath, "staging")
     assertContains(error.fieldPath, "source_dir")
   }

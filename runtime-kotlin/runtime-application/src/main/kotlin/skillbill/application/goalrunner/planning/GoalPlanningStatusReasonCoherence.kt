@@ -65,7 +65,7 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
     val currentParentSpec = manifestFileStore.readText(parentSpecPath)
     val current = GoalPlanningContractProvenance(
       parentSpecHash = sha256HexUtf8(currentParentSpec),
-      decompositionManifestHash = GoalPlanningSharedContextPacket.immutableDecompositionHash(request.manifest),
+      decompositionManifestHash = goalPlanningImmutableDecompositionHash(request.manifest),
       planningContractId = GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
     )
     val packetParentSpec = planningPacketParentSpec(existing)

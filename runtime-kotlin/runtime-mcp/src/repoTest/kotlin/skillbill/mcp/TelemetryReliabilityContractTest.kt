@@ -7,6 +7,7 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.error.InvalidTelemetryEventSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
+import skillbill.infrastructure.sqlite.review.ReviewFinishedPayloadBuildRequest
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
@@ -406,10 +407,12 @@ class TelemetryReliabilityContractTest {
         put("contract_version", TELEMETRY_EVENT_CONTRACT_VERSION)
         putAll(
           ReviewStatsRuntime.buildReviewFinishedPayload(
-            connection = connection,
-            reviewRunId = review.reviewRunId,
-            level = "full",
-            routedSkillPlatformSlugs = mapOf("bill-kmp-code-review" to "kmp"),
+            ReviewFinishedPayloadBuildRequest(
+              connection = connection,
+              reviewRunId = review.reviewRunId,
+              level = "full",
+              routedSkillPlatformSlugs = mapOf("bill-kmp-code-review" to "kmp"),
+            ),
           ).toReviewFinishedTelemetryPayload().toPayload(),
         )
       }

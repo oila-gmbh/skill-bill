@@ -5,8 +5,13 @@ import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.install.model.AgentLauncherCli
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.agentLauncherUnavailableMessage
+import skillbill.launcher.process.AgentRunProcessEnvironmentFields
+import skillbill.launcher.process.AgentRunProcessLaunchFields
+import skillbill.launcher.process.AgentRunProcessProbeFields
 import skillbill.launcher.process.AgentRunProcessRequest
+import skillbill.launcher.process.AgentRunProcessReviewFields
 import skillbill.launcher.process.AgentRunProcessRunner
+import skillbill.launcher.process.AgentRunProcessTimingFields
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -122,27 +127,37 @@ class ProcessAgentRunAdapter(
     )
 
   private fun processRequest(command: AgentRunCommand, request: SkillRunRequest) = AgentRunProcessRequest(
-    command = command.command,
-    workingDirectory = command.workingDirectory,
-    timeout = command.timeout,
-    stdinText = command.stdinText,
-    progressIdleTimeout = request.progressIdleTimeout,
-    operationDeadline = request.timeout,
-    progressProbe = request.progressProbe,
-    declaredProgressProbe = request.declaredProgressProbe,
-    mcpStartupProbe = request.mcpStartupProbe,
-    progressEmitter = request.progressEmitter,
-    activityProbe = WorktreeActivityProbe(command.workingDirectory),
-    environment = command.environment,
-    inheritEnvironment = command.inheritEnvironment,
-    environmentPassthroughKeys = command.environmentPassthroughKeys,
-    outputSink = request.outputSink,
-    idlePolicy = command.idlePolicy,
-    conversationIsolation = command.conversationIsolation,
-    reviewEvidenceBroker = request.reviewEvidenceBroker,
-    nativeReviewOperations = request.nativeReviewOperations,
-    reviewEvidenceEndpoint = request.reviewEvidenceEndpoint,
-    spawnAuthorization = request.spawnAuthorization,
+    launch = AgentRunProcessLaunchFields(
+      command = command.command,
+      workingDirectory = command.workingDirectory,
+      stdinText = command.stdinText,
+      outputSink = request.outputSink,
+    ),
+    timing = AgentRunProcessTimingFields(
+      timeout = command.timeout,
+      progressIdleTimeout = request.progressIdleTimeout,
+      operationDeadline = request.timeout,
+    ),
+    probes = AgentRunProcessProbeFields(
+      progressProbe = request.progressProbe,
+      declaredProgressProbe = request.declaredProgressProbe,
+      mcpStartupProbe = request.mcpStartupProbe,
+      progressEmitter = request.progressEmitter,
+      activityProbe = WorktreeActivityProbe(command.workingDirectory),
+      idlePolicy = command.idlePolicy,
+    ),
+    environmentFields = AgentRunProcessEnvironmentFields(
+      environment = command.environment,
+      inheritEnvironment = command.inheritEnvironment,
+      environmentPassthroughKeys = command.environmentPassthroughKeys,
+    ),
+    review = AgentRunProcessReviewFields(
+      conversationIsolation = command.conversationIsolation,
+      reviewEvidenceBroker = request.reviewEvidenceBroker,
+      nativeReviewOperations = request.nativeReviewOperations,
+      reviewEvidenceEndpoint = request.reviewEvidenceEndpoint,
+      spawnAuthorization = request.spawnAuthorization,
+    ),
   )
 
   private fun childSessionId(agent: InstallAgent, request: SkillRunRequest, workingDirectory: Path): String =

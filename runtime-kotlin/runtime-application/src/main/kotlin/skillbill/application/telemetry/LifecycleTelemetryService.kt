@@ -7,33 +7,25 @@ import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest
 import skillbill.application.telemetry.model.FeatureVerifyStartedRequest
-import skillbill.application.telemetry.model.GoalFinishedRequest
-import skillbill.application.telemetry.model.GoalIssueFinishedRequest
-import skillbill.application.telemetry.model.GoalStartedRequest
-import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
 import skillbill.application.telemetry.model.QualityCheckFinishedRequest
 import skillbill.application.telemetry.model.QualityCheckStartedRequest
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.review.normalizeRoutedSkill
-import skillbill.review.normalizeStackLabel
-import skillbill.telemetry.model.TelemetrySettings
 
 @Inject
-@Suppress("TooManyFunctions")
 class LifecycleTelemetryService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
-) : GoalLifecycleTelemetryEmitter {
+) : GoalLifecycleTelemetryEmitter by LifecycleTelemetryGoalEmission(database, settingsProvider) {
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun featureTaskRuntimeStarted(
     request: FeatureTaskRuntimeStartedRequest,
     dbOverride: String? = null,
   ): Map<String, Any?> {
     val sessionId = request.sessionId.ifBlank { generateLifecycleSessionId("ftr") }
-    return enabledStandaloneResult(sessionId) { settings ->
+    return enabledStandaloneResult(settingsProvider, sessionId) { settings ->
       database.transaction(dbOverride) { unitOfWork ->
         unitOfWork.lifecycleTelemetry.featureTaskRuntimeStarted(request.toRecord(sessionId), settings.level)
       }
@@ -44,7 +36,7 @@ class LifecycleTelemetryService(
   fun featureTaskRuntimeFinished(
     request: FeatureTaskRuntimeFinishedRequest,
     dbOverride: String? = null,
-  ): Map<String, Any?> = enabledStandaloneResult(request.sessionId) { settings ->
+  ): Map<String, Any?> = enabledStandaloneResult(settingsProvider, request.sessionId) { settings ->
     val reconciledRequest = request.reconcileBlockedRuntimeFields()
     database.transaction(dbOverride) { unitOfWork ->
       unitOfWork.lifecycleTelemetry.featureTaskRuntimeFinished(reconciledRequest.toRecord(), settings.level)
@@ -60,7 +52,7 @@ class LifecycleTelemetryService(
       else ->
         validateQualityCheckStarted(normalizedRequest)
           ?.let { lifecycleErrorPayload(sessionId, it) }
-          ?: enabledStandaloneResult(sessionId) { settings ->
+          ?: enabledStandaloneResult(settingsProvider, sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
               unitOfWork.lifecycleTelemetry.qualityCheckStarted(
                 normalizedRequest.toRecord(sessionId),
@@ -80,7 +72,7 @@ class LifecycleTelemetryService(
         normalizedRequest.orchestrated ->
           normalizedRequest.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
         else ->
-          enabledStandaloneResult(normalizedRequest.sessionId) { settings ->
+          enabledStandaloneResult(settingsProvider, normalizedRequest.sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
               unitOfWork.lifecycleTelemetry.qualityCheckFinished(
                 normalizedRequest.toRecord(),
@@ -97,7 +89,7 @@ class LifecycleTelemetryService(
     return when {
       request.orchestrated -> orchestratedStartedSkippedPayload()
       else ->
-        enabledStandaloneResult(sessionId) { settings ->
+        enabledStandaloneResult(settingsProvider, sessionId) { settings ->
           database.transaction(null) { unitOfWork ->
             unitOfWork.lifecycleTelemetry.featureVerifyStarted(request.toRecord(sessionId), settings.level)
           }
@@ -112,7 +104,7 @@ class LifecycleTelemetryService(
       ?: when {
         request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
         else ->
-          enabledStandaloneResult(request.sessionId) { settings ->
+          enabledStandaloneResult(settingsProvider, request.sessionId) { settings ->
             database.transaction(null) { unitOfWork ->
               unitOfWork.lifecycleTelemetry.featureVerifyFinished(request.toRecord(), settings.level)
             }
@@ -125,114 +117,14 @@ class LifecycleTelemetryService(
     return when {
       request.orchestrated -> request.orchestratedPayload(telemetryLevelOrAnonymous(settingsProvider))
       else ->
-        enabledStandaloneResult(sessionId) { settings ->
+        enabledStandaloneResult(settingsProvider, sessionId) { settings ->
           database.transaction(null) { unitOfWork ->
             unitOfWork.lifecycleTelemetry.prDescriptionGenerated(request.toRecord(sessionId), settings.level)
           }
         }
     }
   }
-
-  override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) {
-    enabledStandaloneResult(request.workflowId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
-        unitOfWork.lifecycleTelemetry.goalStarted(request.toRecord(), settings.level)
-      }
-    }
-  }
-
-  override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) {
-    enabledStandaloneResult(request.workflowId) { settings ->
-      val reconciledRequest = request.reconcileBlockedReason()
-      database.transaction(dbOverride) { unitOfWork ->
-        unitOfWork.lifecycleTelemetry.goalSubtaskFinished(reconciledRequest.toRecord(), settings.level)
-      }
-    }
-  }
-
-  override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) {
-    enabledStandaloneResult(request.workflowId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
-        unitOfWork.lifecycleTelemetry.goalFinished(request.toRecord(), settings.level)
-      }
-    }
-  }
-
-  override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) {
-    enabledStandaloneResult(request.parentWorkflowId) { settings ->
-      database.transaction(dbOverride) { unitOfWork ->
-        unitOfWork.lifecycleTelemetry.goalIssueFinished(request.toRecord(), settings.level)
-      }
-    }
-  }
-
-  private fun enabledStandaloneResult(sessionId: String, action: (TelemetrySettings) -> Unit): Map<String, Any?> =
-    enabledStandaloneResult(settingsProvider, sessionId, action)
 }
 
 internal fun telemetryLevelOrAnonymous(settingsProvider: TelemetrySettingsProvider): String =
   telemetrySettingsOrNull(settingsProvider)?.level ?: "anonymous"
-
-private fun enabledStandaloneResult(
-  settingsProvider: TelemetrySettingsProvider,
-  sessionId: String,
-  action: (TelemetrySettings) -> Unit,
-): Map<String, Any?> {
-  val settings = telemetrySettingsOrNull(settingsProvider)
-  return if (settings?.enabled == true) {
-    action(settings)
-    lifecycleOkPayload(sessionId)
-  } else {
-    lifecycleSkippedPayload(sessionId)
-  }
-}
-
-private fun FeatureTaskRuntimeFinishedRequest.reconcileBlockedRuntimeFields(): FeatureTaskRuntimeFinishedRequest {
-  if (completionStatus != "blocked") {
-    return this
-  }
-  return copy(
-    lastIncompletePhase = lastIncompletePhase.takeIf(String::isNotBlank) ?: phaseOutcomes.firstIncompletePhase(),
-    blockedReason = normalizedBlockedReason(
-      reason = blockedReason,
-      category = "runtime",
-      fallback = "Feature-task-runtime blocked without a specific reason.",
-    ),
-  )
-}
-
-private fun Map<String, String>.firstIncompletePhase(): String =
-  entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
-
-private fun QualityCheckStartedRequest.normalizedLabels(): QualityCheckStartedRequest {
-  val stack = normalizeStackLabel(detectedStack)
-  return copy(
-    routedSkill = normalizeRoutedSkill(routedSkill),
-    detectedStack = stack.stack,
-    fallback = fallback || stack.fallback,
-    fallbackReason = fallbackReason ?: stack.fallbackReason,
-  )
-}
-
-private fun QualityCheckFinishedRequest.normalizedLabels(): QualityCheckFinishedRequest {
-  val stack = normalizeStackLabel(detectedStack)
-  return copy(
-    routedSkill = normalizeRoutedSkill(routedSkill),
-    detectedStack = stack.stack,
-    fallback = fallback || stack.fallback,
-    fallbackReason = fallbackReason ?: stack.fallbackReason,
-  )
-}
-
-private fun GoalSubtaskFinishedRequest.reconcileBlockedReason(): GoalSubtaskFinishedRequest {
-  if (status != "blocked") {
-    return this
-  }
-  return copy(
-    blockedReason = normalizedBlockedReason(
-      reason = blockedReason,
-      category = "runtime",
-      fallback = "Goal subtask $subtaskId is blocked.",
-    ),
-  )
-}

@@ -18,20 +18,13 @@ internal class GoalRunnerAcceptanceCoordinator(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val gitOperations: WorkflowGitOperations,
 ) {
-  @Suppress("ReturnCount")
   fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptResult {
-    if (!request.restoreAfterHardReset) {
-      return rejected(
-        request,
-        "Out-of-band accept is disabled. Repair or resume the child through the runtime; " +
-          "accepting past an incomplete or blocked subtask is not supported. " +
-          "Only --restore-after-hard-reset remains for recoveries that hard reset discarded.",
-      )
+    val rejection = acceptanceRejection(request)
+    if (rejection != null) {
+      return GoalRunnerAcceptResult.Rejected(request.issueKey, rejection)
     }
-    val loaded = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
-      ?: return rejected(request, "No prepared goal exists for '${request.issueKey}'.")
-    val repoRoot = request.repoRoot
-      ?: return rejected(request, "A repository root is required to verify the accepted commit.")
+    val loaded = requireNotNull(manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride))
+    val repoRoot = requireNotNull(request.repoRoot)
     val resolvedSha = when (val evidence = acceptanceEvidence(request, loaded.manifest, repoRoot)) {
       is GoalRunnerAcceptanceEvidence.Rejected -> return rejected(request, evidence.reason)
       is GoalRunnerAcceptanceEvidence.Resolved -> evidence.commitSha
@@ -61,6 +54,18 @@ internal class GoalRunnerAcceptanceCoordinator(
       acceptedAt = acceptance.acceptedAt,
       after = saved.manifest.toResetSnapshot(),
     )
+  }
+
+  private fun acceptanceRejection(request: GoalRunnerAcceptRequest): String? = when {
+    !request.restoreAfterHardReset ->
+      "Out-of-band accept is disabled. Repair or resume the child through the runtime; " +
+        "accepting past an incomplete or blocked subtask is not supported. " +
+        "Only --restore-after-hard-reset remains for recoveries that hard reset discarded."
+    manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride) == null ->
+      "No prepared goal exists for '${request.issueKey}'."
+    request.repoRoot == null ->
+      "A repository root is required to verify the accepted commit."
+    else -> null
   }
 
   private fun rejected(request: GoalRunnerAcceptRequest, reason: String): GoalRunnerAcceptResult.Rejected =

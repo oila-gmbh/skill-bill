@@ -3,6 +3,7 @@ package skillbill.scaffold.policy.platformpack
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
+import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestContentRenderRequest
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,17 +16,19 @@ class PlatformPackManifestPolicyTest {
     val qualityCheckSkillPath = packRoot.resolve("quality-check").resolve("bill-java-code-check")
 
     val rendered = renderPlatformPackManifestContent(
-      platform = "java",
-      displayName = "Java",
-      routingSignals = listOf("pom.xml", "build.gradle"),
-      tieBreakers = listOf("Prefer Java"),
-      specialistAreas = emptyList(),
-      specialistAreaMetadata = emptyMap(),
-      baselineLayers = emptyList(),
-      packRoot = packRoot,
-      baselineSkillPath = baselineSkillPath,
-      qualityCheckSkillPath = qualityCheckSkillPath,
-      specialistSkillPaths = emptyMap(),
+      PlatformPackManifestContentRenderRequest(
+        platform = "java",
+        displayName = "Java",
+        routingSignals = listOf("pom.xml", "build.gradle"),
+        tieBreakers = listOf("Prefer Java"),
+        specialistAreas = emptyList(),
+        specialistAreaMetadata = emptyMap(),
+        baselineLayers = emptyList(),
+        packRoot = packRoot,
+        baselineSkillPath = baselineSkillPath,
+        qualityCheckSkillPath = qualityCheckSkillPath,
+        specialistSkillPaths = emptyMap(),
+      ),
     )
 
     val expected = (
@@ -62,17 +65,19 @@ class PlatformPackManifestPolicyTest {
     val qualityCheckSkillPath = packRoot.resolve("quality-check").resolve("bill-java-code-check")
 
     val rendered = renderPlatformPackManifestContent(
-      platform = "java",
-      displayName = "Java",
-      routingSignals = listOf("pom.xml", "build.gradle"),
-      tieBreakers = emptyList(),
-      specialistAreas = emptyList(),
-      specialistAreaMetadata = emptyMap(),
-      baselineLayers = sampleBaselineLayers(),
-      packRoot = packRoot,
-      baselineSkillPath = baselineSkillPath,
-      qualityCheckSkillPath = qualityCheckSkillPath,
-      specialistSkillPaths = emptyMap(),
+      PlatformPackManifestContentRenderRequest(
+        platform = "java",
+        displayName = "Java",
+        routingSignals = listOf("pom.xml", "build.gradle"),
+        tieBreakers = emptyList(),
+        specialistAreas = emptyList(),
+        specialistAreaMetadata = emptyMap(),
+        baselineLayers = sampleBaselineLayers(),
+        packRoot = packRoot,
+        baselineSkillPath = baselineSkillPath,
+        qualityCheckSkillPath = qualityCheckSkillPath,
+        specialistSkillPaths = emptyMap(),
+      ),
     )
 
     assertEquals(expectedRenderingWithBaselineLayers(), rendered)

@@ -8,7 +8,6 @@ import skillbill.cli.work.padTerminalEnd
 import skillbill.cli.work.terminalDisplayWidth
 import skillbill.cli.work.toTerminalSafeText
 import skillbill.cli.work.truncateTerminalDisplayWidth
-import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
@@ -201,10 +200,4 @@ class CliWorkListRuntimeTest {
     val stateEnteredAt: String,
     val estimated: Boolean,
   )
-}
-
-private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonSupport.parseObjectOrNull(rawJson)
-  require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
 }

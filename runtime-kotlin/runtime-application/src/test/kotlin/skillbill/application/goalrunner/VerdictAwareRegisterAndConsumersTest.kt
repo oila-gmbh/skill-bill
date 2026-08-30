@@ -24,6 +24,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOu
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDelivery
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionShape
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -166,15 +168,19 @@ class VerdictAwareRegisterAndConsumersTest {
             sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
               FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
             ),
-            projectionName = "review_repair_request",
-            projectionContractId =
-            FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
-            projectionContractVersion = "0.1",
-            promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-            budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
-            declaredFieldNames = listOf("unresolved_blocker_findings", "repository_checkpoint"),
-            checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
-            required = true,
+            shape = PhaseHandoffProjectionShape(
+              projectionName = "review_repair_request",
+              projectionContractId =
+              FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+              projectionContractVersion = "0.1",
+              promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+              budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+              declaredFieldNames = listOf("unresolved_blocker_findings", "repository_checkpoint"),
+            ),
+            delivery = PhaseHandoffProjectionDelivery(
+              checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+              required = true,
+            ),
           ),
         ),
         resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(

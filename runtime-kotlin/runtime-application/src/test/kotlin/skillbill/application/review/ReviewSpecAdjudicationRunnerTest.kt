@@ -1,5 +1,7 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewDelegatedStageLaunch
+import skillbill.application.review.model.ReviewSpecAdjudicationRunRequest
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -28,6 +30,7 @@ import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustmentDirection
 import skillbill.review.model.ReviewStage
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -39,21 +42,21 @@ class ReviewSpecAdjudicationRunnerTest {
   @Test
   fun `a refuted finding is not adjudicated`() {
     val launches = mutableListOf<GoalRunnerSubtaskLaunchRequest>()
-    val outcome = runner(launcher = { request ->
-      launches += request
-      facts(request, IN_SCOPE)
-    }).run(
-      packet = packet(),
-      findings = listOf(finding("F-001"), finding("F-002", "src/B.kt:4", "other bug")),
-      existingVerdicts = listOf(
-        stage1("F-001", ReviewClaimVerdict.REFUTED),
-        stage1("F-002", ReviewClaimVerdict.CONFIRMED),
+    val outcome = runAdjudication(
+      launcher = { request ->
+        launches += request
+        facts(request, IN_SCOPE)
+      },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001"), finding("F-002", "src/B.kt:4", "other bug")),
+        existingVerdicts = listOf(
+          stage1("F-001", ReviewClaimVerdict.REFUTED),
+          stage1("F-002", ReviewClaimVerdict.CONFIRMED),
+        ),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-refuted"),
       ),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-refuted"),
-      timeout = 1.seconds,
     )
     assertEquals(1, launches.size)
     val prompt = launches.single().skillRunRequest.promptOverride.orEmpty()
@@ -65,18 +68,19 @@ class ReviewSpecAdjudicationRunnerTest {
   @Test
   fun `no projection skips the stage and the run completes`() {
     val launches = mutableListOf<GoalRunnerSubtaskLaunchRequest>()
-    val outcome = runner(launcher = { request ->
-      launches += request
-      facts(request, IN_SCOPE)
-    }).run(
-      packet = packet(),
-      findings = listOf(finding("F-001")),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = null,
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-none"),
-      timeout = 1.seconds,
+    val outcome = runAdjudication(
+      launcher = { request ->
+        launches += request
+        facts(request, IN_SCOPE)
+      },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001")),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = null,
+        includeProjection = false,
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-none"),
+      ),
     )
     assertTrue(launches.isEmpty())
     assertTrue(outcome.verdicts.isEmpty())
@@ -86,15 +90,15 @@ class ReviewSpecAdjudicationRunnerTest {
   @Test
   fun `an uncited downgrade is recorded in_scope and the finding survives`() {
     val claim = finding("F-001")
-    val outcome = runner(launcher = { request -> facts(request, UNCITED_DOWNGRADE) }).run(
-      packet = packet(),
-      findings = listOf(claim),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-uncited"),
-      timeout = 1.seconds,
+    val outcome = runAdjudication(
+      launcher = { request -> facts(request, UNCITED_DOWNGRADE) },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(claim),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-uncited"),
+      ),
     )
     val verdict = outcome.verdicts.single()
     assertEquals(ReviewScopeDisposition.IN_SCOPE, verdict.scopeDisposition)
@@ -106,25 +110,25 @@ class ReviewSpecAdjudicationRunnerTest {
 
   @Test
   fun `an upward adjustment uses the same delta structure as a downward one`() {
-    val raise = runner(launcher = { request -> facts(request, RAISE) }).run(
-      packet = packet(),
-      findings = listOf(finding("F-001")),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-raise"),
-      timeout = 1.seconds,
+    val raise = runAdjudication(
+      launcher = { request -> facts(request, RAISE) },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001")),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-raise"),
+      ),
     ).verdicts.single()
-    val lower = runner(launcher = { request -> facts(request, LOWER) }).run(
-      packet = packet(),
-      findings = listOf(finding("F-001")),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-lower"),
-      timeout = 1.seconds,
+    val lower = runAdjudication(
+      launcher = { request -> facts(request, LOWER) },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001")),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-lower"),
+      ),
     ).verdicts.single()
     assertEquals(ReviewScopeDisposition.SPEC_DEVIATION, raise.scopeDisposition)
     assertEquals(ReviewSeverityAdjustmentDirection.RAISE, raise.severityAdjustment?.direction)
@@ -140,15 +144,15 @@ class ReviewSpecAdjudicationRunnerTest {
   fun `the original claim is unmodified after a severity adjustment`() {
     val claim = finding("F-001")
     val before = claim.copy()
-    val verdict = runner(launcher = { request -> facts(request, RAISE) }).run(
-      packet = packet(),
-      findings = listOf(claim),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-preserve"),
-      timeout = 1.seconds,
+    val verdict = runAdjudication(
+      launcher = { request -> facts(request, RAISE) },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(claim),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-preserve"),
+      ),
     ).verdicts.single()
     assertEquals(before, claim)
     assertEquals(ParallelReviewSeverity.MAJOR, claim.severity)
@@ -161,29 +165,27 @@ class ReviewSpecAdjudicationRunnerTest {
   fun `each surviving finding launches alone without sibling finding text`() {
     val launches = mutableListOf<GoalRunnerSubtaskLaunchRequest>()
     val envelopes = mutableListOf<Map<String, Any?>>()
-    val outcome = runner(
+    val outcome = runAdjudication(
       launcher = { request ->
         launches += request
         facts(request, IN_SCOPE)
       },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(
+          finding("F-001"),
+          finding("F-002", "src/B.kt:4", "second"),
+          finding("F-003", "src/C.kt:8", "third"),
+        ),
+        existingVerdicts = listOf(
+          stage1("F-001", ReviewClaimVerdict.CONFIRMED),
+          stage1("F-002", ReviewClaimVerdict.UNRESOLVED),
+          stage1("F-003", ReviewClaimVerdict.CONFIRMED),
+        ),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-isolate"),
+      ),
       validator = { envelope, _ -> envelopes += envelope },
-    ).run(
-      packet = packet(),
-      findings = listOf(
-        finding("F-001"),
-        finding("F-002", "src/B.kt:4", "second"),
-        finding("F-003", "src/C.kt:8", "third"),
-      ),
-      existingVerdicts = listOf(
-        stage1("F-001", ReviewClaimVerdict.CONFIRMED),
-        stage1("F-002", ReviewClaimVerdict.UNRESOLVED),
-        stage1("F-003", ReviewClaimVerdict.CONFIRMED),
-      ),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-isolate"),
-      timeout = 1.seconds,
     )
     assertEquals(3, launches.size)
     assertEquals(3, envelopes.size)
@@ -205,18 +207,18 @@ class ReviewSpecAdjudicationRunnerTest {
   @Test
   fun `an over-budget adjudication launch records the listed reason and does not launch`() {
     val launches = mutableListOf<GoalRunnerSubtaskLaunchRequest>()
-    val outcome = runner(launcher = { request ->
-      launches += request
-      facts(request, IN_SCOPE)
-    }).run(
-      packet = packet(),
-      findings = listOf(finding("F-001")),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 64),
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-budget"),
-      timeout = 1.seconds,
+    val outcome = runAdjudication(
+      launcher = { request ->
+        launches += request
+        facts(request, IN_SCOPE)
+      },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001")),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 64),
+        repoRoot = Files.createTempDirectory("adj-budget"),
+      ),
     )
     assertTrue(launches.isEmpty())
     val verdict = outcome.verdicts.single()
@@ -227,15 +229,15 @@ class ReviewSpecAdjudicationRunnerTest {
 
   @Test
   fun `unparseable adjudication stdout records the unparseable reason instead of admitting a null worker`() {
-    val verdict = runner(launcher = { request -> facts(request, "not-json") }).run(
-      packet = packet(),
-      findings = listOf(finding("F-001")),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-unparseable"),
-      timeout = 1.seconds,
+    val verdict = runAdjudication(
+      launcher = { request -> facts(request, "not-json") },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001")),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-unparseable"),
+      ),
     ).verdicts.single()
     assertEquals("unparseable adjudication output", verdict.rejectionReason)
     assertEquals(ReviewScopeDisposition.IN_SCOPE, verdict.scopeDisposition)
@@ -244,25 +246,25 @@ class ReviewSpecAdjudicationRunnerTest {
 
   @Test
   fun `a result carrying two dispositions or none is recorded in_scope with the rejection reason`() {
-    val none = runner(launcher = { request -> facts(request, "{}") }).run(
-      packet = packet(),
-      findings = listOf(finding("F-001")),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-none-disp"),
-      timeout = 1.seconds,
+    val none = runAdjudication(
+      launcher = { request -> facts(request, "{}") },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001")),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-none-disp"),
+      ),
     ).verdicts.single()
-    val two = runner(launcher = { request -> facts(request, TWO_DISPOSITIONS) }).run(
-      packet = packet(),
-      findings = listOf(finding("F-001")),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-two-disp"),
-      timeout = 1.seconds,
+    val two = runAdjudication(
+      launcher = { request -> facts(request, TWO_DISPOSITIONS) },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001")),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-two-disp"),
+      ),
     ).verdicts.single()
     assertEquals(ReviewScopeDisposition.IN_SCOPE, none.scopeDisposition)
     assertEquals(ReviewSpecAdjudicationAdmission.AMBIGUOUS, none.rejectionReason)
@@ -272,19 +274,48 @@ class ReviewSpecAdjudicationRunnerTest {
 
   @Test
   fun `spec_deviation citing an element absent from the projection is not admitted`() {
-    val verdict = runner(launcher = { request -> facts(request, INVENTED_DEVIATION) }).run(
-      packet = packet(),
-      findings = listOf(finding("F-001")),
-      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-      projection = projection(),
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("adj-invented"),
-      timeout = 1.seconds,
+    val verdict = runAdjudication(
+      launcher = { request -> facts(request, INVENTED_DEVIATION) },
+      fixture = AdjudicationRequestFixture(
+        findings = listOf(finding("F-001")),
+        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+        projection = projection(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+        repoRoot = Files.createTempDirectory("adj-invented"),
+      ),
     ).verdicts.single()
     assertEquals(ReviewScopeDisposition.IN_SCOPE, verdict.scopeDisposition)
     assertEquals(ReviewSpecAdjudicationAdmission.SPEC_DEVIATION_NOT_CONSTRAINT, verdict.rejectionReason)
   }
+
+  private data class AdjudicationRequestFixture(
+    val findings: List<ParallelReviewMergedFinding>,
+    val existingVerdicts: List<ReviewFindingVerdict>,
+    val projection: SpecIntentProjection? = null,
+    val includeProjection: Boolean = true,
+    val packet: ReviewContextPacket? = null,
+    val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
+    val repoRoot: Path? = null,
+  )
+
+  private fun runAdjudication(
+    launcher: GoalRunnerSubtaskLauncher,
+    fixture: AdjudicationRequestFixture,
+    validator: ReviewContextEnvelopeValidator = ReviewContextEnvelopeValidator { _, _ -> },
+  ) = runner(launcher, validator).run(adjudicationRequest(fixture))
+
+  private fun adjudicationRequest(fixture: AdjudicationRequestFixture) = ReviewSpecAdjudicationRunRequest(
+    packet = fixture.packet ?: packet(),
+    findings = fixture.findings,
+    existingVerdicts = fixture.existingVerdicts,
+    projection = if (fixture.includeProjection) fixture.projection ?: projection() else null,
+    launch = ReviewDelegatedStageLaunch(
+      budget = fixture.budget,
+      brokerId = "codex",
+      repoRoot = fixture.repoRoot ?: Files.createTempDirectory("adj"),
+      timeout = 1.seconds,
+    ),
+  )
 
   private fun runner(
     launcher: GoalRunnerSubtaskLauncher,

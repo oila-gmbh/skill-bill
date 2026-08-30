@@ -12,13 +12,32 @@ comments:
     active: false
 
 complexity:
+  TooManyFunctions:
+    active: true
+    thresholdInFiles: 11
+    thresholdInClasses: 11
+    thresholdInInterfaces: 11
+    thresholdInObjects: 11
+    thresholdInEnums: 11
+  LargeClass:
+    active: true
+    threshold: 600
+  LongMethod:
+    active: true
+    threshold: 60
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 15
+  ComplexCondition:
+    active: true
+    threshold: 4
+  NestedBlockDepth:
+    active: true
+    threshold: 6
   LongParameterList:
     active: true
     functionThreshold: 6
     constructorThreshold: 7
-  NestedBlockDepth:
-    active: true
-    threshold: 6
 
 naming:
   FunctionNaming:
@@ -29,6 +48,9 @@ style:
   MaxLineLength:
     active: true
     maxLineLength: 120
+  ThrowsCount:
+    active: true
+    max: 2
   ReturnCount:
     active: true
     max: 4

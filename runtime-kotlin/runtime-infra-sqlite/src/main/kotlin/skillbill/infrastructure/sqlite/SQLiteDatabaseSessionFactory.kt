@@ -88,16 +88,18 @@ private fun EnvironmentContext.withProcessDefaults(): EnvironmentContext {
   }
 }
 
-@Suppress("TooGenericExceptionCaught")
 private fun <T> Connection.inTransaction(dbPath: Path, block: () -> T): T {
   typedStatement(dbPath, "BEGIN IMMEDIATE", DatabaseAccessOperation.OPEN)
+  var committed = false
   return try {
     val result = block()
     typedStatement(dbPath, "COMMIT", DatabaseAccessOperation.OPEN)
+    committed = true
     result
-  } catch (error: Throwable) {
-    runCatching { createStatement().use { it.execute("ROLLBACK") } }
-    throw error
+  } finally {
+    if (!committed) {
+      runCatching { createStatement().use { it.execute("ROLLBACK") } }
+    }
   }
 }
 
@@ -106,16 +108,18 @@ private fun <T> Connection.inTransaction(dbPath: Path, block: () -> T): T {
  * without taking a write lock, so a concurrent goal-runtime writer is not blocked for the read's
  * duration. Acquisition and release failures classify as READ, not OPEN.
  */
-@Suppress("TooGenericExceptionCaught")
 private fun <T> Connection.inReadTransaction(dbPath: Path, block: () -> T): T {
   typedStatement(dbPath, "BEGIN DEFERRED", DatabaseAccessOperation.READ)
+  var committed = false
   return try {
     val result = block()
     typedStatement(dbPath, "COMMIT", DatabaseAccessOperation.READ)
+    committed = true
     result
-  } catch (error: Throwable) {
-    runCatching { createStatement().use { it.execute("ROLLBACK") } }
-    throw error
+  } finally {
+    if (!committed) {
+      runCatching { createStatement().use { it.execute("ROLLBACK") } }
+    }
   }
 }
 

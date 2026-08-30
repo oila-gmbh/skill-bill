@@ -16,7 +16,7 @@ class FeatureTaskRuntimeAddonBudgetTest {
       .forEach { phaseId ->
         assertEquals(
           selection,
-          FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor(phaseId, selection),
+          FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor(selection),
           "phase '$phaseId' is part of the declared feature-task consumer but lost its add-on content",
         )
       }

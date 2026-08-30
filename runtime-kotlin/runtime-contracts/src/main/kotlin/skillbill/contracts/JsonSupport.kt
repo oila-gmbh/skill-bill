@@ -50,11 +50,25 @@ object JsonSupport {
     JsonNull -> null
     is JsonObject -> element.entries.associate { (key, value) -> key to jsonElementToValue(value) }
     is JsonArray -> element.map(::jsonElementToValue)
-    is JsonPrimitive -> primitiveToValue(element)
+    is JsonPrimitive -> jsonPrimitiveToValue(element)
   }
 
   fun anyToStringAnyMap(value: Any?): Map<String, Any?>? =
     (value as? Map<*, *>)?.entries?.filter { it.key is String }?.associate { it.key as String to it.value }
+
+  fun anyToStringList(value: Any?): List<String>? = when (value) {
+    null -> null
+    is List<*> -> value.map { entry -> entry as? String ?: return null }
+    else -> null
+  }
+
+  fun anyToStringAnyMapList(value: Any?): List<Map<String, Any?>>? = when (value) {
+    null -> null
+    is List<*> -> value.map { entry ->
+      anyToStringAnyMap(entry) ?: return null
+    }
+    else -> null
+  }
 
   fun mapToJsonString(map: Map<String, Any?>): String =
     json.encodeToString(JsonObject.serializer(), mapToJsonObject(map))
@@ -65,34 +79,34 @@ object JsonSupport {
     }
   }
 
-  fun valueToJsonElement(value: Any?): JsonElement = primitiveJsonElement(value)
+  fun valueToJsonElement(value: Any?): JsonElement = jsonPrimitiveElement(value)
     ?: collectionJsonElement(value)
     ?: JsonPrimitive(value.toString())
+}
 
-  private fun primitiveToValue(primitive: JsonPrimitive): Any? = if (primitive.isJsonString()) {
-    primitive.contentOrNull
-  } else {
-    listOfNotNull(
-      primitive.booleanOrNull,
-      primitive.intOrNull,
-      primitive.longOrNull,
-      primitive.doubleOrNull,
-      primitive.contentOrNull,
-    ).firstOrNull()
-  }
+private fun jsonPrimitiveToValue(primitive: JsonPrimitive): Any? = if (primitive.isJsonString()) {
+  primitive.contentOrNull
+} else {
+  listOfNotNull(
+    primitive.booleanOrNull,
+    primitive.intOrNull,
+    primitive.longOrNull,
+    primitive.doubleOrNull,
+    primitive.contentOrNull,
+  ).firstOrNull()
+}
 
-  private fun primitiveJsonElement(value: Any?): JsonElement? = when (value) {
-    null -> JsonNull
-    is JsonElement -> value
-    is String -> JsonPrimitive(value)
-    is Boolean -> JsonPrimitive(value)
-    is Int -> JsonPrimitive(value)
-    is Long -> JsonPrimitive(value)
-    is Float -> JsonPrimitive(value)
-    is Double -> JsonPrimitive(value)
-    is Number -> JsonPrimitive(value.toDouble())
-    else -> null
-  }
+private fun jsonPrimitiveElement(value: Any?): JsonElement? = when (value) {
+  null -> JsonNull
+  is JsonElement -> value
+  is String -> JsonPrimitive(value)
+  is Boolean -> JsonPrimitive(value)
+  is Int -> JsonPrimitive(value)
+  is Long -> JsonPrimitive(value)
+  is Float -> JsonPrimitive(value)
+  is Double -> JsonPrimitive(value)
+  is Number -> JsonPrimitive(value.toDouble())
+  else -> null
 }
 
 private fun JsonPrimitive.isJsonString(): Boolean = toString().startsWith("\"")

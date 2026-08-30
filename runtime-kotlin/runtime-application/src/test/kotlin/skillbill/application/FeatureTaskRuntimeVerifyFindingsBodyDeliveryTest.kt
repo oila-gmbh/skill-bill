@@ -31,26 +31,27 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
 
     var verifyLaunches = 0
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "verify_findings") {
-          verifyLaunches += 1
-          val prompt = requireNotNull(request.skillRunRequest.promptOverride)
-          if (verifyLaunches == 1) {
-            assertTrue(prompt.contains("selected-title"), "first pass catalogs titles")
-            assertFalse(prompt.contains("selected body sentence"), "first pass withholds bodies")
-            assertFalse(prompt.contains("REJECTED by the schema gate"), "handshake is not a schema rejection")
+      RuntimeHarnessConfig(repoRoot = repoRoot).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "verify_findings") {
+            verifyLaunches += 1
+            val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+            if (verifyLaunches == 1) {
+              assertTrue(prompt.contains("selected-title"), "first pass catalogs titles")
+              assertFalse(prompt.contains("selected body sentence"), "first pass withholds bodies")
+              assertFalse(prompt.contains("REJECTED by the schema gate"), "handshake is not a schema rejection")
+            } else {
+              assertTrue(prompt.contains("Selected boundary memory"), "second pass delivers bodies")
+              assertTrue(prompt.contains("selected body sentence"), "second pass includes selected body")
+              assertFalse(prompt.contains("REJECTED by the schema gate"), "continuation is not a schema rejection")
+            }
+            facts(verifyFindingsSelectingBoundary(headingId, sourcePath))
           } else {
-            assertTrue(prompt.contains("Selected boundary memory"), "second pass delivers bodies")
-            assertTrue(prompt.contains("selected body sentence"), "second pass includes selected body")
-            assertFalse(prompt.contains("REJECTED by the schema gate"), "continuation is not a schema rejection")
+            facts(validJsonOutput(phaseId))
           }
-          facts(verifyFindingsSelectingBoundary(headingId, sourcePath))
-        } else {
-          facts(validJsonOutput(phaseId))
-        }
-      },
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+        },
+      ),
     )
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
@@ -78,16 +79,17 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
     val findingPath = "runtime-kotlin/runtime-application/src/Foo.kt"
     var verifyLaunches = 0
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "verify_findings") {
-          verifyLaunches += 1
-          facts(verifyFindingsCensusOnlyOutput(listOf(REVIEW_FIX_BLOCKER_FINDING_ID)))
-        } else {
-          facts(validJsonOutput(phaseId))
-        }
-      },
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = Files.createTempDirectory("skillbill-verify-census-only")),
+      RuntimeHarnessConfig(repoRoot = Files.createTempDirectory("skillbill-verify-census-only")).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "verify_findings") {
+            verifyLaunches += 1
+            facts(verifyFindingsCensusOnlyOutput(listOf(REVIEW_FIX_BLOCKER_FINDING_ID)))
+          } else {
+            facts(validJsonOutput(phaseId))
+          }
+        },
+      ),
     )
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))

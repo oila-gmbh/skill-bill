@@ -11,6 +11,7 @@ import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.review.model.ParallelReviewParseResult
 import skillbill.review.model.ParallelReviewRawFinding
+import kotlin.coroutines.cancellation.CancellationException
 
 internal class ParallelCodeReviewRunnerFailureHelpers(
   private val registerParse: (String) -> ParallelReviewParseResult,
@@ -25,7 +26,9 @@ internal class ParallelCodeReviewRunnerFailureHelpers(
       droppedCandidateDiagnostic = rejectedCandidateDiagnostic(parsed),
       rejectedCandidateCount = parsed.rejections.size,
     )
-  } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+  } catch (cancellation: CancellationException) {
+    throw cancellation
+  } catch (_: ReviewRegisterParseSeamException) {
     ParallelCodeReviewSoftRegisterAdmission(emptyList(), null, 0)
   }
 
@@ -115,7 +118,9 @@ internal fun parseLaneRegisterSeam(
   parse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
 ): ParallelReviewParseResult = try {
   parse(stdout)
-} catch (@Suppress("TooGenericExceptionCaught") thrown: RuntimeException) {
+} catch (thrown: IllegalArgumentException) {
+  throw ReviewRegisterParseSeamException(seam = INLINE_FINDING_PARSE_SEAM, lane = lane, cause = thrown)
+} catch (thrown: IllegalStateException) {
   throw ReviewRegisterParseSeamException(seam = INLINE_FINDING_PARSE_SEAM, lane = lane, cause = thrown)
 }
 
@@ -149,14 +154,18 @@ internal fun parallelCodeReviewInlineTerminalStatus(
   else -> "completed"
 }
 
-internal fun parallelCodeReviewCaptureLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome = try {
-  lane()
-} catch (seam: ReviewRegisterParseSeamException) {
-  throw seam
-} catch (@Suppress("TooGenericExceptionCaught") thrown: Exception) {
-  ParallelReviewLaneOutcome(
-    success = false,
-    rawOutput = "",
-    failureReason = "lane launch threw ${thrown::class.simpleName}: ${thrown.message ?: "no detail"}",
-  )
+internal fun parallelCodeReviewCaptureLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome {
+  val outcome = runCatching { lane() }
+  if (outcome.isSuccess) return outcome.getOrThrow()
+  val error = outcome.exceptionOrNull()!!
+  val terminal = when (error) {
+    is ReviewRegisterParseSeamException, is CancellationException -> error
+    is Exception -> return ParallelReviewLaneOutcome(
+      success = false,
+      rawOutput = "",
+      failureReason = "lane launch threw ${error::class.simpleName}: ${error.message ?: "no detail"}",
+    )
+    else -> error
+  }
+  throw terminal
 }

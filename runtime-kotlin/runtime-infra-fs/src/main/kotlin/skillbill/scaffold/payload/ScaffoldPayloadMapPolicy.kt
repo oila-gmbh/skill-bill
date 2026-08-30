@@ -33,7 +33,7 @@ import skillbill.scaffold.policy.scaffold.rejectRetiredPartialScaffoldKind
  * This file owns the top-level payload-shape policy (version + kind + baseline-layers gate +
  * string lifters). Subagent-policy and platform-pack-resolution helpers live in sibling files
  * (`ScaffoldPayloadMapSubagentPolicy.kt`, `ScaffoldPayloadMapPlatformPackPolicy.kt`) so each file
- * stays under the detekt `TooManyFunctions` threshold.
+ * stays small and focused.
  */
 
 internal fun validatePayloadVersion(payload: Map<String, Any?>) {

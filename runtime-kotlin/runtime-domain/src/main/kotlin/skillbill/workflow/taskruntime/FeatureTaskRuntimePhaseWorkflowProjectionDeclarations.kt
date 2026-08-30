@@ -10,30 +10,40 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDelivery
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionShape
+import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionTemplate
 
 internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
-  @Suppress("LongParameterList")
-  fun phaseProjection(
-    consumerPhaseId: String,
-    producingPhaseId: String,
-    name: String,
-    contractId: String,
-    fields: List<String>,
-    checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
-      FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-    required: Boolean = true,
-  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
-    consumerPhaseId = consumerPhaseId,
-    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
-    projectionName = name,
-    projectionContractId = contractId,
-    projectionContractVersion = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VERSION,
-    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-    budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-    declaredFieldNames = fields,
-    checkpointPolicy = checkpointPolicy,
-    required = required,
-  )
+  private fun upstreamPlanningProjection(spec: UpstreamPlanningProjectionSpec): PhaseHandoffProjectionDeclaration =
+    PhaseHandoffProjectionDeclaration(
+      consumerPhaseId = spec.consumerPhaseId,
+      sourceRef = spec.sourceRef,
+      shape = PhaseHandoffProjectionShape(
+        projectionName = spec.projectionName,
+        projectionContractId = spec.projectionContractId,
+        projectionContractVersion = spec.projectionContractVersion,
+        promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+        budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
+        declaredFieldNames = spec.declaredFieldNames,
+      ),
+      delivery = spec.delivery,
+    )
+
+  fun phaseProjection(template: PhaseHandoffProjectionTemplate): PhaseHandoffProjectionDeclaration =
+    upstreamPlanningProjection(
+      UpstreamPlanningProjectionSpec(
+        consumerPhaseId = template.consumerPhaseId,
+        sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(template.producingPhaseId),
+        projectionName = template.name,
+        projectionContractId = template.contractId,
+        declaredFieldNames = template.fields,
+        delivery = PhaseHandoffProjectionDelivery(
+          checkpointPolicy = template.checkpointPolicy,
+          required = template.required,
+        ),
+      ),
+    )
 
   fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
     phaseProseDeclaration(
@@ -57,59 +67,57 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
     producingPhaseId: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
     checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-  ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
-    consumerPhaseId = consumerPhaseId,
-    sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
-    projectionName = "${producingPhaseId}_prose",
-    projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
-    projectionContractVersion = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VERSION,
-    promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-    budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-    declaredFieldNames = listOf("value", "directive"),
-    checkpointPolicy = checkpointPolicy,
-    required = true,
+  ): PhaseHandoffProjectionDeclaration = upstreamPlanningProjection(
+    UpstreamPlanningProjectionSpec(
+      consumerPhaseId = consumerPhaseId,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
+      projectionName = "${producingPhaseId}_prose",
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PHASE_PROSE,
+      declaredFieldNames = listOf("value", "directive"),
+      delivery = PhaseHandoffProjectionDelivery(
+        checkpointPolicy = checkpointPolicy,
+        required = true,
+      ),
+    ),
   )
 
   fun sharedReviewEvidenceDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
-    PhaseHandoffProjectionDeclaration(
-      consumerPhaseId = consumerPhaseId,
-      sourceRef = FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence,
-      projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME,
-      projectionContractId = FeatureTaskRuntimePlanningProjectionContract.SHARED_REVIEW_EVIDENCE_ID,
-      projectionContractVersion = FeatureTaskRuntimePlanningProjectionContract.VERSION,
-      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-      declaredFieldNames = FeatureTaskRuntimeSharedReviewEvidenceReference.DECLARED_FIELD_NAMES,
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-      required = false,
+    upstreamPlanningProjection(
+      UpstreamPlanningProjectionSpec(
+        consumerPhaseId = consumerPhaseId,
+        sourceRef = FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence,
+        projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME,
+        projectionContractId = FeatureTaskRuntimePlanningProjectionContract.SHARED_REVIEW_EVIDENCE_ID,
+        declaredFieldNames = FeatureTaskRuntimeSharedReviewEvidenceReference.DECLARED_FIELD_NAMES,
+        delivery = PhaseHandoffProjectionDelivery(
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = false,
+        ),
+      ),
     )
 
-  fun repairLedgerDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
-    PhaseHandoffProjectionDeclaration(
+  fun repairLedgerDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration = upstreamPlanningProjection(
+    UpstreamPlanningProjectionSpec(
       consumerPhaseId = consumerPhaseId,
       sourceRef = FeatureTaskRuntimeHandoffSourceRef.RepairLedger,
       projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.REPAIR_LEDGER_PROJECTION_NAME,
       projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REPAIR_LEDGER,
-      projectionContractVersion = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VERSION,
-      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
       declaredFieldNames = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.REPAIR_LEDGER_PROJECTION_NAME),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-      required = false,
-    )
+      delivery = PhaseHandoffProjectionDelivery(required = false),
+    ),
+  )
 
   fun priorGapMemoryDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
-    PhaseHandoffProjectionDeclaration(
-      consumerPhaseId = consumerPhaseId,
-      sourceRef = FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory,
-      projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.PRIOR_GAP_MEMORY_PROJECTION_NAME,
-      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PRIOR_GAP_MEMORY,
-      projectionContractVersion = "0.2",
-      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
-      declaredFieldNames = FeatureTaskRuntimePriorGapMemory.DECLARED_FIELD_NAMES,
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-      required = false,
+    upstreamPlanningProjection(
+      UpstreamPlanningProjectionSpec(
+        consumerPhaseId = consumerPhaseId,
+        sourceRef = FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory,
+        projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.PRIOR_GAP_MEMORY_PROJECTION_NAME,
+        projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PRIOR_GAP_MEMORY,
+        declaredFieldNames = FeatureTaskRuntimePriorGapMemory.DECLARED_FIELD_NAMES,
+        projectionContractVersion = "0.2",
+        delivery = PhaseHandoffProjectionDelivery(required = false),
+      ),
     )
 
   /**
@@ -141,32 +149,41 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
     ),
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to listOf(
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
-        "review_repair_request",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
-        listOf("unresolved_blocker_findings", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+          name = "review_repair_request",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+          fields = listOf("unresolved_blocker_findings", "repository_checkpoint"),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+          required = true,
+        ),
       ),
     ),
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to listOf(
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-        "review_findings_for_verification",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT,
-        listOf("findings", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          name = "review_findings_for_verification",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT,
+          fields = listOf("findings", "repository_checkpoint"),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
+        ),
       ),
     ),
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to listOf(
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-        "audit_clearance",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
-        listOf("clearance_status", "review_scope", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+          name = "audit_clearance",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+          fields = listOf("clearance_status", "review_scope", "repository_checkpoint"),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
+        ),
       ),
       sharedReviewEvidenceDeclaration(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
     ),
@@ -176,23 +193,29 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-        "validation_request",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
-        listOf(
-          "changed_paths",
-          "repository_checkpoint",
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          name = "validation_request",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
+          fields = listOf(
+            "changed_paths",
+            "repository_checkpoint",
+          ),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
         ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-        "audit_clearance",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
-        listOf("verdict", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+          name = "audit_clearance",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+          fields = listOf("verdict", "repository_checkpoint"),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
+        ),
       ),
     ),
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD to listOf(
@@ -201,23 +224,29 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-        "validation_request",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
-        listOf(
-          "changed_paths",
-          "repository_checkpoint",
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          name = "validation_request",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
+          fields = listOf(
+            "changed_paths",
+            "repository_checkpoint",
+          ),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
         ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-        "audit_clearance",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
-        listOf("verdict", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+          name = "audit_clearance",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+          fields = listOf("verdict", "repository_checkpoint"),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
+        ),
       ),
     ),
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to listOf(
@@ -226,41 +255,49 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-        "boundary_candidates",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES,
-        listOf("changed_paths", "boundary_candidates"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+          name = "boundary_candidates",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES,
+          fields = listOf("changed_paths", "boundary_candidates"),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
+        ),
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        "validation_receipt",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
-        listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+          name = "validation_receipt",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
+          fields = listOf(
+            "validation_status",
+            "checks",
+            "repository_checkpoint",
+            "gate_run_count",
+            "gate_runs",
+          ),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
         ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
-        "build_receipt",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
-        listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+          name = "build_receipt",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
+          fields = listOf(
+            "validation_status",
+            "checks",
+            "repository_checkpoint",
+            "gate_run_count",
+            "gate_runs",
+          ),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = false,
         ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-        required = false,
       ),
     ),
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to listOf(
@@ -269,54 +306,66 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-        "commit_request",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
-        listOf(
-          "path_inventory",
-          "required_inclusions",
-          "branch_identity",
-          "gate_attestations",
-          "repository_checkpoint",
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+          name = "commit_request",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
+          fields = listOf(
+            "path_inventory",
+            "required_inclusions",
+            "branch_identity",
+            "gate_attestations",
+            "repository_checkpoint",
+          ),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
         ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        "validation_receipt",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
-        listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+          name = "validation_receipt",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
+          fields = listOf(
+            "validation_status",
+            "checks",
+            "repository_checkpoint",
+            "gate_run_count",
+            "gate_runs",
+          ),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
         ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
-        "build_receipt",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
-        listOf(
-          "validation_status",
-          "checks",
-          "repository_checkpoint",
-          "gate_run_count",
-          "gate_runs",
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+          name = "build_receipt",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
+          fields = listOf(
+            "validation_status",
+            "checks",
+            "repository_checkpoint",
+            "gate_run_count",
+            "gate_runs",
+          ),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = false,
         ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-        required = false,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
-        "history_receipt",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.HISTORY_RECEIPT,
-        listOf("changed_paths", "decisions_recorded"),
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+          name = "history_receipt",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.HISTORY_RECEIPT,
+          fields = listOf("changed_paths", "decisions_recorded"),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+          required = true,
+        ),
       ),
     ),
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to listOf(
@@ -325,24 +374,31 @@ internal object FeatureTaskRuntimePhaseWorkflowProjectionDeclarations {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-        "pr_request",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
-        listOf(
-          "changed_paths",
-          "validation_summary",
-          "base_branch",
-          "diff_reference",
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+          name = "pr_request",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PR_REQUEST,
+          fields = listOf(
+            "changed_paths",
+            "validation_summary",
+            "base_branch",
+            "diff_reference",
+          ),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+          required = true,
         ),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
-        "commit_receipt",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
-        listOf("commit_sha", "branch", "base_branch", "pushed"),
+        PhaseHandoffProjectionTemplate(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
+          producingPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+          name = "commit_receipt",
+          contractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_RECEIPT,
+          fields = listOf("commit_sha", "branch", "base_branch", "pushed"),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+          required = true,
+        ),
       ),
     ),
   )

@@ -10,18 +10,11 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.application.system.RuntimeProvenanceService
-import skillbill.application.telemetry.TelemetryService
-import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.invokingAgentResolutionHelp
 import skillbill.cli.telemetry.drainTelemetryOnCompletion
-import skillbill.ports.agentaddon.AgentAddonSelectionPort
-import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
-import skillbill.ports.agentrun.ExecutableLookup
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -58,16 +51,9 @@ class GoalRunSubcommands(
 )
 
 @Inject
-@Suppress("LongParameterList")
 class GoalRunCommand(
-  private val goalRunner: GoalRunner,
-  private val runtimeProvenanceService: RuntimeProvenanceService,
-  private val agentAddonSelectionPort: AgentAddonSelectionPort,
-  private val externalAgentAddonSourceConfigPort: ExternalAgentAddonSourceConfigPort,
-  private val executableLookup: ExecutableLookup,
+  private val deps: GoalRunDependencies,
   goalRunSubcommands: GoalRunSubcommands,
-  private val telemetryService: TelemetryService,
-  private val state: CliRunState,
 ) : DocumentedCliCommand(
   "goal",
   "Run a decomposed goal in the foreground. Exit codes: complete=0, failed=1, paused=2, blocked=3.",
@@ -151,7 +137,7 @@ class GoalRunCommand(
     }
     val effectiveRepoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
       ?: Path.of("").toAbsolutePath().normalize()
-    val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
+    val invokedAgentId = resolveInvokedAgentId(agent, deps.state.environment)
     validateGoalRunInputs(
       GoalRunInputValidationArgs(
         issueKey = issueKey,
@@ -160,8 +146,8 @@ class GoalRunCommand(
         agentAddonSelectionJson = agentAddonSelectionJson,
         agent = agent,
         agentOverride = agentOverride,
-        state = state,
-        executableLookup = executableLookup,
+        state = deps.state,
+        executableLookup = deps.executableLookup,
       ),
     )
     val runIssueKey = issueKey!!
@@ -175,31 +161,31 @@ class GoalRunCommand(
         agentAddonSelectionJson = agentAddonSelectionJson,
         receivingAgents = receivingAgents,
         effectiveRepoRoot = effectiveRepoRoot,
-        state = state,
-        agentAddonSelectionPort = agentAddonSelectionPort,
-        externalAgentAddonSourceConfigPort = externalAgentAddonSourceConfigPort,
+        state = deps.state,
+        agentAddonSelectionPort = deps.agentAddonSelectionPort,
+        externalAgentAddonSourceConfigPort = deps.externalAgentAddonSourceConfigPort,
       ),
     )
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
-      state = state,
+      state = deps.state,
       liveOutput = !noLiveOutput,
       repoRoot = effectiveRepoRoot,
-      dbOverride = state.dbOverride,
-      runtimeProvenance = runtimeProvenanceService.current(
-        executablePathHint = state.environment[RUNTIME_EXECUTABLE_ENV],
-        classPath = state.environment[RUNTIME_CLASSPATH_ENV] ?: System.getProperty("java.class.path").orEmpty(),
+      dbOverride = deps.state.dbOverride,
+      runtimeProvenance = deps.runtimeProvenanceService.current(
+        executablePathHint = deps.state.environment[RUNTIME_EXECUTABLE_ENV],
+        classPath = deps.state.environment[RUNTIME_CLASSPATH_ENV] ?: System.getProperty("java.class.path").orEmpty(),
         javaCommand = ProcessHandle.current().info().command().orElse(null),
-        pathSeparator = state.environment[RUNTIME_PATH_SEPARATOR_ENV] ?: System.getProperty("path.separator", ":"),
+        pathSeparator = deps.state.environment[RUNTIME_PATH_SEPARATOR_ENV] ?: System.getProperty("path.separator", ":"),
       ),
     )
     presenter.emitStartupProvenance()
-    val report = goalRunner.run(
+    val report = deps.goalRunner.run(
       runRequest(runIssueKey, invokedAgentId, hydratedSelection, presenter, effectiveRepoRoot),
     )
     val payload = report.toGoalRunCliMap()
-    state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
-    drainTelemetryOnCompletion(telemetryService, state.dbOverride)
+    deps.state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
+    drainTelemetryOnCompletion(deps.telemetryService, deps.state.dbOverride)
   }
 
   private fun runRequest(
@@ -213,7 +199,7 @@ class GoalRunCommand(
     repoRoot = effectiveRepoRoot,
     invokedAgentId = invokedAgentId,
     configuredAgentOverrideId = agentOverride,
-    dbPathOverride = state.dbOverride,
+    dbPathOverride = deps.state.dbOverride,
     timeout = maxWallClockMinutes?.minutes,
     progressIdleTimeout = progressIdleTimeoutMinutes.takeIf { it > 0 }?.minutes,
     planningBudget = planningBudgetMinutes.takeIf { it > 0 }?.minutes,

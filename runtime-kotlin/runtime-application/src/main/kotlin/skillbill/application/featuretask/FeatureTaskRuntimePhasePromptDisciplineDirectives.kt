@@ -1,0 +1,138 @@
+package skillbill.application.featuretask
+
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
+
+internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
+  if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+    return ""
+  }
+  return """
+    ## Mutating-phase idempotency contract
+    You are given intended-state plan inputs (the target the repository should reach) plus the
+    CURRENT working tree, which may already carry some or all of those changes from a prior
+    attempt that was interrupted mid-edit. Converge the tree to the target state; treat any change
+    that is already applied as a no-op and NEVER blindly re-apply it (no duplicated edits, appended
+    blocks, or re-created files). This phase may be re-entered or resumed after a crash, so it must
+    be safe to run again: reconciling to target, not re-applying from scratch. Before finishing,
+    verify every changed file is at its intended state and report that reconciled end-state in
+    produced_outputs (see the reconciliation report in the required output below).
+  """.trimIndent()
+}
+
+internal fun priorGapMemoryRemediationDirective(phaseId: String, memory: FeatureTaskRuntimePriorGapMemory?): String {
+  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT || memory == null) {
+    return ""
+  }
+  val priorRounds = if (memory.priorAuditValues.isEmpty()) {
+    "none yet (first remediation round)"
+  } else {
+    "${memory.priorAuditValues.size} prior audit value string(s) in prior_gap_memory"
+  }
+  return """
+    ## Prior-gap memory — re-justify recurrence against prior audit prose
+    The prior_gap_memory projection above records the earlier audit_gap round. Treat it as authoritative
+    context for this round, not optional color. Compare the current audit value against
+    prior_audit_values ($priorRounds): when a gap repeats a criterion already named in an earlier audit
+    value string, your remediation must explicitly address why the prior fix did not close it. Still
+    close every gap named in the current audit value in this one invocation; never narrow scope to
+    only recurring items.
+  """.trimIndent()
+}
+
+internal fun nonValidatePhaseValidationOwnershipDirective(phaseId: String): String {
+  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
+    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD
+  ) {
+    return ""
+  }
+  return """
+    ## Validation ownership
+    Only the validate phase may run the pack validation gate
+    (`validation_gate.collect_all_full_gate_command`), `./gradlew check`, `check ${"--"}continue`,
+    `bill-code-check`, or any other full repository check suite. Only the build phase may run the
+    pack build_command for compile/buildability proof. This phase must not compile, build,
+    execute tests, or run check to prove the work. Ignore any Validation Strategy, plan note,
+    acceptance text, review habit, or prior habit that asks you to run check here — that work waits
+    for validate. If a receipt carries `tests_executed`, leave it empty.
+  """.trimIndent()
+}
+
+internal fun minimalismDisciplineDirective(phaseId: String): String {
+  if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+    return ""
+  }
+  return """
+    ## Minimalism discipline (reuse before write)
+    Understand the problem first,
+      then climb the ladder. Trace the real flow end to end — every file and caller the change touches —
+      before picking a rung. Laziness that skips comprehension ships a confident wrong fix. Read fully, then be lazy.
+
+    The ladder — stop at the first rung that holds:
+    1. Does this need to exist at all? Speculative need = skip it and say so in one line (YAGNI).
+    2. Already in this codebase? Reuse the helper, util, type, or pattern that already lives here.
+    3. Stdlib does it? Use it.
+    4. Native platform feature covers it? Prefer platform primitives over a new dependency or custom layer.
+    5. An already-installed dependency solves it? Use it. Never add a new dependency for what a few lines can do.
+    6. Can it be one line? One line.
+    7. Only then: the minimum code that works.
+    Two equal rungs both work → take the higher one and move on.
+
+    Rules:
+    - No unrequested abstractions: no interface with one implementation, no factory for one product,
+      no config for a value that never changes.
+    - No scaffolding "for later"; later can scaffold for itself.
+    - Deletion over addition. Boring over clever.
+    - Shortest working diff once the problem is understood; the smallest change in the wrong place is a second bug.
+    - Between two equal-size options, take the one correct on edge cases.
+
+    Bug fix =
+      root cause, not symptom. Before editing,
+        grep every caller of the function you are about to touch. Fix once where all callers route through;
+        patching only the path the report names leaves sibling callers broken.
+
+    Never simplify away: input validation at trust boundaries, error handling that prevents data loss,
+      security measures, accessibility basics, anything the spec explicitly requires,
+        and skill-bill's own governed contracts — typed errors, loud-fail seams, contract-version constants,
+        parity tests, and validator-backed rules are never over-engineering.
+
+    Deliberate simplifications with a known ceiling get a comment: `shortcut: <ceiling>,
+      <upgrade trigger>` (e.g. `// shortcut: global lock,
+        per-account locks if throughput matters`). Exception to comments-are-a-last-resort: `shortcut:`
+        markers are permitted because they record a non-obvious why (ceiling and upgrade trigger).
+  """.trimIndent()
+}
+
+internal fun testValueDisciplineDirective(phaseId: String): String {
+  if (phaseId !in TEST_VALUE_DISCIPLINE_PHASES) {
+    return ""
+  }
+  return """
+    ## Test-value discipline (every test must earn its cost)
+    Tests are a recurring cost: every future change to the code they touch pays for them in
+    maintenance and reasoning tokens. Write few, high-value tests; never mirror code 1:1 with tests.
+    - Before writing a test, name the realistic bug it would catch — a concrete wrong behavior that
+      fails this test while the rest of the suite passes. If you cannot, do not write the test.
+    - Concentrate coverage on critical paths: money and quantities, data integrity and persistence
+      atomicity, auth and tenant isolation, external contracts and serialization, concurrency and
+      recovery, irreversible side effects. Trivial glue on non-critical paths needs no test; say so
+      instead of writing one.
+    - Assert observable behavior at boundaries, never implementation structure: no mock-interaction
+      verification without an outcome assertion, no call-ordering assertions, no implementation
+      logic duplicated inside the test.
+    - One strong test per rule or branch; no sibling tests re-covering the same branch with
+      different literals.
+    - When planning, emit test_obligations only for behaviors that pass this bar, each tied to an
+      acceptance criterion or a named realistic bug; an empty test_obligations list is a valid
+      outcome for a task.
+    - Never remove or weaken regression coverage tied to a real past bug, and never treat governed
+      parity tests or validator-backed rules as omission candidates — the minimalism carve-outs
+      apply to tests too.
+  """.trimIndent()
+}
+
+private val TEST_VALUE_DISCIPLINE_PHASES: Set<String> = setOf(
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+)

@@ -1,4 +1,3 @@
-@file:Suppress("MaxLineLength", "ktlint:standard:max-line-length")
 
 package skillbill.scaffold.substance
 

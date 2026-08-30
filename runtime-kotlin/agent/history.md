@@ -1,3 +1,29 @@
+## [2026-08-30] SKILL-221 subtask 3 — Compiler suppressions and allow-list ban
+Areas: runtime-kotlin/{runtime-core/architecture,agent,runtime-application,runtime-cli,runtime-contracts,runtime-domain,runtime-infra-fs,runtime-infra-sqlite,runtime-mcp,runtime-ports}, AGENTS.md, CLAUDE.md, orchestration/{review-delegation,shell-content-contract,stack-routing}, intellij-plugin
+- Fixed compiler `@Suppress` where a typed decode, `_`, or delete worked; retained only honest `UNCHECKED_CAST` sites on the dated allow-list in `agent/decisions.md` (path|symbol|rule|why); complexity rules never appear on that list.
+- Added `SuppressionBanArchitectureTest` + scanner: complexity suppressions fail always; every other authored `@Suppress` must bijection-match the allow-list; fixtures prove TooManyFunctions fail, allow-listed cast pass, stray cast fail; does not duplicate line-ceiling or FQN scanners. reusable
+- Pattern: prefer a clear cast at the erased boundary over a wrapper invented only to delete the annotation; keep declaration-scoped suppressions, never `@file:` for mixed files.
+- Limitation: generated `build/`/`generated/` trees stay unscanned; zero-`@Suppress` including weird workarounds is a non-goal.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-30] SKILL-221 subtask 2 — Remaining detekt suppressions
+Areas: runtime-kotlin/{runtime-domain/review,runtime-infra-fs/scaffold,runtime-mcp,runtime-cli,runtime-core/di,runtime-domain/{scaffold,workflow/taskruntime}}
+- Cleared remaining non-compiler detekt/ktlint suppressions (TooGenericExceptionCaught, MagicNumber, MaxLineLength, MatchingDeclarationName, related style) by typed catches, named constants, wraps/extracts, and file/type renames; no empty or success-shaped catch left at former silence sites.
+- Pattern: map broad catch to the boundary's typed failure family (rethrow CancellationException first); resolve filename mismatch by renaming, not silencing. reusable
+- Limitation: compiler suppressions (UNCHECKED_CAST, UNUSED_*) and the architecture-test ban stay for subtask 3; no new failure hierarchies.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-08-30] SKILL-221 subtask 1 — Pin complexity rules and resolve suppressions
+Areas: runtime-kotlin/{config/detekt,build-logic,runtime-application,runtime-cli,runtime-core,runtime-domain,runtime-infra-fs,runtime-infra-sqlite,runtime-mcp,runtime-ports,runtime-contracts}
+- Pinned TooManyFunctions, LargeClass, LongMethod, CyclomaticComplexMethod, ComplexCondition, NestedBlockDepth, LongParameterList under `complexity:`; ReturnCount/ThrowsCount live under `style:` (detekt 1.23.8 rejects them under complexity; thresholds unchanged at max 4 / max 2).
+- Removed every authored complexity `@Suppress` / `@file:Suppress` across runtime-kotlin (+ build-logic) by extracting collaborators; detekt reports zero hits for the pinned complexity set; production src/main max lines 482.
+- Pattern: keep the check in the gate—resolve by extraction, never loosen thresholds or add a baseline. reusable
+- Limitation: non-complexity style findings (e.g. MaxLineLength) and scripts/validate remain validate-phase work; remaining suppression families are later SKILL-221 subtasks.
+Feature flag: N/A
+Acceptance criteria: 7/8 implemented (validate gate deferred)
+
 ## [2026-08-29] Validate repair is fix-all without mid-session proof
 Areas: runtime-kotlin/runtime-application/featuretask, skills/bill-code-check, platform-packs/{kotlin,kmp}/quality-check
 - Validate repair prompts no longer require spotlessApply at turn start or targeted detekt/compile/test proof after each checklist item.

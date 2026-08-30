@@ -5,6 +5,7 @@ import skillbill.application.featuretask.RemediationBaseBlocked
 import skillbill.application.featuretask.RemediationBaseCoherent
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
+import skillbill.contracts.JsonSupport
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
@@ -85,9 +86,11 @@ class RemediationBaseReconciliationUnderAmendTest {
     assertContains(blocked.operatorGuidance, "skill-bill goal repair")
     assertEquals(fixture.preRemediationSha, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
-    @Suppress("UNCHECKED_CAST")
-    val evidence = repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
-      as List<Map<String, Any?>>
+    val evidence = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
     val entry = evidence.single()
     assertEquals("FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence", entry["seam"])
     assertEquals(ref, entry["value_used"])

@@ -1,13 +1,11 @@
 package skillbill.agentaddon
 
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
-import skillbill.error.AgentAddonSelectionDriftError
 import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
@@ -47,55 +45,20 @@ class AgentAddonSelectionResolver : AgentAddonSelectionPort {
     )
   }
 
-  @Suppress("ThrowsCount") // Each identity or digest contract breach must retain its actionable typed failure.
   override fun verifyPersisted(
     selection: AgentAddonSelection,
     consumer: AgentAddonConsumer,
     receivingAgentIds: List<String>,
-  ): HydratedAgentAddonSelection {
-    if (selection.entries.isNotEmpty() && receivingAgentIds.isEmpty()) {
-      throw InvalidAgentAddonSelectionError(
-        "A non-empty agent add-on selection requires at least one receiving agent.",
-      )
-    }
-    val receivingAgents = receivingAgentIds.map(::parseAgent)
-    return HydratedAgentAddonSelection(
-      selection.entries.map { recorded ->
-        val manifest = Path.of(recorded.sourceIdentity)
-        if (!Files.isRegularFile(manifest)) {
-          throw InvalidAgentAddonSelectionError(
-            "Selected agent add-on '${recorded.slug}' source is missing at '${recorded.sourceIdentity}'.",
-          )
-        }
-        val values = YAMLMapper().readValue(Files.readAllBytes(manifest), Map::class.java)
-        val slug = values["slug"] as? String
-        if (slug != recorded.slug) {
-          throw InvalidAgentAddonSelectionError(
-            "Selected source '${recorded.sourceIdentity}' declares '$slug', expected '${recorded.slug}'.",
-          )
-        }
-        val consumers = stringList(values, "consumers").map(AgentAddonConsumer::fromId)
-        val agents = stringList(values, "agent_ids").map(InstallAgent::fromId)
-        validateCompatibility(recorded.slug, consumers, agents, consumer, receivingAgents)
-        val contentPath = manifest.resolveSibling("content.md")
-        if (!Files.isRegularFile(contentPath)) {
-          throw InvalidAgentAddonSelectionError("Selected agent add-on '${recorded.slug}' content.md is missing.")
-        }
-        val bytes = Files.readAllBytes(contentPath)
-        if (sha256(bytes) != recorded.contentSha256) {
-          throw AgentAddonSelectionDriftError(recorded.slug, recorded.sourceIdentity)
-        }
-        HydratedAgentAddonSelectionEntry(
-          persisted = recorded,
-          description = values["description"] as? String
-            ?: throw InvalidAgentAddonSelectionError(
-              "Selected agent add-on '${recorded.slug}' has no description.",
-            ),
-          content = bytes.toString(Charsets.UTF_8),
-        )
-      },
-    )
-  }
+  ): HydratedAgentAddonSelection = verifyPersistedAgentAddonSelection(
+    PersistedAgentAddonSelectionVerifyRequest(
+      selection = selection,
+      consumer = consumer,
+      receivingAgentIds = receivingAgentIds,
+      parseAgent = ::parseAgent,
+      validateCompatibility = ::validateCompatibility,
+      stringList = ::stringList,
+    ),
+  )
 
   private fun hydrate(
     slug: String,

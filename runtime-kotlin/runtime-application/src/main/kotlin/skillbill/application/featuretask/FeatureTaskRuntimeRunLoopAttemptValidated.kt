@@ -102,18 +102,20 @@ internal fun FeatureTaskRuntimeRunLoop.finaliseSubtaskCommit(
       recordFinalisedCheckpointIdentity(run.phaseId, branch, ledger, commitSha, stagedPaths)
     },
   ).finalise(
-    identity = identity,
-    durableCommitSha = ledger.commitSha,
-    sequenceNumber = ledger.nextSequenceNumber,
-    handoff = handoff,
-    metadata = FeatureTaskRuntimeCheckpointMetadata(
-      phaseId = run.phaseId,
-      loopId = null,
-      generation = checkpointGeneration(null),
-      branch = branch,
-      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
+    FeatureTaskRuntimeSubtaskFinaliseRequest(
+      identity = identity,
+      durableCommitSha = ledger.commitSha,
+      sequenceNumber = ledger.nextSequenceNumber,
+      handoff = handoff,
+      metadata = FeatureTaskRuntimeCheckpointMetadata(
+        phaseId = run.phaseId,
+        loopId = null,
+        generation = checkpointGeneration(null),
+        branch = branch,
+        intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
+      ),
+      manifestCommitSha = goalContinuationManifestCommitSha,
     ),
-    manifestCommitSha = goalContinuationManifestCommitSha,
   )
   return when (outcome) {
     is FeatureTaskRuntimeSubtaskFinalisationBlocked -> CommitPushBlocked(outcome.reason)

@@ -186,7 +186,7 @@ internal fun FeatureTaskRuntimeRunLoop.checkpointEstablished(
     is FeatureTaskRuntimeCheckpointDecision.Stage -> {
       if (scope.adoptedPaths.isNotEmpty()) {
         runCatching {
-          diagnostics.warning(FeatureTaskRuntimeCheckpointScope.adoptionWarning(branch, scope.adoptedPaths))
+          diagnostics.warning(adoptionWarning(branch, scope.adoptedPaths))
         }
       }
       commitCheckpoint(

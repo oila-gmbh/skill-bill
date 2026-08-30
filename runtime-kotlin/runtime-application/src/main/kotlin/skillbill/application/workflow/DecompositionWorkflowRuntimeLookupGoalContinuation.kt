@@ -1,0 +1,44 @@
+package skillbill.application.workflow
+
+import skillbill.application.featuretask.model.GoalContinuationCandidate
+import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionManifest
+
+private val GOAL_TERMINAL_MANIFEST_STATUSES: Set<String> = setOf("complete", "skipped")
+
+internal fun WorkflowStateRepository.goalContinuationFor(
+  issueKey: String,
+  repositoryIdentity: String,
+  validator: DecompositionManifestValidator,
+): GoalContinuationCandidate? {
+  val record = findDecomposedParentWorkflow(issueKey, validator)
+    ?.takeIf { it.workflowStatus !in IMPLEMENT_TERMINAL_STATUSES }
+    ?: return null
+  val manifest = record.toSnapshot().decompositionRuntime(validator)
+    ?.takeIf { it.status !in GOAL_TERMINAL_MANIFEST_STATUSES }
+    ?: return null
+  val boundToThisRepository = findGoalChildFeatureTaskCandidates(issueKey, repositoryIdentity).isNotEmpty() ||
+    countGoalChildIdentities(issueKey) == 0
+  if (!boundToThisRepository) return null
+  val running = record.workflowStatus == "running"
+  return GoalContinuationCandidate(
+    parentWorkflowId = record.workflowId,
+    issueKey = manifest.issueKey,
+    status = record.workflowStatus,
+    currentSubtaskId = manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },
+    currentAction = manifest.currentSubtaskIntent.action,
+    completeCount = manifest.subtasks.count { it.status == "complete" },
+    pendingCount = manifest.subtasks.count { it.status !in GOAL_TERMINAL_MANIFEST_STATUSES },
+    blockedCount = manifest.subtasks.count { it.status == "blocked" },
+    updatedAt = record.updatedAt,
+    summary = if (running) {
+      "A goal run for '${manifest.issueKey}' is already in progress; check it before starting another."
+    } else {
+      "A prepared goal for '${manifest.issueKey}' owns durable state; continue it instead of starting new work."
+    },
+  )
+}
+
+internal fun DecompositionManifest.isActiveGoalRuntime(): Boolean = status !in setOf("complete", "skipped") &&
+  subtasks.any { subtask -> subtask.status !in setOf("complete", "skipped") }

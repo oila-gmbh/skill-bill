@@ -1,5 +1,3 @@
-@file:Suppress("LongMethod", "TooGenericExceptionCaught", "MagicNumber", "UnusedParameter")
-
 package skillbill.mcp.scaffold
 
 import skillbill.di.RuntimeComponent
@@ -10,6 +8,9 @@ import java.nio.file.Path
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
+
+private const val NEW_SKILL_SESSION_ID_SUFFIX_LENGTH = 4
 
 object McpScaffoldRuntime {
   fun newSkillScaffold(
@@ -20,76 +21,40 @@ object McpScaffoldRuntime {
   ): Map<String, Any?> {
     val sessionId = generateNewSkillSessionId()
     val repoRoot = findRepoRoot()
-    return try {
-      // SKILL-52.2 subtask 2: parse JSON-RPC args at the MCP adapter boundary into a typed
-      // request and call the typed application overload so the application + port surface no
-      // longer accepts a raw `Map<String, Any?>` from MCP.
+    val outcome = runCatching {
       val request = parseMcpScaffoldCommandRequest(payload + ("repo_root" to repoRoot.toString()))
       val result =
         RuntimeComponent::class.create(context.toRuntimeContext())
           .scaffoldService
           .scaffold(request, dryRun)
-      val outcome = if (dryRun) "dry-run" else "success"
-      val baseTelemetryPayload =
-        mapOf(
-          "session_id" to sessionId,
-          "kind" to result.kind,
-          "skill_name" to result.skillName,
-          "platform" to payload["platform"].orEmpty(),
-          "family" to payload["family"].orEmpty(),
-          "area" to payload["area"].orEmpty(),
-          "result" to outcome,
-          "duration_seconds" to 0,
-          "skill" to "skill-bill-scaffold",
+      scaffoldSuccessMap(
+        sessionId = sessionId,
+        payload = payload,
+        result = result,
+        dryRun = dryRun,
+        orchestrated = orchestrated,
+      )
+    }
+    val error = outcome.exceptionOrNull()
+    return if (error == null) {
+      outcome.getOrThrow()
+    } else {
+      when (error) {
+        is CancellationException -> throw error
+        is Exception -> scaffoldFailureMap(
+          sessionId = sessionId,
+          payload = payload,
+          orchestrated = orchestrated,
+          error = error,
         )
-
-      if (orchestrated) {
-        mapOf(
-          "mode" to "orchestrated",
-          "telemetry_payload" to baseTelemetryPayload - "session_id",
-          "skill_path" to result.skillPath.toString(),
-          "notes" to result.notes,
-        )
-      } else {
-        mapOf(
-          "status" to "ok",
-          "session_id" to sessionId,
-          "skill_path" to result.skillPath.toString(),
-          "notes" to result.notes,
-        )
-      }
-    } catch (error: Throwable) {
-      if (orchestrated) {
-        mapOf(
-          "mode" to "orchestrated",
-          "telemetry_payload" to
-            mapOf(
-              "session_id" to sessionId,
-              "kind" to payload["kind"].orEmpty(),
-              "skill_name" to payload["name"].orEmpty(),
-              "platform" to payload["platform"].orEmpty(),
-              "family" to payload["family"].orEmpty(),
-              "area" to payload["area"].orEmpty(),
-              "result" to "failed",
-              "duration_seconds" to 0,
-              "skill" to "skill-bill-scaffold",
-              "error" to error.message.orEmpty(),
-            ) - "session_id",
-          "error" to error.message.orEmpty(),
-        )
-      } else {
-        mapOf(
-          "status" to "error",
-          "session_id" to sessionId,
-          "error" to error.message.orEmpty(),
-        )
+        else -> throw error
       }
     }
   }
 
   private fun generateNewSkillSessionId(): String {
     val date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
-    val suffix = UUID.randomUUID().toString().take(4)
+    val suffix = UUID.randomUUID().toString().take(NEW_SKILL_SESSION_ID_SUFFIX_LENGTH)
     return "nss-$date-$suffix"
   }
 
@@ -106,6 +71,4 @@ object McpScaffoldRuntime {
     }
     return start
   }
-
-  private fun Any?.orEmpty(): String = this as? String ?: ""
 }

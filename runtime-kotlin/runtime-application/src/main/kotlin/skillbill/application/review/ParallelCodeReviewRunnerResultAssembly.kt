@@ -3,6 +3,7 @@ package skillbill.application.review
 import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelReviewLaneStatus
+import skillbill.application.review.model.ReviewIntegrationPassRunRequest
 import skillbill.application.review.model.ReviewLaneIntegrationInput
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -23,6 +24,7 @@ import skillbill.review.model.ReviewLaneAggregationInput
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
+import skillbill.review.model.ReviewStageDegradationSelectionRequest
 import skillbill.review.model.ReviewStageReached
 import skillbill.review.model.ReviewStageResumeReport
 import java.time.Instant
@@ -58,13 +60,11 @@ internal class ParallelCodeReviewRunnerResultAssembly(
       )
     }
     val outcome = ReviewIntegrationPassRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
-      packet = packet,
-      lanes = lanes,
-      budget = initial.budget,
-      brokerId = initial.agent1Id,
-      repoRoot = initial.request.repoRoot,
-      timeout = initial.request.timeout,
-      promptSuffix = initial.request.selectedAgentAddonsSection,
+      ReviewIntegrationPassRunRequest(
+        packet = packet,
+        lanes = lanes,
+        launch = initial.delegatedStageLaunch(),
+      ),
     )
     recordIntegrationBoundary(initial.request.reviewRunId, outcome)
     return outcome
@@ -157,12 +157,14 @@ internal class ParallelCodeReviewRunnerResultAssembly(
       fallback = emptyList(),
     ) { unitOfWork ->
       ReviewStageDegradationSelection.select(
-        reviewRunId = reviewRunId,
-        spec = unitOfWork.reviews.fetchSpecProjectionReference(reviewRunId),
-        boundaries = unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
-        verdicts = unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
-        claims = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId),
-        evidenceBoundaries = evidenceBoundaries,
+        ReviewStageDegradationSelectionRequest(
+          reviewRunId = reviewRunId,
+          spec = unitOfWork.reviews.fetchSpecProjectionReference(reviewRunId),
+          boundaries = unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
+          verdicts = unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
+          claims = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId),
+          evidenceBoundaries = evidenceBoundaries,
+        ),
       )
     }
     runtimeOwnedPersistence.optionalWrite(

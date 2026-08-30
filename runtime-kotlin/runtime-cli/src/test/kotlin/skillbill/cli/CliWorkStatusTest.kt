@@ -9,7 +9,6 @@ import skillbill.application.idestatus.model.IdeStatusStep
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.IdeStatusSchemaValidator
 import skillbill.db.core.DatabaseRuntime
 import skillbill.goalrunner.model.GoalPlanningStatusState
@@ -142,10 +141,4 @@ class CliWorkStatusTest {
     Files.createDirectory(root.resolve(".git"))
     return root
   }
-}
-
-private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonSupport.parseObjectOrNull(rawJson)
-  require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
 }

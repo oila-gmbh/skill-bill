@@ -1,10 +1,6 @@
-@file:Suppress("MaxLineLength", "TooGenericExceptionCaught", "ThrowsCount")
 
 package skillbill.scaffold.platformpack
 
-import skillbill.error.ContractVersionMismatchError
-import skillbill.error.InvalidFallbackCapabilityError
-import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingManifestError
 import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.PlatformManifest
@@ -66,13 +62,13 @@ internal fun validatePlatformPackFallbacks(packs: List<PlatformManifest>) {
     .groupBy({ it.first }, { it.second })
     .forEach { (capability, owners) ->
       if (owners.size > 1) {
-        throw InvalidFallbackCapabilityError(
+        invalidFallbackCapability(
           "Fallback capability '$capability' has multiple owners: ${owners.map { it.slug }.sorted()}.",
         )
       }
       val owner = owners.single()
       if (capability == CODE_REVIEW_FALLBACK_CAPABILITY && owner.declaredFiles.baseline == null) {
-        throw InvalidFallbackCapabilityError(
+        invalidFallbackCapability(
           "Platform pack '${owner.slug}' declares fallback capability '$capability' without a code-review baseline.",
         )
       }
@@ -107,7 +103,7 @@ internal fun validatePlatformPack(
   // `PlatformManifest` directly (bypassing the schema validator) is still
   // gated here.
   if (enforceContractVersion && pack.contractVersion != contractVersion) {
-    throw ContractVersionMismatchError(
+    contractVersionMismatch(
       buildString {
         append("Platform pack '${pack.slug}': declares contract_version '${pack.contractVersion}' ")
         append("but the shell expects '$contractVersion'.")
@@ -118,16 +114,16 @@ internal fun validatePlatformPack(
   val declaredAreaFiles = pack.declaredFiles.areas
   val missingAreaSlots = pack.declaredCodeReviewAreas.toSet() - declaredAreaFiles.keys
   if (missingAreaSlots.isNotEmpty()) {
-    throw InvalidManifestSchemaError(
+    invalidManifestSchema(
       "Platform pack '${pack.slug}': declared_files.areas is missing entries for ${missingAreaSlots.sorted()}.",
     )
   }
 
   pack.declaredFiles.baseline?.let { baseline ->
-    validateGovernedSkill(pack, "baseline", baseline, "code-review", "")
+    validateGovernedSkill(pack, "baseline", baseline, "code-review")
   }
   pack.declaredCodeReviewAreas.forEach { area ->
-    validateGovernedSkill(pack, "areas.$area", declaredAreaFiles.getValue(area), "code-review", area)
+    validateGovernedSkill(pack, "areas.$area", declaredAreaFiles.getValue(area), "code-review")
   }
   validateReviewSkillStructure(pack)
 }

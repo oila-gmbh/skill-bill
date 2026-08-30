@@ -1,5 +1,7 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewClaimVerificationRunRequest
+import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -22,7 +24,9 @@ import skillbill.review.context.model.ReviewRevision
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewFindingVerdict
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -41,14 +45,10 @@ class ReviewClaimVerificationRunnerTest {
       },
       validator = { envelope, _ -> envelopes += envelope },
     ).run(
-      packet = packet(),
-      findings = listOf(finding("F-001"), finding("F-002", "src/B.kt:4", "other bug")),
-      existingVerdicts = emptyList(),
-      mode = ResolvedReviewExecutionMode.INLINE,
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("verify-isolation"),
-      timeout = 1.seconds,
+      verificationRequest(
+        findings = listOf(finding("F-001"), finding("F-002", "src/B.kt:4", "other bug")),
+        repoRoot = Files.createTempDirectory("verify-isolation"),
+      ),
     )
     assertEquals(2, launches.size)
     assertEquals(2, envelopes.size)
@@ -86,18 +86,15 @@ class ReviewClaimVerificationRunnerTest {
     val outcome = runner(
       launcher = { request -> responses.removeFirst().invoke(request) },
     ).run(
-      packet = packet(),
-      findings = listOf(
-        finding("F-001"),
-        finding("F-002", "src/B.kt:4", "second"),
-        finding("F-003", "src/C.kt:8", "third"),
+      verificationRequest(
+        findings = listOf(
+          finding("F-001"),
+          finding("F-002", "src/B.kt:4", "second"),
+          finding("F-003", "src/C.kt:8", "third"),
+        ),
+        mode = ResolvedReviewExecutionMode.DELEGATED,
+        repoRoot = Files.createTempDirectory("verify-failure"),
       ),
-      existingVerdicts = emptyList(),
-      mode = ResolvedReviewExecutionMode.DELEGATED,
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("verify-failure"),
-      timeout = 1.seconds,
     )
     assertEquals(3, outcome.verdicts.size)
     assertTrue(outcome.verdicts.all { it.claimVerdict == ReviewClaimVerdict.UNRESOLVED })
@@ -128,17 +125,32 @@ class ReviewClaimVerificationRunnerTest {
       launcher = { request -> facts(request, CONFIRMED) },
       validator = { envelope, _ -> envelopes += envelope },
     ).run(
-      packet = packet(),
-      findings = listOf(finding("F-001")),
-      existingVerdicts = emptyList(),
-      mode = mode,
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-      brokerId = "codex",
-      repoRoot = Files.createTempDirectory("verify-depth"),
-      timeout = 1.seconds,
+      verificationRequest(
+        findings = listOf(finding("F-001")),
+        mode = mode,
+        repoRoot = Files.createTempDirectory("verify-depth"),
+      ),
     )
     return envelopes
   }
+
+  private fun verificationRequest(
+    findings: List<ParallelReviewMergedFinding>,
+    existingVerdicts: List<ReviewFindingVerdict> = emptyList(),
+    mode: ResolvedReviewExecutionMode = ResolvedReviewExecutionMode.INLINE,
+    repoRoot: Path = Files.createTempDirectory("verify"),
+  ) = ReviewClaimVerificationRunRequest(
+    packet = packet(),
+    findings = findings,
+    existingVerdicts = existingVerdicts,
+    mode = mode,
+    launch = ReviewDelegatedStageLaunch(
+      budget = ReviewContextBudgetPolicy.DEFAULT,
+      brokerId = "codex",
+      repoRoot = repoRoot,
+      timeout = 1.seconds,
+    ),
+  )
 
   private fun runner(
     launcher: GoalRunnerSubtaskLauncher,

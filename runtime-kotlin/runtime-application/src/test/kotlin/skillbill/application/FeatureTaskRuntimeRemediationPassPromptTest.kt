@@ -1,15 +1,14 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
-import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
@@ -125,40 +124,42 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     )
     val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-        FeatureTaskRuntimeFeatureSize.MEDIUM,
-      ),
-      runInvariants = FeatureTaskRuntimeRunInvariants(
-        specReference = ".feature-specs/SKILL-142/spec.md",
-        featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-        acceptanceCriteria = listOf("AC-008", "AC-010"),
-        mandatesAndOverrides = emptyList(),
-      ),
-      recordedOutputs = listOf(
-        FeatureTaskRuntimePhaseOutput(
-          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-          1,
-          """{"produced_outputs":{"findings":[""" +
-            """{"finding_id":"F-001","severity":"Blocker","location":"${
-              touched.first()
-            }:1","message":"must fix"}]}}""",
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          FeatureTaskRuntimeFeatureSize.MEDIUM,
         ),
-        verifyFindingsPhaseOutput(listOf("F-001")).copy(
-          payload = verifyFindingsOutput(listOf("F-001")).replace(
-            """"location":"Foo.kt:1"""",
-            """"location":"${touched.first()}:1"""",
-          ).replace(
-            """"message":"Foo.kt leaks a connection in the error path"""",
-            """"message":"must fix"""",
+        runInvariants = FeatureTaskRuntimeRunInvariants(
+          specReference = ".feature-specs/SKILL-142/spec.md",
+          featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+          acceptanceCriteria = listOf("AC-008", "AC-010"),
+          mandatesAndOverrides = emptyList(),
+        ),
+        recordedOutputs = listOf(
+          FeatureTaskRuntimePhaseOutput(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+            1,
+            """{"produced_outputs":{"findings":[""" +
+              """{"finding_id":"F-001","severity":"Blocker","location":"${
+                touched.first()
+              }:1","message":"must fix"}]}}""",
+          ),
+          verifyFindingsPhaseOutput(listOf("F-001")).copy(
+            payload = verifyFindingsOutput(listOf("F-001")).replace(
+              """"location":"Foo.kt:1"""",
+              """"location":"${touched.first()}:1"""",
+            ).replace(
+              """"message":"Foo.kt leaks a connection in the error path"""",
+              """"message":"must fix"""",
+            ),
           ),
         ),
+        repositoryCheckpoint = checkpoint,
+        expectedRepositoryCheckpoint = checkpoint,
       ),
-      repositoryCheckpoint = checkpoint,
-      expectedRepositoryCheckpoint = checkpoint,
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val prompt = composePhasePrompt(
       issueKey = "SKILL-142",
       briefing = briefing,
     )
@@ -173,40 +174,42 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   fun `implement_fix briefing includes a Minor finding from the preceding pass without severity re-filter`() {
     val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-        FeatureTaskRuntimeFeatureSize.MEDIUM,
-      ),
-      runInvariants = FeatureTaskRuntimeRunInvariants(
-        specReference = ".feature-specs/SKILL-178/spec.md",
-        featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-        acceptanceCriteria = listOf("AC-005"),
-        mandatesAndOverrides = emptyList(),
-      ),
-      recordedOutputs = listOf(
-        FeatureTaskRuntimePhaseOutput(
-          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-          1,
-          """{"produced_outputs":{"findings":[""" +
-            """{"finding_id":"F-BLOCKER","severity":"Blocker","location":"A.kt:1","message":"must fix"},""" +
-            """{"finding_id":"F-MINOR","severity":"Minor","location":"B.kt:2","message":"polish naming"}]}}""",
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          FeatureTaskRuntimeFeatureSize.MEDIUM,
         ),
-        verifyFindingsPhaseOutput(listOf("F-BLOCKER", "F-MINOR")).copy(
-          payload = """
+        runInvariants = FeatureTaskRuntimeRunInvariants(
+          specReference = ".feature-specs/SKILL-178/spec.md",
+          featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+          acceptanceCriteria = listOf("AC-005"),
+          mandatesAndOverrides = emptyList(),
+        ),
+        recordedOutputs = listOf(
+          FeatureTaskRuntimePhaseOutput(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+            1,
+            """{"produced_outputs":{"findings":[""" +
+              """{"finding_id":"F-BLOCKER","severity":"Blocker","location":"A.kt:1","message":"must fix"},""" +
+              """{"finding_id":"F-MINOR","severity":"Minor","location":"B.kt:2","message":"polish naming"}]}}""",
+          ),
+          verifyFindingsPhaseOutput(listOf("F-BLOCKER", "F-MINOR")).copy(
+            payload = """
             {"produced_outputs":{"finding_dispositions":[
               {"finding_id":"F-BLOCKER","disposition":"verified","reason":"Matches spec intent.","severity":"blocker",
                 "location":"A.kt:1","message":"must fix"},
               {"finding_id":"F-MINOR","disposition":"verified","reason":"Matches spec intent.","severity":"minor",
                 "location":"B.kt:2","message":"polish naming"}
             ]}}
-          """.trimIndent(),
+            """.trimIndent(),
+          ),
         ),
+        repositoryCheckpoint = checkpoint,
+        expectedRepositoryCheckpoint = checkpoint,
       ),
-      repositoryCheckpoint = checkpoint,
-      expectedRepositoryCheckpoint = checkpoint,
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val prompt = composePhasePrompt(
       issueKey = "SKILL-178",
       briefing = briefing,
     )
@@ -233,30 +236,32 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   private fun implementFixPrompt(): String {
     val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-        FeatureTaskRuntimeFeatureSize.MEDIUM,
-      ),
-      runInvariants = FeatureTaskRuntimeRunInvariants(
-        specReference = ".feature-specs/SKILL-142/spec.md",
-        featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-        acceptanceCriteria = listOf("AC-008", "AC-010"),
-        mandatesAndOverrides = emptyList(),
-      ),
-      recordedOutputs = listOf(
-        FeatureTaskRuntimePhaseOutput(
-          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-          1,
-          """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker",""" +
-            """"location":"A.kt:1","message":"must fix"}]}}""",
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          FeatureTaskRuntimeFeatureSize.MEDIUM,
         ),
-        verifyFindingsPhaseOutput(listOf("F-001")),
+        runInvariants = FeatureTaskRuntimeRunInvariants(
+          specReference = ".feature-specs/SKILL-142/spec.md",
+          featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+          acceptanceCriteria = listOf("AC-008", "AC-010"),
+          mandatesAndOverrides = emptyList(),
+        ),
+        recordedOutputs = listOf(
+          FeatureTaskRuntimePhaseOutput(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+            1,
+            """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker",""" +
+              """"location":"A.kt:1","message":"must fix"}]}}""",
+          ),
+          verifyFindingsPhaseOutput(listOf("F-001")),
+        ),
+        repositoryCheckpoint = checkpoint,
+        expectedRepositoryCheckpoint = checkpoint,
       ),
-      repositoryCheckpoint = checkpoint,
-      expectedRepositoryCheckpoint = checkpoint,
     )
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    return FeatureTaskRuntimePhasePromptComposer.compose(
+    return composePhasePrompt(
       issueKey = "SKILL-142",
       briefing = briefing,
     )
@@ -267,16 +272,19 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     resolvedTier: CodeReviewExecutionMode,
     reviewInput: GoalSubtaskReviewInput? = null,
     baselineUntrackedPaths: List<String> = emptyList(),
-  ): String = FeatureTaskRuntimePhasePromptComposer.compose(
+  ): String = composePhasePrompt(
     issueKey = "SKILL-142",
     briefing = reviewBriefing(),
-    codeReviewMode = resolvedTier,
-    reviewPassNumber = passNumber,
-    goalSubtaskReviewInput = reviewInput,
-    resolvedReviewTier = resolvedTier,
-    reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
-    baselineUntrackedPaths = baselineUntrackedPaths,
-  )
+  ) {
+    copy(
+      codeReviewMode = resolvedTier,
+      reviewPassNumber = passNumber,
+      goalSubtaskReviewInput = reviewInput,
+      resolvedReviewTier = resolvedTier,
+      reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
+      baselineUntrackedPaths = baselineUntrackedPaths,
+    )
+  }
 }
 
 private val REVIEW_INPUT = GoalSubtaskReviewInput(
@@ -288,19 +296,21 @@ private val REVIEW_INPUT = GoalSubtaskReviewInput(
 
 private fun reviewBriefing() = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
   FeatureTaskRuntimeHandoffContract.assembleHandoff(
-    declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-      FeatureTaskRuntimeFeatureSize.MEDIUM,
+    FeatureTaskRuntimeHandoffAssemblyRequest(
+      declaration = FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ),
+      runInvariants = FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-142/spec.md",
+        featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+        acceptanceCriteria = listOf("AC-008", "AC-010"),
+        mandatesAndOverrides = emptyList(),
+      ),
+      recordedOutputs = listOf(
+        FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
+      ),
+      repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
     ),
-    runInvariants = FeatureTaskRuntimeRunInvariants(
-      specReference = ".feature-specs/SKILL-142/spec.md",
-      featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-      acceptanceCriteria = listOf("AC-008", "AC-010"),
-      mandatesAndOverrides = emptyList(),
-    ),
-    recordedOutputs = listOf(
-      FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
-    ),
-    repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1"),
   ),
 )

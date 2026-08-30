@@ -3,10 +3,8 @@ package skillbill.infrastructure.sqlite.review
 import skillbill.ports.review.model.ReviewRepositoryStatsSnapshot
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
-import skillbill.review.model.FindingOutcomeRow
 import skillbill.review.model.GoalWorkflowStats
 import skillbill.review.model.ReviewFinishedTelemetry
-import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
 object ReviewStatsRuntime {
@@ -61,21 +59,15 @@ object ReviewStatsRuntime {
     }
   }
 
-  @Suppress("LongParameterList")
-  fun buildReviewFinishedPayload(
-    connection: Connection,
-    reviewRunId: String,
-    reviewSummary: ReviewSummary? = null,
-    findingRows: List<FindingOutcomeRow>? = null,
-    level: String = "anonymous",
-    routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
-  ): ReviewFinishedTelemetry = reviewFinishedPayload(
-    connection = connection,
-    reviewSummary = reviewSummary ?: ReviewRuntime.fetchReviewSummary(connection, reviewRunId),
-    findingRows = findingRows ?: queryLatestFindingOutcomes(connection, reviewRunId),
-    level = level,
-    routedSkillPlatformSlugs = routedSkillPlatformSlugs,
-  )
+  fun buildReviewFinishedPayload(request: ReviewFinishedPayloadBuildRequest): ReviewFinishedTelemetry =
+    reviewFinishedPayload(
+      connection = request.connection,
+      reviewSummary = request.reviewSummary
+        ?: ReviewRuntime.fetchReviewSummary(request.connection, request.reviewRunId),
+      findingRows = request.findingRows ?: queryLatestFindingOutcomes(request.connection, request.reviewRunId),
+      level = request.level,
+      routedSkillPlatformSlugs = request.routedSkillPlatformSlugs,
+    )
 
   fun updateReviewFinishedTelemetryState(
     connection: Connection,

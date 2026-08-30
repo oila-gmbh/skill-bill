@@ -20,8 +20,7 @@ import skillbill.scaffold.runtime.scaffold
  * therefore does not require an architecture allow-list entry — the raw-map scanner does not
  * walk `runtime-infra-fs`.
  *
- * The per-kind appenders are split into private helpers to keep each function under the detekt
- * `LongMethod` (60 lines) and `CyclomaticComplexMethod` (15) thresholds.
+ * The per-kind appenders are split into private helpers to keep each function short and linear.
  */
 internal fun ScaffoldCommandRequest.toRawScaffoldPayload(): Map<String, Any?> {
   val base = linkedMapOf<String, Any?>(

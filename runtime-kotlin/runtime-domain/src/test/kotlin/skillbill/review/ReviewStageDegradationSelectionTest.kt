@@ -3,6 +3,7 @@ package skillbill.review
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.review.model.ReviewStageDegradationReason
+import skillbill.review.model.ReviewStageDegradationSelectionRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -131,12 +132,14 @@ class ReviewStageDegradationSelectionTest {
   private fun evidenceReasons(
     vararg accounting: ReviewEvidenceBoundaryAccounting,
   ): List<ReviewStageDegradationMeasurement> = ReviewStageDegradationSelection.select(
-    reviewRunId = "rvw-195",
-    spec = null,
-    boundaries = emptyList(),
-    verdicts = emptyList(),
-    claims = null,
-    evidenceBoundaries = accounting.toList(),
+    ReviewStageDegradationSelectionRequest(
+      reviewRunId = "rvw-195",
+      spec = null,
+      boundaries = emptyList(),
+      verdicts = emptyList(),
+      claims = null,
+      evidenceBoundaries = accounting.toList(),
+    ),
   ).filter { it.reason in EVIDENCE_REASONS }
 
   private fun assertCountsOnly(measurement: ReviewStageDegradationMeasurement) {

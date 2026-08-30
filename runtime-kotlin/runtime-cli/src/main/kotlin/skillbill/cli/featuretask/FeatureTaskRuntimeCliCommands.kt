@@ -202,19 +202,12 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
 }
 
 @Inject
-@Suppress("LongParameterList")
 class FeatureTaskRuntimeRunCommand(
   private val deps: FeatureTaskRuntimeRunDependencies,
   private val workflowService: WorkflowService,
   featureTaskRuntimeExplicitRunCommand: FeatureTaskRuntimeExplicitRunCommand,
-  featureTaskRuntimeStatusCommand: FeatureTaskRuntimeStatusCommand,
-  featureTaskRuntimeResumeCommand: FeatureTaskRuntimeResumeCommand,
-  featureTaskRuntimeAbandonCommand: FeatureTaskRuntimeAbandonCommand,
-  featureTaskRuntimeRetryBlockedCommand: FeatureTaskRuntimeRetryBlockedCommand,
-  featureTaskRuntimeRepairIdentityCommand: FeatureTaskRuntimeRepairIdentityCommand,
-  featureTaskLookupCommand: FeatureTaskLookupCommand,
-  rejectedOutputInspectCliCommand: RejectedOutputInspectCliCommand,
-  rejectedOutputCleanupCliCommand: RejectedOutputCleanupCliCommand,
+  control: FeatureTaskRuntimeControlSubcommands,
+  rejectedOutput: FeatureTaskRejectedOutputSubcommands,
 ) : FeatureTaskRuntimePhaseAgentCommand(
   "feature-task",
   "Run the runtime-driven feature-task phase loop in the foreground.",
@@ -227,14 +220,14 @@ class FeatureTaskRuntimeRunCommand(
   init {
     subcommands(
       featureTaskRuntimeExplicitRunCommand,
-      featureTaskRuntimeStatusCommand,
-      featureTaskRuntimeResumeCommand,
-      featureTaskRuntimeAbandonCommand,
-      featureTaskRuntimeRetryBlockedCommand,
-      featureTaskRuntimeRepairIdentityCommand,
-      featureTaskLookupCommand,
-      rejectedOutputInspectCliCommand,
-      rejectedOutputCleanupCliCommand,
+      control.status,
+      control.resume,
+      control.abandon,
+      control.retryBlocked,
+      control.repairIdentity,
+      control.lookup,
+      rejectedOutput.inspect,
+      rejectedOutput.cleanup,
     )
   }
 

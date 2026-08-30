@@ -1,0 +1,14 @@
+package skillbill.infrastructure.fs
+
+import skillbill.ports.workflow.gitops.WorkflowGitBranchOperations
+import skillbill.ports.workflow.gitops.WorkflowGitCommitHistoryOperations
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.gitops.WorkflowGitRemoteOperations
+import skillbill.ports.workflow.gitops.WorkflowGitWorktreeOperations
+
+internal object GitStandardWorkflowGitOperations :
+  WorkflowGitBranchOperations by GitStandardWorkflowGitBranchOperations,
+  WorkflowGitRemoteOperations by GitStandardWorkflowGitRemoteOperations,
+  WorkflowGitCommitHistoryOperations by GitStandardWorkflowGitCommitHistoryOperations,
+  WorkflowGitWorktreeOperations by GitStandardWorkflowGitWorktreeOperations,
+  WorkflowGitOperations

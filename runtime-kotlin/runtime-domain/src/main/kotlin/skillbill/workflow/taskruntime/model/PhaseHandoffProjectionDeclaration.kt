@@ -5,44 +5,33 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
 
-/**
- * The AC-001 declaration: static, workflow-owned configuration naming exactly one projection for one
- * consumer phase. [declaredFieldNames] closes the projection's shape, so a field outside the list is
- * an undeclared field rather than a silently accepted extension.
- */
-@Suppress("LongParameterList") // one flat declaration record; grouping would hide the governed fields
 data class PhaseHandoffProjectionDeclaration(
   val consumerPhaseId: String,
   val sourceRef: FeatureTaskRuntimeHandoffSourceRef,
-  val projectionName: String,
-  val projectionContractId: String,
-  val projectionContractVersion: String,
-  val promptVisibility: FeatureTaskRuntimeHandoffPromptVisibility,
-  val budget: FeatureTaskRuntimeHandoffProjectionBudget,
-  val declaredFieldNames: List<String>,
-  val checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
-    FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
-  val required: Boolean = true,
-  /**
-   * AC-010 gate: a lossless private-artifact reference may stand in for inline content only where the
-   * consumer dereferences it through a runtime-owned deterministic operation.
-   */
-  val allowsPrivateArtifactReference: Boolean = false,
-  /**
-   * When set, the projection delivers a compact reference of this kind in place of inline content.
-   * The reference is minted by the runtime from the source's durable identity, so dereferencing it
-   * is a deterministic runtime operation — never a model-driven retrieval.
-   */
-  val inlineAlternative: FeatureTaskRuntimeCompactReferenceKind? = null,
-  val producerIteration: FeatureTaskRuntimeProducerIteration =
-    FeatureTaskRuntimeProducerIteration(
+  val shape: PhaseHandoffProjectionShape,
+  val delivery: PhaseHandoffProjectionDelivery = PhaseHandoffProjectionDelivery(),
+) {
+  val projectionName: String get() = shape.projectionName
+  val projectionContractId: String get() = shape.projectionContractId
+  val projectionContractVersion: String get() = shape.projectionContractVersion
+  val promptVisibility: FeatureTaskRuntimeHandoffPromptVisibility get() = shape.promptVisibility
+  val budget: FeatureTaskRuntimeHandoffProjectionBudget get() = shape.budget
+  val declaredFieldNames: List<String> get() = shape.declaredFieldNames
+  val checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy get() = delivery.checkpointPolicy
+  val required: Boolean get() = delivery.required
+  val allowsPrivateArtifactReference: Boolean get() = delivery.allowsPrivateArtifactReference
+  val inlineAlternative: FeatureTaskRuntimeCompactReferenceKind? get() = delivery.inlineAlternative
+  val authorizedReferenceKinds: Set<FeatureTaskRuntimeCompactReferenceKind>
+    get() = delivery.authorizedReferenceKinds.ifEmpty {
+      listOfNotNull(delivery.inlineAlternative).toSet()
+    }
+  val producerIteration: FeatureTaskRuntimeProducerIteration
+    get() = delivery.producerIteration ?: FeatureTaskRuntimeProducerIteration(
       phaseId = (sourceRef as? FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput)?.producingPhaseId
         ?: consumerPhaseId,
       iteration = 1,
-    ),
-  val authorizedReferenceKinds: Set<FeatureTaskRuntimeCompactReferenceKind> =
-    listOfNotNull(inlineAlternative).toSet(),
-) {
+    )
+
   init {
     require(consumerPhaseId.isNotBlank()) { "PhaseHandoffProjectionDeclaration.consumerPhaseId must be non-blank." }
     require(PROJECTION_NAME_PATTERN.matches(projectionName)) {
@@ -126,24 +115,28 @@ data class PhaseHandoffProjectionDeclaration(
       return PhaseHandoffProjectionDeclaration(
         consumerPhaseId = raw.string("consumer_phase_id"),
         sourceRef = sourceRef,
-        projectionName = raw.string("projection_name"),
-        projectionContractId = contract.string("id"),
-        projectionContractVersion = contract.string("version"),
-        promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.fromWire(raw.string("prompt_visibility")),
-        budget = FeatureTaskRuntimeHandoffProjectionBudget(
-          maxUtf8Bytes = budget.int("max_utf8_bytes"),
-          maxCollectionItems = budget.int("max_collection_items"),
+        shape = PhaseHandoffProjectionShape(
+          projectionName = raw.string("projection_name"),
+          projectionContractId = contract.string("id"),
+          projectionContractVersion = contract.string("version"),
+          promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.fromWire(raw.string("prompt_visibility")),
+          budget = FeatureTaskRuntimeHandoffProjectionBudget(
+            maxUtf8Bytes = budget.int("max_utf8_bytes"),
+            maxCollectionItems = budget.int("max_collection_items"),
+          ),
+          declaredFieldNames = (raw["declared_fields"] as? List<*>)?.map { it as? String ?: invalid() } ?: invalid(),
         ),
-        declaredFieldNames = (raw["declared_fields"] as? List<*>)?.map { it as? String ?: invalid() } ?: invalid(),
-        checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.fromWire(raw.string("checkpoint_policy")),
-        required = raw.boolean("required"),
-        allowsPrivateArtifactReference = raw.boolean("allows_private_artifact_reference"),
-        producerIteration = FeatureTaskRuntimeProducerIteration(
-          phaseId = producer.string("phase_id"),
-          iteration = producer.int("iteration"),
+        delivery = PhaseHandoffProjectionDelivery(
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.fromWire(raw.string("checkpoint_policy")),
+          required = raw.boolean("required"),
+          allowsPrivateArtifactReference = raw.boolean("allows_private_artifact_reference"),
+          producerIteration = FeatureTaskRuntimeProducerIteration(
+            phaseId = producer.string("phase_id"),
+            iteration = producer.int("iteration"),
+          ),
+          inlineAlternative = inlineAlternative,
+          authorizedReferenceKinds = references,
         ),
-        inlineAlternative = inlineAlternative,
-        authorizedReferenceKinds = references,
       )
     }
 

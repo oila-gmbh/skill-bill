@@ -1,5 +1,3 @@
-@file:Suppress("TooManyFunctions")
-
 package skillbill.mcp.core
 
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
@@ -13,8 +11,6 @@ internal val historySignalSchema: Map<String, Any?> =
 internal val qualityCheckScopeSchema: Map<String, Any?> =
   stringSchema(enum = listOf("files", "working_tree", "branch_diff", "repo"))
 
-// FeatureTaskExecutionIdentityPolicy enforces the prefix, but callers see only this schema;
-// without the description a bare absolute path is the natural — and rejected — guess.
 internal val repositoryIdentitySchema: Map<String, Any?> = stringSchema(
   description = "Canonical repository identity: the literal prefix " +
     "'${FeatureTaskExecutionIdentityPolicy.REPOSITORY_IDENTITY_PREFIX}' followed by the absolute " +
@@ -87,34 +83,5 @@ internal fun goalStatsSchema(): Map<String, Any?> = objectSchema(
     "date_from" to stringSchema(),
     "date_to" to stringSchema(),
     "group_by" to stringSchema(enum = listOf("", "day", "week")),
-  ),
-)
-
-internal fun stringSchema(
-  enum: List<String> = emptyList(),
-  minLength: Int? = null,
-  description: String? = null,
-  pattern: String? = null,
-): Map<String, Any?> = buildMap {
-  put("type", "string")
-  if (enum.isNotEmpty()) {
-    put("enum", enum)
-  }
-  minLength?.let { put("minLength", it) }
-  description?.let { put("description", it) }
-  pattern?.let { put("pattern", it) }
-}
-
-internal fun arraySchema(items: Map<String, Any?>): Map<String, Any?> = mapOf(
-  "type" to "array",
-  "items" to items,
-)
-
-private fun stepUpdateSchema(stepIdEnum: List<String>): Map<String, Any?> = McpToolSpec.strictObjectSchema(
-  required = listOf("step_id", "status", "attempt_count"),
-  properties = mapOf(
-    "step_id" to stringSchema(enum = stepIdEnum),
-    "status" to stringSchema(enum = listOf("pending", "running", "completed", "failed", "blocked", "skipped")),
-    "attempt_count" to integerSchema,
   ),
 )

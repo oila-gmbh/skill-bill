@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.workflow.repoRoot
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionContext
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprint
 import skillbill.ports.workflow.gitops.repositoryOwnedPaths
@@ -118,15 +119,17 @@ internal fun FeatureTaskRuntimeRunLoop.checkpointOwnedPaths(
       projection.checkpointPolicy != FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED
     }
     throw InvalidFeatureTaskRuntimeHandoffProjectionError(
-      workflowId = run.request.workflowId,
-      consumerPhaseId = run.phaseId,
-      projectionName = declaration.projectionName,
-      projectionContractId = declaration.projectionContractId,
-      projectionContractVersion = declaration.projectionContractVersion,
-      failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
-      reason = "the scoped owned-path inventory holds ${paths.size} entries, over the " +
-        "$MAX_CHECKPOINT_OWNED_PATHS-entry checkpoint limit; narrow the run scope or commit " +
-        "unrelated working-tree changes before relaunching",
+      context = InvalidFeatureTaskRuntimeHandoffProjectionContext(
+        workflowId = run.request.workflowId,
+        consumerPhaseId = run.phaseId,
+        projectionName = declaration.projectionName,
+        projectionContractId = declaration.projectionContractId,
+        projectionContractVersion = declaration.projectionContractVersion,
+        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.BUDGET_OVERFLOW,
+        reason = "the scoped owned-path inventory holds ${paths.size} entries, over the " +
+          "$MAX_CHECKPOINT_OWNED_PATHS-entry checkpoint limit; narrow the run scope or commit " +
+          "unrelated working-tree changes before relaunching",
+      ),
     )
   }
   return paths

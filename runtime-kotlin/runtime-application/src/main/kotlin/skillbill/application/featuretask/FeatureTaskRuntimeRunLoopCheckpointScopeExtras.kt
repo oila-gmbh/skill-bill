@@ -15,7 +15,7 @@ internal fun FeatureTaskRuntimeRunLoop.checkpointWorktreeDelta(baselineOwnedPath
     .map(String::trim)
     .filter(String::isNotBlank)
     .filterNot { it in baseline }
-    .filterNot(FeatureTaskRuntimeCheckpointScope::isRuntimePrivatePath)
+    .filterNot(::isRuntimePrivatePath)
     .distinct()
     .sorted()
 }

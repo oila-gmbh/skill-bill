@@ -61,9 +61,7 @@ class GovernedReviewEvidenceEndpointTest {
       connect(endpoint, endpoint.descriptor.token).use { connection ->
         val reply = requireNotNull(connection.call(readFrame("src/Elsewhere.kt")))
         val payload = toolPayload(reply)
-
-        @Suppress("UNCHECKED_CAST")
-        val result = (payload["results"] as List<Map<String, Any?>>).single()
+        val result = requireNotNull(JsonSupport.anyToStringAnyMapList((payload["results"]))).single()
         assertEquals(true, result["refused"])
         assertFalse(result.containsKey("content"))
       }
@@ -200,9 +198,7 @@ class GovernedReviewEvidenceEndpointTest {
   private fun toolPayload(reply: String): Map<String, Any?> {
     val message = requireNotNull(JsonSupport.parseObjectOrNull(reply))
     val result = JsonSupport.anyToStringAnyMap(message["result"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
-
-    @Suppress("UNCHECKED_CAST")
-    val content = (result["content"] as List<Map<String, Any?>>).single()
+    val content = requireNotNull(JsonSupport.anyToStringAnyMapList((result["content"]))).single()
     return requireNotNull(
       JsonSupport.anyToStringAnyMap(
         JsonSupport.parseObjectOrNull(content["text"].toString())?.let(JsonSupport::jsonElementToValue),

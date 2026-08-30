@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
@@ -77,8 +78,13 @@ class FeatureTaskRuntimeHandoffContractTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
         .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
     val recorded = listOf(FeatureTaskRuntimePhaseOutput("audit", iteration = 3, payload = "audit-v3"))
-    val handoff =
-      FeatureTaskRuntimeHandoffContract.assembleHandoff(reviewDeclaration, runInvariants, recorded)
+    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      FeatureTaskRuntimeHandoffAssemblyRequest(
+        declaration = reviewDeclaration,
+        runInvariants = runInvariants,
+        recordedOutputs = recorded,
+      ),
+    )
     assertEquals("review", handoff.phaseId)
     assertEquals(runInvariants, handoff.runInvariants)
     assertEquals("audit-v3", handoff.upstreamOutputs.outputsByPhaseId.getValue("audit").payload)

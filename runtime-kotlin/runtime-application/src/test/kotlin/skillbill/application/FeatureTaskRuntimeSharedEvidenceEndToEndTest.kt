@@ -39,7 +39,7 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
     val store = CountingSharedEvidenceStore()
     val diffResolver = CountingDiffResolver()
     val harness = telemetryRunnerHarness(
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         repoRoot = repoRoot,
         sharedEvidenceResolver = store,
         diffResolver = diffResolver,
@@ -62,13 +62,12 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
     }
     val fingerprintsAtAudit = mutableListOf<String>()
     val harness = runnerHarness(
-      launcher = auditGapLauncher(repoRoot, git, fingerprintsAtAudit),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         repoRoot = repoRoot,
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         sharedEvidenceResolver = store,
         diffResolver = CountingDiffResolver(),
-      ),
+      ).copy(launcher = auditGapLauncher(repoRoot, git, fingerprintsAtAudit)),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))

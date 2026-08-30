@@ -3,238 +3,65 @@ package skillbill.application
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
-import skillbill.application.featurespec.FeatureSpecPreparationRuntime
-import skillbill.application.featurespec.FeatureSpecPreparationWriter
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
-import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.AppendCheckpointIdentityArgs
-import skillbill.application.featuretask.FeatureTaskPhaseSettlementService
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
-import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
-import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
-import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimeDecompositionPlanner
-import skillbill.application.featuretask.FeatureTaskRuntimeFindingVerificationBoundaryMemory
-import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseGates
-import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
-import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
-import skillbill.application.featuretask.FeatureTaskRuntimeRunner
-import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.GoalSubtaskReviewInputReady
-import skillbill.application.featuretask.InMemoryFeatureTaskPhaseSettlementRepository
+import skillbill.application.featuretask.NON_FILE_MUTATING_PHASES
 import skillbill.application.featuretask.RemediationBaseCoherent
-import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
+import skillbill.application.featuretask.model.FeatureTaskRuntimeFinishedTelemetryContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
-import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
-import skillbill.application.featuretask.phaseDeclaration
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
-import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
-import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateProgressStore
-import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
-import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore
-import skillbill.application.featuretask.validation.ValidationGateResolver
-import skillbill.application.review.SpecIntentProjectionExtractor
-import skillbill.application.review.SpecIntentProjectionResolver
-import skillbill.application.review.model.ParallelReviewLaneStatus
-import skillbill.application.specsource.SpecSourceResolver
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.workflow.repoRoot
-import skillbill.config.model.RepoLocalConfig
 import skillbill.contracts.JsonSupport
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
-import skillbill.featurespec.model.FeatureSpecPreparationDecision
-import skillbill.featurespec.model.FeatureSpecPreparationMode
-import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
-import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
-import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
-import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.config.RepoLocalConfigPort
-import skillbill.ports.config.model.ReadRepoLocalConfigRequest
-import skillbill.ports.config.model.ReadRepoLocalConfigResult
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
-import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
-import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
-import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
-import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError.Absent
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError.Conflict
-import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
-import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
-import skillbill.ports.diff.DiffResolverPort
-import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED
-import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
-import skillbill.ports.goalrunner.UnaddressedFindingsRepository
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
-import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.learning.LearningRepository
-import skillbill.ports.review.ReviewRepository
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
-import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeHeartbeat
-import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
-import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
-import skillbill.ports.telemetry.TelemetryOutboxRepository
-import skillbill.ports.telemetry.TelemetryReconciliationRepository
-import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE
-import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome.FAILED
-import skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED
-import skillbill.ports.validation.model.ValidationGateRunRequest
-import skillbill.ports.validation.model.ValidationGateRunResult
-import skillbill.ports.work.EmptyWorkListRepository
-import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperations
-import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperationsProvider
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
-import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
-import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
-import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperationsProvider
-import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperations
-import skillbill.ports.workflow.gitops.RuntimePhaseFileManifestGitOperationsProvider
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperations
-import skillbill.ports.workflow.gitops.ScopedStagingGitOperationsProvider
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
-import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
-import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
-import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
-import skillbill.ports.workflow.model.FeatureImplementSessionSummary
-import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.PROSE
-import skillbill.ports.workflow.model.FeatureVerifySessionSummary
-import skillbill.ports.workflow.model.WorkflowStateRecord
-import skillbill.ports.workflow.specscratch.SpecScratchStore
-import skillbill.review.context.ReviewContextEnvelopeValidator
-import skillbill.review.context.model.ReviewContextBudgetExceeded
-import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
-import skillbill.review.model.ParallelReviewSeverity.BLOCKER
 import skillbill.review.model.ParallelReviewSeverity.MAJOR
-import skillbill.review.model.ReviewFindingVerdict
-import skillbill.scaffold.model.DeclaredFiles
-import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.model.RoutingSignals
-import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT
-import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
-import skillbill.scaffold.model.ValidationGateDeclaration
-import skillbill.scaffold.model.ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY
-import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
-import skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML
-import skillbill.scaffold.model.ValidationGateFindingsLocator
-import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
-import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
-import skillbill.telemetry.model.FeatureVerifyFinishedRecord
-import skillbill.telemetry.model.FeatureVerifyStartedRecord
-import skillbill.telemetry.model.GoalFinishedRecord
-import skillbill.telemetry.model.GoalIssueFinishedRecord
-import skillbill.telemetry.model.GoalStartedRecord
-import skillbill.telemetry.model.GoalSubtaskFinishedRecord
-import skillbill.telemetry.model.PrDescriptionGeneratedRecord
-import skillbill.telemetry.model.QualityCheckFinishedRecord
-import skillbill.telemetry.model.QualityCheckStartedRecord
-import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
-import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
-import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
-import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
-import skillbill.workflow.goal.model.GoalObservabilityDiffStat
-import skillbill.workflow.goal.model.GoalObservabilitySelectedDiffHunks
-import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
-import skillbill.workflow.goal.model.GoalSubtaskReviewDisposition
-import skillbill.workflow.goal.model.GoalSubtaskReviewState
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeBuildReceiptValidator
-import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_CHECKPOINT_IDENTITY_VERSION
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
-import java.lang.Boolean.TYPE
-import java.lang.reflect.Method
-import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
@@ -250,14 +77,11 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import java.lang.Double.TYPE as DoubleTYPE
-import java.lang.Long.TYPE as LongTYPE
 
-@Suppress("LargeClass")
 class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `runs phases deterministically through terminal pr phase order`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     val report = harness.runner.run(harness.request())
 
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
@@ -274,7 +98,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `single-spec completion reconciles the spec Agent line with the ledger-derived finalizing agent`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
@@ -304,7 +128,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `runtime run against a prose-mode workflow blocks with an actionable reason and launches nothing`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedProseModeWorkflow()
 
     val report = harness.runner.run(harness.request())
@@ -317,8 +141,8 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `runtime issue-key reopen conflict fails before run events or agents start`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
-    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID, issueKey = ISSUE_KEY)
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID, issueKey = RUNNER_TEST_ISSUE_KEY)
 
     assertFailsWith<WorkflowIssueKeyConflictError> {
       harness.runner.run(harness.request().copy(issueKey = "SKILL-118"))
@@ -331,11 +155,13 @@ class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `blocked phase output stops the run and does not advance to pr`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "commit_push") COMMIT_PUSH_BLOCKED_OUTPUT else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "commit_push") COMMIT_PUSH_BLOCKED_OUTPUT else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -353,7 +179,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `non-retryable review policy conflict re-blocks on resume without relaunch`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
@@ -388,12 +214,14 @@ class FeatureTaskRuntimeRunnerTest {
       }
     """.trimIndent()
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "audit") auditLaunches += 1
-        facts(if (phaseId == "audit" && auditLaunches == 1) retryableFailure else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "audit") auditLaunches += 1
+          facts(if (phaseId == "audit" && auditLaunches == 1) retryableFailure else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -408,12 +236,13 @@ class FeatureTaskRuntimeRunnerTest {
       listOf("", "?? .feature-specs/SKILL-124-sqldelight-runtime-persistence/spec.md"),
     )
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
+      ).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+        },
+        agentAssignment = phasePerAgentAssignment(),
       ),
     )
 
@@ -434,12 +263,13 @@ class FeatureTaskRuntimeRunnerTest {
     git.changedPathsBetweenCommitsValue =
       ".feature-specs/SKILL-124-sqldelight-runtime-persistence/spec.md"
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
+      ).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+        },
+        agentAssignment = phasePerAgentAssignment(),
       ),
     )
 
@@ -457,14 +287,22 @@ class FeatureTaskRuntimeRunnerTest {
   fun `validation phase output block keeps repairing instead of stopping task`() {
     var validateLaunches = 0
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "validate") {
-          validateLaunches += 1
-        }
-        facts(if (phaseId == "validate" && validateLaunches < 3) VALIDATE_BLOCKED_OUTPUT else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "validate") {
+            validateLaunches += 1
+          }
+          facts(
+            if (phaseId == "validate" && validateLaunches < 3) {
+              VALIDATE_BLOCKED_OUTPUT
+            } else {
+              validJsonOutput(phaseId)
+            },
+          )
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -473,7 +311,9 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(COMPLETED_PHASES_CLEAN_RUN, completed.completedPhaseIds)
     assertEquals(3, harness.launchedPhaseOrder().count { it == "validate" })
     assertTrue(
-      harness.events.none { event -> event is FeatureTaskRuntimeRunEvent.PhaseBlocked && event.phaseId == "validate" },
+      harness.events.none { event ->
+        event is FeatureTaskRuntimeRunEvent.PhaseBlocked && event.phaseId == "validate"
+      },
     )
     val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
     assertEquals("completed", validateRecord.status)
@@ -481,86 +321,8 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  @Suppress("LongMethod")
   fun `each phase briefing includes unconditional run-invariants latest upstream and derived diff for review`() {
-    val invariants = FeatureTaskRuntimeRunInvariants(
-      specReference = SPEC_REFERENCE,
-      featureSize = FeatureTaskRuntimeFeatureSize.SMALL,
-      acceptanceCriteria = listOf("AC-1", "AC-2"),
-      mandatesAndOverrides = listOf("mandate-X"),
-    )
-    val recorded = listOf(
-      FeatureTaskRuntimePhaseOutput("preplan", 1, PREPLAN_OUTPUT),
-      FeatureTaskRuntimePhaseOutput("plan", 1, PLAN_OUTPUT),
-      FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
-      FeatureTaskRuntimePhaseOutput("audit", 1, VALID_AUDIT_OUTPUT),
-      FeatureTaskRuntimePhaseOutput("review", 1, VALID_REVIEW_OUTPUT),
-      FeatureTaskRuntimePhaseOutput(
-        "verify_findings",
-        1,
-        VALID_VERIFY_FINDINGS_OUTPUT,
-      ),
-      FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
-      FeatureTaskRuntimePhaseOutput(
-        "write_history",
-        1,
-        validJsonOutput("write_history"),
-      ),
-      FeatureTaskRuntimePhaseOutput(
-        "commit_push",
-        1,
-        FINALISED_COMMIT_PUSH_OUTPUT,
-      ),
-    )
-
-    val briefings = COMPLETED_PHASES_CLEAN_RUN.associateWith { phaseId ->
-      val declaration =
-        FeatureTaskRuntimePhaseWorkflowQueries.phaseDeclaration(
-          phaseId,
-          invariants.featureSize,
-        )
-      val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-        declaration = declaration,
-        runInvariants = invariants,
-        recordedOutputs = recorded,
-        // audit's receipt edge refreshes from a resolved checkpoint (AC-012).
-        repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(
-          fingerprint = "fixture-checkpoint-1",
-        ),
-      )
-      FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    }
-
-    briefings.forEach { (phaseId, briefing) ->
-      assertEquals(SPEC_REFERENCE, briefing.specReference, "spec reference for $phaseId")
-      assertEquals("SMALL", briefing.featureSize, "feature size for $phaseId")
-      assertEquals(listOf("AC-1", "AC-2"), briefing.acceptanceCriteria, "criteria for $phaseId")
-      assertContains(briefing.briefingText, "feature_size: SMALL")
-      assertContains(briefing.briefingText, SPEC_REFERENCE)
-      // Identity, ceremony, and the policy mandates reach every phase, including the finalization
-      // phases the mandates most directly govern.
-      assertContains(briefing.briefingText, "mandate-X", message = "mandates missing for $phaseId")
-    }
-    // plan and implement receive bounded planning projections rather than coarse upstream receipts.
-    assertContains(briefings.getValue("plan").briefingText, "Fixture preplan prose for downstream plan.")
-    assertContains(
-      briefings.getValue("implement").briefingText,
-      "Fixture plan prose for downstream implement and audit.",
-    )
-    assertEquals(listOf("current_unit_of_work"), briefings.getValue("review").derivedContextKeys)
-    assertContains(briefings.getValue("review").briefingText, "current_unit_of_work")
-    assertPrKeepsSelfReadBranchDiff(briefings.getValue("pr"))
-  }
-
-  private fun assertPrKeepsSelfReadBranchDiff(briefing: FeatureTaskRuntimePhaseLaunchBriefing) {
-    // PR is split off the review diff key: it keeps a self-read instruction and is not delivered the
-    // shared evidence projection (AC-003/AC-005).
-    assertEquals(
-      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF),
-      briefing.derivedContextKeys,
-    )
-    assertContains(briefing.briefingText, "pr_branch_diff")
-    assertContains(briefing.briefingText, "read the branch diff yourself")
+    assertEachPhaseBriefingIncludesRunInvariantsUpstreamAndReviewDiff()
   }
 
   @Test
@@ -568,8 +330,10 @@ class FeatureTaskRuntimeRunnerTest {
     // write_history is downstream of implement and does not retry invalid output; a schema-invalid
     // output blocks immediately.
     val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("write_history")),
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        validator = ThrowingValidator(failPhases = setOf("write_history")),
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -593,14 +357,16 @@ class FeatureTaskRuntimeRunnerTest {
   fun `review schema correction continues past the former three-attempt cap`() {
     var reviewAttempts = 0
     val harness = runnerHarness(
-      validator = object : FeatureTaskRuntimePhaseOutputValidator {
-        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel == "review") {
-            reviewAttempts += 1
+      RuntimeHarnessConfig(
+        validator = object : FeatureTaskRuntimePhaseOutputValidator {
+          override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+            if (sourceLabel == "review") {
+              reviewAttempts += 1
+            }
           }
-        }
-      },
-      agentAssignment = phasePerAgentAssignment(),
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -616,7 +382,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `review fix loop advances to validate after one fix round`() {
-    val harness = runnerHarness(runtimeConfig = reviewFixRuntimeConfig(2))
+    val harness = runnerHarness(reviewFixRuntimeConfig(2))
 
     val report = harness.runner.run(harness.request())
 
@@ -632,12 +398,14 @@ class FeatureTaskRuntimeRunnerTest {
   fun `malformed serialization retries do not consume semantic repair attempts`() {
     var reviewAttempts = 0
     val harness = runnerHarness(
-      validator = object : FeatureTaskRuntimePhaseOutputValidator {
-        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel != "review") return
-          reviewAttempts += 1
-        }
-      },
+      RuntimeHarnessConfig(
+        validator = object : FeatureTaskRuntimePhaseOutputValidator {
+          override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+            if (sourceLabel != "review") return
+            reviewAttempts += 1
+          }
+        },
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -649,11 +417,13 @@ class FeatureTaskRuntimeRunnerTest {
   fun `a schema-gate rejection records exact evidence and threads a payload-free reason into retry`() {
     var reviewAttempts = 0
     val harness = runnerHarness(
-      validator = object : FeatureTaskRuntimePhaseOutputValidator {
-        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel == "review") reviewAttempts += 1
-        }
-      },
+      RuntimeHarnessConfig(
+        validator = object : FeatureTaskRuntimePhaseOutputValidator {
+          override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+            if (sourceLabel == "review") reviewAttempts += 1
+          }
+        },
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -668,31 +438,11 @@ class FeatureTaskRuntimeRunnerTest {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     var auditAttempts = 0
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "audit" && auditAttempts++ == 0) {
-          facts("""{"private":"goal-child-secret"}""")
-        } else {
-          facts(validJsonOutput(phaseId))
-        }
-      },
-      validator = object : FeatureTaskRuntimePhaseOutputValidator {
-        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel == "audit" && phaseOutputText.contains("goal-child-secret")) {
-            throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-              sourceLabel = sourceLabel,
-              reason = "private payload",
-              payloadFreeReason = "status: does not have a value in the enumeration",
-            )
-          }
-        }
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
@@ -700,6 +450,27 @@ class FeatureTaskRuntimeRunnerTest {
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
         useRealDecompositionPlanner = true,
+      ).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "audit" && auditAttempts++ == 0) {
+            facts("""{"private":"goal-child-secret"}""")
+          } else {
+            facts(validJsonOutput(phaseId))
+          }
+        },
+        validator = object : FeatureTaskRuntimePhaseOutputValidator {
+          override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+            if (sourceLabel == "audit" && phaseOutputText.contains("goal-child-secret")) {
+              throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+                sourceLabel = sourceLabel,
+                reason = "private payload",
+                payloadFreeReason = "status: does not have a value in the enumeration",
+              )
+            }
+          }
+        },
+        agentAssignment = phasePerAgentAssignment(),
       ),
     )
 
@@ -710,12 +481,16 @@ class FeatureTaskRuntimeRunnerTest {
     assertContentEquals("""{"private":"goal-child-secret"}""".encodeToByteArray(), diagnostic.payload)
     assertEquals(1, diagnostic.metadata.attempt)
   }
+}
 
+class FeatureTaskRuntimeRunnerAgentResumeTest {
   @Test
   fun `per-phase agent resolution honors override then per-phase then invoked default`() {
     val harness = runnerHarness(
-      agentAssignment = FeatureTaskRuntimeAgentAssignment(
-        perPhaseAgentIds = mapOf("review" to "claude"),
+      RuntimeHarnessConfig(
+        agentAssignment = FeatureTaskRuntimeAgentAssignment(
+          perPhaseAgentIds = mapOf("review" to "claude"),
+        ),
       ),
     )
 
@@ -729,9 +504,11 @@ class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `run-wide override wins over per-phase and invoked for every phase`() {
     val harness = runnerHarness(
-      agentAssignment = FeatureTaskRuntimeAgentAssignment(
-        perPhaseAgentIds = mapOf("review" to "claude"),
-        override = "cursor",
+      RuntimeHarnessConfig(
+        agentAssignment = FeatureTaskRuntimeAgentAssignment(
+          perPhaseAgentIds = mapOf("review" to "claude"),
+          override = "cursor",
+        ),
       ),
     )
 
@@ -765,7 +542,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `resume restarts from last incomplete phase and restores upstream outputs`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
@@ -804,7 +581,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `resume skips completed preplan and restores its prose into plan briefing`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
 
     val report = harness.runner.run(harness.request())
@@ -823,7 +600,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `resume re-runs legacy completed plan when preplan output is absent`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
 
     val report = harness.runner.run(harness.request())
@@ -837,7 +614,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `resume of a fix-loop phase that already has several attempts relaunches rather than re-blocking`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "running", 3, phaseAgent("implement"), outputArtifact = null)
 
@@ -853,7 +630,7 @@ class FeatureTaskRuntimeRunnerTest {
   fun `resume of a fix-loop phase at attempt one resumes at iteration two`() {
     // F-001: review persisted as running at attemptCount=1 (no valid artifact) resumes at the
     // next attempt (iteration 2) rather than resetting to iteration 1.
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
     harness.seedPhase("review", "running", 1, phaseAgent("review"), outputArtifact = null)
@@ -872,7 +649,7 @@ class FeatureTaskRuntimeRunnerTest {
     // F-002: a non-fix-loop phase persisted with a terminal blocked record (the durable marker
     // that survives ledger pruning) re-blocks on resume without launching the agent again.
     // write_history is non-fix-loop (implement is now a bounded fix-loop phase).
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
@@ -890,7 +667,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `resume of a fix-loop phase with a durable blocked record relaunches until the attempt cap`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
@@ -913,21 +690,22 @@ class FeatureTaskRuntimeRunnerTest {
     // completed segment before the coordinator could re-run the gate and settle measured counts.
     val gateCalls = AtomicInteger(0)
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         validationGateRunner = failThenPassValidationGateRunner(gateCalls),
         validationGatePlatformManifests = listOf(kotlinPackWithValidationGate()),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(
+            if (phaseId == "validate") {
+              VALIDATE_REPAIR_WITHOUT_GATE_COUNTS
+            } else {
+              validJsonOutput(phaseId)
+            },
+          )
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(
-          if (phaseId == "validate") {
-            VALIDATE_REPAIR_WITHOUT_GATE_COUNTS
-          } else {
-            validJsonOutput(phaseId)
-          },
-        )
-      },
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
@@ -952,20 +730,21 @@ class FeatureTaskRuntimeRunnerTest {
   fun `gate repair with non-schema agent stdout still settles after gate re-verify`() {
     val gateCalls = AtomicInteger(0)
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         validationGateRunner = failThenPassValidationGateRunner(gateCalls),
         validationGatePlatformManifests = listOf(kotlinPackWithValidationGate()),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+          val phaseId = phaseIdFromPrompt(prompt)
+          if (phaseId == "validate" && prompt.contains("Gate repair — prose only, no phase-output schema")) {
+            facts("Fixed A.kt from the compiler console. Deliberately not a phase envelope.")
+          } else {
+            facts(validJsonOutput(phaseId))
+          }
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val prompt = requireNotNull(request.skillRunRequest.promptOverride)
-        val phaseId = phaseIdFromPrompt(prompt)
-        if (phaseId == "validate" && prompt.contains("Gate repair — prose only, no phase-output schema")) {
-          facts("Fixed A.kt from the compiler console. Deliberately not a phase envelope.")
-        } else {
-          facts(validJsonOutput(phaseId))
-        }
-      },
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
@@ -993,19 +772,20 @@ class FeatureTaskRuntimeRunnerTest {
     // Packs without validation_gate use agent-run validate. Agents are told not to invent
     // gate_run_count; the runtime must attest measured-absent counts before consumer projection.
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      // Empty manifests → ValidationGateResolution.Absent → agent-run fallback.
-      runtimeConfig = RuntimeHarnessConfig(validationGatePlatformManifests = emptyList()),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(
-          if (phaseId == "validate") {
-            VALIDATE_REPAIR_WITHOUT_GATE_COUNTS
-          } else {
-            validJsonOutput(phaseId)
-          },
-        )
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        validationGatePlatformManifests = emptyList(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(
+            if (phaseId == "validate") {
+              VALIDATE_REPAIR_WITHOUT_GATE_COUNTS
+            } else {
+              validJsonOutput(phaseId)
+            },
+          )
+        },
+      ),
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
@@ -1033,16 +813,18 @@ class FeatureTaskRuntimeRunnerTest {
     // (verdict advance) and the run completes; the agent never bypasses the cap.
     var planLaunches = 0
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "plan") {
-          planLaunches += 1
-          facts(verdictPlanOutput(if (planLaunches == 1) "needs_fix" else "advance"))
-        } else {
-          facts(validJsonOutput(phaseId))
-        }
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "plan") {
+            planLaunches += 1
+            facts(verdictPlanOutput(if (planLaunches == 1) "needs_fix" else "advance"))
+          } else {
+            facts(validJsonOutput(phaseId))
+          }
+        },
+      ),
     )
 
     val report = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
@@ -1057,11 +839,13 @@ class FeatureTaskRuntimeRunnerTest {
   fun `cap exhaustion blocks loudly with loop id iteration count and unresolved verdict`() {
     // plan always reports needs_fix, so the backward edge fires up to its cap and then blocks.
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") verdictPlanOutput("needs_fix") else validJsonOutput(phaseId))
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") verdictPlanOutput("needs_fix") else validJsonOutput(phaseId))
+        },
+      ),
     )
 
     val report = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
@@ -1082,11 +866,13 @@ class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `per-edge counters increment and persist distinct from attempt count`() {
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") verdictPlanOutput("needs_fix") else validJsonOutput(phaseId))
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") verdictPlanOutput("needs_fix") else validJsonOutput(phaseId))
+        },
+      ),
     )
 
     harness.runner.run(harness.request(PLAN_FIX_CYCLE))
@@ -1115,13 +901,17 @@ class FeatureTaskRuntimeRunnerTest {
     // load-bearing: had resume reset the watermark to 0, the edge would fire `cap` more times before
     // blocking instead of exactly one, so this proves resume continued from the durable iteration.
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") verdictPlanOutput("needs_fix") else validJsonOutput(phaseId))
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") verdictPlanOutput("needs_fix") else validJsonOutput(phaseId))
+        },
+      ),
     )
-    harness.seedReentryPhase("preplan", "running", 1, phaseAgent("preplan"), null, "plan-fix", PLAN_FIX_CAP - 1)
+    harness.seedReentryPhase(
+      SeedReentryPhaseSeed("preplan", "running", 1, phaseAgent("preplan"), null, "plan-fix", PLAN_FIX_CAP - 1),
+    )
 
     val report = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
 
@@ -1148,13 +938,17 @@ class FeatureTaskRuntimeRunnerTest {
     // The re-entered preplan already burned the edge cap on a prior run; on resume the runtime
     // re-blocks before relaunching, mirroring the same-phase cap-burned-resume guard.
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(validJsonOutput(phaseId))
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(validJsonOutput(phaseId))
+        },
+      ),
     )
-    harness.seedReentryPhase("preplan", "running", 2, phaseAgent("preplan"), null, "plan-fix", PLAN_FIX_CAP)
+    harness.seedReentryPhase(
+      SeedReentryPhaseSeed("preplan", "running", 2, phaseAgent("preplan"), null, "plan-fix", PLAN_FIX_CAP),
+    )
 
     val report = harness.runner.run(harness.request(PLAN_FIX_CYCLE))
 
@@ -1171,7 +965,7 @@ class FeatureTaskRuntimeRunnerTest {
   fun `edge-free declaration behaves exactly as the current forward pipeline`() {
     // An override carrying only the production forward pipeline (no backward edges) drives the same
     // phase order as the default run.
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     val forwardOnly = FeatureTaskRuntimeTransitionDeclaration(
       forwardPhaseIds = ALL_PHASES,
       loopOnlyPhaseIds = setOf("implement_fix", "build"),
@@ -1197,12 +991,16 @@ class FeatureTaskRuntimeRunnerTest {
       harness.launchOrder(),
     )
   }
+}
 
+class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
   @Test
   fun `blocked run persists a durable terminal blocked record alongside the ledger entry`() {
     // F-002: blocking persists a terminal blocked per-phase record so blocked-ness survives even
     // if the append-only ledger BLOCKED entry is later pruned by the retention cap.
-    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("write_history")))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(validator = ThrowingValidator(failPhases = setOf("write_history"))),
+    )
 
     harness.runner.run(harness.request())
 
@@ -1216,7 +1014,7 @@ class FeatureTaskRuntimeRunnerTest {
   fun `a resumed running attempt re-mints started_at so duration measures only the current run`() {
     // F-007: on resume the running transition mints a fresh started_at (and keeps first_started_at)
     // so duration_millis times only the current run, not the resume gap.
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("plan", "running", 1, phaseAgent("plan"), outputArtifact = null)
     val seeded = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["plan"])
     val originalStartedAt = seeded.startedAt
@@ -1247,7 +1045,9 @@ class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `a blocked run advances the coarse workflow row to blocked at the blocked phase`() {
     // F-008: a blocked run marks the row blocked at the blocked phase.
-    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("write_history")))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(validator = ThrowingValidator(failPhases = setOf("write_history"))),
+    )
 
     harness.runner.run(harness.request())
 
@@ -1320,20 +1120,18 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(COMPLETED_PHASES_CLEAN_RUN, done)
 
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
-
-    @Suppress("UNCHECKED_CAST")
-    val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val ledger = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+    )
     val actions = ledger.map { it["action"] as String }
     assertContains(actions, "start")
     assertContains(actions, "complete")
     val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
     assertEquals(sequences.sorted(), sequences)
-
-    @Suppress("UNCHECKED_CAST")
-    val records = artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as Map<String, Any?>
-
-    @Suppress("UNCHECKED_CAST")
-    val planRecord = records["plan"] as Map<String, Any?>
+    val records = requireNotNull(
+      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY]),
+    )
+    val planRecord = requireNotNull(JsonSupport.anyToStringAnyMap(records["plan"]))
     assertEquals("completed", planRecord["status"])
     assertTrue((planRecord["started_at"] as String).isNotBlank())
     assertTrue((planRecord["finished_at"] as String).isNotBlank())
@@ -1341,14 +1139,16 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `blocked run appends a blocked ledger entry`() {
-    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("write_history")))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(validator = ThrowingValidator(failPhases = setOf("write_history"))),
+    )
 
     harness.runner.run(harness.request())
 
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
-
-    @Suppress("UNCHECKED_CAST")
-    val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val ledger = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+    )
     val blockedEntry = ledger.single { it["action"] == "blocked" }
     assertEquals("write_history", blockedEntry["phase_id"])
     assertTrue((blockedEntry["blocked_reason"] as String).isNotBlank())
@@ -1356,7 +1156,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `review phase launch request carries readOnlyPhase true, mutating phases do not`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
@@ -1396,7 +1196,7 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     assertEquals(1, harness.lifecycle.startedRecords.size)
     val started = harness.lifecycle.startedRecords.single()
     assertEquals("MEDIUM", started.featureSize)
-    assertEquals(ISSUE_KEY, started.issueKey)
+    assertEquals(RUNNER_TEST_ISSUE_KEY, started.issueKey)
     assertEquals(1, harness.lifecycle.finishedRecords.size)
     val finished = harness.lifecycle.finishedRecords.single()
     assertEquals(started.sessionId, finished.sessionId)
@@ -1410,7 +1210,7 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
   @Test
   fun `runtime lifecycle telemetry honors run db override`() {
     val dbOverride = "/tmp/skillbill-runtime-override.db"
-    val harness = telemetryRunnerHarness(runtimeConfig = RuntimeHarnessConfig(dbPathOverride = dbOverride))
+    val harness = telemetryRunnerHarness(RuntimeHarnessConfig(dbPathOverride = dbOverride))
 
     val report = harness.runner.run(harness.request)
 
@@ -1423,7 +1223,9 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
 
   @Test
   fun `runtime emits finished blocked with last incomplete phase from its own per-phase records`() {
-    val harness = telemetryRunnerHarness(launcher = RuntimeRecordingLauncher { spawnFailedFacts() })
+    val harness = telemetryRunnerHarness(
+      RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { spawnFailedFacts() }),
+    )
 
     val report = harness.runner.run(harness.request)
 
@@ -1439,11 +1241,12 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     // F-004: the only end-to-end coverage of completionStatusOf(Decomposed) -> decomposed_at_planning.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-telemetry-decompose")
     val harness = telemetryRunnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
-      },
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true),
+      RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+        },
+      ),
     )
 
     val report = harness.runner.run(harness.request)
@@ -1461,7 +1264,7 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     // F-002/F-004: an exception escaping the loop must close the started session with the error
     // completion bucket (failure-isolated) while the original exception still propagates.
     val boom = RuntimeException("launcher exploded")
-    val harness = telemetryRunnerHarness(launcher = RuntimeRecordingLauncher { throw boom })
+    val harness = telemetryRunnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { throw boom }))
 
     val thrown = assertFailsWith<RuntimeException> { harness.runner.run(harness.request) }
 
@@ -1483,11 +1286,13 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     )
 
     telemetry.finishedError(
-      SESSION_ID,
-      phaseOutcomes = { error("phase load failed") },
-      reviewFixIterationCount = { 0 },
-      auditGapIterationCount = { 0 },
-      dbOverride = null,
+      FeatureTaskRuntimeFinishedTelemetryContext(
+        telemetrySessionId = SESSION_ID,
+        phaseOutcomes = { error("phase load failed") },
+        reviewFixIterationCount = { 0 },
+        auditGapIterationCount = { 0 },
+        dbOverride = null,
+      ),
     )
 
     val finished = lifecycle.finishedRecords.single()
@@ -1658,10 +1463,12 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     )
     assertNotEquals(siblingTip, reconciledBase)
     assertEquals("false", git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value)
-    @Suppress("UNCHECKED_CAST")
-    val recoveries = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"]
-      as List<Map<String, Any?>>?
-    recoveries?.forEach { entry -> assertEquals(reconciledBase, entry["replacement_sha"]) }
+    val recoveries = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"],
+      ),
+    )
+    recoveries.forEach { entry -> assertEquals(reconciledBase, entry["replacement_sha"]) }
   }
 
   // A settled subtask's review is replayed from its durable result on resume rather than relaunched,
@@ -1696,7 +1503,9 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     )
     assertEquals(
       settledPassCount,
-      requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID)).completedPassCount,
+      requireNotNull(
+        harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID),
+      ).completedPassCount,
       "the resume allocates no further pass",
     )
   }
@@ -1740,16 +1549,13 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertContains(briefings.getValue("review").briefingText, "diff")
   }
 
-  private fun normalizedOutput(output: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(output)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?: error("Expected JSON object output.")
-
   @Test
   fun `launch spawn failure blocks distinctly without schema gate or fix loop retries`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { spawnFailedFacts() },
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher { spawnFailedFacts() },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -1765,7 +1571,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   @Test
   fun `launch timeout on a fix-loop phase blocks distinctly without burning the budget`() {
     val harness = runnerHarness(
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         reviewDriver = failingReviewDriver(
           failOnPass = 1,
           failureReason = "launch timed out before the agent produced an output.",
@@ -1785,7 +1591,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   @Test
   fun `a review driver parent-packet budget overflow blocks instead of crashing`() {
     val harness = runnerHarness(
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         reviewDriver = throwingBudgetReviewDriver(),
       ),
     )
@@ -1812,7 +1618,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
   @Test
   fun `each phase launch delivers the briefing and output contract as the prompt override`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
 
     harness.runner.run(harness.request())
 
@@ -1845,9 +1651,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
   @Test
   fun `resume preserves durable feature size instead of re-resolving from changed request inputs`() {
-    val harness = runnerHarness(
-      runtimeConfig = smallRuntimeConfig(),
-    )
+    val harness = runnerHarness(smallRuntimeConfig())
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     val changedRequest = harness.request().copy(
@@ -1869,10 +1673,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
   @Test
   fun `partial resume launches review with durable small size and current unit scope`() {
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = smallRuntimeConfig(),
-    )
+    val harness = runnerHarness(smallRuntimeConfig().copy(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
@@ -1899,8 +1700,10 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   @Test
   fun `a terminal schema-gate block persists the validator's reason in the blocked reason`() {
     val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("write_history")),
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        validator = ThrowingValidator(failPhases = setOf("write_history")),
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -1917,7 +1720,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
   @Test
   fun `per-phase records carry runtime-owned timestamps agent id and status`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
 
     val report = harness.runner.run(harness.request())
 
@@ -1938,8 +1741,10 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   @Test
   fun `accepted repaired output persists canonical payload and typed evidence`() {
     val harness = runnerHarness(
-      validator = RepairingImplementOutputValidator,
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        validator = RepairingImplementOutputValidator,
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -1966,17 +1771,18 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       }
     }
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         repoRoot = repoRoot,
         useRealDecompositionPlanner = true,
         eventSink = throwingSink,
+      ).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+        diagnostics = diagnostics,
       ),
-      diagnostics = diagnostics,
     )
 
     val report = harness.runner.run(harness.request())
@@ -1993,12 +1799,13 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   fun `decompose plan writes shared feature specs records terminal completed status and skips implement`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose")
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true),
+      RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -2048,12 +1855,13 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
       .replace("\"depends_on\": []", "\"linear_issue_id\": \"linear-subtask-1\",\n          \"depends_on\": []")
       .replace("\"depends_on\": [1]", "\"linear_issue_id\": \"linear-subtask-2\",\n          \"depends_on\": [1]")
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") linearPlanOutput else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true),
+      RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") linearPlanOutput else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Decomposed>(harness.runner.run(harness.request()))
@@ -2064,26 +1872,15 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 }
 
-// Goal-continuation persistence and SHA measurement paths. Kept outside
-// [FeatureTaskRuntimeRunnerPersistenceTest] so that suite stays under the detekt LargeClass threshold.
-@Suppress("LargeClass")
 class FeatureTaskRuntimeGoalContinuationPersistenceTest {
   @Test
   fun `goal-continuation run suppresses decompose and pr then completes at commit push`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-subtask")
     val harness = runnerHarness(
-      // A goal child plans in direct mode: decomposition is not a valid terminal outcome for it, and
-      // AC-015 keeps decomposition data out of the implementation projection entirely.
-      launcher = RuntimeRecordingLauncher { request ->
-        val prompt = requireNotNull(request.skillRunRequest.promptOverride)
-        val phaseId = phaseIdFromPrompt(prompt)
-        facts(validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
@@ -2091,6 +1888,13 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
         useRealDecompositionPlanner = true,
+      ).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+          val phaseId = phaseIdFromPrompt(prompt)
+          facts(validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
       ),
     )
 
@@ -2103,7 +1907,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
     assertEquals(
       mapOf(
-        "issue_key" to ISSUE_KEY,
+        "issue_key" to RUNNER_TEST_ISSUE_KEY,
         "subtask_id" to 5,
         "suppress_pr" to true,
         "goal_branch" to "feat/existing-runtime-branch",
@@ -2123,7 +1927,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     @Suppress("UNCHECKED_CAST")
     val participants = outcome["participating_agent_ids"] as List<String>
     assertTrue(participants.isNotEmpty(), "goal-continuation outcome must carry a non-empty participating_agent_ids")
-    val installSync = artifacts["install_sync_result"] as Map<*, *>
+    val installSync = requireNotNull(JsonSupport.anyToStringAnyMap(artifacts["install_sync_result"]))
     assertEquals("deferred", installSync["status"])
     assertContains(installSync["reason"].toString(), "must not block subtask completion")
   }
@@ -2151,11 +1955,10 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
   @Test
   fun `goal review preserves a top-level changes requested verdict without findings`() {
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = committedRepoBranchSetup(),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
@@ -2163,16 +1966,14 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
         reviewDriver = reviewFixDriver(2),
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    @Suppress("UNCHECKED_CAST")
-    val state = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"] as Map<String, Any?>
-
-    @Suppress("UNCHECKED_CAST")
-    val firstPass = (state["pass_results"] as List<Map<String, Any?>>).first()
+    val state = requireNotNull(
+      JsonSupport.anyToStringAnyMap(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"]),
+    )
+    val firstPass = requireNotNull(JsonSupport.anyToStringAnyMapList((state["pass_results"]))).first()
     assertEquals("changes_requested", firstPass["verdict"])
     assertEquals(1, firstPass["unresolved_finding_count"])
   }
@@ -2180,17 +1981,16 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
   @Test
   fun `orphaned goal review state blocks before a runtime child can be treated as standalone`() {
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
     val preplanOnly = harness.request().copy(
       transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
@@ -2214,11 +2014,10 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
   fun `goal review runs implement_fix and resumes after a crash without a second review pass`() {
     var crashOnFix = true
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = committedRepoBranchSetup(),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
@@ -2226,11 +2025,13 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
         reviewDriver = reviewFixDriver(2),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "implement_fix" && crashOnFix) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement_fix" && crashOnFix) spawnFailedFacts() else facts(validJsonOutput(phaseId))
-      },
     )
 
     val first = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
@@ -2286,76 +2087,12 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       git.goalReviewBuildInputs.map { it.reviewBaseSha },
     )
   }
+}
 
+class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
   @Test
-  @Suppress("LongMethod") // end-to-end review prep harness; splitting would obscure AC-009/AC-012 wiring
   fun `non-scope failure inside review preparation surfaces its own cause not the fixed scope sentence`() {
-    // Bug this catches: the review dispatch substituted a fixed scope sentence after
-    // blockedGoalReviewRun already persisted the specific reservation/evidence-store cause (AC-009/AC-012).
-    val evidenceStoreCause = "[evidence-store] retaining producer-output evidence for review:0:2 failed"
-    val fixedScopeSentence =
-      "Goal-subtask review preparation could not establish the exact durable review scope."
-    val repoRoot = Files.createTempDirectory("skillbill-runtime-review-prep-nonscope")
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
-    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
-    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    check(
-      harness.goalContinuationRecorder.recordGoalContinuationState(
-        GoalContinuationStateRecordRequest(
-          workflowId = WORKFLOW_ID,
-          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = ISSUE_KEY,
-            subtaskId = 5,
-            suppressPr = true,
-            goalBranch = "feat/existing-runtime-branch",
-            parentWorkflowId = "wfl-parent",
-            codeReviewMode = CodeReviewExecutionMode.INLINE,
-          ),
-          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-        ),
-      ),
-    )
-    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
-    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
-    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
-    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
-    harness.repository.failSaveWhen = { row ->
-      val artifacts = JsonSupport.parseObjectOrNull(row.artifactsJson)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
-        .orEmpty()
-      val reserved = (artifacts["goal_subtask_review_state"] as? Map<*, *>)?.get("reserved_pass_number")
-      if (reserved != null) {
-        throw IllegalStateException(evidenceStoreCause)
-      }
-      false
-    }
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
-      harness.runner.run(
-        harness.request().copy(
-          transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
-            forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
-            backwardEdges = emptyList(),
-          ),
-        ),
-      ),
-    )
-
-    assertEquals("review", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, evidenceStoreCause)
-    assertContains(blocked.blockedReason, "Goal-subtask review reservation failed")
-    assertTrue(
-      fixedScopeSentence !in blocked.blockedReason,
-      "fixed scope sentence must not replace the injected non-scope cause",
-    )
-    val phaseBlocked = harness.events.filterIsInstance<FeatureTaskRuntimeRunEvent.PhaseBlocked>()
-      .single { it.phaseId == "review" }
-    assertContains(phaseBlocked.blockedReason, evidenceStoreCause)
-    assertTrue(fixedScopeSentence !in phaseBlocked.blockedReason)
-    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertContains(requireNotNull(reviewRecord.blockedReason), evidenceStoreCause)
+    assertNonScopeReviewPrepFailureSurfacesEvidenceStoreCause()
   }
 
   @Test
@@ -2371,7 +2108,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
         GoalContinuationStateRecordRequest(
           workflowId = WORKFLOW_ID,
           continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = ISSUE_KEY,
+            issueKey = RUNNER_TEST_ISSUE_KEY,
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
@@ -2401,8 +2138,6 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       ),
     )
 
-    println("DEBUG blockedReason=" + blocked.blockedReason)
-    println("DEBUG lastIncompletePhase=" + blocked.lastIncompletePhase)
     assertEquals("review", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "review_base_sha must be captured before implementation")
     assertTrue(
@@ -2431,7 +2166,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
         GoalContinuationStateRecordRequest(
           workflowId = WORKFLOW_ID,
           continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = ISSUE_KEY,
+            issueKey = RUNNER_TEST_ISSUE_KEY,
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
@@ -2462,7 +2197,9 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     )
     assertEquals(1, git.goalReviewRecoverCalls)
     assertEquals(unreachableRemediation, git.goalReviewRecoverRequests.single().unreachableSha)
-    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"] as List<*>
+    val evidence = JsonSupport.anyToStringAnyMapList(
+      harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"],
+    ).orEmpty()
     val entry = evidence.single() as Map<*, *>
     assertEquals(unreachableRemediation, entry["original_sha"])
     assertEquals(recoveredRemediation, entry["replacement_sha"])
@@ -2487,7 +2224,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
         GoalContinuationStateRecordRequest(
           workflowId = WORKFLOW_ID,
           continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = ISSUE_KEY,
+            issueKey = RUNNER_TEST_ISSUE_KEY,
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
@@ -2504,198 +2241,32 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     assertIs<GoalSubtaskReviewInputBlocked>(prepared)
     assertEquals(0, git.goalReviewRecoverCalls)
   }
+}
 
+class FeatureTaskRuntimeGoalContinuationStaleReviewTest {
   @Test
-  @Suppress("LongMethod") // capped-review staleness harness with unreachable remediation base
   fun `cappedReviewIsStale ignores an unreachable remediation base and keeps an unchanged immutable digest`() {
-    val repoRoot = Files.createTempDirectory("skillbill-runtime-stale-unreachable-remediation")
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
-    val immutableDigest = GoalSubtaskReviewInput(
-      reviewBaseSha = "0".repeat(40),
-      currentHeadSha = COMMITTED_HEAD_SHA,
-      trackedDelta = "immutable-delta\n",
-      ownedUntrackedPatches = "",
-    ).deltaDigest
-    // First build call may be remediation (unreachable) or review base — queue both shapes.
-    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "error",
-      error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
-      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
-    )
-    // Default success path uses baseline.reviewBaseSha; for the immutable base the fake returns empty
-    // delta unless we pre-queue. Queue a matching digest for the immutable base probe.
-    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "ok",
-      input = GoalSubtaskReviewInput(
-        reviewBaseSha = "0".repeat(40),
-        currentHeadSha = COMMITTED_HEAD_SHA,
-        trackedDelta = "immutable-delta\n",
-        ownedUntrackedPatches = "",
-      ),
-    )
-    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
-    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    check(
-      harness.goalContinuationRecorder.recordGoalContinuationState(
-        GoalContinuationStateRecordRequest(
-          workflowId = WORKFLOW_ID,
-          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = ISSUE_KEY,
-            subtaskId = 5,
-            suppressPr = true,
-            goalBranch = "feat/existing-runtime-branch",
-            parentWorkflowId = "wfl-parent",
-            codeReviewMode = CodeReviewExecutionMode.INLINE,
-          ),
-          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-        ),
-      ),
-    )
-    harness.seedReviewPhase("completed", 1, validJsonOutput("review"), reviewPassNumber = 1)
-    val paused = GoalSubtaskReviewState.initial(
-      reviewBaseSha = "0".repeat(40),
-      baselineUntrackedPaths = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-    ).reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
-      findings = listOf(
-        GoalSubtaskReviewCompactFinding(
-          severity = "blocker",
-          label = "StaleCap",
-          text = "unresolved",
-          findingId = "F-001",
-        ),
-      ),
-    ).copy(
-      disposition = GoalSubtaskReviewDisposition.PAUSED,
-      reviewedDeltaDigest = immutableDigest,
-      remediationBaseSha = "9".repeat(40),
-    )
-    checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
-    harness.seedRawReviewResults(paused)
-    val generationBefore = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[
-      "feature_task_runtime_review_generation",
-    ]
-
-    // A short run still executes reopenCappedReviewOnChangedDelta before the loop.
-    harness.runner.run(
-      harness.request().copy(
-        transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
-          forwardPhaseIds = listOf("preplan"),
-          backwardEdges = emptyList(),
-        ),
-      ),
-    )
-
-    val after = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
-    assertEquals(GoalSubtaskReviewDisposition.PAUSED, after.disposition)
-    assertEquals("9".repeat(40), after.remediationBaseSha, "staleness must not heal the remediation base")
-    assertEquals(0, git.goalReviewRecoverCalls, "recovery belongs to review preparation, not staleness")
-    assertEquals(
-      generationBefore,
-      harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["feature_task_runtime_review_generation"],
-    )
+    assertCappedReviewStaleIgnoresUnreachableRemediationBase()
   }
 
   @Test
-  @Suppress("LongMethod") // capped-review staleness harness with changed immutable digest
   fun `cappedReviewIsStale still reopens when the immutable base digest changed despite unreachable remediation`() {
-    val repoRoot = Files.createTempDirectory("skillbill-runtime-stale-changed-immutable")
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
-    val judgedDigest = GoalSubtaskReviewInput(
-      reviewBaseSha = "0".repeat(40),
-      currentHeadSha = COMMITTED_HEAD_SHA,
-      trackedDelta = "old-delta\n",
-      ownedUntrackedPatches = "",
-    ).deltaDigest
-    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "error",
-      error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
-      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
-    )
-    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
-      status = "ok",
-      input = GoalSubtaskReviewInput(
-        reviewBaseSha = "0".repeat(40),
-        currentHeadSha = COMMITTED_HEAD_SHA,
-        trackedDelta = "new-delta\n",
-        ownedUntrackedPatches = "",
-      ),
-    )
-    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
-    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    check(
-      harness.goalContinuationRecorder.recordGoalContinuationState(
-        GoalContinuationStateRecordRequest(
-          workflowId = WORKFLOW_ID,
-          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = ISSUE_KEY,
-            subtaskId = 5,
-            suppressPr = true,
-            goalBranch = "feat/existing-runtime-branch",
-            parentWorkflowId = "wfl-parent",
-            codeReviewMode = CodeReviewExecutionMode.INLINE,
-          ),
-          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-        ),
-      ),
-    )
-    harness.seedReviewPhase("completed", 1, validJsonOutput("review"), reviewPassNumber = 1)
-    val paused = GoalSubtaskReviewState.initial(
-      reviewBaseSha = "0".repeat(40),
-      baselineUntrackedPaths = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-    ).reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
-      findings = listOf(
-        GoalSubtaskReviewCompactFinding(
-          severity = "blocker",
-          label = "StaleCap",
-          text = "unresolved",
-          findingId = "F-001",
-        ),
-      ),
-    ).copy(
-      disposition = GoalSubtaskReviewDisposition.PAUSED,
-      reviewedDeltaDigest = judgedDigest,
-      remediationBaseSha = "9".repeat(40),
-    )
-    checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
-    harness.seedRawReviewResults(paused)
-
-    harness.runner.run(
-      harness.request().copy(
-        transitionsOverride = FeatureTaskRuntimeTransitionDeclaration(
-          forwardPhaseIds = listOf("preplan"),
-          backwardEdges = emptyList(),
-        ),
-      ),
-    )
-
-    val after = requireNotNull(harness.goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
-    assertEquals(GoalSubtaskReviewDisposition.PENDING, after.disposition)
-    assertNull(after.remediationBaseSha, "invalidation resets review state; recovery is not the staleness path")
-    assertEquals(0, git.goalReviewRecoverCalls)
+    assertCappedReviewStaleReopensWhenImmutableDigestChanged()
   }
 
   @Test
   fun `crash reconciliation preserves a changes requested disposition without structured findings`() {
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
     harness.runner.run(
       harness.request().copy(
@@ -2783,10 +2354,9 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "main")
       .also { it.headCommitShaValue = "should-not-read" }
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
 
     harness.runner.run(harness.request())
@@ -2899,18 +2469,17 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       ) + siblingPaths
     }
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), siblingPaths),
         ),
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
     harness.seedCheckpointAudit(siblingPaths)
     return harness
@@ -2940,10 +2509,9 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     git.repositoryFingerprintValue = "child-fingerprint-1"
     git.ownedPathsResult = WorkflowGitOperationResult(status = "error", value = "")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
     harness.seedCheckpointAudit()
 
@@ -2967,15 +2535,16 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     Files.writeString(specPath, "---\nstatus: Pending\n---\n\n# Spec\n")
     var specAtCommitLaunch: String? = null
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "commit_push") {
-          specAtCommitLaunch = Files.readString(specPath)
-        }
-        facts(defaultPhaseOutput(request))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+      RuntimeHarnessConfig(repoRoot = repoRoot).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "commit_push") {
+            specAtCommitLaunch = Files.readString(specPath)
+          }
+          facts(defaultPhaseOutput(request))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -2991,18 +2560,17 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     Files.createDirectories(specPath.parent)
     Files.writeString(specPath, "---\nstatus: Pending\n---\n\n# Spec\n")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -3018,8 +2586,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     Files.createDirectories(specPath.parent)
     Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+      RuntimeHarnessConfig(repoRoot = repoRoot).copy(agentAssignment = phasePerAgentAssignment()),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -3036,12 +2603,13 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     Files.createDirectories(specPath.parent)
     Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "commit_push") COMMIT_PUSH_BLOCKED_OUTPUT else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+      RuntimeHarnessConfig(repoRoot = repoRoot).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "commit_push") COMMIT_PUSH_BLOCKED_OUTPUT else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -3058,8 +2626,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     Files.createDirectories(specPath.parent)
     Files.writeString(specPath, "---\nstatus: Pending\n---\n\n# Spec\n")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+      RuntimeHarnessConfig(repoRoot = repoRoot).copy(agentAssignment = phasePerAgentAssignment()),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -3077,18 +2644,17 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     Files.createDirectories(specPath.parent)
     Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -3104,8 +2670,9 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     // re-derive the decompose stop and terminate at planning, never advancing to implement.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose-resume")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true),
+      RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true).copy(
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), DECOMPOSE_PLAN_OUTPUT)
@@ -3127,12 +2694,13 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     // reconstructs the Decomposed report from it rather than re-running the shared prep write path.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose-idempotent")
     val firstHarness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true),
+      RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
     val first = assertIs<FeatureTaskRuntimeRunReport.Decomposed>(firstHarness.runner.run(firstHarness.request()))
     // Only the write path (resolveFromPlanOutput) emits DecomposedAtPlanning; the loadDecomposeTerminal
@@ -3159,12 +2727,13 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     // (a subtask missing required fields) must produce a diagnosable Blocked outcome, not crash.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose-malformed")
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") MALFORMED_DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true),
+      RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") MALFORMED_DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -3190,12 +2759,13 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     // now produce a diagnosable Blocked terminal, never an uncaught throw, and never launch implement.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose-writer-invalid")
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") WRITER_INVALID_DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true),
+      RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "plan") WRITER_INVALID_DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -3217,8 +2787,9 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     // from the persisted output and must Block, never crash or advance to implement.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose-writer-invalid-resume")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true),
+      RuntimeHarnessConfig(repoRoot = repoRoot, useRealDecompositionPlanner = true).copy(
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), WRITER_INVALID_DECOMPOSE_PLAN_OUTPUT)
@@ -3246,15 +2817,17 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     var preplanLaunches = 0
     var crashOnReentry = true
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when {
-          phaseId == "preplan" && ++preplanLaunches == 2 && crashOnReentry -> spawnFailedFacts()
-          phaseId == "plan" -> facts(verdictPlanOutput("needs_fix"))
-          else -> facts(validJsonOutput(phaseId))
-        }
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          when {
+            phaseId == "preplan" && ++preplanLaunches == 2 && crashOnReentry -> spawnFailedFacts()
+            phaseId == "plan" -> facts(verdictPlanOutput("needs_fix"))
+            else -> facts(validJsonOutput(phaseId))
+          }
+        },
+      ),
     )
 
     // Run 1: preplan -> plan needs_fix fires the edge (iteration 1) -> preplan re-enters and crashes.
@@ -3277,7 +2850,11 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     val edgeIterations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE }
       .mapNotNull { it.edgeIteration }
-    assertEquals((1..PLAN_FIX_CAP).toList(), edgeIterations, "the edge fired 1..cap across the crash, never restarting")
+    assertEquals(
+      (1..PLAN_FIX_CAP).toList(),
+      edgeIterations,
+      "the edge fired 1..cap across the crash, never restarting",
+    )
   }
 }
 
@@ -3288,8 +2865,10 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   @Test
   fun `schema-rejected evidence is persisted apart from the phase output artifact`() {
     val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("write_history")),
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        validator = ThrowingValidator(failPhases = setOf("write_history")),
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -3306,8 +2885,10 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   @Test
   fun `a completed record with an unparseable output artifact still loud-fails on resume`() {
     val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("plan")),
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        validator = ThrowingValidator(failPhases = setOf("plan")),
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), "not a json object")
@@ -3321,7 +2902,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   // it, or those workflows can never be resumed again.
   @Test
   fun `a blocked phase carrying schema-rejected output stays resumable`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
@@ -3337,7 +2918,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
   @Test
   fun `a legacy schema-gate review block relaunches on resume instead of re-blocking`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
@@ -3363,9 +2944,9 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   @Test
   fun `goal review retries schema-invalid output inside its already-reserved pass`() {
     val harness = runnerHarness(
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
@@ -3390,17 +2971,16 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   @Test
   fun `goal review schema retries stay on the reserved pass past the former cap`() {
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
           parentWorkflowId = "wfl-parent",
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -3416,8 +2996,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   @Test
   fun `m1 finished telemetry carries the review fix iteration count after a loop ran`() {
     val harness = telemetryRunnerHarness(
-      launcher = reviewFixLauncher(convergeOnReview = 2),
-      runtimeConfig = reviewFixRuntimeConfig(2),
+      reviewFixRuntimeConfig(2).copy(launcher = reviewFixLauncher(convergeOnReview = 2)),
     )
 
     val report = harness.runner.run(harness.request)
@@ -3429,10 +3008,8 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
   @Test
   fun `m1 finished telemetry reports zero review fix iterations on a clean run`() {
-    // The additive count is 0 when the review_fix loop never fired (a clean forward run).
     val harness = telemetryRunnerHarness(
-      launcher = reviewFixLauncher(convergeOnReview = 1),
-      runtimeConfig = reviewFixRuntimeConfig(1),
+      reviewFixRuntimeConfig(1).copy(launcher = reviewFixLauncher(convergeOnReview = 1)),
     )
 
     val report = harness.runner.run(harness.request)
@@ -3444,10 +3021,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   // (a) AC3/AC10: an approved review advances to audit and never launches the loop-only fix phase.
   @Test
   fun `m1 approved review advances to audit without launching implement_fix`() {
-    val harness = runnerHarness(
-      launcher = reviewFixLauncher(convergeOnReview = 1),
-      runtimeConfig = reviewFixRuntimeConfig(1),
-    )
+    val harness = runnerHarness(reviewFixRuntimeConfig(1).copy(launcher = reviewFixLauncher(convergeOnReview = 1)))
 
     val report = harness.runner.run(harness.request())
 
@@ -3464,12 +3038,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     }
     var reviewPasses = 0
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement_fix") git.repositoryFingerprintValue = "after-fix"
-        facts(validJsonOutput(phaseId))
-      },
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           reviewPasses += 1
@@ -3489,6 +3058,12 @@ class FeatureTaskRuntimeReviewFixLoopTest {
               formattedOutput = "findings",
             ),
           )
+        },
+      ).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "implement_fix") git.repositoryFingerprintValue = "after-fix"
+          facts(validJsonOutput(phaseId))
         },
       ),
     )
@@ -3511,13 +3086,14 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       repositoryFingerprintValue = "before-fix"
     }
     val harness = runnerHarness(
-      launcher = reviewFixLauncher(
-        convergeOnReview = 2,
-        onPhaseLaunch = { phaseId ->
-          if (phaseId == "implement_fix") git.repositoryFingerprintValue = "after-fix"
-        },
+      reviewFixRuntimeConfig(2, git).copy(
+        launcher = reviewFixLauncher(
+          convergeOnReview = 2,
+          onPhaseLaunch = { phaseId ->
+            if (phaseId == "implement_fix") git.repositoryFingerprintValue = "after-fix"
+          },
+        ),
       ),
-      runtimeConfig = reviewFixRuntimeConfig(2, git),
     )
 
     val report = harness.runner.run(
@@ -3548,7 +3124,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   @Test
   fun `resume without a review-mode request retains the durable mode for a re-review`() {
     val harness = runnerHarness(
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         reviewDriver = failingReviewDriver(
           failOnPass = 1,
           failureReason = "failed to launch: the agent process could not be spawned.",
@@ -3574,7 +3150,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   @Test
   fun `failed review resumes the same durably reserved inline pass`() {
     val harness = runnerHarness(
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         reviewDriver = failingReviewDriver(
           failOnPass = 1,
           failureReason = "spawn failed",
@@ -3617,10 +3193,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
   @Test
   fun `m1 cap exhaustion advances to validate without re-review`() {
-    val harness = runnerHarness(
-      launcher = reviewFixLauncher(convergeOnReview = 2),
-      runtimeConfig = reviewFixRuntimeConfig(2),
-    )
+    val harness = runnerHarness(reviewFixRuntimeConfig(2).copy(launcher = reviewFixLauncher(convergeOnReview = 2)))
 
     val report = harness.runner.run(harness.request())
 
@@ -3640,10 +3213,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
   @Test
   fun `m1 an unresolved Blocker advances to validate after one fix round`() {
-    val harness = runnerHarness(
-      launcher = reviewFixLauncher(convergeOnReview = 12),
-      runtimeConfig = reviewFixRuntimeConfig(12),
-    )
+    val harness = runnerHarness(reviewFixRuntimeConfig(12).copy(launcher = reviewFixLauncher(convergeOnReview = 12)))
 
     val report = harness.runner.run(harness.request())
 
@@ -3667,8 +3237,9 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   fun `m1 review_fix fires once then advances even when Blocker findings remain`() {
     listOf(1, 2, 4, 10).forEach { blockingPasses ->
       val harness = runnerHarness(
-        launcher = reviewFixLauncher(convergeOnReview = blockingPasses + 1),
-        runtimeConfig = reviewFixRuntimeConfig(blockingPasses + 1),
+        reviewFixRuntimeConfig(blockingPasses + 1).copy(
+          launcher = reviewFixLauncher(convergeOnReview = blockingPasses + 1),
+        ),
       )
 
       assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -3688,24 +3259,25 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   fun `m1 implement_fix without a reconciliation report blocks on the idempotency gate`() {
     var implementFixLaunches = 0
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "implement_fix" -> {
-            implementFixLaunches += 1
-            facts(
-              if (implementFixLaunches == 1) {
-                """{"contract_version":"0.2","phase_id":"implement_fix","status":"completed",""" +
-                  """"summary":"fix","produced_outputs":{"changed_files":["src/Foo.kt"]}}"""
-              } else {
-                validJsonOutput(phaseId)
-              },
-            )
+      reviewFixRuntimeConfig(2).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          when (phaseId) {
+            "implement_fix" -> {
+              implementFixLaunches += 1
+              facts(
+                if (implementFixLaunches == 1) {
+                  """{"contract_version":"0.2","phase_id":"implement_fix","status":"completed",""" +
+                    """"summary":"fix","produced_outputs":{"changed_files":["src/Foo.kt"]}}"""
+                } else {
+                  validJsonOutput(phaseId)
+                },
+              )
+            }
+            else -> facts(validJsonOutput(phaseId))
           }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      },
-      runtimeConfig = reviewFixRuntimeConfig(2),
+        },
+      ),
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -3726,17 +3298,18 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     var fixLaunches = 0
     var crashOnFix = true
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "implement_fix" -> {
-            fixLaunches += 1
-            if (fixLaunches == 1 && crashOnFix) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+      reviewFixRuntimeConfig(2).copy(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          when (phaseId) {
+            "implement_fix" -> {
+              fixLaunches += 1
+              if (fixLaunches == 1 && crashOnFix) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+            }
+            else -> facts(validJsonOutput(phaseId))
           }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      },
-      runtimeConfig = reviewFixRuntimeConfig(2),
+        },
+      ),
     )
 
     // Run 1: review changes_requested fires the edge (iteration 1) -> implement_fix re-enters and crashes.
@@ -3780,13 +3353,15 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       validJsonOutput("verify_findings"),
     )
     harness.seedReentryPhase(
-      "implement_fix",
-      "completed",
-      1,
-      INVOKED_AGENT,
-      validJsonOutput("implement_fix"),
-      "review_fix",
-      1,
+      SeedReentryPhaseSeed(
+        "implement_fix",
+        "completed",
+        1,
+        INVOKED_AGENT,
+        validJsonOutput("implement_fix"),
+        "review_fix",
+        1,
+      ),
     )
     harness.seedLoopEdge("implement_fix", "review_fix", 1)
 
@@ -3842,13 +3417,15 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
     harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
     harness.seedReentryPhase(
-      "implement_fix",
-      "completed",
-      1,
-      INVOKED_AGENT,
-      validJsonOutput("implement_fix"),
-      "review_fix",
-      1,
+      SeedReentryPhaseSeed(
+        "implement_fix",
+        "completed",
+        1,
+        INVOKED_AGENT,
+        validJsonOutput("implement_fix"),
+        "review_fix",
+        1,
+      ),
     )
     harness.seedReviewPhase(
       "running",
@@ -3895,9 +3472,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   @Test
   fun `starts on default branch creates and switches to the feature branch before implement`() {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "main")
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
 
     val report = harness.runner.run(harness.request())
 
@@ -3921,9 +3496,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   @Test
   fun `starts on a non-default branch reuses it without checking out a new branch`() {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/pre-created")
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
 
     val report = harness.runner.run(harness.request())
 
@@ -3941,9 +3514,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       currentBranchValue = "main",
       checkoutResult = WorkflowGitOperationResult(status = "error", error = "checkout exploded"),
     )
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
 
     val report = harness.runner.run(harness.request())
 
@@ -3962,9 +3533,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     val git = RecordingWorkflowGitOperations(
       currentBranchResult = WorkflowGitOperationResult(status = "error", error = "git HEAD unreadable"),
     )
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
 
     val report = harness.runner.run(harness.request())
 
@@ -3987,9 +3556,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     // branch. A divergent value proves the persisted load (not a fresh resolution) decided.
     val persistedBranch = "feat/persisted-resume-branch"
     val git = RecordingWorkflowGitOperations(currentBranchValue = "main")
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
     harness.seedResolvedBranch(persistedBranch, baseBranch = "main", created = true)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
 
@@ -4019,9 +3586,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
   fun `resume already on the persisted branch re-attaches without any checkout`() {
     val persistedBranch = "feat/persisted-resume-branch"
     val git = RecordingWorkflowGitOperations(currentBranchValue = persistedBranch)
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
     harness.seedResolvedBranch(persistedBranch, baseBranch = "main", created = true)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
 
@@ -4046,9 +3611,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       currentBranchValue = "main",
       existingBranches = emptySet(),
     )
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
     harness.seedResolvedBranch(persistedBranch, baseBranch = "main", created = true)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
 
@@ -4064,7 +3627,10 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       "a missing persisted branch must never check out (would create a divergent branch): ${git.checkoutCalls}",
     )
     val launchedMutating = harness.launchOrder().filter { it !in NON_FILE_MUTATING_PHASES }
-    assertTrue(launchedMutating.isEmpty(), "no file-mutating phase may launch when re-attach fails: $launchedMutating")
+    assertTrue(
+      launchedMutating.isEmpty(),
+      "no file-mutating phase may launch when re-attach fails: $launchedMutating",
+    )
   }
 
   @Test
@@ -4074,9 +3640,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       currentBranchValue = "main",
       branchExistsResult = WorkflowGitOperationResult(status = "error", error = "rev-parse exploded"),
     )
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
     harness.seedResolvedBranch(persistedBranch, baseBranch = "main", created = true)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
 
@@ -4096,9 +3660,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       currentBranchValue = "main",
       landedBranchAfterCheckout = "feat/wrong-landing",
     )
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
 
     val report = harness.runner.run(harness.request())
 
@@ -4121,9 +3683,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     // rather than the wrong-branch arm.
     val protectedPersisted = "main"
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/pre-created")
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
     harness.seedResolvedBranch(protectedPersisted, baseBranch = "main", created = false)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
 
@@ -4145,9 +3705,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     // Same corrupt persisted branch as the checkout-protected test, but HEAD is already on the
     // protected branch. The no-op re-attach path must still reject it before launching implement.
     val git = RecordingWorkflowGitOperations(currentBranchValue = "main")
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
     harness.seedResolvedBranch("main", baseBranch = "main", created = false)
     harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, PLAN_OUTPUT)
 
@@ -4171,14 +3729,15 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       currentBranchValue = "main",
       checkoutResult = WorkflowGitOperationResult(status = "error", error = "denied"),
     )
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
 
     harness.runner.run(harness.request())
 
     val launchedMutating = harness.launchOrder().filter { it !in NON_FILE_MUTATING_PHASES }
-    assertTrue(launchedMutating.isEmpty(), "no file-mutating phase may launch on the default branch: $launchedMutating")
+    assertTrue(
+      launchedMutating.isEmpty(),
+      "no file-mutating phase may launch on the default branch: $launchedMutating",
+    )
   }
 
   @Test
@@ -4187,9 +3746,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       currentBranchValue = "main",
       checkoutResult = WorkflowGitOperationResult(status = "error", error = "checkout exploded"),
     )
-    val harness = runnerHarness(
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git))
 
     val report = harness.runner.run(harness.request())
 
@@ -4238,8 +3795,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
     lateinit var harness: RunnerHarness
     var observedPreLaunchRecord = false
     harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(git, CONVENTION_SPEC_REFERENCE),
         eventSink = FeatureTaskRuntimeRunEventSink { event ->
           if (event is FeatureTaskRuntimeRunEvent.PhaseStarted && event.phaseId == "implement") {
@@ -4250,7 +3806,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
             observedPreLaunchRecord = true
           }
         },
-      ),
+      ).copy(agentAssignment = phasePerAgentAssignment()),
     )
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
@@ -4290,9 +3846,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
       facts(defaultPhaseOutput(request))
     }
     val harness = runnerHarness(
-      launcher = launcher,
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = conventionRuntimeConfig(git),
+      conventionRuntimeConfig(git).copy(launcher = launcher, agentAssignment = phasePerAgentAssignment()),
     )
 
     val report = harness.runner.run(harness.request())
@@ -4333,7 +3887,7 @@ class FeatureTaskRuntimeBranchSetupRunnerTest {
 class FeatureTaskRuntimeLegacyBriefingBlockTest {
   @Test
   fun `a legacy briefing row blocks the phase durably instead of unwinding the run`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
 
@@ -4360,9 +3914,7 @@ class FeatureTaskRuntimeLegacyBriefingBlockTest {
   }
 }
 
-// SKILL-85 Subtask 3 (AC2/3/4/5/6/8): reconcile-on-resume idempotency for the now-fix-loop mutating
 // implement phase, exercised through a synthetic backward edge review --needs_fix--> implement.
-@Suppress("LargeClass")
 class FeatureTaskRuntimeReconcileOnResumeTest {
   // (a) A mutating-phase re-run is a no-op when the tree matches target: the re-entered implement
   // returns the reconciliation report and the reconciliation gate passes, the clean worktree produces
@@ -4372,15 +3924,16 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     git.worktreeStatusValue = "" // clean tree => no checkpoint commit
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         reviewDriver = reviewFixDriver(2),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(validJsonOutput(phaseId))
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(validJsonOutput(phaseId))
-      },
     )
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4399,21 +3952,22 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   fun `dirty tree checkpoints review and remediation boundaries on the resolved feature branch`() {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         reviewDriver = reviewFixDriver(2),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          // A dirty tree the run OWNS because its writing phase produced it => one checkpoint commit
+          // on the boundary.
+          if (phaseId == "implement" || phaseId == "implement_fix") {
+            git.worktreeStatusValue = " M src/Foo.kt"
+            git.ownedPathsValue = listOf("src/Foo.kt")
+          }
+          facts(validJsonOutput(phaseId))
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        // A dirty tree the run OWNS because its writing phase produced it => one checkpoint commit
-        // on the boundary.
-        if (phaseId == "implement" || phaseId == "implement_fix") {
-          git.worktreeStatusValue = " M src/Foo.kt"
-          git.ownedPathsValue = listOf("src/Foo.kt")
-        }
-        facts(validJsonOutput(phaseId))
-      },
     )
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4441,19 +3995,20 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     git.stagePathsResult = WorkflowGitOperationResult(status = "error", error = "stage failed")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         reviewDriver = reviewFixDriver(2),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "implement" || phaseId == "implement_fix") {
+            git.worktreeStatusValue = " M src/Foo.kt"
+            git.ownedPathsValue = listOf("src/Foo.kt")
+          }
+          facts(validJsonOutput(phaseId))
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement" || phaseId == "implement_fix") {
-          git.worktreeStatusValue = " M src/Foo.kt"
-          git.ownedPathsValue = listOf("src/Foo.kt")
-        }
-        facts(validJsonOutput(phaseId))
-      },
     )
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -4569,14 +4124,14 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
     identities.forEach { identity ->
       assertEquals("feat/existing-runtime-branch", identity.branch)
-      assertEquals(ISSUE_KEY, identity.issueKey)
+      assertEquals(RUNNER_TEST_ISSUE_KEY, identity.issueKey)
       assertEquals(1, identity.ownedPathCount)
       assertTrue(identity.phaseId.isNotBlank())
       // This run carries no goal-continuation artifact, so every ref names the reserved sentinel.
       assertEquals(FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID, identity.subtaskId)
       assertEquals(
         featureTaskRuntimeCheckpointRefName(
-          ISSUE_KEY,
+          RUNNER_TEST_ISSUE_KEY,
           FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
           identity.sequenceNumber,
         ),
@@ -4602,7 +4157,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertEquals(1, git.createCommitMessages.size, "one subtask, one commit on the feature branch")
     assertEquals(2, git.amendCommitMessages.size, "every later checkpoint amends instead of committing")
     (git.createCommitMessages + git.amendCommitMessages).forEach { message ->
-      assertContains(message, "Skill-Bill-Subtask: $ISSUE_KEY/$FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID")
+      assertContains(message, "Skill-Bill-Subtask: $RUNNER_TEST_ISSUE_KEY/$FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID")
     }
 
     val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))
@@ -4684,7 +4239,11 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   @Test
   fun `an amend whose checkpoint ref already preserves another commit is refused before HEAD is rewritten`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
-    val occupiedRef = featureTaskRuntimeCheckpointRefName(ISSUE_KEY, FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID, 1)
+    val occupiedRef = featureTaskRuntimeCheckpointRefName(
+      RUNNER_TEST_ISSUE_KEY,
+      FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+      1,
+    )
     val preserved = "d".repeat(40)
     git.checkpointRefs[occupiedRef] = preserved
     val harness = checkpointRunHarness(git)
@@ -4733,7 +4292,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val appended = harness.recorder.appendCheckpointIdentity(
       AppendCheckpointIdentityArgs(
         workflowId = WORKFLOW_ID,
-        issueKey = ISSUE_KEY,
+        issueKey = RUNNER_TEST_ISSUE_KEY,
         subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
         branch = "feat/existing-runtime-branch",
         phaseId = "implement",
@@ -4765,7 +4324,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
       harness.recorder.appendCheckpointIdentity(
         AppendCheckpointIdentityArgs(
           workflowId = WORKFLOW_ID,
-          issueKey = ISSUE_KEY,
+          issueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
           branch = "feat/existing-runtime-branch",
           phaseId = "implement",
@@ -4803,21 +4362,22 @@ private fun checkpointRunHarness(
   val writtenStatus = ownedPaths.joinToString("\n") { path -> " M $path" }
   git.ownedPathsValue = emptyList()
   return runnerHarness(
-    agentAssignment = phasePerAgentAssignment(),
-    runtimeConfig = RuntimeHarnessConfig(
+    RuntimeHarnessConfig(
       branchSetup = BranchSetupTestConfig(gitOperations = git),
       reviewDriver = reviewDriver,
+    ).copy(
+      agentAssignment = phasePerAgentAssignment(),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = writtenStatus
+          git.ownedPathsValue = (git.ownedPathsValue + ownedPaths).distinct()
+        }
+        onPhase(phaseId)
+        facts(validJsonOutput(phaseId))
+      },
+      diagnostics = diagnostics,
     ),
-    launcher = RuntimeRecordingLauncher { request ->
-      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-      if (phaseId == "implement" || phaseId == "implement_fix") {
-        git.worktreeStatusValue = writtenStatus
-        git.ownedPathsValue = (git.ownedPathsValue + ownedPaths).distinct()
-      }
-      onPhase(phaseId)
-      facts(validJsonOutput(phaseId))
-    },
-    diagnostics = diagnostics,
   )
 }
 
@@ -4916,9 +4476,11 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    @Suppress("UNCHECKED_CAST")
-    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
-      as List<Map<String, Any?>>
+    val evidence = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
     val entry = evidence.single { it["seam"] == "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha" }
     assertEquals("resolvable predecessor identity commit", entry["value_expected"])
     val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))
@@ -5052,10 +4614,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
   fun `dirty tree with a protected resolved branch never checkpoints`() {
     val git = RecordingWorkflowGitOperations(currentBranchValue = "main")
     git.worktreeStatusValue = " M src/Foo.kt"
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = conventionRuntimeConfig(git),
-    )
+    val harness = runnerHarness(conventionRuntimeConfig(git).copy(agentAssignment = phasePerAgentAssignment()))
     harness.seedResolvedBranch("main", baseBranch = "main", created = false)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
@@ -5078,12 +4637,11 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     Files.writeString(specPath, "---\nstatus: Pending\nspec_source: linear\n---\n\n# Spec\n")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         repoRoot = repoRoot,
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
@@ -5091,15 +4649,17 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
         reviewDriver = reviewFixDriver(2),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "implement" || phaseId == "implement_fix") {
+            git.worktreeStatusValue = " M src/Foo.kt"
+            git.ownedPathsValue = listOf("src/Foo.kt")
+          }
+          facts(validJsonOutput(phaseId))
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement" || phaseId == "implement_fix") {
-          git.worktreeStatusValue = " M src/Foo.kt"
-          git.ownedPathsValue = listOf("src/Foo.kt")
-        }
-        facts(validJsonOutput(phaseId))
-      },
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -5123,19 +4683,20 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     git.worktreeStatusValue = " M src/Foo.kt"
     var planLaunches = 0
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "plan") {
+            planLaunches += 1
+            facts(verdictPlanOutput(if (planLaunches == 1) "needs_fix" else "advance"))
+          } else {
+            facts(validJsonOutput(phaseId))
+          }
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "plan") {
-          planLaunches += 1
-          facts(verdictPlanOutput(if (planLaunches == 1) "needs_fix" else "advance"))
-        } else {
-          facts(validJsonOutput(phaseId))
-        }
-      },
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(PLAN_FIX_CYCLE)))
@@ -5148,16 +4709,18 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
   fun `reconciliation gate rejects an implement output without a reconciliation report`() {
     var implementLaunches = 0
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement") {
-          implementLaunches += 1
-          facts(IMPLEMENT_NO_RECONCILE_OUTPUT)
-        } else {
-          facts(validJsonOutput(phaseId))
-        }
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "implement") {
+            implementLaunches += 1
+            facts(IMPLEMENT_NO_RECONCILE_OUTPUT)
+          } else {
+            facts(validJsonOutput(phaseId))
+          }
+        },
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -5177,18 +4740,19 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     var crashOnReentry = true
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         reviewDriver = reviewFixDriver(Int.MAX_VALUE),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          when {
+            phaseId == "implement" && ++implementLaunches == 2 && crashOnReentry -> spawnFailedFacts()
+            else -> facts(validJsonOutput(phaseId))
+          }
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when {
-          phaseId == "implement" && ++implementLaunches == 2 && crashOnReentry -> spawnFailedFacts()
-          else -> facts(validJsonOutput(phaseId))
-        }
-      },
     )
 
     // Run 1: implement -> review needs_fix fires the edge (iteration 1) -> implement re-enters & crashes.
@@ -5221,8 +4785,10 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
   @Test
   fun `non-mutating non-fix-loop phase still blocks immediately on schema-invalid output`() {
     val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("write_history")),
-      agentAssignment = phasePerAgentAssignment(),
+      RuntimeHarnessConfig(
+        validator = ThrowingValidator(failPhases = setOf("write_history")),
+        agentAssignment = phasePerAgentAssignment(),
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -5234,2468 +4800,6 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
   }
 }
 
-internal const val WORKFLOW_ID = "wftr-20260602-test-0001"
-internal const val SESSION_ID = "ftr-test-001"
-private const val ISSUE_KEY = "SKILL-65"
-private const val SPEC_REFERENCE = ".feature-specs/SKILL-65/spec.md"
-
-// A spec whose parent directory follows the `{ISSUE_KEY}-{feature-name}` convention so the
-// derived feature branch is `feat/{ISSUE_KEY}-{feature-name}` (GoalRunnerTest-style assertion).
-private const val CONVENTION_SPEC_REFERENCE =
-  ".feature-specs/SKILL-65-runtime-feature-task-parity/spec_subtask_1.md"
-private const val EXPECTED_FEATURE_BRANCH = "feat/SKILL-65-runtime-feature-task-parity"
-internal const val INVOKED_AGENT = "claude-code"
-internal const val VALID_OUTPUT = """{"contract_version":"0.2"}"""
-
-// Gate-repair segment: schema-valid completed validate without measured gate_run_count/gate_runs.
-// The consumer-projection gate must not reject this; only runtimeOwnedValidationOutput may publish counts.
-private val VALIDATE_REPAIR_WITHOUT_GATE_COUNTS = """
-  {
-    "contract_version": "0.3",
-    "phase_id": "validate",
-    "status": "completed",
-    "summary": "Gate repair segment without measured counts.",
-    "produced_outputs": {
-      "validation_result": {
-        "validation_status": "passed",
-        "checks": [{"name": "check", "status": "passed"}],
-        "repository_checkpoint": {"fingerprint": "fixture-checkpoint-1"}
-      }
-    }
-  }
-""".trimIndent()
-
-/** Fail once, then pass — drives the validate repair loop without inventing gate_run_count. */
-private fun failThenPassValidationGateRunner(gateCalls: AtomicInteger): ValidationGateRunner =
-  object : ValidationGateRunner {
-    override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
-      val call = gateCalls.getAndIncrement()
-      val outcome = if (call == 0) {
-        FAILED
-      } else {
-        PASSED
-      }
-      return ValidationGateRunResult(
-        exitCode = if (call == 0) 1 else 0,
-        durationMs = 1,
-        outcome = outcome,
-        cacheMode = if (call == 0) {
-          CACHE_ELIGIBLE
-        } else {
-          request.cacheMode
-        },
-        executedWorkUnits = 1,
-        findings = if (call == 0) {
-          listOf(
-            ValidationGateFinding("app", "t", "broken", "A.kt"),
-          )
-        } else {
-          emptyList()
-        },
-      )
-    }
-  }
-
-private fun kotlinPackWithValidationGate(): PlatformManifest = PlatformManifest(
-  slug = "kotlin",
-  packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
-  contractVersion = "1.7",
-  routingSignals = RoutingSignals(
-    strong = listOf("src"),
-    tieBreakers = emptyList(),
-    path = listOf("src"),
-  ),
-  declaredCodeReviewAreas = emptyList(),
-  declaredFiles = DeclaredFiles(null, emptyMap()),
-  areaMetadata = emptyMap(),
-  validationGate = ValidationGateDeclaration(
-    fullGateCommand = listOf("echo", "cache"),
-    cacheBypassingFullGateCommand = listOf("echo", "full"),
-    collectAllFullGateCommand = listOf("echo", "collect-all"),
-    cacheBypassingCollectAllFullGateCommand = listOf("echo", "collect-all-full"),
-    findings = ValidationGateFindingsLocator(
-      format = JUNIT_XML,
-      artifactGlobs = listOf("**/*.xml"),
-      compilerDiagnostics = ValidationGateCompilerDiagnosticsLocator(
-        GRADLE_KOTLIN_COMPILER_STDOUT,
-      ),
-      executedWork = ValidationGateExecutedWorkSignal(
-        GRADLE_ACTIONABLE_SUMMARY,
-      ),
-    ),
-  ),
-)
-
-// A clean review output carrying an empty findings array (the affirmative "no blocking findings"
-// signal the review gate requires, SKILL-85 Subtask 4 F-003); used by the default phase-aware launcher.
-private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.3","produced_outputs":{"findings":[]}}"""
-
-private const val VALID_AUDIT_OUTPUT =
-  """{"contract_version":"0.6","phase_id":"audit","status":"completed","summary":"Audit satisfied.",""" +
-    """"verdict":"satisfied","produced_outputs":{"value":"{\"gaps\":[],\"non_blocking_findings\":[]}"}}"""
-
-private val VALID_VERIFY_FINDINGS_OUTPUT = verifyFindingsOutput()
-
-// preplan, plan, and implement feed the bounded planning projections, so their seeded outputs are
-// full envelopes carrying the declared projection body rather than bare produced_outputs fragments.
-private val PREPLAN_OUTPUT = seededProjectionEnvelope("preplan", PlanningProjectionFixtures.PREPLAN_DIGEST)
-private val PLAN_OUTPUT = seededProjectionEnvelope("plan", PlanningProjectionFixtures.PLAN_PROSE)
-internal val IMPLEMENT_OUTPUT =
-  seededProjectionEnvelope("implement", PlanningProjectionFixtures.IMPLEMENT_PROSE)
-
-private fun seededProjectionEnvelope(phaseId: String, producedOutputs: String): String =
-  """{"contract_version":"0.3","phase_id":"$phaseId","status":"completed",""" +
-    """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
-
-internal val ALL_PHASES =
-  listOf(
-    "preplan",
-    "plan",
-    "implement",
-    "audit",
-    "review",
-    "verify_findings",
-    "implement_fix",
-    "build",
-    "validate",
-    "write_history",
-    "commit_push",
-    "pr",
-  )
-internal val COMPLETED_PHASES_CLEAN_RUN = ALL_PHASES.filterNot { it == "implement_fix" || it == "build" }
-internal val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" || it == "implement_fix" || it == "build" }
-private val NON_FILE_MUTATING_PHASES = setOf("preplan", "plan")
-
-// A worker lease a killed child left behind, already expired relative to the startup reconcile pass.
-private fun expiredCrashedOwnership(): FeatureTaskRuntimeWorkerOwnership = FeatureTaskRuntimeWorkerOwnership(
-  workflowId = WORKFLOW_ID,
-  generation = 1,
-  ownerToken = "crashed-child-token",
-  hostIdentity = "harness-host",
-  bootIdentity = "harness-boot",
-  pid = 7,
-  processBirthToken = "harness-birth-7",
-  leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
-  heartbeatAt = "2000-01-01T00:00:00Z",
-  expiresAt = "2000-01-01T00:00:30Z",
-  phaseId = "implement",
-  phaseAttempt = 1,
-)
-
-// A distinct invoking agent per phase so a captured launch request is
-// phase-attributable from its invokedAgentId.
-internal fun phaseAgent(phaseId: String): String = "agent-$phaseId"
-
-internal fun phasePerAgentAssignment(): FeatureTaskRuntimeAgentAssignment =
-  FeatureTaskRuntimeAgentAssignment(perPhaseAgentIds = ALL_PHASES.associateWith(::phaseAgent))
-
-// Bundles the persistence + git collaborators a harness exposes so the harness constructor stays
-// within the parameter budget.
-internal class RunnerHarnessIo(
-  val workflow: RunnerHarnessWorkflow,
-  val repository: InMemoryRuntimeWorkflowRepository,
-  val gitOperations: RecordingWorkflowGitOperations,
-  val specStatusWriter: RecordingSpecStatusWriter,
-  val database: RuntimeFakeDatabaseSessionFactory,
-)
-
-internal class RunnerHarnessWorkflow(
-  val recorder: FeatureTaskRuntimePhaseRecorder,
-  val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
-  val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
-  val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
-)
-
-internal class RunnerHarness(
-  val launcher: RuntimeRecordingLauncher,
-  val io: RunnerHarnessIo,
-  val runner: FeatureTaskRuntimeRunner,
-  val events: MutableList<FeatureTaskRuntimeRunEvent>,
-  private val runRequest: FeatureTaskRuntimeRunRequest,
-  val specScratchStore: RecordingSpecScratchStore,
-) {
-  val specStatusWriter: RecordingSpecStatusWriter get() = io.specStatusWriter
-  val recorder: FeatureTaskRuntimePhaseRecorder get() = io.workflow.recorder
-  val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder
-    get() = io.workflow.goalContinuationRecorder
-  val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder
-    get() = io.workflow.decomposeTerminalRecorder
-  val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore get() = io.workflow.runInvariantsStore
-  val repository: InMemoryRuntimeWorkflowRepository get() = io.repository
-  val gitOperations: RecordingWorkflowGitOperations get() = io.gitOperations
-  val ledgerRows: List<UnaddressedFinding> get() = io.database.ledgerRows
-
-  // Direct review-state seeding via updateReviewState only patches goal_subtask_review_state; the
-  // decoder also requires a durable raw result for every completed pass, so fixtures that
-  // hand-assemble completed passes must patch this sibling artifact themselves.
-  fun seedRawReviewResults(state: GoalSubtaskReviewState) {
-    val artifacts = repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
-    artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY] = state.passResults.associate { result ->
-      result.passNumber.toString() to "raw review result for pass ${result.passNumber}"
-    }
-    repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
-  }
-
-  fun reviewedDeltaDigest(): String? =
-    requireNotNull(goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID)).reviewedDeltaDigest
-
-  fun currentReviewDeltaDigest(git: RecordingWorkflowGitOperations, repoRoot: Path): String {
-    val state = requireNotNull(goalContinuationRecorder.reviewStateRecorder.reviewState(WORKFLOW_ID))
-    return requireNotNull(
-      git.buildGoalSubtaskReviewInput(
-        repoRoot,
-        GoalSubtaskReviewBaseline(state.reviewBaseSha, state.baselineUntrackedPaths),
-        "feat/existing-runtime-branch",
-      ).input,
-    ).deltaDigest
-  }
-
-  // Rewrites the durable review state as a pre-digest writer left it, so the legacy-cap path is
-  // exercised against a real record rather than a hand-built one.
-  fun stripReviewedDeltaDigest() {
-    val artifacts = repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
-    val state = JsonSupport
-      .anyToStringAnyMap(artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])
-      .orEmpty()
-      .toMutableMap()
-    state.remove("reviewed_delta_digest")
-    artifacts[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = state
-    repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
-  }
-
-  // Launch order recovered from the event stream: each launch is preceded by a
-  // PhaseStarted or a PhaseFixLoopIteration carrying the phase id.
-  fun launchOrder(): List<String> = events.mapNotNull { event ->
-    when (event) {
-      is FeatureTaskRuntimeRunEvent.PhaseStarted -> event.phaseId
-      is FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration -> event.phaseId
-      else -> null
-    }
-  }
-
-  // Launch order derived from the launcher's captured requests; requires
-  // phasePerAgentAssignment so each request's invokedAgentId maps back to its phase.
-  fun launchedPhaseOrder(): List<String> = launcher.requests.map { request ->
-    ALL_PHASES.firstOrNull { phaseId -> phaseAgent(phaseId) == request.invokedAgentId }
-      ?: error("Launch request agent '${request.invokedAgentId}' is not phase-attributable.")
-  }
-
-  // Launch order parsed from each captured request's prompt header, so it covers phases outside
-  // ALL_PHASES (e.g. the loop-only implement_fix) that launchedPhaseOrder cannot attribute by agent.
-  fun launchedPromptPhaseOrder(): List<String> = launcher.requests.map { request ->
-    phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-  }
-
-  // Ensures the runtime workflow row exists first: the recorder write seam is a
-  // no-op against a missing row.
-  fun seedPhase(phaseId: String, status: String, attemptCount: Int, agentId: String, outputArtifact: String?) {
-    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    recorder.recordPhaseStateForTest(phaseId, status, attemptCount, agentId, outputArtifact)
-  }
-
-  fun seedReviewPhase(status: String, attemptCount: Int, outputArtifact: String?, reviewPassNumber: Int) {
-    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
-        phaseId = "review",
-        status = status,
-        attemptCount = attemptCount,
-        resolvedAgentId = phaseAgent("review"),
-        finished = status == "completed",
-        outputArtifact = outputArtifact,
-        reviewPassNumber = reviewPassNumber,
-      ),
-    )
-  }
-
-  // Seeds a checkpoint-identity store at the superseded 0.1 contract version.
-  fun seedLegacyCheckpointIdentityStore() {
-    seedCheckpointIdentityStore(
-      mapOf(
-        "contract_version" to "0.1",
-        "checkpoints" to listOf(
-          mapOf(
-            "sequence_number" to 0,
-            "issue_key" to ISSUE_KEY,
-            "branch" to "feat/existing-runtime-branch",
-            "phase_id" to "implement",
-            "generation" to 0,
-            "owned_path_digest" to "a".repeat(64),
-            "owned_path_count" to 1,
-            "commit_sha" to "b".repeat(40),
-            "recorded_at" to "2026-08-10T00:00:00Z",
-          ),
-        ),
-      ),
-    )
-  }
-
-  // Seeds a store at the CURRENT version whose entry is corrupt, which is not a quarantine trigger.
-  fun seedMalformedCurrentCheckpointIdentityStore() {
-    seedCheckpointIdentityStore(
-      mapOf(
-        "contract_version" to
-          FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION,
-        "checkpoints" to listOf(mapOf("sequence_number" to 0)),
-      ),
-    )
-  }
-
-  private fun seedCheckpointIdentityStore(store: Map<String, Any?>) {
-    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    repository.replaceTaskRuntimeArtifacts(
-      WORKFLOW_ID,
-      LinkedHashMap(repository.taskRuntimeArtifacts(WORKFLOW_ID)).apply {
-        put(FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY, store)
-      },
-    )
-  }
-
-  // Seeds a foreign-mode (prose) row at WORKFLOW_ID for the runtime mode-collision path.
-  fun seedProseModeWorkflow() {
-    repository.saveFeatureTaskWorkflow(
-      WorkflowStateRecord(
-        workflowId = WORKFLOW_ID,
-        sessionId = SESSION_ID,
-        workflowName = "bill-feature-task",
-        contractVersion = "0.1",
-        workflowStatus = "running",
-        currentStepId = "implement",
-        stepsJson = "[]",
-        artifactsJson = "{}",
-        startedAt = null,
-        updatedAt = null,
-        finishedAt = null,
-        mode = PROSE,
-      ),
-      PROSE,
-    )
-  }
-
-  // Seeds the durable run-scoped resolved branch, simulating a prior run that already established it.
-  fun seedResolvedBranch(branch: String, baseBranch: String?, created: Boolean) {
-    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    recorder.recordResolvedBranch(
-      WORKFLOW_ID,
-      FeatureTaskRuntimeResolvedBranch(
-        branch = branch,
-        baseBranch = baseBranch,
-        created = created,
-        reviewBaseSha = "0".repeat(40),
-      ),
-    )
-  }
-
-  // Seeds a durable terminal blocked per-phase record (the marker that survives ledger pruning).
-  fun seedBlockedPhase(
-    phaseId: String,
-    attemptCount: Int,
-    agentId: String,
-    blockedReason: String,
-    failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
-  ) {
-    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
-        phaseId = phaseId,
-        status = "blocked",
-        attemptCount = attemptCount,
-        resolvedAgentId = agentId,
-        finished = false,
-        outputArtifact = null,
-        blockedReason = blockedReason,
-        failureDisposition = failureDisposition,
-      ),
-    )
-  }
-
-  // Seeds a durable per-phase record carrying backward-edge loop context (loop id + per-edge
-  // iteration), modelling a prior run that re-entered this phase through a backward edge.
-  @Suppress("LongParameterList") // mirrors the full seeded per-phase record surface
-  fun seedReentryPhase(
-    phaseId: String,
-    status: String,
-    attemptCount: Int,
-    agentId: String,
-    outputArtifact: String?,
-    loopId: String,
-    edgeIteration: Int,
-  ) {
-    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
-        phaseId = phaseId,
-        status = status,
-        attemptCount = attemptCount,
-        resolvedAgentId = agentId,
-        finished = status == "completed",
-        outputArtifact = outputArtifact,
-        loopId = loopId,
-        edgeIteration = edgeIteration,
-      ),
-    )
-  }
-
-  fun seedLoopEdge(phaseId: String, loopId: String, edgeIteration: Int) {
-    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    recorder.appendLedgerEntry(
-      FeatureTaskRuntimePhaseLedgerRequest(
-        workflowId = WORKFLOW_ID,
-        action = FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE,
-        phaseId = phaseId,
-        attemptCount = edgeIteration,
-        resolvedAgentId = INVOKED_AGENT,
-        loopId = loopId,
-        edgeIteration = edgeIteration,
-      ),
-    )
-  }
-
-  // Seeds a durable branch-setup-origin blocked record (keyed to the branch-setup sentinel agent),
-  // modelling a prior run that blocked while establishing the feature branch for the phase.
-  fun seedBranchSetupBlockedPhase(phaseId: String, blockedReason: String) {
-    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
-        phaseId = phaseId,
-        status = "blocked",
-        attemptCount = 1,
-        resolvedAgentId = BRANCH_SETUP_AGENT_ID,
-        finished = false,
-        outputArtifact = null,
-        blockedReason = blockedReason,
-      ),
-    )
-  }
-
-  fun request(): FeatureTaskRuntimeRunRequest = runRequest
-
-  // Drives the run with a synthetic cyclic transition declaration (the test-only inert seam).
-  fun request(transitionsOverride: FeatureTaskRuntimeTransitionDeclaration): FeatureTaskRuntimeRunRequest =
-    runRequest.copy(transitionsOverride = transitionsOverride)
-}
-
-// Mirrors the runner's branch-setup sentinel agent id so tests can seed a branch-setup-origin block.
-private const val BRANCH_SETUP_AGENT_ID = "branch-setup"
-
-// Bundles the branch-setup-relevant test inputs so runnerHarness stays within the parameter budget.
-// The review_fix edge records HEAD as the pre-fix remediation base, so goal-continuation fixtures
-// model a repository that has commits.
-// Review returns a Blocker for the first two passes, then approves; every remediation pass carries the
-// evidenced disposition the parse seam requires for the prior pass's Blocker.
-// Pass one raises a Blocker, pass two still finds it unresolved and raises its own, pass three clears
-// it. Every remediation pass dispositions the Blocker ids of its IMMEDIATELY PRECEDING pass — the ids
-// the parse seam mints from that pass's durable result — not pass one's forever.
-//
-// The first implement_fix mutates the reviewed delta so non-convergence does not pause after that
-// tree-changing fix; later fix passes leave the digest stable.
-private fun remediationReviewLauncher(git: RecordingWorkflowGitOperations): RuntimeRecordingLauncher =
-  RuntimeRecordingLauncher { request ->
-    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-    if (phaseId == "implement_fix" && git.goalReviewTrackedDelta.isEmpty()) {
-      git.goalReviewTrackedDelta = "remediation-progress\n"
-    }
-    facts(validJsonOutput(phaseId))
-  }
-
-private const val COMMITTED_HEAD_SHA = "ffffffffffffffffffffffffffffffffffffffff"
-
-private fun committedRepoBranchSetup(): BranchSetupTestConfig = BranchSetupTestConfig(
-  gitOperations = RecordingWorkflowGitOperations().also { it.headCommitShaValue = COMMITTED_HEAD_SHA },
-)
-
-internal data class BranchSetupTestConfig(
-  val gitOperations: RecordingWorkflowGitOperations = RecordingWorkflowGitOperations(),
-  val specReference: String = SPEC_REFERENCE,
-  val featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-)
-
-internal data class RuntimeHarnessConfig(
-  val branchSetup: BranchSetupTestConfig = BranchSetupTestConfig(),
-  val repoRoot: Path = Path.of("/tmp/repo"),
-  val environment: Map<String, String> = emptyMap(),
-  val goalContinuation: FeatureTaskRuntimeGoalContinuationContext? = null,
-  val useRealDecompositionPlanner: Boolean = false,
-  val eventSink: FeatureTaskRuntimeRunEventSink? = null,
-  val dbPathOverride: String? = null,
-  val acceptanceCriteria: List<String> = listOf("AC-1", "AC-2"),
-  // SKILL-140 Subtask 3 (AC-004): the shared harness default leaves the canonical schema unenforced so
-  // runner-behavior tests stay focused on run-loop flow. Schema-gate/seam behavior is proven against the
-  // real validator by the RealValidator* integration suites, which pass this override. The permitted-Noop
-  // allow-list is pinned by PlanningProjectionNoopValidatorGuardTest.
-  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
-    NoopFeatureTaskRuntimePlanningProjectionValidator,
-  val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator =
-    NoopFeatureTaskRuntimeBuildReceiptValidator,
-  val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
-  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
-    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-  val diffResolver: DiffResolverPort = object : DiffResolverPort {
-    override fun runProcess(args: List<String>, workDir: Path): String? = null
-  },
-  val validationGateRunner: ValidationGateRunner? = null,
-  val validationGatePlatformManifests: List<PlatformManifest> = emptyList(),
-  val reviewDriver: FeatureTaskRuntimeReviewDriver =
-    FeatureTaskRuntimeReviewDriver.EMPTY,
-)
-
-private fun runtimeSpecSourceResolver(): SpecSourceResolver =
-  SpecSourceResolver(TestDecompositionManifestFileStore, testDecompositionManifestValidator)
-
-@Suppress("LongParameterList") // mirrors FeatureTaskRuntimePhaseGates' own constructor arity
-private fun runtimePhaseGates(
-  branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
-  planningStopper: FeatureTaskRuntimePlanningStopper,
-  lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
-  gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
-  specGate: FeatureTaskRuntimeSpecGate = testSpecGate(),
-  planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
-    NoopFeatureTaskRuntimePlanningProjectionValidator,
-  buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator =
-    NoopFeatureTaskRuntimeBuildReceiptValidator,
-  sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
-    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-  diffResolver: DiffResolverPort = object : DiffResolverPort {
-    override fun runProcess(args: List<String>, workDir: Path): String? = null
-  },
-  recorder: FeatureTaskRuntimePhaseRecorder,
-  validationGateRunnerOverride: ValidationGateRunner? = null,
-  validationGatePlatformManifests: List<PlatformManifest> = emptyList(),
-  reviewDriver: FeatureTaskRuntimeReviewDriver =
-    FeatureTaskRuntimeReviewDriver.EMPTY,
-): FeatureTaskRuntimePhaseGates {
-  val validationGateResolver =
-    ValidationGateResolver { validationGatePlatformManifests }
-  val validationGateRunner = validationGateRunnerOverride
-    ?: object : ValidationGateRunner {
-      override fun run(request: ValidationGateRunRequest) = ValidationGateRunResult(
-        exitCode = 0,
-        durationMs = 1,
-        outcome = PASSED,
-        cacheMode = request.cacheMode,
-        executedWorkUnits = 1,
-        findings = emptyList(),
-      )
-    }
-  return FeatureTaskRuntimePhaseGates(
-    branchSetupRunner,
-    planningStopper,
-    lifecycleTelemetry,
-    gitOperations,
-    specGate,
-    planningProjectionValidator,
-    buildReceiptValidator,
-    validationGateResolver,
-    validationGateRunner,
-    FeatureTaskRuntimeValidationGateCoordinator(
-      validationGateResolver,
-      validationGateRunner,
-      FeatureTaskRuntimeValidationGateProgressStore(recorder),
-      defaultRepoLocalConfigPort(),
-    ),
-    FeatureTaskRuntimeBuildGateCoordinator(
-      validationGateResolver,
-      validationGateRunner,
-      FeatureTaskRuntimeBuildGateProgressStore(recorder),
-      defaultRepoLocalConfigPort(),
-    ),
-    sharedEvidenceResolver,
-    diffResolver,
-    reviewDriver,
-    SpecIntentProjectionResolver(
-      TestDecompositionManifestFileStore,
-      testDecompositionManifestValidator,
-      SpecIntentProjectionExtractor(
-        ReviewContextEnvelopeValidator { _, _ -> },
-        TestDecompositionManifestFileStore,
-      ),
-    ),
-    FeatureTaskRuntimeFindingVerificationBoundaryMemory(
-      FileSystemGoalPlanningContextDiscovery(),
-      FileSystemGoalPlanningBoundaryBodyResolver(),
-    ),
-  )
-}
-
-private fun defaultRepoLocalConfigPort(): RepoLocalConfigPort = object : RepoLocalConfigPort {
-  override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
-    ReadRepoLocalConfigResult(RepoLocalConfig.defaults())
-}
-
-private fun testSpecGate(
-  specScratchStore: SpecScratchStore = RecordingSpecScratchStore(),
-  specStatusWriter: FeatureTaskRuntimeSpecStatusWriter = RecordingSpecStatusWriter(),
-): FeatureTaskRuntimeSpecGate =
-  FeatureTaskRuntimeSpecGate(runtimeSpecSourceResolver(), specScratchStore, specStatusWriter)
-
-private fun disabledRuntimeLifecycleTelemetry(database: DatabaseSessionFactory): FeatureTaskRuntimeLifecycleTelemetry =
-  FeatureTaskRuntimeLifecycleTelemetry(
-    LifecycleTelemetryService(database, DisabledRuntimeTelemetrySettingsProvider),
-  )
-
-private object DisabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvider {
-  override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json"),
-    level = "off",
-    enabled = false,
-    installId = "",
-    proxyUrl = "",
-    customProxyUrl = null,
-    batchSize = 50,
-  )
-}
-
-private fun smallRuntimeConfig(): RuntimeHarnessConfig = RuntimeHarnessConfig(
-  branchSetup = BranchSetupTestConfig(featureSize = FeatureTaskRuntimeFeatureSize.SMALL),
-)
-
-private fun conventionRuntimeConfig(git: RecordingWorkflowGitOperations): RuntimeHarnessConfig =
-  RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(git, CONVENTION_SPEC_REFERENCE))
-
-private fun runnerHarnessRequest(
-  runtimeConfig: RuntimeHarnessConfig,
-  agentAssignment: FeatureTaskRuntimeAgentAssignment,
-  sink: FeatureTaskRuntimeRunEventSink,
-): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
-  issueKey = ISSUE_KEY,
-  workflowId = WORKFLOW_ID,
-  sessionId = SESSION_ID,
-  runInvariants = FeatureTaskRuntimeRunInvariants(
-    specReference = runtimeConfig.branchSetup.specReference,
-    featureSize = runtimeConfig.branchSetup.featureSize,
-    acceptanceCriteria = runtimeConfig.acceptanceCriteria,
-    mandatesAndOverrides = listOf("mandate-X"),
-    codeReviewMode = runtimeConfig.codeReviewMode,
-  ),
-  invokedAgentId = INVOKED_AGENT,
-  agentAssignment = agentAssignment,
-  environment = runtimeConfig.environment,
-  dbPathOverride = null,
-  repoRoot = runtimeConfig.repoRoot,
-  goalContinuation = runtimeConfig.goalContinuation,
-  eventSink = sink,
-)
-
-@Suppress("LongParameterList") // test factory; named overrides are clearer than a config bag here
-internal fun runnerHarness(
-  launcher: RuntimeRecordingLauncher = defaultPhaseAwareLauncher(),
-  validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
-  agentAssignment: FeatureTaskRuntimeAgentAssignment = FeatureTaskRuntimeAgentAssignment(),
-  runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
-  repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
-  crashSupervisor: FeatureTaskRuntimeWorkerSupervisor = HarnessDeadProcessSupervisor,
-  diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
-): RunnerHarness {
-  harnessPendingVerifyFindingIds = emptyList()
-  seedHarnessSpecIntentProjection(runtimeConfig.repoRoot, runtimeConfig.branchSetup.specReference)
-  val specScratchStore = RecordingSpecScratchStore()
-  val specStatusWriter = RecordingSpecStatusWriter()
-  val database = RuntimeFakeDatabaseSessionFactory(repository)
-  val recorder = featureTaskRuntimePhaseRecorder(
-    database,
-    NoopWorkflowSnapshotValidator,
-    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
-    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
-  )
-  val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
-  val decomposeTerminalRecorder =
-    FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
-  val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, NoopWorkflowSnapshotValidator)
-  val runner = harnessRunner(
-    launcher, recorder, goalContinuationRecorder, runInvariantsStore, validator,
-    runtimeConfig, database, crashSupervisor, diagnostics, specScratchStore, specStatusWriter,
-    decomposeTerminalRecorder,
-  )
-  val captured = mutableListOf<FeatureTaskRuntimeRunEvent>()
-  val sink = FeatureTaskRuntimeRunEventSink { event ->
-    captured += event
-    runtimeConfig.eventSink?.emit(event)
-  }
-  val runRequest = runnerHarnessRequest(runtimeConfig, agentAssignment, sink)
-  val io = RunnerHarnessIo(
-    workflow = RunnerHarnessWorkflow(
-      recorder,
-      goalContinuationRecorder,
-      decomposeTerminalRecorder,
-      runInvariantsStore,
-    ),
-    repository = repository,
-    gitOperations = runtimeConfig.branchSetup.gitOperations,
-    specStatusWriter = specStatusWriter,
-    database = database,
-  )
-  return RunnerHarness(launcher, io, runner, captured, runRequest, specScratchStore)
-}
-
-@Suppress("LongParameterList")
-private fun harnessRunner(
-  launcher: RuntimeRecordingLauncher,
-  recorder: FeatureTaskRuntimePhaseRecorder,
-  goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
-  runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
-  validator: FeatureTaskRuntimePhaseOutputValidator,
-  runtimeConfig: RuntimeHarnessConfig,
-  database: RuntimeFakeDatabaseSessionFactory,
-  crashSupervisor: FeatureTaskRuntimeWorkerSupervisor,
-  diagnostics: RuntimeDiagnostics,
-  specScratchStore: RecordingSpecScratchStore,
-  specStatusWriter: RecordingSpecStatusWriter,
-  decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
-): FeatureTaskRuntimeRunner {
-  val branchSetupRunner = FeatureTaskRuntimeBranchSetupRunner(recorder, runtimeConfig.branchSetup.gitOperations)
-  val decompositionPlanner =
-    if (runtimeConfig.useRealDecompositionPlanner) testDecompositionPlanner() else noOpDecompositionPlanner()
-  val planningStopper = FeatureTaskRuntimePlanningStopper(
-    validator,
-    decompositionPlanner,
-    decomposeTerminalRecorder,
-    diagnostics,
-  )
-  return FeatureTaskRuntimeRunner(
-    launcher,
-    recorder,
-    goalContinuationRecorder,
-    runInvariantsStore,
-    validator,
-    runtimePhaseGates(
-      branchSetupRunner,
-      planningStopper,
-      disabledRuntimeLifecycleTelemetry(database),
-      runtimeConfig.branchSetup.gitOperations,
-      testSpecGate(specScratchStore, specStatusWriter),
-      runtimeConfig.planningProjectionValidator,
-      runtimeConfig.buildReceiptValidator,
-      runtimeConfig.sharedEvidenceResolver,
-      runtimeConfig.diffResolver,
-      recorder,
-      runtimeConfig.validationGateRunner,
-      runtimeConfig.validationGatePlatformManifests,
-      harnessReviewDriverSyncingPendingVerifyFindings(runtimeConfig.reviewDriver),
-    ),
-    FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
-    FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
-    diagnostics,
-  )
-}
-
-internal class TelemetryRunnerHarness(
-  val runner: FeatureTaskRuntimeRunner,
-  val lifecycle: RecordingLifecycleTelemetryRepository,
-  val request: FeatureTaskRuntimeRunRequest,
-  val database: RuntimeFakeDatabaseSessionFactory,
-  val recorder: FeatureTaskRuntimePhaseRecorder,
-) {
-  fun seedPhase(phaseId: String, status: String, attemptCount: Int, agentId: String, outputArtifact: String?) {
-    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    recorder.recordPhaseStateForTest(phaseId, status, attemptCount, agentId, outputArtifact)
-  }
-}
-
-internal fun telemetryRunnerHarness(
-  launcher: RuntimeRecordingLauncher = RuntimeRecordingLauncher { request -> facts(defaultPhaseOutput(request)) },
-  validator: FeatureTaskRuntimePhaseOutputValidator = AlwaysValidValidator,
-  runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
-): TelemetryRunnerHarness {
-  seedHarnessSpecIntentProjection(runtimeConfig.repoRoot, runtimeConfig.branchSetup.specReference)
-  val repository = InMemoryRuntimeWorkflowRepository()
-  val lifecycle = RecordingLifecycleTelemetryRepository()
-  val database = RuntimeFakeDatabaseSessionFactory(repository, lifecycle)
-  val recorder = featureTaskRuntimePhaseRecorder(
-    database,
-    NoopWorkflowSnapshotValidator,
-    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
-    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
-  )
-  val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
-  val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
-  val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, NoopWorkflowSnapshotValidator)
-  val branchSetupRunner = FeatureTaskRuntimeBranchSetupRunner(recorder, runtimeConfig.branchSetup.gitOperations)
-  val decompositionPlanner =
-    if (runtimeConfig.useRealDecompositionPlanner) testDecompositionPlanner() else noOpDecompositionPlanner()
-  val planningStopper = FeatureTaskRuntimePlanningStopper(validator, decompositionPlanner, decomposeTerminalRecorder)
-  val runner = FeatureTaskRuntimeRunner(
-    launcher,
-    recorder,
-    goalContinuationRecorder,
-    runInvariantsStore,
-    validator,
-    runtimePhaseGates(
-      branchSetupRunner,
-      planningStopper,
-      FeatureTaskRuntimeLifecycleTelemetry(
-        LifecycleTelemetryService(database, EnabledRuntimeTelemetrySettingsProvider),
-      ),
-      runtimeConfig.branchSetup.gitOperations,
-      sharedEvidenceResolver = runtimeConfig.sharedEvidenceResolver,
-      diffResolver = runtimeConfig.diffResolver,
-      recorder = recorder,
-      validationGateRunnerOverride = runtimeConfig.validationGateRunner,
-      validationGatePlatformManifests = runtimeConfig.validationGatePlatformManifests,
-      reviewDriver = harnessReviewDriverSyncingPendingVerifyFindings(runtimeConfig.reviewDriver),
-    ),
-    // Telemetry harness validates event emission, not crash reconciliation; no-op supervisor.
-    FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
-    FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
-  )
-  val request = FeatureTaskRuntimeRunRequest(
-    issueKey = ISSUE_KEY,
-    workflowId = WORKFLOW_ID,
-    sessionId = SESSION_ID,
-    runInvariants = FeatureTaskRuntimeRunInvariants(
-      specReference = runtimeConfig.branchSetup.specReference,
-      featureSize = runtimeConfig.branchSetup.featureSize,
-      acceptanceCriteria = listOf("AC-1", "AC-2"),
-      mandatesAndOverrides = listOf("mandate-X"),
-    ),
-    invokedAgentId = INVOKED_AGENT,
-    dbPathOverride = runtimeConfig.dbPathOverride,
-    repoRoot = runtimeConfig.repoRoot,
-  )
-  return TelemetryRunnerHarness(runner, lifecycle, request, database, recorder)
-}
-
-private fun noOpDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner = FeatureTaskRuntimeDecompositionPlanner(
-  preparationRuntime = FeatureSpecPreparationRuntime { intake ->
-    FeatureSpecPreparationDecision(
-      issueKey = intake.issueKey,
-      intendedOutcome = intake.intendedOutcome,
-      acceptanceCriteria = intake.acceptanceCriteria,
-      constraints = intake.constraints,
-      nonGoals = intake.nonGoals,
-      mode = FeatureSpecPreparationMode.SINGLE_SPEC,
-    )
-  },
-  preparationWriter = FeatureSpecPreparationWriter(
-    decompositionManifestValidator = testDecompositionManifestValidator,
-    fileStore = TestDecompositionManifestFileStore,
-  ),
-)
-
-private fun testDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner = FeatureTaskRuntimeDecompositionPlanner(
-  preparationRuntime = FeatureSpecPreparationRuntime(),
-  preparationWriter = FeatureSpecPreparationWriter(
-    decompositionManifestValidator = testDecompositionManifestValidator,
-    fileStore = TestDecompositionManifestFileStore,
-  ),
-)
-
-internal fun facts(stdout: String): AgentRunLaunchOutcome = AgentRunLaunchFacts(
-  agent = InstallAgent.CLAUDE,
-  exitStatus = 0,
-  stdout = stdout,
-  stderr = "",
-  timedOut = false,
-  spawnFailed = false,
-)
-
-private val PHASE_LINE = Regex("^Phase: ([a-z_-]+) ", setOf(RegexOption.MULTILINE))
-
-internal fun phaseIdFromPrompt(prompt: String): String =
-  PHASE_LINE.find(prompt)?.groupValues?.get(1) ?: error("Prompt did not contain a phase header: $prompt")
-
-// The default harness launcher returns a schema-valid, phase-attributed output per phase so a forward
-// run completes. Phase-aware so the implement phase carries the reconciliation report the runtime's
-// mutating-phase gate requires (SKILL-85 Subtask 3); every other phase carries its generic output.
-internal fun defaultPhaseAwareLauncher(): RuntimeRecordingLauncher = RuntimeRecordingLauncher { request ->
-  facts(defaultPhaseOutput(request))
-}
-
-// A schema-valid output for the phase the prompt names. Mutating phases (implement) carry the
-// reconciliation report the runtime gate now requires; every other phase keeps the minimal
-// VALID_OUTPUT so existing recorded-artifact equality assertions are unchanged.
-internal fun defaultPhaseOutput(request: GoalRunnerSubtaskLaunchRequest): String {
-  val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-  return when {
-    FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId) -> validJsonOutput(phaseId)
-    // preplan and plan feed the bounded planning projections, so they must carry the declared
-    // projection payload rather than the minimal VALID_OUTPUT envelope.
-    phaseId == "preplan" || phaseId == "plan" -> validJsonOutput(phaseId)
-    // A clean review must emit a verification signal (an empty findings array affirms no blocking
-    // findings) or the review gate blocks (SKILL-85 Subtask 4 F-003).
-    phaseId == "review" -> VALID_REVIEW_OUTPUT
-    // A clean audit must likewise emit a verification signal (an empty gaps array affirms
-    // every acceptance criterion is met) or the audit gate blocks (SKILL-85 Subtask 5 AC1).
-    phaseId == "audit" -> VALID_AUDIT_OUTPUT
-    phaseId == "verify_findings" -> verifyFindingsOutput()
-    else -> validJsonOutput(phaseId)
-  }
-}
-
-// Subtask 2: a synthetic non-mutating cycle over [preplan, plan] with a backward edge
-// plan --needs_fix--> preplan, bounded by PLAN_FIX_CAP re-entries. Both phases are non-file-mutating
-// so the cycle exercises the executor without entering branch setup.
-private const val PLAN_FIX_CAP = 2
-
-private val PLAN_FIX_CYCLE = FeatureTaskRuntimeTransitionDeclaration(
-  forwardPhaseIds = listOf("preplan", "plan"),
-  backwardEdges = listOf(
-    FeatureTaskRuntimeBackwardEdge(
-      fromPhaseId = "plan",
-      triggeringVerdict = FeatureTaskRuntimeVerdict("needs_fix"),
-      destinationPhaseId = "preplan",
-      loopId = "plan-fix",
-      perEdgeCap = PLAN_FIX_CAP,
-    ),
-  ),
-)
-
-// SKILL-85 Subtask 3: a synthetic cycle whose backward edge re-enters the MUTATING implement phase.
-// review --needs_fix--> implement, bounded by IMPLEMENT_FIX_CAP. The reopened span [implement, review]
-// contains a mutating phase, so the remediation checkpoint boundary fires before re-entry.
-private const val IMPLEMENT_FIX_CAP = 2
-
-private val IMPLEMENT_FIX_CYCLE = FeatureTaskRuntimeTransitionDeclaration(
-  forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
-  backwardEdges = listOf(
-    FeatureTaskRuntimeBackwardEdge(
-      fromPhaseId = "review",
-      triggeringVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      destinationPhaseId = "implement",
-      loopId = "implement-fix",
-      perEdgeCap = IMPLEMENT_FIX_CAP,
-    ),
-  ),
-)
-
-// A schema-valid review output carrying a top-level `verdict` wire string the transition function reads.
-internal fun verdictReviewOutput(verdict: String): String = """
-  {
-    "contract_version": "0.3",
-    "phase_id": "review",
-    "status": "completed",
-    "summary": "Review produced a validated output.",
-    "verdict": "$verdict",
-    "produced_outputs": {}
-  }
-""".trimIndent()
-
-// SKILL-85 Subtask 4: the unique Blocker-finding message a changes_requested review carries, so a fix
-// briefing and a cap-exhaustion block can be asserted to contain it.
-internal const val REVIEW_BLOCKER_MESSAGE = "Foo.kt leaks a connection in the error path"
-
-// A schema-valid review output whose findings drive the verdict: a Blocker finding => changes_requested
-// (the runtime classifies from findings, no top-level verdict needed), an empty findings list => the
-// run advances. The findings ride inside produced_outputs the way the runner reads them.
-internal fun reviewFindingsOutput(
-  changesRequested: Boolean,
-  dispositionedBlockerIds: List<String> = emptyList(),
-): String {
-  val findings = if (changesRequested) {
-    """{"severity": "blocker", "finding_id": "$REVIEW_FIX_BLOCKER_FINDING_ID", "message": "$REVIEW_BLOCKER_MESSAGE"}"""
-  } else {
-    ""
-  }
-  // A remediation pass must disposition every Blocker the prior pass emitted, with evidence; the
-  // parse seam rejects an output that leaves one undisposed.
-  val dispositions = dispositionedBlockerIds.joinToString(", ") { findingId ->
-    """{"finding_id": "$findingId", "verdict": "${if (changesRequested) "unresolved" else "resolved"}", """ +
-      """"evidence": ["Foo.kt:42 in the remediation delta"]}"""
-  }
-  return """
-    {
-      "contract_version": "0.3",
-      "phase_id": "review",
-      "status": "completed",
-      "summary": "Review produced a validated output.",
-      "produced_outputs": {"findings": [$findings], "blocker_dispositions": [$dispositions]}
-    }
-  """.trimIndent()
-}
-
-// The real M1 review_fix launcher: review returns changes_requested findings until [convergeOnReview]
-// (1-based review launch index at which it first approves); a value above the cap never converges.
-// implement_fix and every other phase return their schema-valid reconciled output.
-internal fun reviewFixDriver(convergeOnReview: Int): FeatureTaskRuntimeReviewDriver {
-  var reviewPasses = 0
-  return FeatureTaskRuntimeReviewDriver { request ->
-    reviewPasses += 1
-    val findings = if (reviewPasses < convergeOnReview) {
-      listOf(
-        ParallelReviewMergedFinding(
-          fNumber = REVIEW_FIX_BLOCKER_FINDING_ID,
-          agentIds = listOf(request.agent1Id),
-          severity = BLOCKER,
-          confidence = "High",
-          location = "Foo.kt:1",
-          description = REVIEW_BLOCKER_MESSAGE,
-        ),
-      )
-    } else {
-      emptyList()
-    }
-    harnessPendingVerifyFindingIds = findings.map { it.fNumber }
-    FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-      mergeResult = ParallelReviewMergeResult(
-        findings = findings,
-        formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
-      ),
-    )
-  }
-}
-
-internal fun reviewFixRuntimeConfig(
-  convergeOnReview: Int,
-  gitOperations: RecordingWorkflowGitOperations = RecordingWorkflowGitOperations(),
-): RuntimeHarnessConfig = RuntimeHarnessConfig(
-  branchSetup = BranchSetupTestConfig(gitOperations = gitOperations),
-  reviewDriver = reviewFixDriver(convergeOnReview),
-)
-
-internal fun crashingRemediationReviewDriver(): FeatureTaskRuntimeReviewDriver {
-  var reviewPasses = 0
-  return FeatureTaskRuntimeReviewDriver { request ->
-    reviewPasses += 1
-    when (reviewPasses) {
-      2 ->
-        FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-          lane1 = ParallelReviewLaneStatus(
-            agentId = request.agent1Id,
-            success = false,
-            failureReason = "spawn failed",
-          ),
-        )
-      else -> {
-        val findings = if (reviewPasses == 1) {
-          listOf(
-            ParallelReviewMergedFinding(
-              fNumber = "F-001",
-              agentIds = listOf(request.agent1Id),
-              severity = BLOCKER,
-              confidence = "High",
-              location = "Foo.kt:1",
-              description = REVIEW_BLOCKER_MESSAGE,
-            ),
-          )
-        } else {
-          emptyList()
-        }
-        FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-          mergeResult = ParallelReviewMergeResult(
-            findings = findings,
-            formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
-          ),
-        )
-      }
-    }
-  }
-}
-
-internal fun throwingBudgetReviewDriver(): FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver {
-  throw ReviewContextBudgetExceededException(
-    ReviewContextBudgetExceeded(
-      lane = "architecture",
-      budgetKind = "parent_packet_bytes",
-      configuredLimit = 524_288,
-      observedValue = 584_846,
-      packetDigest = "a".repeat(64),
-      assignmentDigest = "b".repeat(64),
-      enforceable = true,
-    ),
-  )
-}
-
-internal fun failingReviewDriver(failOnPass: Int, failureReason: String): FeatureTaskRuntimeReviewDriver {
-  var reviewPasses = 0
-  return FeatureTaskRuntimeReviewDriver { request ->
-    reviewPasses += 1
-    if (reviewPasses == failOnPass) {
-      FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-        lane1 = ParallelReviewLaneStatus(
-          agentId = request.agent1Id,
-          success = false,
-          failureReason = failureReason,
-        ),
-      )
-    } else {
-      FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
-    }
-  }
-}
-
-internal fun crashingReviewFixDriver(
-  convergeOnReview: Int,
-  crashOnPass: Int,
-  shouldCrash: () -> Boolean,
-): FeatureTaskRuntimeReviewDriver {
-  var reviewPasses = 0
-  return FeatureTaskRuntimeReviewDriver { request ->
-    reviewPasses += 1
-    if (shouldCrash() && reviewPasses == crashOnPass) {
-      FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-        lane1 = ParallelReviewLaneStatus(
-          agentId = request.agent1Id,
-          success = false,
-          failureReason = "spawn failed",
-        ),
-      )
-    } else {
-      val findings = if (reviewPasses < convergeOnReview) {
-        listOf(
-          ParallelReviewMergedFinding(
-            fNumber = "F-001",
-            agentIds = listOf(request.agent1Id),
-            severity = BLOCKER,
-            confidence = "High",
-            location = "Foo.kt:1",
-            description = REVIEW_BLOCKER_MESSAGE,
-          ),
-        )
-      } else {
-        emptyList()
-      }
-      FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
-        mergeResult = ParallelReviewMergeResult(
-          findings = findings,
-          formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
-        ),
-      )
-    }
-  }
-}
-
-internal fun reviewFixLauncher(
-  convergeOnReview: Int,
-  onReviewLaunch: (Int) -> Unit = {},
-  onPhaseLaunch: (String) -> Unit = {},
-): RuntimeRecordingLauncher {
-  var reviewLaunches = 0
-  return RuntimeRecordingLauncher { request ->
-    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-    onPhaseLaunch(phaseId)
-    if (phaseId == "review") {
-      reviewLaunches += 1
-      onReviewLaunch(reviewLaunches)
-      val changesRequested = reviewLaunches < convergeOnReview
-      harnessPendingVerifyFindingIds = if (changesRequested) listOf(REVIEW_FIX_BLOCKER_FINDING_ID) else emptyList()
-      facts(
-        reviewFindingsOutput(
-          changesRequested = changesRequested,
-          dispositionedBlockerIds = if (reviewLaunches > 1) listOf("pass1-blocker-1") else emptyList(),
-        ),
-      )
-    } else {
-      facts(validJsonOutput(phaseId))
-    }
-  }
-}
-
-// A commit_push phase output that completes without the outcome message the runtime commits from.
-// SKILL-190 moved commit authorship into the runtime, so this is the payload the finalisation gate
-// must refuse rather than publish under a provisional subject.
-private val COMMIT_PUSH_NO_SHA_OUTPUT: String = """
-  {
-    "contract_version": "0.3",
-    "phase_id": "commit_push",
-    "status": "completed",
-    "summary": "Phase produced a validated output.",
-    "produced_outputs": {"commit_push_result": {"status": "committed"}}
-  }
-""".trimIndent()
-
-private val COMMIT_PUSH_BLOCKED_OUTPUT: String = """
-  {
-    "contract_version": "0.3",
-    "phase_id": "commit_push",
-    "status": "blocked",
-    "summary": "Validation failed before commit.",
-    "produced_outputs": {
-      "commit_push_result": {
-        "commit_sha": null,
-        "pushed_status": "not_attempted"
-      },
-      "blocking_reasons": ["Working tree contains unrelated changes."]
-    }
-  }
-""".trimIndent()
-
-private val VALIDATE_BLOCKED_OUTPUT: String = """
-  {
-    "contract_version": "0.3",
-    "phase_id": "validate",
-    "status": "blocked",
-    "summary": "Validation failed before finalization.",
-    "produced_outputs": {
-      "validation_result": "fail",
-      "blocking_reasons": ["Repository validation still fails."]
-    }
-  }
-""".trimIndent()
-
-// Launcher for a suppress_pr goal-continuation run: every phase returns a valid output, with the
-// commit_push phase returning the supplied payload so a test can vary whether a SHA is present.
-private fun goalContinuationLauncher(commitPushOutput: String): RuntimeRecordingLauncher =
-  RuntimeRecordingLauncher { request ->
-    val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-    facts(if (phaseId == "commit_push") commitPushOutput else validJsonOutput(phaseId))
-  }
-
-// Builds a suppress_pr goal-continuation harness with a caller-supplied git fake and launcher so a
-// test can seed the measurable/blank HEAD and the commit_push payload independently.
-private fun goalContinuationHarness(
-  repoRoot: Path,
-  git: RecordingWorkflowGitOperations,
-  launcher: RuntimeRecordingLauncher,
-  reviewDriver: FeatureTaskRuntimeReviewDriver =
-    FeatureTaskRuntimeReviewDriver.EMPTY,
-): RunnerHarness = runnerHarness(
-  launcher = launcher,
-  agentAssignment = phasePerAgentAssignment(),
-  runtimeConfig = RuntimeHarnessConfig(
-    branchSetup = BranchSetupTestConfig(gitOperations = git),
-    repoRoot = repoRoot,
-    goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-      parentIssueKey = ISSUE_KEY,
-      subtaskId = 5,
-      goalBranch = "feat/existing-runtime-branch",
-      suppressPr = true,
-      parentWorkflowId = "wfl-parent",
-      reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-    ),
-    useRealDecompositionPlanner = true,
-    reviewDriver = reviewDriver,
-  ),
-)
-
-private val DECOMPOSE_PLAN_OUTPUT: String = """
-  {
-    "contract_version": "0.3",
-    "phase_id": "plan",
-    "status": "completed",
-    "summary": "Plan needs ordered subtasks.",
-    "produced_outputs": {
-      "decomposition_package": {
-        "mode": "decompose",
-        "reason": "Plan needs ordered subtasks.",
-        "feature_name": "runtime decomposition parity",
-        "parent_spec_overview": "Split the runtime work into ordered subtasks.",
-        "validation_strategy": "bill-code-check",
-        "base_branch": "main",
-        "feature_branch": "feat/SKILL-65-runtime-decomposition-parity",
-        "subtasks": [
-          {
-            "id": 1,
-            "name": "domain contracts",
-            "scope": "Add typed plan outcome detection.",
-            "acceptance_criteria": ["Detect decompose mode."],
-            "non_goals": [],
-            "dependency_notes": "First subtask.",
-            "validation_strategy": "unit tests",
-            "next_path": "Work subtask 2 next.",
-            "depends_on": []
-          },
-          {
-            "id": 2,
-            "name": "runtime stop",
-            "scope": "Stop after writing decomposition.",
-            "acceptance_criteria": ["Do not advance to implement."],
-            "non_goals": [],
-            "dependency_notes": "Depends on subtask 1.",
-            "validation_strategy": "unit tests",
-            "next_path": "Return to the parent workflow.",
-            "depends_on": [1]
-          }
-        ]
-      }
-    }
-  }
-""".trimIndent()
-
-// A plan envelope that declares mode=decompose but emits a malformed package: the second subtask
-// is missing its required `name`, so the typed projection loud-fails at parse. The runtime must
-// turn this into a Blocked outcome rather than letting the exception escape run().
-private val MALFORMED_DECOMPOSE_PLAN_OUTPUT: String = """
-  {
-    "contract_version": "0.3",
-    "phase_id": "plan",
-    "status": "completed",
-    "summary": "Plan needs ordered subtasks.",
-    "produced_outputs": {
-      "decomposition_package": {
-        "mode": "decompose",
-        "reason": "Plan needs ordered subtasks.",
-        "feature_name": "runtime decomposition parity",
-        "parent_spec_overview": "Split the runtime work into ordered subtasks.",
-        "validation_strategy": "bill-code-check",
-        "base_branch": "main",
-        "feature_branch": "feat/SKILL-65-runtime-decomposition-parity",
-        "subtasks": [
-          {
-            "id": 1,
-            "name": "domain contracts",
-            "scope": "Add typed plan outcome detection.",
-            "acceptance_criteria": ["Detect decompose mode."],
-            "non_goals": [],
-            "dependency_notes": "First subtask.",
-            "validation_strategy": "unit tests",
-            "next_path": "Work subtask 2 next.",
-            "depends_on": []
-          },
-          {
-            "id": 2,
-            "scope": "Stop after writing decomposition.",
-            "acceptance_criteria": ["Do not advance to implement."],
-            "non_goals": [],
-            "dependency_notes": "Depends on subtask 1.",
-            "validation_strategy": "unit tests",
-            "next_path": "Return to the parent workflow.",
-            "depends_on": [1]
-          }
-        ]
-      }
-    }
-  }
-""".trimIndent()
-
-// A plan envelope that declares mode=decompose with a DECODER-VALID package (every subtask carries
-// all required fields with correct types) but is WRITER-INVALID: the subtask ids descend [2, 1], so
-// the typed decoder accepts it while FeatureSpecPreparationWriter.validateDecomposedSubtasks rejects
-// the non-ascending order with InvalidFeatureSpecPreparationRequestError. The runtime must turn this
-// writer business-rule rejection into a Blocked outcome rather than letting it escape run().
-private val WRITER_INVALID_DECOMPOSE_PLAN_OUTPUT: String = """
-  {
-    "contract_version": "0.3",
-    "phase_id": "plan",
-    "status": "completed",
-    "summary": "Plan needs ordered subtasks.",
-    "produced_outputs": {
-      "decomposition_package": {
-        "mode": "decompose",
-        "reason": "Plan needs ordered subtasks.",
-        "feature_name": "runtime decomposition parity",
-        "parent_spec_overview": "Split the runtime work into ordered subtasks.",
-        "validation_strategy": "bill-code-check",
-        "base_branch": "main",
-        "feature_branch": "feat/SKILL-65-runtime-decomposition-parity",
-        "subtasks": [
-          {
-            "id": 2,
-            "name": "runtime stop",
-            "scope": "Stop after writing decomposition.",
-            "acceptance_criteria": ["Do not advance to implement."],
-            "non_goals": [],
-            "dependency_notes": "Listed first but ids descend.",
-            "validation_strategy": "unit tests",
-            "next_path": "Return to the parent workflow.",
-            "depends_on": []
-          },
-          {
-            "id": 1,
-            "name": "domain contracts",
-            "scope": "Add typed plan outcome detection.",
-            "acceptance_criteria": ["Detect decompose mode."],
-            "non_goals": [],
-            "dependency_notes": "Listed second; out of ascending order.",
-            "validation_strategy": "unit tests",
-            "next_path": "Work subtask 2 next.",
-            "depends_on": []
-          }
-        ]
-      }
-    }
-  }
-""".trimIndent()
-
-// An infrastructure spawn failure (no exit status, empty stdout).
-internal fun spawnFailedFacts(): AgentRunLaunchOutcome = AgentRunLaunchFacts(
-  agent = InstallAgent.CLAUDE,
-  exitStatus = null,
-  stdout = "",
-  stderr = "spawn failed",
-  timedOut = false,
-  spawnFailed = true,
-)
-
-internal class RuntimeRecordingLauncher(
-  private val handler: (GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
-) : GoalRunnerSubtaskLauncher {
-  val requests = mutableListOf<GoalRunnerSubtaskLaunchRequest>()
-
-  override fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome {
-    requests += request
-    return handler(request)
-  }
-}
-
-// A schema validator that rejects only the named phases.
-private class ThrowingValidator(private val failPhases: Set<String>) : FeatureTaskRuntimePhaseOutputValidator {
-  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-    if (sourceLabel in failPhases) {
-      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel, "rejected by fake validator")
-    }
-  }
-}
-
-internal object AlwaysValidValidator : FeatureTaskRuntimePhaseOutputValidator {
-  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) = Unit
-}
-
-private object RepairingImplementOutputValidator : FeatureTaskRuntimePhaseOutputValidator {
-  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) = Unit
-
-  override fun validatePhaseOutput(
-    phaseOutputText: String,
-    sourceLabel: String,
-  ): FeatureTaskRuntimePhaseOutputValidationResult {
-    if (sourceLabel != "implement") return AlwaysValidValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
-    val canonical = validJsonOutput(sourceLabel)
-    return FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(
-      normalizedOutput = NormalizedFeatureTaskRuntimePhaseOutput(
-        canonicalJson = canonical,
-        envelope = normalizePhaseOutput(canonical, sourceLabel).envelope,
-      ),
-      evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
-        format = FeatureTaskRuntimePhaseOutputFormat.JSON,
-        originalDigest = "a".repeat(64),
-        repairedDigest = "b".repeat(64),
-        operation = FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
-        sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation(sourceLabel, 0, 1, 1),
-      ),
-    )
-  }
-}
-
-internal object CanonicalWrapperTestValidator : FeatureTaskRuntimePhaseOutputValidator {
-  private val fencedBlock = Regex("```[ \\t]*[A-Za-z0-9_-]*\\r?\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
-
-  override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-    validateAndReadPhaseOutput(phaseOutputText, sourceLabel)
-  }
-
-  override fun validateAndReadPhaseOutput(phaseOutputText: String, sourceLabel: String): Map<String, Any?> {
-    val trimmed = phaseOutputText.trim()
-    val candidate = fencedBlock.findAll(trimmed).lastOrNull()?.groupValues?.get(1)?.trim()
-      ?: trimmed.substring(trimmed.indexOf('{'), trimmed.lastIndexOf('}') + 1)
-    val envelope = JsonSupport.parseObjectOrNull(candidate)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel, "test output is not an object")
-    if (envelope["phase_id"] != sourceLabel) {
-      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(sourceLabel, "phase_id does not match")
-    }
-    return envelope
-  }
-}
-
-// Records every checkout, with configurable currentBranch/checkoutBranch results. The default
-// currentBranch reports an already-feature branch so existing tests never enter the create path;
-// branch-setup tests override these to drive starts-on-default / cannot-establish / resume cases.
-internal class RecordingWorkflowGitOperations(
-  var currentBranchValue: String = "feat/existing-runtime-branch",
-  var currentBranchResult: WorkflowGitOperationResult? = null,
-  var checkoutResult: WorkflowGitOperationResult? = null,
-  // When set, a successful checkout updates the working-tree branch the next currentBranch read
-  // reports, modelling git HEAD actually moving so the runner's post-checkout re-confirmation sees
-  // the landed branch. Defaults to the checkout target.
-  var landedBranchAfterCheckout: String? = null,
-  // Branch names the repository reports as existing. null models every queried branch as existing
-  // (the common case for re-attach tests); a concrete set models a repository where the persisted
-  // branch may have been deleted. branchExistsResult overrides with a raw result for error cases.
-  var existingBranches: Set<String>? = null,
-  var branchExistsResult: WorkflowGitOperationResult? = null,
-) : WorkflowGitOperations,
-  CheckpointHistoryGitOperationsProvider,
-  GoalSubtaskReviewGitOperationsProvider,
-  RepositoryFingerprintGitOperationsProvider,
-  RepositoryOwnedPathsGitOperationsProvider,
-  RuntimePhaseFileManifestGitOperationsProvider,
-  ScopedStagingGitOperationsProvider {
-  // Seeded git HEAD for the SKILL-68 capture-at-source fallback: blank models an unmeasurable HEAD;
-  // a concrete value models a measurable commit. headCommitShaResult overrides with a raw result.
-  var headCommitShaValue: String = ""
-  var headCommitShaResult: WorkflowGitOperationResult? = null
-  val runtimePhaseHeadCommitSequence = ArrayDeque<String>()
-  var changedPathsBetweenCommitsValue: String = ""
-
-  // Models the working-tree cleanliness the remediation-checkpoint boundary reads: blank => clean
-  // (no checkpoint commit), non-blank => dirty (a checkpoint commit is created). worktreeStatusResult
-  // overrides with a raw result to model an unreadable worktree.
-  var worktreeStatusValue: String = " M src/Foo.kt"
-  var worktreeStatusResult: WorkflowGitOperationResult? = null
-  val worktreeStatusSequence = ArrayDeque<String>()
-
-  // NUL-delimited owned-path inventory, the same `-z` plumbing representation the goal-child baseline
-  // is written in. Seeded as a path list for readability.
-  var ownedPathsValue: List<String> = emptyList()
-
-  // Overrides the inventory with a raw result, to model an unmeasurable owned-path read.
-  var ownedPathsResult: WorkflowGitOperationResult? = null
-  val repositoryFingerprintSequence = ArrayDeque<String>()
-  var repositoryFingerprintValue: String? = null
-  var repositoryFingerprintCalls: Int = 0
-
-  // Records every remediation-checkpoint commit message; createCommitResult overrides the result to
-  // model a failed checkpoint commit.
-  val createCommitMessages = mutableListOf<String>()
-  var createCommitResult: WorkflowGitOperationResult? = null
-
-  // SKILL-190 subtask-commit ceremony. The branch reports unpushed commits by default: a fake repo has
-  // no remote, and a pushed HEAD would refuse every amend and collapse the ceremony back to create.
-  var localBranchHasUnpushedCommitsValue: Boolean = true
-  var headCommitMessageValue: String = ""
-
-  // Every message the checkpoint amended HEAD with, in call order.
-  val amendCommitMessages = mutableListOf<String>()
-  var amendHeadCommitResult: WorkflowGitOperationResult? = null
-
-  // Checkpoint refs written by name, and the ordered write log. updateCheckpointRefResult models a
-  // ref write that fails so the amend must not run.
-  val checkpointRefs = mutableMapOf<String, String>()
-  val updateCheckpointRefCalls = mutableListOf<Pair<String, String>>()
-  var updateCheckpointRefResult: WorkflowGitOperationResult? = null
-
-  // A ref lookup that fails rather than reporting an absent ref, so occupancy is undetermined.
-  var resolveCheckpointRefResult: WorkflowGitOperationResult? = null
-  var onResolveCheckpointRef: ((String) -> WorkflowGitOperationResult?)? = null
-  var onResolveCommit: ((String) -> WorkflowGitOperationResult?)? = null
-
-  // When true, a remediation-checkpoint createCommit returns a malformed sha so the paired base
-  // record fails GoalSubtaskReviewState validation and the soft-reset rollback path is exercised.
-  var invalidShaOnRemediationCommit: Boolean = false
-  val resetSoftToCommitCalls = mutableListOf<String>()
-  var resetSoftToCommitResult: WorkflowGitOperationResult? = null
-
-  // Ancestor→descendant pairs that report false; all other pairs report true when both SHAs are set.
-  val nonAncestorPairs = mutableSetOf<Pair<String, String>>()
-
-  // Records every path the checkpoint staged, in call order; stagePathsResult overrides the result
-  // to model a failed staging.
-  val stagePathsCalls = mutableListOf<String>()
-  var stagePathsResult: WorkflowGitOperationResult? = null
-
-  // Pre-checkpoint index snapshot and the restores performed against it; restoreIndexStateResult
-  // overrides the result to model a restore that itself fails.
-  var indexSnapshotValue: String = ""
-  var captureIndexStateResult: WorkflowGitOperationResult? = null
-  val restoreIndexStateCalls = mutableListOf<String>()
-  var restoreIndexStateResult: WorkflowGitOperationResult? = null
-
-  // Working-tree content identity per path. A test mutates it between phases to model a foreign
-  // edit landing on a path this workflow owns; anything unset reads as unchanged.
-  val contentIdentities = mutableMapOf<String, String>()
-
-  // Fires when the checkpoint reads the index, which is the moment between a phase ending and its
-  // checkpoint staging: the window a concurrent foreign edit lands in.
-  var onStagedPathsRead: (() -> Unit)? = null
-
-  // Paths already staged before the checkpoint runs, modelling a foreign index entry.
-  var stagedPathsValue: List<String> = emptyList()
-  var stagedPathsResult: WorkflowGitOperationResult? = null
-  val goalReviewBuildInputs = mutableListOf<GoalSubtaskReviewBaseline>()
-  val goalReviewBuildResults = ArrayDeque<GoalSubtaskReviewInputResult>()
-  var goalReviewTrackedDelta: String = ""
-  var goalReviewRecoveredBaseline: GoalSubtaskReviewBaseline? = null
-  var goalReviewRecoverCalls: Int = 0
-  val goalReviewRecoverRequests =
-    mutableListOf<GoalSubtaskReviewBaselineRecoveryRequest>()
-
-  data class CheckoutCall(val branch: String, val baseBranch: String?)
-
-  val checkoutCalls = mutableListOf<CheckoutCall>()
-  val branchExistsCalls = mutableListOf<String>()
-  var currentBranchCalls: Int = 0
-
-  override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult {
-    checkoutCalls += CheckoutCall(branch, baseBranch)
-    val result = checkoutResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
-    if (result.ok) {
-      currentBranchValue = landedBranchAfterCheckout ?: branch
-    }
-    return result
-  }
-
-  override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult {
-    branchExistsCalls += branch
-    branchExistsResult?.let { return it }
-    val exists = existingBranches?.contains(branch.trim()) ?: true
-    return WorkflowGitOperationResult(status = "ok", value = exists.toString())
-  }
-
-  override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult {
-    currentBranchCalls++
-    return currentBranchResult ?: WorkflowGitOperationResult(status = "ok", value = currentBranchValue)
-  }
-
-  // A distinct, well-formed sha per commit: the durable checkpoint identity is keyed on commit sha,
-  // so a fake that returned one constant would collapse every checkpoint into a single record.
-  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
-    createCommitMessages += message
-    if (invalidShaOnRemediationCommit && message.contains("remediation checkpoint")) {
-      // Simulate git advancing HEAD to a commit object whose sha the durable models reject.
-      val bogus = "not-a-valid-commit-sha"
-      headCommitShaValue = bogus
-      return WorkflowGitOperationResult(status = "ok", value = bogus)
-    }
-    val result = createCommitResult
-      ?: WorkflowGitOperationResult(status = "ok", value = createCommitMessages.size.toString(16).padStart(40, '0'))
-    if (result.ok && result.value.isNotBlank()) {
-      headCommitShaValue = result.value.trim()
-      headCommitMessageValue = message
-    }
-    return result
-  }
-
-  override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = localBranchHasUnpushedCommitsValue.toString())
-
-  override val checkpointHistoryOperations: CheckpointHistoryGitOperations =
-    object : CheckpointHistoryGitOperations {
-      override fun amendHeadCommit(
-        repoRoot: Path,
-        expectedOwnedHeadSha: String,
-        replacementMessage: String?,
-        allowUnchangedIndex: Boolean,
-      ): WorkflowGitOperationResult {
-        amendHeadCommitResult?.let { return it }
-        if (expectedOwnedHeadSha.trim() != headCommitShaValue.trim()) {
-          return WorkflowGitOperationResult(
-            status = "error",
-            error = "HEAD is '$headCommitShaValue' but the caller owns '$expectedOwnedHeadSha'.",
-          )
-        }
-        replacementMessage?.let { message ->
-          amendCommitMessages += message
-          if (invalidShaOnRemediationCommit && message.contains("remediation checkpoint")) {
-            createCommitMessages += message
-            val bogus = "not-a-valid-commit-sha"
-            headCommitShaValue = bogus
-            return WorkflowGitOperationResult(status = "ok", value = bogus)
-          }
-        }
-        headCommitShaValue = "a${amendCommitMessages.size.toString(16)}".padStart(40, '0')
-        headCommitMessageValue = replacementMessage ?: headCommitMessageValue
-        return WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
-      }
-
-      override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(status = "ok", value = headCommitMessageValue)
-
-      override fun updateRef(
-        repoRoot: Path,
-        namespacePrefix: String,
-        refName: String,
-        targetSha: String,
-      ): WorkflowGitOperationResult {
-        updateCheckpointRefCalls += refName to targetSha
-        updateCheckpointRefResult?.let { return it }
-        checkpointRefs[refName] = targetSha
-        return WorkflowGitOperationResult(status = "ok", value = refName)
-      }
-
-      override fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult =
-        onResolveCheckpointRef?.invoke(refName)
-          ?: resolveCheckpointRefResult
-          ?: WorkflowGitOperationResult(status = "ok", value = checkpointRefs[refName].orEmpty())
-
-      override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(
-          status = "ok",
-          value = checkpointRefs.entries.joinToString("") { (ref, sha) -> "$sha\u0000$ref\u0000" },
-        )
-
-      override fun deleteRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult {
-        checkpointRefs.remove(refName)
-        return WorkflowGitOperationResult(status = "ok", value = refName)
-      }
-    }
-
-  override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult {
-    resetSoftToCommitCalls += commitSha.trim()
-    val result = resetSoftToCommitResult ?: WorkflowGitOperationResult(status = "ok", value = commitSha.trim())
-    if (result.ok) {
-      headCommitShaValue = commitSha.trim()
-    }
-    return result
-  }
-
-  override fun isCommitAncestor(
-    repoRoot: Path,
-    ancestorSha: String,
-    descendantSha: String,
-  ): WorkflowGitOperationResult {
-    val ancestor = ancestorSha.trim()
-    val descendant = descendantSha.trim()
-    if (ancestor.isBlank() || descendant.isBlank()) {
-      return WorkflowGitOperationResult(status = "error", error = "Ancestor and descendant required.")
-    }
-    val reachable = ancestor == descendant || (ancestor to descendant) !in nonAncestorPairs
-    return WorkflowGitOperationResult(status = "ok", value = if (reachable) "true" else "false")
-  }
-
-  var headCommitShaCalls: Int = 0
-
-  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult {
-    headCommitShaCalls++
-    return headCommitShaResult ?: WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
-  }
-
-  val pushedBranches: MutableList<String> = mutableListOf()
-  val leasePushedBranches: MutableList<String> = mutableListOf()
-  var pushBranchResult: WorkflowGitOperationResult? = null
-
-  override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
-    pushedBranches += branch
-    return pushBranchResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
-  }
-
-  override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult {
-    leasePushedBranches += branch
-    return pushBranchResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
-  }
-
-  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
-    onResolveCommit?.invoke(revision)
-      // No remote-tracking ref exists in this fake, so an `origin/<branch>` lookup fails exactly as it
-      // does in a repository whose branch was never pushed. Finalisation reads that as "not published".
-      ?: if (revision.startsWith("origin/")) {
-        WorkflowGitOperationResult(
-          status = "error",
-          error = "Revision '$revision' does not name a commit in this repository.",
-        )
-      } else {
-        WorkflowGitOperationResult(
-          status = "ok",
-          value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: COMMITTED_HEAD_SHA,
-        )
-      }
-
-  override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
-    object : RuntimePhaseFileManifestGitOperations {
-      override fun headCommit(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(
-        status = "ok",
-        value = runtimePhaseHeadCommitSequence.removeFirstOrNull().orEmpty(),
-      )
-
-      override fun changedPathsBetweenCommits(
-        repoRoot: Path,
-        beforeCommit: String,
-        afterCommit: String,
-      ): WorkflowGitOperationResult = WorkflowGitOperationResult(
-        status = "ok",
-        value = if (beforeCommit == afterCommit) "" else changedPathsBetweenCommitsValue,
-      )
-    }
-
-  override fun validateBranchBase(
-    repoRoot: Path,
-    branch: String,
-    expectedBaseBranch: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
-
-  override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    worktreeStatusResult ?: WorkflowGitOperationResult(
-      status = "ok",
-      value = worktreeStatusSequence.removeFirstOrNull() ?: worktreeStatusValue,
-    )
-
-  override val scopedStagingOperations: ScopedStagingGitOperations =
-    object : ScopedStagingGitOperations {
-      override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
-        stagePathsCalls += paths
-        return stagePathsResult ?: WorkflowGitOperationResult(status = "ok", value = "")
-      }
-
-      override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-        captureIndexStateResult ?: WorkflowGitOperationResult(status = "ok", value = indexSnapshotValue)
-
-      override fun restoreIndexState(
-        repoRoot: Path,
-        paths: List<String>,
-        snapshot: String,
-      ): WorkflowGitOperationResult {
-        restoreIndexStateCalls += snapshot
-        return restoreIndexStateResult ?: WorkflowGitOperationResult(status = "ok", value = "")
-      }
-
-      override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult {
-        onStagedPathsRead?.invoke()
-        return stagedPathsResult ?: WorkflowGitOperationResult(
-          status = "ok",
-          value = stagedPathsValue.joinToString(separator = "") { "$it\u0000" },
-        )
-      }
-
-      override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
-        WorkflowGitOperationResult(
-          status = "ok",
-          value = paths.joinToString(separator = "\u0000") { path ->
-            "${contentIdentities[path] ?: "identity"}\t$path"
-          },
-        )
-    }
-
-  override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations =
-    object : RepositoryOwnedPathsGitOperations {
-      override fun ownedPaths(repoRoot: Path): WorkflowGitOperationResult = ownedPathsResult
-        ?: WorkflowGitOperationResult(
-          status = "ok",
-          value = ownedPathsValue.joinToString(separator = "") { "$it\u0000" },
-        )
-    }
-
-  override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations =
-    object : RepositoryFingerprintGitOperations {
-      override fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult {
-        repositoryFingerprintCalls += 1
-        return WorkflowGitOperationResult(
-          status = "ok",
-          value = repositoryFingerprintSequence.removeFirstOrNull()
-            ?: repositoryFingerprintValue
-            ?: "repository-fingerprint-$repositoryFingerprintCalls",
-        )
-      }
-
-      override fun repositoryCheckpointFingerprint(
-        repoRoot: Path,
-        baseCommit: String?,
-        headCommit: String,
-        ownedPaths: List<String>,
-      ): WorkflowGitOperationResult {
-        repositoryFingerprintCalls += 1
-        val scopeHash = listOf(
-          baseCommit.orEmpty(),
-          headCommit,
-          ownedPaths.distinct().sorted().joinToString("\u0000"),
-        ).joinToString("\u0000").hashCode().toUInt().toString(16)
-        return WorkflowGitOperationResult(
-          status = "ok",
-          value = repositoryFingerprintSequence.removeFirstOrNull()
-            ?: repositoryFingerprintValue
-            ?: "repository-checkpoint-$scopeHash",
-        )
-      }
-    }
-
-  override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult = WorkflowWorktreeActivityResult(
-    status = "ok",
-    changedFileSummary = GoalObservabilityChangedFileSummary(
-      total = 0,
-      added = 0,
-      modified = 0,
-      deleted = 0,
-      renamed = 0,
-      untracked = 0,
-    ),
-    diffStat = GoalObservabilityDiffStat(filesChanged = 0, insertions = 0, deletions = 0),
-  )
-
-  override fun selectedDiffHunks(
-    repoRoot: Path,
-    request: WorkflowSelectedDiffHunksRequest,
-  ): WorkflowSelectedDiffHunksResult = WorkflowSelectedDiffHunksResult(
-    status = "ok",
-    selectedDiffHunks = GoalObservabilitySelectedDiffHunks(),
-  )
-
-  override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
-    object : GoalSubtaskReviewGitOperations {
-      override fun captureBaseline(repoRoot: Path, expectedBranch: String) = GoalSubtaskReviewBaselineResult(
-        status = "ok",
-        baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
-      )
-
-      override fun buildInput(
-        repoRoot: Path,
-        baseline: GoalSubtaskReviewBaseline,
-        expectedBranch: String,
-      ): GoalSubtaskReviewInputResult {
-        goalReviewBuildInputs += baseline
-        return goalReviewBuildResults.removeFirstOrNull() ?: GoalSubtaskReviewInputResult(
-          status = "ok",
-          input = GoalSubtaskReviewInput(
-            reviewBaseSha = baseline.reviewBaseSha,
-            currentHeadSha = baseline.reviewBaseSha,
-            trackedDelta = goalReviewTrackedDelta,
-            ownedUntrackedPatches = "",
-          ),
-        )
-      }
-
-      override fun recoverBaseline(
-        repoRoot: Path,
-        request: GoalSubtaskReviewBaselineRecoveryRequest,
-        expectedBranch: String,
-      ): GoalSubtaskReviewBaselineResult {
-        goalReviewRecoverCalls++
-        goalReviewRecoverRequests += request
-        return goalReviewRecoveredBaseline?.let { GoalSubtaskReviewBaselineResult(status = "ok", baseline = it) }
-          ?: GoalSubtaskReviewBaselineResult(status = "error", error = "no recovered baseline configured")
-      }
-    }
-}
-
-// The runner only drives openRecord/updateRecord (no snapshotView casts), so a
-// no-op snapshot validator is sufficient here.
-private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
-  override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
-}
-
-private fun FeatureTaskRuntimePhaseRecorder.recordPhaseStateForTest(
-  phaseId: String,
-  status: String,
-  attemptCount: Int,
-  resolvedAgentId: String,
-  outputArtifact: String?,
-): Boolean = recordPhaseState(
-  FeatureTaskRuntimePhaseStateRequest(
-    workflowId = WORKFLOW_ID,
-    phaseId = phaseId,
-    status = status,
-    attemptCount = attemptCount,
-    resolvedAgentId = resolvedAgentId,
-    finished = status == "completed",
-    outputArtifact = outputArtifact,
-  ),
-)
-
-internal data class ProducerEvidenceKey(
-  val workflowId: String,
-  val phaseId: String,
-  val generation: Int,
-  val attempt: Int,
-  val agentId: String,
-  val repairTurn: Int = 0,
-)
-
-internal fun samePayload(left: ByteArray?, right: ByteArray?): Boolean =
-  (left == null && right == null) || (left != null && right != null && left.contentEquals(right))
-
-@Suppress("UNCHECKED_CAST")
-private fun <T> noopPort(type: Class<T>): T = Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, _ ->
-  defaultPortReturn(method)
-} as T
-
-private fun defaultPortReturn(method: Method): Any? = when {
-  method.returnType == Void.TYPE -> null
-  List::class.java.isAssignableFrom(method.returnType) -> emptyList<Any>()
-  Map::class.java.isAssignableFrom(method.returnType) -> emptyMap<Any, Any>()
-  method.returnType == TYPE -> false
-  method.returnType == Integer.TYPE -> 0
-  method.returnType == LongTYPE -> 0L
-  method.returnType == DoubleTYPE -> 0.0
-  else -> null
-}
-
-private fun recordHarnessFindingVerdicts(verdicts: MutableList<ReviewFindingVerdict>, args: Array<out Any>?) {
-  @Suppress("UNCHECKED_CAST")
-  val incoming = args?.getOrNull(1) as? List<ReviewFindingVerdict> ?: return
-  incoming.forEach { verdict ->
-    verdicts.removeAll { it.findingRef == verdict.findingRef && it.stage == verdict.stage }
-    verdicts += verdict
-  }
-}
-
-private fun harnessReviewRepository(): ReviewRepository {
-  val verdicts = mutableListOf<ReviewFindingVerdict>()
-  @Suppress("UNCHECKED_CAST")
-  return Proxy.newProxyInstance(
-    ReviewRepository::class.java.classLoader,
-    arrayOf(ReviewRepository::class.java),
-  ) { _, method, args ->
-    when (method.name) {
-      "fetchFindingVerdicts" -> verdicts.toList()
-      "recordFindingVerdicts" -> recordHarnessFindingVerdicts(verdicts, args)
-      else -> defaultPortReturn(method)
-    }
-  } as ReviewRepository
-}
-
-internal class RuntimeFakeDatabaseSessionFactory(
-  private val repository: InMemoryRuntimeWorkflowRepository,
-  private val lifecycle: LifecycleTelemetryRepository = RecordingLifecycleTelemetryRepository(),
-  private val knownIssue: Boolean = true,
-  private val rejectedOutputDiagnosticsAvailable: Boolean = true,
-) : DatabaseSessionFactory {
-  private val dbPath = Path.of("/fake/metrics.db")
-  val transactionDbOverrides = mutableListOf<String?>()
-  val ledgerRows = mutableListOf<UnaddressedFinding>()
-  val outcomeRows = mutableListOf<ReviewFindingOutcomeRecord>()
-  var producerOutputReadError: RejectedOutputDiagnosticError? = null
-  private val diagnosticRecords =
-    linkedMapOf<String, RejectedOutputDiagnosticRecord>()
-  private val producerEvidence =
-    linkedMapOf<ProducerEvidenceKey, ProducerOutputEvidence>()
-  private val auditGenerationRows = repository.auditGenerationRows
-  private val reviewsPort: ReviewRepository = harnessReviewRepository()
-  private val learningsPort: LearningRepository = noopPort(LearningRepository::class.java)
-  private val telemetryReconciliationPort: TelemetryReconciliationRepository =
-    noopPort(TelemetryReconciliationRepository::class.java)
-  private val telemetryOutboxPort: TelemetryOutboxRepository = noopPort(TelemetryOutboxRepository::class.java)
-
-  fun auditGenerations(workflowId: String): List<FeatureTaskRuntimeAuditGenerationRow> =
-    auditGenerationRows.filter { it.workflowId == workflowId }.sortedBy { it.generationOrdinal }
-
-  fun rejectedDiagnostics(): List<RejectedOutputDiagnosticRecord> = diagnosticRecords.values.toList()
-
-  fun retainedProducerEvidence(): List<ProducerOutputEvidence> = producerEvidence.values.toList()
-
-  fun retainProducerEvidence(evidence: ProducerOutputEvidence) {
-    unitOfWork().rejectedOutputDiagnostics!!.retainProducerOutput(evidence)
-  }
-
-  @Suppress("LongParameterList")
-  fun producerEvidenceAt(
-    workflowId: String,
-    phaseId: String,
-    attempt: Int,
-    generation: Int,
-    agentId: String,
-    repairTurn: Int = 0,
-  ): ProducerOutputEvidence? =
-    producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt, agentId, repairTurn)]
-
-  override fun resolveDbPath(dbOverride: String?): Path = dbPath
-
-  override fun databaseExists(dbOverride: String?): Boolean = true
-
-  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
-
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
-
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T {
-    transactionDbOverrides += dbOverride
-    return block(unitOfWork())
-  }
-
-  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
-    override val dbPath: Path = this@RuntimeFakeDatabaseSessionFactory.dbPath
-    override val reviews: ReviewRepository = this@RuntimeFakeDatabaseSessionFactory.reviewsPort
-    override val learnings: LearningRepository = this@RuntimeFakeDatabaseSessionFactory.learningsPort
-    override val lifecycleTelemetry: LifecycleTelemetryRepository = lifecycle
-    override val telemetryReconciliation: TelemetryReconciliationRepository =
-      this@RuntimeFakeDatabaseSessionFactory.telemetryReconciliationPort
-    override val telemetryOutbox: TelemetryOutboxRepository = this@RuntimeFakeDatabaseSessionFactory.telemetryOutboxPort
-    override val workflowStates: WorkflowStateRepository = repository
-
-    // Mirrors the store's insert-only semantics: a duplicate ordinal is rejected rather than overwriting
-    // durable history, so a test that re-appends a generation fails the same way production does.
-    override val featureTaskRuntimeAuditGenerations =
-      object : FeatureTaskRuntimeAuditGenerationRepository {
-        override fun append(row: FeatureTaskRuntimeAuditGenerationRow) {
-          require(
-            auditGenerationRows.none {
-              it.workflowId == row.workflowId && it.generationOrdinal == row.generationOrdinal
-            },
-          ) {
-            "generation ${row.generationOrdinal} already exists for ${row.workflowId}"
-          }
-          auditGenerationRows += row
-        }
-
-        override fun listOrdered(workflowId: String): List<FeatureTaskRuntimeAuditGenerationRow> =
-          auditGenerationRows.filter { it.workflowId == workflowId }.sortedBy { it.generationOrdinal }
-
-        override fun quarantineAll(workflowId: String): Int {
-          val removed = auditGenerationRows.count { it.workflowId == workflowId }
-          auditGenerationRows.removeAll { it.workflowId == workflowId }
-          return removed
-        }
-      }
-    override val rejectedOutputDiagnosticPermissions =
-      RejectedOutputDiagnosticPermissions { }
-    override val rejectedOutputDiagnostics = object : RejectedOutputDiagnosticRepository {
-      override fun insert(record: RejectedOutputDiagnosticRecord): RejectedOutputDiagnosticRecord =
-        diagnosticRecords.getOrPut(record.metadata.identity) { record }
-
-      override fun select(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> =
-        diagnosticRecords.values
-          .map { it.metadata }
-          .filter {
-            it.workflowId == selector.workflowId &&
-              (selector.phaseId == null || it.phaseId == selector.phaseId) &&
-              (selector.attempt == null || it.attempt == selector.attempt)
-          }
-
-      override fun read(identity: String): RejectedOutputDiagnosticRecord = diagnosticRecords[identity]
-        ?: throw Absent(identity)
-
-      override fun markExpired(before: Instant): Int = 0
-
-      override fun delete(selector: RejectedOutputDiagnosticSelector): Int = 0
-
-      // Mirrors the SQLite write-once semantics: insert-if-absent, then a read-back equality guard
-      // that raises Conflict on a divergent write to an already-retained key.
-      override fun retainProducerOutput(evidence: ProducerOutputEvidence) {
-        val key = ProducerEvidenceKey(
-          evidence.workflowId,
-          evidence.phaseId,
-          evidence.generation,
-          evidence.attempt,
-          evidence.agentId,
-          evidence.repairTurn,
-        )
-        producerEvidence.putIfAbsent(key, evidence)
-        val retained = producerEvidence.getValue(key)
-        if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize ||
-          !samePayload(retained.payload, evidence.payload)
-        ) {
-          throw Conflict(
-            "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}:" +
-              "${evidence.repairTurn}:${evidence.agentId}",
-          )
-        }
-      }
-
-      override fun readProducerOutput(
-        workflowId: String,
-        phaseId: String,
-        attempt: Int,
-        agentId: String,
-        generation: Int,
-      ): ProducerOutputEvidence? {
-        producerOutputReadError?.let { throw it }
-        return producerEvidence.entries
-          .filter {
-            it.key.workflowId == workflowId && it.key.phaseId == phaseId &&
-              it.key.attempt == attempt && it.key.agentId == agentId &&
-              it.key.generation <= generation
-          }
-          .maxWithOrNull(compareBy({ it.key.generation }, { it.key.repairTurn }))
-          ?.value
-      }
-    }.takeIf { rejectedOutputDiagnosticsAvailable }
-    override val unaddressedFindings = object : UnaddressedFindingsRepository {
-      override fun replaceLedgerForPass(
-        workflowId: String,
-        reviewPassNumber: Int,
-        findings: List<UnaddressedFinding>,
-      ) {
-        ledgerRows.removeAll { it.workflowId == workflowId && it.reviewPassNumber <= reviewPassNumber }
-        ledgerRows.addAll(findings)
-      }
-
-      override fun clearWorkflowLedger(workflowId: String) {
-        ledgerRows.removeAll { it.workflowId == workflowId }
-      }
-
-      override fun fetchLedger(issueKey: String): List<UnaddressedFinding> =
-        ledgerRows.filter { it.issueKey == issueKey }
-
-      override fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
-        ledgerRows.filter { it.workflowId == workflowId }
-
-      override fun workflowIdsForIssue(issueKey: String): List<String> =
-        ledgerRows.filter { it.issueKey == issueKey }.map { it.workflowId }.distinct().sorted()
-
-      override fun recordOutcomes(outcomes: List<ReviewFindingOutcomeRecord>) {
-        outcomeRows.removeAll { existing ->
-          outcomes.any {
-            it.workflowId == existing.workflowId &&
-              it.reviewPassNumber == existing.reviewPassNumber &&
-              it.findingOrdinal == existing.findingOrdinal
-          }
-        }
-        outcomeRows.addAll(outcomes)
-      }
-
-      override fun fetchOutcomes(workflowId: String): List<ReviewFindingOutcomeRecord> =
-        outcomeRows.filter { it.workflowId == workflowId }
-
-      override fun issueExists(issueKey: String): Boolean = knownIssue
-    }
-    override val workList = EmptyWorkListRepository
-    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
-  }
-}
-
-private object EnabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvider {
-  override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json"),
-    level = "full",
-    enabled = true,
-    installId = "install-1",
-    proxyUrl = "",
-    customProxyUrl = null,
-    batchSize = 50,
-  )
-}
-
-@Suppress("TooManyFunctions") // mirrors the full LifecycleTelemetryRepository contract
-internal class RecordingLifecycleTelemetryRepository(
-  private val throwOnDiagnosticDegradation: Boolean = false,
-) : LifecycleTelemetryRepository {
-  val startedRecords = mutableListOf<FeatureTaskRuntimeStartedRecord>()
-  val finishedRecords = mutableListOf<FeatureTaskRuntimeFinishedRecord>()
-  val sharedEvidenceMeasurements =
-    mutableListOf<FeatureTaskRuntimeSharedEvidenceMeasurement>()
-  val diagnosticDegradationMeasurements =
-    mutableListOf<FeatureTaskRuntimeDiagnosticDegradationMeasurement>()
-
-  override fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) {
-    sharedEvidenceMeasurements += record
-  }
-
-  override fun featureTaskRuntimeDiagnosticDegradation(record: FeatureTaskRuntimeDiagnosticDegradationMeasurement) {
-    if (throwOnDiagnosticDegradation) error("telemetry sink failed")
-    diagnosticDegradationMeasurements += record
-  }
-
-  override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {
-    startedRecords += record
-  }
-
-  override fun featureTaskRuntimeFinished(record: FeatureTaskRuntimeFinishedRecord, level: String) {
-    finishedRecords += record
-  }
-
-  override fun qualityCheckStarted(record: QualityCheckStartedRecord, level: String) = Unit
-
-  override fun qualityCheckFinished(record: QualityCheckFinishedRecord, level: String) = Unit
-
-  override fun featureVerifyStarted(record: FeatureVerifyStartedRecord, level: String) = Unit
-
-  override fun featureVerifyFinished(record: FeatureVerifyFinishedRecord, level: String) = Unit
-
-  override fun prDescriptionGenerated(record: PrDescriptionGeneratedRecord, level: String) = Unit
-
-  override fun goalStarted(record: GoalStartedRecord, level: String) = Unit
-
-  override fun goalSubtaskFinished(record: GoalSubtaskFinishedRecord, level: String) = Unit
-
-  override fun goalFinished(record: GoalFinishedRecord, level: String) = Unit
-
-  override fun goalIssueFinished(record: GoalIssueFinishedRecord, level: String) = Unit
-}
-
-private fun FeatureTaskRuntimeWorkerOwnership.matchesActiveOwnership(
-  workflowId: String,
-  ownerToken: String,
-  generation: Long,
-): Boolean = this.workflowId == workflowId &&
-  this.ownerToken == ownerToken &&
-  this.generation == generation &&
-  leaseState == FeatureTaskRuntimeWorkerLeaseState.ACTIVE
-
-internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
-  private var workerOwnership: FeatureTaskRuntimeWorkerOwnership? = null
-
-  /**
-   * Append-only audit-generation history, held here rather than on the session factory because a resume is
-   * modelled by building a fresh factory over this same repository. On the factory it would model a database
-   * that forgot its audit history at every restart, and a repair settlement would then be the first
-   * generation.
-   */
-  val auditGenerationRows = mutableListOf<FeatureTaskRuntimeAuditGenerationRow>()
-
-  fun seedWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
-    workerOwnership = ownership
-  }
-
-  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String) =
-    synchronized(this) { workerOwnership?.takeIf { it.workflowId == workflowId } }
-
-  override fun acquireFeatureTaskRuntimeWorker(
-    ownership: FeatureTaskRuntimeWorkerOwnership,
-    expectedUpdatedAt: String?,
-  ): Boolean = synchronized(this) {
-    if (workerOwnership != null || taskRuntimeRows[ownership.workflowId]?.updatedAt != expectedUpdatedAt) return false
-    workerOwnership = ownership
-    true
-  }
-
-  override fun reserveFeatureTaskRuntimeWorkerTakeover(
-    workflowId: String,
-    expectedOwnerToken: String,
-    expectedGeneration: Long,
-  ): Boolean = synchronized(this) {
-    val current = workerOwnership ?: return false
-    if (!current.matchesActiveOwnership(workflowId, expectedOwnerToken, expectedGeneration)) return false
-    workerOwnership = current.copy(
-      leaseState = TAKEOVER_RESERVED,
-    )
-    true
-  }
-
-  override fun transferFeatureTaskRuntimeWorker(
-    ownership: FeatureTaskRuntimeWorkerOwnership,
-    expectedOwnerToken: String,
-    expectedGeneration: Long,
-  ): Boolean = synchronized(this) {
-    val current = workerOwnership ?: return false
-    if (
-      current.ownerToken != expectedOwnerToken || current.generation != expectedGeneration ||
-      current.leaseState != TAKEOVER_RESERVED
-    ) {
-      return false
-    }
-    workerOwnership = ownership
-    true
-  }
-
-  override fun heartbeatFeatureTaskRuntimeWorker(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean =
-    synchronized(this) {
-      val current = workerOwnership ?: return false
-      if (current.ownerToken != ownership.ownerToken || current.generation != ownership.generation) return false
-      workerOwnership = ownership
-      true
-    }
-
-  override fun releaseFeatureTaskRuntimeWorker(workflowId: String, ownerToken: String, generation: Long): Boolean =
-    synchronized(this) {
-      val current = workerOwnership ?: return false
-      if (current.workflowId != workflowId || current.ownerToken != ownerToken || current.generation != generation) {
-        return false
-      }
-      workerOwnership = null
-      true
-    }
-  override fun findFeatureTaskRuntimeCrashReconciliationCandidates(
-    nowInstant: String,
-  ): List<FeatureTaskRuntimeCrashReconciliationCandidate> = synchronized(this) {
-    val ownership = workerOwnership ?: return@synchronized emptyList()
-    val row = taskRuntimeRows[ownership.workflowId] ?: return@synchronized emptyList()
-    if (row.workflowStatus != "running" || !leaseExpiredBefore(ownership.expiresAt, nowInstant)) {
-      return@synchronized emptyList()
-    }
-    listOf(
-      FeatureTaskRuntimeCrashReconciliationCandidate(
-        ownership = ownership,
-        currentStepId = row.currentStepId,
-        workflowStatus = row.workflowStatus,
-      ),
-    )
-  }
-
-  override fun reconcileFeatureTaskRuntimeCrashedWorker(
-    workflowId: String,
-    ownerToken: String,
-    generation: Long,
-    interruptionReason: String,
-    nowInstant: String,
-  ): Boolean = synchronized(this) {
-    val current = workerOwnership ?: return@synchronized false
-    if (current.workflowId != workflowId || current.ownerToken != ownerToken || current.generation != generation) {
-      return@synchronized false
-    }
-    if (!leaseExpiredBefore(current.expiresAt, nowInstant)) return@synchronized false
-    val row = taskRuntimeRows[workflowId] ?: return@synchronized false
-    if (row.workflowStatus != "running") return@synchronized false
-    workerOwnership = null
-    taskRuntimeRows[workflowId] = row.copy(workflowStatus = "pending")
-    reconciledInterruptionReasons[workflowId] = interruptionReason
-    true
-  }
-
-  val reconciledInterruptionReasons = linkedMapOf<String, String>()
-
-  private fun leaseExpiredBefore(expiresAt: String, nowInstant: String): Boolean =
-    runCatching { Instant.parse(expiresAt).isBefore(Instant.parse(nowInstant)) }
-      .getOrDefault(false)
-
-  override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) = Unit
-
-  override fun findStandaloneFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
-    emptyList<FeatureTaskWorkflowCandidate>()
-
-  private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
-
-  // Prose feature-task rows route through the legacy prose family store (see WorkflowStateRepository).
-  private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
-
-  fun taskRuntimeArtifacts(workflowId: String): Map<String, Any?> {
-    val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
-    return JsonSupport.parseObjectOrNull(record.artifactsJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      .orEmpty()
-  }
-
-  // Overwrites the per-phase records key with a present-but-non-map blob to
-  // simulate corrupt durable state.
-  fun corruptRecordsArtifact(workflowId: String, corruptValue: Any?) {
-    val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
-    val artifacts = LinkedHashMap(taskRuntimeArtifacts(workflowId)).apply {
-      put(FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY, corruptValue)
-    }
-    taskRuntimeRows[workflowId] = record.copy(
-      artifactsJson = JsonSupport.mapToJsonString(artifacts),
-    )
-  }
-
-  fun replaceTaskRuntimeArtifacts(workflowId: String, artifacts: Map<String, Any?>) {
-    val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
-    taskRuntimeRows[workflowId] = record.copy(
-      artifactsJson = JsonSupport.mapToJsonString(artifacts),
-    )
-  }
-
-  // Fault injection for atomicity coverage: when this predicate matches the row about to be written,
-  // the single save carrying both the artifact patch and the workflow advance fails, standing in for a
-  // process killed at that instant.
-  var failSaveWhen: ((WorkflowStateRecord) -> Boolean)? = null
-
-  override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
-    if (failSaveWhen?.invoke(row) == true) {
-      error("simulated process kill during the feature-task-runtime save")
-    }
-    taskRuntimeRows[row.workflowId] = row
-  }
-
-  fun bumpUpdatedAt(workflowId: String) {
-    val row = taskRuntimeRows[workflowId] ?: return
-    val current = Instant.parse(row.updatedAt ?: "2026-01-01T00:00:00Z")
-    taskRuntimeRows[workflowId] = row.copy(updatedAt = current.plusSeconds(1).toString())
-  }
-
-  override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = taskRuntimeRows[workflowId]
-
-  override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =
-    taskRuntimeRows.values.toList().asReversed().take(limit)
-
-  override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? =
-    listFeatureTaskRuntimeWorkflows(1).firstOrNull()
-
-  override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
-    implementRows[row.workflowId] = row
-  }
-
-  override fun saveFeatureVerifyWorkflow(row: WorkflowStateRecord) = Unit
-
-  override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = implementRows[workflowId]
-
-  override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = null
-
-  override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
-
-  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
-
-  override fun latestFeatureImplementWorkflow(): WorkflowStateRecord? = null
-
-  override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = null
-
-  override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
-
-  override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
-}
-
-// Reports every inspected worker process as dead, so a seeded crashed row with an expired lease is a
-// confirmed crash-reconciliation candidate. Harness default: benign when no candidate is seeded.
-internal object HarnessDeadProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
-  override fun currentProcess(): FeatureTaskRuntimeProcessIdentity =
-    FeatureTaskRuntimeProcessIdentity("harness-host", "harness-boot", 4321, "harness-birth-4321")
-
-  override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.NotRunning
-
-  override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
-
-  override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
-
-  override fun startHeartbeat(
-    plan: FeatureTaskRuntimeHeartbeatPlan,
-    heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
-  ) = NoopFeatureTaskRuntimeHeartbeat
-
-  override fun pause(durationMillis: Long) = Unit
-}
-
-/**
- * AC-007: SKILL-15 shape — review generation 0 attempt 2 under one agent, then a different
- * producer retains different bytes for the same generation/attempt. Pre-fix four-part-key
- * Conflict would abort phase recording; agent-scoped identity must continue.
- */
 class FeatureTaskRuntimeProducerEvidenceIdentityTest {
   @Test
   fun `cross-agent retain at review generation 0 attempt 2 continues without Conflict`() {
@@ -7736,11 +4840,11 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
 
     assertContentEquals(
       claudePayload,
-      harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0, "claude")?.payload,
+      harness.io.database.producerEvidenceAt(ProducerEvidenceKey(WORKFLOW_ID, "review", 0, 2, "claude", 0))?.payload,
     )
     assertContentEquals(
       cursorPayload,
-      harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0, "cursor")?.payload,
+      harness.io.database.producerEvidenceAt(ProducerEvidenceKey(WORKFLOW_ID, "review", 0, 2, "cursor", 0))?.payload,
     )
   }
 
@@ -7783,7 +4887,7 @@ class FeatureTaskRuntimeProducerEvidenceIdentityTest {
     }
     assertContentEquals(
       first,
-      harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0, "claude")?.payload,
+      harness.io.database.producerEvidenceAt(ProducerEvidenceKey(WORKFLOW_ID, "review", 0, 2, "claude", 0))?.payload,
     )
   }
 }
@@ -7800,16 +4904,18 @@ class ChildProcessFailureDiagnosticTest {
     val stdout = "API Error: Your computer went to sleep mid-response. The response above may be incomplete."
     val stderr = "at Object.<anonymous> (/opt/claude/cli.js:1:2)"
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = 1,
-          stdout = stdout,
-          stderr = stderr,
-          timedOut = false,
-          spawnFailed = false,
-        )
-      },
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = 1,
+            stdout = stdout,
+            stderr = stderr,
+            timedOut = false,
+            spawnFailed = false,
+          )
+        },
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -7826,16 +4932,18 @@ class ChildProcessFailureDiagnosticTest {
   @Test
   fun `a child that wrote nothing stores no diagnostic rather than an empty one`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = 1,
-          stdout = "",
-          stderr = "",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      },
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = 1,
+            stdout = "",
+            stderr = "",
+            timedOut = false,
+            spawnFailed = false,
+          )
+        },
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -7849,16 +4957,18 @@ class ChildProcessFailureDiagnosticTest {
   @Test
   fun `a spawn failure that carries stderr still stores it`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = null,
-          stdout = "",
-          stderr = "claude: command not found",
-          timedOut = false,
-          spawnFailed = true,
-        )
-      },
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = null,
+            stdout = "",
+            stderr = "claude: command not found",
+            timedOut = false,
+            spawnFailed = true,
+          )
+        },
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -7877,16 +4987,18 @@ class InfraFailureReasonStderrSurfacingTest {
   fun `non-zero exit with non-blank stderr surfaces a bounded stderr excerpt in blocked reason`() {
     val stderrContent = "Error: something went wrong with the child process"
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = 1,
-          stdout = "",
-          stderr = stderrContent,
-          timedOut = false,
-          spawnFailed = false,
-        )
-      },
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = 1,
+            stdout = "",
+            stderr = stderrContent,
+            timedOut = false,
+            spawnFailed = false,
+          )
+        },
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -7900,16 +5012,18 @@ class InfraFailureReasonStderrSurfacingTest {
   fun `non-zero exit with blank stderr and non-blank stdout surfaces stdout excerpt in blocked reason`() {
     val stdoutContent = "unexpected non-json output from the child"
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = 2,
-          stdout = stdoutContent,
-          stderr = "",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      },
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = 2,
+            stdout = stdoutContent,
+            stderr = "",
+            timedOut = false,
+            spawnFailed = false,
+          )
+        },
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -7922,16 +5036,18 @@ class InfraFailureReasonStderrSurfacingTest {
   @Test
   fun `non-zero exit with both blank stderr and stdout does not append an excerpt to blocked reason`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = 1,
-          stdout = "",
-          stderr = "",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      },
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = 1,
+            stdout = "",
+            stderr = "",
+            timedOut = false,
+            spawnFailed = false,
+          )
+        },
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -7964,7 +5080,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
 
   @Test
   fun `a provider usage limit pauses the phase instead of spending a repair attempt`() {
-    val harness = runnerHarness(launcher = RuntimeRecordingLauncher { limitFacts() })
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { limitFacts() }))
 
     val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
 
@@ -7982,7 +5098,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
 
   @Test
   fun `the paused phase stays resumable and never accumulates a fix-loop block`() {
-    val harness = runnerHarness(launcher = RuntimeRecordingLauncher { limitFacts() })
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { limitFacts() }))
 
     repeat(4) { assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request())) }
 
@@ -7995,16 +5111,18 @@ class ProviderLimitAndProcessFailureBudgetTest {
   @Test
   fun `repeated process failures block on the process budget with an accurate reason`() {
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher {
-        AgentRunLaunchFacts(
-          agent = InstallAgent.CLAUDE,
-          exitStatus = 1,
-          stdout = "",
-          stderr = "Error: the child process died",
-          timedOut = false,
-          spawnFailed = false,
-        )
-      },
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher {
+          AgentRunLaunchFacts(
+            agent = InstallAgent.CLAUDE,
+            exitStatus = 1,
+            stdout = "",
+            stderr = "Error: the child process died",
+            timedOut = false,
+            spawnFailed = false,
+          )
+        },
+      ),
     )
 
     repeat(FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS) {
@@ -8035,19 +5153,21 @@ class ProviderLimitAndProcessFailureBudgetTest {
   fun `an operator reopen relaunches a phase whose durable attempt count is past the cap`() {
     var launchValidOutput = false
     val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        if (!launchValidOutput) {
-          return@RuntimeRecordingLauncher AgentRunLaunchFacts(
-            agent = InstallAgent.CLAUDE,
-            exitStatus = 1,
-            stdout = "",
-            stderr = "Error: the child process died",
-            timedOut = false,
-            spawnFailed = false,
-          )
-        }
-        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
-      },
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher { request ->
+          if (!launchValidOutput) {
+            return@RuntimeRecordingLauncher AgentRunLaunchFacts(
+              agent = InstallAgent.CLAUDE,
+              exitStatus = 1,
+              stdout = "",
+              stderr = "Error: the child process died",
+              timedOut = false,
+              spawnFailed = false,
+            )
+          }
+          facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+        },
+      ),
     )
 
     repeat(FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS) { harness.runner.run(harness.request()) }
@@ -8105,7 +5225,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
 
   @Test
   fun `a phase that does reach its output gate is still bounded by the output budgets`() {
-    val harness = runnerHarness(launcher = RuntimeRecordingLauncher { facts("not json") })
+    val harness = runnerHarness(RuntimeHarnessConfig(launcher = RuntimeRecordingLauncher { facts("not json") }))
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
@@ -8121,11 +5241,10 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
   fun `recovering a reserved pass settles review state and its ledger rows together`() {
     var crashOnFix = true
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         branchSetup = committedRepoBranchSetup(),
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-          parentIssueKey = ISSUE_KEY,
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
           subtaskId = 5,
           goalBranch = "feat/existing-runtime-branch",
           suppressPr = true,
@@ -8133,11 +5252,13 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
         reviewDriver = reviewFixDriver(2),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "implement_fix" && crashOnFix) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement_fix" && crashOnFix) spawnFailedFacts() else facts(validJsonOutput(phaseId))
-      },
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(
@@ -8166,7 +5287,7 @@ private fun assertFullyAssociatedLedgerRows(harness: RunnerHarness, passNumber: 
   val rows = harness.ledgerRows.filter { it.reviewPassNumber == passNumber }
   assertTrue(rows.isNotEmpty(), "pass $passNumber must settle its ledger rows")
   rows.forEach { row ->
-    assertEquals(ISSUE_KEY, row.issueKey)
+    assertEquals(RUNNER_TEST_ISSUE_KEY, row.issueKey)
     assertEquals(subtaskId, row.subtaskId)
     assertEquals(WORKFLOW_ID, row.workflowId)
     assertTrue(row.severity.isNotBlank())

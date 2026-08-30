@@ -28,9 +28,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   fun `review_fix crossing the threshold warns once naming the loop the count and the work`() {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
-      launcher = reviewFixLauncher(convergeOnReview = 2),
-      diagnostics = diagnostics,
-      runtimeConfig = reviewFixRuntimeConfig(2),
+      reviewFixRuntimeConfig(2).copy(launcher = reviewFixLauncher(convergeOnReview = 2), diagnostics = diagnostics),
     )
 
     val request = harness.request()
@@ -48,8 +46,10 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   fun `audit_gap crossing the threshold warns once and continues`() {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
-      launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1),
-      diagnostics = diagnostics,
+      RuntimeHarnessConfig(
+        launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1),
+        diagnostics = diagnostics,
+      ),
     )
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -70,9 +70,10 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   fun `iterations up to the threshold stay silent for both loops`() {
     val reviewDiagnostics = RecordingDiagnostics()
     val reviewHarness = runnerHarness(
-      launcher = reviewFixLauncher(convergeOnReview = threshold + 1),
-      diagnostics = reviewDiagnostics,
-      runtimeConfig = reviewFixRuntimeConfig(threshold + 1),
+      reviewFixRuntimeConfig(threshold + 1).copy(
+        launcher = reviewFixLauncher(convergeOnReview = threshold + 1),
+        diagnostics = reviewDiagnostics,
+      ),
     )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(reviewHarness.runner.run(reviewHarness.request()))
     assertEquals(
@@ -83,8 +84,10 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
 
     val auditDiagnostics = RecordingDiagnostics()
     val auditHarness = runnerHarness(
-      launcher = auditGapLauncher(convergeOnAudit = threshold + 1),
-      diagnostics = auditDiagnostics,
+      RuntimeHarnessConfig(
+        launcher = auditGapLauncher(convergeOnAudit = threshold + 1),
+        diagnostics = auditDiagnostics,
+      ),
     )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(auditHarness.runner.run(auditHarness.request()))
     assertEquals(
@@ -98,8 +101,10 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   fun `iterations past the crossing do not repeat the warning`() {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
-      launcher = auditGapLauncher(convergeOnAudit = 9),
-      diagnostics = diagnostics,
+      RuntimeHarnessConfig(
+        launcher = auditGapLauncher(convergeOnAudit = 9),
+        diagnostics = diagnostics,
+      ),
     )
 
     val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(
@@ -118,9 +123,13 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   fun `audit below threshold and review crossing warn independently`() {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
-      launcher = bothLoopsLauncher(convergeOnAudit = 2, convergeOnReview = crossingIteration + 1),
-      diagnostics = diagnostics,
-      runtimeConfig = reviewFixRuntimeConfig(crossingIteration + 1),
+      reviewFixRuntimeConfig(crossingIteration + 1).copy(
+        launcher = bothLoopsLauncher(
+          convergeOnAudit = 2,
+          convergeOnReview = crossingIteration + 1,
+        ),
+        diagnostics = diagnostics,
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -142,12 +151,14 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val diagnostics = RecordingDiagnostics()
     var crashOnCrossingAudit = true
     val harness = runnerHarness(
-      launcher = crashingAuditGapLauncher(
-        convergeOnAudit = crossingIteration + 2,
-        crashOnAuditLaunch = threshold,
-        shouldCrash = { crashOnCrossingAudit },
+      RuntimeHarnessConfig(
+        launcher = crashingAuditGapLauncher(
+          convergeOnAudit = crossingIteration + 2,
+          crashOnAuditLaunch = threshold,
+          shouldCrash = { crashOnCrossingAudit },
+        ),
+        diagnostics = diagnostics,
       ),
-      diagnostics = diagnostics,
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -171,12 +182,14 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val diagnostics = RecordingDiagnostics()
     var crashOnImplement = true
     val harness = runnerHarness(
-      launcher = crashingAuditGapLauncher(
-        convergeOnAudit = crossingIteration + 2,
-        crashOnImplementLaunch = crossingIteration + 1,
-        shouldCrash = { crashOnImplement },
+      RuntimeHarnessConfig(
+        launcher = crashingAuditGapLauncher(
+          convergeOnAudit = crossingIteration + 2,
+          crashOnImplementLaunch = crossingIteration + 1,
+          shouldCrash = { crashOnImplement },
+        ),
+        diagnostics = diagnostics,
       ),
-      diagnostics = diagnostics,
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -195,8 +208,10 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   fun `resuming a subtask already past the crossing emits no further warning`() {
     val diagnostics = RecordingDiagnostics()
     val harness = runnerHarness(
-      launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 2),
-      diagnostics = diagnostics,
+      RuntimeHarnessConfig(
+        launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 2),
+        diagnostics = diagnostics,
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -215,9 +230,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
       ThrowingDiagnostics(),
     ).map { diagnostics ->
       val harness = runnerHarness(
-        launcher = reviewFixLauncher(convergeOnReview = 2),
-        diagnostics = diagnostics,
-        runtimeConfig = reviewFixRuntimeConfig(2),
+        reviewFixRuntimeConfig(2).copy(launcher = reviewFixLauncher(convergeOnReview = 2), diagnostics = diagnostics),
       )
       val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
       RunOutcome(
@@ -235,7 +248,9 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
 
   @Test
   fun `status reports the honest iteration count after a warn-threshold crossing`() {
-    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1))
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(launcher = auditGapLauncher(convergeOnAudit = crossingIteration + 1)),
+    )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 

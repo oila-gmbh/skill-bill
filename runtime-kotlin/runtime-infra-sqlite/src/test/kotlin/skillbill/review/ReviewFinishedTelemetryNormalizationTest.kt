@@ -1,6 +1,7 @@
 package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
+import skillbill.infrastructure.sqlite.review.ReviewFinishedPayloadBuildRequest
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
@@ -189,8 +190,10 @@ private fun reviewFinishedPayload(
   reviewRunId: String,
   routedSkillPlatformSlugs: Map<String, String> = emptyMap(),
 ): Map<String, Any?> = ReviewStatsRuntime.buildReviewFinishedPayload(
-  connection = connection,
-  reviewRunId = reviewRunId,
-  level = "anonymous",
-  routedSkillPlatformSlugs = routedSkillPlatformSlugs,
+  ReviewFinishedPayloadBuildRequest(
+    connection = connection,
+    reviewRunId = reviewRunId,
+    level = "anonymous",
+    routedSkillPlatformSlugs = routedSkillPlatformSlugs,
+  ),
 ).toReviewFinishedTelemetryPayload().toPayload()

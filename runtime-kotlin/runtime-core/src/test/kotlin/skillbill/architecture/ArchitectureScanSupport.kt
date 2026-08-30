@@ -8,12 +8,13 @@ import kotlin.io.path.readText
 
 object ArchitectureScanSupport {
   val runtimeRoot: Path =
-    Path.of("").toAbsolutePath().normalize().let { workingDir ->
-      if (workingDir.fileName.toString().startsWith("runtime-")) {
-        workingDir.parent
-      } else {
-        workingDir
+    Path.of("").toAbsolutePath().normalize().let { start ->
+      var dir: Path? = start
+      while (dir != null) {
+        if (Files.isDirectory(dir.resolve("runtime-kotlin"))) return@let dir
+        dir = dir.parent
       }
+      start
     }
 
   data class ParseBoundarySite(val relativePath: String, val functionNames: Set<String>)
@@ -92,7 +93,7 @@ object ArchitectureScanSupport {
     productionRoots.forEach { productionRoot ->
       kotlinFilesUnder(runtimeRoot.resolve(productionRoot)).forEach { sourceFile ->
         val relativePath = runtimeRoot.relativize(sourceFile).toString().replace('\\', '/')
-        if (relativePath.contains("/src/test/")) return@forEach
+        if (isNonProductionKotlinSourceSet(relativePath)) return@forEach
         violations += productionLineCeilingViolationsInSource(
           relativePath = relativePath,
           source = sourceFile.readText(),
@@ -116,6 +117,18 @@ object ArchitectureScanSupport {
       "$relativePath has $lineCount lines; split it below the $ceiling-line ceiling " +
         "or add an explicit exemption with reason.",
     )
+  }
+
+  fun isNonProductionKotlinSourceSet(relativePath: String): Boolean {
+    val normalized = relativePath.replace('\\', '/')
+    return "/src/test/" in normalized ||
+      "/src/testFixtures/" in normalized ||
+      "/src/repoTest/" in normalized ||
+      "/src/androidTest/" in normalized ||
+      "/src/androidUnitTest/" in normalized ||
+      "/src/commonTest/" in normalized ||
+      "/src/jvmTest/" in normalized ||
+      "/src/nativeTest/" in normalized
   }
 
   fun inlineFqnViolations(scanRoots: List<String>, prefixes: List<String>): List<String> {
@@ -383,4 +396,87 @@ object ArchitectureScanSupport {
     )
   private val FUNCTION_PATTERN = Regex("""\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
   private val CAMEL_TOKEN_PATTERN = Regex("""[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)""")
+
+  data class AuthoredSuppression(val relativePath: String, val symbol: String, val rule: String)
+
+  val COMPLEXITY_SUPPRESSION_RULES: Set<String> = setOf(
+    "TooManyFunctions",
+    "LargeClass",
+    "LongMethod",
+    "CyclomaticComplexMethod",
+    "ComplexCondition",
+    "NestedBlockDepth",
+    "ReturnCount",
+    "ThrowsCount",
+    "LongParameterList",
+  )
+
+  val suppressionScanRoots: List<String> = listOf(
+    "runtime-kotlin",
+    "runtime-kotlin/build-logic",
+  )
+
+  fun parseSuppressionAllowList(decisionsMarkdown: String): Set<Triple<String, String, String>> {
+    val sectionStart = decisionsMarkdown.indexOf("Compiler suppression allow-list")
+    if (sectionStart < 0) return emptySet()
+    val tableBody = decisionsMarkdown.substring(sectionStart)
+    val rows = mutableSetOf<Triple<String, String, String>>()
+    TABLE_ROW_PATTERN.findAll(tableBody).forEach { match ->
+      val path = match.groupValues[1].trim()
+      val symbol = match.groupValues[2].trim()
+      val rule = match.groupValues[3].trim()
+      if (path == "path" || path.startsWith("-")) return@forEach
+      if (path.isNotBlank() && symbol.isNotBlank() && rule.isNotBlank()) {
+        rows += Triple(path, symbol, rule)
+      }
+    }
+    return rows
+  }
+
+  fun authoredSuppressions(scanRoots: List<String> = suppressionScanRoots): List<AuthoredSuppression> =
+    scanRoots.flatMap { scanRoot ->
+      kotlinFilesUnder(runtimeRoot.resolve(scanRoot))
+        .filter { path -> !path.toString().replace('\\', '/').contains("/generated/") }
+        .flatMap { sourceFile ->
+          val normalized = runtimeRoot.relativize(sourceFile).toString().replace('\\', '/')
+          val relativePath = normalized.removePrefix("runtime-kotlin/")
+          authoredSuppressionsFromFile(relativePath, sourceFile.readText())
+        }
+    }
+
+  fun authoredSuppressionsFromFile(relativePath: String, source: String): List<AuthoredSuppression> =
+    AuthoredSuppressionScanner.scan(relativePath, source.lineSequence())
+
+  fun authoredSuppressionsInSource(relativePath: String, source: String): List<AuthoredSuppression> =
+    AuthoredSuppressionScanner.scan(relativePath, source.lineSequence())
+
+  fun suppressionViolations(
+    suppressions: List<AuthoredSuppression>,
+    allowList: Set<Triple<String, String, String>>,
+  ): List<String> = suppressions.mapNotNull { site ->
+    when {
+      site.rule in COMPLEXITY_SUPPRESSION_RULES ->
+        "${site.relativePath}::${site.symbol} uses banned complexity suppression '${site.rule}'; refactor instead."
+      Triple(site.relativePath, site.symbol, site.rule) !in allowList ->
+        "${site.relativePath}::${site.symbol} has @Suppress('${site.rule}') without a dated allow-list row; " +
+          "fix the finding or add path, symbol, rule, and why to runtime-kotlin/agent/decisions.md."
+      else -> null
+    }
+  }.sorted()
+
+  fun detektComplexityPinViolations(detektYaml: String): List<String> =
+    COMPLEXITY_SUPPRESSION_RULES.mapNotNull { rule ->
+      val section = Regex("""\n\s*$rule:\s*\n\s*active:\s*(true|false)""").find(detektYaml)
+      when {
+        section == null -> "detekt.yml missing pinned complexity rule '$rule'."
+        section.groupValues[1] != "true" -> "detekt.yml must pin '$rule' with active: true."
+        else -> null
+      }
+    }
+
+  private val TABLE_ROW_PATTERN =
+    Regex(
+      """^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|""",
+      RegexOption.MULTILINE,
+    )
 }

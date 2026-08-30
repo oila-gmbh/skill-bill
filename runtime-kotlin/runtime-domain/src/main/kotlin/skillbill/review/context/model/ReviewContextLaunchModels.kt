@@ -1,5 +1,3 @@
-@file:Suppress("SpreadOperator", "MagicNumber")
-
 package skillbill.review.context.model
 
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
@@ -132,7 +130,7 @@ data class GovernedReviewLaunch(
   fun budgetOutcomeOrNull(): ReviewContextBudgetExceeded? {
     val overhead = measureBundleEntries(emptyList())
     val renderedBytes = canonicalPayload.toByteArray(StandardCharsets.UTF_8).size.toLong()
-    val allowance = budget.maxLaneLaunchBytes * maxOf(1, segmentation.segments.size)
+    val allowance = budget.maxLaneLaunchBytes * maxOf(REVIEW_MIN_LANE_BUDGET_SEGMENT_COUNT, segmentation.segments.size)
     return if (overhead > budget.maxLaneLaunchBytes || renderedBytes > allowance) {
       ReviewContextBudgetExceeded(
         lane = assignment.lane,
@@ -154,7 +152,11 @@ data class GovernedReviewLaunch(
     } else {
       ReviewLaneBundleSegmentation(
         segments = listOf(
-          ReviewLaneBundleSegment(segmentId = "measure", entries = entries, measuredBytes = 1),
+          ReviewLaneBundleSegment(
+            segmentId = "measure",
+            entries = entries,
+            measuredBytes = REVIEW_BUNDLE_MEASUREMENT_PLACEHOLDER_BYTES,
+          ),
         ),
         unreviewableEntries = emptyList(),
         budgetLimitBytes = budget.maxLaneLaunchBytes,

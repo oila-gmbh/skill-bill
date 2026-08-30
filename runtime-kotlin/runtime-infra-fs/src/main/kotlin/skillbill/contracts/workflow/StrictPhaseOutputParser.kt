@@ -1,14 +1,14 @@
-@file:Suppress("TooGenericExceptionCaught", "LongMethod")
-
 package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
+import kotlin.coroutines.cancellation.CancellationException
 
 internal object StrictPhaseOutputParser {
   private val strictJsonMapper: ObjectMapper by lazy {
@@ -50,9 +50,17 @@ internal object StrictPhaseOutputParser {
         else -> StrictParse.Success(format, node)
       }
     }
-  } catch (error: Exception) {
+  } catch (cancellation: CancellationException) {
+    throw cancellation
+  } catch (error: JsonProcessingException) {
+    strictParseFailure(error)
+  }
+
+  private val DUPLICATE_FIELD_OR_KEY = Regex("(?i)duplicate (field|key)\\b")
+
+  private fun strictParseFailure(error: JsonProcessingException): StrictParse.Failure {
     val duplicate = DUPLICATE_FIELD_OR_KEY.containsMatchIn(error.message.orEmpty())
-    StrictParse.Failure(
+    return StrictParse.Failure(
       if (duplicate) {
         FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY
       } else {
@@ -65,8 +73,6 @@ internal object StrictPhaseOutputParser {
       },
     )
   }
-
-  private val DUPLICATE_FIELD_OR_KEY = Regex("(?i)duplicate (field|key)\\b")
 
   fun formatsFor(text: String): List<FeatureTaskRuntimePhaseOutputFormat> {
     val first = text.firstOrNull { !it.isWhitespace() }

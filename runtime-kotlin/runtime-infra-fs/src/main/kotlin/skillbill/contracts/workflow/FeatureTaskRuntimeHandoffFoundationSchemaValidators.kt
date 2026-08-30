@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
@@ -15,8 +14,11 @@ import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeProjectionMeasurementSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError
+import skillbill.error.ShellContentContractException
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 
 private const val MAX_REPORTED_SCHEMA_FAILURES = 3
 
@@ -160,9 +162,17 @@ private fun validateAgainst(
 
 private inline fun <T> mapContractFailures(error: (String) -> RuntimeException, block: () -> T): T = try {
   block()
-} catch (failure: RuntimeException) {
+} catch (cancellation: CancellationException) {
+  throw cancellation
+} catch (failure: ShellContentContractException) {
   throw failure
-} catch (failure: Exception) {
+} catch (failure: IllegalArgumentException) {
+  throw failure
+} catch (failure: IllegalStateException) {
+  throw failure
+} catch (failure: JsonProcessingException) {
+  throw error(failure.message ?: failure::class.simpleName.orEmpty())
+} catch (failure: IOException) {
   throw error(failure.message ?: failure::class.simpleName.orEmpty())
 }
 

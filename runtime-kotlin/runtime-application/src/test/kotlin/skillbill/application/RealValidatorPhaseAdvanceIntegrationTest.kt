@@ -1,4 +1,3 @@
-@file:Suppress("MaxLineLength")
 
 package skillbill.application
 
@@ -18,8 +17,8 @@ class RealValidatorPhaseAdvanceIntegrationTest {
   @Test
   fun `conforming projections advance through plan implement and audit with the real validator`() {
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
+      RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator)
+        .copy(agentAssignment = phasePerAgentAssignment()),
     )
 
     val report = harness.runner.run(harness.request())

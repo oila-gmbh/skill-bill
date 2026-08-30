@@ -18,9 +18,7 @@ class GovernedReviewEvidenceBridgeTest {
     val result = JsonSupport.anyToStringAnyMap(
       JsonSupport.parseObjectOrNull(reply)?.get("result")?.let(JsonSupport::jsonElementToValue),
     ).orEmpty()
-
-    @Suppress("UNCHECKED_CAST")
-    val tools = result["tools"] as List<Map<String, Any?>>
+    val tools = requireNotNull(JsonSupport.anyToStringAnyMapList(result["tools"]))
     assertEquals(listOf("read_evidence", "request_expansion"), tools.map { it["name"] })
   }
 

@@ -60,7 +60,7 @@ class FeatureTaskRuntimeCrashReconciler(
     if (!FeatureTaskRuntimeCrashLiveness.isConfirmedDead(supervisor.inspect(candidate.ownership))) {
       return@runCatching null
     }
-    val reason = interruptionReason(candidate)
+    val reason = interruptionReason()
     // The fenced reconcile write re-checks lease expiry inside the transaction against `now`, so a
     // lease extended between the scan and here (or another pass winning the race) returns false.
     val reconciled = database.transaction(dbOverride) {
@@ -87,7 +87,6 @@ class FeatureTaskRuntimeCrashReconciler(
 
   // Recorded exit status is not durably persisted on the row today, so lease expiry is the only
   // evidence available; the reason class stays open for a future exit-status source.
-  private fun interruptionReason(
-    @Suppress("UNUSED_PARAMETER") candidate: FeatureTaskRuntimeCrashReconciliationCandidate,
-  ): FeatureTaskRuntimeCrashReconciliationReason = FeatureTaskRuntimeCrashReconciliationReason.LEASE_EXPIRED
+  private fun interruptionReason(): FeatureTaskRuntimeCrashReconciliationReason =
+    FeatureTaskRuntimeCrashReconciliationReason.LEASE_EXPIRED
 }

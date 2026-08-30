@@ -1,11 +1,13 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffAssemblyRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
@@ -93,21 +95,23 @@ private fun FeatureTaskRuntimeRunLoop.assembleLaunchHandoff(
   repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
   resolvedBranchRecord: FeatureTaskRuntimeResolvedBranch?,
 ) = FeatureTaskRuntimeHandoffContract.assembleHandoff(
-  declaration = run.declaration,
-  runInvariants = run.request.runInvariants,
-  recordedOutputs = state.outputs(),
-  drivingVerdict = run.reentry?.drivingVerdict,
-  reentryGapCriteria = emptyList(),
-  priorGapMemory = priorGapMemoryFor(run, state),
-  durablyClosedCriterionRefs = durablyClosedCriterionRefs,
-  repairLedger = null,
-  repositoryCheckpoint = repositoryCheckpoint,
-  expectedRepositoryCheckpoint = expectedCheckpointForLaunch(run, repositoryCheckpoint)
-    ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
-  branchIdentity = resolvedBranchRecord?.branch,
-  baseBranch = resolvedBranchRecord?.baseBranch ?: "main",
-  validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
-  qualityGateSelection = qualityGateSelection(),
+  FeatureTaskRuntimeHandoffAssemblyRequest(
+    declaration = run.declaration,
+    runInvariants = run.request.runInvariants,
+    recordedOutputs = state.outputs(),
+    drivingVerdict = run.reentry?.drivingVerdict,
+    reentryGapCriteria = emptyList(),
+    priorGapMemory = priorGapMemoryFor(run, state),
+    durablyClosedCriterionRefs = durablyClosedCriterionRefs,
+    repairLedger = null,
+    repositoryCheckpoint = repositoryCheckpoint,
+    expectedRepositoryCheckpoint = expectedCheckpointForLaunch(run, repositoryCheckpoint)
+      ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
+    branchIdentity = resolvedBranchRecord?.branch,
+    baseBranch = resolvedBranchRecord?.baseBranch ?: "main",
+    validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
+    qualityGateSelection = qualityGateSelection(),
+  ),
 ).copy(recordedFindingVerdicts = recordedFindingVerdictsForFixHandoff(run, state))
 
 private fun expectedCheckpointForLaunch(
@@ -139,30 +143,32 @@ private fun FeatureTaskRuntimeRunLoop.composeLaunchPrompt(
   )
   depthResolution?.let { resolution -> persistResolvedReviewTier(run, resolution) }
   return FeatureTaskRuntimePhasePromptComposer.compose(
-    issueKey = run.request.issueKey,
-    briefing = briefing,
-    suppressDecomposition = isGoalContinuationRun(run.request),
-    codeReviewMode = executedTier,
-    reviewPassNumber = passNumber,
-    goalSubtaskReviewInput = run.goalReviewInput,
-    baselineUntrackedPaths = resolvedBranchRecord?.baselineUntrackedPaths.orEmpty(),
-    resolvedReviewTier = depthResolution?.let { executedTier },
-    reviewDecidingRule = depthResolution?.decidingRule,
-    repairLedger = handoff.repairLedger,
-    priorReviewContext = null,
-    priorSchemaFailure = priorCorrection?.schemaGateReason,
-    priorTerminalFailure = priorCorrection?.retryableTerminalReason,
-    priorFindingCoverage = priorCorrection?.findingCoverageReason,
-    correctiveRepairContext = priorCorrection?.correctiveRepairContext,
-    operatorBlockRetry = operatorBlockRetry
-      ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
-    implementationContinuation = implementationContinuationFor(run),
-    validationGateFindings = run.validationGateFindings,
-    validationGateTriagePlan = run.validationGateTriagePlan,
-    validationGateRepair = run.validationGateRepair,
-    validationGateTriage = run.validationGateTriage,
-    agentRunValidateFallback = run.agentRunValidateFallback,
-    packCollectAllCommand = packCollectAllCommand(run),
-    packBuildCommand = packBuildCommand(run),
+    FeatureTaskRuntimePhasePromptComposeInputs(
+      issueKey = run.request.issueKey,
+      briefing = briefing,
+      suppressDecomposition = isGoalContinuationRun(run.request),
+      codeReviewMode = executedTier,
+      reviewPassNumber = passNumber,
+      goalSubtaskReviewInput = run.goalReviewInput,
+      baselineUntrackedPaths = resolvedBranchRecord?.baselineUntrackedPaths.orEmpty(),
+      resolvedReviewTier = depthResolution?.let { executedTier },
+      reviewDecidingRule = depthResolution?.decidingRule,
+      repairLedger = handoff.repairLedger,
+      priorReviewContext = null,
+      priorSchemaFailure = priorCorrection?.schemaGateReason,
+      priorTerminalFailure = priorCorrection?.retryableTerminalReason,
+      priorFindingCoverage = priorCorrection?.findingCoverageReason,
+      correctiveRepairContext = priorCorrection?.correctiveRepairContext,
+      operatorBlockRetry = operatorBlockRetry
+        ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
+      implementationContinuation = implementationContinuationFor(run),
+      validationGateFindings = run.validationGateFindings,
+      validationGateTriagePlan = run.validationGateTriagePlan,
+      validationGateRepair = run.validationGateRepair,
+      validationGateTriage = run.validationGateTriage,
+      agentRunValidateFallback = run.agentRunValidateFallback,
+      packCollectAllCommand = packCollectAllCommand(run),
+      packBuildCommand = packBuildCommand(run),
+    ),
   ) + verifyFindingsSpecIntentSection(run)
 }

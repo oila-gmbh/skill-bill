@@ -114,13 +114,14 @@ class FeatureTaskRuntimeProsePhaseIoRunnerTest {
   }
 
   private fun proseHarness(outputFor: (String) -> String): RunnerHarness = runnerHarness(
-    launcher = RuntimeRecordingLauncher { request ->
-      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-      facts(outputFor(phaseId))
-    },
-    validator = realFeatureTaskRuntimePhaseOutputValidator,
-    agentAssignment = phasePerAgentAssignment(),
-    runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
+    RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator).copy(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(outputFor(phaseId))
+      },
+      validator = realFeatureTaskRuntimePhaseOutputValidator,
+      agentAssignment = phasePerAgentAssignment(),
+    ),
   )
 
   private fun seededThroughImplementHarness(outputFor: (String) -> String): RunnerHarness {

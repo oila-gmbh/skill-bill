@@ -255,7 +255,8 @@ class RemoveCliCommandTest {
 
   private fun decodeJsonObject(raw: String): Map<String, Any?> {
     val parsed = JsonSupport.parseObjectOrNull(raw) ?: error("invalid JSON: $raw")
-    @Suppress("UNCHECKED_CAST")
-    return (JsonSupport.jsonElementToValue(parsed) as? Map<String, Any?>) ?: error("not an object: $raw")
+    return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))) {
+      "not an object: $raw"
+    }
   }
 }

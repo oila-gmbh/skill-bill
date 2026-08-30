@@ -1,5 +1,6 @@
 package skillbill.install.apply
 
+import skillbill.agentaddon.AgentAddonPointer
 import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
 import skillbill.install.identity.installedSkillContentIdentity
 import skillbill.install.identity.requireMatchingSkillContentIdentity
@@ -12,6 +13,9 @@ import skillbill.install.model.RenderedSkill
 import skillbill.install.staging.GeneratedSupportPointer
 import skillbill.install.staging.InstallContentHashInputs
 import skillbill.install.staging.InternalStagingPreparation
+import skillbill.install.staging.PreparedInternalStaging
+import skillbill.install.staging.ReuseInstallStagingInput
+import skillbill.install.staging.StageInstalledSkillInput
 import skillbill.install.staging.agentAddonPointersForSkill
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
@@ -101,28 +105,45 @@ private fun materializeValidatedPlannedStaging(inputs: PlannedStagingMaterializa
     ),
   )
   validatePlannedStagingSource(inputs, currentHash)
+  return reuseOrFreshPlannedStaging(inputs, pointers, internal, agentAddonPointers, selectedPackSkills)
+}
+
+private fun reuseOrFreshPlannedStaging(
+  inputs: PlannedStagingMaterialization,
+  pointers: List<Pair<PlatformManifest, PointerSpec>>,
+  internal: PreparedInternalStaging,
+  agentAddonPointers: List<AgentAddonPointer>,
+  selectedPackSkills: List<InstallPlanSkill>,
+): RenderedSkill {
+  val plan = inputs.plan
+  val skill = inputs.skill
+  val intent = inputs.intent
   val expectedStagedNames = internal.sidecarNames + pointers.map { (_, pointer) -> pointer.name } +
     internal.supportPointers.map { pointer -> pointer.name } + agentAddonPointers.map { it.name } +
     SKILL_CONTENT_IDENTITY_FILENAME
   if (isReusableInstallStaging(inputs.expectedStagingDir, intent.contentHash, expectedStagedNames)) {
     return reuseInstallStaging(
-      sourceSkillDir = inputs.resolvedSource,
-      finalStagingDir = inputs.expectedStagingDir,
-      contentHash = intent.contentHash,
-      applicablePointers = pointers,
-      generatedSupportPointers = internal.supportPointers,
-      internalSidecarNames = internal.sidecarNames,
-      agentAddonPointerNames = agentAddonPointers.map { it.name },
+      ReuseInstallStagingInput(
+        sourceSkillDir = inputs.resolvedSource,
+        finalStagingDir = inputs.expectedStagingDir,
+        contentHash = intent.contentHash,
+        applicablePointers = pointers,
+        generatedSupportPointers = internal.supportPointers,
+        internalSidecarNames = internal.sidecarNames,
+        agentAddonPointerNames = agentAddonPointers.map { it.name },
+      ),
     )
   }
   val staged = stageInstalledSkill(
-    repoRoot = plan.request.repoRoot,
-    sourceSkillDir = inputs.resolvedSource,
-    home = plan.request.home,
-    manifests = inputs.platformManifests,
-    skillsRoot = plan.request.targetPaths.skillsRoot,
-    selectedPackSkills = selectedPackSkills,
-    selectedPlatformSlugs = selectedPlatformSlugs(plan, inputs.platformManifests),
+    StageInstalledSkillInput(
+      repoRoot = plan.request.repoRoot,
+      sourceSkillDir = inputs.resolvedSource,
+      home = plan.request.home,
+      manifests = inputs.platformManifests,
+      skillsRoot = plan.request.targetPaths.skillsRoot,
+      selectedPackSkills = selectedPackSkills,
+      selectedPlatformSlugs = selectedPlatformSlugs(plan, inputs.platformManifests),
+    ),
   )
   val stagedDir = staged.stagingDir.toAbsolutePath().normalize()
   require(staged.contentHash == intent.contentHash && stagedDir == inputs.expectedStagingDir) {

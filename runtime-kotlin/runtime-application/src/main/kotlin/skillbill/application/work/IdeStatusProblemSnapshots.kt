@@ -13,10 +13,12 @@ internal object IdeStatusProblemSnapshots {
     ProblemParts(
       repositoryIdentity = "repo-root-realpath-v1:invalid",
       observedAt = observedAt,
-      code = IdeStatusProblemCode.INVALID_REPOSITORY_INPUT,
-      message = message,
-      summary = message,
-      stepLabel = "Invalid repository",
+      content = ProblemContent(
+        code = IdeStatusProblemCode.INVALID_REPOSITORY_INPUT,
+        message = message,
+        summary = message,
+        stepLabel = "Invalid repository",
+      ),
     ),
   )
 
@@ -24,10 +26,12 @@ internal object IdeStatusProblemSnapshots {
     ProblemParts(
       repositoryIdentity = "repo-root-realpath-v1:missing",
       observedAt = observedAt,
-      code = IdeStatusProblemCode.MISSING_REPOSITORY_IDENTITY,
-      message = message,
-      summary = message,
-      stepLabel = "Missing repository identity",
+      content = ProblemContent(
+        code = IdeStatusProblemCode.MISSING_REPOSITORY_IDENTITY,
+        message = message,
+        summary = message,
+        stepLabel = "Missing repository identity",
+      ),
     ),
   )
 
@@ -35,10 +39,12 @@ internal object IdeStatusProblemSnapshots {
     ProblemParts(
       repositoryIdentity = repositoryIdentity,
       observedAt = observedAt,
-      code = IdeStatusProblemCode.ABSENT_DATABASE,
-      message = "Skill Bill database is not present.",
-      summary = "Skill Bill database is not present for this repository.",
-      stepLabel = "Database unavailable",
+      content = ProblemContent(
+        code = IdeStatusProblemCode.ABSENT_DATABASE,
+        message = "Skill Bill database is not present.",
+        summary = "Skill Bill database is not present for this repository.",
+        stepLabel = "Database unavailable",
+      ),
       exitLifecycle = IdeStatusLifecycleState.IDLE,
       freshness = IdeStatusFreshness.UNKNOWN,
     ),
@@ -54,10 +60,12 @@ internal object IdeStatusProblemSnapshots {
       ProblemParts(
         repositoryIdentity = repositoryIdentity,
         observedAt = observedAt,
-        code = IdeStatusProblemCode.NO_MATCHING_WORK,
-        message = message,
-        summary = message,
-        stepLabel = "No matching work",
+        content = ProblemContent(
+          code = IdeStatusProblemCode.NO_MATCHING_WORK,
+          message = message,
+          summary = message,
+          stepLabel = "No matching work",
+        ),
       ),
     )
   }
@@ -71,10 +79,12 @@ internal object IdeStatusProblemSnapshots {
     ProblemParts(
       repositoryIdentity = repositoryIdentity,
       observedAt = observedAt,
-      code = IdeStatusProblemCode.INCOMPATIBLE_RECORD,
-      message = message,
-      summary = message,
-      stepLabel = "Incompatible record",
+      content = ProblemContent(
+        code = IdeStatusProblemCode.INCOMPATIBLE_RECORD,
+        message = message,
+        summary = message,
+        stepLabel = "Incompatible record",
+      ),
       workflowId = workflowId,
       exitLifecycle = IdeStatusLifecycleState.IDLE,
       freshness = IdeStatusFreshness.UNKNOWN,
@@ -85,21 +95,24 @@ internal object IdeStatusProblemSnapshots {
     repositoryIdentity = parts.repositoryIdentity,
     workflowId = parts.workflowId,
     lifecycleState = parts.exitLifecycle,
-    currentStep = IdeStatusStep(id = "none", label = parts.stepLabel),
+    currentStep = IdeStatusStep(id = "none", label = parts.content.stepLabel),
     updatedAt = parts.observedAt,
     freshness = parts.freshness,
-    summary = parts.summary,
-    problem = IdeStatusProblem(code = parts.code, message = parts.message),
+    summary = parts.content.summary,
+    problem = IdeStatusProblem(code = parts.content.code, message = parts.content.message),
   )
 
-  @Suppress("LongParameterList") // private problem bag; every field maps onto IdeStatusSnapshot
-  private data class ProblemParts(
-    val repositoryIdentity: String,
-    val observedAt: Instant,
+  private data class ProblemContent(
     val code: IdeStatusProblemCode,
     val message: String,
     val summary: String,
     val stepLabel: String,
+  )
+
+  private data class ProblemParts(
+    val repositoryIdentity: String,
+    val observedAt: Instant,
+    val content: ProblemContent,
     val workflowId: String? = null,
     val exitLifecycle: IdeStatusLifecycleState = IdeStatusLifecycleState.IDLE,
     val freshness: IdeStatusFreshness = IdeStatusFreshness.FRESH,

@@ -2,9 +2,14 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.diff.DiffResolverPort
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import java.util.logging.Level
+import java.util.logging.Logger
+
+private val diffResolverLog: Logger = Logger.getLogger(FileSystemDiffResolver::class.java.name)
 
 @Inject
 class FileSystemDiffResolver : DiffResolverPort {
@@ -35,13 +40,20 @@ class FileSystemDiffResolver : DiffResolverPort {
       } else {
         null
       }
-    } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") e: Exception) {
+    } catch (error: IOException) {
+      diffResolverLog.log(
+        Level.WARNING,
+        "runProcess failed args=$args workDir=$workDir",
+        error,
+      )
+      null
+    } catch (error: InterruptedException) {
+      Thread.currentThread().interrupt()
       null
     } finally {
       try {
         Files.deleteIfExists(outputFile)
-      } catch (@Suppress("TooGenericExceptionCaught", "SwallowedException") _: Exception) {
-        // Deletion failure on a temp file is non-fatal; the OS will reclaim it on process exit.
+      } catch (_: IOException) {
       }
     }
   }

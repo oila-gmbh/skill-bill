@@ -3,9 +3,13 @@ package skillbill.application
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.featuretask.FeatureTaskRuntimeRunState
 import skillbill.application.featuretask.REVIEW_INVALIDATION_AGENT_ID
+import skillbill.application.featuretask.discardStaleReentry
+import skillbill.application.featuretask.edgeIterationCount
+import skillbill.application.featuretask.isLoopLiveClaimed
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
+import skillbill.application.featuretask.spanBlockedByEntryGate
 import skillbill.application.featuretask.transitionsFor
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
@@ -68,7 +72,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `a durable review completed before audit is invalidated so audit runs first and review re-runs`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     seedThroughImplement(harness)
     // The pre-reorder ordering ran review before audit, and burned the review fix-loop budget doing
     // it: the re-run must still get a fresh per-visit budget rather than re-blocking immediately.
@@ -90,21 +94,22 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     var firstRelaunchedReviewPassNumber: Int? = null
     lateinit var harness: RunnerHarness
     harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = reviewFixRuntimeConfig(2),
-      launcher = RuntimeRecordingLauncher { request ->
-        val prompt = requireNotNull(request.skillRunRequest.promptOverride)
-        when (phaseIdFromPrompt(prompt)) {
-          "implement_fix" -> {
-            firstRelaunchedReviewPassNumber = harness.recorder
-              .loadPhaseRecords(WORKFLOW_ID)
-              .orEmpty()["review"]
-              ?.reviewPassNumber
-            facts(FRESH_IMPLEMENT_FIX_OUTPUT)
+      reviewFixRuntimeConfig(2).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+          when (phaseIdFromPrompt(prompt)) {
+            "implement_fix" -> {
+              firstRelaunchedReviewPassNumber = harness.recorder
+                .loadPhaseRecords(WORKFLOW_ID)
+                .orEmpty()["review"]
+                ?.reviewPassNumber
+              facts(FRESH_IMPLEMENT_FIX_OUTPUT)
+            }
+            else -> facts(defaultPhaseOutput(request))
           }
-          else -> facts(defaultPhaseOutput(request))
-        }
-      },
+        },
+      ),
     )
     seedThroughImplement(harness)
     harness.seedPhase("review", "completed", 3, phaseAgent("review"), CLEAN_REVIEW_OUTPUT)
@@ -122,11 +127,13 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   fun `audit gate invalidation is durable across the audit completion crash window`() {
     var failAuditLaunch = true
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "audit" && failAuditLaunch) spawnFailedFacts() else facts(defaultPhaseOutput(request))
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "audit" && failAuditLaunch) spawnFailedFacts() else facts(defaultPhaseOutput(request))
+        },
+      ),
     )
     seedThroughImplement(harness)
     harness.seedPhase("review", "completed", 2, phaseAgent("review"), CLEAN_REVIEW_OUTPUT)
@@ -153,7 +160,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `an explicit legacy pass two is replaced by a fresh pass one`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     seedThroughImplement(harness)
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
@@ -202,14 +209,15 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   @Test
   fun `a migration resume cannot complete while the blocker awaits verification review`() {
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
+      RuntimeHarnessConfig(
         reviewDriver = reviewFixDriver(2),
+      ).copy(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "verify_findings") spawnFailedFacts() else facts(defaultPhaseOutput(request))
+        },
       ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "verify_findings") spawnFailedFacts() else facts(defaultPhaseOutput(request))
-      },
     )
     seedThroughImplement(harness)
     harness.seedPhase("review", "completed", 3, phaseAgent("review"), CLEAN_REVIEW_OUTPUT)
@@ -231,12 +239,14 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `a legacy in-flight review fix re-entry does not step over the audit that never ran`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     seedThroughImplement(harness)
     harness.seedPhase("review", "completed", 1, phaseAgent("review"), CLEAN_REVIEW_OUTPUT)
     // A prior run under the old ordering fired review_fix and crashed with implement_fix in flight.
     harness.seedLoopEdge("implement_fix", "review_fix", 1)
-    harness.seedReentryPhase("implement_fix", "running", 1, phaseAgent("implement"), null, "review_fix", 1)
+    harness.seedReentryPhase(
+      SeedReentryPhaseSeed("implement_fix", "running", 1, phaseAgent("implement"), null, "review_fix", 1),
+    )
 
     val report = harness.runner.run(harness.request())
 
@@ -258,17 +268,19 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   fun `an undecidable audit fails the phase-output schema rather than wedging the run behind the gate`() {
     var auditLaunches = 0
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      validator = realFeatureTaskRuntimePhaseOutputValidator,
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "audit") {
-          auditLaunches += 1
-          facts(if (auditLaunches == 1) UNDECIDABLE_AUDIT_OUTPUT else defaultPhaseOutput(request))
-        } else {
-          facts(defaultPhaseOutput(request))
-        }
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        validator = realFeatureTaskRuntimePhaseOutputValidator,
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "audit") {
+            auditLaunches += 1
+            facts(if (auditLaunches == 1) UNDECIDABLE_AUDIT_OUTPUT else defaultPhaseOutput(request))
+          } else {
+            facts(defaultPhaseOutput(request))
+          }
+        },
+      ),
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -288,11 +300,13 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   @Test
   fun `an audit with satisfied verdict and audit prose advances to review`() {
     val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "audit") SYNONYM_SATISFIED_AUDIT_OUTPUT else defaultPhaseOutput(request))
-      },
+      RuntimeHarnessConfig(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          facts(if (phaseId == "audit") SYNONYM_SATISFIED_AUDIT_OUTPUT else defaultPhaseOutput(request))
+        },
+      ),
     )
 
     val report = harness.runner.run(harness.request())
@@ -306,7 +320,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `a resumed gate migration does not charge the fresh review with the legacy attempt watermark`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     seedThroughImplement(harness)
     // The durable state an earlier migrating load left behind: the review tombstone carrying the
     // legacy generation's exhausted attempt watermark. That load's in-memory generation reset does
@@ -330,15 +344,14 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `a dropped legacy review fix re-entry does not spend the fresh generation's fix pass`() {
-    val harness = runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = reviewFixRuntimeConfig(2),
-    )
+    val harness = runnerHarness(reviewFixRuntimeConfig(2).copy(agentAssignment = phasePerAgentAssignment()))
     seedThroughImplement(harness)
     // A legacy run fired review_fix once and left implement_fix in flight; review never durably
     // completed, so there is no tombstone and the re-entry is dropped for its gate-blocked span.
     harness.seedLoopEdge("implement_fix", "review_fix", 1)
-    harness.seedReentryPhase("implement_fix", "running", 1, phaseAgent("implement"), null, "review_fix", 1)
+    harness.seedReentryPhase(
+      SeedReentryPhaseSeed("implement_fix", "running", 1, phaseAgent("implement"), null, "review_fix", 1),
+    )
 
     harness.runner.run(harness.request())
 
@@ -406,7 +419,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     val standalone = transitionsFor(runnerHarness().request())
     val goalChild = transitionsFor(
       runnerHarness(
-        runtimeConfig = RuntimeHarnessConfig(
+        RuntimeHarnessConfig(
           goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
             parentIssueKey = "SKILL-0",
             subtaskId = 1,
@@ -429,7 +442,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `a review generation restart over retained evidence advances without discarding the prior generation`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     seedThroughImplement(harness)
     // The observed database state: the capped generation retained review evidence at both attempts
     // with differing bytes, and the watermark is about to rewind below them.
@@ -453,11 +466,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     assertTrue(
       LEGACY_FIRST_REVIEW_PAYLOAD.contentEquals(
         harness.io.database.producerEvidenceAt(
-          WORKFLOW_ID,
-          "review",
-          1,
-          0,
-          phaseAgent("review"),
+          ProducerEvidenceKey(WORKFLOW_ID, "review", 0, 1, phaseAgent("review")),
         )?.payload,
       ),
       "the prior generation's attempt-1 evidence must survive byte-for-byte",
@@ -465,21 +474,13 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     assertTrue(
       LEGACY_SECOND_REVIEW_PAYLOAD.contentEquals(
         harness.io.database.producerEvidenceAt(
-          WORKFLOW_ID,
-          "review",
-          2,
-          0,
-          phaseAgent("review"),
+          ProducerEvidenceKey(WORKFLOW_ID, "review", 0, 2, phaseAgent("review")),
         )?.payload,
       ),
       "the prior generation's attempt-2 evidence must survive byte-for-byte",
     )
     val fresh = harness.io.database.producerEvidenceAt(
-      WORKFLOW_ID,
-      "review",
-      1,
-      1,
-      phaseAgent("review"),
+      ProducerEvidenceKey(WORKFLOW_ID, "review", 1, 1, phaseAgent("review")),
     )
     assertTrue(
       fresh != null && !LEGACY_FIRST_REVIEW_PAYLOAD.contentEquals(fresh.payload),
@@ -494,7 +495,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `an already-tombstoned workflow reconciles its evidence generation with no operator surgery`() {
-    val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
+    val harness = runnerHarness(RuntimeHarnessConfig(agentAssignment = phasePerAgentAssignment()))
     seedThroughImplement(harness)
     seedReviewEvidence(harness, attempt = 1, payload = LEGACY_FIRST_REVIEW_PAYLOAD)
     harness.seedPhase(
@@ -561,13 +562,15 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     ).forEach { producedOutputs ->
       var auditLaunches = 0
       val harness = runnerHarness(
-        agentAssignment = phasePerAgentAssignment(),
-        launcher = RuntimeRecordingLauncher { request ->
-          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-          if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-          auditLaunches += 1
-          facts(gapsFoundAuditOutput(producedOutputs))
-        },
+        RuntimeHarnessConfig(
+          agentAssignment = phasePerAgentAssignment(),
+          launcher = RuntimeRecordingLauncher { request ->
+            val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+            if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+            auditLaunches += 1
+            facts(gapsFoundAuditOutput(producedOutputs))
+          },
+        ),
       )
 
       assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))

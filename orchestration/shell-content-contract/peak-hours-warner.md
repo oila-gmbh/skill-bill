@@ -5,7 +5,8 @@ surface.
 
 After any required update check and before intake, confirmation, workflow open,
 or child continuation, read the optional peak-hours operator config from the
-machine-global config at `~/.config/skill-bill/config.json` (or the
+machine-global config at the default skill-bill config file under the user config
+directory (or the
 `SKILL_BILL_CONFIG_PATH` override).
 
 If the config file is absent, or if it does not contain a `peak_hours` section,

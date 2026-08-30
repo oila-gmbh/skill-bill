@@ -15,12 +15,7 @@ private const val DRAIN_TIMEOUT_MILLIS = 5_000L
  */
 internal fun drainTelemetryOnCompletion(telemetryService: TelemetryService, dbOverride: String?) {
   val worker = Thread {
-    @Suppress("SwallowedException", "TooGenericExceptionCaught")
-    try {
-      telemetryService.autoSync(dbOverride)
-    } catch (error: Exception) {
-      // Intentionally silent: telemetry never speaks on a completed run's output channels.
-    }
+    runCatching { telemetryService.autoSync(dbOverride) }
   }
   worker.isDaemon = true
   worker.start()

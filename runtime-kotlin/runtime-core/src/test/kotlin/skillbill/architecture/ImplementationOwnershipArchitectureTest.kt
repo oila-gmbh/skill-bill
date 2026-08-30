@@ -171,7 +171,9 @@ class ImplementationOwnershipArchitectureTest {
         .filter { path -> path.isRegularFile() && path.extension == "kt" }
         .filter { path ->
           val name = path.fileName.toString()
-          name == "RuntimeComponent.kt" || name.startsWith("RuntimeComponentBindings")
+          name == "RuntimeComponent.kt" ||
+            name.startsWith("RuntimeComponentBindings") ||
+            name.startsWith("RuntimeComponentProvides")
         }
         .toList()
         .toSet()
@@ -314,9 +316,21 @@ class ImplementationOwnershipArchitectureTest {
 
   @Test
   fun `runtime core binds install capability adapters directly`() {
-    val component = runtimeRoot
-      .resolve("runtime-core/src/main/kotlin/skillbill/di/RuntimeComponent.kt")
-      .readText()
+    val compositionSources = listOf(
+      "RuntimeComponent.kt",
+      "RuntimeComponentProvides1.kt",
+      "RuntimeComponentProvides2.kt",
+      "RuntimeComponentProvides3.kt",
+      "RuntimeComponentProvides4.kt",
+      "RuntimeComponentProvides5.kt",
+      "RuntimeComponentProvides6.kt",
+      "RuntimeComponentProvides7.kt",
+      "RuntimeComponentProvides8.kt",
+      "RuntimeComponentProvides9.kt",
+      "RuntimeComponentProvides10.kt",
+    ).joinToString("\n") { fileName ->
+      runtimeRoot.resolve("runtime-core/src/main/kotlin/skillbill/di/$fileName").readText()
+    }
 
     listOf(
       "FileSystemInstallPlanningFacts",
@@ -329,7 +343,7 @@ class ImplementationOwnershipArchitectureTest {
       "FileSystemInstallMcpRegistration",
     ).forEach { adapterName ->
       assertTrue(
-        adapterName in component,
+        adapterName in compositionSources,
         "RuntimeComponent must bind direct install capability adapter $adapterName.",
       )
     }
@@ -342,7 +356,7 @@ class ImplementationOwnershipArchitectureTest {
       "McpRegistrationGateway",
     ).forEach { retiredName ->
       assertTrue(
-        retiredName !in component,
+        retiredName !in compositionSources,
         "RuntimeComponent must not bind retired install gateway $retiredName.",
       )
     }

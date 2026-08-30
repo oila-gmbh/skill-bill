@@ -2,6 +2,8 @@ package skillbill.application.review
 
 import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.review.model.ParallelCodeReviewResult
+import skillbill.application.review.model.ReviewClaimVerificationRunRequest
+import skillbill.application.review.model.ReviewSpecAdjudicationRunRequest
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -46,16 +48,14 @@ internal class ParallelCodeReviewRunnerVerificationStages(
       emptyClaimsVerificationShortCircuit(reviewRunId, boundaries, verificationInput, existing)?.let { return it }
     }
     val outcome = ReviewClaimVerificationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
-      packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
-      reviewOutput = verificationInput,
-      findings = claims,
-      existingVerdicts = existing,
-      mode = initial.resolvedMode,
-      budget = initial.budget,
-      brokerId = initial.agent1Id,
-      repoRoot = initial.request.repoRoot,
-      timeout = initial.request.timeout,
-      promptSuffix = initial.request.selectedAgentAddonsSection,
+      ReviewClaimVerificationRunRequest(
+        packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
+        reviewOutput = verificationInput,
+        findings = claims,
+        existingVerdicts = existing,
+        mode = initial.resolvedMode,
+        launch = initial.delegatedStageLaunch(),
+      ),
     )
     return persistClaimVerificationOutcome(reviewRunId, claims, existing, outcome)
   }
@@ -86,15 +86,13 @@ internal class ParallelCodeReviewRunnerVerificationStages(
       ) { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
     }
     val outcome = ReviewSpecAdjudicationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
-      packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
-      findings = claims,
-      existingVerdicts = existing,
-      projection = projection,
-      budget = initial.budget,
-      brokerId = initial.agent1Id,
-      repoRoot = initial.request.repoRoot,
-      timeout = initial.request.timeout,
-      promptSuffix = initial.request.selectedAgentAddonsSection,
+      ReviewSpecAdjudicationRunRequest(
+        packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
+        findings = claims,
+        existingVerdicts = existing,
+        projection = projection,
+        launch = initial.delegatedStageLaunch(),
+      ),
     )
     return persistAdjudication(reviewRunId, outcome)
   }

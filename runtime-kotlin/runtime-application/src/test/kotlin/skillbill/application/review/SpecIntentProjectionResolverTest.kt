@@ -336,7 +336,6 @@ class SpecIntentProjectionResolverTest {
       ),
     ).single()
     assertEquals(criteria, launch.assignment.criteriaReferences)
-    @Suppress("UNCHECKED_CAST")
     val launchCriteria = GovernedReviewLaunch(
       launch.assignment,
       launch.packet,
@@ -344,7 +343,10 @@ class SpecIntentProjectionResolverTest {
       launch.rubrics.single().body,
       launch.brokerId,
       ReviewContextBudgetPolicy.DEFAULT,
-    ).toLaunchEnvelope().asWireMap()["criteria_references"] as List<String>
+    ).toLaunchEnvelope().asWireMap().let { wireMap ->
+      @Suppress("UNCHECKED_CAST")
+      wireMap["criteria_references"] as List<String>
+    }
     assertEquals(criteria, launchCriteria)
     assertTrue(launchCriteria.none { it == "independent branch-diff specialist review" })
   }

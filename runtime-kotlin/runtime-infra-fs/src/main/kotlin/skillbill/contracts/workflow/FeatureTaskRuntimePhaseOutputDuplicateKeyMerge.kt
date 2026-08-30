@@ -1,10 +1,9 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.core.JsonFactory
 import com.fasterxml.jackson.core.JsonParseException
 import com.fasterxml.jackson.core.JsonParser
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.core.JsonToken
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -14,6 +13,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
+import kotlin.coroutines.cancellation.CancellationException
 
 internal data class DuplicateKeyMerge(
   val node: JsonNode,
@@ -83,7 +83,9 @@ internal object DuplicateKeyMergeParser {
         firstDuplicateOffset = tracker.firstDuplicateOffset.coerceAtLeast(0),
       )
     }
-  } catch (_: Exception) {
+  } catch (cancellation: CancellationException) {
+    throw cancellation
+  } catch (_: JsonProcessingException) {
     null
   }
 

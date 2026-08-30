@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.nativeagent.composition
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
@@ -10,7 +9,9 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
+import skillbill.contracts.logSchemaLoadFailure
 import skillbill.error.InvalidNativeAgentCompositionSchemaError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Level
@@ -49,7 +50,7 @@ object NativeAgentCompositionSchemaValidator {
   fun validate(yamlText: String, sourceLabel: String) {
     val instance: JsonNode = try {
       yamlMapper.readTree(yamlText)
-    } catch (error: Throwable) {
+    } catch (error: JsonProcessingException) {
       throw InvalidNativeAgentCompositionSchemaError(
         sourceLabel = sourceLabel,
         reason = "could not parse YAML for schema validation: ${error.message.orEmpty()}",
@@ -144,6 +145,7 @@ object NativeAgentCompositionSchemaValidator {
   )
 
   private fun loadSchema(): JsonSchema {
+    var failure: Throwable? = null
     try {
       val yamlText = readSchemaText()
       val yamlNode = yamlMapper.readTree(yamlText)
@@ -151,22 +153,35 @@ object NativeAgentCompositionSchemaValidator {
       val jsonText = jsonMapper.writeValueAsString(yamlNode)
       val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
       return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
-    } catch (error: Throwable) {
-      // F-403 (carried over from 2a/2b): a misbuilt deploy artifact
-      // (missing classpath resource, corrupt YAML, or a shadowed copy)
-      // would otherwise silently disable every native-agent parse
-      // seam — the validator throws on first use but there is no
-      // boot-time signal.
-      log.log(
-        Level.SEVERE,
-        "Failed to load canonical native-agent composition schema: " +
-          "classpath='${NativeAgentCompositionSchemaPaths.CLASSPATH_RESOURCE}' " +
-          "repoRelativePath='${NativeAgentCompositionSchemaPaths.REPO_RELATIVE_PATH}' " +
-          "errorType='${error::class.qualifiedName}' message='${error.message.orEmpty()}'",
+    } catch (error: InvalidNativeAgentCompositionSchemaError) {
+      logSchemaLoadFailure(
+        log,
+        "native-agent composition",
+        NativeAgentCompositionSchemaPaths.CLASSPATH_RESOURCE,
+        NativeAgentCompositionSchemaPaths.REPO_RELATIVE_PATH,
         error,
       )
-      throw error
+      failure = error
+    } catch (error: IOException) {
+      logSchemaLoadFailure(
+        log,
+        "native-agent composition",
+        NativeAgentCompositionSchemaPaths.CLASSPATH_RESOURCE,
+        NativeAgentCompositionSchemaPaths.REPO_RELATIVE_PATH,
+        error,
+      )
+      failure = error
+    } catch (error: JsonProcessingException) {
+      logSchemaLoadFailure(
+        log,
+        "native-agent composition",
+        NativeAgentCompositionSchemaPaths.CLASSPATH_RESOURCE,
+        NativeAgentCompositionSchemaPaths.REPO_RELATIVE_PATH,
+        error,
+      )
+      failure = error
     }
+    throw failure
   }
 
   private fun readSchemaText(): String {

@@ -26,7 +26,7 @@ internal object FeatureTaskRuntimePhaseSafetyPolicy {
    */
   fun changedPaths(status: String): List<String> = porcelainEntries(status)
     .mapNotNull(PorcelainEntry::retainedPath)
-    .filterNot(FeatureTaskRuntimeCheckpointScope::isRuntimePrivatePath)
+    .filterNot(::isRuntimePrivatePath)
     .distinct()
     .sorted()
 
@@ -36,7 +36,7 @@ internal object FeatureTaskRuntimePhaseSafetyPolicy {
    */
   fun deletedPaths(status: String): List<String> = porcelainEntries(status)
     .mapNotNull(PorcelainEntry::removedPath)
-    .filterNot(FeatureTaskRuntimeCheckpointScope::isRuntimePrivatePath)
+    .filterNot(::isRuntimePrivatePath)
     .distinct()
     .sorted()
 

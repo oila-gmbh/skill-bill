@@ -1,8 +1,6 @@
 package skillbill.cli
 
-import kotlinx.serialization.json.JsonElement
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryOwnedPathsGitOperations
@@ -147,11 +145,6 @@ private fun cliDecompositionFixture(): CliDecompositionFixture {
     secondSubtaskSpec = secondSubtaskSpec,
   )
 }
-
-private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
-  JsonElement.serializer(),
-  JsonSupport.valueToJsonElement(value),
-)
 
 private object TestWorkflowGitOperations :
   WorkflowGitOperations,

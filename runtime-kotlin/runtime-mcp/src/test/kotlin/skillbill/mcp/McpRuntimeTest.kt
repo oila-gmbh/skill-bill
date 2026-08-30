@@ -36,7 +36,6 @@ import skillbill.mcp.lifecycle.qualityCheckFinished
 import skillbill.mcp.lifecycle.qualityCheckStarted
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
-import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
@@ -890,11 +889,6 @@ private fun disabledTelemetryEnvironment(tempDir: Path): Map<String, String> {
     CONFIG_ENVIRONMENT_KEY to configPath.toString(),
   )
 }
-
-private fun Map<String, String>.withTestTelemetryProxy(): Map<String, String> =
-  this + (TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to TEST_TELEMETRY_PROXY_URL)
-
-private const val TEST_TELEMETRY_PROXY_URL = "http://127.0.0.1:9/skill-bill-test-telemetry"
 
 private fun seedLearningScenario(tempDir: Path, env: Map<String, String>) {
   val dbPath = tempDir.resolve("metrics.db")

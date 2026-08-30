@@ -9,8 +9,7 @@ import skillbill.scaffold.policy.scaffold.model.PlatformPackSelection
 
 /**
  * SKILL-52.2 subtask 2 (Task 11): platform-pack-resolution helpers split out of
- * `ScaffoldPayloadMapPolicy` so each file stays under the detekt `TooManyFunctions` threshold
- * and each function stays under the per-function `ThrowsCount` cap. See the doc comment in
+ * `ScaffoldPayloadMapPolicy` so each file stays small and focused. See the doc comment in
  * `ScaffoldPayloadMapPolicy.kt` for the relocation rationale.
  */
 

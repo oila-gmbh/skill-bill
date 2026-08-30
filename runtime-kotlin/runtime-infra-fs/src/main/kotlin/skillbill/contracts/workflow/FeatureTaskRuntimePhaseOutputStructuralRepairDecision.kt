@@ -1,5 +1,3 @@
-@file:Suppress("TooGenericExceptionCaught", "LongMethod")
-
 package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.databind.JsonNode

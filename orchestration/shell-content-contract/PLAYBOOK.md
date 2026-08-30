@@ -272,8 +272,8 @@ The shell loader, validator, and stack-routing playbook all share a common
 discovery algorithm:
 
 1. Walk `platform-packs/` for immediate subdirectories, resolving that root
-   from the skill-adjacent installed `platform-packs` link (or
-   `~/.skill-bill/platform-packs/` / the install-published review catalog) —
+   from the skill-adjacent installed `platform-packs` link (or the
+   skill-bill install root `platform-packs` tree / the install-published review catalog) —
    not from the reviewed repository unless it is the Skill Bill source tree.
 2. For each candidate slug, load `platform-packs/<slug>/platform.yaml` via the
    loader. Loud-fail rules apply; missing content must name the slot key and

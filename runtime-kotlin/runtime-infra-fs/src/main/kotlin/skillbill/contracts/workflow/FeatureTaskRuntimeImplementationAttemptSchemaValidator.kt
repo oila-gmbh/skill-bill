@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
@@ -11,8 +10,10 @@ import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidFeatureTaskRuntimeImplementationAttemptSchemaError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Draft 2020-12 validator for the durable feature-task-runtime implementation-attempt history. Any
@@ -68,7 +69,21 @@ private fun loadImplementationAttemptSchemaDocument(): JsonNode = try {
   yamlNode
 } catch (error: InvalidFeatureTaskRuntimeImplementationAttemptSchemaError) {
   throw error
-} catch (error: Exception) {
+} catch (error: CancellationException) {
+  throw error
+} catch (error: JsonProcessingException) {
+  throw InvalidFeatureTaskRuntimeImplementationAttemptSchemaError(
+    sourceLabel = FeatureTaskRuntimeImplementationAttemptSchemaPaths.CLASSPATH_RESOURCE,
+    reason = error.message ?: error::class.simpleName.orEmpty(),
+    cause = error,
+  )
+} catch (error: IOException) {
+  throw InvalidFeatureTaskRuntimeImplementationAttemptSchemaError(
+    sourceLabel = FeatureTaskRuntimeImplementationAttemptSchemaPaths.CLASSPATH_RESOURCE,
+    reason = error.message ?: error::class.simpleName.orEmpty(),
+    cause = error,
+  )
+} catch (error: IllegalArgumentException) {
   throw InvalidFeatureTaskRuntimeImplementationAttemptSchemaError(
     sourceLabel = FeatureTaskRuntimeImplementationAttemptSchemaPaths.CLASSPATH_RESOURCE,
     reason = error.message ?: error::class.simpleName.orEmpty(),

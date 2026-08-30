@@ -2,6 +2,7 @@ package skillbill.scaffold
 
 import skillbill.error.InvalidScaffoldPayloadError
 import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRequest
 import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
 import skillbill.scaffold.rendering.inferSkillDescription
 import skillbill.scaffold.rendering.renderContentBody
@@ -238,10 +239,12 @@ private fun seedKotlinPack(repo: Path) {
   Files.writeString(
     packRoot.resolve("platform.yaml"),
     renderPlatformPackManifest(
-      platform = "kotlin",
-      displayName = "Kotlin",
-      strongSignals = listOf(".kt"),
-      baselineContentPath = "code-review/bill-kotlin-code-review/content.md",
+      PlatformPackManifestRenderRequest(
+        platform = "kotlin",
+        displayName = "Kotlin",
+        strongSignals = listOf(".kt"),
+        baselineContentPath = "code-review/bill-kotlin-code-review/content.md",
+      ),
     ),
   )
   Files.writeString(
@@ -258,10 +261,12 @@ private fun seedKmpPack(repo: Path) {
   Files.writeString(
     packRoot.resolve("platform.yaml"),
     renderPlatformPackManifest(
-      platform = "kmp",
-      displayName = "KMP",
-      strongSignals = listOf(".kt"),
-      baselineContentPath = "code-review/bill-kmp-code-review/content.md",
+      PlatformPackManifestRenderRequest(
+        platform = "kmp",
+        displayName = "KMP",
+        strongSignals = listOf(".kt"),
+        baselineContentPath = "code-review/bill-kmp-code-review/content.md",
+      ),
     ),
   )
   Files.writeString(

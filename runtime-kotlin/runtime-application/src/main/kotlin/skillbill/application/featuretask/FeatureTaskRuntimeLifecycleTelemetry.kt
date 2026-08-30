@@ -1,41 +1,19 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.model.FeatureTaskRuntimeCrashReconciliationResult
+import skillbill.application.featuretask.model.FeatureTaskRuntimeFinishedTelemetryContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.telemetry.LifecycleTelemetryService
-import skillbill.application.telemetry.model.FeatureTaskRuntimeFindingVerificationTelemetry
-import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
-import skillbill.application.telemetry.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
-import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 
-private val emptyRegenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry =
-  { FeatureTaskRuntimeRegenerationTelemetry() }
-
-private val emptyCrashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult =
-  { FeatureTaskRuntimeCrashReconciliationResult.NONE }
-
-/**
- * Runtime-owned lifecycle telemetry seam for the feature-task-runtime phase loop. The runtime mints
- * and emits the started/finished events from its own per-phase outcomes, never the agent. This is
- * additive: the per-phase records and ledger remain the authoritative observability source.
- *
- * Every emission is failure-isolated here (logged, never swallowed silently): telemetry is additive
- * observability, so a telemetry DB/transaction/serialization fault must never abort or falsely-fail a
- * run. The authoritative per-phase records/ledger own run correctness.
- */
 @Inject
 class FeatureTaskRuntimeLifecycleTelemetry(
   private val lifecycleTelemetryService: LifecycleTelemetryService,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
-  // Returns the started session id, or blank when the isolated started emission failed; a blank id
-  // makes the matching finished/finishedError emission a no-op, so a started fault cannot dangle.
   fun started(request: FeatureTaskRuntimeRunRequest): String = isolate("started", "") {
     lifecycleTelemetryService.featureTaskRuntimeStarted(
       FeatureTaskRuntimeStartedRequest(
@@ -48,94 +26,26 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     )["session_id"]?.toString().orEmpty()
   }
 
-  @Suppress("LongParameterList") // one cohesive finished-telemetry emission; bundling would only hide it
-  fun finished(
-    telemetrySessionId: String,
-    report: FeatureTaskRuntimeRunReport,
-    phaseOutcomes: () -> Map<String, String>,
-    reviewFixIterationCount: () -> Int,
-    auditGapIterationCount: () -> Int,
-    auditRepairProgress: () -> FeatureTaskRuntimeAuditProgress? = { null },
-    findingVerificationTelemetry: () -> FeatureTaskRuntimeFindingVerificationTelemetry = {
-      FeatureTaskRuntimeFindingVerificationTelemetry()
-    },
-    regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
-    dbOverride: String?,
-    phaseTokenData: () -> Pair<String?, Int?> = { null to null },
-    crashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult = emptyCrashReconciliation,
-  ) {
-    if (telemetrySessionId.isBlank()) {
+  internal fun finished(report: FeatureTaskRuntimeRunReport, context: FeatureTaskRuntimeFinishedTelemetryContext) {
+    if (context.telemetrySessionId.isBlank()) {
       return
     }
     isolate("finished", Unit) {
-      val outcomes = phaseOutcomes()
-      val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
-      val auditProgress = runCatching(auditRepairProgress).getOrNull()
-      val verificationTelemetry = runCatching(
-        findingVerificationTelemetry,
-      ).getOrDefault(FeatureTaskRuntimeFindingVerificationTelemetry())
-      val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
-      val reconciliation = runCatching(crashReconciliation).getOrNull()
-        ?: FeatureTaskRuntimeCrashReconciliationResult.NONE
-      lifecycleTelemetryService.featureTaskRuntimeFinished(
-        FeatureTaskRuntimeFinishedRequest(
-          sessionId = telemetrySessionId,
-          completionStatus = completionStatusOf(report),
-          completedPhaseIds = completedPhaseIdsOf(report),
-          phaseOutcomes = outcomes,
-          lastIncompletePhase = lastIncompletePhaseOf(report, outcomes),
-          blockedReason = blockedReasonOf(report),
-          resolvedBranch = report.resolvedBranch.orEmpty(),
-          reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
-          auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
-          auditFirstPassConvergence = auditProgress?.firstPassConvergence ?: false,
-          // Always zero: the per-item repair ledger these counted is gone. The fields stay on the
-          // request because the relay's wire contract still declares them.
-          auditRecurringGapCount = 0,
-          auditNewGapCount = 0,
-          auditAttemptedRepairItemCount = 0,
-          auditResolvedRepairItemCount = 0,
-          regenerationActivationCount = regeneration.activationCount,
-          regenerationAttemptCount = regeneration.attemptCount,
-          regenerationOutcomeCounts = regeneration.outcomeCounts,
-          crashReconciliationCount = reconciliation.reconciledCount,
-          crashReconciliationReasonCounts = reconciliation.reasonClassCounts,
-          estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
-          estimatedTotalTokens = totalTokens,
-          findingVerificationVerifiedCount = verificationTelemetry.verifiedCount,
-          findingVerificationRejectedCount = verificationTelemetry.rejectedCount,
-          reviewFixCapExhausted = verificationTelemetry.reviewFixCapExhausted,
-        ),
-        dbOverride = dbOverride,
+      emitFeatureTaskRuntimeFinished(
+        lifecycleTelemetryService,
+        report,
+        context,
+        completionStatusOf(report),
       )
     }
   }
 
-  // Closes a started session that ended on an exception escaping the run loop, emitting the contract's
-  // "error" completion bucket. Phase fields are best-effort from the per-phase records available at the
-  // point of failure; completedPhaseIds is sourced from records the runtime durably marked completed.
-  // The emission (including resolving phaseOutcomes) is failure-isolated so it can never mask or
-  // replace the original run exception, which always remains the one that propagates.
-  @Suppress("LongParameterList") // parallel structure to finished(); bundling would only hide it
-  fun finishedError(
-    telemetrySessionId: String,
-    phaseOutcomes: () -> Map<String, String>,
-    reviewFixIterationCount: () -> Int,
-    auditGapIterationCount: () -> Int,
-    auditRepairProgress: () -> FeatureTaskRuntimeAuditProgress? = { null },
-    findingVerificationTelemetry: () -> FeatureTaskRuntimeFindingVerificationTelemetry = {
-      FeatureTaskRuntimeFindingVerificationTelemetry()
-    },
-    regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
-    dbOverride: String?,
-    phaseTokenData: () -> Pair<String?, Int?> = { null to null },
-    crashReconciliation: () -> FeatureTaskRuntimeCrashReconciliationResult = emptyCrashReconciliation,
-  ) {
-    if (telemetrySessionId.isBlank()) {
+  internal fun finishedError(context: FeatureTaskRuntimeFinishedTelemetryContext) {
+    if (context.telemetrySessionId.isBlank()) {
       return
     }
     isolate("finishedError", Unit) {
-      val outcomes = runCatching(phaseOutcomes)
+      val outcomes = runCatching(context.phaseOutcomes)
         .onFailure { error ->
           diagnostics.warning(
             "Feature-task-runtime lifecycle telemetry error outcome loading failed; " +
@@ -144,49 +54,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           )
         }
         .getOrDefault(emptyMap())
-      val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
-      val auditProgress = runCatching(auditRepairProgress).getOrNull()
-      val verificationTelemetry = runCatching(
-        findingVerificationTelemetry,
-      ).getOrDefault(FeatureTaskRuntimeFindingVerificationTelemetry())
-      val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
-      val reconciliation = runCatching(crashReconciliation).getOrNull()
-        ?: FeatureTaskRuntimeCrashReconciliationResult.NONE
-      lifecycleTelemetryService.featureTaskRuntimeFinished(
-        FeatureTaskRuntimeFinishedRequest(
-          sessionId = telemetrySessionId,
-          completionStatus = "error",
-          completedPhaseIds = outcomes.filterValues { it == "completed" }.keys.toList(),
-          phaseOutcomes = outcomes,
-          lastIncompletePhase = outcomes.firstIncompletePhase(),
-          blockedReason = normalizedBlockedReason(
-            reason = null,
-            category = "runtime",
-            fallback = "Feature-task-runtime finished with an unhandled error.",
-          ),
-          resolvedBranch = "",
-          reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
-          auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
-          auditFirstPassConvergence = auditProgress?.firstPassConvergence ?: false,
-          // Always zero: the per-item repair ledger these counted is gone. The fields stay on the
-          // request because the relay's wire contract still declares them.
-          auditRecurringGapCount = 0,
-          auditNewGapCount = 0,
-          auditAttemptedRepairItemCount = 0,
-          auditResolvedRepairItemCount = 0,
-          regenerationActivationCount = regeneration.activationCount,
-          regenerationAttemptCount = regeneration.attemptCount,
-          regenerationOutcomeCounts = regeneration.outcomeCounts,
-          crashReconciliationCount = reconciliation.reconciledCount,
-          crashReconciliationReasonCounts = reconciliation.reasonClassCounts,
-          estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
-          estimatedTotalTokens = totalTokens,
-          findingVerificationVerifiedCount = verificationTelemetry.verifiedCount,
-          findingVerificationRejectedCount = verificationTelemetry.rejectedCount,
-          reviewFixCapExhausted = verificationTelemetry.reviewFixCapExhausted,
-        ),
-        dbOverride = dbOverride,
-      )
+      emitFeatureTaskRuntimeFinishedError(lifecycleTelemetryService, context, outcomes)
     }
   }
 
@@ -198,42 +66,4 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       )
     }
     .getOrDefault(fallback)
-
-  private fun completionStatusOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
-    is FeatureTaskRuntimeRunReport.Completed -> "completed"
-    is FeatureTaskRuntimeRunReport.Blocked -> "blocked"
-    is FeatureTaskRuntimeRunReport.Paused -> "paused"
-    is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
-  }
-
-  private fun completedPhaseIdsOf(report: FeatureTaskRuntimeRunReport): List<String> = when (report) {
-    is FeatureTaskRuntimeRunReport.Completed -> report.completedPhaseIds
-    is FeatureTaskRuntimeRunReport.Blocked -> report.completedPhaseIds
-    is FeatureTaskRuntimeRunReport.Paused -> report.completedPhaseIds
-    is FeatureTaskRuntimeRunReport.Decomposed -> report.completedPhaseIds
-  }
-
-  private fun lastIncompletePhaseOf(report: FeatureTaskRuntimeRunReport, outcomes: Map<String, String>): String =
-    when (report) {
-      is FeatureTaskRuntimeRunReport.Completed -> "completed"
-      is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
-      is FeatureTaskRuntimeRunReport.Paused -> report.pausedPhase
-      is FeatureTaskRuntimeRunReport.Blocked ->
-        report.lastIncompletePhase.takeIf(String::isNotBlank) ?: outcomes.firstIncompletePhase()
-    }
-
-  private fun Map<String, String>.firstIncompletePhase(): String =
-    entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
-
-  private fun blockedReasonOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
-    is FeatureTaskRuntimeRunReport.Blocked -> normalizedBlockedReason(
-      reason = report.blockedReason,
-      category = "runtime",
-      fallback = "Feature-task-runtime blocked without a specific reason.",
-    )
-    is FeatureTaskRuntimeRunReport.Paused,
-    is FeatureTaskRuntimeRunReport.Completed,
-    is FeatureTaskRuntimeRunReport.Decomposed,
-    -> ""
-  }
 }

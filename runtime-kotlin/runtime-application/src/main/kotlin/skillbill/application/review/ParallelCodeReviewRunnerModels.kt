@@ -3,6 +3,7 @@ package skillbill.application.review
 import skillbill.application.evidence.SharedReviewEvidenceCommits
 import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.review.model.ParallelCodeReviewRequest
+import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diff.DiffResolverPort
@@ -100,6 +101,15 @@ internal data class ParallelCodeReviewInitialRun(
   val budget: ReviewContextBudgetPolicy,
   val specIntentResolution: SpecIntentResolution,
 )
+
+internal fun ParallelCodeReviewInitialRun.delegatedStageLaunch(): ReviewDelegatedStageLaunch =
+  ReviewDelegatedStageLaunch(
+    budget = budget,
+    brokerId = agent1Id,
+    repoRoot = request.repoRoot,
+    timeout = request.timeout,
+    promptSuffix = request.selectedAgentAddonsSection,
+  )
 
 internal data class ParallelCodeReviewCompiledLaunches(
   val all: List<ReviewSpecialistLaunchRequest>,

@@ -2,6 +2,7 @@ package skillbill.mcp
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.contracts.JsonSupport
 import skillbill.mcp.core.McpToolRegistry
 import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
 import skillbill.testing.repoRootFromTest
@@ -149,8 +150,6 @@ class TelemetryEventInputSchemaParityTest {
       segment.replaceFirstChar { it.uppercase() }
     } + "Event"
   }
-
-  @Suppress("UNCHECKED_CAST")
   private fun expectedAdditionalPropertiesFor(inputSchema: Map<String, Any?>): Boolean {
     // `McpToolSpec.openObjectSchema()` and `passthroughObjectSchema(...)`
     // both set `additionalProperties: true`. `McpToolSpec.strictObjectSchema(...)`
@@ -173,17 +172,13 @@ class TelemetryEventInputSchemaParityTest {
       )
     }
   }
-
-  @Suppress("UNCHECKED_CAST")
   private fun inputSchemaPropertyKeys(inputSchema: Map<String, Any?>): Set<String> {
-    val properties = inputSchema["properties"] as? Map<String, Any?> ?: return emptySet()
+    val properties = JsonSupport.anyToStringAnyMap(inputSchema["properties"]) ?: return emptySet()
     return properties.keys.toSet()
   }
-
-  @Suppress("UNCHECKED_CAST")
   private fun inputSchemaRequiredKeys(inputSchema: Map<String, Any?>): Set<String> {
-    val required = inputSchema["required"] as? List<String> ?: return emptySet()
-    return required.toSet()
+    val required = inputSchema["required"] as? List<*> ?: return emptySet()
+    return required.mapNotNull { entry -> entry as? String }.toSet()
   }
 
   private fun additionalPropertiesFlag(branch: JsonNode): Boolean {

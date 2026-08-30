@@ -1,7 +1,6 @@
-@file:Suppress("TooGenericExceptionCaught")
-
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
@@ -11,9 +10,12 @@ import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
+import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionContext
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Draft 2020-12 validator for the delivered handoff envelope, reached by the runtime only through
@@ -30,13 +32,15 @@ object FeatureTaskRuntimeHandoffEnvelopeSchemaValidator {
     val errors: Set<ValidationMessage> = schema.validate(instance)
     if (errors.isNotEmpty()) {
       throw InvalidFeatureTaskRuntimeHandoffProjectionError(
-        workflowId = workflowId,
-        consumerPhaseId = consumerPhaseId,
-        projectionName = firstProjectionLocation(errors),
-        projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
-        projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
-        failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
-        reason = formatReason(errors),
+        context = InvalidFeatureTaskRuntimeHandoffProjectionContext(
+          workflowId = workflowId,
+          consumerPhaseId = consumerPhaseId,
+          projectionName = firstProjectionLocation(errors),
+          projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
+          projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
+          failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
+          reason = formatReason(errors),
+        ),
       )
     }
   }
@@ -78,15 +82,45 @@ private fun loadHandoffEnvelopeSchema(): JsonSchema = try {
     .getSchema(ObjectMapper().writeValueAsString(yamlNode), LOCALE_STABLE_SCHEMA_CONFIG)
 } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
   throw error
-} catch (error: Exception) {
+} catch (error: CancellationException) {
+  throw error
+} catch (error: JsonProcessingException) {
   throw InvalidFeatureTaskRuntimeHandoffProjectionError(
-    workflowId = null,
-    consumerPhaseId = "<schema-load>",
-    projectionName = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.CLASSPATH_RESOURCE,
-    projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
-    projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
-    failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
-    reason = error.message ?: error::class.simpleName.orEmpty(),
+    context = InvalidFeatureTaskRuntimeHandoffProjectionContext(
+      workflowId = null,
+      consumerPhaseId = "<schema-load>",
+      projectionName = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.CLASSPATH_RESOURCE,
+      projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
+      projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
+      failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
+      reason = error.message ?: error::class.simpleName.orEmpty(),
+    ),
+    cause = error,
+  )
+} catch (error: IOException) {
+  throw InvalidFeatureTaskRuntimeHandoffProjectionError(
+    context = InvalidFeatureTaskRuntimeHandoffProjectionContext(
+      workflowId = null,
+      consumerPhaseId = "<schema-load>",
+      projectionName = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.CLASSPATH_RESOURCE,
+      projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
+      projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
+      failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
+      reason = error.message ?: error::class.simpleName.orEmpty(),
+    ),
+    cause = error,
+  )
+} catch (error: IllegalArgumentException) {
+  throw InvalidFeatureTaskRuntimeHandoffProjectionError(
+    context = InvalidFeatureTaskRuntimeHandoffProjectionContext(
+      workflowId = null,
+      consumerPhaseId = "<schema-load>",
+      projectionName = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.CLASSPATH_RESOURCE,
+      projectionContractId = FeatureTaskRuntimeHandoffEnvelopeSchemaPaths.EXPECTED_SCHEMA_ID,
+      projectionContractVersion = FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION,
+      failureKind = FeatureTaskRuntimeHandoffProjectionFailureKind.SCHEMA_INVALID,
+      reason = error.message ?: error::class.simpleName.orEmpty(),
+    ),
     cause = error,
   )
 }

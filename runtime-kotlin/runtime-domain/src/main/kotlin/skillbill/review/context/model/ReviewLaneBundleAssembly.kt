@@ -1,5 +1,3 @@
-@file:Suppress("MagicNumber")
-
 package skillbill.review.context.model
 
 import java.nio.charset.StandardCharsets
@@ -19,7 +17,7 @@ data class ReviewLaneAssembledEntry(
   init {
     require(commitSha.isNotBlank()) { "Assembled bundle entry commit identity must not be blank." }
     require(parentSha.isNotBlank()) { "Assembled bundle entry parent identity must not be blank." }
-    require(orderIndex >= 0) { "Assembled bundle entry order index cannot be negative." }
+    require(orderIndex >= REVIEW_MIN_ORDER_INDEX) { "Assembled bundle entry order index cannot be negative." }
   }
 
   val hunkId: String get() = hunk.hunkId
@@ -106,7 +104,9 @@ data class ReviewLaneBundleSegment(
   init {
     require(segmentId.isNotBlank()) { "Bundle segment id must not be blank." }
     require(entries.isNotEmpty()) { "Bundle segment '$segmentId' must carry at least one entry." }
-    require(measuredBytes > 0) { "Bundle segment '$segmentId' must report a positive byte count." }
+    require(measuredBytes >= REVIEW_MIN_SEGMENT_MEASURED_BYTES) {
+      "Bundle segment '$segmentId' must report a positive byte count."
+    }
     val ordered = entries.sortedWith(ReviewLaneAssembledBundle.ENTRY_ORDER)
     require(entries == ordered) { "Bundle segment entries must preserve assembled-bundle order." }
   }
@@ -165,8 +165,8 @@ data class ReviewLaneSegmentAccounting(
 ) {
   init {
     require(segmentId.isNotBlank())
-    require(measuredBytes >= 0 && entryCount >= 0)
-    require(compositionDigest.matches(SHA256_HEX_PATTERN))
+    require(measuredBytes >= REVIEW_MIN_ORDER_INDEX && entryCount >= REVIEW_MIN_ORDER_INDEX)
+    require(compositionDigest.matches(SHA256_HEX))
   }
 }
 
@@ -184,7 +184,7 @@ data class ReviewLaneCompletionState(
   val unreviewedUnits: List<String> = emptyList(),
 ) {
   init {
-    require(bundleCompositionDigest.matches(SHA256_HEX_PATTERN)) {
+    require(bundleCompositionDigest.matches(SHA256_HEX)) {
       "Lane completion state requires a SHA-256 bundle composition digest."
     }
     require(unreviewedSegmentIds.distinct().size == unreviewedSegmentIds.size)
@@ -237,7 +237,7 @@ fun segmentAssembledBundle(
       "Flushed segment exceeds the configured lane launch budget."
     }
     segments += ReviewLaneBundleSegment(
-      segmentId = "seg-${segmentIndex.toString().padStart(3, '0')}",
+      segmentId = "seg-${segmentIndex.toString().padStart(REVIEW_BUNDLE_SEGMENT_ID_PAD_WIDTH, '0')}",
       entries = current.toList(),
       measuredBytes = measured,
     )
@@ -344,8 +344,6 @@ fun ReviewLaneCompletionState.asFailedLaneRun(assignedUnits: List<String>): Revi
 
 private const val FAILED_RUN_SEGMENT_ID = "seg-lane-run-failed"
 private const val FAILED_RUN_UNIT = "entire assigned bundle"
-
-private val SHA256_HEX_PATTERN = Regex("[a-f0-9]{64}")
 
 private fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")
   .digest(value.toByteArray(StandardCharsets.UTF_8))

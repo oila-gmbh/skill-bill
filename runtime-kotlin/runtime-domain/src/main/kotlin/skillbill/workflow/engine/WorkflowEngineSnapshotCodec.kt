@@ -1,9 +1,6 @@
 package skillbill.workflow.engine
 
-import kotlinx.serialization.SerializationException
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.WorkflowDefinition
@@ -11,11 +8,8 @@ import skillbill.workflow.engine.model.WorkflowSnapshotView
 import skillbill.workflow.engine.model.WorkflowStepState
 
 internal fun snapshotViewFromMap(map: Map<String, Any?>): WorkflowSnapshotView {
-  @Suppress("UNCHECKED_CAST")
-  val rawSteps = map["steps"] as List<Map<String, Any?>>
-
-  @Suppress("UNCHECKED_CAST")
-  val artifacts = map["artifacts"] as Map<String, Any?>
+  val rawSteps = requiredStringAnyMapList(map["steps"], "steps")
+  val artifacts = requiredStringAnyMap(map["artifacts"], "artifacts")
   val steps = rawSteps.map { stepMap ->
     WorkflowStepState(
       stepId = stepMap["step_id"] as String,
@@ -86,36 +80,6 @@ internal fun mergeStepUpdates(
 
 internal fun workflowStep(stepId: String, status: String, attemptCount: Int): Map<String, Any?> =
   linkedMapOf("step_id" to stepId, "status" to status, "attempt_count" to attemptCount)
-
-internal fun decodeSteps(rawValue: String): List<Map<String, Any?>> {
-  val parsed = parseDurableJson(rawValue, "stepsJson")
-  if (parsed !is JsonArray) {
-    throw InvalidWorkflowStateSchemaError("Workflow state stepsJson must decode to a JSON array.")
-  }
-  return parsed.mapIndexed { index, element ->
-    JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element))
-      ?: throw InvalidWorkflowStateSchemaError(
-        "Workflow state stepsJson[$index] must decode to a JSON object.",
-      )
-  }
-}
-
-internal fun decodeObject(rawValue: String): Map<String, Any?> {
-  val parsed = parseDurableJson(rawValue, "artifactsJson")
-  if (parsed !is JsonObject) {
-    throw InvalidWorkflowStateSchemaError("Workflow state artifactsJson must decode to a JSON object.")
-  }
-  return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
-    ?: throw InvalidWorkflowStateSchemaError("Workflow state artifactsJson must decode to a JSON object.")
-}
-
-internal fun parseDurableJson(rawValue: String, fieldName: String): JsonElement = try {
-  JsonSupport.json.parseToJsonElement(rawValue)
-} catch (error: SerializationException) {
-  throw InvalidWorkflowStateSchemaError("Workflow state $fieldName contains malformed JSON.", error)
-} catch (error: IllegalArgumentException) {
-  throw InvalidWorkflowStateSchemaError("Workflow state $fieldName contains malformed JSON.", error)
-}
 
 internal fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
   JsonElement.serializer(),

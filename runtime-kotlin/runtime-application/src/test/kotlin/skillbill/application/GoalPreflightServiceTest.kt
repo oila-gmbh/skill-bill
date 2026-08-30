@@ -273,7 +273,6 @@ class GoalPreflightServiceTest {
     )
   }
 
-  @Suppress("LongParameterList")
   private fun request(
     root: Path,
     issueKey: String = "SKILL-901",

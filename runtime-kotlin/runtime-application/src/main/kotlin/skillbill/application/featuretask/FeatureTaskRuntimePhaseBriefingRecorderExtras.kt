@@ -67,9 +67,8 @@ internal fun FeatureTaskRuntimePhaseBriefingRecorder.recordSharedEvidenceMeasure
   measurement: FeatureTaskRuntimeSharedEvidenceMeasurement?,
 ) {
   if (measurement == null) return
-  try {
+  runCatching {
     unitOfWork.lifecycleTelemetry.featureTaskRuntimeSharedEvidence(measurement)
-  } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
   }
 }
 

@@ -58,7 +58,9 @@ private fun regenerateReviewFinishedPayload(
   payload: Map<String, Any?>,
   reviewRunId: String,
 ): Map<String, Any?> {
-  val regenerated = ReviewStatsRuntime.buildReviewFinishedPayload(connection, reviewRunId)
+  val regenerated = ReviewStatsRuntime.buildReviewFinishedPayload(
+    ReviewFinishedPayloadBuildRequest(connection = connection, reviewRunId = reviewRunId),
+  )
     .toReviewFinishedTelemetryPayload()
     .toPayload()
   return LinkedHashMap(payload).apply {

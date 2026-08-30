@@ -2,9 +2,11 @@ package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyRequest
 import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
-import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosisRequest
+import skillbill.application.goalrunner.model.GoalRunnerChildWedgeRepairRequest
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
@@ -24,7 +26,6 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -122,46 +123,35 @@ internal class WorkflowGoalRunnerChildRepairBridge(
   private val decompositionManifestValidator: DecompositionManifestValidator?,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
 ) : GoalRunnerChildRepairStore {
-  override fun diagnoseChildWedges(
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    subtasks: List<DecompositionSubtask>,
-    repoRoot: Path,
-    dbPathOverride: String?,
-  ): GoalRunnerChildWedgeDiagnosis = database.read(dbPathOverride) { unitOfWork ->
-    childRepair.diagnose(
-      workflowStates = unitOfWork.workflowStates,
-      workflowId = workflowId,
-      issueKey = issueKey,
-      subtaskId = subtaskId,
-      repoRoot = repoRoot,
-    )
-  }
+  override fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis =
+    database.read(request.dbPathOverride) { unitOfWork ->
+      childRepair.diagnose(
+        workflowStates = unitOfWork.workflowStates,
+        workflowId = request.workflowId,
+        issueKey = request.issueKey,
+        subtaskId = request.subtaskId,
+        repoRoot = request.repoRoot,
+      )
+    }
 
-  override fun applyChildWedgeRepairs(
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    wedgeClasses: List<GoalRunnerWedgeClass>,
-    repoRoot: Path,
-    dbPathOverride: String?,
-  ): GoalRunnerChildRepairApplyResult {
-    val result = database.transaction(dbPathOverride) { unitOfWork ->
+  override fun applyChildWedgeRepairs(request: GoalRunnerChildWedgeRepairRequest): GoalRunnerChildRepairApplyResult {
+    val result = database.transaction(request.dbPathOverride) { unitOfWork ->
       childRepair.apply(
-        unitOfWork = unitOfWork,
-        workflowId = workflowId,
-        issueKey = issueKey,
-        subtaskId = subtaskId,
-        wedgeClasses = wedgeClasses,
-        repoRoot = repoRoot,
+        GoalRunnerChildRepairApplyRequest(
+          unitOfWork = unitOfWork,
+          workflowId = request.workflowId,
+          issueKey = request.issueKey,
+          subtaskId = request.subtaskId,
+          wedgeClasses = request.wedgeClasses,
+          repoRoot = request.repoRoot,
+        ),
       )
     }
     result.manifestProjectionArtifactsJson?.let { artifactsJson ->
       val validator = decompositionManifestValidator ?: return@let
       checkNotNull(
         DecompositionManifestWriter.writeProjectionFromWorkflowState(
-          repoRoot = repoRoot,
+          repoRoot = request.repoRoot,
           artifactsJson = artifactsJson,
           validator = validator,
           fileStore = decompositionManifestFileStore,

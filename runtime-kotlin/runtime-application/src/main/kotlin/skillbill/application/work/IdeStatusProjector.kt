@@ -94,16 +94,20 @@ class IdeStatusProjector(
         repoRoot = context.repoRoot,
       ),
     )
+    return assembleGoalStatusSnapshot(candidate, context, issueKey, projection)
+  }
+
+  private fun assembleGoalStatusSnapshot(
+    candidate: IdeStatusCandidate,
+    context: IdeStatusProjectionContext,
+    issueKey: String,
+    projection: GoalRunnerStatusProjection?,
+  ): IdeStatusSnapshot {
     val lifecycle = goalLifecycle(candidate, projection)
     val planning = projection?.planning?.toIdeStatusPlanning()
-    // Ordered ahead of the currentStep preference: a mid-planning goal can already carry a
-    // stale currentStep string, and planning is the more accurate label while it runs.
     val planningStep = planning?.takeIf { it.state != GoalPlanningStatusState.PREPARED && !lifecycle.isSettled() }
     val freshness = IdeStatusFreshnessClassifier.classify(candidate.updatedAt, context.observedAt)
-    // One child-status load feeds step, model, and execution so they cannot drift.
-    // Mid-planning keeps planning as the sole progress surface — never duplicate into execution.
     val childContext = childOptionalContext(projection?.currentChildWorkflowId, lifecycle, context)
-    // A finished goal can carry a leftover step string; "Complete" is the honest label.
     val childPhaseStep = childContext.currentPhaseId
       ?.takeIf { it.isNotBlank() && planningStep == null && lifecycle != IdeStatusLifecycleState.TERMINAL }
     val step = goalStep(
@@ -132,17 +136,12 @@ class IdeStatusProjector(
       planning = planning,
       currentPhaseExecution = planningStep?.let { null } ?: childContext.currentPhaseExecution,
       pauseRequested = projection?.pauseRequested == true && projection.paused != true,
-      // Durable record only: a lease-expiry-inferred pause has no recorded instant, and
-      // back-filling from heartbeat_at/updated_at would sell an inference as a record.
       pausedAt = parseInstantOrNull(projection?.pausedAt),
       pauseReason = goalPauseReason(lifecycle, projection, childContext),
       activeDurationMs = projection?.recordedActiveDurationMs(),
       activeDurationAsOf = projection?.liveActiveDurationAnchor(),
       updatedAt = candidate.updatedAt,
       freshness = freshness,
-      // "is planning subtasks" describes work in flight, so a paused goal keeps the Planning
-      // step label and the planning block but takes the paused sentence; the alternative
-      // contradicts the lifecycle state in the one line the widget shows as detail.
       summary = planningStep?.takeIf { lifecycle != IdeStatusLifecycleState.PAUSED }
         ?.let { goalPlanningSummary(issueKey, it) }
         ?: goalSummary(issueKey, lifecycle, step.label, projection?.blockedCount ?: 0),

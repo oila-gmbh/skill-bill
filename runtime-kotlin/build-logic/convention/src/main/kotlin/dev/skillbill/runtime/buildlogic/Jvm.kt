@@ -47,14 +47,17 @@ internal fun Project.configureKotlinJvm() {
     }
   }
 
+  configureKotlinJvmTestDefaults()
+
+  configureRepoTestSourceSet()
+}
+
+private fun Project.configureKotlinJvmTestDefaults() {
   tasks.withType(Test::class.java).configureEach {
     useJUnitPlatform()
     maxParallelForks =
       (Runtime.getRuntime().availableProcessors() / TEST_FORK_CPU_DIVISOR).coerceIn(1, MAX_TEST_FORKS)
     maxHeapSize = TEST_MAX_HEAP
-    // The Claude Code harness exports CLAUDE_CONFIG_DIR; left inherited it leaks a real ~/.claude-*
-    // profile root into install/apply discovery tests and breaks their exact-root assertions. Drop it
-    // so the test JVM never depends on the running developer's ambient Claude profile.
     environment.remove("CLAUDE_CONFIG_DIR")
     HARNESS_ENVIRONMENT_GATES.forEach { gate ->
       val value = providers.environmentVariable(gate)
@@ -85,8 +88,6 @@ internal fun Project.configureKotlinJvm() {
       }
     }
   }
-
-  configureRepoTestSourceSet()
 }
 
 private fun Project.configureRepoTestSourceSet() {

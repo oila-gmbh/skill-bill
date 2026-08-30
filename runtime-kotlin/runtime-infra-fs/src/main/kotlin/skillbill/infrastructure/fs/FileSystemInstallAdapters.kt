@@ -10,6 +10,7 @@ import skillbill.install.reconcile.ReconcileSourceRoots
 import skillbill.install.reconcile.applyReconciliation
 import skillbill.install.reconcile.computeReconciliationPlan
 import skillbill.install.runtime.InstallOperations
+import skillbill.install.runtime.linkInstalledSkill
 import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.support.InstallCleanupOperations
 import skillbill.launcher.mcp.McpRegistrationOperations
@@ -168,7 +169,7 @@ class FileSystemInstallApplyExecution : InstallApplyExecutionPort {
 @Inject
 class FileSystemInstallSkillLink : InstallSkillLinkPort {
   override fun linkSkill(request: InstallSkillLinkRequest): InstallSkillLinkResult = InstallSkillLinkResult(
-    linkedPaths = InstallOperations.linkSkill(
+    linkedPaths = linkInstalledSkill(
       source = request.source,
       targetDir = request.targetDir,
       agent = request.agent,

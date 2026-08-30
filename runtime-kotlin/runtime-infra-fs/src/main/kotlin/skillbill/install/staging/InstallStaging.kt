@@ -1,17 +1,9 @@
-@file:Suppress("ThrowsCount", "TooGenericExceptionCaught")
-
 package skillbill.install.staging
 
-import skillbill.agentaddon.AgentAddonPointer
 import skillbill.install.identity.SKILL_CONTENT_IDENTITY_FILENAME
-import skillbill.install.identity.SkillContentIdentity
-import skillbill.install.identity.routeInstalledSkillBody
 import skillbill.install.identity.suppliedSkillContentIdentity
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.RenderedSkill
-import skillbill.install.support.writeRenderedSupportPointerFiles
-import skillbill.scaffold.authoring.AuthoringTarget
-import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
@@ -23,23 +15,9 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.util.logging.Level
 import java.util.logging.Logger
+import kotlin.coroutines.cancellation.CancellationException
 
 private val log: Logger = Logger.getLogger("skillbill.install.InstallStaging")
-
-private data class FreshInstallInputs(
-  val home: Path,
-  val sourceSkillDir: Path,
-  val repoRoot: Path,
-  val target: AuthoringTarget,
-  val platformPointers: List<Pair<PlatformManifest, PointerSpec>>,
-  val supportPointers: List<GeneratedSupportPointer>,
-  val authored: List<Path>,
-  val contentHash: String,
-  val contentIdentity: SkillContentIdentity,
-  val finalStagingDir: Path,
-  val internalChildren: List<InternalSidecarTarget>,
-  val agentAddonPointers: List<AgentAddonPointer>,
-)
 
 internal data class StagedSymlinkTargetInput(
   val resolvedSkill: Path,
@@ -147,126 +125,33 @@ private fun requireWithinSource(path: Path, resolvedSourceSkillDir: Path) {
   }
 }
 
-@Suppress("LongParameterList", "LongMethod") // cohesive staging entry: each parameter is a distinct staging-cache input
-internal fun stageInstalledSkill(
-  repoRoot: Path,
-  sourceSkillDir: Path,
-  home: Path,
-  manifests: List<PlatformManifest>? = null,
-  skillsRoot: Path? = null,
-  selectedPackSkills: List<InstallPlanSkill> = emptyList(),
-  selectedPlatformSlugs: Set<String> = emptySet(),
-  suppliedCompactIdentity: String? = null,
-): RenderedSkill {
-  val resolvedSource = sourceSkillDir.toAbsolutePath().normalize()
-  val resolvedRepoRoot = repoRoot.toAbsolutePath().normalize()
-  val skillName = resolvedSource.fileName.toString()
-  val agentAddonPointers = agentAddonPointersForSkill(resolvedRepoRoot, skillName)
-  val target: AuthoringTarget = resolveTarget(resolvedRepoRoot, skillName)
-  val selectedManifests = manifests.orEmpty().filter { manifest -> manifest.slug in selectedPlatformSlugs }
-  val pointers = applicablePointers(resolvedRepoRoot, resolvedSource, manifests)
-  val generatedSupportPointers = generatedSupportPointersFor(
-    repoRoot = resolvedRepoRoot,
-    sourceSkillDir = resolvedSource,
-    skillName = skillName,
-    selectedPlatformManifests = selectedManifests,
-  )
-  // F-002: internal-child discovery must use the same skills root the plan used (CLI --skills),
-  // or planned and staged hashes diverge and apply fails for any parent with internal children.
-  val resolvedSkillsRoot = (skillsRoot ?: resolvedRepoRoot.resolve("skills")).toAbsolutePath().normalize()
-  // SKILL-104 (PD3): selected pack skills declaring internal-for surface as sidecars here. The
-  // link-skill flow (resolveStagedSymlinkTarget) refuses internal skills upstream and never reaches
-  // this path with pack children, so the default empty list preserves inertness for that flow.
-  val internal = prepareInternalStaging(
-    InternalStagingPreparation(
-      repoRoot = resolvedRepoRoot,
-      parentSourceDir = resolvedSource,
-      parentSkillName = skillName,
-      skillsRoot = resolvedSkillsRoot,
-      selectedPackSkills = selectedPackSkills,
-      platformManifests = manifests,
-      selectedPlatformManifests = selectedManifests,
-      parentSupportPointers = generatedSupportPointers,
-      parentPointerNames = pointers.map { (_, pointer) -> pointer.name }.toSet(),
-    ),
-  )
-  val authored = authoredFilesFor(
-    sourceSkillDir = resolvedSource,
-    applicablePointers = pointers,
-    generatedSupportPointers = internal.supportPointers,
-    excludedSidecarNames = internal.sidecarNames,
-  )
-  validateAgentAddonPointerNamespace(
-    skillName,
-    authoredStagingNames(resolvedSource, authored).toSet() + internal.sidecarNames +
-      pointers.map { it.second.name } + internal.supportPointers.map { it.name } +
-      setOf("SKILL.md", ".content-hash", SKILL_CONTENT_IDENTITY_FILENAME),
-    agentAddonPointers,
-  )
-  val contentHash = computeInstallContentHash(
-    InstallContentHashInputs(
-      sourceSkillDir = resolvedSource,
-      authored = authored,
-      applicablePointers = pointers,
-      generatedSupportPointers = internal.supportPointers,
-      internalChildren = internal.children,
-      agentAddonPointers = agentAddonPointers,
-    ),
-  )
-  val suppliedIdentity = suppliedCompactIdentity?.let { compact ->
-    val supplied = SkillContentIdentity.fromCompact(compact, "supplied session skill")
-    SkillContentIdentity.requireMatch(
-      suppliedSkillContentIdentity(resolvedSource),
-      supplied,
-    )
-    supplied
-  }
-  val contentIdentity = suppliedIdentity ?: suppliedSkillContentIdentity(resolvedSource)
-  val finalStagingDir = installedSkillStagingDir(home, resolvedSource, contentHash)
-
-  if (Files.isDirectory(finalStagingDir)) {
-    val marker = finalStagingDir.resolve(SKILL_CONTENT_IDENTITY_FILENAME)
-    if (Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)) {
-      routeInstalledSkillBody(suppliedCompactIdentity ?: contentIdentity.compact(), finalStagingDir)
-    }
-  }
-
-  // Idempotent reuse: same hash, marker intact, SKILL.md and every expected sidecar present.
-  val expectedStagedNames = internal.sidecarNames + pointers.map { (_, pointer) -> pointer.name } +
-    internal.supportPointers.map { pointer -> pointer.name } + agentAddonPointers.map { it.name } +
-    SKILL_CONTENT_IDENTITY_FILENAME
-  if (isReusableInstallStaging(finalStagingDir, contentHash, expectedStagedNames)) {
+internal fun stageInstalledSkill(input: StageInstalledSkillInput): RenderedSkill {
+  val prepared = prepareStageInstalledSkill(input)
+  tryReusePreparedStageInstalledSkill(prepared, input.suppliedCompactIdentity)?.let { reused ->
     log.fine(
-      "stageInstalledSkill reuse=true skill=$skillName hash=$contentHash dir=$finalStagingDir",
+      "stageInstalledSkill reuse=true skill=${prepared.skillName} " +
+        "hash=${prepared.contentHash} dir=${prepared.finalStagingDir}",
     )
-    return reuseInstallStaging(
-      sourceSkillDir = resolvedSource,
-      finalStagingDir = finalStagingDir,
-      contentHash = contentHash,
-      applicablePointers = pointers,
-      generatedSupportPointers = internal.supportPointers,
-      internalSidecarNames = internal.sidecarNames,
-      agentAddonPointerNames = agentAddonPointers.map { it.name },
-    )
+    return reused
   }
   log.fine(
-    "stageInstalledSkill reuse=false skill=$skillName hash=$contentHash dir=$finalStagingDir",
+    "stageInstalledSkill reuse=false skill=${prepared.skillName} " +
+      "hash=${prepared.contentHash} dir=${prepared.finalStagingDir}",
   )
-
   return buildFreshInstallStaging(
     FreshInstallInputs(
-      home = home,
-      sourceSkillDir = resolvedSource,
-      repoRoot = resolvedRepoRoot,
-      target = target,
-      platformPointers = pointers,
-      supportPointers = internal.supportPointers,
-      authored = authored,
-      contentHash = contentHash,
-      contentIdentity = contentIdentity,
-      finalStagingDir = finalStagingDir,
-      internalChildren = internal.children,
-      agentAddonPointers = agentAddonPointers,
+      home = input.home,
+      sourceSkillDir = prepared.resolvedSource,
+      repoRoot = prepared.resolvedRepoRoot,
+      target = prepared.target,
+      platformPointers = prepared.pointers,
+      supportPointers = prepared.internal.supportPointers,
+      authored = prepared.authored,
+      contentHash = prepared.contentHash,
+      contentIdentity = prepared.contentIdentity,
+      finalStagingDir = prepared.finalStagingDir,
+      internalChildren = prepared.internal.children,
+      agentAddonPointers = prepared.agentAddonPointers,
     ),
   )
 }
@@ -274,67 +159,43 @@ internal fun stageInstalledSkill(
 private fun buildFreshInstallStaging(inputs: FreshInstallInputs): RenderedSkill {
   Files.createDirectories(installedSkillsCacheRoot(inputs.home))
   val tempDir = Files.createTempDirectory(installedSkillsCacheRoot(inputs.home), ".staging-tmp-")
-  // F-009/F-010: ownership flag — only delete `finalStagingDir` on failure if WE successfully
-  // promoted it during this attempt. Otherwise we'd risk wiping a previously-good cache entry.
   var promoted = false
-  return try {
-    val copiedInTemp = copyAuthoredIntoStaging(inputs.sourceSkillDir, tempDir, inputs.authored)
-    val skillFileInTemp = writeRenderedSkillFile(tempDir, inputs.target)
-    val pointerFilesInTemp = writeRenderedPointerFiles(inputs.repoRoot, tempDir, inputs.platformPointers)
-    val supportPointerFilesInTemp = writeRenderedSupportPointerFiles(
-      repoRoot = inputs.repoRoot,
-      sourceSkillDir = inputs.sourceSkillDir,
-      tempDir = tempDir,
-      pointers = inputs.supportPointers,
-    )
-    val agentAddonFilesInTemp = writeAgentAddonPointerFiles(tempDir, inputs.agentAddonPointers)
-    val sidecarFilesInTemp = writeInternalSidecarFiles(
-      tempDir = tempDir,
-      parentSourceDir = inputs.sourceSkillDir,
-      children = inputs.internalChildren,
-    )
-    val packsRoot = inputs.repoRoot.resolve("platform-packs")
-    if (Files.isDirectory(packsRoot)) {
-      Files.createSymbolicLink(tempDir.resolve("platform-packs"), packsRoot)
-    }
-    writeInstallStagingMarkers(tempDir, inputs)
+  var failure: Throwable? = null
+  var stagedResult: RenderedSkill? = null
+  try {
+    val staged = populateFreshInstallStagingTemp(inputs, tempDir)
     promoteInstallStagingDir(tempDir, inputs.finalStagingDir)
     promoted = true
-    val finalSkillFile = inputs.finalStagingDir.resolve(tempDir.relativize(skillFileInTemp))
-    val finalPointerFiles = (pointerFilesInTemp + supportPointerFilesInTemp + agentAddonFilesInTemp)
-      .map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
-    val finalCopied = copiedInTemp.map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
-    val finalSidecars = sidecarFilesInTemp.map { p -> inputs.finalStagingDir.resolve(tempDir.relativize(p)) }
-    // F-013: prune older staging dirs for the same skill slug (different hash). Best-effort only;
-    // pruning failures are logged and suppressed so they never mask the successful install.
-    pruneStaleStagingDirs(inputs.home, inputs.sourceSkillDir, inputs.contentHash)
-    RenderedSkill(
-      skillName = inputs.sourceSkillDir.fileName.toString(),
-      sourceSkillDir = inputs.sourceSkillDir,
-      stagingDir = inputs.finalStagingDir,
-      renderedSkillFile = finalSkillFile,
-      renderedPointerFiles = finalPointerFiles,
-      copiedAuthoredFiles = finalCopied,
-      contentHash = inputs.contentHash,
-      renderedSidecarFiles = finalSidecars,
-    )
-  } catch (error: Throwable) {
-    // F-007: catch every Throwable so any failure path (render error, IO error, programmer error,
-    // OOM, etc.) leaves zero staging residue. Cleanup is best-effort and never shadows the
-    // primary failure (each delete is wrapped + suppressed inside cleanupInstallStagingOnFailure).
-    log.log(
-      Level.SEVERE,
-      "stageInstalledSkill failure skill=${inputs.sourceSkillDir.fileName} hash=${inputs.contentHash} " +
-        "source=${inputs.sourceSkillDir} tempDir=$tempDir finalDir=${inputs.finalStagingDir} " +
-        "promoted=$promoted error=${error::class.simpleName}",
-      error,
-    )
-    cleanupInstallStagingOnFailure(tempDir, inputs.finalStagingDir, promoted)
-    throw error
+    stagedResult = finalizeFreshInstallStaging(inputs, tempDir, staged)
+  } catch (error: CancellationException) {
+    logInstallStagingFailure(inputs, tempDir, promoted, error)
+    failure = error
+  } catch (error: IOException) {
+    logInstallStagingFailure(inputs, tempDir, promoted, error)
+    failure = error
+  } catch (error: IllegalArgumentException) {
+    logInstallStagingFailure(inputs, tempDir, promoted, error)
+    failure = error
+  } catch (error: IllegalStateException) {
+    logInstallStagingFailure(inputs, tempDir, promoted, error)
+    failure = error
   }
+  failure?.let { throw it }
+  return stagedResult!!
 }
 
-private fun writeInstallStagingMarkers(tempDir: Path, inputs: FreshInstallInputs) {
+private fun logInstallStagingFailure(inputs: FreshInstallInputs, tempDir: Path, promoted: Boolean, error: Throwable) {
+  log.log(
+    Level.SEVERE,
+    "stageInstalledSkill failure skill=${inputs.sourceSkillDir.fileName} hash=${inputs.contentHash} " +
+      "source=${inputs.sourceSkillDir} tempDir=$tempDir finalDir=${inputs.finalStagingDir} " +
+      "promoted=$promoted error=${error::class.simpleName}",
+    error,
+  )
+  cleanupInstallStagingOnFailure(tempDir, inputs.finalStagingDir, promoted)
+}
+
+internal fun writeInstallStagingMarkers(tempDir: Path, inputs: FreshInstallInputs) {
   Files.write(
     tempDir.resolve(INSTALL_STAGING_CONTENT_HASH_FILENAME),
     inputs.contentHash.toByteArray(StandardCharsets.UTF_8),
@@ -351,53 +212,14 @@ internal fun resolveStagedSymlinkTarget(input: StagedSymlinkTargetInput): Path {
     return input.resolvedSkill
   }
   return stageInstalledSkill(
-    input.repoRoot,
-    input.resolvedSkill,
-    input.home,
-    input.manifests,
-    selectedPackSkills = input.selectedPackSkills,
-    selectedPlatformSlugs = input.selectedPlatformSlugs,
-    suppliedCompactIdentity = suppliedSkillContentIdentity(input.resolvedSkill).compact(),
+    StageInstalledSkillInput(
+      repoRoot = input.repoRoot,
+      sourceSkillDir = input.resolvedSkill,
+      home = input.home,
+      manifests = input.manifests,
+      selectedPackSkills = input.selectedPackSkills,
+      selectedPlatformSlugs = input.selectedPlatformSlugs,
+      suppliedCompactIdentity = suppliedSkillContentIdentity(input.resolvedSkill).compact(),
+    ),
   ).stagingDir.toAbsolutePath().normalize()
-}
-
-private fun pruneStaleStagingDirs(home: Path, resolvedSource: Path, currentHash: String) {
-  val cacheRoot = installedSkillsCacheRoot(home)
-  val slug = installedSkillSlug(resolvedSource)
-  if (!Files.isDirectory(cacheRoot) || slug.isEmpty()) {
-    return
-  }
-  val currentLeaf = "$slug-$currentHash"
-  val hashRegex = Regex("^${Regex.escape(slug)}-[0-9a-f]{${INSTALL_CACHE_KEY_BYTES * 2}}$")
-  val candidates = try {
-    Files.list(cacheRoot).use { stream ->
-      stream
-        .filter { entry -> Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS) }
-        .filter { entry ->
-          val name = entry.fileName.toString()
-          name.matches(hashRegex) && name != currentLeaf
-        }
-        .toList()
-    }
-  } catch (error: IOException) {
-    log.log(Level.WARNING, "pruneStaleStagingDirs list failure cacheRoot=$cacheRoot", error)
-    emptyList()
-  }
-  candidates.forEach { stale ->
-    try {
-      deleteInstallStagingDirectory(stale)
-    } catch (error: IOException) {
-      log.log(
-        Level.WARNING,
-        "pruneStaleStagingDirs delete failure dir=$stale (suppressed; install completed successfully)",
-        error,
-      )
-    } catch (error: RuntimeException) {
-      log.log(
-        Level.WARNING,
-        "pruneStaleStagingDirs delete failure dir=$stale (suppressed; install completed successfully)",
-        error,
-      )
-    }
-  }
 }
