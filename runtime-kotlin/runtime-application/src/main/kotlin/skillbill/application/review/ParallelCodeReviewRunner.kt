@@ -53,13 +53,15 @@ class ParallelCodeReviewRunner(
     ),
   )
   private val laneLaunch = ParallelCodeReviewRunnerLaneLaunch(
-    parentReviewLauncher,
-    reviewEvidenceBrokerFactory,
-    governedEvidenceEndpointBinder,
-    reviewLaunchAgentStaging,
-    sharedEvidenceLocatorReader,
-    failureHelpers,
-    activityStampWriter,
+    ParallelCodeReviewRunnerLaneLaunchDeps(
+      parentReviewLauncher = parentReviewLauncher,
+      reviewEvidenceBrokerFactory = reviewEvidenceBrokerFactory,
+      governedEvidenceEndpointBinder = governedEvidenceEndpointBinder,
+      reviewLaunchAgentStaging = reviewLaunchAgentStaging,
+      sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
+      failureHelpers = failureHelpers,
+      activityStampWriter = activityStampWriter,
+    ),
   )
   private val resultAssembly = ParallelCodeReviewRunnerResultAssembly(
     parentReviewLauncher,

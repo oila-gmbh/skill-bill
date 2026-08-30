@@ -1,3 +1,12 @@
+## [2026-08-30] SKILL-225 subtask 1 — Agent activity pulse
+Areas: runtime-kotlin/{runtime-domain/idestatus,runtime-ports/{idestatus,agentrun},runtime-infra-sqlite,runtime-infra-fs/launcher,runtime-application/{idestatus,work,featuretask,goalrunner,review},runtime-contracts/workflow}, orchestration/contracts/ide-status-schema, intellij-plugin/{domain,cli,presentation,ui}
+- Mid-run wait-loop probes and governed evidence reads persist durable `last_agent_activity_at` / closed `last_agent_activity_label` on the active (and parent) workflow; IdeStatus projects both optionally and omits them together; freshness stays on lease/workflow anchors.
+- IntelliJ details map both fields into `Agent activity: <label> | <time>` for Active/Paused/Stale and hide the row when absent; review stamps use feature-task activity workflow ids, not `reviewRunId`.
+- Pattern: injectable `AgentRunActivityStampSink` from `AgentActivityStampWriter` (mirror to parent); closed `AgentActivityLabel` wire enum; SQLite stamp store + schema optional pair. reusable
+- Limitation: dedicated Stale-row and evidence-read stamp unit tests deferred; schema/golden/store and evidence-boundary coverage remain the proof surface.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-30] SKILL-221 subtask 3 — Compiler suppressions and allow-list ban
 Areas: runtime-kotlin/{runtime-core/architecture,agent,runtime-application,runtime-cli,runtime-contracts,runtime-domain,runtime-infra-fs,runtime-infra-sqlite,runtime-mcp,runtime-ports}, AGENTS.md, CLAUDE.md, orchestration/{review-delegation,shell-content-contract,stack-routing}, intellij-plugin
 - Fixed compiler `@Suppress` where a typed decode, `_`, or delete worked; retained only honest `UNCHECKED_CAST` sites on the dated allow-list in `agent/decisions.md` (path|symbol|rule|why); complexity rules never appear on that list.

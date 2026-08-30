@@ -53,7 +53,6 @@ internal object ParallelReviewPreparationCompiler {
     val routingMatrix = ReviewCommitLaneRoutingPolicy.route(
       input.commitSequence.units,
       candidates.map { ReviewRoutedLane(it.lane, it.descriptor) },
-      budget,
     )
     val routes = narrowToFocusedCommits(input, candidates, routingMatrix)
     val decisions = routes.map { route ->
@@ -143,7 +142,6 @@ internal object ParallelReviewPreparationCompiler {
   private fun prepareReview(compileInput: PrepareReviewCompileInput) = ReviewPreparationService(
     reviewFactPorts(compileInput.input, compileInput.hunks, compileInput.selection),
     compileInput.deps.envelopeValidator,
-    compileInput.deps.budget,
     compileInput.deps.hunkLocatorReader,
   ).prepare(
     ReviewPreparationRequest(

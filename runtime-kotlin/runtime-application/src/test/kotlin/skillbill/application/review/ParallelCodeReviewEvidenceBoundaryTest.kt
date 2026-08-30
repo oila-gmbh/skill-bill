@@ -4,6 +4,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
+import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
@@ -59,8 +60,12 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       ReviewHarnessConfig(
         manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
         diff = diffForPaths("src/Repo.kt"),
-        evidenceEndpointBinder = GovernedReviewEvidenceEndpointBinder { _, _ ->
-          error("endpoint bind failed")
+        evidenceEndpointBinder = object : GovernedReviewEvidenceEndpointBinder {
+          override fun bind(
+            lane: String,
+            protocol: NativeReviewOperationProtocol,
+            onEvidenceRead: (() -> Unit)?,
+          ): GovernedReviewEvidenceEndpointHandle = error("endpoint bind failed")
         },
         parentLaunch = { error("a governed review must not launch when its evidence endpoint is unbound") },
       ),
@@ -182,8 +187,12 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       ReviewHarnessConfig(
         manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
         diff = diffForPaths("src/Repo.kt"),
-        evidenceEndpointBinder = GovernedReviewEvidenceEndpointBinder { lane, _ ->
-          object : GovernedReviewEvidenceEndpointHandle {
+        evidenceEndpointBinder = object : GovernedReviewEvidenceEndpointBinder {
+          override fun bind(
+            lane: String,
+            protocol: NativeReviewOperationProtocol,
+            onEvidenceRead: (() -> Unit)?,
+          ): GovernedReviewEvidenceEndpointHandle = object : GovernedReviewEvidenceEndpointHandle {
             override val descriptor = GovernedReviewEvidenceEndpointDescriptor(
               lane = lane,
               socketPath = socketPath,

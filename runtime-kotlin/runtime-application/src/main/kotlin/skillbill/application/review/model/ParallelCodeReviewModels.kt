@@ -43,8 +43,12 @@ data class ParallelCodeReviewRequest(
 ) {
   init {
     reviewRunId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
-    activityWorkflowId?.let { require(it.isNotBlank()) { "activityWorkflowId must be non-blank when provided." } }
-    activityParentWorkflowId?.let { require(it.isNotBlank()) { "activityParentWorkflowId must be non-blank when provided." } }
+    activityWorkflowId?.let {
+      require(it.isNotBlank()) { "activityWorkflowId must be non-blank when provided." }
+    }
+    activityParentWorkflowId?.let {
+      require(it.isNotBlank()) { "activityParentWorkflowId must be non-blank when provided." }
+    }
     specPath?.let { require(it.toString().isNotBlank()) { "specPath must be non-blank when provided." } }
     baseRevision?.let { require(it.isNotBlank()) { "baseRevision must be non-blank when provided." } }
     headRevision?.let { require(it.isNotBlank()) { "headRevision must be non-blank when provided." } }

@@ -11,10 +11,13 @@ import skillbill.application.goalrunner.planning.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.planning.GoalPlanningStatusReasonCoherence
 import skillbill.application.goalrunner.planning.GoalPlanningSweep
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepDeps
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.testDecompositionManifestValidator
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
@@ -23,7 +26,14 @@ import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.NoopGoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
+import skillbill.ports.learning.LearningRepository
+import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.telemetry.LifecycleTelemetryRepository
+import skillbill.ports.telemetry.TelemetryOutboxRepository
+import skillbill.ports.telemetry.TelemetryReconciliationRepository
+import skillbill.ports.work.EmptyWorkListRepository
+import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.specscratch.UnavailableSpecScratchStore
@@ -37,7 +47,42 @@ import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeQuarantineValidator
 import java.nio.file.Path
 import java.time.Clock
 
-internal fun testGoalRunner(deps: GoalRunnerDeps): GoalRunner = GoalRunner(deps)
+internal fun testActivityStampWriter(
+  database: DatabaseSessionFactory = TestGoalActivityStampDatabase,
+): AgentActivityStampWriter = AgentActivityStampWriter(database)
+
+internal fun testGoalRunner(
+  deps: GoalRunnerDeps,
+  activityStampWriter: AgentActivityStampWriter = testActivityStampWriter(),
+): GoalRunner = GoalRunner(deps, activityStampWriter)
+
+private object TestGoalActivityStampDatabase : DatabaseSessionFactory {
+  private val dbPath = Path.of("/fake/goal-activity-stamp.db")
+
+  override fun resolveDbPath(dbOverride: String?): Path = dbPath
+
+  override fun databaseExists(dbOverride: String?): Boolean = true
+
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
+
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
+    override val dbPath: Path = this@TestGoalActivityStampDatabase.dbPath
+    override val reviews: ReviewRepository get() = error("unused by goal activity stamp wiring")
+    override val learnings: LearningRepository get() = error("unused by goal activity stamp wiring")
+    override val lifecycleTelemetry: LifecycleTelemetryRepository
+      get() = error("unused by goal activity stamp wiring")
+    override val telemetryReconciliation: TelemetryReconciliationRepository
+      get() = error("unused by goal activity stamp wiring")
+    override val telemetryOutbox: TelemetryOutboxRepository get() = error("unused by goal activity stamp wiring")
+    override val workflowStates: WorkflowStateRepository get() = error("unused by goal activity stamp wiring")
+    override val workList = EmptyWorkListRepository
+    override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+  }
+}
 
 internal fun goalRunnerDeps(
   manifestStore: GoalRunnerManifestStore,

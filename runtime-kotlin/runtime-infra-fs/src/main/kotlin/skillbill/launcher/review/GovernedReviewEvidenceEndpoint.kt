@@ -39,13 +39,12 @@ class UnixSocketGovernedReviewEvidenceEndpointBinder(
     lane: String,
     protocol: NativeReviewOperationProtocol,
     onEvidenceRead: (() -> Unit)?,
-  ): GovernedReviewEvidenceEndpointHandle =
-    GovernedReviewEvidenceEndpoint.bind(
-      lane,
-      protocol,
-      bridgeCommand(environment.environment, environment.userHome),
-      onEvidenceRead,
-    )
+  ): GovernedReviewEvidenceEndpointHandle = GovernedReviewEvidenceEndpoint.bind(
+    lane,
+    protocol,
+    bridgeCommand(environment.environment, environment.userHome),
+    onEvidenceRead,
+  )
 }
 internal fun bridgeCommand(environment: Map<String, String>, userHome: Path): List<String> {
   val configured = environment["SKILL_BILL_RUNTIME_MCP_BIN"]?.takeIf(String::isNotBlank)

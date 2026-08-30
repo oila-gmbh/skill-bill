@@ -8,8 +8,6 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.idestatus.AgentActivityStampRepository
 import java.time.Clock
 import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 @Inject
 class AgentActivityStampWriter(
@@ -21,7 +19,8 @@ class AgentActivityStampWriter(
     parentWorkflowId: String?,
     dbOverride: String?,
   ): AgentRunActivityStampSink = AgentRunActivityStampSink { label ->
-    val workflowId = runCatching { resolveWorkflowId() }.getOrNull()?.takeIf(String::isNotBlank) ?: return@AgentRunActivityStampSink
+    val workflowId = runCatching { resolveWorkflowId() }.getOrNull()?.takeIf(String::isNotBlank)
+      ?: return@AgentRunActivityStampSink
     record(
       StampContext(
         workflowId = workflowId,
@@ -32,11 +31,7 @@ class AgentActivityStampWriter(
     )
   }
 
-  fun sink(
-    workflowId: String,
-    parentWorkflowId: String?,
-    dbOverride: String?,
-  ): AgentRunActivityStampSink {
+  fun sink(workflowId: String, parentWorkflowId: String?, dbOverride: String?): AgentRunActivityStampSink {
     val context = StampContext(
       workflowId = workflowId,
       parentWorkflowId = parentWorkflowId?.takeIf(String::isNotBlank),
@@ -59,26 +54,29 @@ class AgentActivityStampWriter(
   private fun record(context: StampContext, label: AgentActivityLabel) {
     if (context.workflowId.isBlank()) return
     val now = Instant.now(clock)
-    val latest = latestByWorkflow.computeIfAbsent(context.workflowId) { LatestStamp() }
-    val previous = latest.stamp.get()
-    if (previous != null && !now.isAfter(previous.recordedAt)) return
-    if (previous?.label == label &&
-      now.toEpochMilli() - previous.recordedAt.toEpochMilli() < DEBOUNCE_WINDOW_MILLIS
-    ) {
-      return
+    val stampToPersist = synchronized(latestByWorkflow) {
+      val latest = latestByWorkflow.getOrPut(context.workflowId) { LatestStamp() }
+      val previous = latest.stamp
+      if (previous != null && !now.isAfter(previous.recordedAt)) return
+      if (previous?.label == label &&
+        now.toEpochMilli() - previous.recordedAt.toEpochMilli() < DEBOUNCE_WINDOW_MILLIS
+      ) {
+        return
+      }
+      val stamp = AgentActivityStamp(recordedAt = now, label = label)
+      latest.stamp = stamp
+      val lastPersist = latest.lastPersistNanos
+      val nowNanos = System.nanoTime()
+      if (label != AgentActivityLabel.EVIDENCE_READ &&
+        lastPersist != 0L &&
+        nowNanos - lastPersist < DEBOUNCE_WINDOW_NANOS
+      ) {
+        return
+      }
+      latest.lastPersistNanos = nowNanos
+      stamp
     }
-    val stamp = AgentActivityStamp(recordedAt = now, label = label)
-    latest.stamp.set(stamp)
-    val lastPersist = latest.lastPersistNanos.get()
-    val nowNanos = System.nanoTime()
-    if (label != AgentActivityLabel.EVIDENCE_READ &&
-      lastPersist != 0L &&
-      nowNanos - lastPersist < DEBOUNCE_WINDOW_NANOS
-    ) {
-      return
-    }
-    latest.lastPersistNanos.set(nowNanos)
-    persist(context, stamp)
+    persist(context, stampToPersist)
   }
 
   private fun persist(context: StampContext, stamp: AgentActivityStamp) {
@@ -103,13 +101,13 @@ class AgentActivityStampWriter(
   )
 
   private class LatestStamp {
-    val stamp = java.util.concurrent.atomic.AtomicReference<AgentActivityStamp?>(null)
-    val lastPersistNanos = AtomicLong(0L)
+    var stamp: AgentActivityStamp? = null
+    var lastPersistNanos: Long = 0L
   }
 
   private companion object {
     const val DEBOUNCE_WINDOW_MILLIS: Long = 250L
-    val DEBOUNCE_WINDOW_NANOS: Long = DEBOUNCE_WINDOW_MILLIS * 1_000_000L
-    val latestByWorkflow = ConcurrentHashMap<String, LatestStamp>()
+    const val DEBOUNCE_WINDOW_NANOS: Long = DEBOUNCE_WINDOW_MILLIS * 1_000_000L
+    val latestByWorkflow = HashMap<String, LatestStamp>()
   }
 }

@@ -6,7 +6,6 @@ import skillbill.review.context.model.ReviewCommitLaneDecision
 import skillbill.review.context.model.ReviewCommitLaneDisposition
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitUnit
-import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.plan.model.ReviewRoutedLane
 
 /**
@@ -20,12 +19,7 @@ object ReviewCommitLaneRoutingPolicy {
   private const val MAX_LISTED = 6
   private const val SHORT_COMMIT_SHA_CHARS = 12
 
-  fun route(
-    units: List<ReviewCommitUnit>,
-    lanes: List<ReviewRoutedLane>,
-    @Suppress("UNUSED_PARAMETER")
-    budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
-  ): ReviewCommitLaneRoutingMatrix {
+  fun route(units: List<ReviewCommitUnit>, lanes: List<ReviewRoutedLane>): ReviewCommitLaneRoutingMatrix {
     require(units.isNotEmpty()) { "Commit/lane routing requires at least one review unit." }
     require(lanes.isNotEmpty()) { "Commit/lane routing requires at least one planned lane." }
     val ordered = units.sortedBy { it.orderIndex }

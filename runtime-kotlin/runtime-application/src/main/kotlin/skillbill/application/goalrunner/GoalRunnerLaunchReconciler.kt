@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerQualityGateSelectionResolver
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts

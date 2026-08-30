@@ -27,6 +27,7 @@ import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.application.goalrunner.planning.cascadeEligiblePlanSubtaskIds
+import skillbill.application.goalrunner.testActivityStampWriter
 import skillbill.application.goalrunner.testGoalRunner
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testPhaseRecorder
@@ -3743,6 +3744,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = outcomes,
+      activityStampWriter = testActivityStampWriter(),
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -3795,6 +3797,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = outcomes,
+      activityStampWriter = testActivityStampWriter(),
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -3830,6 +3833,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = outcomes,
+      activityStampWriter = testActivityStampWriter(),
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(

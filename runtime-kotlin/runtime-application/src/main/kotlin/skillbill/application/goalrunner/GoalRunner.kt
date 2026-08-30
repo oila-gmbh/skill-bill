@@ -1,12 +1,12 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.goalrunner.model.GoalRunPreparation
 import skillbill.application.goalrunner.model.GoalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState

@@ -2,14 +2,19 @@ package skillbill.application.review
 
 import skillbill.application.evidence.SharedReviewEvidenceCommits
 import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
@@ -46,6 +51,16 @@ internal data class ParallelCodeReviewRunnerPlanningDeps(
   val specIntentProjectionResolver: SpecIntentProjectionResolver,
   val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
   val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning,
+)
+
+internal data class ParallelCodeReviewRunnerLaneLaunchDeps(
+  val parentReviewLauncher: GoalRunnerSubtaskLauncher,
+  val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
+  val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
+  val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort,
+  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
+  val failureHelpers: ParallelCodeReviewRunnerFailureHelpers,
+  val activityStampWriter: AgentActivityStampWriter,
 )
 
 internal data class LaunchParentLaneArgs(

@@ -4,6 +4,7 @@ import skillbill.idestatus.model.AgentActivityLabel
 import skillbill.idestatus.model.AgentActivityStamp
 import skillbill.ports.idestatus.AgentActivityStampRepository
 import java.sql.Connection
+import java.sql.ResultSet
 import java.time.Instant
 import java.time.format.DateTimeParseException
 
@@ -24,9 +25,9 @@ internal class AgentActivityStampStore(
       WHERE excluded.recorded_at > agent_activity_stamps.recorded_at
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.setString(2, stamp.recordedAt.toString())
-      statement.setString(3, stamp.label.wireValue)
+      statement.setString(WORKFLOW_ID_INDEX, workflowId)
+      statement.setString(RECORDED_AT_INDEX, stamp.recordedAt.toString())
+      statement.setString(LABEL_INDEX, stamp.label.wireValue)
       statement.executeUpdate()
     }
   }
@@ -40,14 +41,16 @@ internal class AgentActivityStampStore(
       WHERE workflow_id = ?
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, workflowId)
-      statement.executeQuery().use { resultSet ->
-        if (!resultSet.next()) return null
-        val recordedAt = parseInstant(resultSet.getString("recorded_at")) ?: return null
-        val label = AgentActivityLabel.fromWire(resultSet.getString("label")) ?: return null
-        AgentActivityStamp(recordedAt = recordedAt, label = label)
-      }
+      statement.setString(WORKFLOW_ID_INDEX, workflowId)
+      statement.executeQuery().use(::stampFromResultSet)
     }
+  }
+
+  private fun stampFromResultSet(resultSet: ResultSet): AgentActivityStamp? {
+    if (!resultSet.next()) return null
+    val recordedAt = parseInstant(resultSet.getString("recorded_at")) ?: return null
+    val label = AgentActivityLabel.fromWire(resultSet.getString("label")) ?: return null
+    return AgentActivityStamp(recordedAt = recordedAt, label = label)
   }
 
   private fun parseInstant(raw: String?): Instant? {
@@ -57,5 +60,11 @@ internal class AgentActivityStampStore(
     } catch (_: DateTimeParseException) {
       null
     }
+  }
+
+  private companion object {
+    const val WORKFLOW_ID_INDEX: Int = 1
+    const val RECORDED_AT_INDEX: Int = 2
+    const val LABEL_INDEX: Int = 3
   }
 }

@@ -2,8 +2,8 @@ package skillbill.application.idestatus.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
-import skillbill.idestatus.model.AgentActivityLabel
 import skillbill.goalrunner.model.GoalPlanningStatusState
+import skillbill.idestatus.model.AgentActivityLabel
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import java.nio.file.Path
 import java.time.Instant

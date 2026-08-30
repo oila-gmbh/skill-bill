@@ -25,7 +25,10 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     )
     val remediation = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
-      promptComposerBriefingFor("audit", priorGapMemory = memory, auditGapReentry = true),
+      promptComposerBriefingFor(
+        "audit",
+        PromptComposerBriefingArgs(priorGapMemory = memory, auditGapReentry = true),
+      ),
     )
     assertContains(remediation, "explicit re-justification")
     assertContains(remediation, "prior_audit_values")

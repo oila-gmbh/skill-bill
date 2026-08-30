@@ -12,6 +12,7 @@ import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusResult
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
@@ -228,7 +229,7 @@ internal fun fixtureCheckedOutBranch(repoRoot: Path): String? =
 
 internal object EmitShapeValidator : IdeStatusValidator by NoopIdeStatusValidator {
   override fun validate(snapshot: Map<String, Any?>, sourceLabel: String) {
-    require(snapshot["contract_version"] == "0.1")
+    require(snapshot["contract_version"] == IDE_STATUS_CONTRACT_VERSION)
     require(snapshot["repository_identity"] is String)
     require(snapshot["lifecycle_state"] is String)
   }

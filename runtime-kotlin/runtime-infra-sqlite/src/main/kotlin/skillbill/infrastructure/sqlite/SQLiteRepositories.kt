@@ -29,10 +29,10 @@ import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.idestatus.AgentActivityStampRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.goalrunner.UnaddressedFindingsRepository
+import skillbill.ports.idestatus.AgentActivityStampRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
 import skillbill.ports.review.ReviewRepository

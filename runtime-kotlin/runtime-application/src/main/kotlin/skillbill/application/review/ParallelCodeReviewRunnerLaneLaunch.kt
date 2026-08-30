@@ -1,6 +1,5 @@
 package skillbill.application.review
 
-import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
@@ -8,18 +7,13 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
-import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.ReviewEvidenceBroker
-import skillbill.ports.review.ReviewEvidenceBrokerFactory
-import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewContextBudgetExceededException
@@ -31,14 +25,16 @@ import java.nio.file.Path
 import kotlin.coroutines.cancellation.CancellationException
 
 internal class ParallelCodeReviewRunnerLaneLaunch(
-  private val parentReviewLauncher: GoalRunnerSubtaskLauncher,
-  private val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
-  private val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
-  private val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort,
-  internal val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
-  private val failureHelpers: ParallelCodeReviewRunnerFailureHelpers,
-  private val activityStampWriter: AgentActivityStampWriter,
+  deps: ParallelCodeReviewRunnerLaneLaunchDeps,
 ) {
+  private val parentReviewLauncher = deps.parentReviewLauncher
+  private val reviewEvidenceBrokerFactory = deps.reviewEvidenceBrokerFactory
+  private val governedEvidenceEndpointBinder = deps.governedEvidenceEndpointBinder
+  private val reviewLaunchAgentStaging = deps.reviewLaunchAgentStaging
+  internal val sharedEvidenceLocatorReader = deps.sharedEvidenceLocatorReader
+  private val failureHelpers = deps.failureHelpers
+  private val activityStampWriter = deps.activityStampWriter
+
   fun runLanes(initial: ParallelCodeReviewInitialRun): ParallelReviewLaneRunResult {
     val request = initial.request
     val byAgent = initial.preparedLaunchRequests.groupBy { it.agentId }

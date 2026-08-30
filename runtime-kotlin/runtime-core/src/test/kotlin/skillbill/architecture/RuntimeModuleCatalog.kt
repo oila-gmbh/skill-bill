@@ -44,6 +44,7 @@ object RuntimeModuleCatalog {
       "skillbill.featurespec",
       "skillbill.goalplanning",
       "skillbill.goalrunner",
+      "skillbill.idestatus",
       "skillbill.skillremove",
       "skillbill.text",
       "skillbill.workflow",

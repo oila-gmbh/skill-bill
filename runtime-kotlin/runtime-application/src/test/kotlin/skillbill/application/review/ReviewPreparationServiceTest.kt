@@ -467,7 +467,6 @@ class ReviewPreparationServiceTest {
     val bounded = ReviewPreparationService(
       ReviewFactPorts(counting, counting, counting, counting, counting, counting),
       RecordingValidator(),
-      ReviewContextBudgetPolicy(maxAssignmentExpansions = 1),
     )
     val prepared = bounded.prepare(request())
     val assignment = prepared.assignments.first()
@@ -486,11 +485,7 @@ class ReviewPreparationServiceTest {
     val defaults = ReviewPreparationService(factPorts, RecordingValidator())
     val observedBytes = defaults.prepare(request()).packet.canonicalBytes
 
-    val bounded = ReviewPreparationService(
-      factPorts,
-      RecordingValidator(),
-      ReviewContextBudgetPolicy(maxParentPacketBytes = observedBytes - 1, maxLaneLaunchBytes = observedBytes - 1),
-    )
+    val bounded = ReviewPreparationService(factPorts, RecordingValidator())
     val prepared = bounded.prepare(request())
     assertEquals(observedBytes, prepared.packet.canonicalBytes)
   }

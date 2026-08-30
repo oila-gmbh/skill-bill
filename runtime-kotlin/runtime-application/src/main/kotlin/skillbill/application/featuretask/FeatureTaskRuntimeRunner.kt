@@ -1,11 +1,11 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunnerDependencies
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
