@@ -46,8 +46,6 @@ internal object ParallelReviewPreparationCompiler {
     hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
       FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
   ): List<ReviewSpecialistLaunchRequest> {
-    // Commit units are the authoritative hunk surface: the packet's flat changedHunks is exactly
-    // their union, so every hunk stays attributable to the commit that introduced it.
     val hunks = input.commitSequence.units.flatMap { it.hunks }
     val candidates = specialistRoutes(input)
     val routingMatrix = ReviewCommitLaneRoutingPolicy.route(

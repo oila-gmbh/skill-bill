@@ -27,7 +27,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(
         "audit",
-        PromptComposerBriefingArgs(priorGapMemory = memory, auditGapReentry = true),
+        PromptComposerBriefingOptions(priorGapMemory = memory, auditGapReentry = true),
       ),
     )
     assertContains(remediation, "explicit re-justification")

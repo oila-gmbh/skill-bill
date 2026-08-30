@@ -209,7 +209,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val criteria = listOf("detekt reports zero LongMethod issues under maxIssues 0")
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
-      promptComposerBriefingFor("audit", PromptComposerBriefingArgs(acceptanceCriteria = criteria)),
+      promptComposerBriefingFor("audit", PromptComposerBriefingOptions(acceptanceCriteria = criteria)),
     )
     assertContains(prompt, "Validation ownership")
     assertContains(prompt, "require mechanical gate proof")
@@ -230,7 +230,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(
         "implement",
-        PromptComposerBriefingArgs(
+        PromptComposerBriefingOptions(
           priorGapMemory = memory,
           auditGapReentry = true,
           acceptanceCriteria = criteria,
@@ -249,7 +249,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val criteria = listOf("detekt reports zero LongMethod issues")
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
-      promptComposerBriefingFor("implement", PromptComposerBriefingArgs(acceptanceCriteria = criteria)),
+      promptComposerBriefingFor("implement", PromptComposerBriefingOptions(acceptanceCriteria = criteria)),
     )
     assertContains(prompt, "Only the validate phase may run the pack validation gate")
     assertContains(prompt, "must not compile, build,")
