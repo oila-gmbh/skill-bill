@@ -1,19 +1,13 @@
 package skillbill.review.plan
 
-import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_BYTES_BUDGET
-import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
 import skillbill.review.context.model.REVIEW_ROUTING_REASON_MAX_CHARS
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitLaneDecision
 import skillbill.review.context.model.ReviewCommitLaneDisposition
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitUnit
-import skillbill.review.context.model.ReviewContextBudgetExceeded
-import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.plan.model.ReviewRoutedLane
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
 
 /**
  * Decides, once and finally, which commits each specialist lane sees. Relevance is never deferred:
@@ -29,18 +23,12 @@ object ReviewCommitLaneRoutingPolicy {
   fun route(
     units: List<ReviewCommitUnit>,
     lanes: List<ReviewRoutedLane>,
+    @Suppress("UNUSED_PARAMETER")
     budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   ): ReviewCommitLaneRoutingMatrix {
     require(units.isNotEmpty()) { "Commit/lane routing requires at least one review unit." }
     require(lanes.isNotEmpty()) { "Commit/lane routing requires at least one planned lane." }
     val ordered = units.sortedBy { it.orderIndex }
-    val routingId = analysisDigest(ordered, lanes)
-    val firstLane = lanes.first().laneKey
-    requirePairBudget(ordered.size.toLong() * lanes.size, budget, routingId, firstLane)
-    val uniqueHunkBytes = ordered.sumOf { unit ->
-      unit.hunks.sumOf { it.content.toByteArray(StandardCharsets.UTF_8).size.toLong() }
-    }
-    requireByteBudget(uniqueHunkBytes, budget, routingId, firstLane)
     val decisions = ordered.flatMap { unit ->
       lanes.map { lane -> decide(unit, lane) }
     }
@@ -99,40 +87,6 @@ object ReviewCommitLaneRoutingPolicy {
         signals = emptyList(),
       )
     }
-  }
-
-  private fun requirePairBudget(pairs: Long, budget: ReviewContextBudgetPolicy, routingId: String, lane: String) {
-    if (pairs > budget.maxRoutingAnalysisPairs) {
-      val limit = budget.maxRoutingAnalysisPairs.toLong()
-      throw breach(REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET, limit, pairs, routingId, lane)
-    }
-  }
-
-  private fun requireByteBudget(bytes: Long, budget: ReviewContextBudgetPolicy, routingId: String, lane: String) {
-    if (bytes > budget.maxRoutingAnalysisBytes) {
-      throw breach(REVIEW_ROUTING_ANALYSIS_BYTES_BUDGET, budget.maxRoutingAnalysisBytes, bytes, routingId, lane)
-    }
-  }
-
-  private fun breach(kind: String, limit: Long, observed: Long, routingId: String, lane: String) =
-    ReviewContextBudgetExceededException(
-      ReviewContextBudgetExceeded(
-        lane = lane,
-        budgetKind = kind,
-        configuredLimit = limit,
-        observedValue = observed,
-        packetDigest = routingId,
-        assignmentDigest = routingId,
-        enforceable = true,
-      ),
-    )
-
-  /** Identity of the analysis itself: no packet exists yet when routing runs. */
-  private fun analysisDigest(units: List<ReviewCommitUnit>, lanes: List<ReviewRoutedLane>): String {
-    val value = units.joinToString("") { it.commitSha } + "" + lanes.joinToString("") { it.laneKey }
-    return MessageDigest.getInstance("SHA-256")
-      .digest(value.toByteArray(StandardCharsets.UTF_8))
-      .joinToString("") { "%02x".format(it) }
   }
 
   private fun short(commitSha: String) = commitSha.take(SHORT_COMMIT_SHA_CHARS)

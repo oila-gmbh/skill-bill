@@ -790,7 +790,7 @@ x-coherence-checks:
   - Selected lanes are exactly the lanes that focused at least one commit and own at least one changed path in those commits.
   - An assignment's assigned_hunks are exactly the hunks its focused commits changed under its owned paths; a hunk belonging to a commit skipped for that lane is never assigned.
   - The routing matrix contributes to packet_digest, and a lane's routing column contributes to its assignment_digest, so flipping a disposition or a skip reason is digest-visible.
-  - Parent-side routing analysis is bounded by max_routing_analysis_pairs and max_routing_analysis_bytes and fails loudly on breach rather than degrading into over-broad or under-broad assignments.
+  - Parent-side routing analysis sizes commit/lane pairs and unique hunk material for accounting; it does not hard-fail after those internal artifacts are already loaded.
   - The commit_sequence_digest is SHA-256 over the packet's ordered commit_unit_ids, so it names the reviewed sequence independently of routing, and a lane or integration result minted against a different sequence is rejected rather than merged.
   - Exactly one integration pass runs per review, after every selected lane reaches a terminal state, and it never re-launches a specialist rubric; its cost does not scale with commit count.
   - An integration launch carries final-state evidence targets, commit identity metadata, and bounded per-lane summaries only; a raw lane bundle, a sibling lane's hunk bodies, a complete PR diff, or a parent transcript in that payload is a contract breach, not a degraded delivery.

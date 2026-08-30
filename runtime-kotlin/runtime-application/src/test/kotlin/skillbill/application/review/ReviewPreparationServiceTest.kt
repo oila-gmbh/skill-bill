@@ -35,7 +35,6 @@ import skillbill.review.context.model.ReviewCommitLaneDisposition
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
-import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewExpansionRecord
@@ -463,7 +462,7 @@ class ReviewPreparationServiceTest {
     assertTrue("Packet expansion ledger records" in failure.message.orEmpty())
   }
 
-  @Test fun `an assignment exceeding the configured expansion bound is rejected`() {
+  @Test fun `an assignment over the former expansion bound still validates at preparation`() {
     val counting = ports()
     val bounded = ReviewPreparationService(
       ReviewFactPorts(counting, counting, counting, counting, counting, counting),
@@ -478,14 +477,10 @@ class ReviewPreparationServiceTest {
         expansion(assignment.digest, id = "exp-2", sequence = 1),
       ),
     )
-    val failure = assertFailsWith<ReviewContextBudgetExceededException> {
-      bounded.validateAgainstPacket(prepared.packet, listOf(overBound) + prepared.assignments.drop(1))
-    }
-    assertEquals("assignment_expansions", failure.outcome.budgetKind)
-    assertEquals("review_context_budget_exceeded", failure.outcome.type)
+    bounded.validateAgainstPacket(prepared.packet, listOf(overBound) + prepared.assignments.drop(1))
   }
 
-  @Test fun `a configured parent-packet bound the default would accept rejects the same packet`() {
+  @Test fun `an oversized parent packet still prepares when the former byte bound would reject it`() {
     val counting = ports()
     val factPorts = ReviewFactPorts(counting, counting, counting, counting, counting, counting)
     val defaults = ReviewPreparationService(factPorts, RecordingValidator())
@@ -496,12 +491,8 @@ class ReviewPreparationServiceTest {
       RecordingValidator(),
       ReviewContextBudgetPolicy(maxParentPacketBytes = observedBytes - 1, maxLaneLaunchBytes = observedBytes - 1),
     )
-    val failure = assertFailsWith<ReviewContextBudgetExceededException> {
-      bounded.prepare(request())
-    }
-    assertEquals("parent_packet_bytes", failure.outcome.budgetKind)
-    assertEquals(observedBytes - 1, failure.outcome.configuredLimit)
-    assertEquals(observedBytes, failure.outcome.observedValue)
+    val prepared = bounded.prepare(request())
+    assertEquals(observedBytes, prepared.packet.canonicalBytes)
   }
 
   internal fun oversizedPatch(path: String = "src/Huge.kt"): String {

@@ -181,6 +181,37 @@ internal fun goalContinuationDirective(phaseId: String, suppressDecomposition: B
 
 // One imperative task directive per phase; the briefing carries the spec-specific scope.
 // Validate Task-line specialization lives in FeatureTaskRuntimePhasePromptValidateDirectives.
+
+private const val AUDIT_NO_EARLIER_AUDIT_SENTENCE: String =
+  "A later audit re-checks every criterion from scratch, so you never need to account for what an " +
+    "earlier audit said."
+
+private const val AUDIT_STICKY_REJUSTIFICATION_SENTENCE: String =
+  "A later audit re-checks every criterion from scratch. When this briefing carries prior-gap memory, " +
+    "treat prior_audit_values as authoritative context: repeating a criterion already named in an " +
+    "earlier audit value string requires explicit re-justification — name what the prior implement " +
+    "claimed and why the tree still fails it."
+
+internal const val AUDIT_READONLY_EVIDENCE_SENTENCE: String =
+  "All evidence is read-only repository facts: never run a build, a test, or any " +
+    "other command as audit evidence; validation owns test execution and failures."
+
+private const val AUDIT_GATE_PROOF_EVIDENCE_SENTENCE: String =
+  "Prefer read-only repository facts. When Validation ownership grants a gate-proof exception for " +
+    "acceptance criteria that require mechanical proof, run only those allowed commands and inventory " +
+    "every remaining finding for that proof in the gap note (count plus rule/location ids — never a " +
+    "sample batch). Validation still owns suite test execution and the final lifecycle gate."
+
+private const val IMPLEMENT_READONLY_REPAIR_SENTENCE: String =
+  "Repair evidence is read-only repository " +
+    "facts: do not run builds or tests here."
+
+private const val IMPLEMENT_GATE_PROOF_REPAIR_SENTENCE: String =
+  "When Validation ownership grants a gate-proof exception for this audit-gap remediation, run only " +
+    "the allowed gate commands to clear every finding from the audit inventory in this invocation; " +
+    "re-run that same gate once at the end to confirm. Otherwise treat repair evidence as read-only " +
+    "repository facts and do not run builds or tests here."
+
 internal val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
     "Produce the scaled pre-planning digest for the resolved feature size. Do not modify " +
@@ -205,8 +236,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "reconciled_state. repository_checkpoint is runtime-owned: omit it and never invent a " +
     "fingerprint. Every receipt field is a bounded summary, not a transcript. When the briefing " +
     "carries audit prose from the latest audit value, reuse its immutable initial preplan and plan " +
-    "outputs and change only what that audit value requires. Repair evidence is read-only repository " +
-    "facts: do not run builds or tests here.",
+    "outputs and change only what that audit value requires. " +
+    IMPLEMENT_READONLY_REPAIR_SENTENCE,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
     "Address every finding verify_findings carried on the CURRENT working tree as " +
     "incremental reconciliation. Every carried finding — Blocker, Major, Minor, and Nit — is in " +
@@ -263,8 +294,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "A later audit re-checks every criterion from scratch, so you never need to account for what an " +
     "earlier audit said unless this briefing carries prior_gap_memory. Judge production behavior and " +
     "production implementation only: test adequacy, coverage, fixtures, and assertions are never " +
-    "unmet criteria. All evidence is read-only repository facts: never run a build, a test, or any " +
-    "other command as audit evidence; validation owns test execution and failures.",
+    "unmet criteria. " +
+    AUDIT_READONLY_EVIDENCE_SENTENCE,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to RUNTIME_OWNED_VALIDATE_PHASE_TASK,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
     "Invoke bill-boundary-history inline and apply its write/skip rules for the implemented " +
@@ -287,26 +318,35 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "title, and whether a new PR was created.",
 )
 
-// The blank-slate sentence in the shared PHASE_AUDIT directive. It is subordinated for a
-// memory-carrying audit (which must account for the earlier audit's claims) while staying byte-identical
-// for a first or forward audit.
-private const val AUDIT_NO_EARLIER_AUDIT_SENTENCE: String =
-  "A later audit re-checks every criterion from scratch, so you never need to account for what an " +
-    "earlier audit said."
-
-private const val AUDIT_STICKY_REJUSTIFICATION_SENTENCE: String =
-  "A later audit re-checks every criterion from scratch. When this briefing carries prior-gap memory, " +
-    "treat prior_audit_values as authoritative context: repeating a criterion already named in an " +
-    "earlier audit value string requires explicit re-justification — name what the prior implement " +
-    "claimed and why the tree still fails it."
-
 /**
- * The audit phase task directive, memory-aware. A first or forward audit (no memory) returns the
- * shared static wording byte-for-byte; a memory-carrying audit swaps the blank-slate sentence for the
- * sticky re-justification requirement (AC-003).
+ * The audit phase task directive, memory- and gate-proof-aware. A first or forward audit without
+ * gate-proof ACs returns the shared static wording byte-for-byte; memory swaps the blank-slate
+ * sentence; gate-proof ACs swap the absolute no-command evidence sentence.
  */
-internal fun auditPhaseTaskDirective(memory: FeatureTaskRuntimePriorGapMemory?): String {
-  val base = phaseDirectives.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
-  if (memory == null) return base
-  return base.replace(AUDIT_NO_EARLIER_AUDIT_SENTENCE, AUDIT_STICKY_REJUSTIFICATION_SENTENCE)
+internal fun auditPhaseTaskDirective(
+  memory: FeatureTaskRuntimePriorGapMemory?,
+  acceptanceCriteria: List<String> = emptyList(),
+): String {
+  var text = phaseDirectives.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+  if (memory != null) {
+    text = text.replace(AUDIT_NO_EARLIER_AUDIT_SENTENCE, AUDIT_STICKY_REJUSTIFICATION_SENTENCE)
+  }
+  if (acceptanceCriteriaRequireGateProof(acceptanceCriteria)) {
+    text = text.replace(AUDIT_READONLY_EVIDENCE_SENTENCE, AUDIT_GATE_PROOF_EVIDENCE_SENTENCE)
+  }
+  return text
+}
+
+internal fun implementPhaseTaskDirective(
+  auditGapImplement: Boolean,
+  acceptanceCriteria: List<String>,
+): String {
+  val base = phaseDirectives.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
+  if (
+    auditGapImplement &&
+    acceptanceCriteriaRequireGateProof(acceptanceCriteria)
+  ) {
+    return base.replace(IMPLEMENT_READONLY_REPAIR_SENTENCE, IMPLEMENT_GATE_PROOF_REPAIR_SENTENCE)
+  }
+  return base
 }

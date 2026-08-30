@@ -53,7 +53,6 @@ class SpecIntentProjectionExtractor(
       declaredByteBudget = budget.maxSpecIntentProjectionBytes.toInt().coerceAtLeast(1),
       surroundingContext = surrounding,
     )
-    enforceSpecIntentProjectionBudget(projection, budget)
     try {
       envelopeValidator.validateSpecIntentProjection(projection.toProjectionPayload(), "spec_intent_projection")
     } catch (error: InvalidReviewContextSchemaError) {

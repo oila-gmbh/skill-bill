@@ -1,7 +1,5 @@
 package skillbill.review.plan
 
-import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_BYTES_BUDGET
-import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
 import skillbill.review.context.model.REVIEW_ROUTING_REASON_MAX_CHARS
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitLaneDecision
@@ -9,7 +7,6 @@ import skillbill.review.context.model.ReviewCommitLaneDisposition
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
-import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutedLane
@@ -338,38 +335,17 @@ class ReviewCommitLaneRoutingPolicyTest {
   }
 
   // AC-010
-  @Test fun `a routing pair budget breach fails loudly rather than truncating the matrix`() {
+  @Test fun `routing analysis no longer hard-fails on former pair or byte prep budgets`() {
     val commits = (0..3).map { commit(it, hunk("ui/Screen$it.kt", "+@Composable fun S() {}")) }
-    val error = assertFailsWith<ReviewContextBudgetExceededException> {
-      ReviewCommitLaneRoutingPolicy.route(
-        commits,
-        allLanes,
-        ReviewContextBudgetPolicy.DEFAULT.copy(maxRoutingAnalysisPairs = 4),
-      )
-    }
-    assertEquals(REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET, error.outcome.budgetKind)
-    assertEquals(4L, error.outcome.configuredLimit)
-    assertEquals(commits.size.toLong() * allLanes.size, error.outcome.observedValue)
-    assertTrue(error.outcome.enforceable)
+    val matrix = ReviewCommitLaneRoutingPolicy.route(
+      commits,
+      allLanes,
+      ReviewContextBudgetPolicy.DEFAULT.copy(maxRoutingAnalysisPairs = 4, maxRoutingAnalysisBytes = 16),
+    )
+    assertEquals(commits.size * allLanes.size, matrix.decisions.size)
   }
 
-  // AC-010
-  @Test fun `a routing hunk-material byte budget breach fails loudly`() {
-    val content = "+" + "a".repeat(512)
-    val commits = listOf(commit(0, hunk("ui/Screen.kt", content)))
-    val uniqueBytes = content.toByteArray(Charsets.UTF_8).size.toLong()
-    val error = assertFailsWith<ReviewContextBudgetExceededException> {
-      ReviewCommitLaneRoutingPolicy.route(
-        commits,
-        allLanes,
-        ReviewContextBudgetPolicy.DEFAULT.copy(maxRoutingAnalysisBytes = 16),
-      )
-    }
-    assertEquals(REVIEW_ROUTING_ANALYSIS_BYTES_BUDGET, error.outcome.budgetKind)
-    assertEquals(uniqueBytes, error.outcome.observedValue)
-  }
-
-  @Test fun `routing analysis bytes count unique hunk material once not once per lane`() {
+  @Test fun `routing analysis accepts unique hunk material regardless of lane count`() {
     val content = "+" + "a".repeat(100)
     val uniqueBytes = content.toByteArray(Charsets.UTF_8).size.toLong()
     require(uniqueBytes * allLanes.size > uniqueBytes) {

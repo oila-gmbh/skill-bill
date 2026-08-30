@@ -13,8 +13,6 @@ import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
-import skillbill.review.context.model.ReviewContextBudgetExceeded
-import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewEvidenceTarget
@@ -39,12 +37,12 @@ private data class ResolvedReviewFacts(
 class ReviewPreparationService(
   private val ports: ReviewFactPorts,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
-  private val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
+  @Suppress("UNUSED_PARAMETER")
+  budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   private val hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
     FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
 ) {
   fun prepare(request: ReviewPreparationRequest): ReviewPreparationResult {
-    request.specIntentProjection?.let { enforceSpecIntentProjectionBudget(it, budget) }
     val scope = ports.scope.resolveScope(request.reviewId)
     val routing = ports.stackRouting.resolveStackRouting(scope)
     val matchedRules = ports.guidance.resolveMatchedRules(scope, routing)
@@ -95,19 +93,6 @@ class ReviewPreparationService(
       rejectRevisionDrift(packet, assignment)
       rejectOwnershipViolations(packet, assignment)
       rejectBundleViolations(packet, assignment)
-      if (assignment.expansions.size > budget.maxAssignmentExpansions) {
-        throw ReviewContextBudgetExceededException(
-          ReviewContextBudgetExceeded(
-            lane = assignment.lane,
-            budgetKind = "assignment_expansions",
-            configuredLimit = budget.maxAssignmentExpansions.toLong(),
-            observedValue = assignment.expansions.size.toLong(),
-            packetDigest = packet.digest,
-            assignmentDigest = assignment.digest,
-            enforceable = true,
-          ),
-        )
-      }
       rejectUnknownAssignmentDigests(
         assignmentLabel(assignment),
         assignment.expansions,
@@ -157,7 +142,6 @@ class ReviewPreparationService(
       evidenceTargets = evidenceTargetsFor(indexed.hunks),
     )
     rejectAllowlistOverlap(request.reviewId, packet)
-    enforceParentPacketBudget(includedLanes, packet, budget)
     return packet
   }
 
@@ -410,23 +394,4 @@ private fun rejectAllowlistOverlap(reviewId: String, packet: ReviewContextPacket
       "Dependency-allowlist entries overlap changed paths owned by the packet: ${overlap.sorted()}.",
     )
   }
-}
-
-private fun enforceParentPacketBudget(
-  includedLanes: List<String>,
-  packet: ReviewContextPacket,
-  budget: ReviewContextBudgetPolicy,
-) {
-  if (packet.canonicalBytes <= budget.maxParentPacketBytes) return
-  throw ReviewContextBudgetExceededException(
-    ReviewContextBudgetExceeded(
-      lane = includedLanes.first(),
-      budgetKind = "parent_packet_bytes",
-      configuredLimit = budget.maxParentPacketBytes,
-      observedValue = packet.canonicalBytes,
-      packetDigest = packet.digest,
-      assignmentDigest = packet.digest,
-      enforceable = true,
-    ),
-  )
 }

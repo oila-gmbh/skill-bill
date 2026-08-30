@@ -59,8 +59,6 @@ import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator
-import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
-import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewParseResult
@@ -1345,7 +1343,7 @@ class ParallelCodeReviewRunnerFailureTest {
 
   // AC-010
   @Test
-  fun `a parent routing-analysis budget breach fails loudly before launch`() {
+  fun `a former parent routing-analysis pair bound no longer blocks launch`() {
     val launcher = ParallelSubtaskLauncher()
     val pack = sparsePlatformManifest(
       requiredArea = "architecture",
@@ -1363,11 +1361,8 @@ class ParallelCodeReviewRunnerFailureTest {
       ),
     )
 
-    val error = assertFailsWith<ReviewContextBudgetExceededException> {
-      runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
-    }
-    assertEquals(REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET, error.outcome.budgetKind)
-    assertTrue(launcher.requests.isEmpty(), "routing budget breach must not launch specialists")
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+    assertTrue(launcher.requests.isNotEmpty(), "internal routing prep must not hard-fail before launch")
   }
 }
 internal data class RunnerFixtureConfig(

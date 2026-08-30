@@ -7,11 +7,9 @@ import skillbill.application.testDecompositionManifestValidator
 import skillbill.error.UnreadableSpecIntentProjectionError
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
-import skillbill.review.context.model.REVIEW_SPEC_INTENT_PROJECTION_BUDGET
 import skillbill.review.context.model.ReviewCommitCoverageFact
 import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
-import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.SpecIntentAbsenceReason
 import skillbill.review.context.model.SpecIntentProjection
@@ -239,19 +237,17 @@ class SpecIntentProjectionResolverTest {
   }
 
   @Test
-  fun `an over-budget projection is rejected by name and is not truncated`() {
+  fun `an over-budget projection is delivered intact and is not truncated`() {
     val repo = tempRepo()
     val spec = writeSpec(repo, "spec.md", governedSpec("Outcome", "A criterion."))
-    val error = assertFailsWith<ReviewContextBudgetExceededException> {
-      extractor().extract(
-        repo,
-        spec,
-        ReviewContextBudgetPolicy.DEFAULT.copy(maxSpecIntentProjectionBytes = 32),
-        explicit = true,
-      )
-    }
-    assertEquals(REVIEW_SPEC_INTENT_PROJECTION_BUDGET, error.outcome.budgetKind)
-    assertTrue(error.outcome.observedValue > error.outcome.configuredLimit)
+    val projection = extractor().extract(
+      repo,
+      spec,
+      ReviewContextBudgetPolicy.DEFAULT.copy(maxSpecIntentProjectionBytes = 32),
+      explicit = true,
+    )
+    assertTrue(specIntentProjectionUtf8Bytes(projection) > 32)
+    assertEquals(32, projection.declaredByteBudget)
   }
 
   @Test
