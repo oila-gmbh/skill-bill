@@ -219,3 +219,19 @@ The IntelliJ plugin releases on its own tag stream, separate from the runtime.
 - **Never cross the streams**: a `plugin-v*` tag must never be used to cut a runtime
   release, and a runtime `v*` tag must never build or publish the plugin. Runtime tags
   are handled solely by `release.yml`, which knows nothing about the plugin.
+
+## Releasing the VS Code extension
+
+The VS Code extension releases on its own tag stream, separate from the runtime and
+IntelliJ plugin.
+
+- **Tag format**: `extension-vX.Y.Z` (plain semver only — `extension-v0.1.0`, never
+  `extension-v0.1` or `extension-v0.1.0-rc.1`). Pushing such a tag runs
+  `.github/workflows/extension-release.yml`, which derives the build version from the
+  tag (`extension-v0.1.0` → `0.1.0`) and passes it to `npm version` before `vsce package`.
+- **Published assets**: exactly two —
+  `skill-bill-vscode-extension-<version>.vsix` and its `.sha256` sidecar. The workflow
+  fails before creating the release if either is missing or if any other file is staged.
+- **Never cross the streams**: an `extension-v*` tag must never be used to cut a runtime
+  or plugin release, and runtime `v*` / `plugin-v*` tags must never build the extension.
+  Self-hosted runners are not used for extension packaging.

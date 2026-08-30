@@ -1,5 +1,14 @@
 # .github/workflows — Boundary History
 
+## [2026-08-30] SKILL-222 subtask 2 — extension-release workflow
+Areas: .github/workflows/extension-release.yml, RELEASING.md, vscode-extension/README.md
+- Extension ships on its own `extension-v*.*.*` tag stream via dedicated `extension-release.yml`; runtime `release.yml` and `plugin-release.yml` stay independent — an extension tag never builds the runtime/plugin and vice versa. reusable
+- Job is hosted-only (`ubuntu-latest`); self-hosted runners stay off-limits for this packaging path. Tag remainder must be plain semver or the job fails closed.
+- Asset staging is fail-closed: exactly one `skill-bill-vscode-extension-<version>.vsix` plus a verifiable `.sha256` sidecar; the asset check precedes release attach so a partial set never publishes. reusable
+- Docs: RELEASING.md and extension README cover Install from VSIX; Marketplace publish and other workflow mutations stay deferred.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented (release packaging AC covered here; Stop/Pause live in vscode-extension history)
+
 ## [2026-08-26] spotless-ratchet-origin-main-fetch
 Areas: .github/workflows/validate-agent-configs.yml
 - Hosted ubuntu `validate` failed at `:runtime-application:spotlessCheck` with `No such reference 'origin/main'` because Spotless `ratchetFrom("origin/main")` (Quality.kt) needs that ref at task-graph creation, and `actions/checkout@v5` default `fetch-depth: 1` never creates it. Self-hosted macmini already had a fuller clone, so only the ubuntu matrix leg failed.

@@ -23,6 +23,7 @@ Those surfaces use the same governed repo structure:
 - `orchestration/` contains shared contracts and playbooks
 - `runtime-kotlin/` contains the packaged CLI and MCP runtime
 - `intellij-plugin/` contains the isolated IntelliJ IDEA status plugin (separate Gradle build; see `intellij-plugin/README.md` and `intellij-plugin/ARCHITECTURE.md`)
+- `vscode-extension/` contains the isolated VS Code status extension (separate npm build; see `vscode-extension/README.md` and `vscode-extension/ARCHITECTURE.md`)
 - `scripts/` and `tests/` contain repo validation and maintainer tooling
 
 ## Install

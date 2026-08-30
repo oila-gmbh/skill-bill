@@ -2,7 +2,7 @@
 
 ## Scope
 
-Create `vscode-extension/` as an isolated TypeScript VS Code extension that
+Create `../../../vscode-extension` as an isolated TypeScript VS Code extension that
 consumes the existing IDE status CLI contract and surfaces workspace-aware
 Skill Bill status in the status bar.
 
@@ -25,12 +25,12 @@ Include:
   safe context). Local elapsed ticker without a CLI poll per tick.
 - Settings for CLI path and refresh interval; optional last-known display
   cache for stale presentation only.
-- `README.md` and `ARCHITECTURE.md` for the module; pointer from
-  `docs/getting-started.md` (or equivalent contributor index).
+- `../../../README.md` and `ARCHITECTURE.md` for the module; pointer from
+  `../../../docs/getting-started.md` (or equivalent contributor index).
 
 ## Acceptance Criteria
 
-1. `vscode-extension/` builds, tests, and packages independently of
+1. `../../../vscode-extension` builds, tests, and packages independently of
    `runtime-kotlin` and `intellij-plugin` Gradle builds.
 2. With a reachable CLI and matching `contract_version`, the status bar shows
    concise active / idle / blocked / failed / unavailable / incompatible text
