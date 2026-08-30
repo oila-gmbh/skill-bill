@@ -19,8 +19,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("review"),
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-    )
+    ) { copy(codeReviewMode = CodeReviewExecutionMode.INLINE) }
 
     assertContains(prompt, "The runtime owns this review")
     assertFalse(prompt.contains("Run `bill-code-review"))
@@ -237,8 +236,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
-      packCollectAllCommand = "./gradlew check --continue",
-    )
+    ) { copy(packCollectAllCommand = "./gradlew check --continue") }
 
     assertContains(prompt, "Invoke bill-code-check for collect-all and confirmation")
     assertContains(prompt, "`./gradlew check --continue`")
@@ -254,8 +252,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD),
-      packBuildCommand = "./gradlew compileKotlin",
-    )
+    ) { copy(packBuildCommand = "./gradlew compileKotlin") }
     assertContains(prompt, "./gradlew compileKotlin")
     assertContains(prompt, "collect_all_full_gate_command")
     assertContains(prompt, "skill-bill validate")
@@ -270,8 +267,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
-      agentRunValidateFallback = true,
-    )
+    ) { copy(agentRunValidateFallback = true) }
 
     assertContains(prompt, "Invoke bill-code-check for collect-all and confirmation")
     assertContains(prompt, "Validation gate degradation")
@@ -331,8 +327,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
-      agentRunValidateFallback = true,
-    )
+    ) { copy(agentRunValidateFallback = true) }
 
     assertContains(prompt, "Do not run any Gradle or other proof command while repairing")
     assertContains(prompt, "no `spotlessApply`")
@@ -363,15 +358,11 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val fullPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
-      validationGateFindings = page,
-      validationGateRepair = true,
-    )
+    ) { copy(validationGateFindings = page, validationGateRepair = true) }
     val defaultPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
-      validationGateFindings = page,
-      validationGateRepair = true,
-    )
+    ) { copy(validationGateFindings = page, validationGateRepair = true) }
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
       assertContains(prompt, "A prior gate run parsed these items")
       assertContains(prompt, "full open set for this repair turn")
@@ -401,10 +392,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD),
-      validationGateFindings = page,
-      validationGateRepair = true,
-      packBuildCommand = "./gradlew compileKotlin",
-    )
+    ) {
+      copy(
+        validationGateFindings = page,
+        validationGateRepair = true,
+        packBuildCommand = "./gradlew compileKotlin",
+      )
+    }
     assertContains(prompt, "## Runtime build gate findings")
     assertContains(prompt, "A prior gate run parsed these items")
     assertContains(prompt, "full open set for this repair turn")
@@ -427,15 +421,11 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val triagePrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
-      validationGateFindings = page,
-      validationGateTriage = true,
-    )
+    ) { copy(validationGateFindings = page, validationGateTriage = true) }
     val repairPrompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
-      validationGateFindings = page,
-      validationGateRepair = true,
-    )
+    ) { copy(validationGateFindings = page, validationGateRepair = true) }
     val forbiddenPhrases = listOf(
       "Do not run `skill-bill validate`",
       "bill-code-check",
@@ -459,10 +449,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
-      validationGateFindings = page,
-      validationGateRepair = true,
-      validationGateTriagePlan = "module=m: run spotlessApply then fix Foo.kt",
-    )
+    ) {
+      copy(
+        validationGateFindings = page,
+        validationGateRepair = true,
+        validationGateTriagePlan = "module=m: run spotlessApply then fix Foo.kt",
+      )
+    }
     assertContains(prompt, "## Triage working notes")
     assertContains(prompt, "module=m: run spotlessApply then fix Foo.kt")
   }
@@ -476,9 +469,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
-      validationGateFindings = page,
-      validationGateRepair = true,
-    )
+    ) { copy(validationGateFindings = page, validationGateRepair = true) }
     assertFalse(prompt.contains("## Triage working notes"))
   }
 
@@ -526,8 +517,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       val prompt = composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("review"),
-        codeReviewMode = mode,
-      )
+      ) { copy(codeReviewMode = mode) }
 
       assertFalse(prompt.contains("Run `bill-code-review"))
       assertFalse(prompt.contains("bill-code-review mode:${mode.wireValue}"))
@@ -539,10 +529,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("review"),
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-      reviewPassNumber = 1,
-      baselineUntrackedPaths = listOf("z-before.tmp", "a-before.tmp"),
-    )
+    ) {
+      copy(
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+        reviewPassNumber = 1,
+        baselineUntrackedPaths = listOf("z-before.tmp", "a-before.tmp"),
+      )
+    }
 
     assertContains(prompt, "Baseline-untracked review policy")
     assertFalse(prompt.contains("--baseline-untracked-exclude"))
@@ -562,10 +555,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("review"),
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-      reviewPassNumber = 1,
-      goalSubtaskReviewInput = input,
-    )
+    ) {
+      copy(
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+        reviewPassNumber = 1,
+        goalSubtaskReviewInput = input,
+      )
+    }
 
     assertFalse(prompt.contains("scope-fingerprint:abc"))
     assertContains(prompt, "durable base `${input.reviewBaseSha}`")

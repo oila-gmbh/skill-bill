@@ -46,12 +46,10 @@ class PhaseOutputFixtureParityTest {
       "the exemption list drifted; every non-producing phase must be named and justified, never skipped",
     )
   }
-
-  @Suppress("UNCHECKED_CAST")
   private fun parsedOutputs(producedOutputs: String): Map<String, Any?> {
     val json = requireNotNull(JsonSupport.parseObjectOrNull(producedOutputs)) {
       "fixture produced_outputs must be a JSON object"
     }
-    return JsonSupport.jsonElementToValue(json) as Map<String, Any?>
+    return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(json)))
   }
 }

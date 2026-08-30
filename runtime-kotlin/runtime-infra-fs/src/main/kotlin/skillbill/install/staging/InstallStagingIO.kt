@@ -175,9 +175,7 @@ internal fun promoteInstallStagingDir(tempDir: Path, finalStagingDir: Path) {
       StandardCopyOption.REPLACE_EXISTING,
       StandardCopyOption.ATOMIC_MOVE,
     )
-  } catch (error: AtomicMoveNotSupportedException) {
-    @Suppress("UNUSED_VARIABLE")
-    val ignored = error
+  } catch (_: AtomicMoveNotSupportedException) {
     Files.move(tempDir, finalStagingDir, StandardCopyOption.REPLACE_EXISTING)
   }
 }

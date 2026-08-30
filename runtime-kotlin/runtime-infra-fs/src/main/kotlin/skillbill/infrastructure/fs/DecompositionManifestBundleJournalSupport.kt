@@ -1,9 +1,14 @@
 package skillbill.infrastructure.fs
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.security.MessageDigest
+import java.util.UUID
 
 internal object DecompositionManifestBundleJournalRecovery {
   fun recoverPending(parent: Path?, journal: DecompositionManifestBundleJournal) {
@@ -58,7 +63,7 @@ internal object DecompositionManifestBundleJournalCreate {
     yamlMapper: YAMLMapper,
     journal: DecompositionManifestBundleJournal,
   ): DecompositionManifestBundleTransaction {
-    val transactionId = java.util.UUID.randomUUID().toString()
+    val transactionId = UUID.randomUUID().toString()
     val stagingDirectory = parent.resolve(
       "${DecompositionManifestBundleJournal.BUNDLE_PREFIX}$transactionId" +
         DecompositionManifestBundleJournal.STAGING_SUFFIX,
@@ -110,13 +115,13 @@ internal object DecompositionManifestBundleJournalIo {
     deleteRecursively(transaction.stagingDirectory)
   }
 
-  fun sha256(value: String): String = java.security.MessageDigest.getInstance("SHA-256")
+  fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray(Charsets.UTF_8))
     .joinToString("") { byte -> "%02x".format(byte) }
-
-  @Suppress("UNCHECKED_CAST")
   fun read(marker: Path, yamlMapper: YAMLMapper): DecompositionManifestBundleTransaction {
-    val raw = yamlMapper.readValue(Files.readString(marker), Map::class.java) as Map<String, Any?>
+    val raw = requireNotNull(
+      JsonSupport.anyToStringAnyMap(yamlMapper.readValue(Files.readString(marker), Map::class.java)),
+    )
     require(raw["contract_version"] == DecompositionManifestBundleJournal.BUNDLE_CONTRACT_VERSION) {
       "Unsupported decomposition manifest bundle journal contract."
     }
@@ -150,11 +155,11 @@ internal object DecompositionManifestBundleJournalIo {
       Files.move(
         source,
         target,
-        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+        StandardCopyOption.REPLACE_EXISTING,
+        StandardCopyOption.ATOMIC_MOVE,
       )
-    } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
-      Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+    } catch (_: AtomicMoveNotSupportedException) {
+      Files.move(source, target, StandardCopyOption.REPLACE_EXISTING)
     }
   }
 

@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
@@ -27,7 +28,7 @@ internal fun FeatureTaskRuntimeRunObservability.continuation(
   kind: FeatureTaskRuntimeContinuationKind,
 ) {
   emitSafely(
-    skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration(
+    FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration(
       workflowId = observabilityRequest.workflowId,
       phaseId = phaseId,
       resolvedAgentId = resolvedAgentId,
@@ -55,7 +56,7 @@ internal fun FeatureTaskRuntimeRunObservability.completedEvent(
   attemptCount: Int,
 ) {
   emitSafely(
-    skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent.PhaseCompleted(
+    FeatureTaskRuntimeRunEvent.PhaseCompleted(
       workflowId = observabilityRequest.workflowId,
       phaseId = phaseId,
       resolvedAgentId = resolvedAgentId,
@@ -71,7 +72,7 @@ internal fun FeatureTaskRuntimeRunObservability.paused(
   pauseReason: String,
 ) {
   emitSafely(
-    skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent.PhasePaused(
+    FeatureTaskRuntimeRunEvent.PhasePaused(
       workflowId = observabilityRequest.workflowId,
       phaseId = phaseId,
       resolvedAgentId = resolvedAgentId,
@@ -98,7 +99,7 @@ internal fun FeatureTaskRuntimeRunObservability.blocked(
   blockedReason: String,
 ) {
   emitSafely(
-    skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent.PhaseBlocked(
+    FeatureTaskRuntimeRunEvent.PhaseBlocked(
       workflowId = observabilityRequest.workflowId,
       phaseId = phaseId,
       resolvedAgentId = resolvedAgentId,
@@ -125,7 +126,7 @@ internal fun FeatureTaskRuntimeRunObservability.loopEdge(
   drivingVerdict: FeatureTaskRuntimeVerdict,
 ) {
   emitSafely(
-    skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent.PhaseLoopEdge(
+    FeatureTaskRuntimeRunEvent.PhaseLoopEdge(
       workflowId = observabilityRequest.workflowId,
       phaseId = phaseId,
       loopId = loopId,
@@ -150,9 +151,7 @@ internal fun FeatureTaskRuntimeRunObservability.loopEdge(
 }
 
 internal val FeatureTaskRuntimeRunObservability.observabilityRequest get() = request
-internal fun FeatureTaskRuntimeRunObservability.emitSafely(
-  event: skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent,
-) {
+internal fun FeatureTaskRuntimeRunObservability.emitSafely(event: FeatureTaskRuntimeRunEvent) {
   emitFeatureTaskRuntimeEventSafely(
     diagnostics = observabilityDiagnostics,
     seam = "event-sink emission (${event::class.simpleName})",

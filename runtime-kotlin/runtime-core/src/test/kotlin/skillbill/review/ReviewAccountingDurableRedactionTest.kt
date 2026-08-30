@@ -69,12 +69,12 @@ class ReviewAccountingDurableRedactionTest {
 
     assertEquals(
       recorder.parentPrompts.sumOf { it.toByteArray().size.toLong() },
-      aggregate(payload)["launch_bytes"],
+      requireNotNull(aggregate(payload))["launch_bytes"],
       "Launch bytes measure exactly the prompts the lanes were given.",
     )
     assertEquals(
       recorder.parentPrompts.size * toolOutputBody.toByteArray().size.toLong(),
-      aggregate(payload)["result_bytes"],
+      requireNotNull(aggregate(payload))["result_bytes"],
     )
     assertNoSentinels(payload.toString())
   }
@@ -220,11 +220,9 @@ class ReviewAccountingDurableRedactionTest {
 
     return recorder to assertNotNull(result.accountingSummary, "The recorded review produced no accounting.")
   }
-
-  @Suppress("UNCHECKED_CAST")
   private fun legacyEvidenceUnreviewablePayload(current: Map<String, Any?>): Map<String, Any?> {
     val digest = "a".repeat(64)
-    val lanes = (current["lanes"] as List<Map<String, Any?>>).map { lane ->
+    val lanes = requireNotNull(JsonSupport.anyToStringAnyMapList((current["lanes"]))).map { lane ->
       if (lane["lane"] == "parent") {
         lane
       } else {
@@ -247,23 +245,21 @@ class ReviewAccountingDurableRedactionTest {
     }
     return LinkedHashMap(current).apply { put("lanes", lanes) }
   }
-
-  @Suppress("UNCHECKED_CAST")
   private fun legacyAccountingPayload(current: Map<String, Any?>): Map<String, Any?> {
     val usage = mapOf("input_tokens" to 1L, "ownership" to "direct")
-    val legacyNodes = (current["lanes"] as List<Map<String, Any?>>).map { lane ->
+    val legacyNodes = requireNotNull(JsonSupport.anyToStringAnyMapList((current["lanes"]))).map { lane ->
       LinkedHashMap(lane).apply {
         put("provider_usage", usage)
         put("direct_usage", usage)
         put("inclusive_usage", usage)
       }
     }
-    val parent = LinkedHashMap(current["parent"] as Map<String, Any?>).apply {
+    val parent = LinkedHashMap(requireNotNull(JsonSupport.anyToStringAnyMap(current["parent"]))).apply {
       put("provider_usage", usage)
       put("direct_usage", usage)
       put("inclusive_usage", usage)
     }
-    val integration = (current["integration"] as Map<String, Any?>?)?.let {
+    val integration = JsonSupport.anyToStringAnyMap(current["integration"])?.let {
       LinkedHashMap(it).apply { put("usage", emptyMap<String, Any?>()) }
     }
     return LinkedHashMap(current).apply {
@@ -277,8 +273,8 @@ class ReviewAccountingDurableRedactionTest {
     }
   }
 
-  @Suppress("UNCHECKED_CAST")
-  private fun aggregate(payload: Map<String, Any?>) = payload["aggregate_counters"] as Map<String, Any?>
+  private fun aggregate(payload: Map<String, Any?>): Map<String, Any?>? =
+    JsonSupport.anyToStringAnyMap(payload["aggregate_counters"])
 
   private fun assertNoSentinels(serialized: String) = sentinels.forEach { sentinel ->
     assertFalse(serialized.contains(sentinel), "Review accounting leaked '$sentinel'.")

@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 
 internal fun composePhasePrompt(inputs: FeatureTaskRuntimePhasePromptComposeInputs): String =
   phasePromptSections(inputs).filter(String::isNotBlank).joinToString(separator = "\n\n")
@@ -24,7 +25,7 @@ private fun requireComposableInputs(
   priorSchemaFailure: String?,
   priorTerminalFailure: String?,
   priorFindingCoverage: String?,
-  correctiveRepairContext: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext?,
+  correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext?,
 ) {
   require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
   require(correctiveRepairContext == null || !priorSchemaFailure.isNullOrBlank()) {

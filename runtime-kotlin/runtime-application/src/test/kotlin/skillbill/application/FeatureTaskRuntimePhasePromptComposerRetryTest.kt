@@ -15,8 +15,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      priorSchemaFailure = "produced_outputs must be an object.",
-    )
+    ) { copy(priorSchemaFailure = "produced_outputs must be an object.") }
 
     assertContains(retry, "REJECTED by the schema gate", false, "schema failure keeps its directive")
     assertTrue(!retry.contains("reported a retryable block"), "schema failure must not get the terminal directive")
@@ -34,8 +33,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      operatorBlockRetry = retry,
-    )
+    ) { copy(operatorBlockRetry = retry) }
 
     assertContains(prompt, "Operator-applied blocked-phase retry decision")
     assertContains(prompt, reason)
@@ -43,8 +41,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
       composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("audit"),
-        operatorBlockRetry = retry,
-      )
+      ) { copy(operatorBlockRetry = retry) }
     }
   }
 
@@ -53,8 +50,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure = "verdict: must be a top-level string",
-    )
+    ) { copy(priorSchemaFailure = "verdict: must be a top-level string") }
 
     assertContains(retry, "last salvage attempt")
     assertContains(retry, "Expected shape:")
@@ -69,13 +65,11 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val auditRetry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure = "<root> must be an object.",
-    )
+    ) { copy(priorSchemaFailure = "<root> must be an object.") }
     val reviewRetry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("review"),
-      priorSchemaFailure = "<root> must be an object.",
-    )
+    ) { copy(priorSchemaFailure = "<root> must be an object.") }
 
     assertContains(auditRetry, "could NOT parse a single JSON object", false, "audit names the parse failure")
     assertContains(auditRetry, "Markdown table, or a JSON array", false, "audit names the likely mistake")
@@ -99,8 +93,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure = "Phase output is malformed: unexpected end-of-input",
-    )
+    ) { copy(priorSchemaFailure = "Phase output is malformed: unexpected end-of-input") }
 
     assertContains(retry, "could NOT parse a single JSON object", false, "malformed output triggers the skeleton")
     assertContains(retry, "<one sentence describing what this phase did>", false, "malformed output hands a skeleton")
@@ -111,8 +104,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure = "summary: must be a non-empty string",
-    )
+    ) { copy(priorSchemaFailure = "summary: must be a non-empty string") }
 
     assertContains(retry, "Previous attempt was REJECTED by the schema gate", false, "still corrects")
     assertContains(retry, "last salvage attempt", false, "field errors still get one salvage")
@@ -127,9 +119,9 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure =
-      "produced_outputs.value: must be at most 4096 characters long",
-    )
+    ) {
+      copy(priorSchemaFailure = "produced_outputs.value: must be at most 4096 characters long")
+    }
 
     assertContains(retry, "bounded SUMMARY, not a verification transcript")
     assertContains(retry, "rejected for length alone")
@@ -140,10 +132,13 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      priorSchemaFailure =
-      "Projection validation failed: implement#produced_outputs: " +
-        "\$.reconciliation_evidence.evidence: must be at most 4,096 characters long",
-    )
+    ) {
+      copy(
+        priorSchemaFailure =
+        "Projection validation failed: implement#produced_outputs: " +
+          "\$.reconciliation_evidence.evidence: must be at most 4096 characters long",
+      )
+    }
 
     assertContains(retry, "The rejected evidence exceeded 4096 characters")
     assertContains(retry, "bounded SUMMARY, not a verification transcript")
@@ -160,8 +155,9 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      priorSchemaFailure = "\$.deviations[0].note: must be at most 4,096 characters long",
-    )
+    ) {
+      copy(priorSchemaFailure = "\$.deviations[0].note: must be at most 4096 characters long")
+    }
 
     assertContains(retry, "The rejected note exceeded 4096 characters")
     assertContains(retry, "bounded SUMMARY, not a verification transcript")
@@ -172,9 +168,12 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      priorSchemaFailure =
-      "\$.reconciliation_evidence.evidence: property 'evidence' is not defined in the schema",
-    )
+    ) {
+      copy(
+        priorSchemaFailure =
+        "\$.reconciliation_evidence.evidence: property 'evidence' is not defined in the schema",
+      )
+    }
 
     assertTrue(!retry.contains("bounded SUMMARY"), "a missing/undefined property is not a length violation")
     assertTrue(!retry.contains("bounded pointer"), "no pointer advice either")
@@ -185,8 +184,9 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      priorSchemaFailure = "Projection validation failed: \$.reconciliation_evidence.ev… [truncated]",
-    )
+    ) {
+      copy(priorSchemaFailure = "Projection validation failed: \$.reconciliation_evidence.ev… [truncated]")
+    }
 
     assertContains(retry, "Previous attempt was REJECTED by the schema gate", false, "still corrects")
     assertTrue(!retry.contains("bounded SUMMARY"), "no length advice without a stated violation")
@@ -197,8 +197,9 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      priorSchemaFailure = "\$.unresolved_items[0]: maxLength constraint violated",
-    )
+    ) {
+      copy(priorSchemaFailure = "\$.unresolved_items[0]: maxLength constraint violated")
+    }
 
     assertContains(retry, "exceeded its declared limit")
     assertTrue(!retry.contains("exceeded -1 characters"), "the sentinel cap never reaches the prompt")

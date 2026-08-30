@@ -4,6 +4,7 @@ import skillbill.contracts.nativeagent.NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERS
 import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import kotlin.coroutines.cancellation.CancellationException
@@ -60,7 +61,7 @@ internal object NativeAgentLinkInventoryWrite {
 
   private fun journalMissingAncestors(path: Path, beforeMutation: (Path) -> Unit) {
     val missing = generateSequence(path.toAbsolutePath().normalize()) { it.parent }
-      .takeWhile { !Files.exists(it, java.nio.file.LinkOption.NOFOLLOW_LINKS) }.toList().asReversed()
+      .takeWhile { !Files.exists(it, LinkOption.NOFOLLOW_LINKS) }.toList().asReversed()
     missing.forEach(beforeMutation)
   }
 }

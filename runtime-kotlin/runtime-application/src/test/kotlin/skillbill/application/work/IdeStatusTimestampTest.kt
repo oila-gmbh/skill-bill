@@ -6,6 +6,7 @@ import skillbill.application.idestatus.model.IdeStatusLifecycleState
 import skillbill.application.idestatus.model.IdeStatusSnapshot
 import skillbill.application.idestatus.model.IdeStatusStep
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
 import java.time.Instant
 import kotlin.test.Test
@@ -30,8 +31,7 @@ class IdeStatusTimestampTest {
       currentSubtask = IdeStatusCurrentSubtask(id = "1", startedAt = null),
     ).toStatusWireMap()
     assertFalse(wire.containsKey("started_at"))
-    @Suppress("UNCHECKED_CAST")
-    val subtask = wire["current_subtask"] as Map<String, Any?>
+    val subtask = requireNotNull(JsonSupport.anyToStringAnyMap(wire["current_subtask"]))
     assertEquals("1", subtask["id"])
     assertNull(subtask["started_at"])
   }
@@ -43,9 +43,7 @@ class IdeStatusTimestampTest {
       startedAt = Instant.parse("2026-08-06T08:00:00Z"),
       currentSubtask = IdeStatusCurrentSubtask(id = "2", startedAt = subtaskStarted),
     ).toStatusWireMap()
-
-    @Suppress("UNCHECKED_CAST")
-    val subtask = wire["current_subtask"] as Map<String, Any?>
+    val subtask = requireNotNull(JsonSupport.anyToStringAnyMap(wire["current_subtask"]))
     assertEquals("2", subtask["id"])
     assertEquals("2026-08-06T09:15:00Z", subtask["started_at"])
   }

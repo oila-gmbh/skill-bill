@@ -92,7 +92,6 @@ internal fun assemblePlatformManifest(
 internal fun validatePlatformSlug(slug: String, declaredPlatform: String) {
   if (declaredPlatform != slug) {
     invalidManifestSchema(
-      slug,
       "Platform pack '$slug': manifest 'platform' field is '$declaredPlatform', " +
         "expected '$slug' to match the directory name.",
     )
@@ -102,12 +101,10 @@ internal fun validatePlatformSlug(slug: String, declaredPlatform: String) {
 internal fun parseFallbackCapabilities(manifest: Map<*, *>, slug: String): Set<String> {
   val raw = manifest["fallback_capabilities"] ?: return emptySet()
   val values = raw as? List<*> ?: invalidManifestSchema(
-    slug,
     "Platform pack '$slug': 'fallback_capabilities' must be a list.",
   )
   return values.mapIndexed { index, value ->
     (value as? String)?.trim()?.takeIf(String::isNotEmpty) ?: invalidManifestSchema(
-      slug,
       "Platform pack '$slug': 'fallback_capabilities[$index]' must be a non-blank string.",
     )
   }.toSet()
@@ -126,7 +123,6 @@ internal fun validatedCustomFields(slug: String, manifestPath: Path, manifest: M
 
 internal fun requireManifestMap(slug: String, manifestPath: Path, raw: Any?): Map<*, *> = raw as? Map<*, *>
   ?: invalidManifestSchema(
-    slug,
     "Platform pack '$slug': manifest '$manifestPath' must be a YAML mapping at the top level.",
   )
 
@@ -140,7 +136,6 @@ internal fun validateAgainstCanonicalSchema(
       ?: run {
         val keyType = key?.let { it::class.simpleName } ?: "null"
         invalidManifestSchema(
-          slug,
           "Platform pack '$slug': manifest top-level keys must be strings, but found '$key' ($keyType).",
         )
       }

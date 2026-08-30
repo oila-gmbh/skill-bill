@@ -7,6 +7,7 @@ import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
+import java.util.Comparator
 import kotlin.test.AfterTest
 
 open class InternalSkillStagingTestSupport {
@@ -17,7 +18,7 @@ open class InternalSkillStagingTestSupport {
     tempDirs.reversed().forEach { dir ->
       if (Files.exists(dir, LinkOption.NOFOLLOW_LINKS)) {
         Files.walk(dir).use { stream ->
-          stream.sorted(java.util.Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+          stream.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
         }
       }
     }

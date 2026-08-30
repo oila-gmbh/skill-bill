@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.decomposition.decodeDecompositionManifestMap
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
@@ -300,18 +301,14 @@ class DecompositionManifestValidationTest {
   )
 
   private fun validWireMap(): MutableMap<String, Any?> = LinkedHashMap(validSameBranchManifest().toWireMap())
-
-  @Suppress("UNCHECKED_CAST")
   private fun MutableMap<String, Any?>.mutableSubtasks(): MutableList<MutableMap<String, Any?>> {
-    val mutableSubtasks: MutableList<MutableMap<String, Any?>> = (this["subtasks"] as List<Map<String, Any?>>)
-      .mapTo(mutableListOf()) { LinkedHashMap(it) }
+    val mutableSubtasks = requireNotNull(JsonSupport.anyToStringAnyMapList(this["subtasks"]))
+      .mapTo(mutableListOf<MutableMap<String, Any?>>()) { LinkedHashMap(it) }
     this["subtasks"] = mutableSubtasks
     return mutableSubtasks
   }
-
-  @Suppress("UNCHECKED_CAST")
   private fun MutableMap<String, Any?>.mutableCurrentSubtaskIntent(): MutableMap<String, Any?> {
-    val mutableIntent = LinkedHashMap(this["current_subtask_intent"] as Map<String, Any?>)
+    val mutableIntent = LinkedHashMap(requireNotNull(JsonSupport.anyToStringAnyMap(this["current_subtask_intent"])))
     this["current_subtask_intent"] = mutableIntent
     return mutableIntent
   }

@@ -103,25 +103,29 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
+import java.lang.Boolean.TYPE
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
-
-@Suppress("UNCHECKED_CAST")
-internal fun <T> noopPort(type: Class<T>): T = Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, _ ->
-  defaultPortReturn(method)
-} as T
+import java.lang.Double.TYPE as DoubleTYPE
+import java.lang.Long.TYPE as LongTYPE
+internal fun <T> noopPort(type: Class<T>): T {
+  @Suppress("UNCHECKED_CAST")
+  return Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, _ ->
+    defaultPortReturn(method)
+  } as T
+}
 
 private fun defaultPortReturn(method: Method): Any? = when {
   method.returnType == Void.TYPE -> null
   List::class.java.isAssignableFrom(method.returnType) -> emptyList<Any>()
   Map::class.java.isAssignableFrom(method.returnType) -> emptyMap<Any, Any>()
-  method.returnType == java.lang.Boolean.TYPE -> false
+  method.returnType == TYPE -> false
   method.returnType == Integer.TYPE -> 0
-  method.returnType == java.lang.Long.TYPE -> 0L
-  method.returnType == java.lang.Double.TYPE -> 0.0
+  method.returnType == LongTYPE -> 0L
+  method.returnType == DoubleTYPE -> 0.0
   else -> null
 }
 
@@ -1159,15 +1163,13 @@ internal fun corruptDurableEnvelope(
 ) {
   val record = requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId))
   val artifacts = decodeArtifactsForTest(record.artifactsJson).toMutableMap()
-
-  @Suppress("UNCHECKED_CAST")
-  val briefings = (artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY] as Map<String, Any?>).toMutableMap()
-
-  @Suppress("UNCHECKED_CAST")
-  val briefing = (briefings.getValue("implement") as Map<String, Any?>).toMutableMap()
-
-  @Suppress("UNCHECKED_CAST")
-  briefing["handoff_envelope"] = corrupt(briefing.getValue("handoff_envelope") as Map<String, Any?>)
+  val briefings = requireNotNull(
+    JsonSupport.anyToStringAnyMap((artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY])),
+  ).toMutableMap()
+  val briefing = requireNotNull(JsonSupport.anyToStringAnyMap((briefings.getValue("implement")))).toMutableMap()
+  briefing["handoff_envelope"] = corrupt(
+    requireNotNull(JsonSupport.anyToStringAnyMap(briefing.getValue("handoff_envelope"))),
+  )
   briefings["implement"] = briefing
   artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY] = briefings
   workflowRepository.saveFeatureTaskRuntimeWorkflow(

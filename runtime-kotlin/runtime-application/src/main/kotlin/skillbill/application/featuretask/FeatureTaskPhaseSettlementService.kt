@@ -107,9 +107,8 @@ class FeatureTaskPhaseSettlementService(
     dbPathOverride: String? = null,
   ): Map<String, Any?>? {
     val settlement = repository.find(workflowId, phaseId, attempt, dbPathOverride) ?: return null
-    @Suppress("UNCHECKED_CAST")
     return JsonSupport.parseObjectOrNull(settlement.envelopeJson)
-      ?.let { JsonSupport.jsonElementToValue(it) as? Map<String, Any?> }
+      ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
   }
 
   fun clear(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String? = null): Boolean =

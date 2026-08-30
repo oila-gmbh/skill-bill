@@ -1,6 +1,8 @@
 package skillbill.install.nativeagent
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.networknt.schema.JsonSchema
 import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
 import java.io.IOException
 import java.nio.file.Files
@@ -12,8 +14,8 @@ internal object NativeAgentLinkInventoryDecode {
     path: Path,
     home: Path,
     managedRoots: List<Path>,
-    mapper: com.fasterxml.jackson.databind.ObjectMapper,
-    schema: com.networknt.schema.JsonSchema,
+    mapper: ObjectMapper,
+    schema: JsonSchema,
   ): List<NativeAgentLinkInventoryEntry> {
     var failure: Throwable? = null
     var decoded: List<NativeAgentLinkInventoryEntry>? = null

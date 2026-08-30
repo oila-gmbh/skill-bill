@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
@@ -106,7 +107,7 @@ internal fun StringBuilder.appendAcceptanceCriteria(handoff: FeatureTaskRuntimeP
 }
 
 private const val SHARED_EVIDENCE_PROJECTION: String =
-  skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
+  FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
 
 private const val SELF_READ_DIFF_INSTRUCTION: String =
   "read the branch diff yourself; it is not delivered in this briefing"
@@ -125,21 +126,21 @@ private const val SELF_READ_UNIT_INSTRUCTION: String =
   "read the current unit of work yourself; the shared evidence projection is not delivered in this briefing"
 
 private fun derivedContextInstruction(key: String, sharedEvidenceDelivered: Boolean): String? = when (key) {
-  skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF ->
+  FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF ->
     if (sharedEvidenceDelivered) SHARED_EVIDENCE_DIFF_INSTRUCTION else SELF_READ_DIFF_INSTRUCTION
   "current_unit_of_work" ->
     if (sharedEvidenceDelivered) SHARED_EVIDENCE_UNIT_INSTRUCTION else SELF_READ_UNIT_INSTRUCTION
-  skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE ->
+  FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE ->
     "read the repository at the resolved checkpoint above — the diff over base_ref/head_ref plus " +
       "the listed scoped_owned_paths — and treat that actual state, not any upstream receipt claim, " +
       "as the evidence for every criterion"
-  skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF ->
+  FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF ->
     SELF_READ_DIFF_INSTRUCTION
   else -> null
 }
 
 internal fun renderFeatureTaskRuntimePhaseBriefing(
-  handoff: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff,
+  handoff: FeatureTaskRuntimePhaseHandoff,
   envelope: FeatureTaskRuntimeHandoffEnvelope,
 ): String = buildString {
   appendLine("# Feature-task-runtime phase briefing")

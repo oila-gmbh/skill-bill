@@ -195,8 +195,9 @@ class CliInstallRootsRuntimeTest {
     )
 
     assertEquals(0, result.exitCode, result.stdout)
-    @Suppress("UNCHECKED_CAST")
-    val roots = result.payload?.get("roots") as List<String>
+    val roots = (result.payload?.get("roots") as? List<*>)
+      ?.mapNotNull { entry -> entry as? String }
+      .orEmpty()
     assertEquals(listOf(home.resolve(".claude").toString()), roots)
   }
 

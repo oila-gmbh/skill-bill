@@ -5,6 +5,7 @@ import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 
@@ -80,7 +81,7 @@ internal fun <T> withDecompositionManifestBundleLock(parent: Path?, action: () -
 
 private fun decompositionManifestLockPath(parent: Path): Path {
   val owner = lockOwner(parent)
-  val digest = java.security.MessageDigest.getInstance(LOCK_DIGEST_ALGORITHM)
+  val digest = MessageDigest.getInstance(LOCK_DIGEST_ALGORITHM)
     .digest(owner.toString().toByteArray(Charsets.UTF_8))
     .joinToString(LOCK_DIGEST_SEPARATOR) { byte -> "%02x".format(byte) }
   return Path.of(System.getProperty(JAVA_TEMP_DIRECTORY_PROPERTY))

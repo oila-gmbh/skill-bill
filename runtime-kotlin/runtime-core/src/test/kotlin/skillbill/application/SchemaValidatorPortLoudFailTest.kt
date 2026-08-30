@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.install.INSTALL_PLAN_CONTRACT_VERSION
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidInstallPlanSchemaError
@@ -44,8 +45,9 @@ class SchemaValidatorPortLoudFailTest {
   @Test
   fun `malformed install-plan wire map loud-fails through the injected port`() {
     val wireMap = validInstallPlanWireMap()
-    @Suppress("UNCHECKED_CAST")
-    (wireMap["mcp_registration"] as MutableMap<String, Any?>)["runtime_mcp_bin"] = ""
+    val mcpRegistration = requireNotNull(JsonSupport.anyToStringAnyMap(wireMap["mcp_registration"])).toMutableMap()
+    wireMap["mcp_registration"] = mcpRegistration
+    mcpRegistration["runtime_mcp_bin"] = ""
 
     val error = assertFailsWith<InvalidInstallPlanSchemaError> {
       installValidator.validate(wireMap)

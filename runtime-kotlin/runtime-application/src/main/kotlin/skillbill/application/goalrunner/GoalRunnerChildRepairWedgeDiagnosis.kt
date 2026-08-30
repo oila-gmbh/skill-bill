@@ -8,6 +8,7 @@ import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.goalrunner.model.GoalRunnerWedgeFinding
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -192,8 +193,8 @@ internal class GoalRunnerChildRepairWedgeDiagnosis(
   }
 
   private fun continuationArtifact(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
-    val raw = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as? Map<*, *> ?: return null
-    @Suppress("UNCHECKED_CAST")
-    return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw as Map<String, Any?>)
+    val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
+      ?: return null
+    return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw)
   }
 }

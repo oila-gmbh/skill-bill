@@ -11,16 +11,16 @@ import java.nio.file.Path
 
 internal fun requireMappingField(manifest: Map<*, *>, slug: String, key: String): Map<*, *> =
   manifest[key] as? Map<*, *>
-    ?: invalidManifestSchema(slug, "Platform pack '$slug': manifest field '$key' must be a mapping.")
+    ?: invalidManifestSchema("Platform pack '$slug': manifest field '$key' must be a mapping.")
 
 internal fun requireField(manifest: Map<*, *>, slug: String, key: String): Any =
-  manifest[key] ?: invalidManifestSchema(slug, "Platform pack '$slug': manifest is missing required field '$key'.")
+  manifest[key] ?: invalidManifestSchema("Platform pack '$slug': manifest is missing required field '$key'.")
 
 internal fun requireStringField(manifest: Map<*, *>, slug: String, key: String): String {
   val value = requireField(manifest, slug, key) as? String
-    ?: invalidManifestSchema(slug, "Platform pack '$slug': '$key' must be a string.")
+    ?: invalidManifestSchema("Platform pack '$slug': '$key' must be a string.")
   if (value.isBlank()) {
-    invalidManifestSchema(slug, "Platform pack '$slug': '$key' must be a non-empty string.")
+    invalidManifestSchema("Platform pack '$slug': '$key' must be a non-empty string.")
   }
   return value
 }
@@ -30,28 +30,21 @@ internal fun parseStringList(slug: String, value: Any?, fieldLabel: String, requ
     return emptyList()
   }
   if (value !is List<*>) {
-    invalidManifestSchema(slug, "Platform pack '$slug': '$fieldLabel' must be a list of strings.")
+    invalidManifestSchema("Platform pack '$slug': '$fieldLabel' must be a list of strings.")
   }
   val parsed = value.map { entry ->
     entry as? String
-      ?: invalidManifestSchema(slug, "Platform pack '$slug': every entry in '$fieldLabel' must be a string.")
+      ?: invalidManifestSchema("Platform pack '$slug': every entry in '$fieldLabel' must be a string.")
   }
   if (required && parsed.isEmpty()) {
-    invalidManifestSchema(slug, "Platform pack '$slug': '$fieldLabel' must contain at least one routing signal.")
+    invalidManifestSchema("Platform pack '$slug': '$fieldLabel' must contain at least one routing signal.")
   }
   return parsed
 }
 
-internal fun validateGovernedSkill(
-  pack: PlatformManifest,
-  slot: String,
-  skillPath: Path,
-  @Suppress("UNUSED_PARAMETER") family: String,
-  @Suppress("UNUSED_PARAMETER") area: String,
-) {
+internal fun validateGovernedSkill(pack: PlatformManifest, slot: String, skillPath: Path, family: String) {
   if (skillPath.fileName?.toString() != CONTENT_BODY_FILENAME) {
     invalidManifestSchema(
-      pack.slug,
       "Platform pack '${pack.slug}': declared content file for slot '$slot' must end in " +
         "'$CONTENT_BODY_FILENAME' but was '${displayPackPath(pack, skillPath)}'.",
     )
@@ -67,7 +60,6 @@ internal fun validateGovernedSkill(
     val internalFor = parseSkillFrontmatter(text)["internal-for"]
     if (internalFor != "bill-code-check") {
       invalidManifestSchema(
-        pack.slug,
         "Platform pack '${pack.slug}': declared content file for slot '$slot' must declare " +
           "'internal-for: bill-code-check' so stack-specific quality-check overrides install as " +
           "sidecars of bill-code-check.",

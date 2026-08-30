@@ -262,8 +262,6 @@ class GoalTelemetryStoreTest {
         .groupingBy { it }.eachCount()
       val handoffParticipantByAgent = payloads.flatMap { payload ->
         val finalizer = assertIs<String>(payload["finalizing_agent_id"])
-
-        @Suppress("UNCHECKED_CAST")
         val participants = assertIs<List<String>>(payload["participating_agent_ids"])
         participants.filter { it != finalizer }
       }.groupingBy { it }.eachCount()

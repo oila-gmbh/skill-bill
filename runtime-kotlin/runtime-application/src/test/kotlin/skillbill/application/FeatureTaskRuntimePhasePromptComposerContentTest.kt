@@ -191,8 +191,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("plan"),
-      suppressDecomposition = true,
-    )
+    ) { copy(suppressDecomposition = true) }
 
     assertContains(prompt, "Goal-continuation planning constraint")
     assertContains(prompt, "Never include installer, uninstall, or")
@@ -311,10 +310,13 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure =
-      "produced_outputs.carried_gap_dispositions[0].evidence.observation: does not have a value in the " +
-        "enumeration [\"resolution_verified\", \"recurrence_verified\"]",
-    )
+    ) {
+      copy(
+        priorSchemaFailure =
+        "produced_outputs.carried_gap_dispositions[0].evidence.observation: does not have a value in the " +
+          "enumeration [\"resolution_verified\")",
+      )
+    }
     assertContains(retry, "closed token", false, "the correction must say observation is not prose")
     assertContains(retry, "resolution_verified or recurrence_verified", false, "the closed set must be named")
     assertContains(retry, "Put the paragraph in summary only", false, "prose is redirected off observation")
@@ -352,8 +354,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
       val retry = composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor(phaseId),
-        priorSchemaFailure = reason,
-      )
+      ) { copy(priorSchemaFailure = reason) }
 
       assertTrue(!firstAttempt.contains("REJECTED by the schema gate"), "$phaseId first attempt: no correction")
       assertContains(retry, "Previous attempt was REJECTED by the schema gate", false, "$phaseId retry: rejection")
@@ -368,8 +369,7 @@ class FeatureTaskRuntimePhasePromptComposerContentTest {
     val retry = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      priorTerminalFailure = reason,
-    )
+    ) { copy(priorTerminalFailure = reason) }
 
     assertContains(retry, "reported a retryable block", false, "terminal retry names its own kind")
     assertContains(retry, reason, false, "terminal retry carries the reported reason verbatim")

@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.JsonSupport
+
 internal object FeatureTaskRuntimeProjectionCanonicalizerMapOps {
   fun mapEntries(value: Any?, transform: (Int, Map<String, Any?>) -> Map<String, Any?>): Any? {
     val list = value as? List<*> ?: return value
@@ -14,7 +16,5 @@ internal object FeatureTaskRuntimeProjectionCanonicalizerMapOps {
     return transform(map.stringKeyedView())
   }
 
-  fun Map<*, *>.stringKeyedView(): Map<String, Any?> =
-    @Suppress("UNCHECKED_CAST")
-    if (keys.all { it is String }) this as Map<String, Any?> else LinkedHashMap()
+  fun Map<*, *>.stringKeyedView(): Map<String, Any?> = JsonSupport.anyToStringAnyMap(this) ?: LinkedHashMap()
 }

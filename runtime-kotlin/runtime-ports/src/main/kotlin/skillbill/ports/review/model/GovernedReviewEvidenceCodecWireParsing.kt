@@ -1,5 +1,6 @@
 package skillbill.ports.review.model
 
+import skillbill.contracts.JsonSupport
 import skillbill.review.context.model.ReviewExpansionRecord
 
 internal object GovernedReviewEvidenceCodecWireParsing {
@@ -29,10 +30,9 @@ internal object GovernedReviewEvidenceCodecWireParsing {
     require(!value.isNullOrBlank()) { "Governed evidence operation requires '$key'." }
     return value
   }
-
-  @Suppress("UNCHECKED_CAST")
-  private fun asMap(raw: Any?): Map<String, Any?> =
-    requireNotNull(raw as? Map<String, Any?>) { "Each governed evidence request must be an object." }
+  private fun asMap(raw: Any?): Map<String, Any?> = requireNotNull(JsonSupport.anyToStringAnyMap(requireNotNull(raw))) {
+    "Each governed evidence request must be an object."
+  }
 
   private fun optionalString(source: Map<String, Any?>, key: String): String? =
     source[key]?.toString()?.takeIf(String::isNotBlank)

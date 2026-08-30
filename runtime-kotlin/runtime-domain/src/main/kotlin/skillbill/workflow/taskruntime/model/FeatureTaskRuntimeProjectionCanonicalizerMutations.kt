@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.contracts.JsonSupport
+
 internal object FeatureTaskRuntimeProjectionCanonicalizerMutations {
   fun discardUnknownKeys(
     map: Map<String, Any?>,
@@ -50,10 +52,8 @@ internal object FeatureTaskRuntimeProjectionCanonicalizerMutations {
   ): Any? {
     val list = value as? List<*> ?: return value
     return list.mapIndexed { index, entry ->
-      val stringKeyed = (entry as? Map<*, *>)?.takeIf { map -> map.keys.all { it is String } }
-        ?: return@mapIndexed entry
-      @Suppress("UNCHECKED_CAST")
-      discardUnknownKeys(stringKeyed as Map<String, Any?>, governedKeys, "$fieldPath[$index]", records)
+      val stringKeyed = JsonSupport.anyToStringAnyMap(entry) ?: return@mapIndexed entry
+      discardUnknownKeys(stringKeyed, governedKeys, "$fieldPath[$index]", records)
     }
   }
 

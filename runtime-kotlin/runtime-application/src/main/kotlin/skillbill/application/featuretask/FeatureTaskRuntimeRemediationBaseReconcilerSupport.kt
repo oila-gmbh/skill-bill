@@ -5,10 +5,11 @@ import skillbill.ports.workflow.gitops.resolveCheckpointRef
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
+import java.nio.file.Path
 
 internal fun resolveCheckpointRefCommit(
   gitOperations: WorkflowGitOperations,
-  repoRoot: java.nio.file.Path,
+  repoRoot: Path,
   checkpointRef: String,
 ): String? {
   val resolved = gitOperations.resolveCheckpointRef(

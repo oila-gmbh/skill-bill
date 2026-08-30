@@ -10,10 +10,13 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 internal class GoalRunnerChildRepairWedgeApplyLoop(
@@ -122,19 +125,19 @@ internal class GoalRunnerChildRepairWedgeApplyLoop(
 
   internal class ApplyState(
     val request: GoalRunnerChildRepairApplyRequest,
-    record: skillbill.workflow.engine.model.WorkflowStateSnapshot,
+    record: WorkflowStateSnapshot,
     artifacts: Map<String, Any?>,
-    workingContinuation: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact?,
-    workingReview: skillbill.workflow.goal.model.GoalSubtaskReviewState?,
+    workingContinuation: FeatureTaskRuntimeGoalContinuationArtifact?,
+    workingReview: GoalSubtaskReviewState?,
   ) {
-    var record: skillbill.workflow.engine.model.WorkflowStateSnapshot = record
+    var record: WorkflowStateSnapshot = record
     var artifacts: Map<String, Any?> = artifacts
     val patch: LinkedHashMap<String, Any?> = linkedMapOf()
     val applied: MutableList<GoalRunnerAppliedRepair> = mutableListOf()
     val evidenceEntries: MutableList<Map<String, Any?>> = mutableListOf()
-    var workingContinuation: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact? =
+    var workingContinuation: FeatureTaskRuntimeGoalContinuationArtifact? =
       workingContinuation
-    var workingReview: skillbill.workflow.goal.model.GoalSubtaskReviewState? = workingReview
+    var workingReview: GoalSubtaskReviewState? = workingReview
     var manifestProjectionArtifactsJson: String? = null
   }
 }

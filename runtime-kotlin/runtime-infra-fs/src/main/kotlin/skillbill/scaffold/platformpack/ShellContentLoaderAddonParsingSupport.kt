@@ -37,38 +37,32 @@ internal fun parseAddonUsage(
   val raw = manifest["addon_usage"] ?: return emptyList()
   val usageMap = raw as? Map<*, *>
     ?: invalidManifestSchema(
-      slug,
       "Platform pack '$slug': 'addon_usage' must be a mapping of skill-relative-dir to add-on entries.",
     )
   val pointersByDir = manifestContext.pointers.groupBy { spec -> spec.skillRelativeDir }
   return usageMap.map { (dirKey, entriesRaw) ->
     val skillRelativeDir = dirKey as? String
       ?: invalidManifestSchema(
-        slug,
         "Platform pack '$slug': 'addon_usage' keys must be strings (skill-relative directory paths).",
       )
     if (skillRelativeDir.isBlank()) {
       invalidManifestSchema(
-        slug,
         "Platform pack '$slug': 'addon_usage' skill-relative directory must be a non-empty string.",
       )
     }
     requireSafePointerSubpath(slug, skillRelativeDir, "addon_usage skill-relative directory")
     if (skillRelativeDir !in manifestContext.declaredSkillDirs) {
       invalidManifestSchema(
-        slug,
         "Platform pack '$slug': 'addon_usage' key '$skillRelativeDir' must match a declared skill directory. " +
           "Declared skill directories: ${manifestContext.declaredSkillDirs.sorted()}.",
       )
     }
     val entriesList = entriesRaw as? List<*>
       ?: invalidManifestSchema(
-        slug,
         "Platform pack '$slug': 'addon_usage[$skillRelativeDir]' must be a list of add-on entries.",
       )
     if (entriesList.isEmpty()) {
       invalidManifestSchema(
-        slug,
         "Platform pack '$slug': 'addon_usage[$skillRelativeDir]' must declare at least one add-on entry.",
       )
     }
@@ -98,30 +92,25 @@ internal fun parseFeatureAddonUsage(
   val raw = manifest["feature_addon_usage"] ?: return emptyList()
   val usageMap = raw as? Map<*, *>
     ?: invalidManifestSchema(
-      slug,
       "Platform pack '$slug': 'feature_addon_usage' must be a mapping of feature-task consumer to add-on entries.",
     )
   val pointersByConsumer = pointers.groupBy { spec -> spec.skillRelativeDir }
   return usageMap.map { (consumerKey, entriesRaw) ->
     val consumer = consumerKey as? String
       ?: invalidManifestSchema(
-        slug,
         "Platform pack '$slug': 'feature_addon_usage' keys must be strings (feature-task consumers).",
       )
     if (consumer != FEATURE_TASK_ADDON_CONSUMER) {
       invalidManifestSchema(
-        slug,
         "Platform pack '$slug': 'feature_addon_usage' key '$consumer' must be '$FEATURE_TASK_ADDON_CONSUMER'.",
       )
     }
     val entriesList = entriesRaw as? List<*>
       ?: invalidManifestSchema(
-        slug,
         "Platform pack '$slug': 'feature_addon_usage[$consumer]' must be a list of add-on entries.",
       )
     if (entriesList.isEmpty()) {
       invalidManifestSchema(
-        slug,
         "Platform pack '$slug': 'feature_addon_usage[$consumer]' must declare at least one add-on entry.",
       )
     }
@@ -157,7 +146,6 @@ internal fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, r
   val reviewAddon = isReviewAddon(context)
   if (reviewAddon && context.strictReviewRouting && activation == null) {
     invalidManifestSchema(
-      context.slug,
       "Platform pack '${context.slug}': '$fieldPrefix.activation' is required for governed review add-ons.",
     )
   }
@@ -178,7 +166,6 @@ internal fun parseAddonUsageEntry(context: AddonUsageParseContext, index: Int, r
 internal fun requireAddonUsageEntry(context: AddonUsageParseContext, index: Int, raw: Any?): Map<*, *> =
   raw as? Map<*, *>
     ?: invalidManifestSchema(
-      context.slug,
       "Platform pack '${context.slug}': '${context.fieldName}[${context.skillRelativeDir}][$index]' must be a mapping.",
     )
 
@@ -186,7 +173,6 @@ internal fun parseAddonSlug(context: AddonUsageParseContext, entry: Map<*, *>, f
   val addonSlug = requireStringInMap(context.slug, entry, "$fieldPrefix.slug", "slug")
   if (!context.seenSlugs.add(addonSlug)) {
     invalidManifestSchema(
-      context.slug,
       "Platform pack '${context.slug}': duplicate add-on usage slug '$addonSlug' under " +
         "'${context.fieldName}.${context.skillRelativeDir}'.",
     )
@@ -239,7 +225,6 @@ internal fun parseSpecialistAreas(
   val unknownSpecialistAreas = specialistAreas.toSet() - context.declaredAreas
   if (reviewAddon && unknownSpecialistAreas.isNotEmpty()) {
     invalidManifestSchema(
-      context.slug,
       "Platform pack '${context.slug}': '$fieldPrefix.specialist_areas' names undeclared areas " +
         "${unknownSpecialistAreas.sorted()}.",
     )
@@ -248,7 +233,6 @@ internal fun parseSpecialistAreas(
   val requiresSpecialistAreas = reviewAddon && context.strictReviewRouting && baselineReviewAddon
   if (requiresSpecialistAreas && specialistAreas.isEmpty()) {
     invalidManifestSchema(
-      context.slug,
       "Platform pack '${context.slug}': '$fieldPrefix.specialist_areas' is required for baseline add-on propagation.",
     )
   }
@@ -266,14 +250,12 @@ internal fun requirePackOwnedAddonPointer(
 ) {
   val pointer = context.pointersForDir.firstOrNull { spec -> spec.name == pointerName }
     ?: invalidManifestSchema(
-      context.slug,
       "Platform pack '${context.slug}': ${context.fieldName}[${context.skillRelativeDir}] entry '$addonSlug' " +
         "references $field '$pointerName', but pointers[${context.skillRelativeDir}] does not declare that pointer.",
     )
   val expectedPrefix = "platform-packs/${context.slug}/addons/"
   if (!pointer.target.startsWith(expectedPrefix) || !pointer.target.endsWith(".md")) {
     invalidManifestSchema(
-      context.slug,
       "Platform pack '${context.slug}': ${context.fieldName}[${context.skillRelativeDir}] entry '$addonSlug' " +
         "references pointer '$pointerName', but its target '${pointer.target}' is not under '$expectedPrefix'.",
     )
@@ -281,13 +263,11 @@ internal fun requirePackOwnedAddonPointer(
   if (context.fieldName == "feature_addon_usage") {
     val repoRoot = context.packRoot.parent?.parent
       ?: invalidManifestSchema(
-        context.slug,
         "Platform pack '${context.slug}': cannot resolve repo root for ${context.fieldName} pointer '$pointerName'.",
       )
     val targetFile = repoRoot.resolve(pointer.target).normalize()
     if (!Files.isRegularFile(targetFile)) {
       invalidManifestSchema(
-        context.slug,
         "Platform pack '${context.slug}': ${context.fieldName}[${context.skillRelativeDir}] entry '$addonSlug' " +
           "references pointer '$pointerName' target '${pointer.target}', but that add-on file does not exist.",
       )

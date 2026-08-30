@@ -3,6 +3,7 @@ package skillbill.infrastructure.sqlite
 import skillbill.db.core.DatabaseRuntime
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import java.nio.file.Files
+import java.sql.Connection
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -40,7 +41,7 @@ class SqliteFeatureTaskPhaseSettlementRepositoryTest {
     assertFalse(repo.delete("wftr-1", "implement", 1, dbOverride))
   }
 
-  private fun tableExists(connection: java.sql.Connection, name: String): Boolean =
+  private fun tableExists(connection: Connection, name: String): Boolean =
     connection.createStatement().use { statement ->
       statement.executeQuery(
         "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '$name'",
@@ -49,7 +50,7 @@ class SqliteFeatureTaskPhaseSettlementRepositoryTest {
 
   private data class MigrationRow(val version: Int, val name: String)
 
-  private fun migrationRows(connection: java.sql.Connection): List<MigrationRow> =
+  private fun migrationRows(connection: Connection): List<MigrationRow> =
     connection.createStatement().use { statement ->
       statement.executeQuery("SELECT version, name FROM schema_migrations ORDER BY version").use { rows ->
         buildList {

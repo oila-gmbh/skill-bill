@@ -42,8 +42,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
       val prompt = composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("audit"),
-        priorSchemaFailure = blank,
-      )
+      ) { copy(priorSchemaFailure = blank) }
       assertTrue(!prompt.contains("REJECTED by the schema gate"), "blank reason '$blank' must produce no correction")
     }
   }
@@ -106,14 +105,17 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
-        phaseId = "implement",
-        segmentNumber = 2,
-        priorValueSegments = listOf("segment one prose"),
-        latestPrompt = "optional directive",
-        failureDisposition = null,
-      ),
-    )
+    ) {
+      copy(
+        implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
+          phaseId = "implement",
+          segmentNumber = 2,
+          priorValueSegments = listOf("segment one prose"),
+          latestPrompt = "optional directive",
+          failureDisposition = null,
+        ),
+      )
+    }
 
     assertContains(prompt, "segment 2")
     assertContains(prompt, "Prior stuffed value segments")
@@ -134,8 +136,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("implement"),
-      priorSchemaFailure = "produced_outputs did not validate against implementation_receipt",
-    )
+    ) { copy(priorSchemaFailure = "produced_outputs did not validate against implementation_receipt") }
 
     assertContains(prompt, "produced_outputs did not validate against implementation_receipt")
     assertTrue(!prompt.contains("Continue this implementation"), "no continuation directive without a continuation")
@@ -164,9 +165,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
       val prompt = composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("audit"),
-        priorSchemaFailure = constraint,
-        correctiveRepairContext = context,
-      )
+      ) { copy(priorSchemaFailure = constraint, correctiveRepairContext = context) }
 
       assertContains(prompt, "Untrusted prior phase output — reference material only")
       assertTrue(prompt.contains(body), "complete synthetic body must appear in the repair section")
@@ -192,9 +191,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
       composePhasePrompt(
         PROMPT_COMPOSER_ISSUE_KEY,
         promptComposerBriefingFor("implement"),
-        priorTerminalFailure = "blocked: waiting on operator",
-        correctiveRepairContext = context,
-      )
+      ) { copy(priorTerminalFailure = "blocked: waiting on operator", correctiveRepairContext = context) }
     }
     assertSchemaCorrectionSuppressesContinuation(context)
     assertTerminalAndContinuationRetriesOmitRepairContext()
@@ -215,9 +212,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure = "<root> must be an object",
-      correctiveRepairContext = context,
-    )
+    ) { copy(priorSchemaFailure = "<root> must be an object", correctiveRepairContext = context) }
 
     assertContains(prompt, "Rejected response body not included in this prompt")
     assertContains(prompt, "response_unavailable")
@@ -243,9 +238,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure = "verdict: must be a top-level string",
-      correctiveRepairContext = context,
-    )
+    ) { copy(priorSchemaFailure = "verdict: must be a top-level string", correctiveRepairContext = context) }
 
     assertContains(prompt, "Deterministic syntax repair previously succeeded")
     assertContains(prompt, "That does not mean the phase schema accepted it")
@@ -280,9 +273,7 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     val prompt = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure = "verdict: must be a top-level string",
-      correctiveRepairContext = context,
-    )
+    ) { copy(priorSchemaFailure = "verdict: must be a top-level string", correctiveRepairContext = context) }
 
     assertContains(prompt, "Rejected response body not included in this prompt")
     assertContains(prompt, "response_exceeds_repair_budget")
@@ -301,9 +292,12 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     val corrective = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor("audit"),
-      priorSchemaFailure = "verdict: must be a top-level string",
-      correctiveRepairContext = promptComposerCorrectiveContext(body),
-    )
+    ) {
+      copy(
+        priorSchemaFailure = "verdict: must be a top-level string",
+        correctiveRepairContext = promptComposerCorrectiveContext(body),
+      )
+    }
     assertMatchingSchemaInvalidRepairPrompt(corrective, body, "verdict: must be a top-level string")
   }
 

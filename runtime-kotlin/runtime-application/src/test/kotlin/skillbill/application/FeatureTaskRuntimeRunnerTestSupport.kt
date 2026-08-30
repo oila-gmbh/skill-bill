@@ -1983,11 +1983,12 @@ internal data class ProducerEvidenceKey(
 
 internal fun samePayload(left: ByteArray?, right: ByteArray?): Boolean =
   (left == null && right == null) || (left != null && right != null && left.contentEquals(right))
-
-@Suppress("UNCHECKED_CAST")
-private fun <T> noopPort(type: Class<T>): T = Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, _ ->
-  defaultPortReturn(method)
-} as T
+private fun <T> noopPort(type: Class<T>): T {
+  @Suppress("UNCHECKED_CAST")
+  return Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, _ ->
+    defaultPortReturn(method)
+  } as T
+}
 
 private fun defaultPortReturn(method: Method): Any? = when {
   method.returnType == Void.TYPE -> null
@@ -2011,7 +2012,6 @@ private fun recordHarnessFindingVerdicts(verdicts: MutableList<ReviewFindingVerd
 
 private fun harnessReviewRepository(): ReviewRepository {
   val verdicts = mutableListOf<ReviewFindingVerdict>()
-  @Suppress("UNCHECKED_CAST")
   return Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
     arrayOf(ReviewRepository::class.java),

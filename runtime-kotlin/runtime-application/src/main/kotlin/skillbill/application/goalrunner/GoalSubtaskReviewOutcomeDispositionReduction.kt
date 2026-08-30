@@ -30,13 +30,11 @@ internal object GoalSubtaskReviewOutcomeDispositionReduction {
         null -> ReviewFindingOutcome.ADDRESSED
       }
 
-    fun currentOutcome(@Suppress("UNUSED_PARAMETER") finding: UnaddressedFinding): ReviewFindingOutcome =
-      ReviewFindingOutcome.CARRIED
     val supersededOutcomes = supersededFindings
       .filter { finding -> finding.findingKey !in stillReported }
       .map { finding -> finding.toOutcomeRecord(supersededOutcome(finding)) }
     val currentOutcomes = currentFindings
-      .map { finding -> finding.toOutcomeRecord(currentOutcome(finding)) }
+      .map { finding -> finding.toOutcomeRecord(ReviewFindingOutcome.CARRIED) }
     return supersededOutcomes + currentOutcomes
   }
 

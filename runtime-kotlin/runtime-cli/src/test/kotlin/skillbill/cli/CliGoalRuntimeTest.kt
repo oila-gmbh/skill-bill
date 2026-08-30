@@ -55,7 +55,6 @@ class CliGoalSharedPreplanReplanTest {
       replan.stdout,
     )
     assertEquals(true, replan.payload?.get("discarded_shared_preplan"))
-    @Suppress("UNCHECKED_CAST")
     val cascaded = replan.payload?.get("cascaded_plan_subtask_ids") as? List<*>
     val cascadedIds = cascaded.orEmpty().mapNotNull { (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull() }
     assertTrue(1 !in cascadedIds, "complete+commit sibling 1 must not cascade")

@@ -26,6 +26,7 @@ import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
+import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
@@ -848,10 +849,8 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     val after = decodeArtifacts(
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
-
-    @Suppress("UNCHECKED_CAST")
     val state = GoalSubtaskReviewState.fromArtifactMap(
-      after[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] as Map<String, Any?>,
+      requireNotNull(JsonSupport.anyToStringAnyMap(after[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])),
     )
     assertEquals(recovered, state.remediationBaseSha)
     assertEquals(1, state.completedPassCount)

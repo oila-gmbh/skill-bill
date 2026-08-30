@@ -1,6 +1,7 @@
 package skillbill.workflow.goal.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.JsonSupport
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.invalidGoalObservabilityEvent
 
@@ -56,16 +57,16 @@ fun goalObservabilityEventFromArtifact(
   )
 }
 
-@Suppress("UNCHECKED_CAST")
-private fun Any?.toGoalObservabilityEventMap(sourceLabel: String): Map<String, Any?> = this as? Map<String, Any?>
-  ?: (this as? Map<*, *>)?.let { map ->
-    map.entries.associate { (key, value) ->
-      val stringKey = key as? String
-        ?: throw invalidGoalObservabilityEvent(sourceLabel, "", "event keys must be strings.")
-      stringKey to value
+private fun Any?.toGoalObservabilityEventMap(sourceLabel: String): Map<String, Any?> =
+  JsonSupport.anyToStringAnyMap(this)
+    ?: (this as? Map<*, *>)?.let { map ->
+      map.entries.associate { (key, value) ->
+        val stringKey = key as? String
+          ?: throw invalidGoalObservabilityEvent(sourceLabel, "", "event keys must be strings.")
+        stringKey to value
+      }
     }
-  }
-  ?: throw invalidGoalObservabilityEvent(sourceLabel, "", "event must be a JSON object.")
+    ?: throw invalidGoalObservabilityEvent(sourceLabel, "", "event must be a JSON object.")
 
 private fun List<*>?.toFileDiffStats(sourceLabel: String): List<GoalObservabilityFileDiffStat> =
   this?.mapIndexed { index, rawFile ->

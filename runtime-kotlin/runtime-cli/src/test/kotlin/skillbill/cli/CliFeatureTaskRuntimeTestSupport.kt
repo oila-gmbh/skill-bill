@@ -130,14 +130,10 @@ internal fun goalContinuationValidationDepth(dbPath: Path, workflowId: String): 
   requireNotNull(goalContinuationArtifact(dbPath, workflowId)?.get("validation_depth") as? String) {
     "goal_continuation.validation_depth missing for $workflowId"
   }
-
-@Suppress("UNCHECKED_CAST")
 internal fun goalContinuationArtifact(dbPath: Path, workflowId: String): Map<String, Any?>? {
   val artifacts = featureTaskWorkflowArtifacts(dbPath, workflowId)
-  return artifacts["goal_continuation"] as Map<String, Any?>?
+  return JsonSupport.anyToStringAnyMap(artifacts["goal_continuation"])
 }
-
-@Suppress("UNCHECKED_CAST")
 internal fun runInvariantsCodeReviewMode(dbPath: Path, workflowId: String): String {
   val invariants = requireNotNull(
     featureTaskWorkflowArtifacts(dbPath, workflowId)["feature_task_runtime_run_invariants"] as? Map<*, *>,
@@ -148,8 +144,6 @@ internal fun runInvariantsCodeReviewMode(dbPath: Path, workflowId: String): Stri
     "feature_task_runtime_run_invariants.code_review_mode missing for $workflowId"
   }
 }
-
-@Suppress("UNCHECKED_CAST")
 internal fun featureTaskWorkflowArtifacts(dbPath: Path, workflowId: String): Map<String, Any?> {
   val artifactsJson = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
     connection.prepareStatement(
@@ -469,11 +463,10 @@ internal val ALL_PHASES =
   )
 internal val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" || it == "implement_fix" || it == "build" }
 
-internal fun goalChildLaunchedPhases(): List<String> =
-  AGENT_LAUNCHED_PHASES.filterNot { it == "pr" || it == "validate" }
+internal fun goalChildLaunchedPhases(): List<String> = AGENT_LAUNCHED_PHASES.filterNot { it == "pr" || it == "build" }
 
 internal const val GOAL_CHILD_COMPLETED_PHASES =
-  "preplan, plan, implement, audit, review, verify_findings, build, write_history, commit_push"
+  "preplan, plan, implement, audit, review, verify_findings, validate, write_history, commit_push"
 internal const val COMPLETED_PHASES_CLEAN_RUN =
   "preplan, plan, implement, audit, review, verify_findings, validate, write_history, commit_push, pr"
 

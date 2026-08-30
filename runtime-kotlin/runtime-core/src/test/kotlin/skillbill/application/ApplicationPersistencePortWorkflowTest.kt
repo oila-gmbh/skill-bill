@@ -10,6 +10,7 @@ import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowResumeResult
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionContext
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
@@ -119,12 +120,10 @@ class ApplicationPersistencePortWorkflowTest {
     val artifacts = decodeArtifactsForTest(
       requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
-
-    @Suppress("UNCHECKED_CAST")
-    val phaseRecords = artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as Map<String, Any?>
-
-    @Suppress("UNCHECKED_CAST")
-    val planRecord = phaseRecords["plan"] as Map<String, Any?>
+    val phaseRecords = requireNotNull(
+      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY]),
+    )
+    val planRecord = requireNotNull(JsonSupport.anyToStringAnyMap(phaseRecords["plan"]))
     assertEquals("completed", planRecord["status"])
     assertEquals("agent-plan-1", planRecord["resolved_agent_id"])
     // Timestamps and duration are minted by the runtime, never agent-reported.
@@ -132,9 +131,9 @@ class ApplicationPersistencePortWorkflowTest {
     assertTrue((planRecord["finished_at"] as String).isNotBlank())
     assertTrue((planRecord["duration_millis"] as Number).toLong() >= 0)
     assertEquals("""{"contract_version":"0.2"}""", planRecord["output_artifact"])
-
-    @Suppress("UNCHECKED_CAST")
-    val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val ledger = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+    )
     val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
     assertEquals(listOf(0, 1), sequences)
     assertEquals(sequences.sorted(), sequences)
@@ -164,10 +163,9 @@ class ApplicationPersistencePortWorkflowTest {
     val afterSecondDelivery = decodeArtifactsForTest(
       requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
-
-    @Suppress("UNCHECKED_CAST")
-    val deliveredHistory =
-      afterSecondDelivery[FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY] as Map<String, Any?>
+    val deliveredHistory = requireNotNull(
+      JsonSupport.anyToStringAnyMap(afterSecondDelivery[FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY]),
+    )
     assertEquals(2, deliveredHistory.size, "distinct producer iterations must remain independently durable")
     assertTrue(
       deliveredHistory.keys.all { "|plan#1|" in it },
@@ -573,9 +571,9 @@ class ApplicationPersistencePortWorkflowTest {
     val artifacts = decodeArtifactsForTest(
       requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
-
-    @Suppress("UNCHECKED_CAST")
-    val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val ledger = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+    )
     val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
     assertEquals(listOf(0, 1, 2), sequences)
     assertEquals(listOf("start", "complete", "resume"), ledger.map { it["action"] })

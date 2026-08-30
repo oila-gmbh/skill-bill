@@ -9,6 +9,7 @@ import skillbill.application.featuretask.RemediationBaseCoherent
 import skillbill.application.featuretask.featureTaskRuntimeParseRepairReceiptOrNull
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
+import skillbill.contracts.JsonSupport
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.engine.WorkflowEngine
@@ -316,9 +317,9 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertEquals(parent, reloaded.remediationBaseSha, "durable remediation_base_sha must repoint to the ancestor")
     assertEquals("a".repeat(40), reloaded.reviewBaseSha, "immutable review base must stay untouched")
     val artifacts = repository.taskRuntimeArtifacts(workflowId)
-
-    @Suppress("UNCHECKED_CAST")
-    val evidence = artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val evidence = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]),
+    )
     val entry = evidence.single()
     assertEquals(orphaned, entry["original_sha"])
     assertEquals(parent, entry["replacement_sha"])
@@ -429,9 +430,11 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertContains(blocked.operatorGuidance, "feat/skill-15")
     assertEquals(fixture.orphanedBase, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
-    @Suppress("UNCHECKED_CAST")
-    val evidence = repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
-      as List<Map<String, Any?>>
+    val evidence = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
     assertEquals("reconciliation_blocked", evidence.single()["failure_reason"])
   }
 
@@ -473,9 +476,11 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
 
     assertEquals(fixture.checkpointSha, healed.state?.remediationBaseSha)
     assertEquals(fixture.checkpointSha, git(fixture.repoRoot, "rev-parse", "HEAD"))
-    @Suppress("UNCHECKED_CAST")
-    val evidence = repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
-      as List<Map<String, Any?>>
+    val evidence = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
     assertEquals("committed_but_unrecorded", evidence.single()["failure_reason"])
   }
 

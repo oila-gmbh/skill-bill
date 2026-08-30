@@ -9,11 +9,12 @@ import skillbill.ports.db.UnitOfWork
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.workflow.decomposition.DecompositionManifestValidator
 
 internal fun executeFeatureTaskContinuationLookup(
   query: FeatureTaskContinuationLookupQuery,
   unitOfWork: UnitOfWork,
-  decompositionManifestValidator: skillbill.workflow.decomposition.DecompositionManifestValidator,
+  decompositionManifestValidator: DecompositionManifestValidator,
   project: (
     FeatureTaskWorkflowCandidate,
     FeatureTaskRuntimeWorkerOwnership?,

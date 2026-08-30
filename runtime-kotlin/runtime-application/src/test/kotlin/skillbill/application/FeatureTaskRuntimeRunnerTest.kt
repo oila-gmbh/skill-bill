@@ -1120,20 +1120,18 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
     assertEquals(COMPLETED_PHASES_CLEAN_RUN, done)
 
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
-
-    @Suppress("UNCHECKED_CAST")
-    val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val ledger = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+    )
     val actions = ledger.map { it["action"] as String }
     assertContains(actions, "start")
     assertContains(actions, "complete")
     val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
     assertEquals(sequences.sorted(), sequences)
-
-    @Suppress("UNCHECKED_CAST")
-    val records = artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY] as Map<String, Any?>
-
-    @Suppress("UNCHECKED_CAST")
-    val planRecord = records["plan"] as Map<String, Any?>
+    val records = requireNotNull(
+      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY]),
+    )
+    val planRecord = requireNotNull(JsonSupport.anyToStringAnyMap(records["plan"]))
     assertEquals("completed", planRecord["status"])
     assertTrue((planRecord["started_at"] as String).isNotBlank())
     assertTrue((planRecord["finished_at"] as String).isNotBlank())
@@ -1148,9 +1146,9 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
     harness.runner.run(harness.request())
 
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
-
-    @Suppress("UNCHECKED_CAST")
-    val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val ledger = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+    )
     val blockedEntry = ledger.single { it["action"] == "blocked" }
     assertEquals("write_history", blockedEntry["phase_id"])
     assertTrue((blockedEntry["blocked_reason"] as String).isNotBlank())
@@ -1465,10 +1463,12 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     )
     assertNotEquals(siblingTip, reconciledBase)
     assertEquals("false", git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value)
-    @Suppress("UNCHECKED_CAST")
-    val recoveries = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"]
-      as List<Map<String, Any?>>?
-    recoveries?.forEach { entry -> assertEquals(reconciledBase, entry["replacement_sha"]) }
+    val recoveries = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"],
+      ),
+    )
+    recoveries.forEach { entry -> assertEquals(reconciledBase, entry["replacement_sha"]) }
   }
 
   // A settled subtask's review is replayed from its durable result on resume rather than relaunched,
@@ -1927,7 +1927,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     @Suppress("UNCHECKED_CAST")
     val participants = outcome["participating_agent_ids"] as List<String>
     assertTrue(participants.isNotEmpty(), "goal-continuation outcome must carry a non-empty participating_agent_ids")
-    val installSync = artifacts["install_sync_result"] as Map<*, *>
+    val installSync = requireNotNull(JsonSupport.anyToStringAnyMap(artifacts["install_sync_result"]))
     assertEquals("deferred", installSync["status"])
     assertContains(installSync["reason"].toString(), "must not block subtask completion")
   }
@@ -1970,12 +1970,10 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    @Suppress("UNCHECKED_CAST")
-    val state = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"] as Map<String, Any?>
-
-    @Suppress("UNCHECKED_CAST")
-    val firstPass = (state["pass_results"] as List<Map<String, Any?>>).first()
+    val state = requireNotNull(
+      JsonSupport.anyToStringAnyMap(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"]),
+    )
+    val firstPass = requireNotNull(JsonSupport.anyToStringAnyMapList((state["pass_results"]))).first()
     assertEquals("changes_requested", firstPass["verdict"])
     assertEquals(1, firstPass["unresolved_finding_count"])
   }
@@ -2199,7 +2197,9 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     )
     assertEquals(1, git.goalReviewRecoverCalls)
     assertEquals(unreachableRemediation, git.goalReviewRecoverRequests.single().unreachableSha)
-    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"] as List<*>
+    val evidence = JsonSupport.anyToStringAnyMapList(
+      harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"],
+    ).orEmpty()
     val entry = evidence.single() as Map<*, *>
     assertEquals(unreachableRemediation, entry["original_sha"])
     assertEquals(recoveredRemediation, entry["replacement_sha"])
@@ -4476,9 +4476,11 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    @Suppress("UNCHECKED_CAST")
-    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
-      as List<Map<String, Any?>>
+    val evidence = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      ),
+    )
     val entry = evidence.single { it["seam"] == "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha" }
     assertEquals("resolvable predecessor identity commit", entry["value_expected"])
     val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))

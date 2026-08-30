@@ -1,5 +1,6 @@
 package skillbill.scaffold
 
+import skillbill.contracts.JsonSupport
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewCompositionMode
 import skillbill.scaffold.model.CodeReviewCompositionScope
@@ -157,9 +158,7 @@ class ScaffoldCommandRequestRawPayloadTest {
       nameOverride = null,
       scaffoldPayloadVersion = "1.0",
     ).toRawScaffoldPayload()
-
-    @Suppress("UNCHECKED_CAST")
-    val emitted = raw["baseline_layers"] as List<Map<String, Any?>>
+    val emitted = requireNotNull(JsonSupport.anyToStringAnyMapList(raw["baseline_layers"]))
     assertEquals(2, emitted.size)
     assertEquals("kotlin", emitted[0]["platform"])
     assertEquals("bill-kotlin-code-review", emitted[0]["skill"])

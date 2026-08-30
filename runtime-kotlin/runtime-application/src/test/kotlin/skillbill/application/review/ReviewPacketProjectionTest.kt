@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.GovernedReviewLaunch
@@ -131,8 +132,7 @@ class ReviewPacketProjectionTest {
     assertEquals(listOf("a-addon", "z-addon"), first["add_ons"])
     assertEquals(listOf("security", "testing"), first["selected_lanes"])
     assertEquals(listOf("src/Dep.kt"), first["dependency_allowlist"])
-    @Suppress("UNCHECKED_CAST")
-    val hunks = first["changed_hunks"] as List<Map<String, Any?>>
+    val hunks = requireNotNull(JsonSupport.anyToStringAnyMapList(first["changed_hunks"]))
     assertEquals(
       true,
       hunks.all {
@@ -251,11 +251,8 @@ class ReviewPacketProjectionTest {
     assertEquals(ReviewPacketConsumerContract.CONSUMER_CONTRACT, envelope["consumer_contract"])
     assertEquals(ReviewPacketConsumerContract.EVIDENCE_SURFACE_RULES, envelope["evidence_surface_rules"])
     assertEquals(ReviewPacketConsumerContract.REPORT_STRUCTURE, envelope["report_structure"])
-    @Suppress("UNCHECKED_CAST")
-    val bundle = envelope["bundle"] as Map<String, Any?>
-
-    @Suppress("UNCHECKED_CAST")
-    val entries = bundle["entries"] as List<Map<String, Any?>>
+    val bundle = requireNotNull(JsonSupport.anyToStringAnyMap(envelope["bundle"]))
+    val entries = requireNotNull(JsonSupport.anyToStringAnyMapList(bundle["entries"]))
     assertEquals(2, entries.size)
     assertEquals(
       true,
@@ -295,9 +292,11 @@ class ReviewPacketProjectionTest {
     val launch =
       GovernedReviewLaunch(assignment, base, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     val envelope = launch.toLaunchEnvelope().asWireMap()
-
-    @Suppress("UNCHECKED_CAST")
-    val envelopeEntries = (envelope["bundle"] as Map<String, Any?>)["entries"] as List<Map<String, Any?>>
+    val envelopeEntries = requireNotNull(
+      JsonSupport.anyToStringAnyMapList(
+        requireNotNull(JsonSupport.anyToStringAnyMap((envelope["bundle"])))["entries"],
+      ),
+    )
     val payloadHunkIds = Regex("""hunk_id: ([a-f0-9]{64})""")
       .findAll(launch.canonicalPayload)
       .map { it.groupValues[1] }
@@ -326,9 +325,7 @@ class ReviewPacketProjectionTest {
       .forEach { excluded ->
         assertEquals(false, envelope.containsKey(excluded), "Integration launch must not carry '$excluded'.")
       }
-
-    @Suppress("UNCHECKED_CAST")
-    val summaries = envelope["specialist_summaries"] as List<Map<String, Any?>>
+    val summaries = requireNotNull(JsonSupport.anyToStringAnyMapList(envelope["specialist_summaries"]))
     assertEquals(listOf("security"), summaries.map { it["lane"] })
     assertEquals(false, summaries.single().containsKey("content"))
   }

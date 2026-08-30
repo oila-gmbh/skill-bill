@@ -35,7 +35,6 @@ internal fun renderPlatformPackManifestContent(
 internal fun stagePlatformPackSkills(
   txn: ScaffoldTransaction,
   plan: ScaffoldPlan,
-  @Suppress("UNUSED_PARAMETER") repoRoot: Path,
   baselineSkillPath: Path,
   qualityCheckSkillPath: Path,
 ): List<Path> {
@@ -65,17 +64,12 @@ internal fun stagePlatformPackSkills(
   )
 
   plan.specialistAreas.forEach { area ->
-    symlinks.addAll(stagePlatformPackArea(txn, plan, area, repoRoot))
+    symlinks.addAll(stagePlatformPackArea(txn, plan, area))
   }
   return symlinks
 }
 
-internal fun stagePlatformPackArea(
-  txn: ScaffoldTransaction,
-  plan: ScaffoldPlan,
-  area: String,
-  @Suppress("UNUSED_PARAMETER") repoRoot: Path,
-): List<Path> {
+internal fun stagePlatformPackArea(txn: ScaffoldTransaction, plan: ScaffoldPlan, area: String): List<Path> {
   val areaPath = plan.specialistSkillPaths.getValue(area)
   val areaName = plan.specialistSkillNames.getValue(area)
   val areaContext = TemplateContext(areaName, "code-review", plan.platform, area, plan.displayName)

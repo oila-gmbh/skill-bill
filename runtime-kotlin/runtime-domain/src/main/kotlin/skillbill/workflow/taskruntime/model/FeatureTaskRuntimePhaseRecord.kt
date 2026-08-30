@@ -155,7 +155,6 @@ data class FeatureTaskRuntimePhaseRecord(
           repairEvidence = raw["repair_evidence"]?.let { value ->
             val evidence = value as? Map<*, *>
               ?: incompatiblePhaseRecord()
-            @Suppress("UNCHECKED_CAST")
             FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap(
               evidence.entries.associate { (key, item) -> key.toString() to item },
             )

@@ -275,13 +275,16 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   ): String = composePhasePrompt(
     issueKey = "SKILL-142",
     briefing = reviewBriefing(),
-    codeReviewMode = resolvedTier,
-    reviewPassNumber = passNumber,
-    goalSubtaskReviewInput = reviewInput,
-    resolvedReviewTier = resolvedTier,
-    reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
-    baselineUntrackedPaths = baselineUntrackedPaths,
-  )
+  ) {
+    copy(
+      codeReviewMode = resolvedTier,
+      reviewPassNumber = passNumber,
+      goalSubtaskReviewInput = reviewInput,
+      resolvedReviewTier = resolvedTier,
+      reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
+      baselineUntrackedPaths = baselineUntrackedPaths,
+    )
+  }
 }
 
 private val REVIEW_INPUT = GoalSubtaskReviewInput(

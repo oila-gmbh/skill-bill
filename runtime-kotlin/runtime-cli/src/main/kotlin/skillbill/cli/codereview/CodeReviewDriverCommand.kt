@@ -6,7 +6,6 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.long
-import skillbill.application.config.ConfigResolutionService
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.RequestedReviewMode
 import skillbill.application.review.model.DiffResolutionException
@@ -35,8 +34,6 @@ open class CodeReviewDriverCommand(
   help: String,
   private val runner: ParallelCodeReviewRunner,
   private val state: CliRunState,
-  @Suppress("UnusedPrivateProperty")
-  private val configResolutionService: ConfigResolutionService,
 ) : DocumentedCliCommand(name, help) {
   protected open val commitTarget: String? = null
   private val agent1 by option(

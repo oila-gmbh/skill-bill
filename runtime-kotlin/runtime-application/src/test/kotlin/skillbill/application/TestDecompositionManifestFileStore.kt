@@ -9,6 +9,7 @@ import skillbill.application.workflow.model.DecompositionManifestWorkflowProject
 import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.model.DecompositionManifestWriteResult
 import skillbill.application.workflow.repoRoot
+import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -91,10 +92,8 @@ internal object TestDecompositionManifestFileStore : DecompositionManifestFileSt
 internal val testDecompositionManifestValidator: DecompositionManifestValidator =
   object : DecompositionManifestValidator {
     override fun validate(manifest: Map<String, Any?>, sourceLabel: String) = Unit
-
-    @Suppress("UNCHECKED_CAST")
-    override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> = YAMLMapper()
-      .readValue(yamlText, Map::class.java) as Map<String, Any?>
+    override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
+      requireNotNull(JsonSupport.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
   }
 
 /**

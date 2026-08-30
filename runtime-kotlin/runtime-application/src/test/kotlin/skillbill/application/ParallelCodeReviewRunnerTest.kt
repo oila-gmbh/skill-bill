@@ -1478,34 +1478,34 @@ internal class RecordingReviewDatabase : DatabaseSessionFactory {
   private val reviews = Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
     arrayOf(ReviewRepository::class.java),
-  ) { _, method, args ->
-    when (method.name) {
-      "saveAccounting" -> Unit
-      "loadAccounting" -> null
-      "replaceReviewRunLanes" -> {
-        @Suppress("UNCHECKED_CAST")
-        laneWrites += args[0] as String to (args[1] as List<ReviewRunLane>)
+  )
+    @Suppress("UNCHECKED_CAST")
+    { _, method, args ->
+      when (method.name) {
+        "saveAccounting" -> Unit
+        "loadAccounting" -> null
+        "replaceReviewRunLanes" -> {
+          laneWrites += args[0] as String to (args[1] as List<ReviewRunLane>)
+        }
+        "fetchReviewRunLanes" -> laneWrites.lastOrNull()?.second.orEmpty()
+        "fetchIntegrationPass" -> null
+        "recordIntegrationPass" -> Unit
+        "recordFindingLaneAttribution" -> {
+          findingLaneWrites += args[0] as String to (args[1] as Map<String, String>)
+        }
+        "recordFindingVerdicts", "recordStageBoundary" -> Unit
+        "recordSpecProjectionReference" -> specProjection = args[1] as ReviewSpecProjectionReference
+        "recordReviewPassClaims" -> {
+          passClaims = ReviewPassClaimSnapshot(args[1] as List<ParallelReviewMergedFinding>)
+        }
+        "fetchFindingVerdicts" -> emptyList<ReviewFindingVerdict>()
+        "fetchReviewPassClaims" -> passClaims
+        "fetchStageBoundaries" -> emptyList<ReviewStageBoundary>()
+        "fetchSpecProjectionReference" -> specProjection
+        else -> error("Unexpected review repository call: ${method.name}")
       }
-      "fetchReviewRunLanes" -> laneWrites.lastOrNull()?.second.orEmpty()
-      "fetchIntegrationPass" -> null
-      "recordIntegrationPass" -> Unit
-      "recordFindingLaneAttribution" -> {
-        @Suppress("UNCHECKED_CAST")
-        findingLaneWrites += args[0] as String to (args[1] as Map<String, String>)
-      }
-      "recordFindingVerdicts", "recordStageBoundary" -> Unit
-      "recordSpecProjectionReference" -> specProjection = args[1] as ReviewSpecProjectionReference
-      "recordReviewPassClaims" -> {
-        @Suppress("UNCHECKED_CAST")
-        passClaims = ReviewPassClaimSnapshot(args[1] as List<ParallelReviewMergedFinding>)
-      }
-      "fetchFindingVerdicts" -> emptyList<ReviewFindingVerdict>()
-      "fetchReviewPassClaims" -> passClaims
-      "fetchStageBoundaries" -> emptyList<ReviewStageBoundary>()
-      "fetchSpecProjectionReference" -> specProjection
-      else -> error("Unexpected review repository call: ${method.name}")
     }
-  } as ReviewRepository
+    as ReviewRepository
   private val unitOfWork = Proxy.newProxyInstance(
     UnitOfWork::class.java.classLoader,
     arrayOf(UnitOfWork::class.java),

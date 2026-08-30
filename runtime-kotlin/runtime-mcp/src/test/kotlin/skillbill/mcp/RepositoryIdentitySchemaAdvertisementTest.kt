@@ -50,8 +50,11 @@ class RepositoryIdentitySchemaAdvertisementTest {
     assertTrue(!pattern.containsMatchIn("/home/me/projects/app"))
     assertTrue(!pattern.containsMatchIn("${prefix}home/me/projects/app"))
   }
-
-  @Suppress("UNCHECKED_CAST")
-  private fun repositoryIdentitySchemaOf(inputSchema: Map<String, Any?>): Map<String, Any?>? =
-    (inputSchema["properties"] as? Map<String, Map<String, Any?>>)?.get("repository_identity")
+  private fun repositoryIdentitySchemaOf(inputSchema: Map<String, Any?>): Map<String, Any?>? {
+    val properties = inputSchema["properties"] as? Map<*, *> ?: return null
+    val repositoryIdentity = properties["repository_identity"] as? Map<*, *> ?: return null
+    return repositoryIdentity.entries
+      .mapNotNull { (key, value) -> (key as? String)?.let { stringKey -> stringKey to value } }
+      .toMap()
+  }
 }

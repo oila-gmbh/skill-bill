@@ -24,7 +24,7 @@ internal fun createPlatformPack(txn: ScaffoldTransaction, plan: ScaffoldPlan, re
       qualityCheckSkillPath,
     ),
   )
-  val symlinks = stagePlatformPackSkills(txn, plan, repoRoot, baselineSkillPath, qualityCheckSkillPath)
+  val symlinks = stagePlatformPackSkills(txn, plan, baselineSkillPath, qualityCheckSkillPath)
   if (plan.shouldEmitSubagents()) {
     stageSubagentStubs(
       txn,

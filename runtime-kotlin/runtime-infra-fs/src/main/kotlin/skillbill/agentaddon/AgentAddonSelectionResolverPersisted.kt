@@ -4,6 +4,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.error.AgentAddonSelectionDriftError
 import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.install.model.InstallAgent
@@ -32,7 +33,7 @@ internal fun verifyPersistedAgentAddonSelection(
 }
 
 private fun hydratePersistedAgentAddonEntry(
-  recorded: skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry,
+  recorded: PersistedAgentAddonSelectionEntry,
   consumer: AgentAddonConsumer,
   receivingAgents: List<InstallAgent>,
   validateCompatibility: (

@@ -1,3 +1,12 @@
+## [2026-08-30] SKILL-221 subtask 3 — Compiler suppressions and allow-list ban
+Areas: runtime-kotlin/{runtime-core/architecture,agent,runtime-application,runtime-cli,runtime-contracts,runtime-domain,runtime-infra-fs,runtime-infra-sqlite,runtime-mcp,runtime-ports}, AGENTS.md, CLAUDE.md, orchestration/{review-delegation,shell-content-contract,stack-routing}, intellij-plugin
+- Fixed compiler `@Suppress` where a typed decode, `_`, or delete worked; retained only honest `UNCHECKED_CAST` sites on the dated allow-list in `agent/decisions.md` (path|symbol|rule|why); complexity rules never appear on that list.
+- Added `SuppressionBanArchitectureTest` + scanner: complexity suppressions fail always; every other authored `@Suppress` must bijection-match the allow-list; fixtures prove TooManyFunctions fail, allow-listed cast pass, stray cast fail; does not duplicate line-ceiling or FQN scanners. reusable
+- Pattern: prefer a clear cast at the erased boundary over a wrapper invented only to delete the annotation; keep declaration-scoped suppressions, never `@file:` for mixed files.
+- Limitation: generated `build/`/`generated/` trees stay unscanned; zero-`@Suppress` including weird workarounds is a non-goal.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-30] SKILL-221 subtask 2 — Remaining detekt suppressions
 Areas: runtime-kotlin/{runtime-domain/review,runtime-infra-fs/scaffold,runtime-mcp,runtime-cli,runtime-core/di,runtime-domain/{scaffold,workflow/taskruntime}}
 - Cleared remaining non-compiler detekt/ktlint suppressions (TooGenericExceptionCaught, MagicNumber, MaxLineLength, MatchingDeclarationName, related style) by typed catches, named constants, wraps/extracts, and file/type renames; no empty or success-shaped catch left at former silence sites.

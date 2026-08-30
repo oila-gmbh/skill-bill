@@ -11,6 +11,7 @@ import skillbill.application.goalrunner.model.GoalRunnerAppliedRepair
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry
+import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -26,6 +27,7 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import java.nio.file.Path
 import java.time.Instant
 
 internal data class UnreachableReviewRepairContext(
@@ -46,7 +48,7 @@ internal fun unreachableReviewFailedSha(wedgeClass: GoalRunnerWedgeClass, review
 internal data class UnreachableReviewRepairLookup(
   val wedgeClass: GoalRunnerWedgeClass,
   val wedgeDiagnosis: GoalRunnerChildRepairWedgeDiagnosis,
-  val repoRoot: java.nio.file.Path,
+  val repoRoot: Path,
   val gitOperations: WorkflowGitOperations,
   val review: GoalSubtaskReviewState?,
   val continuation: FeatureTaskRuntimeGoalContinuationArtifact?,
@@ -227,7 +229,7 @@ internal fun childRepairWedgeEvidenceMap(repair: GoalRunnerAppliedRepair): Map<S
 )
 
 internal fun continuationArtifactFromMap(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
-  val raw = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as? Map<*, *> ?: return null
-  @Suppress("UNCHECKED_CAST")
-  return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw as Map<String, Any?>)
+  val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
+    ?: return null
+  return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw)
 }

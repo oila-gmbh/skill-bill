@@ -20,9 +20,9 @@ internal fun parseRoutingSignals(
 ): RoutingSignals {
   val routing = requireMappingField(manifest, slug, "routing_signals")
   val strongRaw = routing["strong"]
-    ?: invalidManifestSchema(slug, "Platform pack '$slug': manifest field 'routing_signals.strong' is required.")
+    ?: invalidManifestSchema("Platform pack '$slug': manifest field 'routing_signals.strong' is required.")
   if (requirePath && !fallbackOnly && routing["path"] == null) {
-    invalidManifestSchema(slug, "Platform pack '$slug': manifest field 'routing_signals.path' is required.")
+    invalidManifestSchema("Platform pack '$slug': manifest field 'routing_signals.path' is required.")
   }
   return RoutingSignals(
     strong = parseStringList(slug, strongRaw, "routing_signals.strong", required = true),
@@ -44,15 +44,15 @@ internal fun parseLaneConditions(
 ): Map<String, ReviewLaneCondition> {
   val raw = manifest["lane_conditions"] ?: return emptyMap()
   val mapping = raw as? Map<*, *>
-    ?: invalidManifestSchema(slug, "Platform pack '$slug': 'lane_conditions' must be a mapping.")
+    ?: invalidManifestSchema("Platform pack '$slug': 'lane_conditions' must be a mapping.")
   val parsed = mapping.map { (areaRaw, conditionRaw) ->
     val area = areaRaw as? String
-      ?: invalidManifestSchema(slug, "Platform pack '$slug': lane condition areas must be strings.")
+      ?: invalidManifestSchema("Platform pack '$slug': lane condition areas must be strings.")
     if (area !in declaredAreas) {
-      invalidManifestSchema(slug, "Platform pack '$slug': lane condition '$area' is not a declared area.")
+      invalidManifestSchema("Platform pack '$slug': lane condition '$area' is not a declared area.")
     }
     val condition = conditionRaw as? Map<*, *>
-      ?: invalidManifestSchema(slug, "Platform pack '$slug': lane condition '$area' must be a mapping.")
+      ?: invalidManifestSchema("Platform pack '$slug': lane condition '$area' must be a mapping.")
     area to ReviewLaneCondition(
       required = condition["required"] as? Boolean ?: false,
       path = parseStringList(slug, condition["path"], "lane_conditions.$area.path", required = false),
@@ -62,7 +62,6 @@ internal fun parseLaneConditions(
   val missing = declaredAreas.toSet() - parsed.keys
   if (missing.isNotEmpty()) {
     invalidManifestSchema(
-      slug,
       "Platform pack '$slug': 'lane_conditions' is missing declared areas ${missing.sorted()}.",
     )
   }
@@ -72,17 +71,15 @@ internal fun parseLaneConditions(
 internal fun parseDeclaredAreas(manifest: Map<*, *>, slug: String): List<String> {
   val rawAreas = requireField(manifest, slug, "declared_code_review_areas")
   if (rawAreas !is List<*>) {
-    invalidManifestSchema(slug, "Platform pack '$slug': 'declared_code_review_areas' must be a list.")
+    invalidManifestSchema("Platform pack '$slug': 'declared_code_review_areas' must be a list.")
   }
   return rawAreas.map { entry ->
     val area = entry as? String
       ?: invalidManifestSchema(
-        slug,
         "Platform pack '$slug': every entry in 'declared_code_review_areas' must be a string.",
       )
     if (area !in APPROVED_CODE_REVIEW_AREAS) {
       invalidManifestSchema(
-        slug,
         "Platform pack '$slug': declared area '$area' is not approved; " +
           "must be one of ${APPROVED_CODE_REVIEW_AREAS.sorted()}.",
       )
@@ -102,7 +99,6 @@ internal fun parseDeclaredFiles(
   val areaFiles = parseDeclaredAreaFileEntries(rawFiles, slug, packRoot, declaredAreas)
   if (baselinePath == null && areaFiles.isNotEmpty()) {
     invalidManifestSchema(
-      slug,
       "Platform pack '$slug': 'declared_files.areas' is set but 'declared_files.baseline' is missing.",
     )
   }
@@ -119,23 +115,21 @@ internal fun parseAreaMetadata(manifest: Map<*, *>, slug: String, declaredAreas:
   val extraAreaMetadata = mutableSetOf<String>()
   for ((key, value) in rawMetadata) {
     val area = key as? String
-      ?: invalidManifestSchema(slug, "Platform pack '$slug': area_metadata entries must be string -> mapping.")
+      ?: invalidManifestSchema("Platform pack '$slug': area_metadata entries must be string -> mapping.")
     if (area !in declaredAreas) {
       extraAreaMetadata += area
       continue
     }
     val metadata = value as? Map<*, *>
-      ?: invalidManifestSchema(slug, "Platform pack '$slug': area_metadata['$area'] must be a mapping.")
+      ?: invalidManifestSchema("Platform pack '$slug': area_metadata['$area'] must be a mapping.")
     val focus = metadata["focus"] as? String
       ?: invalidManifestSchema(
-        slug,
         "Platform pack '$slug': area_metadata['$area'].focus must be a non-empty string.",
       )
     areaMetadata[area] = focus
   }
   if (extraAreaMetadata.isNotEmpty()) {
     invalidManifestSchema(
-      slug,
       "Platform pack '$slug': area_metadata contains entries ${extraAreaMetadata.sorted()} " +
         "that are not listed in 'declared_code_review_areas'.",
     )
@@ -148,17 +142,14 @@ internal fun parseCodeReviewComposition(manifest: Map<*, *>, slug: String): Code
   val raw = manifest["code_review_composition"] ?: return null
   val composition = raw as? Map<*, *>
     ?: invalidManifestSchema(
-      slug,
       "Platform pack '$slug': 'code_review_composition' must be a mapping when provided.",
     )
   val layersRaw = composition["baseline_layers"]
     ?: invalidManifestSchema(
-      slug,
       "Platform pack '$slug': 'code_review_composition.baseline_layers' is required.",
     )
   val layers = layersRaw as? List<*>
     ?: invalidManifestSchema(
-      slug,
       "Platform pack '$slug': 'code_review_composition.baseline_layers' must be a list.",
     )
   return CodeReviewComposition(
@@ -169,27 +160,24 @@ internal fun parseCodeReviewComposition(manifest: Map<*, *>, slug: String): Code
 internal fun parseCodeReviewBaselineLayer(slug: String, index: Int, raw: Any?): CodeReviewBaselineLayer {
   val layer = raw as? Map<*, *>
     ?: invalidManifestSchema(
-      slug,
       "Platform pack '$slug': 'code_review_composition.baseline_layers[$index]' must be a mapping.",
     )
   val fieldPrefix = "code_review_composition.baseline_layers[$index]"
   val scopeValue = requireStringInMap(slug, layer, "$fieldPrefix.scope", "scope")
   val modeValue = requireStringInMap(slug, layer, "$fieldPrefix.mode", "mode")
   val required = layer["required"] as? Boolean
-    ?: invalidManifestSchema(slug, "Platform pack '$slug': '$fieldPrefix.required' must be an explicit boolean.")
+    ?: invalidManifestSchema("Platform pack '$slug': '$fieldPrefix.required' must be an explicit boolean.")
 
   return CodeReviewBaselineLayer(
     platform = requireStringInMap(slug, layer, "$fieldPrefix.platform", "platform"),
     skill = requireStringInMap(slug, layer, "$fieldPrefix.skill", "skill"),
     scope = CodeReviewCompositionScope.fromWireValue(scopeValue)
       ?: invalidManifestSchema(
-        slug,
         "Platform pack '$slug': '$fieldPrefix.scope' has unsupported value '$scopeValue'.",
       ),
     required = required,
     mode = CodeReviewCompositionMode.fromWireValue(modeValue)
       ?: invalidManifestSchema(
-        slug,
         "Platform pack '$slug': '$fieldPrefix.mode' has unsupported value '$modeValue'.",
       ),
   )
@@ -197,13 +185,13 @@ internal fun parseCodeReviewBaselineLayer(slug: String, index: Int, raw: Any?): 
 
 internal fun requireStringInMap(slug: String, map: Map<*, *>, fieldLabel: String, key: String): String {
   val value = map[key] as? String
-    ?: invalidManifestSchema(slug, "Platform pack '$slug': '$fieldLabel' must be a non-empty string.")
+    ?: invalidManifestSchema("Platform pack '$slug': '$fieldLabel' must be a non-empty string.")
   if (value.isBlank()) {
-    invalidManifestSchema(slug, "Platform pack '$slug': '$fieldLabel' must be a non-empty string.")
+    invalidManifestSchema("Platform pack '$slug': '$fieldLabel' must be a non-empty string.")
   }
   return value
 }
 
 internal fun parseOptionalString(manifest: Map<*, *>, slug: String, key: String): String? = manifest[key]?.let {
-  it as? String ?: invalidManifestSchema(slug, "Platform pack '$slug': '$key' must be a string when provided.")
+  it as? String ?: invalidManifestSchema("Platform pack '$slug': '$key' must be a string when provided.")
 }

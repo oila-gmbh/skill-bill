@@ -269,6 +269,7 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
       }
       "fetchReviewRunLanes" -> recorder.durableLanes.toList()
       "recordIntegrationPass" -> {
+        @Suppress("UNCHECKED_CAST")
         recorder.durableIntegrationPass = args[1] as ReviewIntegrationPassRecord
       }
       "fetchIntegrationPass" -> recorder.durableIntegrationPass

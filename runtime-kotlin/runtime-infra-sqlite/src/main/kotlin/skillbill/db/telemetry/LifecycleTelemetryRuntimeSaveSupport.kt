@@ -4,6 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import java.sql.Connection
+import java.sql.PreparedStatement
 
 fun saveFeatureTaskRuntimeStarted(connection: Connection, record: FeatureTaskRuntimeStartedRecord) {
   if (rowExists(connection, "feature_task_runtime_sessions", record.sessionId)) {
@@ -108,7 +109,7 @@ private fun updateFeatureTaskRuntimeFinished(
 }
 
 private fun bindFeatureTaskRuntimeFinishedUpdate(
-  statement: java.sql.PreparedStatement,
+  statement: PreparedStatement,
   record: FeatureTaskRuntimeFinishedRecord,
   completedPhaseIdsJson: String,
   phaseOutcomesJson: String,

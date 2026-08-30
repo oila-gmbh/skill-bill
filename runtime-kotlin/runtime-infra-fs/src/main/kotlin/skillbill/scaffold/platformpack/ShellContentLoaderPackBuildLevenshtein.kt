@@ -2,10 +2,11 @@
 package skillbill.scaffold.platformpack
 
 import skillbill.error.InvalidManifestSchemaError
+import java.nio.file.Path
 
 internal fun guardAgainstAnchoredFieldTypos(
   slug: String,
-  manifestPath: java.nio.file.Path,
+  manifestPath: Path,
   customFieldKeys: Set<String>,
   anchoredKeys: Set<String>,
 ) {

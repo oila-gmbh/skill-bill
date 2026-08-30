@@ -115,16 +115,15 @@ internal fun validatePlatformPack(
   val missingAreaSlots = pack.declaredCodeReviewAreas.toSet() - declaredAreaFiles.keys
   if (missingAreaSlots.isNotEmpty()) {
     invalidManifestSchema(
-      pack.slug,
       "Platform pack '${pack.slug}': declared_files.areas is missing entries for ${missingAreaSlots.sorted()}.",
     )
   }
 
   pack.declaredFiles.baseline?.let { baseline ->
-    validateGovernedSkill(pack, "baseline", baseline, "code-review", "")
+    validateGovernedSkill(pack, "baseline", baseline, "code-review")
   }
   pack.declaredCodeReviewAreas.forEach { area ->
-    validateGovernedSkill(pack, "areas.$area", declaredAreaFiles.getValue(area), "code-review", area)
+    validateGovernedSkill(pack, "areas.$area", declaredAreaFiles.getValue(area), "code-review")
   }
   validateReviewSkillStructure(pack)
 }

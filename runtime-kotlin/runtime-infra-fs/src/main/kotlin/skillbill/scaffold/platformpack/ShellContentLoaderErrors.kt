@@ -7,8 +7,9 @@ import skillbill.error.InvalidValidationGateDeclarationError
 import skillbill.error.MissingContentFileError
 import skillbill.error.MissingManifestError
 import skillbill.error.MissingRequiredSectionError
+import java.nio.file.Path
 
-internal fun invalidManifestSchema(@Suppress("UNUSED_PARAMETER") slug: String, message: String): Nothing {
+internal fun invalidManifestSchema(message: String): Nothing {
   throw InvalidManifestSchemaError(message)
 }
 
@@ -20,7 +21,7 @@ internal fun missingManifestSection(message: String): Nothing {
   throw MissingRequiredSectionError(message)
 }
 
-internal fun missingPlatformManifest(slug: String, manifestPath: java.nio.file.Path): Nothing {
+internal fun missingPlatformManifest(slug: String, manifestPath: Path): Nothing {
   throw MissingManifestError("Platform pack '$slug': expected manifest at '$manifestPath' but it is missing.")
 }
 

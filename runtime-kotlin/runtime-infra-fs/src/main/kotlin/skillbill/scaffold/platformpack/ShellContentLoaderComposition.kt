@@ -61,26 +61,22 @@ internal fun validateCompositionReferences(pack: PlatformManifest, packsBySlug: 
     val targetLabel = "${layer.platform}/${layer.skill}"
     if (layer.platform == pack.slug) {
       invalidManifestSchema(
-        pack.slug,
         "Platform pack '${pack.slug}': code_review_composition.baseline_layers[$index] self-references " +
           "the same platform pack '$targetLabel'.",
       )
     }
     if (!seenTargets.add(layer.platform to layer.skill)) {
       invalidManifestSchema(
-        pack.slug,
         "Platform pack '${pack.slug}': duplicate code_review_composition baseline layer '$targetLabel'.",
       )
     }
     val targetPack = packsBySlug[layer.platform]
       ?: invalidManifestSchema(
-        pack.slug,
         "Platform pack '${pack.slug}': code_review_composition.baseline_layers[$index] references " +
           "missing platform pack '${layer.platform}'.",
       )
     if (layer.skill !in targetPack.declaredCodeReviewSkillNames()) {
       invalidManifestSchema(
-        pack.slug,
         "Platform pack '${pack.slug}': code_review_composition.baseline_layers[$index] references " +
           "missing code-review skill '${layer.skill}' in platform pack '${layer.platform}'.",
       )
@@ -98,7 +94,6 @@ internal fun validateCompositionModeSupport(sourceSlug: String, index: Int, laye
   val unsupportedReason = unsupportedCompositionModeReason(layer)
   if (unsupportedReason != null) {
     invalidManifestSchema(
-      sourceSlug,
       "Platform pack '$sourceSlug': code_review_composition.baseline_layers[$index] uses mode " +
         "'${layer.mode.wireValue}' with unsupported referenced skill '${layer.platform}/${layer.skill}'. " +
         unsupportedReason,
@@ -129,7 +124,6 @@ internal fun validateNoCompositionCycles(packs: List<PlatformManifest>) {
       val cycleStart = stack.indexOf(slug).coerceAtLeast(0)
       val cycle = (stack.drop(cycleStart) + slug).joinToString(" -> ")
       invalidManifestSchema(
-        slug,
         "Platform pack '$slug': code_review_composition contains a composition cycle: $cycle.",
       )
     }
@@ -168,6 +162,6 @@ internal fun loadQualityCheckContent(pack: PlatformManifest): Path {
       "Platform pack '${pack.slug}': declared_quality_check_file not set " +
         "(call is only valid after checking pack.declaredQualityCheckFile is not null).",
     )
-  validateGovernedSkill(pack, "quality-check", filePath, "quality-check", "")
+  validateGovernedSkill(pack, "quality-check", filePath, "quality-check")
   return filePath
 }

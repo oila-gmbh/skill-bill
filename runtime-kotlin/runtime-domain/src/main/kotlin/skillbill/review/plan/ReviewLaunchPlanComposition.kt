@@ -110,27 +110,25 @@ internal fun resolveReviewLaunchAreaWinners(
   )
 }.sortedWith(compareBy<ReviewLaunchAreaCandidate>({ it.depth }, { it.pack.slug }, { it.area }))
 
-internal fun reviewLaunchLanesFromWinners(
-  @Suppress("UNUSED_PARAMETER") routedSlug: String,
-  winners: List<ReviewLaunchAreaCandidate>,
-): List<ReviewLaunchLane> = winners.mapIndexed { index, winner ->
-  val skillName = "bill-${winner.pack.slug}-code-review-${winner.area}"
-  val condition = winner.pack.laneConditions[winner.area]
-  ReviewLaunchLane(
-    skillName = skillName,
-    packSlug = winner.pack.slug,
-    area = winner.area,
-    depth = winner.depth,
-    originLayerChain = winner.chain,
-    originLayerChains = winner.chains,
-    required = condition?.required ?: winner.requiredByComposition,
-    addOns = ReviewAddonSelectionPolicy.select(winner.pack, skillName).map { it.slug },
-    orderIndex = index,
-    inclusionReason = if (winner.depth == 0) "routed-pack override" else "required baseline layer",
-    pathSignals = condition?.path.orEmpty(),
-    contentSignals = condition?.content.orEmpty(),
-  )
-}
+internal fun reviewLaunchLanesFromWinners(winners: List<ReviewLaunchAreaCandidate>): List<ReviewLaunchLane> =
+  winners.mapIndexed { index, winner ->
+    val skillName = "bill-${winner.pack.slug}-code-review-${winner.area}"
+    val condition = winner.pack.laneConditions[winner.area]
+    ReviewLaunchLane(
+      skillName = skillName,
+      packSlug = winner.pack.slug,
+      area = winner.area,
+      depth = winner.depth,
+      originLayerChain = winner.chain,
+      originLayerChains = winner.chains,
+      required = condition?.required ?: winner.requiredByComposition,
+      addOns = ReviewAddonSelectionPolicy.select(winner.pack, skillName).map { it.slug },
+      orderIndex = index,
+      inclusionReason = if (winner.depth == 0) "routed-pack override" else "required baseline layer",
+      pathSignals = condition?.path.orEmpty(),
+      contentSignals = condition?.content.orEmpty(),
+    )
+  }
 
 internal fun flattenReviewLaunchPlan(
   routedSlug: String,
@@ -147,6 +145,6 @@ internal fun flattenReviewLaunchPlan(
   val winners = resolveReviewLaunchAreaWinners(selectedAreas, candidates)
   return ReviewLaunchPlan(
     routedPackSlug = routedSlug,
-    lanes = reviewLaunchLanesFromWinners(routedSlug, winners),
+    lanes = reviewLaunchLanesFromWinners(winners),
   )
 }

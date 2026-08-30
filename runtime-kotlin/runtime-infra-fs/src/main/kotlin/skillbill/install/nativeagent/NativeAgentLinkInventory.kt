@@ -8,6 +8,7 @@ import com.networknt.schema.SpecVersion
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.contracts.nativeagent.NativeAgentLinkInventorySchemaPaths
 import skillbill.error.InvalidNativeAgentLinkInventorySchemaError
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -78,7 +79,7 @@ internal object NativeAgentLinkInventory {
 
 internal fun isCanonicalNativeAgentArtifactTarget(
   home: Path,
-  provider: skillbill.nativeagent.rendering.NativeAgentProvider,
+  provider: NativeAgentProvider,
   logicalName: String,
   target: Path,
   currentRoots: List<Path>,

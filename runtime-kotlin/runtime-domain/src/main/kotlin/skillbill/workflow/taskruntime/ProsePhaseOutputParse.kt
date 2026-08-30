@@ -106,6 +106,5 @@ private fun stuffSibling(sibling: Any?): String? = when (sibling) {
 private fun parseObject(raw: String): Map<String, Any?>? {
   if (raw.isBlank()) return null
   val obj = JsonSupport.parseObjectOrNull(raw) ?: return null
-  @Suppress("UNCHECKED_CAST")
-  return JsonSupport.jsonElementToValue(obj) as? Map<String, Any?>
+  return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(obj))
 }

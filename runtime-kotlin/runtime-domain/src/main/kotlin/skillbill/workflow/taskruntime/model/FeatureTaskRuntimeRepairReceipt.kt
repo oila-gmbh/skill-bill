@@ -352,7 +352,7 @@ internal fun compactReviewFindingIdentity(finding: GoalSubtaskReviewCompactFindi
 private val FINDING_REF_ALIASES = listOf("finding_id", "finding_ref", "id", "ref")
 private const val FINDING_REF_NUMERIC_WIDTH = 3
 
-internal fun requireFindingRefAlias(raw: Map<String, Any?>, @Suppress("UnusedParameter") path: String): String {
+internal fun requireFindingRefAlias(raw: Map<String, Any?>, path: String): String {
   for (key in FINDING_REF_ALIASES) {
     val value = raw[key] as? String ?: continue
     val normalized = canonicalizeFindingRef(value)
@@ -365,7 +365,7 @@ internal fun requireFindingRefAlias(raw: Map<String, Any?>, @Suppress("UnusedPar
     return "legacy:" + listOf(severity, label, text).joinToString("|", transform = ::normalizeIdentityPart)
   }
   receiptError(
-    "finding_id",
+    path,
     "must name the finding under finding_id (aliases finding_ref, id, ref also accepted).",
   )
 }
