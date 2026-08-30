@@ -1,5 +1,7 @@
 import { FEATURE_GOAL_WORKFLOW_FAMILY, MODEL_TEXT_MAX_LENGTH } from "../domain/Constants";
 import { CurrentPhaseExecution, GoalPlanningInfo } from "../domain/SkillBillStatusOutcome";
+import { GoalControlsPresentation } from "./GoalControlsPresentation";
+import { GoalControlDescriptor } from "./GoalControlDescriptor";
 import { StatusUiMapper } from "./StatusUiMapper";
 import {
   formatDurationMs,
@@ -94,10 +96,14 @@ export const SkillBillStatusBarPresentation = {
           return "Skill Bill · incompatible";
         case "idle":
           return "Skill Bill · idle";
+        default: {
+          const _exhaustive: never = anchored;
+          return `Skill Bill · ${_exhaustive}`;
+        }
       }
     })();
 
-    const barText = truncateForBar(normalizeLabel(fullBar) ?? fullBar);
+    const barText = truncateForBar(normalizeLabel(fullBar) ?? fullBar ?? "Skill Bill");
     const slotFullLine = selectedSlot?.fullLine;
     const tooltip = buildTooltip(anchored, lifecycle, step, goalText, subtaskText, progressText, slotFullLine);
     const accessibleName = `Skill Bill status: ${lifecycle}`;
@@ -136,6 +142,7 @@ export const SkillBillStatusBarPresentation = {
         staleNote: isStaleState(anchored) ? STALE_NOTE : undefined,
         pauseReasonText: pauseReasonText(anchored),
       },
+      controls: GoalControlsPresentation.controlsFor(anchored),
     };
   },
 
@@ -210,6 +217,7 @@ export interface MappedPresentation {
   showActivityAnimation: boolean;
   isStaleMarked: boolean;
   details: StatusBarDetails;
+  controls: GoalControlDescriptor[];
 }
 
 export interface StatusBarDetails {

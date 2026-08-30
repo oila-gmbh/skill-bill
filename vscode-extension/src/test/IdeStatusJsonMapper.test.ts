@@ -54,6 +54,31 @@ describe("IdeStatusJsonMapper", () => {
     }
   });
 
+  it("maps pause_requested true false and absent onto active pauseRequested", () => {
+    for (const [wire, expected] of [
+      [true, true],
+      [false, false],
+      [undefined, undefined],
+    ] as const) {
+      const payload: Record<string, unknown> = {
+        contract_version: IDE_STATUS_CONTRACT_VERSION,
+        repository_identity: "repo",
+        lifecycle_state: "active",
+        summary: "running",
+        current_step: { id: "implement", label: "Implement" },
+        updated_at: "2026-08-06T11:00:00Z",
+      };
+      if (wire !== undefined) {
+        payload.pause_requested = wire;
+      }
+      const outcome = mapIdeStatusJson(JSON.stringify(payload), observedAt, 0);
+      assert.equal(outcome.kind, "active");
+      if (outcome.kind === "active") {
+        assert.equal(outcome.pauseRequested, expected);
+      }
+    }
+  });
+
   it("maps lifecycle variants", () => {
     const blocked = mapIdeStatusJson(
       JSON.stringify({

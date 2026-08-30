@@ -73,3 +73,9 @@ export const DEFAULT_CLI_TIMEOUT_MS = 30_000;
 export const DEFAULT_STDOUT_LIMIT_BYTES = 256 * 1024;
 
 export const DEFAULT_STDERR_LIMIT_BYTES = 16 * 1024;
+
+export const GOAL_PAUSE_VERB = ["goal", "pause"] as const;
+
+export const GOAL_STOP_VERB = ["goal", "stop"] as const;
+
+export const REPO_ROOT_OPTION = "--repo-root";

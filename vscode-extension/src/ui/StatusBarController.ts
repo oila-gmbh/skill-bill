@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import { GoalPauseRepository } from "../application/GoalPauseRepository";
+import { GoalStopRepository } from "../application/GoalStopRepository";
 import { MappedPresentation, SkillBillStatusBarPresentation } from "../presentation/SkillBillStatusBarPresentation";
 import { SkillBillStatusUiState } from "../presentation/SkillBillStatusUiState";
 import { SkillBillStatusViewModel } from "../presentation/SkillBillStatusViewModel";
@@ -12,13 +14,16 @@ export class StatusBarController implements vscode.Disposable {
 
   constructor(
     private readonly viewModel: SkillBillStatusViewModel,
-    private readonly workspaceRootKey: string,
+    private readonly workspaceRoot: string,
+    private readonly goalStopRepository: GoalStopRepository,
+    private readonly goalPauseRepository: GoalPauseRepository,
     priority = 100,
   ) {
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, priority);
     this.statusBarItem.command = {
       command: "skill-bill-status.showDetails",
-      arguments: [this.workspaceRootKey],
+      title: "Show Skill Bill status details",
+      arguments: [this.workspaceRoot],
     };
     this.statusBarItem.tooltip = "Skill Bill status";
     this.statusBarItem.show();
@@ -36,13 +41,22 @@ export class StatusBarController implements vscode.Disposable {
     this.statusBarItem.accessibilityInformation = {
       label: presentation.accessibleName,
       role: "status",
-      description: presentation.accessibleDescription,
     };
   }
 
   showDetails(): void {
     if (this.latestPresentation) {
-      showStatusDetails(this.latestPresentation, () => this.viewModel.refresh());
+      showStatusDetails(this.latestPresentation, {
+        onRefresh: () => this.viewModel.refresh(),
+        onStop: async (issueKey) => {
+          const outcome = await this.goalStopRepository.requestStop(this.workspaceRoot, issueKey);
+          return outcome.kind === "failed" ? outcome.summary : undefined;
+        },
+        onPause: async (issueKey) => {
+          const outcome = await this.goalPauseRepository.requestPause(this.workspaceRoot, issueKey);
+          return outcome.kind === "failed" ? outcome.summary : undefined;
+        },
+      });
     } else {
       void vscode.window.showInformationMessage("Skill Bill status is not available yet.");
       this.viewModel.refresh();

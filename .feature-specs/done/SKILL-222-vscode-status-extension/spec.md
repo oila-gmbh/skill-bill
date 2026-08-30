@@ -7,15 +7,15 @@ plugin's operator surface: a workspace-aware status-bar item driven by
 `skill-bill work status --format json`, with Stop / Pause controls for an active
 feature goal, and no Skill Bill database or `runtime-kotlin` coupling.
 
-The IDE status contract already exists (`orchestration/contracts/ide-status-schema.yaml`).
-This feature adds only a new consumer under `vscode-extension/`, parallel to
-`intellij-plugin/`: isolated package lifecycle, CLI as sole transport, same
+The IDE status contract already exists (`../../../orchestration/contracts/ide-status-schema.yaml`).
+This feature adds only a new consumer under `../../../vscode-extension`, parallel to
+`../../../intellij-plugin`: isolated package lifecycle, CLI as sole transport, same
 lifecycle presentations and persistence limits.
 
 ## Acceptance Criteria
 
 1. The repository contains an isolated VS Code extension package under
-   `vscode-extension/` that builds and packages without making `runtime-kotlin` or
+   `../../../vscode-extension` that builds and packages without making `runtime-kotlin` or
    `intellij-plugin` depend on VS Code APIs.
 2. The extension resolves the `skill-bill` CLI (settings override, then PATH /
    `SKILL_BILL_BIN_DIR` / `~/.local/bin`), polls
@@ -48,7 +48,7 @@ lifecycle presentations and persistence limits.
   toolchain for this module.
 - Match IntelliJ presentation semantics (freshness vs lifecycle, elapsed vs ran,
   planning vs execution text) unless a VS Code API forces a documented narrowing.
-- Do not invoke `install.sh`, `uninstall.sh`, or `skill-bill install apply` from
+- Do not invoke `../../../install.sh`, `../../../uninstall.sh`, or `skill-bill install apply` from
   the extension.
 - Do not read or mutate the user's unrelated dirty worktree changes.
 

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { createStatusCompositionRoot } from "./composition/createStatusCompositionRoot";
 import { StatusCompositionRoot } from "./composition/StatusCompositionRoot";
 import { StatusBarController } from "./ui/StatusBarController";
 
@@ -26,11 +27,16 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!controller) {
       let root = workspaceRoots.get(key);
       if (!root) {
-        root = StatusCompositionRoot.create(context, key);
+        root = createStatusCompositionRoot(context, key);
         workspaceRoots.set(key, root);
         context.subscriptions.push({ dispose: () => root?.dispose() });
       }
-      controller = new StatusBarController(root.viewModel, key);
+      controller = new StatusBarController(
+        root.viewModel,
+        key,
+        root.goalStopRepository,
+        root.goalPauseRepository,
+      );
       controllers.set(key, controller);
       context.subscriptions.push(controller);
     }
