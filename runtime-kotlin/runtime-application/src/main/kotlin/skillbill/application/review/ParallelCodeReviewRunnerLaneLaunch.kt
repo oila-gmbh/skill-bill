@@ -1,5 +1,7 @@
 package skillbill.application.review
 
+import skillbill.application.idestatus.AgentActivityStampWriter
+import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -35,6 +37,7 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
   private val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort,
   internal val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
   private val failureHelpers: ParallelCodeReviewRunnerFailureHelpers,
+  private val activityStampWriter: AgentActivityStampWriter,
 ) {
   fun runLanes(initial: ParallelCodeReviewInitialRun): ParallelReviewLaneRunResult {
     val request = initial.request
@@ -70,7 +73,7 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
       ),
       bundleState = parallelCodeReviewAggregateBundleCompletion(bundleStates),
     )
-    return when (val bound = bindGovernedEvidence(selected, args.request.repoRoot)) {
+    return when (val bound = bindGovernedEvidence(selected, args.request)) {
       is ParallelCodeReviewGovernedEvidenceBind.Unbound -> unboundParentOutcome(launch, bound)
       is ParallelCodeReviewGovernedEvidenceBind.Bound -> launchedBoundParent(
         LaunchedBoundParentArgs(
@@ -128,9 +131,9 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
 
   private fun bindGovernedEvidence(
     selected: List<ReviewSpecialistLaunchRequest>,
-    repoRoot: Path,
+    request: ParallelCodeReviewRequest,
   ): ParallelCodeReviewGovernedEvidenceBind {
-    val broker = runCatching { parentEvidenceBroker(selected, repoRoot) }
+    val broker = runCatching { parentEvidenceBroker(selected, request.repoRoot) }
       .getOrElseRethrowingCancellation {
         return ParallelCodeReviewGovernedEvidenceBind.Unbound(
           ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
@@ -145,10 +148,19 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
         )
       }
     return runCatching {
+      val onEvidenceRead = request.activityWorkflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
+        {
+          activityStampWriter.recordEvidenceRead(
+            workflowId = workflowId,
+            parentWorkflowId = request.activityParentWorkflowId,
+            dbOverride = null,
+          )
+        }
+      }
       ParallelCodeReviewGovernedEvidenceBind.Bound(
         broker,
         protocol,
-        governedEvidenceEndpointBinder.bind(broker.accounting().lane, protocol),
+        governedEvidenceEndpointBinder.bind(broker.accounting().lane, protocol, onEvidenceRead),
       )
     }.getOrElseRethrowingCancellation {
       ParallelCodeReviewGovernedEvidenceBind.Unbound(

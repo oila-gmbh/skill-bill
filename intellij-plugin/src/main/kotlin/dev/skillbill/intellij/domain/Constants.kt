@@ -4,7 +4,7 @@ package dev.skillbill.intellij.domain
  * Pinned wire contract version for `skill-bill work status --format json`.
  * Must match `IDE_STATUS_CONTRACT_VERSION` / ide-status-schema.yaml const.
  */
-const val IDE_STATUS_CONTRACT_VERSION: String = "0.1"
+const val IDE_STATUS_CONTRACT_VERSION: String = "0.2"
 
 /**
  * Wire problem code for "no work matches this repository". Marked on the derived
@@ -88,6 +88,18 @@ const val GOAL_FINDINGS_DISPLAY_COMMAND: String = "skill-bill goal findings --is
 const val ACTIVE_DURATION_MS_WIRE_KEY: String = "active_duration_ms"
 
 const val ACTIVE_DURATION_AS_OF_WIRE_KEY: String = "active_duration_as_of"
+
+const val LAST_AGENT_ACTIVITY_AT_WIRE_KEY: String = "last_agent_activity_at"
+
+const val LAST_AGENT_ACTIVITY_LABEL_WIRE_KEY: String = "last_agent_activity_label"
+
+val AGENT_ACTIVITY_LABELS: Set<String> = setOf(
+    "worktree write",
+    "stdout",
+    "durable progress",
+    "evidence read",
+    "tool stream",
+)
 
 /** `workflow_family` value identifying a decomposed feature goal. */
 const val FEATURE_GOAL_WORKFLOW_FAMILY: String = "feature-goal"

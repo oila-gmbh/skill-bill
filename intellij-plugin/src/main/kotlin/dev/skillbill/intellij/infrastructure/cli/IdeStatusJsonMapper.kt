@@ -5,6 +5,9 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_AS_OF_WIRE_KEY
+import dev.skillbill.intellij.domain.AGENT_ACTIVITY_LABELS
+import dev.skillbill.intellij.domain.LAST_AGENT_ACTIVITY_AT_WIRE_KEY
+import dev.skillbill.intellij.domain.LAST_AGENT_ACTIVITY_LABEL_WIRE_KEY
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_MS_WIRE_KEY
 import dev.skillbill.intellij.domain.CURRENT_MODEL_WIRE_KEY
 import dev.skillbill.intellij.domain.CURRENT_PHASE_EXECUTION_KINDS
@@ -121,6 +124,7 @@ object IdeStatusJsonMapper {
         val pauseReason = root.parsePauseReason()
         val activeDurationMs = root.getAsNonNegativeLong(ACTIVE_DURATION_MS_WIRE_KEY)
         val activeDurationAsOf = root.getAsInstant(ACTIVE_DURATION_AS_OF_WIRE_KEY)
+        val agentActivity = root.parseAgentActivity()
 
         // "No work here" is a healthy idle repository, not a broken status source.
         // Every other problem code is a genuine failure to obtain status.
@@ -177,6 +181,8 @@ object IdeStatusJsonMapper {
                 subtaskActiveDurationAsOf = subtaskActiveDurationAsOf,
                 currentModel = currentModel,
                 currentPhaseExecution = currentPhaseExecution,
+                lastAgentActivityAt = agentActivity?.first,
+                lastAgentActivityLabel = agentActivity?.second,
             )
         }
 
@@ -210,6 +216,8 @@ object IdeStatusJsonMapper {
                         currentModel = currentModel,
                         currentPhaseExecution = currentPhaseExecution,
                         pauseReason = pauseReason,
+                        lastAgentActivityAt = agentActivity?.first,
+                        lastAgentActivityLabel = agentActivity?.second,
                     )
                 } else {
                     SkillBillStatusOutcome.Active(
@@ -236,6 +244,8 @@ object IdeStatusJsonMapper {
                         subtaskActiveDurationAsOf = subtaskActiveDurationAsOf,
                         currentModel = currentModel,
                         currentPhaseExecution = currentPhaseExecution,
+                        lastAgentActivityAt = agentActivity?.first,
+                        lastAgentActivityLabel = agentActivity?.second,
                     )
                 }
             }
@@ -471,4 +481,14 @@ object IdeStatusJsonMapper {
 
     private fun JsonElement.asStringOrNull(): String? =
         runCatching { asString }.getOrNull()
+
+    private fun JsonObject.parseAgentActivity(): Pair<Instant, String>? {
+        val at = getAsInstant(LAST_AGENT_ACTIVITY_AT_WIRE_KEY)
+        val label = getAsString(LAST_AGENT_ACTIVITY_LABEL_WIRE_KEY)
+        if (at == null && label == null) return null
+        if (at == null || label == null || label !in AGENT_ACTIVITY_LABELS) {
+            return null
+        }
+        return at to label
+    }
 }

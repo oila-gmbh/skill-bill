@@ -1,5 +1,7 @@
 package skillbill.launcher.process
 
+import skillbill.idestatus.model.AgentActivityLabel
+import skillbill.ports.agentrun.model.AgentRunActivityStampSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import java.time.Instant
 
@@ -11,6 +13,7 @@ internal fun ProcessWaitLoop.pollWorkflowProgress(nowNanos: Long) {
     lastProgressInstant = Instant.now()
     fileActivityWindowStartNanos = null
     writeProgressLabel()
+    request.activityStampSink.safeStamp(AgentActivityLabel.DURABLE_PROGRESS)
   }
 }
 
@@ -19,6 +22,7 @@ internal fun ProcessWaitLoop.pollOutputActivity(nowNanos: Long) {
   if (observedMillis != lastObservedOutputMillis) {
     lastObservedOutputMillis = observedMillis
     lastOutputNanos = nowNanos
+    request.activityStampSink.safeStamp(AgentActivityLabel.STDOUT)
   }
 }
 
@@ -31,6 +35,7 @@ internal fun ProcessWaitLoop.pollFileActivity(nowNanos: Long) {
       fileActivityWindowStartNanos = nowNanos
     }
     writeActivityLabel()
+    request.activityStampSink.safeStamp(AgentActivityLabel.WORKTREE_WRITE)
   }
 }
 
@@ -82,4 +87,8 @@ internal fun ProcessWaitLoop.writeActivityLabel() {
     AgentRunOutputStream.STDERR,
     "skill-bill: file activity observed; durable workflow progress is still pending$suffix\n",
   )
+}
+
+internal fun AgentRunActivityStampSink.safeStamp(label: AgentActivityLabel) {
+  runCatching { stamp(label) }
 }

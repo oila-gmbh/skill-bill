@@ -305,4 +305,29 @@ internal val databaseMigrationsLate: List<DatabaseMigration> =
       name = "add-feature-task-phase-settlements",
       operation = FeatureTaskPhaseSettlementsMigration::apply,
     ),
+    DatabaseMigration(
+      version = 36,
+      name = "add-agent-activity-stamps",
+      operation = { connection ->
+        connection.createStatement().use { statement ->
+          statement.execute(
+            """
+              CREATE TABLE IF NOT EXISTS agent_activity_stamps (
+                workflow_id TEXT PRIMARY KEY,
+                recorded_at TEXT NOT NULL,
+                label TEXT NOT NULL CHECK (
+                  label IN (
+                    'worktree write',
+                    'stdout',
+                    'durable progress',
+                    'evidence read',
+                    'tool stream'
+                  )
+                )
+              )
+            """.trimIndent(),
+          )
+        }
+      },
+    ),
   )

@@ -4,6 +4,8 @@ import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
 import skillbill.ports.featuretask.UnavailableFeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.idestatus.AgentActivityStampRepository
+import skillbill.ports.idestatus.EmptyAgentActivityStampRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
@@ -55,6 +57,8 @@ interface UnitOfWork {
     get() = UnavailableUnaddressedFindingsRepository
   val featureTaskRuntimeAuditGenerations: FeatureTaskRuntimeAuditGenerationRepository
     get() = UnavailableFeatureTaskRuntimeAuditGenerationRepository
+  val agentActivityStamps: AgentActivityStampRepository
+    get() = EmptyAgentActivityStampRepository
   val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository?
     get() = null
   val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions?

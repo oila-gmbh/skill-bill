@@ -1,6 +1,7 @@
 package skillbill.launcher.process
 
 import skillbill.goalrunner.model.GoalRunnerLivenessState
+import skillbill.idestatus.model.AgentActivityLabel
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
@@ -32,7 +33,12 @@ internal fun ProcessWaitLoop.pollProgress(): ProcessWait? {
 
 internal fun ProcessWaitLoop.pollDeclaredProgress(nowNanos: Long) {
   val snapshot = request.declaredProgressProbe.safeDeclaredProgress() ?: return
+  val previousSequence = declaredTracker.latestEvent?.sequenceNumber
   declaredTracker.observe(snapshot, nowNanos)
+  val latest = declaredTracker.latestEvent
+  if (latest != null && latest.sequenceNumber != previousSequence) {
+    request.activityStampSink.safeStamp(AgentActivityLabel.TOOL_STREAM)
+  }
 }
 
 internal fun ProcessWaitLoop.declaredProgressWait(nowNanos: Long): ProcessWait? {

@@ -19,7 +19,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.1"
+    const: "0.2"
     description: >
       Pinned to IDE_STATUS_CONTRACT_VERSION. Bump the schema const and Kotlin
       constant together.
@@ -284,6 +284,24 @@ properties:
       Instant active_duration_ms is current as of. Present only while a lease is live, so
       a reader can tick the live tail without double counting -- the next heartbeat folds
       that same tail into active_duration_ms. Absent means the accumulated value is final.
+  last_agent_activity_at:
+    type: string
+    minLength: 1
+    description: >
+      Instant of the latest durable agent-activity stamp while the current agent phase is
+      running. Informational only; does not drive updated_at or freshness. Omitted with
+      last_agent_activity_label when no stamp exists.
+  last_agent_activity_label:
+    type: string
+    enum:
+      - worktree write
+      - stdout
+      - durable progress
+      - evidence read
+      - tool stream
+    description: >
+      Closed vocabulary for the latest agent-activity stamp. Omitted with
+      last_agent_activity_at when no stamp exists.
   updated_at:
     type: string
     minLength: 1
@@ -319,3 +337,16 @@ properties:
       details:
         type: object
         additionalProperties: true
+allOf:
+  - if:
+      required:
+        - last_agent_activity_at
+    then:
+      required:
+        - last_agent_activity_label
+  - if:
+      required:
+        - last_agent_activity_label
+    then:
+      required:
+        - last_agent_activity_at

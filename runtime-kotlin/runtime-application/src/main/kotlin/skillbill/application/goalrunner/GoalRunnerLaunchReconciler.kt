@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerQualityGateSelectionResolver
@@ -28,6 +29,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 internal class GoalRunnerLaunchReconciler(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  private val activityStampWriter: AgentActivityStampWriter,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   fun subtaskLaunchRequest(args: SubtaskLaunchRequestArgs): GoalRunnerSubtaskLaunchRequest {
@@ -55,6 +57,11 @@ internal class GoalRunnerLaunchReconciler(
       diagnostics = diagnostics,
     )
     val goalContinuation = goalContinuationContext(issueKey, subtaskId, request, assignedWorkflowId, reviewBaseline)
+    val activityStampSink = activityStampWriter.lazySink(
+      resolveWorkflowId = { tickReader.progressState()?.subtask?.workflowId },
+      parentWorkflowId = goalContinuation?.parentWorkflowId,
+      dbOverride = request.dbPathOverride,
+    )
     return GoalRunnerSubtaskLaunchRequest(
       invokedAgentId = request.invokedAgentId,
       configuredAgentOverrideId = request.configuredAgentOverrideId,
@@ -73,6 +80,7 @@ internal class GoalRunnerLaunchReconciler(
           FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
         goalContinuation = goalContinuation,
         spawnAuthorization = spawnAuthorization,
+        activityStampSink = activityStampSink,
       ),
     )
   }

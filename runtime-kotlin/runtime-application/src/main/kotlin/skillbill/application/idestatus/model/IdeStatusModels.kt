@@ -2,6 +2,7 @@ package skillbill.application.idestatus.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
+import skillbill.idestatus.model.AgentActivityLabel
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import java.nio.file.Path
@@ -256,6 +257,8 @@ data class IdeStatusSnapshot(
   // Execution time rather than wall clock since startedAt; see the contract's active_duration_ms.
   val activeDurationMs: Long? = null,
   val activeDurationAsOf: Instant? = null,
+  val lastAgentActivityAt: Instant? = null,
+  val lastAgentActivityLabel: AgentActivityLabel? = null,
   val problem: IdeStatusProblem? = null,
   val contractVersion: String = IDE_STATUS_CONTRACT_VERSION,
 ) {
@@ -300,6 +303,7 @@ data class IdeStatusSnapshot(
     pausedAt?.let { put("paused_at", it.toString()) }
     putPauseReason()
     putActiveDuration()
+    putAgentActivity()
     put("updated_at", updatedAt.toString())
     put("freshness", freshness.wireValue)
     put("summary", summary)
@@ -367,6 +371,14 @@ data class IdeStatusSnapshot(
   private fun MutableMap<String, Any?>.putActiveDuration() {
     activeDurationMs?.let { put("active_duration_ms", it) }
     activeDurationAsOf?.let { put("active_duration_as_of", it.toString()) }
+  }
+
+  private fun MutableMap<String, Any?>.putAgentActivity() {
+    val at = lastAgentActivityAt
+    val label = lastAgentActivityLabel
+    if (at == null || label == null) return
+    put("last_agent_activity_at", at.toString())
+    put("last_agent_activity_label", label.wireValue)
   }
 
   private fun MutableMap<String, Any?>.putProblem() {

@@ -281,4 +281,25 @@ class IdeStatusGoldenFixturesTest {
       )
     }
   }
+
+  @Test
+  fun `agent activity pair golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-225",
+        "workflow_id" to "wfl-runtime-activity",
+        "workflow_family" to "feature-task-runtime",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "last_agent_activity_at" to "2026-08-30T10:15:00Z",
+        "last_agent_activity_label" to "stdout",
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "feature-task-runtime SKILL-225 is active on Implement.",
+      ),
+      "golden-runtime-agent-activity",
+    )
+  }
 }

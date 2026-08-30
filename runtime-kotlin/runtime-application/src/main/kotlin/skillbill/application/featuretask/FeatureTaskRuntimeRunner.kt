@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
@@ -11,6 +12,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 @Inject
 class FeatureTaskRuntimeRunner(
   internal val dependencies: FeatureTaskRuntimeRunnerDependencies,
+  internal val activityStampWriter: AgentActivityStampWriter,
 ) {
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
     val reconciliation = dependencies.crashReconciler.reconcile(request.dbPathOverride)

@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
+import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelCodeReviewRunnerDeps
@@ -13,7 +14,10 @@ import skillbill.review.ParallelReviewMerger
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 
 @Inject
-class ParallelCodeReviewRunner(deps: ParallelCodeReviewRunnerDeps) {
+class ParallelCodeReviewRunner(
+  deps: ParallelCodeReviewRunnerDeps,
+  private val activityStampWriter: AgentActivityStampWriter,
+) {
   private val parentReviewLauncher = deps.parentReviewLauncher
   private val diffResolver = deps.diffResolver
   private val repoLocalConfig = deps.repoLocalConfig
@@ -55,6 +59,7 @@ class ParallelCodeReviewRunner(deps: ParallelCodeReviewRunnerDeps) {
     reviewLaunchAgentStaging,
     sharedEvidenceLocatorReader,
     failureHelpers,
+    activityStampWriter,
   )
   private val resultAssembly = ParallelCodeReviewRunnerResultAssembly(
     parentReviewLauncher,

@@ -3,6 +3,7 @@ package skillbill.infrastructure.sqlite
 import skillbill.db.core.reconcileStaleTelemetrySessions
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
+import skillbill.db.workflow.AgentActivityStampStore
 import skillbill.db.workflow.FeatureTaskRuntimeAuditGenerationStore
 import skillbill.db.workflow.GoalPlanningPreparationStore
 import skillbill.db.workflow.GoalRunnerControlStore
@@ -28,6 +29,7 @@ import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
+import skillbill.ports.idestatus.AgentActivityStampRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.goalrunner.UnaddressedFindingsRepository
@@ -77,6 +79,8 @@ class SQLiteUnitOfWork(
   override val featureTaskRuntimeAuditGenerations:
     FeatureTaskRuntimeAuditGenerationRepository =
     FeatureTaskRuntimeAuditGenerationStore(connection)
+  override val agentActivityStamps: AgentActivityStampRepository =
+    AgentActivityStampStore(connection)
   override val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository =
     SqliteRejectedOutputDiagnosticRepository(connection)
   override val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions =

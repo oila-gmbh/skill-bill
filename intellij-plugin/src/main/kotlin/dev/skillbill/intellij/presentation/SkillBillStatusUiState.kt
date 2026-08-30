@@ -116,6 +116,8 @@ sealed class SkillBillStatusUiState {
         val activeDurationAsOf: Instant? = null,
         val subtaskActiveDurationMs: Long? = null,
         val subtaskActiveDurationAsOf: Instant? = null,
+        val lastAgentActivityAt: Instant? = null,
+        val lastAgentActivityLabel: String? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String =
             buildString {
@@ -145,6 +147,8 @@ sealed class SkillBillStatusUiState {
         override val currentPhaseExecution: CurrentPhaseExecution? = null,
         override val pauseReason: PauseReason? = null,
         override val problemSummary: String? = null,
+        val lastAgentActivityAt: Instant? = null,
+        val lastAgentActivityLabel: String? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (paused)"
     }
@@ -166,6 +170,8 @@ sealed class SkillBillStatusUiState {
         override val planning: GoalPlanningInfo? = null,
         override val currentModel: CurrentPhaseModel? = null,
         override val currentPhaseExecution: CurrentPhaseExecution? = null,
+        val lastAgentActivityAt: Instant? = null,
+        val lastAgentActivityLabel: String? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (stale)"
     }

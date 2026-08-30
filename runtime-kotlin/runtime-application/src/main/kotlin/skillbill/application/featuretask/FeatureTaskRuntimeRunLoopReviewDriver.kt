@@ -98,6 +98,9 @@ private fun FeatureTaskRuntimeRunLoop.runtimeOwnedReviewDriverRequest(
     agentAddonSelection = run.request.agentAddonSelection,
     baselineUntrackedPaths = reviewBaselineUntrackedPaths(run),
   ),
+).copy(
+  activityWorkflowId = run.request.workflowId,
+  activityParentWorkflowId = run.request.goalContinuation?.parentWorkflowId,
 )
 
 internal fun FeatureTaskRuntimeRunLoop.executePreparedReviewDriver(

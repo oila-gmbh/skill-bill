@@ -21,10 +21,24 @@ class IdeStatusSchemaContractVersionTest {
   }
 
   @Test
-  fun `additive planning property did not bump the contract version`() {
+  fun `agent activity fields bump contract version to 0_2`() {
     val schema = classpathSchema()
-    assertEquals("0.1", schema.path("properties").path("contract_version").path("const").asText())
-    assertEquals("0.1", IDE_STATUS_CONTRACT_VERSION)
+    assertEquals("0.2", schema.path("properties").path("contract_version").path("const").asText())
+    assertEquals("0.2", IDE_STATUS_CONTRACT_VERSION)
+    assertTrue(
+      !schema.path("properties").path("last_agent_activity_at").isMissingNode,
+      "last_agent_activity_at must be present in the schema this parity test pins.",
+    )
+    assertTrue(
+      !schema.path("properties").path("last_agent_activity_label").isMissingNode,
+      "last_agent_activity_label must be present in the schema this parity test pins.",
+    )
+  }
+
+  @Test
+  fun `planning property remains present at contract 0_2`() {
+    val schema = classpathSchema()
+    assertEquals(IDE_STATUS_CONTRACT_VERSION, schema.path("properties").path("contract_version").path("const").asText())
     assertTrue(
       !schema.path("properties").path("planning").isMissingNode,
       "planning must be present in the schema this parity test pins.",
@@ -32,33 +46,19 @@ class IdeStatusSchemaContractVersionTest {
   }
 
   @Test
-  fun `additive pause signal properties did not bump the contract version`() {
+  fun `pause signal properties remain present at contract 0_2`() {
     val schema = classpathSchema()
-    assertEquals("0.1", schema.path("properties").path("contract_version").path("const").asText())
-    assertEquals("0.1", IDE_STATUS_CONTRACT_VERSION)
-    assertTrue(
-      !schema.path("properties").path("pause_requested").isMissingNode,
-      "pause_requested must be present in the schema this parity test pins.",
-    )
-    assertTrue(
-      !schema.path("properties").path("paused_at").isMissingNode,
-      "paused_at must be present in the schema this parity test pins.",
-    )
+    assertEquals(IDE_STATUS_CONTRACT_VERSION, schema.path("properties").path("contract_version").path("const").asText())
+    assertTrue(!schema.path("properties").path("pause_requested").isMissingNode)
+    assertTrue(!schema.path("properties").path("paused_at").isMissingNode)
   }
 
   @Test
-  fun `additive current_phase_execution property did not bump the contract version`() {
+  fun `current_phase_execution remains present at contract 0_2`() {
     val schema = classpathSchema()
-    assertEquals("0.1", schema.path("properties").path("contract_version").path("const").asText())
-    assertEquals("0.1", IDE_STATUS_CONTRACT_VERSION)
-    assertTrue(
-      !schema.path("properties").path("current_phase_execution").isMissingNode,
-      "current_phase_execution must be present in the schema this parity test pins.",
-    )
-    assertTrue(
-      !schema.path("properties").path("planning").isMissingNode,
-      "planning must remain present and meaning-compatible alongside the additive field.",
-    )
+    assertEquals(IDE_STATUS_CONTRACT_VERSION, schema.path("properties").path("contract_version").path("const").asText())
+    assertTrue(!schema.path("properties").path("current_phase_execution").isMissingNode)
+    assertTrue(!schema.path("properties").path("planning").isMissingNode)
   }
 
   @Test

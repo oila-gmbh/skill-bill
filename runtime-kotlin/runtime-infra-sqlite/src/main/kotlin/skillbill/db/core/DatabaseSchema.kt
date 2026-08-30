@@ -39,6 +39,7 @@ internal object DatabaseSchema {
       "review_run_spec_projections",
       "rejected_output_diagnostics",
       "producer_output_evidence",
+      "agent_activity_stamps",
     )
 
   val indexNames: Set<String> =
