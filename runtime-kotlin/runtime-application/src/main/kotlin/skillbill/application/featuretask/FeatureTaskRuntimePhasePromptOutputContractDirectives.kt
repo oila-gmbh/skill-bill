@@ -101,6 +101,15 @@ private fun mutatingProducedOutputsAddendum(
   val phaseId = briefing.phaseId
   val remediation = if (!briefing.handoffEnvelope.projections.any { it.projectionName == "audit_prose" }) {
     ""
+  } else if (acceptanceCriteriaRequireGateProof(briefing.acceptanceCriteria)) {
+    "\n    - This is AUDIT-GAP REMEDIATION with gate-proof acceptance criteria: read the audit_prose " +
+      "value as the complete finding inventory for the unmet criterion. Clear every finding from that " +
+      "inventory in this one invocation — never a sample batch, never defer peers to validate. Run " +
+      "only the gate commands Validation ownership allows; re-run that same gate once at the end to " +
+      "confirm. Respect blast radius so the repair does not open a new gap or regress a neighboring " +
+      "criterion. Then emit a non-blank value string carrying the updated implementation_receipt JSON " +
+      "stuffed inside value. If a criterion is genuinely unimplementable, leave through a blocked " +
+      "envelope naming it and why."
   } else {
     "\n    - This is AUDIT-GAP REMEDIATION: read the audit_prose value from the briefing as structured " +
       "prose (gap report stuffed inside value). Follow every gap named there completely in this one " +

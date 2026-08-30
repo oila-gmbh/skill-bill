@@ -4,28 +4,41 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationC
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
 import skillbill.application.featuretask.model.PhasePromptHeaderInputs
 
-internal fun phasePromptLeadingSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): List<String> = listOf(
-  phasePromptHeader(
-    PhasePromptHeaderInputs(
-      issueKey = inputs.issueKey,
-      phaseId = inputs.briefing.phaseId,
-      agentRunValidateFallback = inputs.agentRunValidateFallback,
-      packCollectAllCommand = inputs.packCollectAllCommand,
-      packBuildCommand = inputs.packBuildCommand,
-      priorGapMemory = inputs.briefing.priorGapMemory,
-      validationGateRepair = inputs.validationGateRepair,
-      validationGateTriage = inputs.validationGateTriage,
+internal fun phasePromptLeadingSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): List<String> {
+  val auditGapImplement = isAuditGapImplement(inputs.briefing)
+  return listOf(
+    phasePromptHeader(
+      PhasePromptHeaderInputs(
+        issueKey = inputs.issueKey,
+        phaseId = inputs.briefing.phaseId,
+        agentRunValidateFallback = inputs.agentRunValidateFallback,
+        packCollectAllCommand = inputs.packCollectAllCommand,
+        packBuildCommand = inputs.packBuildCommand,
+        priorGapMemory = inputs.briefing.priorGapMemory,
+        validationGateRepair = inputs.validationGateRepair,
+        validationGateTriage = inputs.validationGateTriage,
+        acceptanceCriteria = inputs.briefing.acceptanceCriteria,
+        auditGapImplement = auditGapImplement,
+      ),
     ),
-  ),
-  installedRuntimeAuthorityDirective(),
-  ceremonyDirective(inputs.briefing),
-  mutatingPhaseIdempotencyDirective(inputs.briefing.phaseId),
-  nonValidatePhaseValidationOwnershipDirective(inputs.briefing.phaseId),
-  nonBuildPhaseBuildOwnershipDirective(inputs.briefing.phaseId),
-  minimalismDisciplineDirective(inputs.briefing.phaseId),
-  testValueDisciplineDirective(inputs.briefing.phaseId),
-  priorGapMemoryRemediationDirective(inputs.briefing.phaseId, inputs.briefing.priorGapMemory),
-)
+    installedRuntimeAuthorityDirective(),
+    ceremonyDirective(inputs.briefing),
+    mutatingPhaseIdempotencyDirective(inputs.briefing.phaseId),
+    nonValidatePhaseValidationOwnershipDirective(
+      inputs.briefing.phaseId,
+      inputs.briefing.acceptanceCriteria,
+      auditGapImplement,
+    ),
+    nonBuildPhaseBuildOwnershipDirective(
+      inputs.briefing.phaseId,
+      inputs.briefing.acceptanceCriteria,
+      auditGapImplement,
+    ),
+    minimalismDisciplineDirective(inputs.briefing.phaseId),
+    testValueDisciplineDirective(inputs.briefing.phaseId),
+    priorGapMemoryRemediationDirective(inputs.briefing.phaseId, inputs.briefing.priorGapMemory),
+  )
+}
 
 internal fun phasePromptMiddleSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): List<String> = listOf(
   goalContinuationDirective(inputs.briefing.phaseId, inputs.suppressDecomposition),

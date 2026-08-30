@@ -39,6 +39,8 @@ internal fun phasePromptHeader(inputs: PhasePromptHeaderInputs): String {
       priorGapMemory = inputs.priorGapMemory,
       validationGateRepair = inputs.validationGateRepair,
       validationGateTriage = inputs.validationGateTriage,
+      acceptanceCriteria = inputs.acceptanceCriteria,
+      auditGapImplement = inputs.auditGapImplement,
     ),
   )
   return buildString {

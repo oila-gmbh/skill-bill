@@ -41,13 +41,3 @@ internal fun buildGateTriagePhaseTask(packBuildCommand: String?): String {
     "Return prose guidance only; do not fix code or emit build_receipt, gate_run_count, or gate evidence."
 }
 
-internal fun nonBuildPhaseBuildOwnershipDirective(phaseId: String): String {
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
-    return ""
-  }
-  return """
-    ## Build ownership
-    Only the build phase may run the pack build_command (`validation_gate.build_command`). This phase
-    must not invoke compile-only proof as a substitute for its own work.
-  """.trimIndent()
-}

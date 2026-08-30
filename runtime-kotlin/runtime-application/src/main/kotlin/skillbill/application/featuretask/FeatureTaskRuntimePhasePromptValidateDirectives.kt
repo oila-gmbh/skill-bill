@@ -101,6 +101,8 @@ internal data class PhaseTaskDirectiveArgs(
   val priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   val validationGateRepair: Boolean = false,
   val validationGateTriage: Boolean = false,
+  val acceptanceCriteria: List<String> = emptyList(),
+  val auditGapImplement: Boolean = false,
 )
 
 internal fun phaseTaskDirective(phaseId: String, args: PhaseTaskDirectiveArgs = PhaseTaskDirectiveArgs()): String {
@@ -121,7 +123,10 @@ internal fun phaseTaskDirective(phaseId: String, args: PhaseTaskDirectiveArgs = 
     }
   }
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-    return auditPhaseTaskDirective(args.priorGapMemory)
+    return auditPhaseTaskDirective(args.priorGapMemory, args.acceptanceCriteria)
+  }
+  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) {
+    return implementPhaseTaskDirective(args.auditGapImplement, args.acceptanceCriteria)
   }
   return phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
 }

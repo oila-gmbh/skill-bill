@@ -56,6 +56,7 @@ internal fun promptComposerBriefingFor(
   priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   auditGapReentry: Boolean = false,
   auditOutput: String = validJsonOutput("audit"),
+  acceptanceCriteria: List<String> = listOf("AC-1"),
 ): FeatureTaskRuntimePhaseLaunchBriefing {
   val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
   val declaration = if (auditGapReentry && phaseId == promptComposerImplementPhase) {
@@ -72,7 +73,7 @@ internal fun promptComposerBriefingFor(
         runInvariants = FeatureTaskRuntimeRunInvariants(
           specReference = PROMPT_COMPOSER_SPEC_REFERENCE,
           featureSize = featureSize,
-          acceptanceCriteria = listOf("AC-1"),
+          acceptanceCriteria = acceptanceCriteria,
           mandatesAndOverrides = emptyList(),
         ),
         recordedOutputs = listOf(

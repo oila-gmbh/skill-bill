@@ -11,4 +11,6 @@ internal data class PhasePromptHeaderInputs(
   val priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   val validationGateRepair: Boolean = false,
   val validationGateTriage: Boolean = false,
+  val acceptanceCriteria: List<String> = emptyList(),
+  val auditGapImplement: Boolean = false,
 )
