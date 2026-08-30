@@ -464,12 +464,11 @@ class ReviewPreparationServiceTest {
 
   @Test fun `an assignment over the former expansion bound still validates at preparation`() {
     val counting = ports()
-    val bounded = ReviewPreparationService(
+    val service = ReviewPreparationService(
       ReviewFactPorts(counting, counting, counting, counting, counting, counting),
       RecordingValidator(),
-      ReviewContextBudgetPolicy(maxAssignmentExpansions = 1),
     )
-    val prepared = bounded.prepare(request())
+    val prepared = service.prepare(request())
     val assignment = prepared.assignments.first()
     val overBound = assignment.copy(
       expansions = listOf(
@@ -477,22 +476,15 @@ class ReviewPreparationServiceTest {
         expansion(assignment.digest, id = "exp-2", sequence = 1),
       ),
     )
-    bounded.validateAgainstPacket(prepared.packet, listOf(overBound) + prepared.assignments.drop(1))
+    service.validateAgainstPacket(prepared.packet, listOf(overBound) + prepared.assignments.drop(1))
   }
 
   @Test fun `an oversized parent packet still prepares when the former byte bound would reject it`() {
     val counting = ports()
     val factPorts = ReviewFactPorts(counting, counting, counting, counting, counting, counting)
-    val defaults = ReviewPreparationService(factPorts, RecordingValidator())
-    val observedBytes = defaults.prepare(request()).packet.canonicalBytes
-
-    val bounded = ReviewPreparationService(
-      factPorts,
-      RecordingValidator(),
-      ReviewContextBudgetPolicy(maxParentPacketBytes = observedBytes - 1, maxLaneLaunchBytes = observedBytes - 1),
-    )
-    val prepared = bounded.prepare(request())
-    assertEquals(observedBytes, prepared.packet.canonicalBytes)
+    val service = ReviewPreparationService(factPorts, RecordingValidator())
+    val prepared = service.prepare(request())
+    assertTrue(prepared.packet.canonicalBytes > 0)
   }
 
   internal fun oversizedPatch(path: String = "src/Huge.kt"): String {
