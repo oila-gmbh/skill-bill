@@ -35,15 +35,14 @@ object ReviewCommitLaneRoutingPolicy {
     require(lanes.isNotEmpty()) { "Commit/lane routing requires at least one planned lane." }
     val ordered = units.sortedBy { it.orderIndex }
     val routingId = analysisDigest(ordered, lanes)
-    requirePairBudget(ordered.size.toLong() * lanes.size, budget, routingId, lanes.first().laneKey)
-
-    var analyzedBytes = 0L
+    val firstLane = lanes.first().laneKey
+    requirePairBudget(ordered.size.toLong() * lanes.size, budget, routingId, firstLane)
+    val uniqueHunkBytes = ordered.sumOf { unit ->
+      unit.hunks.sumOf { it.content.toByteArray(StandardCharsets.UTF_8).size.toLong() }
+    }
+    requireByteBudget(uniqueHunkBytes, budget, routingId, firstLane)
     val decisions = ordered.flatMap { unit ->
-      lanes.map { lane ->
-        analyzedBytes += unit.hunks.sumOf { it.content.toByteArray(StandardCharsets.UTF_8).size.toLong() }
-        requireByteBudget(analyzedBytes, budget, routingId, lane.laneKey)
-        decide(unit, lane)
-      }
+      lanes.map { lane -> decide(unit, lane) }
     }
     return ReviewCommitLaneRoutingMatrix(ordered.map { it.commitSha }, lanes.map { it.laneKey }, decisions)
   }
