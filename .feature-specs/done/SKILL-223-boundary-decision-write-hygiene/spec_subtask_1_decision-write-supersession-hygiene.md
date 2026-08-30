@@ -8,7 +8,7 @@ are retired when a new decision lands, without putting a date window on
 
 Edit:
 
-- `skills/bill-boundary-decisions/content.md` (authoritative skill source):
+- `../../../skills/bill-boundary-decisions/content.md` (authoritative skill source):
   - On write, read existing governed `## [<date>] <title>` headings in the target
     `<boundary>/agent/decisions.md`.
   - Classify conflicts with the new decision.
@@ -22,8 +22,8 @@ Edit:
 - Optional one-line clarification only where needed so operators and future
   editors do not extend verification's history recency to decisions, for
   example a description on `history_recency_days` in
-  `orchestration/contracts/goal-verification-boundary-caps-schema.yaml` and/or a
-  short note in `docs/capabilities.md` next to the boundary-memory paragraph.
+  `../../../orchestration/contracts/goal-verification-boundary-caps-schema.yaml` and/or a
+  short note in `../../../docs/capabilities.md` next to the boundary-memory paragraph.
   Do not change cap values or discovery code unless a comment-only edit is
   insufficient and a test already pins the asymmetry.
 
@@ -33,7 +33,7 @@ unchanged.
 
 ## Acceptance Criteria
 
-1. `skills/bill-boundary-decisions/content.md` requires that, before or while
+1. `../../../skills/bill-boundary-decisions/content.md` requires that, before or while
    appending a new decision, the writer reads the target boundary's existing
    governed decision headings and classifies any conflict with the new decision.
 2. The skill states the supersession rule: if the new decision fully replaces an

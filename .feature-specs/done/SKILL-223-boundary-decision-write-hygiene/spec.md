@@ -2,7 +2,7 @@
 
 ## Intended Outcome
 
-When an agent records a new entry in `agent/decisions.md`, it also retires
+When an agent records a new entry in `../../../agent/decisions.md`, it also retires
 obsolete same-boundary decisions so the titles-only catalog stays useful without
 a date window on decisions.
 
@@ -16,7 +16,7 @@ to scan existing titles and supersede or delete conflicts when appending.
 
 ## Acceptance Criteria
 
-1. `skills/bill-boundary-decisions/content.md` requires that, before or while
+1. `../../../skills/bill-boundary-decisions/content.md` requires that, before or while
    appending a new decision, the writer reads the target boundary's existing
    governed decision headings and classifies any conflict with the new decision.
 2. The skill states the supersession rule: if the new decision fully replaces an
@@ -58,7 +58,7 @@ to scan existing titles and supersede or delete conflicts when appending.
 
 ## Validation Strategy
 
-- Diff-read `skills/bill-boundary-decisions/content.md` against the acceptance
+- Diff-read `../../../skills/bill-boundary-decisions/content.md` against the acceptance
   criteria (scan rule, delete-vs-supersede rule, format line, output fields,
   no-date-filter for decisions).
 - Confirm verification discovery still filters only history by recency

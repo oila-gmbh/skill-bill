@@ -33,6 +33,17 @@ Optional trailing lines (include only when relevant):
 
 - `Alternatives considered: <what was rejected and why — 1 line>`
 - `Revisit when: <condition that would make this decision worth re-evaluating>`
+- `Superseded by: <new title> (<date>)`
+
+Example with a supersession line (placed after `Reason`, before any other optional lines):
+
+```markdown
+## [2025-03-01] Use in-memory cache for session tokens
+Context: Session lookup latency dominated auth middleware.
+Decision: Cache tokens in a process-local map with TTL eviction.
+Reason: Redis added ops burden without measurable gain at current scale.
+Superseded by: Rotate session store to Redis (2026-01-15)
+```
 
 ## Format Rules
 
@@ -49,7 +60,24 @@ Optional trailing lines (include only when relevant):
 - Newest entry first.
 - No fixed entry cap.
 - Keep older entries when they still provide useful context for understanding the boundary's design.
-- Prune entries only when the decision has been fully reversed or the context no longer applies.
+
+### Pre-write hygiene
+
+Before or while appending a new entry, read the target boundary's existing governed `## [<date>] <title>` headings from `<primary-boundary>/agent/decisions.md`. Classify each heading relative to the new decision's scope — not keyword overlap — as one of:
+
+- **no-conflict** — the existing entry covers a different concern; leave it unchanged.
+- **fully-replaced** — the new decision fully replaces this same-boundary entry and the old `Reason` adds no useful trap or rejected-path context.
+- **superseded-by-new** — the new decision replaces this entry's conclusion, but the old `Reason` still documents a trap or rejected path worth keeping.
+
+### Supersession and delete
+
+- **fully-replaced:** delete the entire old entry. Name the obsolete same-boundary entry before deleting; never delete by age or bulk prune.
+- **superseded-by-new:** keep the old entry body and append a trailing `Superseded by: <new title> (<date>)` line inside the entry block. Do not edit the `## [<date>] <title>` heading line.
+- **no-conflict:** do not modify the existing entry.
+
+Writer-owned hygiene is supersession or delete when naming a conflicting same-boundary entry — never age-based pruning. No runtime auto-deletes decisions by age.
+
+**Non-rule — `history_recency_days` is history-only:** `history_recency_days` applies only to `history.md` verification discovery. Do not extend it to `decisions.md`. Decision volume stays bounded by catalog caps and agent heading selection, not a date window.
 
 ## Distinguishing from History
 
@@ -62,6 +90,7 @@ If the user describes something that is purely a "what changed" summary with no 
 
 Report one concise result:
 
-- Written (with entry count) or skipped (with reason).
 - Target file path.
-- Decision title(s) recorded.
+- **Written:** entry count and title(s), or skipped (with reason).
+- **Pruned (deleted):** entry count and title(s); state `0` when none were deleted.
+- **Superseded:** entry count and title(s) for entries kept with a trailing `Superseded by:` line; state `0` when none were superseded.
