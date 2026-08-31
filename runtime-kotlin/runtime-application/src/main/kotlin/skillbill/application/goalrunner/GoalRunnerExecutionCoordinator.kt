@@ -132,7 +132,37 @@ class DefaultGoalRunnerExecutionCoordinator(
   }
 
   private fun reclaimableOwnerToken(parentWorkflowId: String, existing: GoalRunnerExecutionLease): String {
-    return when (supervisor.inspect(existing.asWorkerOwnership(parentWorkflowId))) {
+    val ownership = existing.asWorkerOwnership(parentWorkflowId)
+    return when (supervisor.inspect(ownership)) {
+      FeatureTaskRuntimeProcessInspection.NotRunning -> existing.ownerToken
+      FeatureTaskRuntimeProcessInspection.ExactLive ->
+        reclaimAfterLiveOwner(parentWorkflowId, existing, ownership)
+      is FeatureTaskRuntimeProcessInspection.OwnershipMismatch ->
+        cannotStart(parentWorkflowId, "the existing process owner is ambiguous")
+      is FeatureTaskRuntimeProcessInspection.Unsupported ->
+        cannotStart(parentWorkflowId, "the existing process owner cannot be inspected")
+    }
+  }
+
+  /**
+   * A second `skill-bill goal` in the same second (Cursor sandbox + real spawn) must wait for the
+   * winner instead of exiting blocked — otherwise the agent turn ends and reaps the live runner.
+   * A lease older than [DUPLICATE_LAUNCH_WINDOW] is a separate session (Claude, Codex, tmux) and
+   * still fails closed so those agents keep the immediate "already running" signal.
+   */
+  private fun reclaimAfterLiveOwner(
+    parentWorkflowId: String,
+    existing: GoalRunnerExecutionLease,
+    ownership: FeatureTaskRuntimeWorkerOwnership,
+  ): String {
+    if (isCurrentProcess(existing)) {
+      cannotStart(parentWorkflowId, "this process already owns the execution lease")
+    }
+    if (!isDuplicateLaunchRace(existing)) {
+      cannotStart(parentWorkflowId, "another goal runner process is live")
+    }
+    supervisor.awaitExit(ownership, DUPLICATE_LAUNCH_WINDOW)
+    return when (supervisor.inspect(ownership)) {
       FeatureTaskRuntimeProcessInspection.NotRunning -> existing.ownerToken
       FeatureTaskRuntimeProcessInspection.ExactLive ->
         cannotStart(parentWorkflowId, "another goal runner process is live")
@@ -141,6 +171,17 @@ class DefaultGoalRunnerExecutionCoordinator(
       is FeatureTaskRuntimeProcessInspection.Unsupported ->
         cannotStart(parentWorkflowId, "the existing process owner cannot be inspected")
     }
+  }
+
+  private fun isCurrentProcess(existing: GoalRunnerExecutionLease): Boolean {
+    val current = supervisor.currentProcess()
+    return existing.pid == current.pid && existing.processBirthToken == current.processBirthToken
+  }
+
+  private fun isDuplicateLaunchRace(existing: GoalRunnerExecutionLease): Boolean {
+    val ownerStartMs = existing.processBirthToken.toLongOrNull() ?: return false
+    val ageMs = clock.millis() - ownerStartMs
+    return ageMs in 0 until DUPLICATE_LAUNCH_WINDOW.toMillis()
   }
 
   private fun cannotStart(parentWorkflowId: String, detail: String): Nothing =
@@ -165,6 +206,7 @@ class DefaultGoalRunnerExecutionCoordinator(
 
   private companion object {
     val LEASE_DURATION: Duration = Duration.ofSeconds(30)
+    val DUPLICATE_LAUNCH_WINDOW: Duration = Duration.ofSeconds(60)
     const val HEARTBEAT_SECONDS: Long = 10
 
     /** Hard ceiling on how long a blocked database may hold up JVM shutdown. */

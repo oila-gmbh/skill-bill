@@ -9,6 +9,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -66,6 +67,71 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
     val ownership = ownershipFor(current, bootIdentity = "fallback-1787579295")
 
     assertEquals(FeatureTaskRuntimeProcessInspection.ExactLive, supervisor.inspect(ownership))
+  }
+
+  @Test
+  fun `awaitExit returns after a live owned process exits`() {
+    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor()
+    val current = supervisor.currentProcess()
+    val child = ProcessBuilder("sleep", "1").start()
+    val childHandle = child.toHandle()
+    val birth = childHandle.info().startInstant().orElseThrow().toEpochMilli().toString()
+    val ownership = FeatureTaskRuntimeWorkerOwnership(
+      workflowId = "wftr-test",
+      generation = 1,
+      ownerToken = "owner-token-0001",
+      hostIdentity = current.hostIdentity,
+      bootIdentity = current.bootIdentity,
+      pid = child.pid(),
+      processBirthToken = birth,
+      leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+      heartbeatAt = "2026-07-14T10:00:00Z",
+      expiresAt = "2026-07-14T10:00:30Z",
+      phaseId = "goal_runner",
+      phaseAttempt = 1,
+    )
+    try {
+      assertEquals(FeatureTaskRuntimeProcessInspection.ExactLive, supervisor.inspect(ownership))
+      supervisor.awaitExit(ownership, Duration.ofSeconds(5))
+      assertEquals(FeatureTaskRuntimeProcessInspection.NotRunning, supervisor.inspect(ownership))
+    } finally {
+      child.destroyForcibly()
+    }
+  }
+
+  @Test
+  fun `awaitExit returns on timeout while the owned process is still live`() {
+    val diagnostics = RecordingDiagnostics()
+    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(diagnostics)
+    val current = supervisor.currentProcess()
+    val child = ProcessBuilder("sleep", "30").start()
+    val childHandle = child.toHandle()
+    val birth = childHandle.info().startInstant().orElseThrow().toEpochMilli().toString()
+    val ownership = FeatureTaskRuntimeWorkerOwnership(
+      workflowId = "wftr-test",
+      generation = 1,
+      ownerToken = "owner-token-0001",
+      hostIdentity = current.hostIdentity,
+      bootIdentity = current.bootIdentity,
+      pid = child.pid(),
+      processBirthToken = birth,
+      leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+      heartbeatAt = "2026-07-14T10:00:00Z",
+      expiresAt = "2026-07-14T10:00:30Z",
+      phaseId = "goal_runner",
+      phaseAttempt = 1,
+    )
+    try {
+      assertEquals(FeatureTaskRuntimeProcessInspection.ExactLive, supervisor.inspect(ownership))
+      supervisor.awaitExit(ownership, Duration.ofMillis(200))
+      assertEquals(FeatureTaskRuntimeProcessInspection.ExactLive, supervisor.inspect(ownership))
+      assertTrue(
+        diagnostics.warnings.any { it.contains("Timed out") && it.contains("pid=${ownership.pid}") },
+        "timeout must be observable: ${diagnostics.warnings}",
+      )
+    } finally {
+      child.destroyForcibly()
+    }
   }
 
   @Test

@@ -14,9 +14,11 @@ import java.io.IOException
 import java.net.InetAddress
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -67,6 +69,29 @@ class JdkFeatureTaskRuntimeWorkerSupervisor(
         FeatureTaskRuntimeProcessInspection.Unsupported(it.message ?: "Local process identity is unavailable.")
       },
     )
+
+  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) {
+    require(!timeout.isNegative && !timeout.isZero) {
+      "awaitExit timeout must be positive, got $timeout"
+    }
+    if (inspect(ownership) != FeatureTaskRuntimeProcessInspection.ExactLive) return
+    val handle = ProcessHandle.of(ownership.pid).orElse(null) ?: return
+    if (handle.pid() == ProcessHandle.current().pid()) return
+    diagnostics.warning(
+      "Waiting for existing goal runner pid=${ownership.pid} (duplicate-launch attach).",
+    )
+    try {
+      handle.onExit().get(timeout.toMillis(), TimeUnit.MILLISECONDS)
+    } catch (_: TimeoutException) {
+      diagnostics.warning(
+        "Timed out after ${timeout.toMillis()}ms waiting for existing goal runner " +
+          "pid=${ownership.pid} (duplicate-launch attach).",
+      )
+    } catch (interrupted: InterruptedException) {
+      Thread.currentThread().interrupt()
+      throw interrupted
+    }
+  }
 
   private fun inspectLocalOwnership(
     ownership: FeatureTaskRuntimeWorkerOwnership,

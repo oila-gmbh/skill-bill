@@ -15,6 +15,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.nio.file.Path
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.system.measureTimeMillis
@@ -45,18 +46,126 @@ class GoalRunnerExecutionCoordinatorTest {
   }
 
   @Test
-  fun `live parent lease blocks a second foreground goal runner`() {
-    val store = InMemoryExecutionLeaseStore(lease(generation = 1, ownerToken = "live-owner"))
+  fun `a long-running parent lease still blocks a second foreground goal runner`() {
+    val store = InMemoryExecutionLeaseStore(
+      lease(
+        generation = 1,
+        ownerToken = "live-owner",
+        processBirthToken = staleBirthToken(),
+      ),
+    )
+    val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
     val coordinator = DefaultGoalRunnerExecutionCoordinator(
       manifestStore = store,
-      supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive),
+      supervisor = supervisor,
       clock = fixedClock(),
     )
 
-    assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
+    val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
       coordinator.runOwned("parent-1", null) { error("the second run must not enter the goal body") }
     }
+    assertTrue(failure.message.orEmpty().contains("another goal runner process is live"))
+    assertEquals(0, supervisor.awaitExitCalls)
     assertEquals("live-owner", requireNotNull(store.executionLeaseValue).ownerToken)
+  }
+
+  @Test
+  fun `a duplicate-launch live lease is waited out then reclaimed`() {
+    val store = InMemoryExecutionLeaseStore(
+      lease(
+        generation = 1,
+        ownerToken = "live-owner",
+        processBirthToken = recentBirthToken(),
+      ),
+    )
+    val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(
+      manifestStore = store,
+      supervisor = supervisor,
+      clock = fixedClock(),
+    )
+
+    val result = coordinator.runOwned("parent-1", null) {
+      assertEquals(2, requireNotNull(store.executionLeaseValue).generation)
+      "continued"
+    }
+
+    assertEquals("continued", result)
+    assertEquals(1, supervisor.awaitExitCalls)
+    assertEquals(Duration.ofSeconds(60), supervisor.lastAwaitTimeout)
+    assertNull(store.executionLeaseValue)
+  }
+
+  @Test
+  fun `a duplicate-launch peer that stays live after awaitExit stays blocked`() {
+    val store = InMemoryExecutionLeaseStore(
+      lease(
+        generation = 1,
+        ownerToken = "live-owner",
+        processBirthToken = recentBirthToken(),
+      ),
+    )
+    val supervisor = FakeGoalSupervisor(
+      FeatureTaskRuntimeProcessInspection.ExactLive,
+      markNotRunningAfterAwait = false,
+    )
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(
+      manifestStore = store,
+      supervisor = supervisor,
+      clock = fixedClock(),
+    )
+
+    val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
+      coordinator.runOwned("parent-1", null) { error("must not reclaim a still-live peer") }
+    }
+    assertTrue(failure.message.orEmpty().contains("another goal runner process is live"))
+    assertEquals(1, supervisor.awaitExitCalls)
+    assertEquals(Duration.ofSeconds(60), supervisor.lastAwaitTimeout)
+    assertEquals("live-owner", requireNotNull(store.executionLeaseValue).ownerToken)
+  }
+
+  @Test
+  fun `this process does not wait on its own execution lease`() {
+    val current = FeatureTaskRuntimeProcessIdentity("host", "boot", 200, "birth-200")
+    val store = InMemoryExecutionLeaseStore(
+      lease(
+        generation = 1,
+        ownerToken = "self-owner",
+        pid = current.pid,
+        processBirthToken = current.processBirthToken,
+      ),
+    )
+    val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive, current)
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(
+      manifestStore = store,
+      supervisor = supervisor,
+      clock = fixedClock(),
+    )
+
+    val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
+      coordinator.runOwned("parent-1", null) { error("must not re-enter") }
+    }
+    assertTrue(failure.message.orEmpty().contains("this process already owns the execution lease"))
+    assertEquals(0, supervisor.awaitExitCalls)
+  }
+
+  @Test
+  fun `an unparseable process birth token is not treated as a duplicate launch`() {
+    val store = InMemoryExecutionLeaseStore(
+      lease(generation = 1, ownerToken = "live-owner", processBirthToken = "birth-100"),
+    )
+    val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(
+      manifestStore = store,
+      supervisor = supervisor,
+      clock = fixedClock(),
+    )
+
+    val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
+      coordinator.runOwned("parent-1", null) { error("must not attach") }
+    }
+    assertTrue(failure.message.orEmpty().contains("another goal runner process is live"))
+    assertEquals(0, supervisor.awaitExitCalls)
   }
 
   @Test
@@ -251,17 +360,32 @@ private class InMemoryExecutionLeaseStore(
 }
 
 private class FakeGoalSupervisor(
-  private val inspection: FeatureTaskRuntimeProcessInspection,
+  initialInspection: FeatureTaskRuntimeProcessInspection,
+  private val current: FeatureTaskRuntimeProcessIdentity =
+    FeatureTaskRuntimeProcessIdentity("host", "boot", 200, "birth-200"),
+  private val markNotRunningAfterAwait: Boolean = true,
 ) : FeatureTaskRuntimeWorkerSupervisor {
+  private var inspection = initialInspection
   private var tick: (() -> FeatureTaskRuntimeHeartbeatTick)? = null
   private var fencingLostReason: String? = null
+  var awaitExitCalls: Int = 0
+    private set
+  var lastAwaitTimeout: Duration? = null
+    private set
   var capturedPlan: FeatureTaskRuntimeHeartbeatPlan? = null
     private set
 
-  override fun currentProcess(): FeatureTaskRuntimeProcessIdentity =
-    FeatureTaskRuntimeProcessIdentity("host", "boot", 200, "birth-200")
+  override fun currentProcess(): FeatureTaskRuntimeProcessIdentity = current
 
   override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeProcessInspection = inspection
+
+  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) {
+    awaitExitCalls += 1
+    lastAwaitTimeout = timeout
+    if (markNotRunningAfterAwait) {
+      inspection = FeatureTaskRuntimeProcessInspection.NotRunning
+    }
+  }
 
   override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean = false
 
@@ -292,13 +416,24 @@ private class FakeGoalSupervisor(
 
 private fun fixedClock(): Clock = Clock.fixed(Instant.parse("2026-08-02T10:00:00Z"), ZoneOffset.UTC)
 
-private fun lease(generation: Long, ownerToken: String) = GoalRunnerExecutionLease(
+private fun recentBirthToken(): String =
+  Instant.parse("2026-08-02T09:59:59Z").toEpochMilli().toString()
+
+private fun staleBirthToken(): String =
+  Instant.parse("2026-08-02T09:54:00Z").toEpochMilli().toString()
+
+private fun lease(
+  generation: Long,
+  ownerToken: String,
+  pid: Long = 100,
+  processBirthToken: String = "birth-100",
+) = GoalRunnerExecutionLease(
   generation = generation,
   ownerToken = ownerToken,
   hostIdentity = "host",
   bootIdentity = "boot",
-  pid = 100,
-  processBirthToken = "birth-100",
+  pid = pid,
+  processBirthToken = processBirthToken,
   heartbeatAt = "2026-08-02T09:59:00Z",
   expiresAt = "2026-08-02T09:59:30Z",
 )

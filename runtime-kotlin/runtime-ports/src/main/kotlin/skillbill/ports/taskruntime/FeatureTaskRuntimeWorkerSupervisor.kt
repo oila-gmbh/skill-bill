@@ -5,11 +5,20 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import java.time.Duration
 
 interface FeatureTaskRuntimeWorkerSupervisor {
   fun currentProcess(): FeatureTaskRuntimeProcessIdentity
 
   fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeProcessInspection
+
+  /**
+   * Block until [ownership] is no longer [FeatureTaskRuntimeProcessInspection.ExactLive], or until
+   * [timeout] elapses. Used by a second foreground `skill-bill goal` that raced the same launch.
+   * On timeout the peer may still be live — the caller re-inspects and fails closed. A no-op default
+   * keeps tests and artifact-only seams from waiting. Must not wait on the current process.
+   */
+  fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
 
   fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean
 
