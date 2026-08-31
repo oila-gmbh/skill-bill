@@ -13,8 +13,7 @@ import skillbill.featurespec.model.FeatureSpecPreparationIntake
  */
 @Inject
 class FeatureSpecPreparationRuntime(
-  private val prepareCore: (FeatureSpecPreparationIntake) -> FeatureSpecPreparationDecision =
-    FeatureSpecPreparationPolicy::prepare,
+  private val prepareCore: (FeatureSpecPreparationIntake) -> FeatureSpecPreparationDecision,
 ) {
   fun prepareForFeatureSpec(intake: FeatureSpecPreparationIntake): FeatureSpecPreparationDecision = prepareCore(intake)
 

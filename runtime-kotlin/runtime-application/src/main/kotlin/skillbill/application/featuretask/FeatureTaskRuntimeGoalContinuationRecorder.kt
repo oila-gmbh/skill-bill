@@ -23,7 +23,7 @@ import java.nio.file.Path
 class FeatureTaskRuntimeGoalContinuationRecorder(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val patcher = FeatureTaskRuntimeGoalContinuationArtifactPatcher(engine)

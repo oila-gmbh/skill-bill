@@ -54,7 +54,7 @@ import java.time.Clock
 
 internal fun testActivityStampWriter(
   database: DatabaseSessionFactory = TestGoalActivityStampDatabase,
-): AgentActivityStampWriter = AgentActivityStampWriter(database)
+): AgentActivityStampWriter = AgentActivityStampWriter(database, Clock.systemUTC())
 
 internal fun testGoalRunner(
   deps: GoalRunnerDeps,
@@ -154,6 +154,8 @@ internal fun testPhaseRecorder(
       handoffFoundationValidator = handoffFoundationValidator,
       quarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
       implementationAttemptValidator = NoopFeatureTaskRuntimeImplementationAttemptValidator,
+      rejectedOutputDiagnosticMetadataValidator = { },
+      producerOutputEvidenceValidator = { },
     ),
     diagnostics = diagnostics,
   ),

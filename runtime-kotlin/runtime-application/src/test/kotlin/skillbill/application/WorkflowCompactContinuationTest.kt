@@ -1,5 +1,9 @@
 package skillbill.application
 
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
+
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.application.workflow.model.WorkflowFamilyKind
@@ -184,9 +188,11 @@ class WorkflowCompactContinuationTest {
 
 private fun newService(): WorkflowService = WorkflowService(
   database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+  gitOperations = NoopWorkflowGitOperations,
   decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
   workflowSnapshotValidator = testWorkflowSnapshotValidator,
   decompositionManifestValidator = testDecompositionManifestValidator,
+  goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
 )
 
 /**

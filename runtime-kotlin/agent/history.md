@@ -1,3 +1,13 @@
+## [2026-08-31] SKILL-227 subtask 1 — Architecture guardrails and DI hardening
+Areas: runtime-kotlin/{runtime-core/architecture,runtime-core/di,runtime-application/{runtime,featuretask,goalrunner,review,workflow,work,system,idestatus},ARCHITECTURE.md}
+- Added four architecture guards (logical-type line ceiling, application-package acyclicity, ambient-clock ban, no `@Inject` constructor defaults) with shrink-only baselines; registered in `PrincipleEnforcementInventory` and documented in `ARCHITECTURE.md`. reusable
+- Cleared every `@Inject` / dependency-bag default in `runtime-application`; composition root binds Noop/DEFAULT/Clock explicitly; deleted auto-approving `FeatureTaskRuntimeReviewDriver.EMPTY`.
+- Introduced `@RuntimeSingleton` (package `skillbill.application.runtime`) on cache/connection/lease holders; unscoped services listed in `ARCHITECTURE.md` as deliberate per-access construction.
+- Pattern: measure-first baselines that fail on growth or new offenders; defaults belong in the composition root, never on injected parameters. reusable
+- Limitation: package-cycle baseline still holds seven mutual-import pairs (shrink is later); ambient-clock call sites remain for subtask 2; no production type moves in this subtask.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-30] SKILL-225 subtask 1 — Agent activity pulse
 Areas: runtime-kotlin/{runtime-domain/idestatus,runtime-ports/{idestatus,agentrun},runtime-infra-sqlite,runtime-infra-fs/launcher,runtime-application/{idestatus,work,featuretask,goalrunner,review},runtime-contracts/workflow}, orchestration/contracts/ide-status-schema, intellij-plugin/{domain,cli,presentation,ui}
 - Mid-run wait-loop probes and governed evidence reads persist durable `last_agent_activity_at` / closed `last_agent_activity_label` on the active (and parent) workflow; IdeStatus projects both optionally and omits them together; freshness stays on lease/workflow anchors.

@@ -1,5 +1,9 @@
 package skillbill.application
 
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
+
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.workflow.WorkflowService
@@ -29,9 +33,11 @@ class FeatureTaskRouterContinuationTest {
     val database = FakeDatabaseSessionFactory(states)
     val service = WorkflowService(
       database = database,
+      gitOperations = NoopWorkflowGitOperations,
       decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
     val lookup = FeatureTaskContinuationLookupService(
       database,

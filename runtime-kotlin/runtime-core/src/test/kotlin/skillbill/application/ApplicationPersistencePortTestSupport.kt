@@ -38,6 +38,7 @@ import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRepository
@@ -86,6 +87,7 @@ import skillbill.telemetry.model.TelemetryConfigDocument
 import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
@@ -157,6 +159,7 @@ internal fun laneReviewService(database: FakeDatabaseSessionFactory, text: Strin
   FakeTelemetrySettingsProvider(enabled = false),
   FakeReviewInputSource,
   FakePlanReviewAttributionPort,
+  NoopRuntimeDiagnostics,
 )
 
 internal fun reviewText(findings: Boolean): String {
@@ -960,6 +963,7 @@ internal fun testWorkflowService(
   FileSystemDecompositionManifestFileStore(),
   WorkflowSnapshotValidatorInfraAdapter(),
   DecompositionManifestValidatorAdapter(),
+  NoopGoalObservabilityEventValidator,
 )
 
 internal fun loadTestDecompositionManifest(path: Path) =

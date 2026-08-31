@@ -31,7 +31,7 @@ class ReviewService(
   private val settingsProvider: TelemetrySettingsProvider,
   private val reviewInputSource: ReviewInputSource,
   private val reviewAttributionPort: ReviewAttributionPort,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   fun previewImport(input: String): ReviewPreviewResult {
     val (text) = reviewInputSource.readInput(input, context.stdinText)

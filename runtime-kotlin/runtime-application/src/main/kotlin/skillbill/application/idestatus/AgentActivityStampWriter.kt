@@ -12,7 +12,7 @@ import java.time.Instant
 @Inject
 class AgentActivityStampWriter(
   private val database: DatabaseSessionFactory,
-  private val clock: Clock = Clock.systemUTC(),
+  private val clock: Clock,
 ) {
   fun lazySink(
     resolveWorkflowId: () -> String?,

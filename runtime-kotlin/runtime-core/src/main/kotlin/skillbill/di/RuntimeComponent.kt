@@ -1,6 +1,7 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Component
+import skillbill.application.runtime.RuntimeSingleton
 import me.tatarka.inject.annotations.Provides
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
@@ -52,6 +53,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
 
+@RuntimeSingleton
 @Component
 abstract class RuntimeComponent(
   private val inputRuntimeContext: RuntimeContext,
@@ -81,7 +83,7 @@ abstract class RuntimeComponent(
   @Provides @JvmSynthetic
   fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = RuntimeComponentBindingsA1.optionalCallbacks(ctx)
 
-  @Provides @JvmSynthetic
+  @Provides @RuntimeSingleton @JvmSynthetic
   fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
     RuntimeComponentBindingsA1.databaseSessionFactory(context)
 

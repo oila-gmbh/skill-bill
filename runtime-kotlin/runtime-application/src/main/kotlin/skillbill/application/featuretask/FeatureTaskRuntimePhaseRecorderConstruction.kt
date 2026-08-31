@@ -8,6 +8,8 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeImplementationAttemptValidator
+import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeQuarantineValidator
 
 fun featureTaskRuntimePhaseRecorder(
   database: DatabaseSessionFactory,
@@ -21,6 +23,10 @@ fun featureTaskRuntimePhaseRecorder(
   validators = FeatureTaskRuntimePhaseRecorderValidators(
     handoffEnvelopeValidator = handoffEnvelopeValidator,
     handoffFoundationValidator = handoffFoundationValidator,
+    quarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
+    implementationAttemptValidator = NoopFeatureTaskRuntimeImplementationAttemptValidator,
+    rejectedOutputDiagnosticMetadataValidator = { },
+    producerOutputEvidenceValidator = { },
   ),
   diagnostics = diagnostics,
 )

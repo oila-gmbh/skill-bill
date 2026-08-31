@@ -5,6 +5,14 @@ import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.infrastructure.fs.FileSystemCheckedOutBranchSource
 import skillbill.model.OptionalCallbacks
 
+import skillbill.featurespec.FeatureSpecPreparationPolicy
+import skillbill.application.goalrunner.planning.model.GoalPlanningBurstSchedule
+import skillbill.featurespec.model.FeatureSpecPreparationDecision
+import skillbill.featurespec.model.FeatureSpecPreparationIntake
+import skillbill.review.ParallelReviewFindingParser
+import skillbill.review.model.ParallelReviewParseResult
+import skillbill.SkillBillVersion
+
 internal interface RuntimeComponentProvides10 {
   @Provides @JvmSynthetic
   fun checkedOutBranchSource(source: FileSystemCheckedOutBranchSource) =
@@ -26,4 +34,25 @@ internal interface RuntimeComponentProvides10 {
 
   @Provides @JvmSynthetic
   fun executableLookup(callbacks: OptionalCallbacks) = RuntimeComponentBindingsA4.executableLookup(callbacks)
+
+  @Provides @JvmSynthetic
+  fun skillBillVersion(): String = SkillBillVersion.VALUE
+
+  @Provides @JvmSynthetic
+  fun goalPlanningBurstSchedule(): GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(
+    planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+    emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
+    emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
+    waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
+  )
+
+  @Provides @JvmSynthetic
+  fun featureSpecPreparationCore(): (FeatureSpecPreparationIntake) -> FeatureSpecPreparationDecision =
+    FeatureSpecPreparationPolicy::prepare
+
+  @Provides @JvmSynthetic
+  fun parallelReviewParseRegister(): (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse
+
+  @Provides @JvmSynthetic
+  fun producerOutputEvidenceValidator() = RuntimeComponentBindingsB5.producerOutputEvidenceValidator()
 }

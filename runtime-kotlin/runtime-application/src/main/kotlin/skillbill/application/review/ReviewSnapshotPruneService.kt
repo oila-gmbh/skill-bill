@@ -26,7 +26,7 @@ import java.io.IOException
 class ReviewSnapshotPruneService(
   private val database: DatabaseSessionFactory,
   private val gateway: ReviewSnapshotGateway,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   fun prune(confirmed: Boolean, dbOverride: String? = null): ReviewSnapshotPruneResult {
     val liveDbPath = database.resolveDbPath(dbOverride)

@@ -1,6 +1,7 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
+import skillbill.application.runtime.RuntimeSingleton
 import skillbill.application.goalrunner.DefaultGoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.planning.ChildAwareGoalPlanningRefreshLiveness
 import skillbill.application.goalrunner.planning.DefaultGoalPlanningSweep
@@ -27,7 +28,7 @@ internal interface RuntimeComponentProvides3 {
   fun goalRunnerExecutionCoordinator(coordinator: DefaultGoalRunnerExecutionCoordinator) =
     RuntimeComponentBindingsA4.goalRunnerExecutionCoordinator(coordinator)
 
-  @Provides @JvmSynthetic
+  @Provides @RuntimeSingleton @JvmSynthetic
   fun goalPlanningAttemptRecorder(recorder: DurableGoalPlanningAttemptRecorder) =
     RuntimeComponentBindingsA4.goalPlanningAttemptRecorder(recorder)
 

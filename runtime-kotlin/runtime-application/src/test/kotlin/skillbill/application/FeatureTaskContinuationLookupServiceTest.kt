@@ -1,5 +1,9 @@
 package skillbill.application
 
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
+
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
@@ -316,9 +320,11 @@ class FeatureTaskContinuationLookupServiceTest {
     val database = FakeDatabaseSessionFactory(states)
     val service = WorkflowService(
       database = database,
+      gitOperations = NoopWorkflowGitOperations,
       decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
     return Fixture(
       states = states,

@@ -34,7 +34,7 @@ class IdeStatusService(
   private val projector: IdeStatusProjector,
   private val ideStatusValidator: IdeStatusValidator,
   private val branchSource: CheckedOutBranchSource,
-  private val clock: Clock = Clock.systemUTC(),
+  private val clock: Clock,
 ) {
 
   fun status(request: IdeStatusRequest): IdeStatusResult {

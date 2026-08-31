@@ -1179,7 +1179,12 @@ class GoalPlanningSweepPrepareAndResumeTest {
     manifestStore = NoopGoalPlanningManifestStore,
     planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
     timingPort = NoopRuntimeTimingPort,
-    burstSchedule = GoalPlanningBurstSchedule(),
+    burstSchedule = GoalPlanningBurstSchedule(
+  planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+  emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
+  emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
+  waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
+),
     refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
   )
 
@@ -1638,7 +1643,12 @@ class GoalPlanningSweepRejectionTest {
         manifestStore = NoopGoalPlanningManifestStore,
         planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
         timingPort = NoopRuntimeTimingPort,
-        burstSchedule = GoalPlanningBurstSchedule(),
+        burstSchedule = GoalPlanningBurstSchedule(
+  planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+  emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
+  emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
+  waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
+),
         refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
       ),
     )
@@ -1717,7 +1727,12 @@ class GoalPlanningSweepRejectionTest {
         manifestStore = NoopGoalPlanningManifestStore,
         planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
         timingPort = NoopRuntimeTimingPort,
-        burstSchedule = GoalPlanningBurstSchedule(),
+        burstSchedule = GoalPlanningBurstSchedule(
+  planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+  emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
+  emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
+  waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
+),
         refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
       ),
     )
@@ -1994,7 +2009,7 @@ class GoalPlanningSweepTimingTest {
       SweepHarnessConfig(
         timingPort = timing,
         // One wait() call per logical pace gap so ordinals stay readable.
-        burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = pace, waitSlice = pace),
+        burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = pace, emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE, emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR, waitSlice = pace),
       ),
     ) { phase, subtaskId, _ ->
       if (phase == "plan") {
@@ -2019,6 +2034,7 @@ class GoalPlanningSweepTimingTest {
   fun `empty provider turn backoff waits grow before attempts two and three`() {
     val timing = RecordingRuntimeTimingPort()
     val schedule = GoalPlanningBurstSchedule(
+      planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
       emptyTurnBackoffBase = 30.seconds,
       emptyTurnBackoffFactor = 2,
       waitSlice = 60.seconds,
@@ -2045,6 +2061,8 @@ class GoalPlanningSweepTimingTest {
         timingPort = timing,
         burstSchedule = GoalPlanningBurstSchedule(
           planLaunchPace = 20.seconds,
+          emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
+          emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
           waitSlice = 1.seconds,
         ),
       ),
@@ -2066,6 +2084,8 @@ class GoalPlanningSweepTimingTest {
         timingPort = timing,
         burstSchedule = GoalPlanningBurstSchedule(
           planLaunchPace = 20.seconds,
+          emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
+          emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
           waitSlice = 20.seconds,
         ),
       ),
@@ -2802,7 +2822,12 @@ private data class SweepHarnessConfig(
   val manifestStore: GoalRunnerManifestStore = NoopGoalPlanningManifestStore,
   val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
   val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
-  val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
+  val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(
+  planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+  emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
+  emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
+  waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
+),
   val refreshLiveness: GoalPlanningRefreshLiveness = GoalPlanningRefreshLiveness.IDLE,
 )
 
@@ -2820,7 +2845,12 @@ private fun sweepFromFixtures(fixtures: SweepFixtures, launcher: SweepPlanningLa
       manifestStore = NoopGoalPlanningManifestStore,
       planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
       timingPort = NoopRuntimeTimingPort,
-      burstSchedule = GoalPlanningBurstSchedule(),
+      burstSchedule = GoalPlanningBurstSchedule(
+  planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+  emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
+  emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
+  waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
+),
       refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
     ),
   )

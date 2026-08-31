@@ -32,10 +32,9 @@ data class FeatureTaskRuntimePhaseGateDependencies(
   val validationGateRunner: ValidationGateRunner,
   val validationGateCoordinator: FeatureTaskRuntimeValidationGateCoordinator,
   val buildGateCoordinator: FeatureTaskRuntimeBuildGateCoordinator,
-  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
-    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-  val diffResolver: DiffResolverPort = FeatureTaskRuntimeUnreadableDiffResolver,
-  val reviewDriver: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver.EMPTY,
+  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort,
+  val diffResolver: DiffResolverPort,
+  val reviewDriver: FeatureTaskRuntimeReviewDriver,
   val specIntentProjectionResolver: SpecIntentProjectionResolver,
   val findingVerificationBoundaryMemory: FeatureTaskRuntimeFindingVerificationBoundaryMemory,
 )

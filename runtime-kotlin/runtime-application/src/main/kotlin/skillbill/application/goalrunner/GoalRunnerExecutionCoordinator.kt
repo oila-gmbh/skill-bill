@@ -53,7 +53,7 @@ internal fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: String
 class DefaultGoalRunnerExecutionCoordinator(
   private val manifestStore: GoalRunnerManifestStore,
   private val supervisor: FeatureTaskRuntimeWorkerSupervisor,
-  private val clock: Clock = Clock.systemUTC(),
+  private val clock: Clock,
 ) : GoalRunnerExecutionCoordinator {
   override fun <T> runOwned(parentWorkflowId: String, dbPathOverride: String?, block: () -> T): T {
     val existing = manifestStore.executionLease(parentWorkflowId, dbPathOverride)

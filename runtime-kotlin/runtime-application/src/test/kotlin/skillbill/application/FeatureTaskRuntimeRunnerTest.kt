@@ -7,6 +7,7 @@ import skillbill.application.featuretask.AppendCheckpointIdentityArgs
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
 import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
+import skillbill.application.featuretask.ApprovingReviewDriverStub
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.GoalContinuationStateRecordRequest
@@ -1289,6 +1290,7 @@ class FeatureTaskRuntimeLifecycleTelemetryRunnerTest {
     val database = RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository(), lifecycle)
     val telemetry = FeatureTaskRuntimeLifecycleTelemetry(
       LifecycleTelemetryService(database, EnabledRuntimeTelemetrySettingsProvider),
+      NoopRuntimeDiagnostics,
     )
 
     telemetry.finishedError(
@@ -3058,7 +3060,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
               description = REVIEW_BLOCKER_MESSAGE,
             ),
           )
-          FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+          ApprovingReviewDriverStub.run(request).copy(
             mergeResult = ParallelReviewMergeResult(
               findings = findings,
               formattedOutput = "findings",

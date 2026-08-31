@@ -1,8 +1,21 @@
-age# runtime-kotlin/ boundary decisions
+# runtime-kotlin/ boundary decisions
 
 This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
+
+## [2026-08-31] RuntimeSingleton lives in skillbill.application.runtime
+Context: SKILL-227 subtask 1 needed a kotlin-inject scope for services that hold caches, connections, or leases. Placing `@RuntimeSingleton` under `skillbill.di` failed `ImplementationOwnershipArchitectureTest`.
+Decision: Define `@RuntimeSingleton` in `skillbill.application.runtime` and apply `@Provides @RuntimeSingleton` on composition-root bindings unchanged.
+Reason: Application-legal packages may own injectable annotations consumed by runtime-application; `skillbill.di` is composition-root wiring only and must not host types that application modules import as API.
+Alternatives considered: Keep the annotation in `skillbill.di` and widen the ownership allow-list (rejected: would re-open application→di type ownership). Duplicate annotation per module (rejected: one scope must apply across the graph).
+
+## [2026-08-31] Package-cycle baseline is shrink-only at seven pairs
+Context: Preplan named four `skillbill.application.<area>` mutual-import cycles; the recorded scan found seven. Subtask 1 ships measurement before structural shrink.
+Decision: Baseline all seven pairs and fail on any new cycle or growth; do not delete or rewrite production packages in this subtask to reach the preplan count.
+Reason: Guards define the target later subtasks shrink; inventing a smaller baseline would hide existing cycles and defeat shrink-only policy.
+Alternatives considered: Force the four-pair baseline by moving types now (rejected: non-goal for subtask 1). Drop unlisted pairs from the baseline (rejected: would allow growth of unmeasured cycles).
+Revisit when: subtask 3 (or later) empties the baseline.
 
 ## [2026-08-29] Capability vocabulary boundaries for fallback capabilities, entrypoints, and idle policy
 

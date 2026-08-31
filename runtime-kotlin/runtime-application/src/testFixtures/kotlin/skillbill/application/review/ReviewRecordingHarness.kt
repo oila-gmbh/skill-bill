@@ -37,6 +37,12 @@ import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.review.ReviewLaunchAgentStagingPort
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.review.ParallelReviewFindingParser
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
@@ -74,6 +80,7 @@ import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import java.util.Collections
 import kotlin.time.Duration
 
@@ -217,8 +224,14 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       ),
       reviewEvidenceBrokerFactory = config.evidenceBrokerFactory,
       governedEvidenceEndpointBinder = config.evidenceEndpointBinder,
+      sharedEvidenceResolver = FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+      sharedEvidenceLocatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
+      nativeAgentPreflight = ReviewNativeAgentPreflightPort.NONE,
+      reviewLaunchAgentStaging = ReviewLaunchAgentStagingPort.NONE,
+      registerParse = ParallelReviewFindingParser::parse,
+      diagnostics = NoopRuntimeDiagnostics,
     ),
-    AgentActivityStampWriter(database),
+    AgentActivityStampWriter(database, Clock.systemUTC()),
   )
 }
 

@@ -28,18 +28,6 @@ import kotlin.time.Duration
 
 fun interface FeatureTaskRuntimeReviewDriver {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult
-
-  companion object {
-    val EMPTY: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver { request ->
-      ParallelCodeReviewResult(
-        mergeResult = ParallelReviewMergeResult(
-          findings = emptyList(),
-          formattedOutput = "verdict: approved",
-        ),
-        lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
-      )
-    }
-  }
 }
 
 internal data class FeatureTaskRuntimeReviewDriverAgents(

@@ -25,7 +25,7 @@ import java.time.Instant
 class FeatureTaskRuntimeCrashReconciler(
   private val database: DatabaseSessionFactory,
   private val supervisor: FeatureTaskRuntimeWorkerSupervisor,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   fun reconcile(dbOverride: String? = null): FeatureTaskRuntimeCrashReconciliationResult {
     val now = Instant.now().toString()

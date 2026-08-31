@@ -21,6 +21,7 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
@@ -212,6 +213,7 @@ internal fun service(
       ),
     ),
     featureTaskRuntimeStatusService = runtimeStatusService,
+    diagnostics = NoopRuntimeDiagnostics,
   )
   return IdeStatusService(
     database = database,

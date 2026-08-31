@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.InMemoryRuntimeWorkflowRepository
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimePreparation
@@ -227,7 +228,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
     )
     val continuationRecorder =
-      FeatureTaskRuntimeGoalContinuationRecorder(database, testWorkflowSnapshotValidator)
+      FeatureTaskRuntimeGoalContinuationRecorder(database, testWorkflowSnapshotValidator, NoopRuntimeDiagnostics)
     val runInvariantsStore =
       FeatureTaskRuntimeRunInvariantsStore(database, testWorkflowSnapshotValidator)
     return AdoptionHarness(

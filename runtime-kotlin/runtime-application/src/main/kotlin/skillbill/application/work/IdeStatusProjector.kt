@@ -55,7 +55,7 @@ class IdeStatusProjector(
   workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val featureTaskRuntimeStatusService: FeatureTaskRuntimeStatusService,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   private val workflowEngine = WorkflowEngine(workflowSnapshotValidator)
 

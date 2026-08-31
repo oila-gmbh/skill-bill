@@ -12,7 +12,7 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 @Inject
 class FeatureTaskRuntimeLifecycleTelemetry(
   private val lifecycleTelemetryService: LifecycleTelemetryService,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   fun started(request: FeatureTaskRuntimeRunRequest): String = isolate("started", "") {
     lifecycleTelemetryService.featureTaskRuntimeStarted(

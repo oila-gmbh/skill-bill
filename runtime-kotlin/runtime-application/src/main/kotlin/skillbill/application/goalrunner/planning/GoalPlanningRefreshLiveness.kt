@@ -20,7 +20,7 @@ fun interface GoalPlanningRefreshLiveness {
 @Inject
 class ChildAwareGoalPlanningRefreshLiveness(
   private val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
-  private val clock: Clock = Clock.systemUTC(),
+  private val clock: Clock,
 ) : GoalPlanningRefreshLiveness {
   override fun resolve(state: GoalRunnerManifestState, dbPathOverride: String?): ExecutionLiveness {
     val currentSubtask = state.manifest.subtasks.firstOrNull { subtask ->

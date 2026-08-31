@@ -1,6 +1,7 @@
 package skillbill.application.review
 
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.review.model.ReviewSnapshot
@@ -17,7 +18,7 @@ class ReviewSnapshotPruneServiceTest {
   @Test
   fun `the default invocation lists candidates and deletes nothing`() {
     val gateway = RecordingSnapshotGateway()
-    val result = ReviewSnapshotPruneService(StubSessionFactory, gateway).prune(confirmed = false)
+    val result = ReviewSnapshotPruneService(StubSessionFactory, gateway, NoopRuntimeDiagnostics).prune(confirmed = false)
 
     assertEquals(2, result.candidates.size, "Every snapshot must be listed for the operator to review.")
     assertEquals(emptyList(), result.deleted)
@@ -29,7 +30,7 @@ class ReviewSnapshotPruneServiceTest {
   @Test
   fun `confirmation deletes exactly the listed snapshots and never the live database`() {
     val gateway = RecordingSnapshotGateway()
-    val result = ReviewSnapshotPruneService(StubSessionFactory, gateway).prune(confirmed = true)
+    val result = ReviewSnapshotPruneService(StubSessionFactory, gateway, NoopRuntimeDiagnostics).prune(confirmed = true)
 
     assertEquals(gateway.snapshots, gateway.deleted, "Confirmation deletes precisely the listed candidates.")
     assertEquals(300, result.reclaimedBytes)

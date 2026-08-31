@@ -21,7 +21,7 @@ import java.nio.file.Path
 @Inject
 class FeatureSpecPreparationWriter(
   private val decompositionManifestValidator: DecompositionManifestValidator,
-  private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+  private val fileStore: DecompositionManifestFileStore,
 ) {
   fun write(repoRoot: Path, request: FeatureSpecWriteRequest): FeatureSpecWriteResult {
     val issueKey = request.decision.issueKey.trim()

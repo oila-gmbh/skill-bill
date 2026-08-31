@@ -30,16 +30,14 @@ data class ParallelCodeReviewRunnerDeps(
   val reviewRubricResolver: ReviewRubricResolver,
   val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
   val database: DatabaseSessionFactory,
-  val installedPackCatalog: InstalledPlatformPackCatalogPort = InstalledPlatformPackCatalogPort.NONE,
-  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
-    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
-    FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
+  val installedPackCatalog: InstalledPlatformPackCatalogPort,
+  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort,
+  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
   val specIntentProjectionResolver: SpecIntentProjectionResolver,
   val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
   val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
-  val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
-  val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort = ReviewLaunchAgentStagingPort.NONE,
-  val registerParse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
-  val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  val nativeAgentPreflight: ReviewNativeAgentPreflightPort,
+  val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort,
+  val registerParse: (String) -> ParallelReviewParseResult,
+  val diagnostics: RuntimeDiagnostics,
 )

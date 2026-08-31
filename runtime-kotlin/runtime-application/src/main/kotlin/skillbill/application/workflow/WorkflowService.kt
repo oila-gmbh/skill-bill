@@ -32,11 +32,11 @@ import java.nio.file.Path
 @Inject
 class WorkflowService(
   private val database: DatabaseSessionFactory,
-  private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  private val gitOperations: WorkflowGitOperations,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val decompositionManifestValidator: DecompositionManifestValidator,
-  val goalObservabilityEventValidator: GoalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+  val goalObservabilityEventValidator: GoalObservabilityEventValidator,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
     val resolved = gitOperations.repositoryFingerprint(Path.of("").toAbsolutePath())

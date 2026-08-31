@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner.planning
 
+import skillbill.application.runtime.RuntimeSingleton
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptRecord
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
@@ -15,6 +16,7 @@ fun interface GoalPlanningAttemptRecorder {
   }
 }
 
+@RuntimeSingleton
 @Inject
 class DurableGoalPlanningAttemptRecorder(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,

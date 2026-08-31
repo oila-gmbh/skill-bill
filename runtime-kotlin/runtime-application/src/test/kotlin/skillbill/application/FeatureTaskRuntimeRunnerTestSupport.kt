@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.featurespec.FeatureSpecPreparationRuntime
+import skillbill.featurespec.FeatureSpecPreparationPolicy
 import skillbill.application.featurespec.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
@@ -15,6 +16,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseGates
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
+import skillbill.application.featuretask.ApprovingReviewDriverStub
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
@@ -189,6 +191,7 @@ import java.lang.Boolean.TYPE
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.nio.file.Path
+import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import java.lang.Double.TYPE as DoubleTYPE
@@ -627,7 +630,7 @@ internal data class RuntimeHarnessConfig(
   val validationGateRunner: ValidationGateRunner? = null,
   val validationGatePlatformManifests: List<PlatformManifest> = emptyList(),
   val reviewDriver: FeatureTaskRuntimeReviewDriver =
-    FeatureTaskRuntimeReviewDriver.EMPTY,
+    ApprovingReviewDriverStub,
   val launcher: RuntimeRecordingLauncher? = null,
   val agentAssignment: FeatureTaskRuntimeAgentAssignment? = null,
   val validator: FeatureTaskRuntimePhaseOutputValidator? = null,
@@ -655,7 +658,7 @@ private data class RuntimePhaseGatesDeps(
   val recorder: FeatureTaskRuntimePhaseRecorder,
   val validationGateRunnerOverride: ValidationGateRunner? = null,
   val validationGatePlatformManifests: List<PlatformManifest> = emptyList(),
-  val reviewDriver: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver.EMPTY,
+  val reviewDriver: FeatureTaskRuntimeReviewDriver = ApprovingReviewDriverStub,
 )
 
 private fun runtimePhaseGates(deps: RuntimePhaseGatesDeps): FeatureTaskRuntimePhaseGates {
@@ -688,12 +691,14 @@ private fun runtimePhaseGates(deps: RuntimePhaseGatesDeps): FeatureTaskRuntimePh
         validationGateRunner,
         FeatureTaskRuntimeValidationGateProgressStore(deps.recorder),
         defaultRepoLocalConfigPort(),
+        NoopRuntimeDiagnostics,
       ),
       buildGateCoordinator = FeatureTaskRuntimeBuildGateCoordinator(
         validationGateResolver,
         validationGateRunner,
         FeatureTaskRuntimeBuildGateProgressStore(deps.recorder),
         defaultRepoLocalConfigPort(),
+        NoopRuntimeDiagnostics,
       ),
       sharedEvidenceResolver = deps.sharedEvidenceResolver,
       diffResolver = deps.diffResolver,
@@ -723,11 +728,12 @@ private fun testSpecGate(
   specScratchStore: SpecScratchStore = RecordingSpecScratchStore(),
   specStatusWriter: FeatureTaskRuntimeSpecStatusWriter = RecordingSpecStatusWriter(),
 ): FeatureTaskRuntimeSpecGate =
-  FeatureTaskRuntimeSpecGate(runtimeSpecSourceResolver(), specScratchStore, specStatusWriter)
+  FeatureTaskRuntimeSpecGate(runtimeSpecSourceResolver(), specScratchStore, specStatusWriter, NoopRuntimeDiagnostics)
 
 private fun disabledRuntimeLifecycleTelemetry(database: DatabaseSessionFactory): FeatureTaskRuntimeLifecycleTelemetry =
   FeatureTaskRuntimeLifecycleTelemetry(
     LifecycleTelemetryService(database, DisabledRuntimeTelemetrySettingsProvider),
+    NoopRuntimeDiagnostics,
   )
 
 private object DisabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvider {
@@ -809,7 +815,7 @@ internal fun runnerHarness(
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
   )
-  val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
+  val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator, NoopRuntimeDiagnostics)
   val decomposeTerminalRecorder =
     FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
   val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, NoopWorkflowSnapshotValidator)
@@ -905,11 +911,11 @@ private fun harnessRunner(deps: HarnessRunnerDeps): FeatureTaskRuntimeRunner {
           reviewDriver = harnessReviewDriverSyncingPendingVerifyFindings(deps.runtimeConfig.reviewDriver),
         ),
       ),
-      crashReconciler = FeatureTaskRuntimeCrashReconciler(deps.database, deps.crashSupervisor),
+      crashReconciler = FeatureTaskRuntimeCrashReconciler(deps.database, deps.crashSupervisor, NoopRuntimeDiagnostics),
       phaseSettlementService = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
       diagnostics = deps.diagnostics,
     ),
-    AgentActivityStampWriter(deps.database),
+    AgentActivityStampWriter(deps.database, Clock.systemUTC()),
   )
 }
 
@@ -967,13 +973,18 @@ internal fun telemetryRunnerHarness(
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
   )
-  val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
+  val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator, NoopRuntimeDiagnostics)
   val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
   val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, NoopWorkflowSnapshotValidator)
   val branchSetupRunner = FeatureTaskRuntimeBranchSetupRunner(recorder, runtimeConfig.branchSetup.gitOperations)
   val decompositionPlanner =
     if (runtimeConfig.useRealDecompositionPlanner) testDecompositionPlanner() else noOpDecompositionPlanner()
-  val planningStopper = FeatureTaskRuntimePlanningStopper(validator, decompositionPlanner, decomposeTerminalRecorder)
+  val planningStopper = FeatureTaskRuntimePlanningStopper(
+    validator,
+    decompositionPlanner,
+    decomposeTerminalRecorder,
+    NoopRuntimeDiagnostics,
+  )
   val runner = FeatureTaskRuntimeRunner(
     FeatureTaskRuntimeRunnerDependencies(
       subtaskLauncher = effectiveLauncher,
@@ -987,6 +998,7 @@ internal fun telemetryRunnerHarness(
           planningStopper = planningStopper,
           lifecycleTelemetry = FeatureTaskRuntimeLifecycleTelemetry(
             LifecycleTelemetryService(database, EnabledRuntimeTelemetrySettingsProvider),
+            NoopRuntimeDiagnostics,
           ),
           gitOperations = runtimeConfig.branchSetup.gitOperations,
           sharedEvidenceResolver = runtimeConfig.sharedEvidenceResolver,
@@ -997,10 +1009,11 @@ internal fun telemetryRunnerHarness(
           reviewDriver = harnessReviewDriverSyncingPendingVerifyFindings(runtimeConfig.reviewDriver),
         ),
       ),
-      crashReconciler = FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
+      crashReconciler = FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor, NoopRuntimeDiagnostics),
       phaseSettlementService = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
+      diagnostics = NoopRuntimeDiagnostics,
     ),
-    AgentActivityStampWriter(database),
+    AgentActivityStampWriter(database, Clock.systemUTC()),
   )
   val request = telemetryHarnessRequest(runtimeConfig)
   return TelemetryRunnerHarness(runner, lifecycle, request, database, recorder)
@@ -1024,7 +1037,7 @@ private fun noOpDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner =
 )
 
 private fun testDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner = FeatureTaskRuntimeDecompositionPlanner(
-  preparationRuntime = FeatureSpecPreparationRuntime(),
+  preparationRuntime = FeatureSpecPreparationRuntime(prepareCore = FeatureSpecPreparationPolicy::prepare),
   preparationWriter = FeatureSpecPreparationWriter(
     decompositionManifestValidator = testDecompositionManifestValidator,
     fileStore = TestDecompositionManifestFileStore,
@@ -1139,7 +1152,7 @@ internal fun reviewFixDriver(convergeOnReview: Int): FeatureTaskRuntimeReviewDri
       emptyList()
     }
     harnessPendingVerifyFindingIds = findings.map { it.fNumber }
-    FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+    ApprovingReviewDriverStub.run(request).copy(
       mergeResult = ParallelReviewMergeResult(
         findings = findings,
         formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
@@ -1162,7 +1175,7 @@ internal fun crashingRemediationReviewDriver(): FeatureTaskRuntimeReviewDriver {
     reviewPasses += 1
     when (reviewPasses) {
       2 ->
-        FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+        ApprovingReviewDriverStub.run(request).copy(
           lane1 = ParallelReviewLaneStatus(
             agentId = request.agent1Id,
             success = false,
@@ -1184,7 +1197,7 @@ internal fun crashingRemediationReviewDriver(): FeatureTaskRuntimeReviewDriver {
         } else {
           emptyList()
         }
-        FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+        ApprovingReviewDriverStub.run(request).copy(
           mergeResult = ParallelReviewMergeResult(
             findings = findings,
             formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
@@ -1214,7 +1227,7 @@ internal fun failingReviewDriver(failOnPass: Int, failureReason: String): Featur
   return FeatureTaskRuntimeReviewDriver { request ->
     reviewPasses += 1
     if (reviewPasses == failOnPass) {
-      FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+      ApprovingReviewDriverStub.run(request).copy(
         lane1 = ParallelReviewLaneStatus(
           agentId = request.agent1Id,
           success = false,
@@ -1222,7 +1235,7 @@ internal fun failingReviewDriver(failOnPass: Int, failureReason: String): Featur
         ),
       )
     } else {
-      FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+      ApprovingReviewDriverStub.run(request)
     }
   }
 }
@@ -1236,7 +1249,7 @@ internal fun crashingReviewFixDriver(
   return FeatureTaskRuntimeReviewDriver { request ->
     reviewPasses += 1
     if (shouldCrash() && reviewPasses == crashOnPass) {
-      FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+      ApprovingReviewDriverStub.run(request).copy(
         lane1 = ParallelReviewLaneStatus(
           agentId = request.agent1Id,
           success = false,
@@ -1258,7 +1271,7 @@ internal fun crashingReviewFixDriver(
       } else {
         emptyList()
       }
-      FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+      ApprovingReviewDriverStub.run(request).copy(
         mergeResult = ParallelReviewMergeResult(
           findings = findings,
           formattedOutput = if (findings.isEmpty()) "NO_FINDINGS" else "findings",
@@ -1377,7 +1390,7 @@ internal fun goalContinuationHarness(
   git: RecordingWorkflowGitOperations,
   launcher: RuntimeRecordingLauncher,
   reviewDriver: FeatureTaskRuntimeReviewDriver =
-    FeatureTaskRuntimeReviewDriver.EMPTY,
+    ApprovingReviewDriverStub,
 ): RunnerHarness = runnerHarness(
   runtimeConfig = RuntimeHarnessConfig(
     branchSetup = BranchSetupTestConfig(gitOperations = git),

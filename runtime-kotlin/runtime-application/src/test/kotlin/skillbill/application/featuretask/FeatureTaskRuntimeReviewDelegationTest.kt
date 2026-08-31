@@ -135,7 +135,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
 
   @Test
   fun `settlement envelope takes findings and review_run_id from the driver register`() {
-    val result = FeatureTaskRuntimeReviewDriver.EMPTY.run(
+    val result = ApprovingReviewDriverStub.run(
       mappedRequest(
         agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
         pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "rvw-191-empty-register"),

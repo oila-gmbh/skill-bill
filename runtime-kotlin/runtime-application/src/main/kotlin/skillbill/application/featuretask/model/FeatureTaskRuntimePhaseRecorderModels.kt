@@ -18,12 +18,10 @@ import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeQuarantineValidator
 data class FeatureTaskRuntimePhaseRecorderValidators(
   val handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
   val handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
-  val quarantineValidator: FeatureTaskRuntimeQuarantineValidator =
-    NoopFeatureTaskRuntimeQuarantineValidator,
-  val implementationAttemptValidator: FeatureTaskRuntimeImplementationAttemptValidator =
-    NoopFeatureTaskRuntimeImplementationAttemptValidator,
-  val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator = { },
-  val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator = { },
+  val quarantineValidator: FeatureTaskRuntimeQuarantineValidator,
+  val implementationAttemptValidator: FeatureTaskRuntimeImplementationAttemptValidator,
+  val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator,
+  val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator,
 )
 
 @Inject
@@ -31,5 +29,5 @@ data class FeatureTaskRuntimePhaseRecorderDeps(
   val database: DatabaseSessionFactory,
   val workflowSnapshotValidator: WorkflowSnapshotValidator,
   val validators: FeatureTaskRuntimePhaseRecorderValidators,
-  val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  val diagnostics: RuntimeDiagnostics,
 )

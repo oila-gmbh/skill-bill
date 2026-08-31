@@ -22,5 +22,5 @@ data class FeatureTaskRuntimeRunnerDependencies(
   val phaseGates: FeatureTaskRuntimePhaseGates,
   val crashReconciler: FeatureTaskRuntimeCrashReconciler,
   val phaseSettlementService: FeatureTaskPhaseSettlementService,
-  val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  val diagnostics: RuntimeDiagnostics,
 )

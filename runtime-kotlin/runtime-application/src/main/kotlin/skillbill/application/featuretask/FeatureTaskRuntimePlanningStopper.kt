@@ -33,7 +33,7 @@ class FeatureTaskRuntimePlanningStopper(
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val decompositionPlanner: FeatureTaskRuntimeDecompositionPlanner,
   private val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   /**
    * Resolves the plan-phase stop decision from the persisted PLAN output. Goal-continuation runs

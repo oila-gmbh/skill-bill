@@ -52,7 +52,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
   private val runner: ValidationGateRunner,
   private val progressStore: FeatureTaskRuntimeBuildGateProgressStore,
   private val repoLocalConfig: RepoLocalConfigPort,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   fun execute(cycle: ValidationGateCycleRequest, onGateRunCount: (Int) -> Unit = {}): ValidationGateCycleResult =
     when (val resolution = resolver.resolve(cycle.changedPaths)) {

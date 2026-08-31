@@ -12,10 +12,7 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 class SystemService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
-  // Defaults to the build-stamped version; injectable so version-dependent logic
-  // (e.g. update-check) can be unit-tested against a fixed version. kotlin-inject
-  // uses this default because the graph binds no String.
-  private val versionValue: String = SkillBillVersion.VALUE,
+  private val versionValue: String,
 ) {
   fun version(): VersionContract = VersionContract(version = versionValue)
 

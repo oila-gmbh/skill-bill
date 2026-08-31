@@ -389,6 +389,7 @@ object ArchitectureScanSupport {
   }
 
   private val PACKAGE_PATTERN = Regex("""^\s*package\s+([A-Za-z0-9_.]+)""", RegexOption.MULTILINE)
+  private val IMPORT_PATTERN = Regex("""^\s*import\s+([A-Za-z0-9_.]+)""", RegexOption.MULTILINE)
   private val TOP_LEVEL_DECLARATION_PATTERN =
     Regex(
       """^\s*((?:(?:public|internal|private|protected|abstract|sealed|open|final|data|enum|value|fun)\s+)*)""" +
@@ -396,6 +397,337 @@ object ArchitectureScanSupport {
     )
   private val FUNCTION_PATTERN = Regex("""\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
   private val CAMEL_TOKEN_PATTERN = Regex("""[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)""")
+  private val EXTENSION_FUN_PATTERN =
+    Regex("""^\s*(?:(?:public|internal|private|protected)\s+)*fun\s+([A-Za-z0-9_.]+)\.""")
+  private val INJECT_ANNOTATION_PATTERN = Regex("""@Inject\b""")
+  private val INJECT_TYPE_PATTERN =
+    Regex("""@Inject\s+(?:\n\s*)*(?:data\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)""")
+  private val AMBIENT_INSTANT_NOW = Regex("""\bInstant\.now\s*\(""")
+  private val AMBIENT_LOCAL_DATE_TIME_NOW = Regex("""\bLocalDateTime\.now\s*\(""")
+  private val AMBIENT_CLOCK_SYSTEM_UTC = Regex("""\bClock\.systemUTC\s*\(""")
+
+  data class ApplicationPackageCycle(val areas: List<String>)
+
+  data class AmbientClockCallSite(val relativePath: String, val lineNumber: Int, val call: String)
+
+  data class InjectConstructorDefaultSite(val relativePath: String, val symbol: String, val parameter: String)
+
+  fun declaredImports(source: String): List<String> =
+    IMPORT_PATTERN.findAll(source).map { match -> match.groupValues[1] }.toList()
+
+  fun logicalTypeLineCounts(productionRoots: List<String>): Map<String, Int> {
+    val counts = linkedMapOf<String, Int>()
+    productionRoots.forEach { productionRoot ->
+      kotlinFilesUnder(runtimeRoot.resolve(productionRoot)).forEach { sourceFile ->
+        val relativePath = runtimeRoot.relativize(sourceFile).toString().replace('\\', '/')
+        if (isNonProductionKotlinSourceSet(relativePath)) return@forEach
+        val source = sourceFile.readText()
+        val lineCount = source.lineSequence().count()
+        val packageName = declaredPackage(source) ?: return@forEach
+        val topLevelType = primaryTopLevelDeclarationName(source)
+        val targets =
+          if (topLevelType != null) {
+            listOf("$packageName.$topLevelType")
+          } else {
+            extensionReceiverFqns(source, packageName, declaredImports(source))
+          }
+        if (targets.isEmpty()) return@forEach
+        targets.distinct().forEach { fqn ->
+          counts[fqn] = counts.getOrDefault(fqn, 0) + lineCount
+        }
+      }
+    }
+    return counts
+  }
+
+  fun logicalTypeLineCeilingViolations(
+    productionRoots: List<String>,
+    ceiling: Int,
+    baseline: Map<String, Int>,
+  ): List<String> {
+    val counts = logicalTypeLineCounts(productionRoots)
+    val violations = mutableListOf<String>()
+    counts.forEach { (fqn, lineCount) ->
+      val baselineCount = baseline[fqn]
+      when {
+        baselineCount != null && lineCount > baselineCount ->
+          violations += "$fqn has $lineCount lines; baseline allows $baselineCount."
+        baselineCount == null && lineCount > ceiling ->
+          violations +=
+            "$fqn has $lineCount lines; exceeds the $ceiling-line ceiling without a baseline entry."
+      }
+    }
+    return violations.sorted()
+  }
+
+  fun parseIntBaseline(text: String): Map<String, Int> =
+    text.lineSequence()
+      .map { it.trim() }
+      .filter { it.isNotBlank() && !it.startsWith("#") }
+      .mapNotNull { line ->
+        val parts = line.split(Regex("""\s+"""), limit = 2)
+        if (parts.size != 2) return@mapNotNull null
+        val count = parts[1].toIntOrNull() ?: return@mapNotNull null
+        parts[0] to count
+      }
+      .toMap()
+
+  fun applicationPackageImportEdges(): Map<String, Set<String>> {
+    val edges = linkedMapOf<String, MutableSet<String>>()
+    val root = runtimeRoot.resolve("runtime-kotlin/runtime-application/src/main/kotlin")
+    kotlinFilesUnder(root).forEach { sourceFile ->
+      val source = sourceFile.readText()
+      val packageName = declaredPackage(source) ?: return@forEach
+      if (!packageName.startsWith("skillbill.application.")) return@forEach
+      val area = packageName.removePrefix("skillbill.application.").substringBefore('.')
+      if (area.isBlank()) return@forEach
+      declaredImports(source)
+        .filter { it.startsWith("skillbill.application.") }
+        .map { imported -> imported.removePrefix("skillbill.application.").substringBefore('.') }
+        .filter { it.isNotBlank() && it != area }
+        .forEach { importedArea -> edges.getOrPut(area) { mutableSetOf() }.add(importedArea) }
+    }
+    return edges.mapValues { (_, value) -> value.toSet() }
+  }
+
+  fun applicationPackageCycles(): Set<ApplicationPackageCycle> =
+    mutualImportCyclesForEdges(applicationPackageImportEdges())
+      .map { cycle -> ApplicationPackageCycle(cycle) }
+      .toSet()
+
+  fun applicationPackageCycleViolations(baselineCycles: Set<ApplicationPackageCycle>): List<String> =
+    packageCycleViolationsForEdges(applicationPackageImportEdges(), baselineCycles)
+
+  fun packageCycleViolationsForEdges(
+    edges: Map<String, Set<String>>,
+    baselineCycles: Set<ApplicationPackageCycle>,
+  ): List<String> {
+    val baselineKeys = baselineCycles.map { cycle -> cycle.areas.sorted().joinToString("|") }.toSet()
+    val currentKeys = mutualImportCyclesForEdges(edges)
+      .map { cycle -> cycle.sorted().joinToString("|") }
+      .toSet()
+    return (currentKeys - baselineKeys).sorted().map { cycle ->
+      "New package cycle not in baseline: ${cycle.replace("|", " <-> ")}"
+    }
+  }
+
+  private fun mutualImportCyclesForEdges(edges: Map<String, Set<String>>): List<List<String>> {
+    val cycles = linkedSetOf<List<String>>()
+    edges.forEach { (from, targets) ->
+      targets.forEach { to ->
+        if (from != to && edges[to]?.contains(from) == true) {
+          cycles += listOf(from, to).sorted()
+        }
+      }
+    }
+    return cycles.toList()
+  }
+
+  fun parsePackageCycleBaseline(text: String): Set<ApplicationPackageCycle> =
+    text.lineSequence()
+      .map { it.trim() }
+      .filter { it.isNotBlank() && !it.startsWith("#") }
+      .map { line ->
+        ApplicationPackageCycle(line.split('|').map(String::trim).filter(String::isNotBlank).sorted())
+      }
+      .toSet()
+
+  fun runtimeApplicationAmbientClockCallSites(): List<AmbientClockCallSite> {
+    val root = runtimeRoot.resolve("runtime-kotlin/runtime-application/src/main/kotlin")
+    val sites = mutableListOf<AmbientClockCallSite>()
+    kotlinFilesUnder(root).forEach { sourceFile ->
+      val relativePath = runtimeRoot.relativize(sourceFile).toString().replace('\\', '/')
+      sourceFile.readText().lineSequence().forEachIndexed { index, line ->
+        val code = line.withoutCommentText().text
+        when {
+          AMBIENT_INSTANT_NOW.containsMatchIn(code) ->
+            sites += AmbientClockCallSite(relativePath, index + 1, "Instant.now()")
+          AMBIENT_LOCAL_DATE_TIME_NOW.containsMatchIn(code) ->
+            sites += AmbientClockCallSite(relativePath, index + 1, "LocalDateTime.now()")
+          AMBIENT_CLOCK_SYSTEM_UTC.containsMatchIn(code) ->
+            sites += AmbientClockCallSite(relativePath, index + 1, "Clock.systemUTC()")
+        }
+      }
+    }
+    return sites.sortedWith(compareBy({ it.relativePath }, { it.lineNumber }, { it.call }))
+  }
+
+  fun ambientClockViolations(baseline: Set<String>): List<String> {
+    val current = runtimeApplicationAmbientClockCallSites()
+      .map { site -> "${site.relativePath}:${site.lineNumber}:${site.call}" }
+      .toSet()
+    return ambientClockViolationsForSites(current, baseline)
+  }
+
+  fun ambientClockViolationsInSource(
+    relativePath: String,
+    source: String,
+    baseline: Set<String>,
+  ): List<String> {
+    val sites = mutableListOf<AmbientClockCallSite>()
+    source.lineSequence().forEachIndexed { index, line ->
+      val code = line.withoutCommentText().text
+      when {
+        AMBIENT_INSTANT_NOW.containsMatchIn(code) ->
+          sites += AmbientClockCallSite(relativePath, index + 1, "Instant.now()")
+        AMBIENT_LOCAL_DATE_TIME_NOW.containsMatchIn(code) ->
+          sites += AmbientClockCallSite(relativePath, index + 1, "LocalDateTime.now()")
+        AMBIENT_CLOCK_SYSTEM_UTC.containsMatchIn(code) ->
+          sites += AmbientClockCallSite(relativePath, index + 1, "Clock.systemUTC()")
+      }
+    }
+    val encoded = sites.map { site -> "${site.relativePath}:${site.lineNumber}:${site.call}" }.toSet()
+    return ambientClockViolationsForSites(encoded, baseline)
+  }
+
+  private fun ambientClockViolationsForSites(current: Set<String>, baseline: Set<String>): List<String> =
+    (current - baseline).sorted().map { site -> "$site is not listed in the ambient-clock baseline." }
+
+  fun parseStringSetBaseline(text: String): Set<String> =
+    text.lineSequence().map { it.trim() }.filter { it.isNotBlank() && !it.startsWith("#") }.toSet()
+
+  fun injectConstructorDefaultSites(
+    scanRoot: String = "runtime-kotlin/runtime-application/src/main/kotlin",
+  ): List<InjectConstructorDefaultSite> =
+    kotlinFilesUnder(runtimeRoot.resolve(scanRoot))
+      .flatMap { sourceFile ->
+        val relativePath = runtimeRoot.relativize(sourceFile).toString().replace('\\', '/')
+        injectConstructorDefaultSitesInSource(relativePath, sourceFile.readText())
+      }
+      .sortedWith(compareBy({ it.relativePath }, { it.symbol }, { it.parameter }))
+
+  fun injectConstructorDefaultViolations(
+    baseline: Set<String>,
+    scanRoot: String = "runtime-kotlin/runtime-application/src/main/kotlin",
+  ): List<String> {
+    val current = injectConstructorDefaultSites(scanRoot)
+      .map { site -> "${site.relativePath}::${site.symbol}::${site.parameter}" }
+      .toSet()
+    return (current - baseline).sorted().map { site ->
+      "$site has a default argument on an @Inject constructor or dependency bag."
+    }
+  }
+
+  fun injectConstructorDefaultSitesInSource(
+    relativePath: String,
+    source: String,
+  ): List<InjectConstructorDefaultSite> {
+    if (!INJECT_ANNOTATION_PATTERN.containsMatchIn(source)) return emptyList()
+    val sites = mutableListOf<InjectConstructorDefaultSite>()
+    INJECT_TYPE_PATTERN.findAll(source).forEach { match ->
+      val symbol = match.groupValues[1]
+      val constructorStart = source.indexOf('(', match.range.last)
+      if (constructorStart < 0) return@forEach
+      val constructorBody = extractBalancedParentheses(source, constructorStart) ?: return@forEach
+      defaultArgumentParameters(constructorBody).forEach { parameter ->
+        sites += InjectConstructorDefaultSite(relativePath, symbol, parameter)
+      }
+    }
+    return sites
+  }
+
+  fun extensionReceiverFqns(source: String, packageName: String, imports: List<String>): List<String> {
+    val importMap = imports.associateBy { imported -> imported.substringAfterLast('.') }
+    val receivers = linkedSetOf<String>()
+    var braceDepth = 0
+    source.lineSequence().forEach { rawLine ->
+      val line = rawLine.withoutCommentText().text
+      if (braceDepth == 0) {
+        EXTENSION_FUN_PATTERN.find(line)?.groupValues?.get(1)?.let { receiverType ->
+          resolveTypeFqn(receiverType, packageName, importMap)?.let(receivers::add)
+        }
+      }
+      braceDepth += line.count { character -> character == '{' }
+      braceDepth -= line.count { character -> character == '}' }
+      if (braceDepth < 0) braceDepth = 0
+    }
+    return receivers.toList()
+  }
+
+  private fun resolveTypeFqn(typeName: String, packageName: String, importMap: Map<String, String>): String? =
+    when {
+      '.' in typeName -> typeName
+      typeName in importMap -> importMap.getValue(typeName)
+      else -> "$packageName.$typeName"
+    }
+
+  private fun extractBalancedParentheses(source: String, openIndex: Int): String? {
+    if (source.getOrNull(openIndex) != '(') return null
+    var depth = 0
+    var index = openIndex
+    while (index < source.length) {
+      when (source[index]) {
+        '(' -> depth += 1
+        ')' -> {
+          depth -= 1
+          if (depth == 0) return source.substring(openIndex, index + 1)
+        }
+      }
+      index += 1
+    }
+    return null
+  }
+
+  private fun defaultArgumentParameters(constructorBody: String): List<String> {
+    val inner = constructorBody.trim().removePrefix("(").removeSuffix(")")
+    if (inner.isBlank()) return emptyList()
+    val parameters = splitTopLevelParameters(inner)
+    return parameters.mapNotNull { parameter ->
+      val name = parameter.substringBefore(':').trim().substringAfterLast(' ').ifBlank {
+        parameter.substringBefore(':').trim()
+      }
+      if ('=' in parameter) name.takeIf { it.isNotBlank() } else null
+    }
+  }
+
+  private fun splitTopLevelParameters(parameters: String): List<String> {
+    val parts = mutableListOf<String>()
+    val current = StringBuilder()
+    var angleDepth = 0
+    var parenDepth = 0
+    parameters.forEach { character ->
+      when (character) {
+        '<' -> angleDepth += 1
+        '>' -> angleDepth -= 1
+        '(' -> parenDepth += 1
+        ')' -> parenDepth -= 1
+        ',' -> if (angleDepth == 0 && parenDepth == 0) {
+          parts += current.toString().trim()
+          current.clear()
+          return@forEach
+        }
+      }
+      current.append(character)
+    }
+    if (current.isNotBlank()) parts += current.toString().trim()
+    return parts
+  }
+
+  private fun findDirectedCycles(edges: Map<String, Set<String>>): List<List<String>> {
+    val cycles = linkedSetOf<List<String>>()
+    val nodes = (edges.keys + edges.values.flatten()).toSet()
+    fun normalizeCycle(path: List<String>): List<String> {
+      if (path.isEmpty()) return path
+      val start = path.indices.minByOrNull { index -> path[index] } ?: return path.sorted()
+      return (path.drop(start) + path.take(start)).sorted()
+    }
+    fun dfs(node: String, path: MutableList<String>, visiting: MutableSet<String>) {
+      if (node in visiting) {
+        val cycleStart = path.indexOf(node)
+        if (cycleStart >= 0) {
+          cycles += normalizeCycle(path.subList(cycleStart, path.size))
+        }
+        return
+      }
+      visiting += node
+      path += node
+      (edges[node] ?: emptySet()).forEach { neighbor -> dfs(neighbor, path, visiting) }
+      visiting -= node
+      path.removeAt(path.lastIndex)
+    }
+    nodes.forEach { node -> dfs(node, mutableListOf(), mutableSetOf()) }
+    return cycles.toList()
+  }
 
   data class AuthoredSuppression(val relativePath: String, val symbol: String, val rule: String)
 

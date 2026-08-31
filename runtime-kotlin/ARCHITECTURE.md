@@ -1139,6 +1139,38 @@ The architecture tests enforce the following rules:
   allow-list constant stay in sync). New exceptions MUST be added to both
   the allow-list constant and ARCHITECTURE.md in the same change.
 
+### SKILL-227 runtime-application guardrails
+
+`ProductionLogicalTypeLineCeilingArchitectureTest` attributes each production
+Kotlin file to a logical type: type-declaring files bill to the first top-level
+named type FQN; extension-only files bill every line to each distinct
+extension-receiver FQN. A shrink-only baseline records offenders above the
+500-line ceiling; baselined units may only shrink and unlisted units must stay
+at or below the ceiling.
+
+`ApplicationPackageAcyclicityArchitectureTest` tracks mutual import pairs among
+`skillbill.application.<area>` packages. The recorded baseline is shrink-only;
+any new mutual-import pair not already baselined fails the build.
+
+`RuntimeApplicationAmbientClockArchitectureTest` bans `Instant.now()`,
+`LocalDateTime.now()`, and `Clock.systemUTC()` in `runtime-application` main
+source. Existing call sites are baselined for subtask 2 removal.
+
+`InjectConstructorDefaultsArchitectureTest` bans default arguments on
+`@Inject` constructors and dependency bags consumed by them. Production wiring
+must bind every port explicitly in `RuntimeComponent`; test-only stubs such as
+`ApprovingReviewDriverStub` are never reachable through an unbound dependency.
+
+`skillbill.application.runtime.RuntimeSingleton` scopes services and adapters that hold a cache, connection,
+or lease across accessor reads (`DatabaseSessionFactory`,
+`FeatureTaskRuntimeWorkerSupervisor`, `FeatureTaskRuntimeWorkerCoordinator`,
+`DurableGoalPlanningAttemptRecorder`). Deliberately unscoped services:
+
+- `GoalRunner` — per-access construction is intentional until subtask 2 makes
+  `validationQualityRetries` durable across accessor reads.
+- Stateless orchestration services (`WorkflowService`, `ReviewService`,
+  `ParallelCodeReviewRunner`, and similar) — no cross-call mutable state.
+
 ## SKILL-52.2 — Runtime boundary closure inventory
 
 This section classifies every current public raw-map declaration in

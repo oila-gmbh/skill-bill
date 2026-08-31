@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.runtime.RuntimeSingleton
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
@@ -29,6 +30,7 @@ internal object FeatureTaskRuntimeCrashLiveness {
   }
 }
 
+@RuntimeSingleton
 @Inject
 class FeatureTaskRuntimeWorkerCoordinator(
   private val database: DatabaseSessionFactory,

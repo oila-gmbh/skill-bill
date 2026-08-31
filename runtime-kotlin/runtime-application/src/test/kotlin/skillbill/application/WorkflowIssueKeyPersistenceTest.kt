@@ -1,5 +1,9 @@
 package skillbill.application
 
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
+
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.goalrunner.testPhaseRecorder
@@ -24,9 +28,11 @@ class WorkflowIssueKeyPersistenceTest {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
       database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
       decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
 
     val firstRuntime = assertIs<WorkflowOpenResult.Ok>(
@@ -63,9 +69,11 @@ class WorkflowIssueKeyPersistenceTest {
     val workflows = InMemoryWorkflowStates()
     val service = WorkflowService(
       database = FakeDatabaseSessionFactory(workflows),
+      gitOperations = NoopWorkflowGitOperations,
       decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
+      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
     )
 
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {

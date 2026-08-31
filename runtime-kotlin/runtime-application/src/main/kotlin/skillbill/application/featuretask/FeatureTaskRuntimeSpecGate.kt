@@ -25,7 +25,7 @@ class FeatureTaskRuntimeSpecGate(
   val specSourceResolver: SpecSourceResolver,
   val specScratchStore: SpecScratchStore,
   private val specStatusWriter: FeatureTaskRuntimeSpecStatusWriter,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   // Single terminal-finalize entry point for the runner: reconcile the single-spec `Agent:` line and
   // delete linear-mode scratch. Keeps the runner's finalize path to one call; each step self-gates.
