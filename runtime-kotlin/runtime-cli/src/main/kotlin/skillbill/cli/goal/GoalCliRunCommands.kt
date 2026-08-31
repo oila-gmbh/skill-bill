@@ -22,6 +22,7 @@ import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.cli.core.invokingAgentResolutionHelp
+import skillbill.cli.core.requireSupportedOptionalAgentId
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
@@ -61,12 +62,13 @@ class GoalPreflightCommand(
     val root = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
       ?: Path.of("").toAbsolutePath().normalize()
     val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
+    val agentOverrideId = requireSupportedOptionalAgentId(agentOverride, "--agent-override")
     val result = service.preflight(
       GoalPreflightRequest(
         issueKey = issueKey,
         repoRoot = root,
         invokedAgentId = invokedAgentId,
-        agentOverrideId = agentOverride,
+        agentOverrideId = agentOverrideId,
         requestedReviewMode = parseCodeReviewMode(codeReviewMode),
         requestedAgentAddonSlugs = agentAddonSlugs,
         dbPathOverride = state.dbOverride,
