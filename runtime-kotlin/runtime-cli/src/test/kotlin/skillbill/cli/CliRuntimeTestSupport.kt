@@ -297,6 +297,19 @@ internal val NEWER_PRERELEASE_TAG = "v$NEWER_MAJOR.0.0-rc.1"
 
 internal val INSTALLED_BASE_TAG = "v${INSTALLED_VERSION.substringBefore('-')}"
 
+internal val OLDER_RELEASE_TAG: String = run {
+  val core = INSTALLED_VERSION.removePrefix("v").substringBefore('-').split('.')
+  val major = core.getOrNull(0)?.toIntOrNull() ?: 0
+  val minor = core.getOrNull(1)?.toIntOrNull() ?: 0
+  val patch = core.getOrNull(2)?.toIntOrNull() ?: 0
+  when {
+    patch > 0 -> "v$major.$minor.${patch - 1}"
+    minor > 0 -> "v$major.${minor - 1}.0"
+    major > 0 -> "v${major - 1}.0.0"
+    else -> "v0.0.0"
+  }
+}
+
 internal fun updateCheckRequester(
   capturedRequests: MutableList<Map<String, Any?>>,
   latest: String = NEWER_RELEASE_TAG,

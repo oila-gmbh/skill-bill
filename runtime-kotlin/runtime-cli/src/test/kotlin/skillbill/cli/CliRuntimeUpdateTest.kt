@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import org.junit.jupiter.api.Assumptions
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.core.ExternalCommandResult
 import skillbill.cli.model.CliRuntimeContext
@@ -124,12 +125,16 @@ class CliRuntimeUpdateTest {
 
   @Test
   fun `update skips installer when installed version is ahead of latest release`() {
+    Assumptions.assumeTrue(
+      OLDER_RELEASE_TAG != INSTALLED_BASE_TAG,
+      "cannot construct an older stable tag than $INSTALLED_VERSION",
+    )
     val capturedRequests = mutableListOf<Map<String, Any?>>()
     val runner = CapturingExternalCommandRunner(ExternalCommandResult(exitCode = 0, output = "should not run\n"))
     val result = CliRuntime.run(
       listOf("update", "--format", "json"),
       CliRuntimeContext(
-        requester = updateCheckRequester(capturedRequests, latest = INSTALLED_BASE_TAG),
+        requester = updateCheckRequester(capturedRequests, latest = OLDER_RELEASE_TAG),
         externalCommandRunner = runner,
       ),
     )
@@ -141,6 +146,29 @@ class CliRuntimeUpdateTest {
     assertEquals("ahead_of_release", updateCheck["status"])
     assertEquals("installed version is newer than the latest release", payload["reason"])
     assertTrue(runner.commands.isEmpty(), "installer must not run when local version is ahead")
+    assertEquals(1, capturedRequests.size)
+  }
+
+  @Test
+  fun `update runs installer when installed snapshot matches latest release base`() {
+    Assumptions.assumeTrue(
+      INSTALLED_VERSION.contains("-SNAPSHOT", ignoreCase = true),
+      "same-base snapshot comparison only applies to SNAPSHOT installs, not $INSTALLED_VERSION",
+    )
+    val capturedRequests = mutableListOf<Map<String, Any?>>()
+    val runner = CapturingExternalCommandRunner(ExternalCommandResult(exitCode = 0, output = "installer ok\n"))
+    val result = CliRuntime.run(
+      listOf("update", "--format", "json"),
+      CliRuntimeContext(
+        requester = updateCheckRequester(capturedRequests, latest = INSTALLED_BASE_TAG),
+        externalCommandRunner = runner,
+      ),
+    )
+    val payload = decodeJsonObject(result.stdout)
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals("completed", payload["status"])
+    assertEquals(1, runner.commands.size)
     assertEquals(1, capturedRequests.size)
   }
 

@@ -14,6 +14,7 @@ class SemverTest {
     assertTrue(Semver.parse("1.0.0-alpha.1")!! < Semver.parse("1.0.0-alpha.beta")!!)
     assertTrue(Semver.parse("1.0.0-beta.2")!! < Semver.parse("1.0.0-beta.11")!!)
     assertTrue(Semver.parse("1.0.0-rc.1")!! < Semver.parse("1.0.0")!!)
+    assertTrue(Semver.parse("0.3.1-SNAPSHOT")!! < Semver.parse("0.3.1")!!)
   }
 
   @Test
