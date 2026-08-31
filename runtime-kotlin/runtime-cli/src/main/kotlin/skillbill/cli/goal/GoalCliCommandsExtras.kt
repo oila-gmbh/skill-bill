@@ -4,11 +4,13 @@ import com.github.ajalt.clikt.core.UsageError
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.cli.core.refuseUnavailableAgentLaunchers
+import skillbill.cli.core.requireSupportedOptionalAgentId
 import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 
 internal fun validateGoalRunInputs(args: GoalRunInputValidationArgs) {
   val invokedAgentId = resolveInvokedAgentId(args.agent, args.state.environment)
+  requireSupportedOptionalAgentId(args.agentOverride, "--agent-override")
   refuseUnavailableAgentLaunchers(listOf(invokedAgentId, args.agentOverride), args.executableLookup)
   val usageError = when {
     args.issueKey == null -> "issue_key is required for goal run."
