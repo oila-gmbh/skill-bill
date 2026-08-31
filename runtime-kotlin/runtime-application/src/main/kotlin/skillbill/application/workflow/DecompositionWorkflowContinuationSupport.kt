@@ -5,9 +5,10 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.executionModel
 import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
+import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
+import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.ports.db.UnitOfWork
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
@@ -16,13 +17,12 @@ import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import java.nio.file.Path
 
 internal fun WorkflowEngine.continueExistingWorkflow(
   family: WorkflowFamily,
   initialRecord: WorkflowStateSnapshot,
   unitOfWork: UnitOfWork,
-  decompositionManifestValidator: DecompositionManifestValidator? = null,
+  args: ContinueExistingWorkflowArgs,
 ): ContinuationStepResult {
   var record = initialRecord
   val workflowId = initialRecord.workflowId
@@ -33,16 +33,18 @@ internal fun WorkflowEngine.continueExistingWorkflow(
     val originalContinueStatus = decision.view.continueStatus
     val originalWorkflowStatus = decision.view.workflowStatusBeforeContinue
     val reopenInput = decision.toReopenInput(record.sessionId)
-    // Reopen must refresh decomposition_runtime the same way update() does — otherwise a blocked
-    // parent subtask stays blocked on disk after continueStatus=reopened.
     val effectiveInput =
-      if (family == WorkflowFamily.TASK_RUNTIME && decompositionManifestValidator != null) {
+      if (canRefreshDecompositionRuntime(family, args)) {
         family.withDecompositionRuntime(
-          existing = record,
-          input = reopenInput,
-          workflowId = workflowId,
-          validator = decompositionManifestValidator,
-          fileStore = UnavailableDecompositionManifestFileStore,
+          DecompositionRuntimeWriteArgs(
+            existing = record,
+            input = reopenInput,
+            workflowId = workflowId,
+            validator = requireNotNull(args.validator),
+            fileStore = args.fileStore,
+            repoRoot = requireNotNull(args.repoRoot),
+            manifestWriter = requireNotNull(args.manifestWriter),
+          ),
         ).input
       } else {
         reopenInput
@@ -50,10 +52,11 @@ internal fun WorkflowEngine.continueExistingWorkflow(
     val reopened = updateRecord(family.definition, record, effectiveInput)
     family.save(unitOfWork.workflowStates, reopened)
     record = family.get(unitOfWork.workflowStates, workflowId) ?: reopened
+    val validator = args.validator
     if (
       family == WorkflowFamily.TASK_RUNTIME &&
-      decompositionManifestValidator != null &&
-      record.decompositionRuntime(decompositionManifestValidator) != null
+      validator != null &&
+      record.decompositionRuntime(validator) != null
     ) {
       projectionArtifactsJson = record.artifactsJson
     }
@@ -73,6 +76,12 @@ internal fun WorkflowEngine.continueExistingWorkflow(
     projectionArtifactsJson = projectionArtifactsJson,
   )
 }
+
+private fun canRefreshDecompositionRuntime(family: WorkflowFamily, args: ContinueExistingWorkflowArgs): Boolean =
+  family == WorkflowFamily.TASK_RUNTIME && args.hasWriteTargets()
+
+private fun ContinueExistingWorkflowArgs.hasWriteTargets(): Boolean =
+  validator != null && repoRoot != null && manifestWriter != null
 
 internal fun WorkflowEngine.alignSubtaskResumeStep(
   record: WorkflowStateSnapshot,
@@ -187,5 +196,3 @@ internal fun DecompositionManifest.baseForSubtask(subtaskId: Int): String? = whe
   DecompositionExecutionModel.STACKED_BRANCHES ->
     stackBranches.firstOrNull { it.subtaskId == subtaskId }?.baseBranch ?: baseBranch
 }
-
-internal fun repoRoot(): Path = Path.of("").toAbsolutePath()

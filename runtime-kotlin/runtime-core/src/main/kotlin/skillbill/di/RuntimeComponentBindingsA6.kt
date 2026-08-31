@@ -15,8 +15,11 @@ import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
+import java.time.Clock
 
 internal object RuntimeComponentBindingsA6 {
+  internal fun runtimeClock(): Clock = Clock.systemUTC()
+
   internal fun reviewLaunchAgentStagingPort(
     adapter: FileSystemReviewLaunchAgentStaging,
   ): ReviewLaunchAgentStagingPort = adapter

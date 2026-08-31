@@ -16,6 +16,7 @@ import skillbill.application.goalrunner.model.GoalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
+import skillbill.model.RepositoryRoot
 import java.nio.file.Path
 
 @Inject
@@ -31,6 +32,7 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
   private val planningStatusReasonCoherence = deps.planningStatusReasonCoherence
   private val diagnostics = deps.diagnostics
   private val runtimeStatusService = deps.runtimeStatusService
+  private val repositoryRoot = deps.repositoryRoot
   private val projectionAssembler = GoalRunnerStatusProjectionAssembler(
     GoalRunnerStatusProjectionAssemblerDeps(
       manifestStore = manifestStore,
@@ -43,6 +45,7 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
       planningStatusReasonCoherence = planningStatusReasonCoherence,
       diagnostics = diagnostics,
       runtimeStatusService = runtimeStatusService,
+      repositoryRoot = repositoryRoot,
     ),
   )
 
@@ -58,6 +61,7 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
     gitOperations = gitOperations,
     diagnostics = diagnostics,
     projectionAssembler = projectionAssembler,
+    repositoryRoot = repositoryRoot,
   )
 
   private val repairCoordinator = GoalRunnerRepairCoordinator(
@@ -65,6 +69,7 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
     phaseRecorder = phaseRecorder,
     workerSupervisor = workerSupervisor,
     childRepairStore = childRepairStore,
+    repositoryRoot = repositoryRoot,
   )
 
   private val acceptanceCoordinator = GoalRunnerAcceptanceCoordinator(
@@ -80,23 +85,14 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
 
   fun statusRefresh(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? = status(request)
 
-  fun pause(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
-  ): GoalRunnerPauseResult = controlVerbs.pause(issueKey, dbPathOverride, repoRoot)
+  fun pause(issueKey: String, dbPathOverride: String?, repoRoot: Path? = null): GoalRunnerPauseResult =
+    controlVerbs.pause(issueKey, dbPathOverride, effectiveGoalRepoRoot(repoRoot, repositoryRoot))
 
-  fun stop(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
-  ): GoalRunnerStopVerbResult = controlVerbs.stop(issueKey, dbPathOverride, repoRoot)
+  fun stop(issueKey: String, dbPathOverride: String?, repoRoot: Path? = null): GoalRunnerStopVerbResult =
+    controlVerbs.stop(issueKey, dbPathOverride, effectiveGoalRepoRoot(repoRoot, repositoryRoot))
 
-  fun resume(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
-  ): GoalRunnerResumeResult = controlVerbs.resume(issueKey, dbPathOverride, repoRoot)
+  fun resume(issueKey: String, dbPathOverride: String?, repoRoot: Path? = null): GoalRunnerResumeResult =
+    controlVerbs.resume(issueKey, dbPathOverride, effectiveGoalRepoRoot(repoRoot, repositoryRoot))
 
   fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? = resetReplanCoordinator.reset(request)
 
@@ -109,3 +105,6 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
 
   fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptResult = acceptanceCoordinator.accept(request)
 }
+
+internal fun effectiveGoalRepoRoot(repoRoot: Path?, repositoryRoot: RepositoryRoot): Path =
+  repoRoot ?: repositoryRoot.path

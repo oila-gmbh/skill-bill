@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolved
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
-import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError

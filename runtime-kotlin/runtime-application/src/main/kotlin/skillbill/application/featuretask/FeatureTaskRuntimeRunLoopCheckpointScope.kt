@@ -2,7 +2,6 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.gitops.pathContentIdentities
 import skillbill.ports.workflow.gitops.stagedPaths
 

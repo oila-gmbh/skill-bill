@@ -17,6 +17,7 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
       invokedAgentId = "claude",
       dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
     ),
+    testHarnessClock,
   )
 
   @Test

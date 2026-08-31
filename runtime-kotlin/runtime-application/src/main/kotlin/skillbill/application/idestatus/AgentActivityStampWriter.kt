@@ -7,7 +7,6 @@ import skillbill.ports.agentrun.model.AgentRunActivityStampSink
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.idestatus.AgentActivityStampRepository
 import java.time.Clock
-import java.time.Instant
 
 @Inject
 class AgentActivityStampWriter(
@@ -53,7 +52,7 @@ class AgentActivityStampWriter(
 
   private fun record(context: StampContext, label: AgentActivityLabel) {
     if (context.workflowId.isBlank()) return
-    val now = Instant.now(clock)
+    val now = clock.instant()
     val stampToPersist = synchronized(latestByWorkflow) {
       val latest = latestByWorkflow.getOrPut(context.workflowId) { LatestStamp() }
       val previous = latest.stamp

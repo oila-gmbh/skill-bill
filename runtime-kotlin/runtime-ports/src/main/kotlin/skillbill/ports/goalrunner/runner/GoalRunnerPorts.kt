@@ -72,6 +72,28 @@ interface GoalRunnerManifestLeaseOps {
   ): Boolean
 }
 
+interface GoalRunnerManifestPauseOps {
+  fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState? = null
+
+  fun pauseNow(
+    parentWorkflowId: String,
+    reason: String,
+    pausedAt: String,
+    overwriteExistingReason: Boolean = false,
+    dbPathOverride: String? = null,
+  ): GoalRunnerControlState? = null
+
+  fun requestPauseByIssueKey(
+    issueKey: String,
+    dbPathOverride: String? = null,
+    repoRoot: Path? = null,
+  ): GoalRunnerPausePersistenceResult? = null
+
+  fun resume(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerManifestState? = null
+
+  fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState = state
+}
+
 interface GoalRunnerManifestControlOps {
   fun controlState(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState =
     GoalRunnerControlState()
@@ -91,22 +113,6 @@ interface GoalRunnerManifestControlOps {
     dbPathOverride: String? = null,
   ): GoalRunnerControlState = GoalRunnerControlState(stopAfterSubtaskId = subtaskId)
 
-  fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState? = null
-
-  fun pauseNow(
-    parentWorkflowId: String,
-    reason: String,
-    pausedAt: String,
-    overwriteExistingReason: Boolean = false,
-    dbPathOverride: String? = null,
-  ): GoalRunnerControlState? = null
-
-  fun requestPauseByIssueKey(
-    issueKey: String,
-    dbPathOverride: String? = null,
-    repoRoot: Path? = null,
-  ): GoalRunnerPausePersistenceResult? = null
-
   fun authorizeSubtaskLaunch(
     state: GoalRunnerManifestState,
     subtaskId: Int,
@@ -123,9 +129,11 @@ interface GoalRunnerManifestControlOps {
   fun authorizePlanningLaunch(parentWorkflowId: String, dbPathOverride: String? = null): AgentRunSpawnAuthorization? =
     null
 
-  fun resume(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerManifestState? = null
-
-  fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState = state
+  fun persistControlState(
+    parentWorkflowId: String,
+    state: GoalRunnerControlState,
+    dbPathOverride: String? = null,
+  ): GoalRunnerControlState = state
 }
 
 interface GoalRunnerManifestWriteOps {
@@ -219,6 +227,7 @@ interface GoalRunnerManifestReviewOps {
 interface GoalRunnerManifestStore :
   GoalRunnerManifestLookup,
   GoalRunnerManifestLeaseOps,
+  GoalRunnerManifestPauseOps,
   GoalRunnerManifestControlOps,
   GoalRunnerManifestWriteOps,
   GoalRunnerManifestReviewOps

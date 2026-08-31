@@ -2,13 +2,11 @@ package skillbill.application.goalrunner
 
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.workflow.WorkflowFamily
-import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import kotlin.coroutines.cancellation.CancellationException
 
 internal val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 
@@ -80,19 +78,16 @@ internal class GoalRunnerTickProgressReader(
       ?: return null
     val childProgress = subtask.workflowId
       ?.takeIf(String::isNotBlank)
-      ?.let { workflowId ->
-        try {
-          outcomeStore.progress(workflowId, request.dbPathOverride)
-        } catch (error: CancellationException) {
-          throw error
-        } catch (error: ShellContentContractException) {
-          throw error
-        } catch (_: Exception) {
-          null
-        }
-      }
+      ?.let { workflowId -> readChildProgress(workflowId) }
     return GoalRunnerProgressState(subtask, childProgress)
   }
+
+  private fun readChildProgress(workflowId: String): GoalRunnerWorkflowProgress? =
+    when (val read = GoalRunnerProgressReader(outcomeStore).read(workflowId, request)) {
+      is GoalRunnerChildProgressRead.Present -> read.progress
+      is GoalRunnerChildProgressRead.Absent -> null
+      is GoalRunnerChildProgressRead.Failed -> null
+    }
 
   internal companion object {
     const val SUPERVISOR_POLL_CADENCE_NANOS: Long = 250_000_000L

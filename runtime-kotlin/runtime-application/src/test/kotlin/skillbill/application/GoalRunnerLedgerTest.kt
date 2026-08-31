@@ -3,7 +3,6 @@ package skillbill.application
 import skillbill.application.goalrunner.goalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.testGoalRunner
-import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.goalrunner.model.GoalRunnerLivenessState.IDLE
 import skillbill.goalrunner.model.GoalRunnerLivenessState.PROGRESSING

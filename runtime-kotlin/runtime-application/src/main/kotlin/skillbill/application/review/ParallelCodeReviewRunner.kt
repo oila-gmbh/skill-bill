@@ -35,6 +35,7 @@ class ParallelCodeReviewRunner(
   private val reviewLaunchAgentStaging = deps.reviewLaunchAgentStaging
   private val registerParse = deps.registerParse
   private val diagnostics = deps.diagnostics
+  private val clock = deps.clock
   private val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
   private val failureHelpers = ParallelCodeReviewRunnerFailureHelpers(registerParse)
   private val rubricPlanning = ParallelCodeReviewRunnerRubricPlanning(reviewRubricResolver, installedPackCatalog)
@@ -50,6 +51,7 @@ class ParallelCodeReviewRunner(
       specIntentProjectionResolver = specIntentProjectionResolver,
       runtimeOwnedPersistence = runtimeOwnedPersistence,
       rubricPlanning = rubricPlanning,
+      clock = clock,
     ),
   )
   private val laneLaunch = ParallelCodeReviewRunnerLaneLaunch(
@@ -67,11 +69,13 @@ class ParallelCodeReviewRunner(
     parentReviewLauncher,
     reviewContextEnvelopeValidator,
     runtimeOwnedPersistence,
+    clock,
   )
   private val verificationStages = ParallelCodeReviewRunnerVerificationStages(
     parentReviewLauncher,
     reviewContextEnvelopeValidator,
     runtimeOwnedPersistence,
+    clock,
   )
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {

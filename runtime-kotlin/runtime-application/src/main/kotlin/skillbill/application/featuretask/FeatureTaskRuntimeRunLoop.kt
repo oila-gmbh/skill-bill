@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.idestatus.AgentActivityStampWriter
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -16,6 +15,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import java.nio.file.Path
+import java.time.Clock
 
 internal data class FeatureTaskRuntimeRunLoopDependencies(
   val recorder: FeatureTaskRuntimePhaseRecorder,
@@ -25,6 +25,7 @@ internal data class FeatureTaskRuntimeRunLoopDependencies(
   val subtaskLauncher: GoalRunnerSubtaskLauncher,
   val phaseSettlementService: FeatureTaskPhaseSettlementService,
   val activityStampWriter: AgentActivityStampWriter,
+  val clock: Clock,
 )
 
 internal data class FeatureTaskRuntimeRunLoopContext(
@@ -118,6 +119,7 @@ internal class FeatureTaskRuntimeRunLoop(
   internal val subtaskLauncher get() = dependencies.subtaskLauncher
   internal val phaseSettlementService get() = dependencies.phaseSettlementService
   internal val activityStampWriter get() = dependencies.activityStampWriter
+  internal val clock get() = dependencies.clock
   internal val branchSetupRunner get() = phaseGates.branchSetupRunner
   internal val planningStopper get() = phaseGates.planningStopper
   internal val gitOperations get() = phaseGates.gitOperations

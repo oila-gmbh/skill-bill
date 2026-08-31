@@ -17,12 +17,13 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
-import java.time.Instant
+import java.time.Clock
 
 internal class FeatureTaskRuntimePhaseEvidenceRecorder(
   internal val database: DatabaseSessionFactory,
   internal val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   internal val quarantineValidator: FeatureTaskRuntimeQuarantineValidator,
+  internal val clock: Clock,
 ) : FeatureTaskRuntimePhaseEvidenceApi {
   override fun appendLedgerEntry(request: FeatureTaskRuntimePhaseLedgerRequest, dbOverride: String?): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
@@ -34,7 +35,7 @@ internal class FeatureTaskRuntimePhaseEvidenceRecorder(
       val entry = FeatureTaskRuntimePhaseLedgerEntry(
         action = request.action,
         sequenceNumber = nextSequence,
-        timestamp = Instant.now().toString(),
+        timestamp = clock.instant().toString(),
         phaseId = request.phaseId,
         attemptCount = request.attemptCount,
         resolvedAgentId = request.resolvedAgentId,

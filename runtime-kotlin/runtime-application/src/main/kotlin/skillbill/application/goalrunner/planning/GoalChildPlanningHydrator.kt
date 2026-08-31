@@ -25,7 +25,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
-import java.time.Instant
+import java.time.Clock
 
 internal data class GoalChildPlanningHydration(
   val currentStepId: String,
@@ -41,6 +41,7 @@ private data class PreparedGoalPlanning(
 internal class GoalChildPlanningHydrator(
   phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  private val clock: Clock,
 ) {
   private val payloadValidator = PreparedPlanningPayloadValidator(phaseOutputValidator, planningProjectionValidator)
   private val importMatcher = GoalChildPlanningImportMatcher(payloadValidator)
@@ -133,7 +134,7 @@ internal class GoalChildPlanningHydrator(
     preplan: AcceptedFeatureTaskRuntimePhaseOutput,
     plan: AcceptedFeatureTaskRuntimePhaseOutput,
   ): GoalChildPlanningHydration {
-    val importedAt = Instant.now().toString()
+    val importedAt = clock.instant().toString()
     val records = createImportedRecords(
       preplan.forPlanningImport(prepared.shared.preplanPayload, prepared.shared.repairEvidence),
       plan.forPlanningImport(prepared.plan.planPayload, prepared.plan.repairEvidence),

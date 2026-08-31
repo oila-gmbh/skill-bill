@@ -1,9 +1,5 @@
 package skillbill.application
 
-import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
-
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
@@ -11,6 +7,7 @@ import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResu
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
@@ -21,6 +18,7 @@ import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
@@ -28,6 +26,7 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -319,12 +318,16 @@ class FeatureTaskContinuationLookupServiceTest {
     val states = InMemoryWorkflowStates()
     val database = FakeDatabaseSessionFactory(states)
     val service = WorkflowService(
-      database = database,
-      gitOperations = NoopWorkflowGitOperations,
-      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
-      goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+      WorkflowServiceDeps(
+        database = database,
+        gitOperations = NoopWorkflowGitOperations,
+        decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestWriter = testDecompositionManifestWriter,
+        repositoryRoot = testRepositoryRoot,
+        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+      ),
     )
     return Fixture(
       states = states,

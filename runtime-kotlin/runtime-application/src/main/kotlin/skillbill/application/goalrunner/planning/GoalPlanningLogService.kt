@@ -11,6 +11,7 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import java.time.Clock
 import java.time.Instant
 
 private const val GOAL_PLANNING_WORKFLOW_PHASE = "goal_planning"
@@ -29,6 +30,7 @@ class GoalPlanningLogService(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val database: DatabaseSessionFactory,
   private val diagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator,
+  private val clock: Clock,
 ) {
   fun log(request: GoalPlanningLogRequest): GoalPlanningLog {
     val parentWorkflowId = manifestStore
@@ -63,7 +65,7 @@ class GoalPlanningLogService(
     database.transaction(dbPathOverride) { unitOfWork ->
       val repository = unitOfWork.rejectedOutputDiagnostics ?: return@transaction emptyList()
       val permissions = unitOfWork.rejectedOutputDiagnosticPermissions ?: return@transaction emptyList()
-      RejectedOutputDiagnosticService(repository, permissions, diagnosticMetadataValidator)
+      RejectedOutputDiagnosticService(repository, permissions, diagnosticMetadataValidator, clock = clock)
         .inspect(RejectedOutputDiagnosticSelector(workflowId = parentWorkflowId))
     }
   }

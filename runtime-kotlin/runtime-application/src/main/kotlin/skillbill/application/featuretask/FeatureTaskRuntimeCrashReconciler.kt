@@ -4,11 +4,10 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCrashReconciliationReason
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCrashReconciliationResult
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
-import java.time.Instant
+import java.time.Clock
 
 /**
  * Reconciles orphaned non-terminal runtime rows left by a killed child process. A candidate is a
@@ -26,9 +25,10 @@ class FeatureTaskRuntimeCrashReconciler(
   private val database: DatabaseSessionFactory,
   private val supervisor: FeatureTaskRuntimeWorkerSupervisor,
   private val diagnostics: RuntimeDiagnostics,
+  private val clock: Clock,
 ) {
   fun reconcile(dbOverride: String? = null): FeatureTaskRuntimeCrashReconciliationResult {
-    val now = Instant.now().toString()
+    val now = clock.instant().toString()
     val candidates = runCatching {
       database.read(dbOverride) { it.workflowStates.findFeatureTaskRuntimeCrashReconciliationCandidates(now) }
     }.getOrElse { error ->
@@ -69,7 +69,7 @@ class FeatureTaskRuntimeCrashReconciler(
         ownerToken = candidate.ownership.ownerToken,
         generation = candidate.ownership.generation,
         interruptionReason = "${reason.wireValue}: worker lease expired and process confirmed dead",
-        nowInstant = Instant.now().toString(),
+        nowInstant = clock.instant().toString(),
       )
     }
     if (reconciled) reason.wireValue else null

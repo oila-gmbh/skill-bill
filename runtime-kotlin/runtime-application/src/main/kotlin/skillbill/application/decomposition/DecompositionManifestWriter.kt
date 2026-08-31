@@ -1,11 +1,11 @@
 package skillbill.application.decomposition
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.application.workflow.model.DecompositionManifestWriteResult
 import skillbill.application.workflow.model.DecompositionPlanManifestInput
-import skillbill.application.workflow.repoRoot
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
@@ -21,7 +21,8 @@ import java.nio.file.Path
 private const val DECOMPOSITION_MODE: String = "decompose"
 internal const val DECOMPOSITION_RUNTIME_ARTIFACT_KEY: String = "decomposition_runtime"
 
-object DecompositionManifestWriter {
+@Inject
+class DecompositionManifestWriter {
   fun writeFromWorkflowUpdate(input: DecompositionManifestWorkflowProjectionInput): DecompositionManifestWriteResult? {
     val manifest = manifestFromWorkflowUpdate(input) ?: return null
     return writeProjection(input.repoRoot, manifest, input.validator, fileStore = input.fileStore)
@@ -230,6 +231,7 @@ private fun assertParentSpecIsNotDecomposedSubtask(
   val normalizedParentSpec = resolvedParentSpecPath(repoRoot, parentSpecPath).normalize()
   val parentSpecLabel = repoRelativePath(repoRoot, parentSpecPath)
   val referringManifests = fileStore.findDecompositionManifestFiles(repoRoot)
+    .filterNot { manifestPath -> archivedDecompositionManifest(repoRoot, manifestPath) }
     .mapNotNull { manifestPath ->
       val manifest = try {
         loadDecompositionManifest(manifestPath, fileStore, validator)

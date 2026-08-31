@@ -27,12 +27,13 @@ import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageDegradationSelectionRequest
 import skillbill.review.model.ReviewStageReached
 import skillbill.review.model.ReviewStageResumeReport
-import java.time.Instant
+import java.time.Clock
 
 internal class ParallelCodeReviewRunnerResultAssembly(
   internal val parentReviewLauncher: GoalRunnerSubtaskLauncher,
   internal val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
   internal val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
+  private val clock: Clock,
 ) {
   fun runIntegrationPass(
     initial: ParallelCodeReviewInitialRun,
@@ -219,7 +220,7 @@ internal class ParallelCodeReviewRunnerResultAssembly(
         ReviewStageBoundary(
           stage = ReviewStage.REVIEW,
           reached = ReviewStageReached.REACHED,
-          recordedAt = Instant.now().toString(),
+          recordedAt = clock.instant().toString(),
           contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
         ),
       )

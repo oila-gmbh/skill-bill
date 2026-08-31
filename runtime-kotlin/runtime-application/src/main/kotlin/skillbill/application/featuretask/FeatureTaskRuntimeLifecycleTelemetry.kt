@@ -6,7 +6,6 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 
 @Inject

@@ -73,7 +73,7 @@ private fun FeatureTaskRuntimeRunLoop.resolveReviewRunId(
   ?.takeIf { (it.reviewPassNumber ?: 1) == passNumber }
   ?.reviewRunId
   ?.takeIf(String::isNotBlank)
-  ?: FeatureTaskRuntimeReviewEnvelope.mintReviewRunId()
+  ?: FeatureTaskRuntimeReviewEnvelope.mintReviewRunId(clock)
 
 private fun FeatureTaskRuntimeRunLoop.runtimeOwnedReviewDriverRequest(
   run: PhaseRun,
@@ -310,20 +310,22 @@ internal fun FeatureTaskRuntimeRunLoop.settleRuntimeOwnedReview(
       ),
     )
   }
-  retainRuntimeOwnedReviewEvidence(run, state, iteration, outputText)
-  persistReviewCompletionOutcome(
-    PhaseReviewCompletionOutcomeArgs(
-      persistence = PhaseReviewPersistenceArgs(run, iteration, observability, fileManifest),
-      normalizedOutput = acceptedOutput.normalizedOutput,
-      acceptedOutput = acceptedOutput,
-      outputText = outputText,
-    ),
-  )?.let { return it }
-  return completeRuntimeOwnedReviewPhase(
-    run,
-    iteration,
-    observability,
-    acceptedOutput.normalizedOutput,
-    acceptedOutput,
-  )
+  with(FeatureTaskRuntimeRunLoopReviewDriverSettlement) {
+    retainRuntimeOwnedReviewEvidence(run, state, iteration, outputText)
+    persistReviewCompletionOutcome(
+      PhaseReviewCompletionOutcomeArgs(
+        persistence = PhaseReviewPersistenceArgs(run, iteration, observability, fileManifest),
+        normalizedOutput = acceptedOutput.normalizedOutput,
+        acceptedOutput = acceptedOutput,
+        outputText = outputText,
+      ),
+    )?.let { return it }
+    return completeRuntimeOwnedReviewPhase(
+      run,
+      iteration,
+      observability,
+      acceptedOutput.normalizedOutput,
+      acceptedOutput,
+    )
+  }
 }

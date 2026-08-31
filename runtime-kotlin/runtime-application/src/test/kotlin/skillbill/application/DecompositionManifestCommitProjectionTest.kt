@@ -5,7 +5,6 @@ import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.workflow.model.DecompositionManifestWriteRequest
-import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.toWireMap

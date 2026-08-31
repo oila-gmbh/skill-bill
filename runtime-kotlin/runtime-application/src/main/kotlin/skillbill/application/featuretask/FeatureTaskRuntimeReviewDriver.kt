@@ -6,12 +6,10 @@ import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
-import skillbill.application.review.model.ParallelReviewLaneStatus
 import skillbill.application.review.model.ParallelReviewScope
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
@@ -21,6 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Path
+import java.time.Clock
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -150,8 +149,9 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     ?.let(JsonSupport::anyToStringAnyMap)
     .orEmpty()
 
-  fun mintReviewRunId(): String {
-    val stamp = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+  fun mintReviewRunId(clock: Clock): String {
+    val stamp = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
+      .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
     val alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
     val suffix = CharArray(REVIEW_RUN_ID_SUFFIX_LENGTH) { alphabet.random() }.concatToString()
     return "rvw-$stamp-$suffix"

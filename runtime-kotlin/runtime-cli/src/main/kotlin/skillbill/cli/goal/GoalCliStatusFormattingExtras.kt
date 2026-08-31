@@ -1,7 +1,6 @@
 package skillbill.cli.goal
 
 import skillbill.application.goalrunner.model.GoalRunnerStopStatus
-import java.nio.file.Path
 
 internal fun Map<String, Any?>.goalStatusExitCode(): Int = if (!containsKey(
     "status",
@@ -25,15 +24,6 @@ internal fun Map<String, Any?>.goalStopExitCode(): Int = when (this["status"]) {
 
 internal fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
   linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }
-
-internal fun canonicalRepositoryRoot(start: Path): Path {
-  val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
-  var candidate = resolvedStart
-  while (!candidate.resolve(".git").toFile().exists()) {
-    candidate = candidate.parent ?: return resolvedStart
-  }
-  return candidate.toRealPath()
-}
 
 internal fun Map<String, Any?>.goalWatchStopReason(refreshCount: Int, maxRefreshes: Int, idleStop: Boolean): String? =
   when {

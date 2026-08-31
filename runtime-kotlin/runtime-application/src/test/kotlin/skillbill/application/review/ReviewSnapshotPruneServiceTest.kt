@@ -1,8 +1,8 @@
 package skillbill.application.review
 
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.review.model.ReviewSnapshot
 import java.nio.file.Path
@@ -18,7 +18,8 @@ class ReviewSnapshotPruneServiceTest {
   @Test
   fun `the default invocation lists candidates and deletes nothing`() {
     val gateway = RecordingSnapshotGateway()
-    val result = ReviewSnapshotPruneService(StubSessionFactory, gateway, NoopRuntimeDiagnostics).prune(confirmed = false)
+    val result = ReviewSnapshotPruneService(StubSessionFactory, gateway, NoopRuntimeDiagnostics)
+      .prune(confirmed = false)
 
     assertEquals(2, result.candidates.size, "Every snapshot must be listed for the operator to review.")
     assertEquals(emptyList(), result.deleted)

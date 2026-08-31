@@ -1,9 +1,11 @@
 package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.decomposition.DecompositionManifestWriter
+import skillbill.application.decomposition.DecompositionManifestProjectionSupport
 import skillbill.application.normalizeIssueKey
 import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
+import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
+import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
 import skillbill.application.workflow.model.FeatureTaskIdentityRepairArgs
 import skillbill.application.workflow.model.RepairFeatureTaskRuntimeIdentityArgs
 import skillbill.application.workflow.model.WorkflowContinueResult
@@ -13,33 +15,27 @@ import skillbill.application.workflow.model.WorkflowLatestResult
 import skillbill.application.workflow.model.WorkflowListResult
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowResumeResult
+import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
-import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
-import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.goal.GoalObservabilityEventValidator
-import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
-import java.nio.file.Path
 
 @Inject
-class WorkflowService(
-  private val database: DatabaseSessionFactory,
-  private val gitOperations: WorkflowGitOperations,
-  private val decompositionManifestFileStore: DecompositionManifestFileStore,
-  private val workflowSnapshotValidator: WorkflowSnapshotValidator,
-  private val decompositionManifestValidator: DecompositionManifestValidator,
-  val goalObservabilityEventValidator: GoalObservabilityEventValidator,
-) {
+class WorkflowService(deps: WorkflowServiceDeps) {
+  private val database = deps.database
+  private val gitOperations = deps.gitOperations
+  private val decompositionManifestFileStore = deps.decompositionManifestFileStore
+  private val workflowSnapshotValidator = deps.workflowSnapshotValidator
+  private val decompositionManifestValidator = deps.decompositionManifestValidator
+  private val decompositionManifestWriter = deps.decompositionManifestWriter
+  private val repositoryRoot = deps.repositoryRoot
+  val goalObservabilityEventValidator = deps.goalObservabilityEventValidator
+
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
-    val resolved = gitOperations.repositoryFingerprint(Path.of("").toAbsolutePath())
+    val resolved = gitOperations.repositoryFingerprint(repositoryRoot.path)
     check(resolved.ok) { resolved.error }
     resolved.value.orEmpty()
   }
@@ -48,6 +44,8 @@ class WorkflowService(
     engine,
     decompositionManifestValidator,
     decompositionManifestFileStore,
+    decompositionManifestWriter,
+    repositoryRoot,
   )
   private val featureTaskIdentityRepair = WorkflowServiceFeatureTaskIdentityRepair(engine)
 
@@ -110,17 +108,22 @@ class WorkflowService(
           "Unknown workflow_id '${request.workflowId}'.",
         )
       val runtimeInput = family.withDecompositionRuntime(
-        existing,
-        input,
-        request.workflowId,
-        decompositionManifestValidator,
-        decompositionManifestFileStore,
+        DecompositionRuntimeWriteArgs(
+          existing = existing,
+          input = input,
+          workflowId = request.workflowId,
+          validator = decompositionManifestValidator,
+          fileStore = decompositionManifestFileStore,
+          repoRoot = repositoryRoot.path,
+          manifestWriter = decompositionManifestWriter,
+        ),
       )
       val effectiveInput = runtimeInput.input.withGoalObservabilityArtifacts(
         existing = existing,
         workflowId = request.workflowId,
         validator = goalObservabilityEventValidator,
         gitOperations = gitOperations,
+        repoRoot = repositoryRoot.path,
       )
       val updatedRecord = engine.updateRecord(family.definition, existing, effectiveInput)
       family.save(unitOfWork.workflowStates, updatedRecord)
@@ -138,11 +141,14 @@ class WorkflowService(
       buildUpdateOk(engine, family.definition, updated, effectiveInput, unitOfWork.dbPath.toString())
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestWriter.writeProjectionFromWorkflowState(
-        Path.of("").toAbsolutePath(),
-        artifactsJson,
-        decompositionManifestValidator,
-        decompositionManifestFileStore,
+      DecompositionManifestProjectionSupport.requireWritten(
+        decompositionManifestWriter.writeProjectionFromWorkflowState(
+          repositoryRoot.path,
+          artifactsJson,
+          decompositionManifestValidator,
+          decompositionManifestFileStore,
+        ),
+        "Workflow update committed durable state but could not write its decomposition manifest projection.",
       )
     }
     return result
@@ -283,6 +289,8 @@ class WorkflowService(
             gitOperations,
             decompositionManifestValidator,
             decompositionManifestFileStore,
+            repositoryRoot.path,
+            decompositionManifestWriter,
           ).continueDecomposedParentByIssueKey(workflowId, unitOfWork, subtaskId)
         projectionArtifactsJson = resolved.projectionArtifactsJson ?: projectionArtifactsJson
         return@transaction resolved.result
@@ -295,17 +303,25 @@ class WorkflowService(
         family,
         record,
         unitOfWork,
-        decompositionManifestValidator,
+        ContinueExistingWorkflowArgs(
+          validator = decompositionManifestValidator,
+          fileStore = decompositionManifestFileStore,
+          repoRoot = repositoryRoot.path,
+          manifestWriter = decompositionManifestWriter,
+        ),
       ).also { continuation ->
         projectionArtifactsJson = continuation.projectionArtifactsJson ?: projectionArtifactsJson
       }.result
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestWriter.writeProjectionFromWorkflowState(
-        Path.of("").toAbsolutePath(),
-        artifactsJson,
-        decompositionManifestValidator,
-        decompositionManifestFileStore,
+      DecompositionManifestProjectionSupport.requireWritten(
+        decompositionManifestWriter.writeProjectionFromWorkflowState(
+          repositoryRoot.path,
+          artifactsJson,
+          decompositionManifestValidator,
+          decompositionManifestFileStore,
+        ),
+        "Workflow continue committed durable state but could not write its decomposition manifest projection.",
       )
     }
     return result

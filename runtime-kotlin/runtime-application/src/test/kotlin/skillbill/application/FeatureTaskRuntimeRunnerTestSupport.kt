@@ -1,10 +1,10 @@
 package skillbill.application
 
 import skillbill.application.featurespec.FeatureSpecPreparationRuntime
-import skillbill.featurespec.FeatureSpecPreparationPolicy
 import skillbill.application.featurespec.FeatureSpecPreparationWriter
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.application.featuretask.ApprovingReviewDriverStub
 import skillbill.application.featuretask.FeatureTaskPhaseSettlementService
 import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
@@ -16,7 +16,6 @@ import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseGates
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
-import skillbill.application.featuretask.ApprovingReviewDriverStub
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
@@ -43,11 +42,11 @@ import skillbill.application.review.SpecIntentProjectionResolver
 import skillbill.application.review.model.ParallelReviewLaneStatus
 import skillbill.application.specsource.SpecSourceResolver
 import skillbill.application.telemetry.LifecycleTelemetryService
-import skillbill.application.workflow.repoRoot
 import skillbill.config.model.RepoLocalConfig
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.featurespec.FeatureSpecPreparationPolicy
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
@@ -794,6 +793,53 @@ private fun resolvedHarnessSupervision(
   supervision: RunnerHarnessSupervision,
 ): RunnerHarnessSupervision = runtimeConfig.diagnostics?.let { supervision.copy(diagnostics = it) } ?: supervision
 
+private fun harnessPhaseRecorder(database: RuntimeFakeDatabaseSessionFactory): FeatureTaskRuntimePhaseRecorder =
+  featureTaskRuntimePhaseRecorder(
+    database,
+    NoopWorkflowSnapshotValidator,
+    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    testHarnessClock,
+  )
+
+private fun harnessGoalContinuationRecorder(
+  database: RuntimeFakeDatabaseSessionFactory,
+): FeatureTaskRuntimeGoalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(
+  database,
+  NoopWorkflowSnapshotValidator,
+  NoopRuntimeDiagnostics,
+  Clock.systemUTC(),
+)
+
+private fun harnessWorkflowParts(database: RuntimeFakeDatabaseSessionFactory): RunnerHarnessWorkflow =
+  RunnerHarnessWorkflow(
+    recorder = harnessPhaseRecorder(database),
+    goalContinuationRecorder = harnessGoalContinuationRecorder(database),
+    decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(
+      database,
+      NoopWorkflowSnapshotValidator,
+    ),
+    runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(
+      database,
+      NoopWorkflowSnapshotValidator,
+    ),
+  )
+
+private fun harnessCrashReconciler(
+  database: DatabaseSessionFactory,
+  supervisor: FeatureTaskRuntimeWorkerSupervisor,
+): FeatureTaskRuntimeCrashReconciler = FeatureTaskRuntimeCrashReconciler(
+  database,
+  supervisor,
+  NoopRuntimeDiagnostics,
+  testHarnessClock,
+)
+
+private fun harnessPhaseSettlement(): FeatureTaskPhaseSettlementService = FeatureTaskPhaseSettlementService(
+  InMemoryFeatureTaskPhaseSettlementRepository(),
+  testHarnessClock,
+)
+
 internal fun runnerHarness(
   runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
   core: RunnerHarnessCore = RunnerHarnessCore(),
@@ -809,22 +855,13 @@ internal fun runnerHarness(
   val specScratchStore = RecordingSpecScratchStore()
   val specStatusWriter = RecordingSpecStatusWriter()
   val database = RuntimeFakeDatabaseSessionFactory(repository)
-  val recorder = featureTaskRuntimePhaseRecorder(
-    database,
-    NoopWorkflowSnapshotValidator,
-    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
-    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
-  )
-  val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator, NoopRuntimeDiagnostics)
-  val decomposeTerminalRecorder =
-    FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
-  val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, NoopWorkflowSnapshotValidator)
+  val workflow = harnessWorkflowParts(database)
   val runner = harnessRunner(
     HarnessRunnerDeps(
       launcher = launcher,
-      recorder = recorder,
-      goalContinuationRecorder = goalContinuationRecorder,
-      runInvariantsStore = runInvariantsStore,
+      recorder = workflow.recorder,
+      goalContinuationRecorder = workflow.goalContinuationRecorder,
+      runInvariantsStore = workflow.runInvariantsStore,
       validator = validator,
       runtimeConfig = runtimeConfig,
       database = database,
@@ -832,7 +869,7 @@ internal fun runnerHarness(
       diagnostics = resolvedSupervision.diagnostics,
       specScratchStore = specScratchStore,
       specStatusWriter = specStatusWriter,
-      decomposeTerminalRecorder = decomposeTerminalRecorder,
+      decomposeTerminalRecorder = workflow.decomposeTerminalRecorder,
     ),
   )
   val captured = mutableListOf<FeatureTaskRuntimeRunEvent>()
@@ -842,12 +879,7 @@ internal fun runnerHarness(
   }
   val runRequest = runnerHarnessRequest(runtimeConfig, agentAssignment, sink)
   val io = RunnerHarnessIo(
-    workflow = RunnerHarnessWorkflow(
-      recorder,
-      goalContinuationRecorder,
-      decomposeTerminalRecorder,
-      runInvariantsStore,
-    ),
+    workflow = workflow,
     repository = repository,
     gitOperations = runtimeConfig.branchSetup.gitOperations,
     specStatusWriter = specStatusWriter,
@@ -911,9 +943,10 @@ private fun harnessRunner(deps: HarnessRunnerDeps): FeatureTaskRuntimeRunner {
           reviewDriver = harnessReviewDriverSyncingPendingVerifyFindings(deps.runtimeConfig.reviewDriver),
         ),
       ),
-      crashReconciler = FeatureTaskRuntimeCrashReconciler(deps.database, deps.crashSupervisor, NoopRuntimeDiagnostics),
-      phaseSettlementService = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
+      crashReconciler = harnessCrashReconciler(deps.database, deps.crashSupervisor),
+      phaseSettlementService = harnessPhaseSettlement(),
       diagnostics = deps.diagnostics,
+      clock = testHarnessClock,
     ),
     AgentActivityStampWriter(deps.database, Clock.systemUTC()),
   )
@@ -967,31 +1000,53 @@ internal fun telemetryRunnerHarness(
   val repository = InMemoryRuntimeWorkflowRepository()
   val lifecycle = RecordingLifecycleTelemetryRepository()
   val database = RuntimeFakeDatabaseSessionFactory(repository, lifecycle)
-  val recorder = featureTaskRuntimePhaseRecorder(
-    database,
-    NoopWorkflowSnapshotValidator,
-    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
-    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+  val workflow = harnessWorkflowParts(database)
+  val runner = telemetryHarnessRunner(
+    launcher = effectiveLauncher,
+    validator = effectiveValidator,
+    runtimeConfig = runtimeConfig,
+    database = database,
+    workflow = workflow,
   )
-  val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator, NoopRuntimeDiagnostics)
-  val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
-  val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, NoopWorkflowSnapshotValidator)
-  val branchSetupRunner = FeatureTaskRuntimeBranchSetupRunner(recorder, runtimeConfig.branchSetup.gitOperations)
+  return TelemetryRunnerHarness(
+    runner,
+    lifecycle,
+    telemetryHarnessRequest(runtimeConfig),
+    database,
+    workflow.recorder,
+  )
+}
+
+private fun telemetryHarnessRunner(
+  launcher: RuntimeRecordingLauncher,
+  validator: FeatureTaskRuntimePhaseOutputValidator,
+  runtimeConfig: RuntimeHarnessConfig,
+  database: RuntimeFakeDatabaseSessionFactory,
+  workflow: RunnerHarnessWorkflow,
+): FeatureTaskRuntimeRunner {
+  val branchSetupRunner = FeatureTaskRuntimeBranchSetupRunner(
+    workflow.recorder,
+    runtimeConfig.branchSetup.gitOperations,
+  )
   val decompositionPlanner =
-    if (runtimeConfig.useRealDecompositionPlanner) testDecompositionPlanner() else noOpDecompositionPlanner()
+    if (runtimeConfig.useRealDecompositionPlanner) {
+      testDecompositionPlanner()
+    } else {
+      noOpDecompositionPlanner()
+    }
   val planningStopper = FeatureTaskRuntimePlanningStopper(
     validator,
     decompositionPlanner,
-    decomposeTerminalRecorder,
+    workflow.decomposeTerminalRecorder,
     NoopRuntimeDiagnostics,
   )
-  val runner = FeatureTaskRuntimeRunner(
+  return FeatureTaskRuntimeRunner(
     FeatureTaskRuntimeRunnerDependencies(
-      subtaskLauncher = effectiveLauncher,
-      recorder = recorder,
-      goalContinuationRecorder = goalContinuationRecorder,
-      runInvariantsStore = runInvariantsStore,
-      outputValidator = effectiveValidator,
+      subtaskLauncher = launcher,
+      recorder = workflow.recorder,
+      goalContinuationRecorder = workflow.goalContinuationRecorder,
+      runInvariantsStore = workflow.runInvariantsStore,
+      outputValidator = validator,
       phaseGates = runtimePhaseGates(
         RuntimePhaseGatesDeps(
           branchSetupRunner = branchSetupRunner,
@@ -1003,20 +1058,19 @@ internal fun telemetryRunnerHarness(
           gitOperations = runtimeConfig.branchSetup.gitOperations,
           sharedEvidenceResolver = runtimeConfig.sharedEvidenceResolver,
           diffResolver = runtimeConfig.diffResolver,
-          recorder = recorder,
+          recorder = workflow.recorder,
           validationGateRunnerOverride = runtimeConfig.validationGateRunner,
           validationGatePlatformManifests = runtimeConfig.validationGatePlatformManifests,
           reviewDriver = harnessReviewDriverSyncingPendingVerifyFindings(runtimeConfig.reviewDriver),
         ),
       ),
-      crashReconciler = FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor, NoopRuntimeDiagnostics),
-      phaseSettlementService = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository()),
+      crashReconciler = harnessCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
+      phaseSettlementService = harnessPhaseSettlement(),
       diagnostics = NoopRuntimeDiagnostics,
+      clock = testHarnessClock,
     ),
     AgentActivityStampWriter(database, Clock.systemUTC()),
   )
-  val request = telemetryHarnessRequest(runtimeConfig)
-  return TelemetryRunnerHarness(runner, lifecycle, request, database, recorder)
 }
 
 private fun noOpDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner = FeatureTaskRuntimeDecompositionPlanner(
@@ -1033,6 +1087,7 @@ private fun noOpDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner =
   preparationWriter = FeatureSpecPreparationWriter(
     decompositionManifestValidator = testDecompositionManifestValidator,
     fileStore = TestDecompositionManifestFileStore,
+    decompositionManifestWriter = testDecompositionManifestWriter,
   ),
 )
 
@@ -1041,6 +1096,7 @@ private fun testDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner =
   preparationWriter = FeatureSpecPreparationWriter(
     decompositionManifestValidator = testDecompositionManifestValidator,
     fileStore = TestDecompositionManifestFileStore,
+    decompositionManifestWriter = testDecompositionManifestWriter,
   ),
 )
 

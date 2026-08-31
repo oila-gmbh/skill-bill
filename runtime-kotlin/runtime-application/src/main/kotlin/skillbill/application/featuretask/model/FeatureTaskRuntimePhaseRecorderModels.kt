@@ -2,7 +2,6 @@ package skillbill.application.featuretask.model
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.ProducerOutputEvidenceValidator
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.diagnostics.RuntimeDiagnostics
@@ -11,8 +10,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator
-import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeImplementationAttemptValidator
-import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeQuarantineValidator
+import java.time.Clock
 
 @Inject
 data class FeatureTaskRuntimePhaseRecorderValidators(
@@ -30,4 +28,5 @@ data class FeatureTaskRuntimePhaseRecorderDeps(
   val workflowSnapshotValidator: WorkflowSnapshotValidator,
   val validators: FeatureTaskRuntimePhaseRecorderValidators,
   val diagnostics: RuntimeDiagnostics,
+  val clock: Clock,
 )

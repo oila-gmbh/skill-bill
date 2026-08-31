@@ -13,6 +13,7 @@ import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
 import java.nio.file.Path
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 
@@ -22,6 +23,7 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
   private val goalObservabilityEventValidator: GoalObservabilityEventValidator,
   private val blockWrites: WorkflowGoalRunnerBlockWrites,
   private val terminalPersistence: WorkflowGoalRunnerOutcomeTerminalPersistence,
+  private val clock: Clock,
 ) {
   fun reconcileAuthoritativeOutcomesInTransaction(
     unitOfWork: UnitOfWork,
@@ -152,7 +154,7 @@ internal class WorkflowGoalRunnerOutcomeReconcile(
 
   private fun candidateIsStale(candidate: GoalContinuationCandidate): Boolean = runCatching {
     candidate.outcome?.status?.let { return@runCatching it != GoalRunnerTerminalStatus.COMPLETE }
-    val now = Instant.now()
+    val now = clock.instant()
     val window = STALENESS_EVIDENCE_WINDOW
     val liveness = candidateLivenessInstants(candidate)
     val recent = liveness.any { signal -> Duration.between(signal, now).let { !it.isNegative && it <= window } }

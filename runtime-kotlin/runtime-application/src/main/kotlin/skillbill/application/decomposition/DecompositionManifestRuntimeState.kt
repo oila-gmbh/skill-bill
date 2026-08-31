@@ -2,7 +2,6 @@ package skillbill.application.decomposition
 
 import skillbill.application.workflow.isActiveGoalRuntime
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
@@ -11,6 +10,13 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
+
+internal fun archivedDecompositionManifest(repoRoot: Path, manifestPath: Path): Boolean {
+  val relative = runCatching { repoRoot.normalize().relativize(manifestPath.normalize()).toString() }
+    .getOrDefault(manifestPath.toString())
+    .replace('\\', '/')
+  return relative.startsWith(".feature-specs/done/")
+}
 
 internal fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
   JsonSupport.parseObjectOrNull(existingArtifactsJson)
@@ -50,6 +56,7 @@ internal fun findMatchingDecompositionManifests(
   return manifestFiles
     .asSequence()
     .sortedBy { path -> path.toString() }
+    .filterNot { path -> archivedDecompositionManifest(repoRoot, path) }
     .filter { path ->
       val relativePath = runCatching { repoRoot.relativize(path).toString() }
         .getOrElse { path.toString() }

@@ -1,17 +1,14 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
-import skillbill.application.review.ParallelCodeReviewRunner
-import skillbill.infrastructure.fs.FileSystemCheckedOutBranchSource
-import skillbill.model.OptionalCallbacks
-
-import skillbill.featurespec.FeatureSpecPreparationPolicy
+import skillbill.SkillBillVersion
 import skillbill.application.goalrunner.planning.model.GoalPlanningBurstSchedule
+import skillbill.application.review.ParallelCodeReviewRunner
+import skillbill.featurespec.FeatureSpecPreparationPolicy
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationIntake
-import skillbill.review.ParallelReviewFindingParser
-import skillbill.review.model.ParallelReviewParseResult
-import skillbill.SkillBillVersion
+import skillbill.infrastructure.fs.FileSystemCheckedOutBranchSource
+import skillbill.model.OptionalCallbacks
 
 internal interface RuntimeComponentProvides10 {
   @Provides @JvmSynthetic
@@ -49,10 +46,4 @@ internal interface RuntimeComponentProvides10 {
   @Provides @JvmSynthetic
   fun featureSpecPreparationCore(): (FeatureSpecPreparationIntake) -> FeatureSpecPreparationDecision =
     FeatureSpecPreparationPolicy::prepare
-
-  @Provides @JvmSynthetic
-  fun parallelReviewParseRegister(): (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse
-
-  @Provides @JvmSynthetic
-  fun producerOutputEvidenceValidator() = RuntimeComponentBindingsB5.producerOutputEvidenceValidator()
 }

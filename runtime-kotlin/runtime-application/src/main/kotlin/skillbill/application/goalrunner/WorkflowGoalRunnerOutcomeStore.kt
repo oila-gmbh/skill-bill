@@ -25,6 +25,8 @@ class WorkflowGoalRunnerOutcomeStore private constructor(
         workerSupervisor = deps.workerSupervisor,
         decompositionManifestValidator = deps.decompositionManifestValidator,
         decompositionManifestFileStore = deps.decompositionManifestFileStore,
+        clock = deps.clock,
+        decompositionManifestWriter = deps.decompositionManifestWriter,
       ),
     ),
   )

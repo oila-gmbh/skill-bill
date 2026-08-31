@@ -24,7 +24,6 @@ import skillbill.application.review.model.UsageValidationException
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.application.review.sparseReviewPack
-import skillbill.application.workflow.repoRoot
 import skillbill.config.model.RepoLocalConfig
 import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.model.InstallAgent
@@ -44,8 +43,6 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
@@ -60,6 +57,8 @@ import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -1468,6 +1467,7 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
       sharedEvidenceLocatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
       registerParse = config.registerParse,
       diagnostics = NoopRuntimeDiagnostics,
+      clock = testHarnessClock,
     ),
     AgentActivityStampWriter(config.database, Clock.systemUTC()),
   )

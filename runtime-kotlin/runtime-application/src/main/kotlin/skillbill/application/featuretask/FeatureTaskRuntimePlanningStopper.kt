@@ -7,9 +7,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePlanningStopDec
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.workflow.repoRoot
 import skillbill.error.SkillBillRuntimeException
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator

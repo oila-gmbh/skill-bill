@@ -7,6 +7,10 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.process.DaemonThreadPort
+import skillbill.ports.process.IdentifierGeneratorPort
+import skillbill.ports.process.ShutdownHookPort
+import skillbill.ports.process.ShutdownHookRegistration
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
@@ -30,11 +34,7 @@ class GoalRunnerExecutionCoordinatorTest {
   @Test
   fun `confirmed dead parent lease is reclaimed with a new generation`() {
     val store = InMemoryExecutionLeaseStore(lease(generation = 1, ownerToken = "old-owner"))
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(
-      manifestStore = store,
-      supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning),
-      clock = fixedClock(),
-    )
+    val coordinator = testCoordinator(store, FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning))
 
     val result = coordinator.runOwned("parent-1", null) {
       assertEquals(2, requireNotNull(store.executionLeaseValue).generation)
@@ -55,11 +55,7 @@ class GoalRunnerExecutionCoordinatorTest {
       ),
     )
     val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(
-      manifestStore = store,
-      supervisor = supervisor,
-      clock = fixedClock(),
-    )
+    val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
       coordinator.runOwned("parent-1", null) { error("the second run must not enter the goal body") }
@@ -79,11 +75,7 @@ class GoalRunnerExecutionCoordinatorTest {
       ),
     )
     val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(
-      manifestStore = store,
-      supervisor = supervisor,
-      clock = fixedClock(),
-    )
+    val coordinator = testCoordinator(store, supervisor)
 
     val result = coordinator.runOwned("parent-1", null) {
       assertEquals(2, requireNotNull(store.executionLeaseValue).generation)
@@ -109,11 +101,7 @@ class GoalRunnerExecutionCoordinatorTest {
       FeatureTaskRuntimeProcessInspection.ExactLive,
       markNotRunningAfterAwait = false,
     )
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(
-      manifestStore = store,
-      supervisor = supervisor,
-      clock = fixedClock(),
-    )
+    val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
       coordinator.runOwned("parent-1", null) { error("must not reclaim a still-live peer") }
@@ -136,11 +124,7 @@ class GoalRunnerExecutionCoordinatorTest {
       ),
     )
     val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive, current)
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(
-      manifestStore = store,
-      supervisor = supervisor,
-      clock = fixedClock(),
-    )
+    val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
       coordinator.runOwned("parent-1", null) { error("must not re-enter") }
@@ -155,11 +139,7 @@ class GoalRunnerExecutionCoordinatorTest {
       lease(generation = 1, ownerToken = "live-owner", processBirthToken = "birth-100"),
     )
     val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(
-      manifestStore = store,
-      supervisor = supervisor,
-      clock = fixedClock(),
-    )
+    val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
       coordinator.runOwned("parent-1", null) { error("must not attach") }
@@ -172,7 +152,7 @@ class GoalRunnerExecutionCoordinatorTest {
   fun `a heartbeat tick renews the parent lease while this runner still owns it`() {
     val store = InMemoryExecutionLeaseStore(lease(generation = 1, ownerToken = "old-owner"))
     val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning)
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, supervisor, fixedClock())
+    val coordinator = testCoordinator(store, supervisor)
 
     coordinator.runOwned("parent-1", null) {
       assertEquals(FeatureTaskRuntimeHeartbeatTick.Renewed, supervisor.runHeartbeatTick())
@@ -187,7 +167,7 @@ class GoalRunnerExecutionCoordinatorTest {
   fun `a parent heartbeat tick that lost fencing fails the goal instead of reporting success`() {
     val store = InMemoryExecutionLeaseStore(lease(generation = 1, ownerToken = "old-owner"))
     val supervisor = FakeGoalSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning)
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, supervisor, fixedClock())
+    val coordinator = testCoordinator(store, supervisor)
 
     val failure = assertFailsWith<GoalRunnerExecutionAlreadyRunningException> {
       coordinator.runOwned("parent-1", null) {
@@ -206,7 +186,7 @@ class GoalRunnerShutdownHookTest {
   @Test
   fun `the hook records a runner interruption with the injected clock in one write`() {
     val store = InMemoryExecutionLeaseStore(null)
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+    val coordinator = testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
 
     coordinator.recordInterruption("parent-1", null)
 
@@ -221,7 +201,7 @@ class GoalRunnerShutdownHookTest {
   @Test
   fun `an interruption reason is distinguishable from an operator stop`() {
     val store = InMemoryExecutionLeaseStore(null)
-    DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+    testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
       .recordInterruption("parent-1", null)
 
     assertEquals("runner_interrupted", store.controlStateValue.pauseReason)
@@ -239,7 +219,7 @@ class GoalRunnerShutdownHookTest {
       pausedAt = "2026-08-02T09:00:00Z",
     )
 
-    DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+    testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
       .recordInterruption("parent-1", null)
 
     assertEquals("operator_stop", store.controlStateValue.pauseReason)
@@ -250,7 +230,7 @@ class GoalRunnerShutdownHookTest {
   fun `a blocked durable write cannot stall shutdown past the budget`() {
     val store = InMemoryExecutionLeaseStore(null)
     store.pauseNowBlocksForever = true
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+    val coordinator = testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
 
     val elapsed = measureTimeMillis { coordinator.recordInterruption("parent-1", null) }
 
@@ -261,7 +241,7 @@ class GoalRunnerShutdownHookTest {
   fun `a throwing durable write never escapes the hook`() {
     val store = InMemoryExecutionLeaseStore(null)
     store.pauseNowFailure = { error("database is gone") }
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+    val coordinator = testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
 
     coordinator.recordInterruption("parent-1", null)
 
@@ -272,7 +252,7 @@ class GoalRunnerShutdownHookTest {
   @Test
   fun `a normally completed owned run leaves no hook behind to write on exit`() {
     val store = InMemoryExecutionLeaseStore(null)
-    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+    val coordinator = testCoordinator(store, FakeGoalSupervisor(NOT_RUNNING))
 
     coordinator.runOwned("parent-1", null) { "done" }
 
@@ -414,26 +394,56 @@ private class FakeGoalSupervisor(
   override fun pause(durationMillis: Long) = Unit
 }
 
+private fun testCoordinator(
+  store: InMemoryExecutionLeaseStore,
+  supervisor: FakeGoalSupervisor,
+  clock: Clock = fixedClock(),
+) = DefaultGoalRunnerExecutionCoordinator(
+  manifestStore = store,
+  supervisor = supervisor,
+  clock = clock,
+  shutdownHookPort = FakeShutdownHookPort,
+  daemonThreadPort = FakeDaemonThreadPort,
+  identifierGeneratorPort = FakeIdentifierGeneratorPort,
+)
+
+private object FakeShutdownHookPort : ShutdownHookPort {
+  override fun register(action: () -> Unit): ShutdownHookRegistration = object : ShutdownHookRegistration {
+    override fun unregister(): Boolean = true
+  }
+}
+
+private object FakeDaemonThreadPort : DaemonThreadPort {
+  override fun runWithJoinBudget(action: () -> Unit, joinBudgetMillis: Long) {
+    val worker = Thread(action)
+    worker.isDaemon = true
+    worker.start()
+    worker.join(joinBudgetMillis.coerceAtLeast(1L))
+    if (worker.isAlive) {
+      worker.interrupt()
+      worker.join(1_000L)
+    }
+  }
+}
+
+private object FakeIdentifierGeneratorPort : IdentifierGeneratorPort {
+  override fun randomToken(): String = "test-owner-token"
+}
+
 private fun fixedClock(): Clock = Clock.fixed(Instant.parse("2026-08-02T10:00:00Z"), ZoneOffset.UTC)
 
-private fun recentBirthToken(): String =
-  Instant.parse("2026-08-02T09:59:59Z").toEpochMilli().toString()
+private fun recentBirthToken(): String = Instant.parse("2026-08-02T09:59:59Z").toEpochMilli().toString()
 
-private fun staleBirthToken(): String =
-  Instant.parse("2026-08-02T09:54:00Z").toEpochMilli().toString()
+private fun staleBirthToken(): String = Instant.parse("2026-08-02T09:54:00Z").toEpochMilli().toString()
 
-private fun lease(
-  generation: Long,
-  ownerToken: String,
-  pid: Long = 100,
-  processBirthToken: String = "birth-100",
-) = GoalRunnerExecutionLease(
-  generation = generation,
-  ownerToken = ownerToken,
-  hostIdentity = "host",
-  bootIdentity = "boot",
-  pid = pid,
-  processBirthToken = processBirthToken,
-  heartbeatAt = "2026-08-02T09:59:00Z",
-  expiresAt = "2026-08-02T09:59:30Z",
-)
+private fun lease(generation: Long, ownerToken: String, pid: Long = 100, processBirthToken: String = "birth-100") =
+  GoalRunnerExecutionLease(
+    generation = generation,
+    ownerToken = ownerToken,
+    hostIdentity = "host",
+    bootIdentity = "boot",
+    pid = pid,
+    processBirthToken = processBirthToken,
+    heartbeatAt = "2026-08-02T09:59:00Z",
+    expiresAt = "2026-08-02T09:59:30Z",
+  )

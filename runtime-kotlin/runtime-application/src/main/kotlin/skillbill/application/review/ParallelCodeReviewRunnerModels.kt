@@ -39,6 +39,7 @@ import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
 import skillbill.review.model.ReviewStageResumeReport
 import skillbill.scaffold.model.PlatformManifest
+import java.time.Clock
 
 internal data class ParallelCodeReviewRunnerPlanningDeps(
   val diffResolver: DiffResolverPort,
@@ -51,6 +52,7 @@ internal data class ParallelCodeReviewRunnerPlanningDeps(
   val specIntentProjectionResolver: SpecIntentProjectionResolver,
   val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
   val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning,
+  val clock: Clock,
 )
 
 internal data class ParallelCodeReviewRunnerLaneLaunchDeps(

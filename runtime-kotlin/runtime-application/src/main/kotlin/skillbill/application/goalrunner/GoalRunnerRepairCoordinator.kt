@@ -9,6 +9,7 @@ import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairResult
 import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
 import skillbill.application.goalrunner.planning.goalPlanningHardResetRemedy
+import skillbill.model.RepositoryRoot
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
@@ -19,9 +20,10 @@ internal class GoalRunnerRepairCoordinator(
   private val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
   private val childRepairStore: GoalRunnerChildRepairStore,
+  private val repositoryRoot: RepositoryRoot,
 ) {
   fun repair(request: GoalRunnerRepairRequest): GoalRunnerRepairResult {
-    val repoRoot = request.repoRoot ?: Path.of("").toAbsolutePath().normalize()
+    val repoRoot = request.repoRoot ?: repositoryRoot.path
     val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot)
       ?: return notFound(request.issueKey)
     manifestStore.bindRepositoryIdentity(

@@ -5,7 +5,6 @@ import skillbill.application.featuretask.validation.model.ValidationGateAgentTri
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition

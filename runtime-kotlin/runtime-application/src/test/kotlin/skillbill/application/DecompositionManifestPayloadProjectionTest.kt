@@ -4,7 +4,6 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.workflow.model.DecompositionManifestWriteRequest
-import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.toWireMap

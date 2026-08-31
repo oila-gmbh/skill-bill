@@ -129,6 +129,7 @@ internal fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
   workflowId: String,
   validator: GoalObservabilityEventValidator,
   gitOperations: WorkflowGitOperations,
+  repoRoot: Path,
 ): WorkflowUpdateInput {
   val patch = artifactsPatch
   return if (patch?.containsKey("progress_event") != true) {
@@ -145,7 +146,7 @@ internal fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
         workflowId = workflowId,
         workflowStatus = workflowStatus,
         currentStepId = currentStepId,
-        worktreeActivity = gitOperations.worktreeActivity(Path.of("").toAbsolutePath().normalize())
+        worktreeActivity = gitOperations.worktreeActivity(repoRoot.normalize())
           .takeIf { activity -> activity.ok }
           ?.let { activity ->
             GoalObservabilityArtifacts.GoalObservabilityWorktreeActivity(

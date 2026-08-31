@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.repositoryOwnedPaths
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition

@@ -29,6 +29,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
     val coordinator = FeatureTaskRuntimeWorkerCoordinator(
       BumpUpdatedAtAfterReadDatabase(repository),
       FakeWorkerSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning),
+      testHarnessClock,
     )
 
     coordinator.runOwned(WORKFLOW_ID, null) {
@@ -47,6 +48,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
     val coordinator = FeatureTaskRuntimeWorkerCoordinator(
       RuntimeFakeDatabaseSessionFactory(repository),
       FakeWorkerSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning),
+      testHarnessClock,
     )
 
     coordinator.runOwned(WORKFLOW_ID, null) {
@@ -63,7 +65,11 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
     val repository = InMemoryRuntimeWorkflowRepository()
     repository.seedWorkerOwnership(ownership())
     val supervisor = FakeWorkerSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive)
-    val coordinator = FeatureTaskRuntimeWorkerCoordinator(RuntimeFakeDatabaseSessionFactory(repository), supervisor)
+    val coordinator = FeatureTaskRuntimeWorkerCoordinator(
+      RuntimeFakeDatabaseSessionFactory(repository),
+      supervisor,
+      testHarnessClock,
+    )
 
     coordinator.runOwned(WORKFLOW_ID, null) { Unit }
 
@@ -78,7 +84,11 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
     val supervisor = FakeWorkerSupervisor(
       FeatureTaskRuntimeProcessInspection.OwnershipMismatch("Worker PID was reused by a different process."),
     )
-    val coordinator = FeatureTaskRuntimeWorkerCoordinator(RuntimeFakeDatabaseSessionFactory(repository), supervisor)
+    val coordinator = FeatureTaskRuntimeWorkerCoordinator(
+      RuntimeFakeDatabaseSessionFactory(repository),
+      supervisor,
+      testHarnessClock,
+    )
 
     val failure = assertFailsWith<IllegalStateException> { coordinator.runOwned(WORKFLOW_ID, null) { Unit } }
 
@@ -93,7 +103,11 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
     val supervisor = FakeWorkerSupervisor(
       FeatureTaskRuntimeProcessInspection.OwnershipMismatch("Worker ownership belongs to a different host."),
     )
-    val coordinator = FeatureTaskRuntimeWorkerCoordinator(RuntimeFakeDatabaseSessionFactory(repository), supervisor)
+    val coordinator = FeatureTaskRuntimeWorkerCoordinator(
+      RuntimeFakeDatabaseSessionFactory(repository),
+      supervisor,
+      testHarnessClock,
+    )
 
     coordinator.runOwned(WORKFLOW_ID, null) {
       val replacement = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
@@ -114,6 +128,7 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
     val coordinator = FeatureTaskRuntimeWorkerCoordinator(
       RuntimeFakeDatabaseSessionFactory(repository),
       FakeWorkerSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning),
+      testHarnessClock,
     )
 
     val failure = assertFailsWith<IllegalStateException> { coordinator.runOwned(WORKFLOW_ID, null) { Unit } }
@@ -126,7 +141,11 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
     val repository = InMemoryRuntimeWorkflowRepository()
     repository.seedWorkerOwnership(ownership())
     val supervisor = FakeWorkerSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning)
-    val coordinator = FeatureTaskRuntimeWorkerCoordinator(RuntimeFakeDatabaseSessionFactory(repository), supervisor)
+    val coordinator = FeatureTaskRuntimeWorkerCoordinator(
+      RuntimeFakeDatabaseSessionFactory(repository),
+      supervisor,
+      testHarnessClock,
+    )
 
     coordinator.runOwned(WORKFLOW_ID, null) {
       val owned = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
@@ -145,7 +164,11 @@ class FeatureTaskRuntimeWorkerCoordinatorTest {
     val repository = InMemoryRuntimeWorkflowRepository()
     repository.seedWorkerOwnership(ownership())
     val supervisor = FakeWorkerSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning)
-    val coordinator = FeatureTaskRuntimeWorkerCoordinator(RuntimeFakeDatabaseSessionFactory(repository), supervisor)
+    val coordinator = FeatureTaskRuntimeWorkerCoordinator(
+      RuntimeFakeDatabaseSessionFactory(repository),
+      supervisor,
+      testHarnessClock,
+    )
 
     val failure = assertFailsWith<IllegalStateException> {
       coordinator.runOwned(WORKFLOW_ID, null) {

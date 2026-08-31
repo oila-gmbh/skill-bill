@@ -10,20 +10,12 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import java.time.Instant
+import java.time.Clock
 
-/**
- * SKILL-64 Subtask 3 (AC10, AC11): isolates the durable side effects for the
- * append-only attempt/event ledger. Timestamps are minted here (the
- * adapter/effect layer), keeping the domain models effect-free. Writes are
- * best-effort: a failure to record never fails an otherwise valid goal run.
- *
- * The ledger sequence space is distinct from the goal_event and
- * goal_observability sequence spaces.
- */
 internal class GoalRunnerLedgerRecorder(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val request: GoalRunnerRunRequest,
+  private val clock: Clock,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   // SKILL-64 Subtask 3 (F-D01): the durable attempt ledger is append-only
@@ -64,7 +56,7 @@ internal class GoalRunnerLedgerRecorder(
     val entry = GoalAttemptLedgerEntry(
       action = context.action,
       sequenceNumber = ledgerSequence++,
-      timestamp = Instant.now().toString(),
+      timestamp = clock.instant().toString(),
       issueKey = context.issueKey.takeIf(String::isNotBlank),
       subtaskId = context.subtaskId.takeIf { it > 0 },
       previousWorkflowId = targetWorkflowId,

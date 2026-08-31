@@ -21,7 +21,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendImplementationAttempt
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire
-import java.time.Instant
 
 internal fun FeatureTaskRuntimePhaseStateRecorder.implementationAttemptsFrom(
   artifacts: Map<String, Any?>,
@@ -51,7 +50,7 @@ internal fun FeatureTaskRuntimePhaseStateRecorder.implementationAttemptPatch(
       attemptNumber = request.attemptCount,
       agentId = request.resolvedAgentId,
       status = attemptStatus,
-      recordedAt = Instant.now().toString(),
+      recordedAt = clock.instant().toString(),
       value = value,
       loopId = request.loopId,
       edgeIteration = request.edgeIteration,
@@ -105,13 +104,13 @@ internal fun FeatureTaskRuntimePhaseStateRecorder.recordCompletedPhaseWrite(
   val artifacts = decodeArtifacts(record.artifactsJson)
   val existingRecords = phaseRecordsFrom(artifacts)
   val updatedRecords = LinkedHashMap(existingRecords).apply {
-    put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString()))
+    put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], clock.instant().toString()))
   }
   val ledger = phaseLedgerFrom(artifacts)
   val completion = FeatureTaskRuntimePhaseLedgerEntry(
     action = COMPLETE,
     sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
-    timestamp = Instant.now().toString(),
+    timestamp = clock.instant().toString(),
     phaseId = request.phaseId,
     attemptCount = request.attemptCount,
     resolvedAgentId = request.resolvedAgentId,

@@ -1,19 +1,18 @@
 package skillbill.application
 
-import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
-
-import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
-
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -187,12 +186,16 @@ class WorkflowCompactContinuationTest {
 }
 
 private fun newService(): WorkflowService = WorkflowService(
-  database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-  gitOperations = NoopWorkflowGitOperations,
-  decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
-  workflowSnapshotValidator = testWorkflowSnapshotValidator,
-  decompositionManifestValidator = testDecompositionManifestValidator,
-  goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+  WorkflowServiceDeps(
+    database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+    gitOperations = NoopWorkflowGitOperations,
+    decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+    workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    decompositionManifestValidator = testDecompositionManifestValidator,
+    decompositionManifestWriter = testDecompositionManifestWriter,
+    repositoryRoot = testRepositoryRoot,
+    goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+  ),
 )
 
 /**

@@ -25,11 +25,13 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import java.time.Clock
 
 internal class GoalRunnerLaunchReconciler(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val activityStampWriter: AgentActivityStampWriter,
+  private val clock: Clock,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   fun subtaskLaunchRequest(args: SubtaskLaunchRequestArgs): GoalRunnerSubtaskLaunchRequest {
@@ -54,6 +56,7 @@ internal class GoalRunnerLaunchReconciler(
       request = request,
       resolveWorkflowId = { tickReader.progressState()?.subtask?.workflowId?.takeIf(String::isNotBlank) },
       watermarkSeed = progressWatermark,
+      clock = clock,
       diagnostics = diagnostics,
     )
     val goalContinuation = goalContinuationContext(issueKey, subtaskId, request, assignedWorkflowId, reviewBaseline)

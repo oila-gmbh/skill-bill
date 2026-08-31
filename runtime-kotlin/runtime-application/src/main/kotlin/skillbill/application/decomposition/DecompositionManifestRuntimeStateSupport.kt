@@ -2,7 +2,6 @@ package skillbill.application.decomposition
 
 import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.workflow.repoRoot
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest

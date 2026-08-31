@@ -7,10 +7,10 @@ import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecor
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseGates
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
+import java.time.Clock
 
 @Inject
 data class FeatureTaskRuntimeRunnerDependencies(
@@ -23,4 +23,5 @@ data class FeatureTaskRuntimeRunnerDependencies(
   val crashReconciler: FeatureTaskRuntimeCrashReconciler,
   val phaseSettlementService: FeatureTaskPhaseSettlementService,
   val diagnostics: RuntimeDiagnostics,
+  val clock: Clock,
 )

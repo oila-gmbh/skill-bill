@@ -16,7 +16,6 @@ import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.io.IOException
-import java.nio.file.Path
 import java.time.Instant
 
 internal fun GoalRunnerStatusProjectionAssembler.statusProjectionExtras(
@@ -87,7 +86,7 @@ internal fun GoalRunnerStatusProjectionAssembler.alignedPlanningStatus(
         parentWorkflowId = loadedState.parentWorkflowId,
         issueKey = manifest.issueKey,
         manifest = manifest,
-        repoRoot = request.repoRoot ?: Path.of("").toAbsolutePath().normalize(),
+        repoRoot = request.repoRoot ?: repositoryRoot.path,
         dbPathOverride = request.dbPathOverride,
       ),
     )

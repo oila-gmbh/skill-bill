@@ -10,13 +10,14 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeImplementationAttemptValidator
 import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeQuarantineValidator
+import java.time.Clock
 
 fun featureTaskRuntimePhaseRecorder(
   database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
   handoffEnvelopeValidator: FeatureTaskRuntimeHandoffEnvelopeValidator,
   handoffFoundationValidator: FeatureTaskRuntimeHandoffFoundationValidator,
-  diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  clock: Clock,
 ): FeatureTaskRuntimePhaseRecorder = featureTaskRuntimePhaseRecorder(
   database = database,
   workflowSnapshotValidator = workflowSnapshotValidator,
@@ -28,13 +29,14 @@ fun featureTaskRuntimePhaseRecorder(
     rejectedOutputDiagnosticMetadataValidator = { },
     producerOutputEvidenceValidator = { },
   ),
-  diagnostics = diagnostics,
+  clock = clock,
 )
 
 fun featureTaskRuntimePhaseRecorder(
   database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
   validators: FeatureTaskRuntimePhaseRecorderValidators,
+  clock: Clock,
   diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
   FeatureTaskRuntimePhaseRecorderDeps(
@@ -42,5 +44,6 @@ fun featureTaskRuntimePhaseRecorder(
     workflowSnapshotValidator = workflowSnapshotValidator,
     validators = validators,
     diagnostics = diagnostics,
+    clock = clock,
   ),
 )

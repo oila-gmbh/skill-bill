@@ -36,6 +36,14 @@ internal class GoalRunnerControlCoordinator(
   fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
     database.read(dbPathOverride) { unitOfWork -> unitOfWork.goalRunnerControls.controlState(parentWorkflowId) }
 
+  fun persistControlState(
+    parentWorkflowId: String,
+    state: GoalRunnerControlState,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState = database.transaction(dbPathOverride) { unitOfWork ->
+    unitOfWork.goalRunnerControls.persistControlState(parentWorkflowId, state)
+  }
+
   fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? =
     database.read(dbPathOverride) { unitOfWork -> unitOfWork.goalRunnerControls.executionLease(parentWorkflowId) }
 

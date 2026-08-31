@@ -8,10 +8,11 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import java.time.Instant
+import java.time.Clock
 
 internal class WorkflowGoalRunnerStaleBlockedOutcomeDisplacement(
   private val engine: WorkflowEngine,
+  private val clock: Clock,
 ) {
   fun displaceIfPresent(
     workflowStates: WorkflowStateRepository,
@@ -76,7 +77,7 @@ internal class WorkflowGoalRunnerStaleBlockedOutcomeDisplacement(
                   "derived_blocked_reason" to derived?.blockedReason,
                   "stored_blocked_reason" to context.stored.blockedReason,
                 ),
-                "displaced_at" to Instant.now().toString(),
+                "displaced_at" to clock.instant().toString(),
               ),
             )
           }

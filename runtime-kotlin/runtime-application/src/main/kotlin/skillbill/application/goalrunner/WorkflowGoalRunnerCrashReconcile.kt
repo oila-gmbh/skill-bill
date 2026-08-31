@@ -1,18 +1,17 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.goalrunner.model.CrashReconcileExpiredWorkerRequest
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.workflow.WorkflowStateRepository
+import java.time.Clock
 import java.time.Instant
 
 internal fun crashReconcileExpiredWorkerToResumable(
   request: CrashReconcileExpiredWorkerRequest,
+  clock: Clock,
 ): GoalRunnerStoredOutcome? {
-  val now = Instant.now()
+  val now = clock.instant()
   if (!runCatching { Instant.parse(request.ownership.expiresAt).isBefore(now) }.getOrDefault(false)) return null
   if (!FeatureTaskRuntimeCrashLiveness.isConfirmedDead(request.workerSupervisor.inspect(request.ownership))) return null
   val reconciled = request.workflowStates.reconcileFeatureTaskRuntimeCrashedWorker(
@@ -30,31 +29,5 @@ internal fun crashReconcileExpiredWorkerToResumable(
     blockedReason = null,
     lastResumableStep = request.row.currentStepId.ifBlank { "preplan" },
     suppressPr = request.continuation.suppressPr,
-  )
-}
-
-internal fun crashReconcileToResumable(
-  workflowStates: WorkflowStateRepository,
-  workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
-  workflowId: String,
-  issueKey: String,
-  subtaskId: Int,
-): GoalRunnerStoredOutcome? {
-  val ownership = workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
-  val row = ownership?.let { workflowStates.getFeatureTaskRuntimeWorkflow(workflowId) }
-  val continuation = row
-    ?.takeIf { it.workflowStatus == "running" }
-    ?.let { goalContinuation(decodeArtifacts(it.artifactsJson)) }
-    ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
-  if (ownership == null || row == null || continuation == null) return null
-  return crashReconcileExpiredWorkerToResumable(
-    CrashReconcileExpiredWorkerRequest(
-      workflowStates = workflowStates,
-      workerSupervisor = workerSupervisor,
-      workflowId = workflowId,
-      continuation = continuation,
-      ownership = ownership,
-      row = row,
-    ),
   )
 }

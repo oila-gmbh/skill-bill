@@ -2,7 +2,6 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
@@ -18,12 +17,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFi
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Path
+import java.time.Clock
 
 @Inject
 class FeatureTaskRuntimeGoalContinuationRecorder(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val diagnostics: RuntimeDiagnostics,
+  private val clock: Clock,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val patcher = FeatureTaskRuntimeGoalContinuationArtifactPatcher(engine)
@@ -35,7 +36,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     patcher,
     reviewPassRecorder::persistGoalReviewInput,
   )
-  internal val remediationReconciler = FeatureTaskRuntimeRemediationBaseReconciler(database, patcher)
+  internal val remediationReconciler = FeatureTaskRuntimeRemediationBaseReconciler(database, patcher, clock)
 
   internal fun recordGoalContinuationState(
     request: GoalContinuationStateRecordRequest,

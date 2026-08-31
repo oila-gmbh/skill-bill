@@ -48,12 +48,14 @@ internal fun createWorkflowGoalRunnerOutcomeStoreBridges(
     engine,
     args.gitOperations,
     args.decompositionManifestValidator,
+    args.clock,
   )
   val blockWrites = WorkflowGoalRunnerBlockWrites(engine)
   val terminalPersistence = WorkflowGoalRunnerOutcomeTerminalPersistence(
     engine,
     args.gitOperations,
     args.workerSupervisor,
+    args.clock,
   )
   val outcomeReconcile = WorkflowGoalRunnerOutcomeReconcile(
     engine,
@@ -61,6 +63,7 @@ internal fun createWorkflowGoalRunnerOutcomeStoreBridges(
     args.goalObservabilityEventValidator,
     blockWrites,
     terminalPersistence,
+    args.clock,
   )
   val progressRecording = WorkflowGoalRunnerProgressRecording(
     args.database,
@@ -81,6 +84,7 @@ internal fun createWorkflowGoalRunnerOutcomeStoreBridges(
       terminalPersistence = terminalPersistence,
       progressRecording = progressRecording,
       childRepair = childRepair,
+      decompositionManifestWriter = args.decompositionManifestWriter,
     ),
   )
 }
@@ -109,6 +113,7 @@ private fun workflowGoalRunnerOutcomeStoreBridges(
     args.childRepair,
     args.decompositionManifestValidator,
     args.decompositionManifestFileStore,
+    args.decompositionManifestWriter,
   )
   return WorkflowGoalRunnerOutcomeStoreBridges(
     workflow = workflowBridge,
@@ -122,6 +127,7 @@ internal class WorkflowGoalRunnerChildRepairBridge(
   private val childRepair: GoalRunnerChildRepairOperations,
   private val decompositionManifestValidator: DecompositionManifestValidator?,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
+  private val decompositionManifestWriter: DecompositionManifestWriter,
 ) : GoalRunnerChildRepairStore {
   override fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis =
     database.read(request.dbPathOverride) { unitOfWork ->
@@ -150,7 +156,7 @@ internal class WorkflowGoalRunnerChildRepairBridge(
     result.manifestProjectionArtifactsJson?.let { artifactsJson ->
       val validator = decompositionManifestValidator ?: return@let
       checkNotNull(
-        DecompositionManifestWriter.writeProjectionFromWorkflowState(
+        decompositionManifestWriter.writeProjectionFromWorkflowState(
           repoRoot = request.repoRoot,
           artifactsJson = artifactsJson,
           validator = validator,

@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.gitops.captureIndexState
 import skillbill.ports.workflow.gitops.stagePaths
 

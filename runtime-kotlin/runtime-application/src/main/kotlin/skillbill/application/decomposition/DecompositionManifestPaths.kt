@@ -1,6 +1,5 @@
 package skillbill.application.decomposition
 
-import skillbill.application.workflow.repoRoot
 import java.nio.file.Path
 
 internal const val DECOMPOSITION_MANIFEST_FILENAME: String = "decomposition-manifest.yaml"

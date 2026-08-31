@@ -10,7 +10,7 @@ import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 import java.nio.file.Path
-import java.time.Instant
+import java.time.Clock
 
 private const val CHECKPOINT_IDENTITY_QUARANTINE_ARTIFACT_KEY: String =
   "feature_task_runtime_checkpoint_identities_quarantine"
@@ -18,6 +18,7 @@ private const val CHECKPOINT_IDENTITY_QUARANTINE_ARTIFACT_KEY: String =
 internal class FeatureTaskRuntimeRemediationBaseReconciler(
   internal val database: DatabaseSessionFactory,
   internal val patcher: FeatureTaskRuntimeGoalContinuationArtifactPatcher,
+  internal val clock: Clock,
 ) {
   fun reconcileRemediationBaseCoherence(
     workflowId: String,
@@ -61,7 +62,7 @@ internal class FeatureTaskRuntimeRemediationBaseReconciler(
             linkedMapOf(
               "workflow_id" to workflowId,
               "rejection_detail" to error.message.orEmpty(),
-              "quarantined_at" to Instant.now().toString(),
+              "quarantined_at" to clock.instant().toString(),
               "rejected_record" to rejected,
             ),
           ),

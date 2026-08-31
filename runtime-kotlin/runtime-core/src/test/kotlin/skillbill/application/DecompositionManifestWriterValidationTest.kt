@@ -31,6 +31,7 @@ import kotlin.test.assertNotNull
 class DecompositionManifestWriterValidationTest {
   private val validator: DecompositionManifestValidator = DecompositionManifestValidatorAdapter()
   private val fileStore = FileSystemDecompositionManifestFileStore()
+  private val writer = DecompositionManifestWriter()
 
   @Test
   fun `workflow update rejects schema invalid durable decomposition runtime`() {
@@ -38,7 +39,7 @@ class DecompositionManifestWriterValidationTest {
     val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
-    val initial = DecompositionManifestWriter.writeIfDecomposed(
+    val initial = writer.writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -52,7 +53,7 @@ class DecompositionManifestWriterValidationTest {
     assertNotNull(initial)
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      DecompositionManifestWriter.writeFromWorkflowUpdate(
+      writer.writeFromWorkflowUpdate(
         DecompositionManifestWorkflowProjectionInput(
           repoRoot = repoRoot,
           existingArtifactsJson = invalidDurableRuntimeArtifactsJson(initial.manifest),
@@ -73,7 +74,7 @@ class DecompositionManifestWriterValidationTest {
     val parentSpecPath = repoRoot.resolve(".feature-specs/SKILL-51-decomposition/spec.md")
     Files.createDirectories(parentSpecPath.parent)
     Files.writeString(parentSpecPath, "# Parent spec\n")
-    val initial = DecompositionManifestWriter.writeIfDecomposed(
+    val initial = writer.writeIfDecomposed(
       DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,
@@ -87,7 +88,7 @@ class DecompositionManifestWriterValidationTest {
     assertNotNull(initial)
 
     val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      DecompositionManifestWriter.writeProjectionFromWorkflowState(
+      writer.writeProjectionFromWorkflowState(
         repoRoot = repoRoot,
         artifactsJson = invalidDurableRuntimeArtifactsJson(initial.manifest),
         validator = validator,

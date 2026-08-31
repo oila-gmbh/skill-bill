@@ -16,7 +16,6 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentiti
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeOwnedPathDigest
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
-import java.time.Instant
 
 internal fun FeatureTaskRuntimePhaseEvidenceRecorder.quarantineEntriesFrom(
   artifacts: Map<String, Any?>,
@@ -53,7 +52,7 @@ internal fun FeatureTaskRuntimePhaseEvidenceRecorder.appendCheckpointIdentityAtC
     ownedPathDigest = featureTaskRuntimeOwnedPathDigest(args.ownedPaths),
     ownedPathCount = args.ownedPaths.filter(String::isNotBlank).distinct().size,
     commitSha = args.commitSha,
-    recordedAt = Instant.now().toString(),
+    recordedAt = clock.instant().toString(),
     loopId = args.loopId,
     parentSha = args.parentSha,
   )

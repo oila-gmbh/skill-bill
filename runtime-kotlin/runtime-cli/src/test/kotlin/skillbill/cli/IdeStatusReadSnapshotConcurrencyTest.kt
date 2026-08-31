@@ -14,6 +14,7 @@ import skillbill.model.EnvironmentContext
 import skillbill.model.RuntimeContext
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
@@ -190,6 +191,7 @@ private class SnapshotFixture(
         workflowSnapshotValidator = NoopSnapshotValidator,
         goalRunnerStatusService = component.goalRunnerStatusService,
         featureTaskRuntimeStatusService = component.featureTaskRuntimeStatusService,
+        diagnostics = NoopRuntimeDiagnostics,
       ),
       ideStatusValidator = NoopIdeStatusValidator,
       branchSource = CheckedOutBranchSource { "feat/SKILL-999-snapshot" },

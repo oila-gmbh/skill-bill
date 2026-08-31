@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.application.workflow.repoRoot
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionContext
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError

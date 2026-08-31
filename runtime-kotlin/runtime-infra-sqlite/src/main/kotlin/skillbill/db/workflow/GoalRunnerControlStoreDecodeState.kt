@@ -23,6 +23,9 @@ internal fun decodeControlState(raw: String): GoalRunnerControlState {
     "current_subtask_id",
     "subtask_active_duration_ms",
     "subtask_active_duration_as_of",
+    "validation_quality_retries_by_subtask",
+    "pending_re_attempt_cause_by_subtask",
+    "pending_causing_loop_entry_by_subtask",
   )
   state.keys.forEach { key ->
     if (key !in allowedKeys) {
@@ -44,5 +47,8 @@ internal fun decodeControlState(raw: String): GoalRunnerControlState {
     currentSubtaskId = state["current_subtask_id"].toPositiveIntOrNull("current_subtask_id"),
     subtaskActiveDurationMs = state.nonNegativeLongOrDefault("subtask_active_duration_ms"),
     subtaskActiveDurationAsOf = state.nullableString("subtask_active_duration_as_of"),
+    validationQualityRetriesBySubtask = state.intIntMap("validation_quality_retries_by_subtask"),
+    pendingReAttemptCauseBySubtask = state.intStringMap("pending_re_attempt_cause_by_subtask"),
+    pendingCausingLoopEntryBySubtask = state.intStringMap("pending_causing_loop_entry_by_subtask"),
   )
 }

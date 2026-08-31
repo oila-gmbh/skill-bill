@@ -1,7 +1,6 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Component
-import skillbill.application.runtime.RuntimeSingleton
 import me.tatarka.inject.annotations.Provides
 import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
@@ -22,6 +21,7 @@ import skillbill.application.learning.LearningService
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.review.ReviewSnapshotPruneService
+import skillbill.application.runtime.RuntimeSingleton
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.McpRegistrationService
 import skillbill.application.scaffold.NativeAgentInstallService
@@ -67,7 +67,8 @@ abstract class RuntimeComponent(
   RuntimeComponentProvides7,
   RuntimeComponentProvides8,
   RuntimeComponentProvides9,
-  RuntimeComponentProvides10 {
+  RuntimeComponentProvides10,
+  RuntimeComponentProvides11 {
   @Provides @JvmSynthetic
   fun runtimeContext(): RuntimeContext = RuntimeComponentBindingsA1.runtimeContext(inputRuntimeContext)
 

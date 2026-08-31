@@ -5,6 +5,7 @@ import skillbill.application.goalrunner.model.WorkflowGoalRunnerManifestStoreDep
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestControlOps
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestLeaseOps
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestLookup
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestPauseOps
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestReviewOps
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestWriteOps
@@ -18,6 +19,7 @@ class WorkflowGoalRunnerManifestStore private constructor(
 ) : GoalRunnerManifestStore,
   GoalRunnerManifestLookup by lookup,
   GoalRunnerManifestLeaseOps by leases,
+  GoalRunnerManifestPauseOps by control,
   GoalRunnerManifestControlOps by control,
   GoalRunnerManifestWriteOps by writes,
   GoalRunnerManifestReviewOps by review {
@@ -32,6 +34,8 @@ class WorkflowGoalRunnerManifestStore private constructor(
         phaseOutputValidator = deps.phaseOutputValidator,
         planningProjectionValidator = deps.planningProjectionValidator,
         clock = deps.clock,
+        decompositionManifestWriter = deps.decompositionManifestWriter,
+        repositoryRoot = deps.repositoryRoot,
       ),
     ),
   )
@@ -63,6 +67,8 @@ class WorkflowGoalRunnerManifestStore private constructor(
           planningProjectionValidator = args.planningProjectionValidator,
           workflowSnapshotValidator = args.workflowSnapshotValidator,
           clock = args.clock,
+          decompositionManifestWriter = args.decompositionManifestWriter,
+          repositoryRoot = args.repositoryRoot,
         ),
       )
       val writes = WorkflowGoalRunnerManifestWriteOpsImpl(ctx)

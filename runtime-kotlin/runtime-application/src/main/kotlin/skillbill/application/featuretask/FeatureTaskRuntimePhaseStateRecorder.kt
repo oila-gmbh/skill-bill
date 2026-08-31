@@ -12,13 +12,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import java.time.Instant
+import java.time.Clock
 
 internal class FeatureTaskRuntimePhaseStateRecorder(
   internal val database: DatabaseSessionFactory,
   internal val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   internal val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
   internal val implementationAttemptValidator: FeatureTaskRuntimeImplementationAttemptValidator,
+  internal val clock: Clock,
 ) : FeatureTaskRuntimePhaseStateApi {
   override fun recordPhaseState(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String?): Boolean =
     database.transaction(dbOverride) { unitOfWork ->
@@ -26,7 +27,7 @@ internal class FeatureTaskRuntimePhaseStateRecorder(
         ?: return@transaction false
       val artifacts = decodeArtifacts(record.artifactsJson)
       val existingRecords = phaseRecordsFrom(artifacts)
-      val now = Instant.now().toString()
+      val now = clock.instant().toString()
       val previous = existingRecords[request.phaseId]
       val phaseRecord = phaseRecordFor(request, previous, now)
       val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }

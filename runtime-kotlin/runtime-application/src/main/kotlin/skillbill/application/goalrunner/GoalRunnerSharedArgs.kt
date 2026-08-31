@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
@@ -12,6 +13,7 @@ import skillbill.application.workflow.WorkflowFamily
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.goalrunner.model.GoalRunnerStopReason
+import skillbill.model.RepositoryRoot
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.db.DatabaseSessionFactory
@@ -57,6 +59,7 @@ internal data class GoalRunnerStatusProjectionAssemblerDeps(
   val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence,
   val diagnostics: RuntimeDiagnostics,
   val runtimeStatusService: FeatureTaskRuntimeStatusService?,
+  val repositoryRoot: RepositoryRoot,
 )
 
 @Inject
@@ -68,6 +71,8 @@ internal data class WorkflowGoalRunnerManifestStoreContextDeps(
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
   val workflowSnapshotValidator: WorkflowSnapshotValidator,
   val clock: Clock,
+  val decompositionManifestWriter: DecompositionManifestWriter,
+  val repositoryRoot: RepositoryRoot,
 )
 
 @Inject
@@ -254,6 +259,8 @@ internal data class CreateWorkflowGoalRunnerOutcomeStoreBridgesArgs(
   val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
   val decompositionManifestValidator: DecompositionManifestValidator?,
   val decompositionManifestFileStore: DecompositionManifestFileStore,
+  val clock: Clock,
+  val decompositionManifestWriter: DecompositionManifestWriter,
 )
 
 internal data class WorkflowGoalRunnerOutcomeStoreBridgesArgs(
@@ -268,6 +275,7 @@ internal data class WorkflowGoalRunnerOutcomeStoreBridgesArgs(
   val terminalPersistence: WorkflowGoalRunnerOutcomeTerminalPersistence,
   val progressRecording: WorkflowGoalRunnerProgressRecording,
   val childRepair: GoalRunnerChildRepairOperations,
+  val decompositionManifestWriter: DecompositionManifestWriter,
 )
 
 internal data class WorkflowGoalRunnerManifestStoreBuildPartsArgs(
@@ -278,4 +286,6 @@ internal data class WorkflowGoalRunnerManifestStoreBuildPartsArgs(
   val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
   val clock: Clock,
+  val decompositionManifestWriter: DecompositionManifestWriter,
+  val repositoryRoot: RepositoryRoot,
 )

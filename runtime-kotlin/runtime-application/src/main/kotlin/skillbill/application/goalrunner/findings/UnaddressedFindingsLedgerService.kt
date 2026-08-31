@@ -10,6 +10,7 @@ import skillbill.goalrunner.model.UNADDRESSED_FINDING_SEVERITIES
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY
@@ -17,7 +18,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificatio
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 
 @Inject
-class UnaddressedFindingsLedgerService(private val database: DatabaseSessionFactory) {
+class UnaddressedFindingsLedgerService(
+  private val database: DatabaseSessionFactory,
+  private val diagnostics: RuntimeDiagnostics,
+) {
   fun ledger(issueKey: String, dbOverride: String? = null): UnaddressedFindingsLedger =
     database.read(dbOverride) { unitOfWork ->
       if (!unitOfWork.unaddressedFindings.issueExists(issueKey)) {
@@ -57,7 +61,12 @@ class UnaddressedFindingsLedgerService(private val database: DatabaseSessionFact
           raw,
           artifactKey,
         )
-      }.getOrDefault(emptyList())
+      }.getOrElse { error ->
+        val message =
+          "Malformed finding verification disposition artifact for issue '$issueKey' workflow '$workflowId'."
+        diagnostics.warning(message, error)
+        throw InvalidUnaddressedFindingsLedgerSchemaError(message)
+      }
     }
   }
 

@@ -8,7 +8,6 @@ import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageReached
-import java.time.Instant
 
 internal fun ParallelCodeReviewRunnerVerificationStages.reviewStageBoundaries(
   reviewRunId: String?,
@@ -110,7 +109,7 @@ internal fun ParallelCodeReviewRunnerVerificationStages.recordVerificationBounda
       ReviewStageBoundary(
         stage = ReviewStage.VERIFICATION,
         reached = ReviewStageReached.REACHED,
-        recordedAt = Instant.now().toString(),
+        recordedAt = clock.instant().toString(),
         contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
       ),
     )

@@ -31,7 +31,6 @@ import skillbill.application.goalrunner.testActivityStampWriter
 import skillbill.application.goalrunner.testGoalRunner
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testPhaseRecorder
-import skillbill.application.workflow.repoRoot
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
@@ -60,6 +59,7 @@ import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.ACTIVE
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
@@ -3234,6 +3234,15 @@ internal class InMemoryGoalManifestStore(
 
   override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState = controlState
 
+  override fun persistControlState(
+    parentWorkflowId: String,
+    state: GoalRunnerControlState,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState {
+    controlState = state
+    return controlState
+  }
+
   override fun bindRepositoryIdentity(
     parentWorkflowId: String,
     repositoryIdentity: String,
@@ -3574,7 +3583,7 @@ class GoalRunnerLedgerRecorderSeedingTest {
     val outcomes = RecordingOutcomeStore()
     outcomes.ledgerSequenceWatermarks =
       GoalRunnerLedgerSequenceWatermarks(maxLedgerSequence = 7)
-    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
+    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest(), testHarnessClock)
 
     recorder.recordLedgerEntry(
       GoalRunnerLedgerContext(
@@ -3590,7 +3599,7 @@ class GoalRunnerLedgerRecorderSeedingTest {
   @Test
   fun `recorder starts at zero when no durable entries exist`() {
     val outcomes = RecordingOutcomeStore()
-    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
+    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest(), testHarnessClock)
 
     recorder.recordLedgerEntry(
       GoalRunnerLedgerContext(
@@ -3627,6 +3636,7 @@ class GoalRunnerProgressEventEmitterTest {
       request = emitterRunRequest(),
       resolveWorkflowId = { "wfl-child" },
       watermarkSeed = null,
+      clock = testHarnessClock,
     )
 
     emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
@@ -3661,6 +3671,7 @@ class GoalRunnerProgressEventEmitterTest {
       request = emitterRunRequest(),
       resolveWorkflowId = { "wfl-child" },
       watermarkSeed = 41,
+      clock = testHarnessClock,
     )
 
     emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
@@ -3678,6 +3689,7 @@ class GoalRunnerProgressEventEmitterTest {
       request = emitterRunRequest(),
       resolveWorkflowId = { workflowId },
       watermarkSeed = null,
+      clock = testHarnessClock,
     )
 
     emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
@@ -3698,6 +3710,7 @@ class GoalRunnerProgressEventEmitterTest {
       request = emitterRunRequest(),
       resolveWorkflowId = { "wfl-child" },
       watermarkSeed = null,
+      clock = testHarnessClock,
     )
 
     emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
@@ -3745,6 +3758,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
       manifestStore = store,
       outcomeStore = outcomes,
       activityStampWriter = testActivityStampWriter(),
+      clock = testHarnessClock,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -3798,6 +3812,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
       manifestStore = store,
       outcomeStore = outcomes,
       activityStampWriter = testActivityStampWriter(),
+      clock = testHarnessClock,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -3834,6 +3849,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
       manifestStore = store,
       outcomeStore = outcomes,
       activityStampWriter = testActivityStampWriter(),
+      clock = testHarnessClock,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -4810,6 +4826,7 @@ class GoalRunnerUnaddressedFindingsSummaryTest {
       ).copy(
         unaddressedFindingsLedgerService = UnaddressedFindingsLedgerService(
           RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository(), knownIssue = false),
+          NoopRuntimeDiagnostics,
         ),
       ),
     )
@@ -4856,7 +4873,7 @@ class GoalRunnerUnaddressedFindingsSummaryTest {
         outcomeStore = RecordingOutcomeStore(),
         pullRequestPort = pullRequestPort,
       ).copy(
-        unaddressedFindingsLedgerService = UnaddressedFindingsLedgerService(sessionFactory),
+        unaddressedFindingsLedgerService = UnaddressedFindingsLedgerService(sessionFactory, NoopRuntimeDiagnostics),
       ),
     )
 

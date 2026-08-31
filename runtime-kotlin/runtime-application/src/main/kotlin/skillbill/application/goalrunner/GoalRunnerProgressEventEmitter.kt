@@ -8,36 +8,14 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.workflow.goal.model.GoalProgressEvent
-import java.time.Instant
+import java.time.Clock
 
-/**
- * SKILL-64 Subtask 3 (AC21, AC25, AC20, AC22, AC23): the concrete production
- * declared-progress emitter wired into the supervisor-side process-lifecycle
- * wrapper. The pure [AgentRunProgressEmitter] port is called by the process
- * loop with effect-free emissions; this adapter is the effect layer that:
- *
- *  - resolves the child workflow id mid-run via the shared tick reader (the
- *    same per-tick read the legacy/declared probes use, F-PF01),
- *  - mints the timestamp here in the adapter layer (the domain/port stays
- *    effect-free),
- *  - seeds a DISTINCT, monotonic goal_progress sequence from the persisted max
- *    goal_progress sequence so resume runs stay monotonic (the F-D01 watermark
- *    pattern shared with [GoalRunnerLedgerRecorder]),
- *  - persists best-effort via [GoalRunnerWorkflowOutcomeStore.recordProgressEvent].
- *
- * Emission is a no-op until the child workflow id is known; a write failure
- * NEVER fails the run (logged at WARNING with workflowId/action only — no
- * secrets or prompt content, mirroring the F-R02 best-effort logging fix).
- *
- * Each emitter instance is created per child launch and is only ever called on
- * the single supervisor poll thread, so the monotonic [sequence] counter needs
- * no synchronization.
- */
 internal class GoalRunnerProgressEventEmitter(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val request: GoalRunnerRunRequest,
   private val resolveWorkflowId: () -> String?,
   watermarkSeed: Int?,
+  private val clock: Clock,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) : AgentRunProgressEmitter {
   private var sequence: Int = watermarkSeed?.let { it + 1 } ?: 0
@@ -54,7 +32,7 @@ internal class GoalRunnerProgressEventEmitter(
       workflowPhase = "goal_runner_supervision",
       processAlive = emission.processAlive,
       sequenceNumber = sequence++,
-      timestamp = Instant.now().toString(),
+      timestamp = clock.instant().toString(),
       operationName = emission.operationName,
       operationKind = emission.operationKind,
       expectedLong = emission.expectedLong,

@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.goalrunner.model.CrashReconcileExpiredWorkerRequest
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -10,13 +11,15 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
+import java.time.Clock
 
 internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
+  private val clock: Clock,
 ) {
-  private val staleBlockedDisplacement = WorkflowGoalRunnerStaleBlockedOutcomeDisplacement(engine)
+  private val staleBlockedDisplacement = WorkflowGoalRunnerStaleBlockedOutcomeDisplacement(engine, clock)
 
   fun resolveTerminalOutcome(
     workflowStates: WorkflowStateRepository,
@@ -70,13 +73,26 @@ internal class WorkflowGoalRunnerOutcomeTerminalPersistence(
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
-  ): GoalRunnerStoredOutcome? = crashReconcileToResumable(
-    workflowStates,
-    workerSupervisor,
-    workflowId,
-    issueKey,
-    subtaskId,
-  )
+  ): GoalRunnerStoredOutcome? {
+    val ownership = workflowStates.getFeatureTaskRuntimeWorkerOwnership(workflowId)
+    val row = ownership?.let { workflowStates.getFeatureTaskRuntimeWorkflow(workflowId) }
+    val continuation = row
+      ?.takeIf { it.workflowStatus == "running" }
+      ?.let { goalContinuation(decodeArtifacts(it.artifactsJson)) }
+      ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
+    if (ownership == null || row == null || continuation == null) return null
+    return crashReconcileExpiredWorkerToResumable(
+      CrashReconcileExpiredWorkerRequest(
+        workflowStates = workflowStates,
+        workerSupervisor = workerSupervisor,
+        workflowId = workflowId,
+        continuation = continuation,
+        ownership = ownership,
+        row = row,
+      ),
+      clock,
+    )
+  }
 
   fun persistMeasuredCompletion(
     workflowStates: WorkflowStateRepository,

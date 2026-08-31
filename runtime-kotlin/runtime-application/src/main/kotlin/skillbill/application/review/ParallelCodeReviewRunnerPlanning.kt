@@ -33,7 +33,6 @@ import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageReached
 import java.nio.file.Path
-import java.time.Instant
 
 internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPlanningDeps) {
   internal val diffResolver: DiffResolverPort = deps.diffResolver
@@ -48,6 +47,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
   private val specIntentProjectionResolver: SpecIntentProjectionResolver = deps.specIntentProjectionResolver
   internal val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary = deps.runtimeOwnedPersistence
   private val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning = deps.rubricPlanning
+  private val clock = deps.clock
 
   fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewInitialRun {
     val agent1 = resolveAgent(originalRequest.agent1Id, "--agent1")
@@ -143,7 +143,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
           ReviewStageBoundary(
             stage = ReviewStage.ADJUDICATION,
             reached = ReviewStageReached.NOT_REACHED,
-            recordedAt = Instant.now().toString(),
+            recordedAt = clock.instant().toString(),
             contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
           ),
         )

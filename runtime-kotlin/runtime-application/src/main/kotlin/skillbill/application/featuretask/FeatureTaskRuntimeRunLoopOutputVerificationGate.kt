@@ -4,7 +4,6 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundary
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.structuredFindings
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_NO_PROGRESS

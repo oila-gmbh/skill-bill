@@ -3,6 +3,7 @@ package skillbill.cli.goal
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.detectInvokingAgentId
+import skillbill.cli.model.canonicalRepositoryRoot
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask

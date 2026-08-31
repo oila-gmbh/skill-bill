@@ -11,11 +11,12 @@ import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
 import skillbill.workflow.taskruntime.model.SettlementEnvelopeRequest
-import java.time.Instant
+import java.time.Clock
 
 @Inject
 class FeatureTaskPhaseSettlementService(
   private val repository: FeatureTaskPhaseSettlementRepository,
+  private val clock: Clock,
 ) {
   @OpenBoundaryMap("MCP feature_task_phase_complete acknowledgement wire map")
   fun complete(request: FeatureTaskPhaseSettlementCompleteRequest): Map<String, Any?> {
@@ -123,7 +124,7 @@ class FeatureTaskPhaseSettlementService(
         attempt = request.attempt,
         kind = request.kind,
         envelopeJson = envelopeJson,
-        recordedAt = Instant.now().toString(),
+        recordedAt = clock.instant().toString(),
       ),
       dbPathOverride = request.dbPathOverride,
     )

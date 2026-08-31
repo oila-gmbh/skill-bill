@@ -18,12 +18,14 @@ import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import java.time.Clock
 
 internal class GoalRunnerChildRepairWedgeApplyLoop(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
   private val wedgeDiagnosis: GoalRunnerChildRepairWedgeDiagnosis,
   private val decompositionManifestValidator: DecompositionManifestValidator?,
+  private val clock: Clock,
 ) {
   fun apply(request: GoalRunnerChildRepairApplyRequest): GoalRunnerChildRepairApplyResult {
     if (request.wedgeClasses.isEmpty()) return GoalRunnerChildRepairApplyResult()
@@ -37,6 +39,7 @@ internal class GoalRunnerChildRepairWedgeApplyLoop(
       artifacts = artifacts,
       workingContinuation = continuationArtifactFromMap(artifacts),
       workingReview = GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state,
+      clock = clock,
     )
     for (wedgeClass in request.wedgeClasses.distinct()) {
       applyWedgeClass(wedgeClass, state, workflowStates)
@@ -129,6 +132,7 @@ internal class GoalRunnerChildRepairWedgeApplyLoop(
     artifacts: Map<String, Any?>,
     workingContinuation: FeatureTaskRuntimeGoalContinuationArtifact?,
     workingReview: GoalSubtaskReviewState?,
+    val clock: Clock,
   ) {
     var record: WorkflowStateSnapshot = record
     var artifacts: Map<String, Any?> = artifacts

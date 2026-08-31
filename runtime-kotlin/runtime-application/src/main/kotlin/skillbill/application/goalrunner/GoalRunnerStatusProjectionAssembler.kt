@@ -18,6 +18,7 @@ internal class GoalRunnerStatusProjectionAssembler(deps: GoalRunnerStatusProject
   internal val planningStatusReasonCoherence = deps.planningStatusReasonCoherence
   internal val diagnostics = deps.diagnostics
   internal val runtimeStatusService = deps.runtimeStatusService
+  internal val repositoryRoot = deps.repositoryRoot
   fun project(loadedState: GoalRunnerManifestState, request: GoalRunnerStatusRequest): GoalRunnerStatusProjection {
     val acceptances = manifestStore.outOfBandAcceptances(loadedState.parentWorkflowId, request.dbPathOverride)
     val manifest = reconcileStatusManifest(loadedState, request, acceptances)

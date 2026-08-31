@@ -29,7 +29,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
-import java.time.Instant
+import java.time.Clock
 
 internal data class GoalReviewPhaseCompletionRequest(
   val phaseState: FeatureTaskRuntimePhaseStateRequest,
@@ -44,6 +44,7 @@ internal data class GoalReviewPhaseCompletionRequest(
 internal class FeatureTaskRuntimeGoalReviewCompletionRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
+  private val clock: Clock,
 ) : FeatureTaskRuntimePhaseReviewApi {
   override fun completeGoalReviewPhase(completion: GoalReviewPhaseCompletionRequest, dbOverride: String?): Boolean {
     val request = validatedGoalReviewPhaseState(completion)
@@ -151,7 +152,7 @@ internal class FeatureTaskRuntimeGoalReviewCompletionRecorder(
         updatedRecords = LinkedHashMap(existingRecords).apply {
           put(
             request.phaseId,
-            featureTaskRuntimePhaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString()),
+            featureTaskRuntimePhaseRecordFor(request, existingRecords[request.phaseId], clock.instant().toString()),
           )
         },
       ),
@@ -180,7 +181,7 @@ internal class FeatureTaskRuntimeGoalReviewCompletionRecorder(
     val completionEntry = FeatureTaskRuntimePhaseLedgerEntry(
       action = COMPLETE,
       sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
-      timestamp = Instant.now().toString(),
+      timestamp = clock.instant().toString(),
       phaseId = request.phaseId,
       attemptCount = request.attemptCount,
       resolvedAgentId = request.resolvedAgentId,

@@ -4,7 +4,6 @@ import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.StructuredGoalReviewFinding
 import skillbill.application.goalrunner.verificationBoundaryFindingPaths
 import skillbill.application.review.toProjectionPayload
-import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.pathContentIdentities
 import skillbill.ports.workflow.gitops.repositoryOwnedPaths

@@ -1,6 +1,5 @@
 package skillbill.application.featuretask
 
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.gitops.headCommitMessage
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.restoreIndexState

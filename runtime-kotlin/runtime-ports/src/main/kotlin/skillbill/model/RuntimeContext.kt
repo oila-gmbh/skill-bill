@@ -16,12 +16,14 @@ data class EnvironmentContext(
   val stdinText: String? = null,
   val environment: Map<String, String> = UnspecifiedEnvironment,
   val userHome: Path = UnspecifiedUserHome,
+  val repositoryRoot: Path = UnspecifiedRepositoryRoot,
 ) {
   companion object {
     val UnspecifiedEnvironment: Map<String, String> = object : AbstractMap<String, String>() {
       override val entries: Set<Map.Entry<String, String>> = emptySet()
     }
     val UnspecifiedUserHome: Path = Path.of("")
+    val UnspecifiedRepositoryRoot: Path = Path.of("")
   }
 }
 
@@ -48,6 +50,7 @@ data class RuntimeContext(
     stdinText: String? = null,
     environment: Map<String, String> = EnvironmentContext.UnspecifiedEnvironment,
     userHome: Path = EnvironmentContext.UnspecifiedUserHome,
+    repositoryRoot: Path = EnvironmentContext.UnspecifiedRepositoryRoot,
     requester: HttpRequester = UnconfiguredHttpRequester,
     workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
     agentRunLauncher: AgentRunLauncher? = null,
@@ -56,7 +59,7 @@ data class RuntimeContext(
     reviewNativeAgentPreflight: ReviewNativeAgentPreflightPort? = null,
     runtimeTimingPort: RuntimeTimingPort? = null,
   ) : this(
-    EnvironmentContext(dbPathOverride, stdinText, environment, userHome),
+    EnvironmentContext(dbPathOverride, stdinText, environment, userHome, repositoryRoot),
     TransportContext(requester),
     WorkflowOpsContext(workflowGitOperations),
     OptionalCallbacks(
@@ -71,5 +74,6 @@ data class RuntimeContext(
   companion object {
     val UnspecifiedEnvironment = EnvironmentContext.UnspecifiedEnvironment
     val UnspecifiedUserHome = EnvironmentContext.UnspecifiedUserHome
+    val UnspecifiedRepositoryRoot = EnvironmentContext.UnspecifiedRepositoryRoot
   }
 }

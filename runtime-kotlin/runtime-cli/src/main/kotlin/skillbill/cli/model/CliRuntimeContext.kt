@@ -27,6 +27,7 @@ data class CliRuntimeContext(
   val executableLookup: ExecutableLookup? = null,
   val reviewNativeAgentPreflight: ReviewNativeAgentPreflightPort? = null,
   val runtimeTimingPort: RuntimeTimingPort? = null,
+  val repositoryRoot: Path? = null,
   val liveStdout: (String) -> Unit = {},
   val liveStderr: (String) -> Unit = {},
 ) {
@@ -35,6 +36,7 @@ data class CliRuntimeContext(
     stdinText = stdinText,
     environment = environment,
     userHome = userHome,
+    repositoryRoot = repositoryRoot?.let(::canonicalRepositoryRoot) ?: canonicalRepositoryRoot(Path.of("")),
     requester = requester,
     workflowGitOperations = workflowGitOperations,
     agentRunLauncher = agentRunLauncher,
@@ -43,4 +45,13 @@ data class CliRuntimeContext(
     reviewNativeAgentPreflight = reviewNativeAgentPreflight,
     runtimeTimingPort = runtimeTimingPort,
   )
+}
+
+internal fun canonicalRepositoryRoot(start: Path): Path {
+  val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
+  var candidate = resolvedStart
+  while (!candidate.resolve(".git").toFile().exists()) {
+    candidate = candidate.parent ?: return resolvedStart
+  }
+  return candidate.toRealPath()
 }

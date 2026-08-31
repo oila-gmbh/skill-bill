@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner.model
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
@@ -9,6 +10,7 @@ import skillbill.application.goalrunner.GoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.planning.GoalPlanningStatusReasonCoherence
 import skillbill.application.goalrunner.planning.GoalPlanningSweep
+import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
@@ -58,6 +60,7 @@ data class GoalRunnerStatusServiceDeps(
   val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence,
   val diagnostics: RuntimeDiagnostics,
   val runtimeStatusService: FeatureTaskRuntimeStatusService?,
+  val repositoryRoot: RepositoryRoot,
 )
 
 @Inject
@@ -69,6 +72,8 @@ data class WorkflowGoalRunnerManifestStoreDeps(
   val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
   val clock: Clock,
+  val decompositionManifestWriter: DecompositionManifestWriter,
+  val repositoryRoot: RepositoryRoot,
 )
 
 @Inject
@@ -82,4 +87,6 @@ data class WorkflowGoalRunnerOutcomeStoreDeps(
   val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
   val decompositionManifestValidator: DecompositionManifestValidator,
   val decompositionManifestFileStore: DecompositionManifestFileStore,
+  val clock: Clock,
+  val decompositionManifestWriter: DecompositionManifestWriter,
 )

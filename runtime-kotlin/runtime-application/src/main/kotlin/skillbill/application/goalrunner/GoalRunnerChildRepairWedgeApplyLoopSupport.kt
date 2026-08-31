@@ -28,7 +28,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import java.nio.file.Path
-import java.time.Instant
+import java.time.Clock
 
 internal data class UnreachableReviewRepairContext(
   val review: GoalSubtaskReviewState,
@@ -197,7 +197,7 @@ internal fun applyCompletedUpstreamChildRepairWedge(
     newValue = "pending",
   )
   state.applied += repair
-  state.evidenceEntries += childRepairWedgeEvidenceMap(repair)
+  state.evidenceEntries += childRepairWedgeEvidenceMap(repair, state.clock)
 }
 
 internal fun recordChildRepairWedge(
@@ -215,18 +215,19 @@ internal fun recordChildRepairWedge(
     newValue = newValue,
   )
   state.applied += repair
-  state.evidenceEntries += childRepairWedgeEvidenceMap(repair)
+  state.evidenceEntries += childRepairWedgeEvidenceMap(repair, state.clock)
 }
 
-internal fun childRepairWedgeEvidenceMap(repair: GoalRunnerAppliedRepair): Map<String, Any?> = linkedMapOf(
-  "wedge_class" to repair.wedgeClass.wireValue,
-  "field" to repair.field,
-  "prior_value" to repair.priorValue,
-  "new_value" to repair.newValue,
-  "subtask_id" to repair.subtaskId,
-  "workflow_id" to repair.workflowId,
-  "repaired_at" to Instant.now().toString(),
-)
+internal fun childRepairWedgeEvidenceMap(repair: GoalRunnerAppliedRepair, clock: Clock): Map<String, Any?> =
+  linkedMapOf(
+    "wedge_class" to repair.wedgeClass.wireValue,
+    "field" to repair.field,
+    "prior_value" to repair.priorValue,
+    "new_value" to repair.newValue,
+    "subtask_id" to repair.subtaskId,
+    "workflow_id" to repair.workflowId,
+    "repaired_at" to clock.instant().toString(),
+  )
 
 internal fun continuationArtifactFromMap(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
   val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])

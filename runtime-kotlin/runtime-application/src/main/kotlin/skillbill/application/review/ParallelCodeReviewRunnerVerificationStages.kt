@@ -12,12 +12,13 @@ import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageReached
-import java.time.Instant
+import java.time.Clock
 
 internal class ParallelCodeReviewRunnerVerificationStages(
   internal val parentReviewLauncher: GoalRunnerSubtaskLauncher,
   internal val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
   internal val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
+  internal val clock: Clock,
 ) {
   fun recordedFindingVerdicts(reviewRunId: String?, inMemory: List<ReviewFindingVerdict>): List<ReviewFindingVerdict> {
     if (reviewRunId == null) return inMemory
@@ -47,7 +48,7 @@ internal class ParallelCodeReviewRunnerVerificationStages(
     if (claims.isEmpty()) {
       emptyClaimsVerificationShortCircuit(reviewRunId, boundaries, verificationInput, existing)?.let { return it }
     }
-    val outcome = ReviewClaimVerificationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
+    val outcome = ReviewClaimVerificationRunner(parentReviewLauncher, reviewContextEnvelopeValidator, clock).run(
       ReviewClaimVerificationRunRequest(
         packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
         reviewOutput = verificationInput,
@@ -85,7 +86,7 @@ internal class ParallelCodeReviewRunnerVerificationStages(
         expected = "runtime-owned finding verdicts",
       ) { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
     }
-    val outcome = ReviewSpecAdjudicationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
+    val outcome = ReviewSpecAdjudicationRunner(parentReviewLauncher, reviewContextEnvelopeValidator, clock).run(
       ReviewSpecAdjudicationRunRequest(
         packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
         findings = claims,
@@ -107,7 +108,7 @@ internal class ParallelCodeReviewRunnerVerificationStages(
         ReviewStageBoundary(
           stage = ReviewStage.ADJUDICATION,
           reached = ReviewStageReached.REACHED,
-          recordedAt = Instant.now().toString(),
+          recordedAt = clock.instant().toString(),
           contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
         ),
       )

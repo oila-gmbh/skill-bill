@@ -20,8 +20,7 @@ internal class GoalRunnerSelectedSubtaskLoop(
   private val pauseBoundary get() = deps.pauseBoundary
   private val launchPrepare get() = deps.launchPrepare
   private val clock get() = deps.clock
-  private val pendingReAttemptCause get() = deps.pendingState.pendingReAttemptCause
-  private val pendingCausingLoopEntry get() = deps.pendingState.pendingCausingLoopEntry
+  private val validationQualityState get() = deps.pendingState.validationQualityState
   fun runSelectedSubtask(args: RunSelectedSubtaskArgs): GoalRunnerIterationResult {
     val state = args.state
     val selection = args.selection
@@ -49,8 +48,8 @@ internal class GoalRunnerSelectedSubtaskLoop(
     }
     val refreshed = launch.workerRequestResult.state
     val reconciled = launch.reconciliation.reconciled
-    val reAttemptCause = pendingReAttemptCause.remove(prepared.subtaskId)
-    val causingLoopEntry = pendingCausingLoopEntry.remove(prepared.subtaskId)
+    val reAttemptCause = validationQualityState.takePendingReAttemptCause(prepared.subtaskId)
+    val causingLoopEntry = validationQualityState.takePendingCausingLoopEntry(prepared.subtaskId)
     recordPostLaunchState(
       RecordPostLaunchStateArgs(
         refreshed = refreshed,

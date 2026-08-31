@@ -4,7 +4,6 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.SpecIntentProjectionResolver
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -17,9 +16,9 @@ import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
-import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.model.ParallelReviewParseResult
+import java.time.Clock
 
 @Inject
 data class ParallelCodeReviewRunnerDeps(
@@ -40,4 +39,5 @@ data class ParallelCodeReviewRunnerDeps(
   val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort,
   val registerParse: (String) -> ParallelReviewParseResult,
   val diagnostics: RuntimeDiagnostics,
+  val clock: Clock,
 )

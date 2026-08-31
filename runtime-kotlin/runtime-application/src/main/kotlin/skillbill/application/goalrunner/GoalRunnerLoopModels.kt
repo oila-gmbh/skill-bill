@@ -29,9 +29,7 @@ internal data class GoalRunnerIterationOutcomeDeps(
 )
 
 internal data class GoalRunnerIterationPendingState(
-  val validationQualityRetries: MutableMap<Int, Int>,
-  val pendingReAttemptCause: MutableMap<Int, String>,
-  val pendingCausingLoopEntry: MutableMap<Int, String>,
+  val validationQualityState: GoalRunnerValidationQualityPendingState,
 )
 
 internal data class GoalRunnerSelectedSubtaskLoopDeps(

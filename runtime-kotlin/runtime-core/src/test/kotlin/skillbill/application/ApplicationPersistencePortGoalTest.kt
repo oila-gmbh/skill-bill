@@ -6,9 +6,9 @@ import skillbill.application.review.model.GoalStatsResult
 import skillbill.application.telemetry.toRecord
 import skillbill.model.EnvironmentContext
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.WorkflowStatsRepository

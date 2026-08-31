@@ -1,10 +1,8 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.goalrunner.planning.GoalChildPlanningHydrator
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.workflow.engine.WorkflowEngine
-import java.nio.file.Path
 
 internal class WorkflowGoalRunnerManifestStoreContext(deps: WorkflowGoalRunnerManifestStoreContextDeps) {
   val database = deps.database
@@ -14,8 +12,10 @@ internal class WorkflowGoalRunnerManifestStoreContext(deps: WorkflowGoalRunnerMa
   private val planningProjectionValidator = deps.planningProjectionValidator
   private val workflowSnapshotValidator = deps.workflowSnapshotValidator
   private val clock = deps.clock
+  private val decompositionManifestWriter = deps.decompositionManifestWriter
+  private val repositoryRoot = deps.repositoryRoot
   val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
-  val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator, planningProjectionValidator)
+  val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator, planningProjectionValidator, clock)
   val parentProjection = GoalParentProjectionWriter(engine, decompositionManifestValidator)
   val manifestLoader = WorkflowGoalRunnerManifestLoader(
     database,
@@ -46,8 +46,8 @@ internal class WorkflowGoalRunnerManifestStoreContext(deps: WorkflowGoalRunnerMa
   }
 
   fun writeProjectionFile(state: GoalRunnerManifestState, projectionArtifactsJson: String) {
-    DecompositionManifestWriter.writeProjectionFromWorkflowState(
-      state.repoRoot ?: Path.of("").toAbsolutePath(),
+    decompositionManifestWriter.writeProjectionFromWorkflowState(
+      state.repoRoot ?: repositoryRoot.path,
       projectionArtifactsJson,
       decompositionManifestValidator,
       decompositionManifestFileStore,

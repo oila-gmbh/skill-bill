@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition

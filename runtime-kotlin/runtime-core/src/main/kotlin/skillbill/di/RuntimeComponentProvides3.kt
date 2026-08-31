@@ -1,13 +1,13 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
-import skillbill.application.runtime.RuntimeSingleton
 import skillbill.application.goalrunner.DefaultGoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.planning.ChildAwareGoalPlanningRefreshLiveness
 import skillbill.application.goalrunner.planning.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.planning.DurableGoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.planning.DurableGoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.planning.LaunchAlignedGoalPlanningStatusReasonCoherence
+import skillbill.application.runtime.RuntimeSingleton
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
@@ -49,5 +49,5 @@ internal interface RuntimeComponentProvides3 {
     RuntimeComponentBindingsA5.goalLifecycleTelemetryEmitter(service)
 
   @Provides @JvmSynthetic
-  fun runtimeClock() = RuntimeComponentBindingsA5.runtimeClock()
+  fun runtimeClock() = RuntimeComponentBindingsA6.runtimeClock()
 }

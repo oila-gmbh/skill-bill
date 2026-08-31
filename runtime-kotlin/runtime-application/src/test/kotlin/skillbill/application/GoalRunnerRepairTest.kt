@@ -929,6 +929,7 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       testWorkflowSnapshotValidator,
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
       AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+      testHarnessClock,
     )
     val service = testGoalRunnerStatusService(
       goalRunnerStatusServiceDeps(

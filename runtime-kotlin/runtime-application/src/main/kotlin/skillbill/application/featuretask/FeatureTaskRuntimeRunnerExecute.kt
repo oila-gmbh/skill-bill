@@ -6,7 +6,6 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.telemetry.model.FeatureTaskRuntimeFindingVerificationTelemetry
 import skillbill.application.telemetry.model.FeatureTaskRuntimeRegenerationTelemetry
-import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline

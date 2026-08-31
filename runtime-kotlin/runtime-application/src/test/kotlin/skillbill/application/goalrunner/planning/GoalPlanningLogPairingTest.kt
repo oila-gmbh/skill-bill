@@ -3,6 +3,7 @@ package skillbill.application.goalrunner.planning
 import skillbill.application.RecordingOutcomeStore
 import skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
 import skillbill.application.manifest
+import skillbill.application.testHarnessClock
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
@@ -79,6 +80,7 @@ class GoalPlanningLogPairingTest {
     outcomeStore = StubOutcomeStore(events.toList()),
     database = UnreadableDatabase,
     diagnosticMetadataValidator = RejectedOutputDiagnosticMetadataValidator { },
+    clock = testHarnessClock,
   ).log(GoalPlanningLogRequest(issueKey = ISSUE_KEY))
 
   private fun started(timestamp: String): Map<String, Any?> = mapOf(

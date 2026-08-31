@@ -1,11 +1,9 @@
 package skillbill.application.featuretask
 
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.workflow.gitops.stagedPaths
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
-import java.time.Instant
 
 internal fun FeatureTaskRuntimeRunLoop.rejectValidatedOutput(
   capture: ValidatedOutputCapture,
@@ -66,7 +64,7 @@ internal fun FeatureTaskRuntimeRunLoop.retainSettledProducerOutput(capture: Vali
       attempt = capture.iteration,
       agentId = run.resolvedAgent.resolvedAgentId,
       model = run.modelDirective?.model ?: "unspecified",
-      recordedAt = Instant.now(),
+      recordedAt = clock.instant(),
       byteSize = capture.outputByteSize,
       sha256 = capture.outputSha256,
       payload = capture.outputBytes.takeUnless { capture.outputTruncated },

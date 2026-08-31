@@ -17,6 +17,9 @@ import skillbill.application.goalrunner.planning.GoalPlanningSweep
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepDeps
 import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.testDecompositionManifestValidator
+import skillbill.application.testDecompositionManifestWriter
+import skillbill.application.testHarnessClock
+import skillbill.application.testRepositoryRoot
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
@@ -137,6 +140,7 @@ internal fun goalRunnerStatusServiceDeps(
   planningStatusReasonCoherence = GoalPlanningStatusReasonCoherence.NONE,
   diagnostics = NoopRuntimeDiagnostics,
   runtimeStatusService = null,
+  repositoryRoot = testRepositoryRoot,
 )
 
 internal fun testPhaseRecorder(
@@ -158,6 +162,7 @@ internal fun testPhaseRecorder(
       producerOutputEvidenceValidator = { },
     ),
     diagnostics = diagnostics,
+    clock = testHarnessClock,
   ),
 )
 
@@ -178,6 +183,8 @@ internal fun outcomeStoreDeps(
   workerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
   decompositionManifestValidator = testDecompositionManifestValidator,
   decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+  clock = testHarnessClock,
+  decompositionManifestWriter = testDecompositionManifestWriter,
 )
 
 internal fun testWorkflowGoalRunnerManifestStore(

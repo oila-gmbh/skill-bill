@@ -39,6 +39,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository()),
       inspectionSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning),
       NoopRuntimeDiagnostics,
+      testHarnessClock,
     )
 
     val result = reconciler.reconcile(null)
@@ -54,6 +55,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       RuntimeFakeDatabaseSessionFactory(repository),
       inspectionSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning),
       NoopRuntimeDiagnostics,
+      testHarnessClock,
     )
 
     val first = reconciler.reconcile(null)
@@ -73,6 +75,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       RuntimeFakeDatabaseSessionFactory(repository),
       inspectionSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive),
       NoopRuntimeDiagnostics,
+      testHarnessClock,
     )
 
     val result = reconciler.reconcile(null)
@@ -92,6 +95,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
         RuntimeFakeDatabaseSessionFactory(repository),
         inspectionSupervisor(inspection),
         NoopRuntimeDiagnostics,
+        testHarnessClock,
       )
 
       assertEquals(0, reconciler.reconcile(null).reconciledCount)
@@ -118,6 +122,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       RuntimeFakeDatabaseSessionFactory(repository),
       faultingSupervisor,
       NoopRuntimeDiagnostics,
+      testHarnessClock,
     )
 
     val result = reconciler.reconcile(null)

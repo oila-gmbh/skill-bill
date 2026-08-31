@@ -5,8 +5,6 @@ import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.specsource.SpecSourceResolver
-import skillbill.application.workflow.repoRoot
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.workflow.specscratch.SpecScratchStore

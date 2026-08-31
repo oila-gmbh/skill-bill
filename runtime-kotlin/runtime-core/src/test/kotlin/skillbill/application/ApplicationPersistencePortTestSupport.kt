@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
@@ -14,6 +15,7 @@ import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.openFeatureTask
@@ -31,14 +33,15 @@ import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.learnings.model.UpdateLearningRequest
 import skillbill.model.EnvironmentContext
+import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRepository
@@ -110,6 +113,7 @@ import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import kotlin.test.assertEquals
 import java.lang.Double.TYPE as DoubleTYPE
 import java.lang.Long.TYPE as LongTYPE
@@ -958,12 +962,16 @@ internal fun testWorkflowService(
   database: DatabaseSessionFactory,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ): WorkflowService = WorkflowService(
-  database,
-  gitOperations,
-  FileSystemDecompositionManifestFileStore(),
-  WorkflowSnapshotValidatorInfraAdapter(),
-  DecompositionManifestValidatorAdapter(),
-  NoopGoalObservabilityEventValidator,
+  WorkflowServiceDeps(
+    database = database,
+    gitOperations = gitOperations,
+    decompositionManifestFileStore = FileSystemDecompositionManifestFileStore(),
+    workflowSnapshotValidator = WorkflowSnapshotValidatorInfraAdapter(),
+    decompositionManifestValidator = DecompositionManifestValidatorAdapter(),
+    decompositionManifestWriter = DecompositionManifestWriter(),
+    repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+    goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+  ),
 )
 
 internal fun loadTestDecompositionManifest(path: Path) =
@@ -1117,6 +1125,7 @@ internal fun testPhaseRecorder(database: DatabaseSessionFactory) = featureTaskRu
   WorkflowSnapshotValidatorInfraAdapter(),
   FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter(),
   FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter(),
+  Clock.systemUTC(),
 )
 
 internal fun openTaskRuntimeWorkflow(database: DatabaseSessionFactory): String = (

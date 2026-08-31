@@ -6,12 +6,11 @@ import skillbill.application.review.model.ParallelReviewLaneStatus
 import skillbill.review.model.ParallelReviewMergeResult
 
 object ApprovingReviewDriverStub : FeatureTaskRuntimeReviewDriver {
-  override fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult =
-    ParallelCodeReviewResult(
-      mergeResult = ParallelReviewMergeResult(
-        findings = emptyList(),
-        formattedOutput = "verdict: approved",
-      ),
-      lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
-    )
+  override fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult = ParallelCodeReviewResult(
+    mergeResult = ParallelReviewMergeResult(
+      findings = emptyList(),
+      formattedOutput = "verdict: approved",
+    ),
+    lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
+  )
 }

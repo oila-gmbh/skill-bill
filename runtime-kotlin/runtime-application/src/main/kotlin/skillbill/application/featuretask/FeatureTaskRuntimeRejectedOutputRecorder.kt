@@ -25,7 +25,7 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendDiagnosticSi
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionCapOf
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionViolationClassOf
-import java.time.Instant
+import java.time.Clock
 
 private fun RejectedOutputDiagnosticError.degradableFailureClass(): FeatureTaskRuntimeDiagnosticFailureClass? =
   when (this) {
@@ -56,6 +56,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   private val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator,
   private val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator,
+  private val clock: Clock,
 ) : FeatureTaskRuntimePhaseRejectedApi {
   private sealed class DiagnosticWriteOutcome<out T> {
     class Written<T>(val value: T) : DiagnosticWriteOutcome<T>()
@@ -75,7 +76,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
       attempt = request.attempt,
       agentId = request.agentId,
       model = request.model,
-      recordedAt = Instant.now(),
+      recordedAt = clock.instant(),
       byteSize = request.observedByteSize,
       sha256 = request.observedSha256,
       payload = request.rawResponse.takeUnless { request.truncated },
@@ -233,7 +234,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
       attempt = request.attempt.coerceAtLeast(0),
       repairTurn = request.repairTurn?.coerceAtLeast(0),
       generation = request.generation.coerceAtLeast(0),
-      recordedAt = Instant.now().toString(),
+      recordedAt = clock.instant().toString(),
     )
     persistDiagnosticSignal(request.workflowId, signal, request.dbOverride)
     recordDegradationMeasurement(request.workflowId, signal, request.dbOverride)
@@ -304,6 +305,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
       permissions = permissions,
       metadataValidator = rejectedOutputDiagnosticMetadataValidator,
       producerEvidenceValidator = producerOutputEvidenceValidator,
+      clock = clock,
     )
   }
 }

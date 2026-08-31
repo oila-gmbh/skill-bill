@@ -22,11 +22,7 @@ internal class GoalRunnerStatusControlVerbs(
   private val clock: Clock,
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
 ) {
-  fun pause(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
-  ): GoalRunnerPauseResult {
+  fun pause(issueKey: String, dbPathOverride: String?, repoRoot: Path): GoalRunnerPauseResult {
     val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
       ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
     val repositoryIdentity = goalRepositoryIdentity(repoRoot)
@@ -53,11 +49,7 @@ internal class GoalRunnerStatusControlVerbs(
     )
   }
 
-  fun stop(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
-  ): GoalRunnerStopVerbResult {
+  fun stop(issueKey: String, dbPathOverride: String?, repoRoot: Path): GoalRunnerStopVerbResult {
     val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
       ?: return GoalRunnerStopVerbResult(issueKey = issueKey, status = GoalRunnerStopStatus.NOT_FOUND)
     manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, goalRepositoryIdentity(repoRoot), dbPathOverride)
@@ -106,11 +98,7 @@ internal class GoalRunnerStatusControlVerbs(
     }.getOrElse { outcome(GoalRunnerStopStatus.STOPPED, terminationAttempted = true) }
   }
 
-  fun resume(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
-  ): GoalRunnerResumeResult {
+  fun resume(issueKey: String, dbPathOverride: String?, repoRoot: Path): GoalRunnerResumeResult {
     val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
       ?: return GoalRunnerResumeResult(issueKey = issueKey, status = "not_found")
     manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, goalRepositoryIdentity(repoRoot), dbPathOverride)
