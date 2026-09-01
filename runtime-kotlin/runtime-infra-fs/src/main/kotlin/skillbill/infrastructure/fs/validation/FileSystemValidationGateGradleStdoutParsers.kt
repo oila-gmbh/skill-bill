@@ -80,6 +80,11 @@ internal object FileSystemValidationGateGradleStdoutParsers {
         finding.ruleOrTestId.firstOrNull()?.isUpperCase() == true
       ) {
         add("${finding.module}|spotlessCheck")
+        add("${finding.module}|spotlessKotlinCheck")
+      }
+      if (finding.ruleOrTestId == "spotless") {
+        add("${finding.module}|spotlessCheck")
+        add("${finding.module}|spotlessKotlinCheck")
       }
     }
   }

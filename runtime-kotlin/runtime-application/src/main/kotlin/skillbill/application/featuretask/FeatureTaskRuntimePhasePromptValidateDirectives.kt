@@ -20,12 +20,14 @@ private const val VALIDATE_REPAIR_FORBIDDEN_EXTRAS: String =
 
 internal const val VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF: String =
   "Before editing, copy the open findings into a numbered free-form checklist (file, rule, one-line " +
-    "fix intent). Fix every checklist item in this session (shared root causes may collapse several into " +
-    "one change). Do not run any Gradle or other proof command while repairing — no `spotlessApply`, " +
-    "`detekt`, `ktlintCheck`, `compileKotlin`, `test`, module-scoped variants, or rediscovery checks " +
-    "between findings. The only allowed verify is the single collect-all confirmation the phase owns " +
-    "(runtime-owned repair: stop and let the runtime re-run the pack gate; agent-run fallback: one " +
-    "bill-code-check confirmation after the full set is fixed). Detekt threshold hits " +
+    "fix intent). Work through every checklist item — fix shared root causes once, not one Gradle proof " +
+    "per item. Do not run the pack collect_all_full_gate_command, `bill-code-check`, `./gradlew check`, " +
+    "or `check " + "--" + "continue` during this repair turn; the runtime re-runs the full gate after you stop. " +
+    "After you have attempted a fix for every open finding, you may run any targeted proof command " +
+    "relevant to those findings: project-wide `./gradlew spotlessApply` from the Gradle root for " +
+    "spotless/format findings (never module-scoped `:module:spotlessApply`); module-scoped `detekt`, " +
+    "`ktlintCheck`, `spotlessCheck`, `spotlessKotlinCheck`, `compileKotlin`, or `test` when the finding names that " +
+    "task; read-only inspection anytime. Detekt threshold hits " +
     "(TooManyFunctions, CyclomaticComplexMethod, LongMethod) need structural refactors — extract " +
     "helpers or move code to a sibling file; do not add @Suppress. "
 
@@ -154,7 +156,10 @@ internal fun gateRepairNoOutputSchemaDirective(phaseId: String, triage: Boolean 
   - Complex: a real short plan — blast radius, surrounding callers/contracts you checked, whether
     the change can introduce new bugs, and how you will keep the fix local.
 
-  No defined plan schema. Do the thinking, then edit. When you are done fixing, stop.
+  No defined plan schema. Do the thinking, then edit. After you have attempted a fix for every open
+  finding, you may run targeted proof commands relevant to those findings (for example project-wide
+  `./gradlew spotlessApply` for format findings, or the module-scoped task named in the finding).
+  Stop when done; the runtime re-runs the pack gate.
   Never silence findings with @Suppress, @file:Suppress, baselines, disabled rules, weakened
   configuration, or skipped tests — fix the root cause instead.
   """.trimIndent()
