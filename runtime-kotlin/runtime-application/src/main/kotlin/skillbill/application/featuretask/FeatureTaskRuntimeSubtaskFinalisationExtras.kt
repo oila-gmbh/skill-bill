@@ -146,12 +146,27 @@ internal fun FeatureTaskRuntimeSubtaskFinalisation.push(
     return if (pushed.ok) null else "the finalised subtask commit '$commitSha' could not be pushed (${pushed.error})"
   }
   record(forceWithLeaseRecord(identity, branch, commitSha))
-  val pushed = gitOperations.pushBranchWithLease(repoRoot, branch)
-  if (pushed.ok) return null
-  record(leaseAbortRecord(identity, branch, pushed.error))
-  return "the reopened subtask's amended commit '$commitSha' was not pushed: the lease on 'origin/$branch' " +
-    "no longer holds the value this repository last observed, so the remote moved under this run " +
-    "(${pushed.error}). The remote is untouched; reconcile the branch before resuming."
+  refreshRemote(identity, branch)
+  val first = gitOperations.pushBranchWithLease(repoRoot, branch)
+  if (first.ok) return null
+  record(leaseRetryRecord(identity, branch, first.error))
+  refreshRemote(identity, branch)
+  val second = gitOperations.pushBranchWithLease(repoRoot, branch)
+  if (second.ok) return null
+  record(leaseAbortRecord(identity, branch, second.error))
+  return "the reopened subtask's amended commit '$commitSha' could not be pushed (${second.error})"
+}
+
+private fun FeatureTaskRuntimeSubtaskFinalisation.refreshRemote(
+  identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  branch: String,
+) {
+  val refreshed = gitOperations.refreshRemoteBranch(repoRoot, branch)
+  if (refreshed.ok) {
+    record(leaseRefreshRecord(identity, branch))
+  } else {
+    record(leaseRefreshFailedRecord(identity, branch, refreshed.error))
+  }
 }
 
 internal fun FeatureTaskRuntimeSubtaskFinalisation.restoring(

@@ -14,6 +14,9 @@ interface WorkflowGitRemoteOperations {
     error = "This git operations implementation cannot push branch '$branch' under a lease.",
   )
 
+  fun refreshRemoteBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = branch.trim())
+
   fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "false")
 }

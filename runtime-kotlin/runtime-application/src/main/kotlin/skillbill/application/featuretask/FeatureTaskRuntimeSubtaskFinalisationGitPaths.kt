@@ -63,11 +63,31 @@ internal fun forceWithLeaseRecord(
   "'${identity.issueKey}/${identity.subtaskId}' was reopened after its commit had already been " +
   "published, so finalisation rewrote a commit the remote already carries"
 
+internal fun leaseRefreshRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, branch: String) =
+  "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='git fetch origin $branch' " +
+    "value_expected=the remote-tracking tip for 'origin/$branch' for subtask " +
+    "'${identity.issueKey}/${identity.subtaskId}' cause=a leased push is only as current as the last fetch"
+
+internal fun leaseRefreshFailedRecord(
+  identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  branch: String,
+  error: String,
+) = "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='the last observed origin/$branch' " +
+  "value_expected=a refreshed 'origin/$branch' for subtask '${identity.issueKey}/${identity.subtaskId}' " +
+  "cause=git fetch origin $branch failed, so the leased push will use the last observed tip ($error)"
+
+internal fun leaseRetryRecord(
+  identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  branch: String,
+  error: String,
+) = "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='a second leased push after fetch' " +
+  "value_expected=the first leased push of subtask '${identity.issueKey}/${identity.subtaskId}' " +
+  "cause=the first leased push was rejected ($error), so finalisation refreshes origin/$branch and retries"
+
 internal fun leaseAbortRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, branch: String, error: String) =
   "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='an unpushed local tip' " +
-    "value_expected='origin/$branch' still at the value this repository last observed for subtask " +
-    "'${identity.issueKey}/${identity.subtaskId}' cause=the lease was rejected, so the remote moved " +
-    "under this run and the push was abandoned without touching it ($error)"
+    "value_expected='origin/$branch' for subtask '${identity.issueKey}/${identity.subtaskId}' " +
+    "cause=the leased push was rejected after refresh and retry ($error)"
 
 internal fun isGovernedSpecPath(path: String): Boolean = normalizeRepoPath(path).startsWith(GOVERNED_SPEC_ROOT)
 

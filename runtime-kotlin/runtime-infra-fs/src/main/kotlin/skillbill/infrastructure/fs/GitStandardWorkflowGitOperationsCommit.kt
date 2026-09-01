@@ -50,6 +50,14 @@ internal fun gitPushBranch(repoRoot: Path, branch: String, withLease: Boolean): 
   return runGitCommand(repoRoot, args).withValue(normalized)
 }
 
+internal fun gitFetchRemoteBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
+  val normalized = branch.trim()
+  if (normalized.isBlank()) {
+    return WorkflowGitOperationResult(status = "error", error = "Branch name is required to fetch.")
+  }
+  return runGitCommand(repoRoot, "fetch", "origin", normalized).withValue(normalized)
+}
+
 internal fun gitLocalBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult {
   val normalized = branch.trim()
   if (normalized.isBlank()) {

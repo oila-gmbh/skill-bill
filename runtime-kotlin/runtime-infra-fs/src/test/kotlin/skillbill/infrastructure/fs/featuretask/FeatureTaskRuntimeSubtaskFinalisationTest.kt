@@ -192,7 +192,7 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
   }
 
   @Test
-  fun `a reopened published subtask force-pushes under a matching lease and aborts under a stale one`() {
+  fun `a reopened published subtask force-pushes under a matching lease and overwrites a stale remote after fetch`() {
     val repo = repoWithRemote()
     Files.writeString(repo.root.resolve("owned.txt"), "published\n")
     git(repo.root, "add", "owned.txt")
@@ -210,12 +210,13 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertEquals(commitsBefore, commitCount(repo.root), "a reopened published subtask still ends with one commit")
     assertEquals(finalised.commitSha, git(repo.remote, "rev-parse", branch))
     assertTrue(records.any { it.contains("git push --force-with-lease") })
+    assertTrue(records.any { it.contains("git fetch origin $branch") })
 
     val staleRepo = staleLease(repo)
     records.clear()
     Files.writeString(staleRepo.root.resolve("owned.txt"), "reopened again\n")
-    val remoteTip = git(staleRepo.remote, "rev-parse", branch)
-    val blocked = assertIs<FeatureTaskRuntimeSubtaskFinalisationBlocked>(
+    val remoteTipBefore = git(staleRepo.remote, "rev-parse", branch)
+    val overwritten = assertIs<FeatureTaskRuntimeSubtaskFinalised>(
       finalise(
         staleRepo,
         durableCommitSha = git(staleRepo.root, "rev-parse", "HEAD"),
@@ -224,14 +225,16 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
       ),
     )
 
-    assertContains(blocked.reason, "the remote moved under this run")
-    assertEquals(remoteTip, git(staleRepo.remote, "rev-parse", branch), "a stale lease must leave the remote alone")
-    assertTrue(records.any { it.contains("cause=the lease was rejected") })
+    assertTrue(overwritten.forcedWithLease)
+    assertEquals(overwritten.commitSha, git(staleRepo.remote, "rev-parse", branch))
+    assertTrue(overwritten.commitSha != remoteTipBefore)
+    assertTrue(
+      !git(staleRepo.remote, "ls-tree", "--name-only", "-r", branch).contains("remote-only.txt"),
+      "a refreshed lease must overwrite the remote-only commit instead of blocking",
+    )
+    assertTrue(records.any { it.contains("git fetch origin $branch") })
   }
 
-  // The bug: recording the durable pointer after the push leaves a failed push blocked with HEAD at
-  // the finalisation commit while the pointer still names the pre-amend sha, so the re-entry resolves
-  // Create against a clean index and the subtask can never finish.
   @Test
   fun `the durable pointer is recorded before the push and a failed recording blocks without pushing`() {
     val repo = repoWithRemote()

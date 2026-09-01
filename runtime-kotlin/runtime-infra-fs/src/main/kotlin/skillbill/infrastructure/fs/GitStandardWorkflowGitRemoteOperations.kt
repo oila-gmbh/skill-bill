@@ -11,6 +11,9 @@ internal object GitStandardWorkflowGitRemoteOperations : WorkflowGitRemoteOperat
   override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult =
     gitPushBranch(repoRoot, branch, withLease = true)
 
+  override fun refreshRemoteBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    gitFetchRemoteBranch(repoRoot, branch)
+
   override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
     gitLocalBranchHasUnpushedCommits(repoRoot, branch)
 }
