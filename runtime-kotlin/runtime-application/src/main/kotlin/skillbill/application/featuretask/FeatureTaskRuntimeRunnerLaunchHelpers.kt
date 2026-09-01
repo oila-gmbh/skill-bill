@@ -13,6 +13,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeProviderLimitDetector
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
@@ -42,10 +43,18 @@ internal fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, A
   val detail = (listOf(summary) + blockingReasons)
     .filter(String::isNotBlank)
     .joinToString("; ")
-  val prefix = if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
-    "Validation phase reported status '$status'; retrying so the agent can fix failures."
-  } else {
-    "Phase output reported status '$status'."
+  val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(phaseId, outputMap)
+  val operatorTerminalQualityGate =
+    disposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION &&
+      (
+        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
+          phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD
+        )
+  val prefix = when {
+    operatorTerminalQualityGate -> "Phase output reported status '$status'."
+    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
+      "Validation phase reported status '$status'; retrying so the agent can fix failures."
+    else -> "Phase output reported status '$status'."
   }
   return prefix + detail.takeIf(String::isNotBlank)?.let { " $it" }.orEmpty()
 }

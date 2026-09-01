@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.goalrunner.model.GoalRunnerLivenessSnapshot
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerRunReport
@@ -9,6 +10,8 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 
 internal fun stopped(args: StoppedReportArgs): GoalRunnerRunReport.Stopped = GoalRunnerRunReport.Stopped(
   issueKey = args.issueKey,
@@ -72,9 +75,31 @@ internal fun String.withStopDiagnostics(
   return if (details.isBlank()) this else "$this [$details]"
 }
 
-internal fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(): Boolean =
-  reason in setOf(GoalRunnerStopReason.BLOCKED, GoalRunnerStopReason.FAILED) &&
-    lastResumableStep == "validate"
+internal fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(
+  phaseRecorder: FeatureTaskRuntimePhaseRecorder? = null,
+  dbPathOverride: String? = null,
+): Boolean {
+  if (reason !in setOf(GoalRunnerStopReason.BLOCKED, GoalRunnerStopReason.FAILED)) {
+    return false
+  }
+  if (lastResumableStep !in setOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+    )
+  ) {
+    return false
+  }
+  val workflowId = workflowId
+  if (workflowId != null && phaseRecorder != null) {
+    val disposition = phaseRecorder.loadPhaseRecords(workflowId, dbPathOverride)
+      ?.get(lastResumableStep)
+      ?.failureDisposition
+    if (disposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION) {
+      return false
+    }
+  }
+  return true
+}
 
 internal fun supervisionEvent(
   reason: GoalRunnerStopReason,

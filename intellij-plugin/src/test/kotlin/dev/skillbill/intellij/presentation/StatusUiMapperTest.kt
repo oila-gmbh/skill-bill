@@ -3,7 +3,7 @@ package dev.skillbill.intellij.presentation
 import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.GoalPlanningInfo
-import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
+import dev.skillbill.intellij.domain.PauseReason
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.StatusDiagnostic
 import dev.skillbill.intellij.domain.UnavailableReason
@@ -325,6 +325,28 @@ class StatusUiMapperTest {
         // 10:00 start → 10:15 last update, not → observation three days later.
         assertEquals(Duration.ofMinutes(15), ui.goalElapsed)
         assertEquals(ui, StatusUiMapper.withElapsed(ui, muchLater.plusSeconds(3_600)))
+    }
+
+    @Test
+    fun `blocked outcome carries pause reason into presentation details`() {
+        val reason = "Configure GITHUB_REGISTRY_AUTH credential"
+        val blocked = SkillBillStatusOutcome.Blocked(
+            observedAt = now,
+            summary = "Goal SKILL-228 is blocked: $reason",
+            repositoryIdentity = "repo",
+            issueKey = "SKILL-228",
+            currentStepId = "validate",
+            currentStepLabel = "Validate",
+            startedAt = started,
+            currentSubtaskId = "2",
+            subtaskStartedAt = subtaskStarted,
+            updatedAt = now,
+            pauseReason = PauseReason("awaiting_operator_decision", reason),
+        )
+        val ui = StatusUiMapper.map(blocked, now) as SkillBillStatusUiState.Blocked
+        assertEquals(reason, ui.pauseReason?.label)
+        val presentation = SkillBillStatusBarPresentation.map(ui, now)
+        assertEquals(reason, presentation.details.pauseReasonText)
     }
 
     @Test

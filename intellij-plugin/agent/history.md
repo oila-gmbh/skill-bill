@@ -1,3 +1,11 @@
+## [2026-09-01] SKILL-228 subtask 2 — Blocked operator reason in status details
+Areas: intellij-plugin/{domain,infrastructure/cli,presentation,ui}
+- Blocked lifecycle outcomes carry `pauseReason` from the IdeStatus wire through mapper → domain → presentation → status details popup so operators see the validate/build needs-user-action text without opening the agent transcript.
+- Mapping stays additive on the existing blocked outcome shape; repair-loop active goals without an operator pause remain unchanged.
+- Pattern: surface producer `pause_reason` / summary on blocked details only — do not invent pause copy in the plugin. reusable
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-28] SKILL-215 subtask 1 — Subtask elapsed from execution total
 Areas: intellij-plugin/{domain,infrastructure/cli,presentation,prefs}
 - Feature-goal snapshots now carry optional `current_subtask.active_duration_ms` / `active_duration_as_of` through mapper, outcomes, UI state, and last-known cache.

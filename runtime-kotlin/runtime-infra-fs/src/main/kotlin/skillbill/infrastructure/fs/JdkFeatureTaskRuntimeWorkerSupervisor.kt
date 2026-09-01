@@ -27,25 +27,35 @@ import kotlin.coroutines.cancellation.CancellationException
 private const val INIT_PID: Long = 1L
 private const val BOOT_IDENTITY_UNAVAILABLE: String = "boot-identity-unavailable"
 
-/** Written by the per-process fallback this file replaced; never a valid boot identity. */
 private const val LEGACY_BOOT_IDENTITY_PREFIX: String = "fallback-"
 
-/**
- * Whether two boot identities positively disagree.
- *
- * A mismatch only settles the question when both sides actually know their boot. An unknown value,
- * or one written by the drifting per-process fallback this replaced, says nothing about whether the
- * owner is alive — and treating it as a mismatch reported every live worker as not running, which is
- * what let `goal stop` find no live lease and let a second runner reclaim a lease whose owner was
- * still working. With the boot check abstaining, the reused-pid guard falls to the process-birth
- * token, which discriminates one process from another more precisely than a boot id does.
- */
 private fun bootIdentitiesConflict(stored: String, local: String): Boolean =
   bootIdentityIsDecisive(stored) && bootIdentityIsDecisive(local) && stored != local
 
 private fun bootIdentityIsDecisive(value: String): Boolean = value.isNotBlank() &&
   value != BOOT_IDENTITY_UNAVAILABLE &&
   !value.startsWith(LEGACY_BOOT_IDENTITY_PREFIX)
+
+internal fun processBirthToken(handle: ProcessHandle): String? =
+  handle.info().startInstant().orElse(null)?.toEpochMilli()?.toString()
+
+internal fun processBootIdentity(diagnostics: RuntimeDiagnostics): String {
+  val linuxBootId = Path.of("/proc/sys/kernel/random/boot_id")
+  if (Files.isReadable(linuxBootId)) {
+    runCatching { Files.readString(linuxBootId).trim() }
+      .getOrNull()
+      ?.takeIf(String::isNotBlank)
+      ?.let { return it }
+  }
+  runCatching { ProcessHandle.of(INIT_PID).flatMap { it.info().startInstant() }.orElse(null) }
+    .getOrNull()
+    ?.let { return "boot-${it.toEpochMilli()}" }
+  diagnostics.warning(
+    "This platform exposes no kernel boot id and no start instant for pid $INIT_PID, so worker " +
+      "ownership carries no boot identity. Process-birth evidence remains the reused-pid guard.",
+  )
+  return BOOT_IDENTITY_UNAVAILABLE
+}
 
 @Inject
 class JdkFeatureTaskRuntimeWorkerSupervisor(
@@ -55,9 +65,9 @@ class JdkFeatureTaskRuntimeWorkerSupervisor(
     val handle = ProcessHandle.current()
     return FeatureTaskRuntimeProcessIdentity(
       hostIdentity = InetAddress.getLocalHost().hostName,
-      bootIdentity = bootIdentity(),
+      bootIdentity = processBootIdentity(diagnostics),
       pid = handle.pid(),
-      processBirthToken = birthToken(handle)
+      processBirthToken = processBirthToken(handle)
         ?: error("The current process does not expose process-birth evidence."),
     )
   }
@@ -108,7 +118,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisor(
 
     val handle = ProcessHandle.of(ownership.pid).orElse(null)
       ?: return FeatureTaskRuntimeProcessInspection.NotRunning
-    val birth = birthToken(handle)
+    val birth = processBirthToken(handle)
     return when {
       birth == null ->
         FeatureTaskRuntimeProcessInspection.Unsupported("Worker PID has no verifiable birth evidence.")
@@ -144,48 +154,8 @@ class JdkFeatureTaskRuntimeWorkerSupervisor(
     } else {
       null
     }
-
-  private fun birthToken(handle: ProcessHandle): String? =
-    handle.info().startInstant().orElse(null)?.toEpochMilli()?.toString()
-
-  /**
-   * An identity that is the same for every process on this boot and changes across reboots.
-   *
-   * The kernel boot id is authoritative where it exists. Elsewhere the start instant of pid 1 stands
-   * in: the kernel starts it at boot, it outlives every runtime process, and every process reads the
-   * same value for it. What this must never be is a value derived from the *calling* process, which
-   * is what the earlier fallback did — start instant minus accumulated CPU time drifts downward as a
-   * process runs and differs between any two processes, so no stored identity could ever match a
-   * later reading of it.
-   */
-  private fun bootIdentity(): String {
-    val linuxBootId = Path.of("/proc/sys/kernel/random/boot_id")
-    if (Files.isReadable(linuxBootId)) {
-      runCatching { Files.readString(linuxBootId).trim() }
-        .getOrNull()
-        ?.takeIf(String::isNotBlank)
-        ?.let { return it }
-    }
-    runCatching { ProcessHandle.of(INIT_PID).flatMap { it.info().startInstant() }.orElse(null) }
-      .getOrNull()
-      ?.let { return "boot-${it.toEpochMilli()}" }
-    diagnostics.warning(
-      "This platform exposes no kernel boot id and no start instant for pid $INIT_PID, so worker " +
-        "ownership carries no boot identity. Process-birth evidence remains the reused-pid guard.",
-    )
-    return BOOT_IDENTITY_UNAVAILABLE
-  }
 }
 
-/**
- * Reschedules itself one tick at a time rather than using a fixed-rate or fixed-delay period, because
- * the scheduler suppresses every later run of a periodic task that throws and nothing reads the
- * returned future — an escaping exception would silently end lease renewal for the rest of the phase.
- * Rescheduling also lets a failed attempt retry sooner than the normal interval.
- *
- * `Exception` rather than `Throwable` is deliberate: a linkage or initialization Error is not a
- * transient condition this loop can retry past, and swallowing one would hide it.
- */
 private class HeartbeatLoop(
   private val plan: FeatureTaskRuntimeHeartbeatPlan,
   private val heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
@@ -234,7 +204,6 @@ private class HeartbeatLoop(
   }
 
   private fun scheduleNext(delaySeconds: Long) {
-    // Rejected once stop() has shut the executor down, at which point there is nothing left to renew.
     runCatching { executor.schedule(::runTick, delaySeconds, TimeUnit.SECONDS) }
   }
 

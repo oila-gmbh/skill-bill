@@ -155,9 +155,10 @@ class FileSystemGoalPlanningVerificationDiscoveryTest {
   }
 
   private fun writeEntries(file: Path, title: String, body: String) {
+    val recent = LocalDate.now(ZoneOffset.UTC).minusDays(5)
     Files.writeString(
       file,
-      "# Boundary History\n\n## [2026-08-01] $title\n\n$body\n",
+      "# Boundary History\n\n## [$recent] $title\n\n$body\n",
     )
   }
 }

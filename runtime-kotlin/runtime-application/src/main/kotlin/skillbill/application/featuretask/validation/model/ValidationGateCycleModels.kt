@@ -4,6 +4,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
@@ -66,7 +67,10 @@ fun interface ValidationGateAgentRepairLauncher {
 
 sealed interface ValidationGateAgentRepairResult {
   data class Completed(val output: FeatureTaskRuntimePhaseOutput) : ValidationGateAgentRepairResult
-  data class Blocked(val reason: String) : ValidationGateAgentRepairResult
+  data class Blocked(
+    val reason: String,
+    val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
+  ) : ValidationGateAgentRepairResult
 }
 
 sealed interface ValidationGateCycleResult {
@@ -83,6 +87,7 @@ sealed interface ValidationGateCycleTerminalOutcome {
     val reason: String,
     val remainingFindings: ValidationFindingSetProjection? = null,
     val measurements: List<FeatureTaskRuntimeValidationGateRunRecord> = emptyList(),
+    val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
   ) : ValidationGateCycleTerminalOutcome
 }
 

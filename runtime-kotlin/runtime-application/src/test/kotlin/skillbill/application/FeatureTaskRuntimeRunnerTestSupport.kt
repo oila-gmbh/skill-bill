@@ -1331,6 +1331,42 @@ internal val VALIDATE_BLOCKED_OUTPUT: String = """
     }
   }
 """.trimIndent()
+
+internal val VALIDATE_BLOCKED_NEEDS_USER_ACTION_OUTPUT: String = """
+  {
+    "contract_version": "0.3",
+    "phase_id": "validate",
+    "status": "blocked",
+    "failure_disposition": "needs_user_action",
+    "summary": "Docker daemon unavailable.",
+    "produced_outputs": {
+      "validation_result": "fail",
+      "blocking_reasons": ["Cannot connect to docker.sock."]
+    }
+  }
+""".trimIndent()
+
+internal val BUILD_BLOCKED_NEEDS_USER_ACTION_OUTPUT: String = """
+  {
+    "contract_version": "0.3",
+    "phase_id": "build",
+    "status": "blocked",
+    "failure_disposition": "needs_user_action",
+    "summary": "Gradle daemon unavailable.",
+    "produced_outputs": {
+      "blocking_reasons": ["Cannot connect to Gradle daemon."]
+    }
+  }
+""".trimIndent()
+
+internal fun kotlinPackWithBuildGate(): PlatformManifest = kotlinPackWithValidationGate().let { pack ->
+  pack.copy(
+    validationGate = pack.validationGate!!.copy(
+      buildCommand = listOf("echo", "build"),
+      cacheBypassingBuildCommand = listOf("echo", "build-full"),
+    ),
+  )
+}
 internal fun goalContinuationLauncher(commitPushOutput: String): RuntimeRecordingLauncher =
   RuntimeRecordingLauncher { request ->
     val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))

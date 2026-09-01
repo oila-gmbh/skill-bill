@@ -42,6 +42,7 @@ data class GoalRunnerDeps(
   val diagnostics: RuntimeDiagnostics,
   val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService?,
   val executionCoordinator: GoalRunnerExecutionCoordinator,
+  val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
 )
 
 @Inject

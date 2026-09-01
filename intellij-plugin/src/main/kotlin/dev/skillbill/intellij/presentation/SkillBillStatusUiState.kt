@@ -193,6 +193,7 @@ sealed class SkillBillStatusUiState {
         override val stale: Boolean = false,
         override val currentModel: CurrentPhaseModel? = null,
         override val currentPhaseExecution: CurrentPhaseExecution? = null,
+        override val pauseReason: PauseReason? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (blocked)"
     }

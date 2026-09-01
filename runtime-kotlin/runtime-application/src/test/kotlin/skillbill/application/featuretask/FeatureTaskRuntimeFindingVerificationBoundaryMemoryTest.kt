@@ -8,6 +8,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificatio
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDispositionVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 import java.nio.file.Files
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -15,6 +17,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
+  private val recentHistoryDay = LocalDate.now(ZoneOffset.UTC).minusDays(5)
+
   private val memory = FeatureTaskRuntimeFindingVerificationBoundaryMemory(
     FileSystemGoalPlanningContextDiscovery(),
     FileSystemGoalPlanningBoundaryBodyResolver(),
@@ -26,12 +30,12 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n\n" +
-        "## [2026-08-01] unselected-title\n\nunselected body sentence\n",
+      "# Boundary History\n\n## [$recentHistoryDay] selected-title\n\nselected body sentence\n\n" +
+        "## [$recentHistoryDay] unselected-title\n\nunselected body sentence\n",
     )
     Files.writeString(
       agent.resolve("decisions.md"),
-      "# Boundary Decisions\n\n## [2026-08-01] decision-title\n\ndecision body sentence\n",
+      "# Boundary Decisions\n\n## [$recentHistoryDay] decision-title\n\ndecision body sentence\n",
     )
 
     val prompt = memory.promptSection(
@@ -90,7 +94,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [$recentHistoryDay] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -141,8 +145,8 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n\n" +
-        "## [2026-08-01] unselected-title\n\nunselected body sentence\n",
+      "# Boundary History\n\n## [$recentHistoryDay] selected-title\n\nselected body sentence\n\n" +
+        "## [$recentHistoryDay] unselected-title\n\nunselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -179,10 +183,10 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val repo = Files.createTempDirectory("verify-findings-cap-gate")
     val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
     val headings = (0 until GoalVerificationBoundaryCaps.maxHeadingsPerFile).joinToString("\n\n") { index ->
-      "## [2026-08-${"%02d".format((index % 28) + 1)}] history-$index\n\nhistory body $index"
+      "## [$recentHistoryDay] history-$index\n\nhistory body $index"
     }
     val decisions = (0 until GoalVerificationBoundaryCaps.maxHeadingsPerFile).joinToString("\n\n") { index ->
-      "## [2026-08-${"%02d".format((index % 28) + 1)}] decision-$index\n\ndecision body $index"
+      "## [$recentHistoryDay] decision-$index\n\ndecision body $index"
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$headings\n")
     Files.writeString(agent.resolve("decisions.md"), "# Boundary Decisions\n\n$decisions\n")
@@ -243,7 +247,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [$recentHistoryDay] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -271,7 +275,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [$recentHistoryDay] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -315,7 +319,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [$recentHistoryDay] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -387,7 +391,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [$recentHistoryDay] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -431,7 +435,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [$recentHistoryDay] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,

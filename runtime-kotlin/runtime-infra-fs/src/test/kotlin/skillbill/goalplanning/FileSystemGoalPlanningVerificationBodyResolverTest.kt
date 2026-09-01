@@ -6,6 +6,8 @@ import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.verification.model.GoalVerificationContext
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -15,8 +17,9 @@ class FileSystemGoalPlanningVerificationBodyResolverTest {
   fun `over budget verification resolution raises the named cap error`() {
     val repo = Files.createTempDirectory("goal-verification-body-cap")
     val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
+    val recent = LocalDate.now(ZoneOffset.UTC).minusDays(5)
     val headings = (0 until GoalVerificationContext.MAX_SELECTED_BODIES + 2).joinToString("\n\n") { index ->
-      "## [2026-08-${"%02d".format((index % 28) + 1)}] entry-$index\n\nbody $index"
+      "## [$recent] entry-$index\n\nbody $index"
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$headings\n")
     val catalog = FileSystemGoalPlanningContextDiscovery().discoverForFindingPaths(
@@ -45,9 +48,10 @@ class FileSystemGoalPlanningVerificationBodyResolverTest {
     val repo = Files.createTempDirectory("goal-verification-body-bytes")
     val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
     val bigBody = "x".repeat(GoalVerificationContext.MAX_BODY_BYTES + 64)
+    val recent = LocalDate.now(ZoneOffset.UTC).minusDays(5)
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] big-entry\n\n$bigBody\n",
+      "# Boundary History\n\n## [$recent] big-entry\n\n$bigBody\n",
     )
     val catalog = catalogOf(repo)
     val headingId = catalog.single().headingId
