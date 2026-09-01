@@ -171,6 +171,7 @@ sealed class SkillBillStatusOutcome {
         val subtaskActiveDurationAsOf: Instant? = null,
         val currentModel: CurrentPhaseModel? = null,
         val currentPhaseExecution: CurrentPhaseExecution? = null,
+        val pauseReason: PauseReason? = null,
     ) : SkillBillStatusOutcome()
 
     data class Failed(

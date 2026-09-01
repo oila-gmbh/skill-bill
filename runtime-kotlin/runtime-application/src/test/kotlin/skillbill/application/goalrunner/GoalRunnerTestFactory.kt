@@ -17,6 +17,7 @@ import skillbill.application.goalrunner.planning.GoalPlanningSweep
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepDeps
 import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.testDecompositionManifestValidator
+import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
@@ -41,7 +42,6 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.specscratch.UnavailableSpecScratchStore
-import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.goal.NoopGoalProgressEventValidator

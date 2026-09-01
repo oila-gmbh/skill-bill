@@ -71,8 +71,10 @@ internal fun FeatureTaskRuntimeRunLoop.gateOutputEarlyExit(args: GateOutputArgs)
     val operatorTerminalQualityGate = outputMap?.let { envelope ->
       val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, envelope)
       !disposition.retryOnResume &&
-        (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
-          run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD)
+        (
+          run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
+            run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD
+          )
     } == true
     if (!operatorTerminalQualityGate) {
       return AttemptResult.settled(PhaseOutcome.completed(gateRepairSegmentOutput(run, args.iteration)))

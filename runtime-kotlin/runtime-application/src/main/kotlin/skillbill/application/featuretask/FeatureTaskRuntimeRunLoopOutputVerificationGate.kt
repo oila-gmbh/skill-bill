@@ -8,7 +8,6 @@ import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_NO_PROGRESS
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgressDecision
@@ -86,8 +85,10 @@ internal fun FeatureTaskRuntimeRunLoop.terminalOutputAttempt(args: TerminalOutpu
   val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, outputMap)
   val operatorTerminalQualityGate =
     !disposition.retryOnResume &&
-      (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
-        run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD)
+      (
+        run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
+          run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD
+        )
   if (operatorTerminalQualityGate) {
     return AttemptResult.settled(
       blockInPhase(

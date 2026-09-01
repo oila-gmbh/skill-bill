@@ -415,4 +415,28 @@ class IdeStatusSchemaValidatorTest {
       IdeStatusSchemaValidator.validate(badLabel, "test-agent-activity-bad-label")
     }
   }
+
+  @Test
+  fun `blocked feature-goal snapshot with operator pause reason passes`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-228",
+        "workflow_id" to "goal-blocked",
+        "workflow_family" to "feature-goal",
+        "lifecycle_state" to "blocked",
+        "current_step" to linkedMapOf("id" to "validate", "label" to "Validate"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 3),
+        "pause_reason" to linkedMapOf(
+          "code" to "awaiting_operator_decision",
+          "label" to "Configure GITHUB_REGISTRY_AUTH",
+        ),
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-228 is blocked: Configure GITHUB_REGISTRY_AUTH",
+      ),
+      "test-goal-blocked-pause-reason",
+    )
+  }
 }

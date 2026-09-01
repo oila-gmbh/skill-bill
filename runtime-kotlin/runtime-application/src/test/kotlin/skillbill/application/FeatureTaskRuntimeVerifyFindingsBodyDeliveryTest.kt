@@ -5,6 +5,8 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import java.nio.file.Files
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -19,9 +21,10 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
     val findingPath = "runtime-kotlin/runtime-application/src/Foo.kt"
     val sourcePath = "runtime-kotlin/runtime-application/agent/history.md"
     val agent = Files.createDirectories(repoRoot.resolve("runtime-kotlin/runtime-application/agent"))
+    val recent = LocalDate.now(ZoneOffset.UTC).minusDays(5)
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [$recent] selected-title\n\nselected body sentence\n",
     )
     val headingId = FileSystemGoalPlanningContextDiscovery()
       .discoverForFindingPaths(repoRoot, listOf(findingPath), loudFailOnCapExceeded = true)

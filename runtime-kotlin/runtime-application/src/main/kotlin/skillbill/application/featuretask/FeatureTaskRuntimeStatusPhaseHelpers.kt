@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.application.featuretask.model.FeatureTaskRuntimeOperatorDecisionPause
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStatus
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -22,6 +23,10 @@ internal val CONTINUATION_KIND_ACTIONS = setOf(
   FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION,
 )
 internal val LOOP_ONLY_PHASE_IDS: Set<String> = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds
+internal val OPERATOR_DECISION_QUALITY_GATE_PHASE_IDS: Set<String> = setOf(
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+)
 
 internal fun phaseStatuses(
   records: Map<String, FeatureTaskRuntimePhaseRecord>,
@@ -128,8 +133,14 @@ internal fun operatorDecisionPause(
   }
   return records.values
     .firstOrNull { record ->
-      record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED &&
-        record.failureDisposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION
+      record.failureDisposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION &&
+        when (record.status) {
+          FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> true
+          FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED ->
+            record.phaseId in OPERATOR_DECISION_QUALITY_GATE_PHASE_IDS &&
+              !record.blockedReason.isNullOrBlank()
+          else -> false
+        }
     }
     ?.let { record ->
       FeatureTaskRuntimeOperatorDecisionPause(

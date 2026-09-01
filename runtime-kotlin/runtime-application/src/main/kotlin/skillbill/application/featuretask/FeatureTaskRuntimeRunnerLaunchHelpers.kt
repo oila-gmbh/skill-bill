@@ -46,8 +46,10 @@ internal fun terminalBlockedReasonFrom(phaseId: String, outputMap: Map<String, A
   val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(phaseId, outputMap)
   val operatorTerminalQualityGate =
     disposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION &&
-      (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
-        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD)
+      (
+        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
+          phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD
+        )
   val prefix = when {
     operatorTerminalQualityGate -> "Phase output reported status '$status'."
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->

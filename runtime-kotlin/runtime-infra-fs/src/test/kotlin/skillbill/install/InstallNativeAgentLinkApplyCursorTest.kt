@@ -134,8 +134,9 @@ class InstallNativeAgentLinkApplyCursorTest : InstallNativeAgentLinkApplyTestSup
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     val newTarget = readSymlinkTarget(linkPath)
-    assertTrue(newTarget.startsWith(fixture.home.resolve(".skill-bill/installed-skills")))
-    assertFalse(newTarget.startsWith(legacyRoot))
+    val installedSkills = fixture.home.toAbsolutePath().normalize().resolve(".skill-bill/installed-skills")
+    assertTrue(newTarget.startsWith(installedSkills), "newTarget=$newTarget installedSkills=$installedSkills")
+    assertFalse(newTarget.startsWith(legacyRoot.toAbsolutePath().normalize()))
   }
 
   @Test

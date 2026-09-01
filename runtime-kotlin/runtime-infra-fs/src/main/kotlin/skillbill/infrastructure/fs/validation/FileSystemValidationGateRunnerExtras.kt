@@ -43,7 +43,8 @@ internal fun FileSystemValidationGateRunner.parseFindings(
     return artifacts
   }
   val compiler = parseCompilerDiagnostics(request, stdout)
-  val finerFindings = compiler + artifacts
+  val spotless = FileSystemValidationGateGradleSpotlessStdoutParsers.parseGradleSpotlessStdout(request.repoRoot, stdout)
+  val finerFindings = compiler + artifacts + spotless
   var coveredTaskKeys = FileSystemValidationGateGradleStdoutParsers.coveredGradleTaskKeys(finerFindings)
   val projectHealth = FileSystemValidationGateGradleStdoutParsers.parseGradleProjectHealthStdout(stdout)
   coveredTaskKeys = coveredTaskKeys + projectHealth.map { "${it.module}|projectHealth" }.toSet()
@@ -52,8 +53,11 @@ internal fun FileSystemValidationGateRunner.parseFindings(
   coveredTaskKeys = coveredTaskKeys + architectureCheck.map { "${it.module}|architectureCheck" }.toSet()
   val taskHeaders =
     FileSystemValidationGateGradleStdoutParsers.parseGradleTaskFailureHeaders(stdout, coveredTaskKeys)
-  return (finerFindings + projectHealth + architectureCheck + taskHeaders)
-    .distinctBy { FileSystemValidationGateRunner.findingIdentity(it) }
+  return FileSystemValidationGateGradleSpotlessStdoutParsers.enrichSpotlessTaskHeaderFindings(
+    (finerFindings + projectHealth + architectureCheck + taskHeaders)
+      .distinctBy { FileSystemValidationGateRunner.findingIdentity(it) },
+    stdout,
+  )
 }
 
 internal fun FileSystemValidationGateRunner.finalizeFindings(

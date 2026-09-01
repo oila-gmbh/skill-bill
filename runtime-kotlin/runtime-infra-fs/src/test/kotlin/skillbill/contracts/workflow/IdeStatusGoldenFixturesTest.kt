@@ -283,6 +283,32 @@ class IdeStatusGoldenFixturesTest {
   }
 
   @Test
+  fun `feature-goal blocked with operator pause reason golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-228",
+        "workflow_id" to "goal-blocked-operator",
+        "workflow_family" to "feature-goal",
+        "lifecycle_state" to "blocked",
+        "current_step" to linkedMapOf("id" to "validate", "label" to "Validate"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 3),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "current_subtask" to linkedMapOf("id" to "2"),
+        "pause_reason" to linkedMapOf(
+          "code" to "awaiting_operator_decision",
+          "label" to "Configure GITHUB_REGISTRY_AUTH then run npm ci:safe",
+        ),
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-228 is blocked: Configure GITHUB_REGISTRY_AUTH then run npm ci:safe",
+      ),
+      "golden-goal-blocked-operator-pause",
+    )
+  }
+
+  @Test
   fun `agent activity pair golden validates`() {
     IdeStatusSchemaValidator.validate(
       linkedMapOf(

@@ -78,8 +78,9 @@ class InstallApplyTest : InstallApplyTestSupport() {
       .mapNotNull { native -> native.path }
       .forEach { link ->
         val target = readSymlinkTarget(link)
-        assertTrue(target.startsWith(fixture.home.resolve(".skill-bill/installed-skills")))
-        assertFalse(target.startsWith(fixture.home.resolve(".skill-bill/native-agents")))
+        val installedSkills = fixture.home.toAbsolutePath().normalize().resolve(".skill-bill/installed-skills")
+        assertTrue(target.startsWith(installedSkills), "target=$target installedSkills=$installedSkills")
+        assertFalse(target.startsWith(fixture.home.toAbsolutePath().normalize().resolve(".skill-bill/native-agents")))
       }
     assertFalse(Files.exists(fixture.home.resolve(".skill-bill/native-agents"), LinkOption.NOFOLLOW_LINKS))
     assertFalse(result.nativeAgents.any { native -> native.provider == NativeAgentProviderId.JUNIE })
@@ -336,9 +337,10 @@ class InstallApplyTest : InstallApplyTestSupport() {
       """
       |---
       |name: bill-kotlin-unplanned-worker
+      |description: Unplanned worker that must be ignored.
       |---
       |
-      |# Missing description in unplanned selected pack skill
+      |# Unplanned selected pack skill worker
       |
       """.trimMargin(),
     )
