@@ -1,5 +1,9 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.InMemoryRuntimeWorkflowRepository
+import skillbill.application.RuntimeFakeDatabaseSessionFactory
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderDeps
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderValidators
@@ -37,6 +41,7 @@ import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.specscratch.UnavailableSpecScratchStore
+import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.goal.NoopGoalProgressEventValidator
@@ -89,6 +94,7 @@ internal fun goalRunnerDeps(
   subtaskLauncher: GoalRunnerSubtaskLauncher,
   outcomeStore: GoalRunnerWorkflowOutcomeStore,
   pullRequestPort: GoalPullRequestPort,
+  phaseRecorder: FeatureTaskRuntimePhaseRecorder = goalRunnerDefaultPhaseRecorder(),
 ): GoalRunnerDeps = GoalRunnerDeps(
   manifestStore = manifestStore,
   subtaskLauncher = subtaskLauncher,
@@ -102,6 +108,14 @@ internal fun goalRunnerDeps(
   diagnostics = NoopRuntimeDiagnostics,
   unaddressedFindingsLedgerService = null,
   executionCoordinator = GoalRunnerExecutionCoordinator.NONE,
+  phaseRecorder = phaseRecorder,
+)
+
+internal fun goalRunnerDefaultPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = testPhaseRecorder(
+  RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository()),
+  testWorkflowSnapshotValidator,
+  AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+  AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
 )
 
 internal fun testGoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps): GoalRunnerStatusService =

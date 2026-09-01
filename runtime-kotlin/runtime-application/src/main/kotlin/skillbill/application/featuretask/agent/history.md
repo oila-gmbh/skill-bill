@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-09-01] SKILL-228 subtask 1 — Validate/build needs_user_action operator block
+Areas: runtime-application/featuretask, runtime-application/featuretask/validation, runtime-application/goalrunner
+- Validate and build `blocked` + `failure_disposition: needs_user_action` settle once as terminal operator blocks: phase record + ledger before any parent-PID hold; no repair-turn increment or gate relaunch.
+- `terminalOutputAttempt` treats NEEDS_USER_ACTION as non-retryable; `gateOutputEarlyExit` keeps repair-segment completion from swallowing the operator path; `isRecoverableValidationBlock` excludes that disposition so disposition-less blocked validate still repairs.
+- Goal continuation / stop reports thread non-empty `blocked_reason` from summary and `blocking_reasons` so `skill-bill goal status` shows the operator block without chat.
+- Pattern: explicit disposition owns terminal vs repair; omit disposition to keep the existing validate repair loop. reusable
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-29] SKILL-219 subtask 2 — Briefing-only triage for unparseable gate blobs
 Areas: runtime-application/featuretask, runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime
 - When collect-all still yields exactly one `unparseable_gate_failure`, validate and build cycles insert one triage agent turn before repair turn 1; discrete finding sets skip triage.

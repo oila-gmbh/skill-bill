@@ -5,6 +5,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateAgentTri
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.goal.model.ValidationDepth
@@ -77,6 +78,8 @@ internal fun FeatureTaskRuntimeRunLoop.settleValidationGateCycleResult(
               attemptCount = iteration,
               reason = terminal.reason,
               observability = observability,
+              failureDisposition = terminal.failureDisposition
+                ?: FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
             ),
           )
       }

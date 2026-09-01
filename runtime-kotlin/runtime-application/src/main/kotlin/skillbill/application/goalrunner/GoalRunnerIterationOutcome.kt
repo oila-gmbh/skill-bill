@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
@@ -20,6 +21,7 @@ internal class GoalRunnerIterationOutcome(
   private val unaddressedFindingsLedgerService get() = deps.unaddressedFindingsLedgerService
   private val progressReader get() = deps.progressReader
   private val clock get() = deps.clock
+  private val phaseRecorder get() = deps.phaseRecorder
   private val validationQualityRetries get() = pendingState.validationQualityRetries
   private val pendingReAttemptCause get() = pendingState.pendingReAttemptCause
   private val pendingCausingLoopEntry get() = pendingState.pendingCausingLoopEntry
@@ -262,7 +264,7 @@ internal class GoalRunnerIterationOutcome(
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
   ): GoalRunnerIterationResult? {
-    if (!stoppedOutcome.isRecoverableValidationBlock()) {
+    if (!stoppedOutcome.isRecoverableValidationBlock(phaseRecorder, request.dbPathOverride)) {
       return null
     }
     val priorRetries = validationQualityRetries[subtaskId] ?: 0

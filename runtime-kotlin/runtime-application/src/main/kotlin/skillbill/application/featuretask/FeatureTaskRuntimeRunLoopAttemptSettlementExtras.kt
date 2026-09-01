@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
@@ -66,7 +67,16 @@ internal fun FeatureTaskRuntimeRunLoop.settleFromPersistedEnvelope(args: GateOut
 internal fun FeatureTaskRuntimeRunLoop.gateOutputEarlyExit(args: GateOutputArgs): AttemptResult? {
   val run = args.run
   if (run.validationGateRepairTurn > 0) {
-    return AttemptResult.settled(PhaseOutcome.completed(gateRepairSegmentOutput(run, args.iteration)))
+    val outputMap = looseOutputEnvelope(args.captured.text)
+    val operatorTerminalQualityGate = outputMap?.let { envelope ->
+      val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, envelope)
+      !disposition.retryOnResume &&
+        (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
+          run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD)
+    } == true
+    if (!operatorTerminalQualityGate) {
+      return AttemptResult.settled(PhaseOutcome.completed(gateRepairSegmentOutput(run, args.iteration)))
+    }
   }
   if (run.validationGateTriage) {
     return AttemptResult.settled(

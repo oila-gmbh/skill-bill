@@ -31,6 +31,7 @@ import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.validation.model.unparseableGateFailureMessage
 import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
@@ -184,6 +185,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
           repair.reason,
           remainingFindings = projection,
           measurements = measurements,
+          failureDisposition = repair.failureDisposition,
         )
         is ValidationGateAgentRepairResult.Completed -> repairsUsed++
       }
@@ -379,10 +381,12 @@ private fun terminalBlockedResult(
   reason: String,
   remainingFindings: ValidationFindingSetProjection? = null,
   measurements: List<FeatureTaskRuntimeValidationGateRunRecord> = emptyList(),
+  failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
 ): ValidationGateCycleResult = ValidationGateCycleResult.Terminal(
   ValidationGateCycleTerminalOutcome.Blocked(
     reason = reason,
     remainingFindings = remainingFindings,
     measurements = measurements,
+    failureDisposition = failureDisposition,
   ),
 )
