@@ -4,6 +4,10 @@ import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
 interface WorkflowGitRemoteOperations {
+  companion object {
+    const val ABSENT_REMOTE_BRANCH = "absent"
+  }
+
   fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
     status = "error",
     error = "This git operations implementation cannot push branch '$branch'.",

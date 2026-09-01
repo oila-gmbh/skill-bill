@@ -64,9 +64,14 @@ internal fun forceWithLeaseRecord(
   "published, so finalisation rewrote a commit the remote already carries"
 
 internal fun leaseRefreshRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, branch: String) =
-  "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='git fetch origin $branch' " +
-    "value_expected=the remote-tracking tip for 'origin/$branch' for subtask " +
+  "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='git fetch origin +refs/heads/$branch:" +
+    "refs/remotes/origin/$branch' value_expected=the remote-tracking tip for 'origin/$branch' for subtask " +
     "'${identity.issueKey}/${identity.subtaskId}' cause=a leased push is only as current as the last fetch"
+
+internal fun leaseAbsentRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, branch: String) =
+  "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='git push -u origin $branch' " +
+    "value_expected=a leased push of 'origin/$branch' for subtask '${identity.issueKey}/${identity.subtaskId}' " +
+    "cause=the remote no longer has '$branch', so finalisation publishes the local tip as a new remote branch"
 
 internal fun leaseRefreshFailedRecord(
   identity: FeatureTaskRuntimeSubtaskCommitIdentity,

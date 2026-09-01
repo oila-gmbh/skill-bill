@@ -210,7 +210,7 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertEquals(commitsBefore, commitCount(repo.root), "a reopened published subtask still ends with one commit")
     assertEquals(finalised.commitSha, git(repo.remote, "rev-parse", branch))
     assertTrue(records.any { it.contains("git push --force-with-lease") })
-    assertTrue(records.any { it.contains("git fetch origin $branch") })
+    assertTrue(records.any { it.contains("git fetch origin +refs/heads/$branch") })
 
     val staleRepo = staleLease(repo)
     records.clear()
@@ -232,7 +232,7 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
       !git(staleRepo.remote, "ls-tree", "--name-only", "-r", branch).contains("remote-only.txt"),
       "a refreshed lease must overwrite the remote-only commit instead of blocking",
     )
-    assertTrue(records.any { it.contains("git fetch origin $branch") })
+    assertTrue(records.any { it.contains("git fetch origin +refs/heads/$branch") })
   }
 
   @Test
@@ -352,6 +352,47 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
       ".feature-specs/$issueKey/decomposition-manifest.yaml",
       git(repo.root, "diff", "--name-only"),
       "the governed spec must stay dirty locally",
+    )
+  }
+
+  @Test
+  fun `a published subtask whose remote branch was deleted is pushed as a new remote branch`() {
+    val repo = repoWithRemote()
+    Files.createDirectories(repo.root.resolve(".feature-specs/$issueKey"))
+    Files.writeString(
+      repo.root.resolve(".feature-specs/$issueKey/decomposition-manifest.yaml"),
+      "status: pending\n",
+    )
+    git(repo.root, "add", ".feature-specs")
+    git(repo.root, "commit", "-m", "operator committed the spec")
+    Files.writeString(repo.root.resolve("owned.txt"), "checkpoint\n")
+    git(repo.root, "add", "owned.txt")
+    git(repo.root, "commit", "-m", "$issueKey: subtask $subtaskId\n\nprovisional\n\n${identity.trailer}")
+    val checkpointSha = git(repo.root, "rev-parse", "HEAD")
+    Files.writeString(repo.root.resolve("owned.txt"), "final\n")
+    val published = assertIs<FeatureTaskRuntimeSubtaskFinalised>(
+      finalise(repo, durableCommitSha = checkpointSha, paths = listOf("owned.txt")),
+    )
+
+    git(repo.remote, "update-ref", "-d", "refs/heads/$branch")
+    assertEquals(published.commitSha, git(repo.root, "rev-parse", "origin/$branch"))
+    assertEquals("", remoteBranchTip(repo.remote))
+    Files.writeString(repo.root.resolve("owned.txt"), "recreated\n")
+    records.clear()
+    val recreated = assertIs<FeatureTaskRuntimeSubtaskFinalised>(
+      finalise(
+        repo,
+        durableCommitSha = published.commitSha,
+        paths = listOf("owned.txt"),
+        sequenceNumber = 1,
+      ),
+    )
+
+    assertEquals(recreated.commitSha, git(repo.remote, "rev-parse", branch))
+    assertEquals("recreated\n", git(repo.root, "show", "HEAD:owned.txt") + "\n")
+    assertTrue(
+      records.any { it.contains("the remote no longer has") },
+      records.joinToString("\n"),
     )
   }
 

@@ -1,5 +1,6 @@
 package skillbill.infrastructure.fs
 
+import skillbill.ports.workflow.gitops.WorkflowGitRemoteOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
@@ -55,7 +56,18 @@ internal fun gitFetchRemoteBranch(repoRoot: Path, branch: String): WorkflowGitOp
   if (normalized.isBlank()) {
     return WorkflowGitOperationResult(status = "error", error = "Branch name is required to fetch.")
   }
-  return runGitCommand(repoRoot, "fetch", "origin", normalized).withValue(normalized)
+  val remoteTracking = "refs/remotes/origin/$normalized"
+  val refspec = "+refs/heads/$normalized:$remoteTracking"
+  val fetched = runGitCommand(repoRoot, "fetch", "origin", refspec)
+  if (fetched.ok) return fetched.withValue(normalized)
+  if (!remoteRefMissing(fetched)) return fetched
+  runGitCommand(repoRoot, "update-ref", "-d", remoteTracking)
+  return WorkflowGitOperationResult(status = "ok", value = WorkflowGitRemoteOperations.ABSENT_REMOTE_BRANCH)
+}
+
+private fun remoteRefMissing(result: WorkflowGitOperationResult): Boolean {
+  val text = "${result.error} ${result.value}"
+  return "couldn't find remote ref" in text.lowercase()
 }
 
 internal fun gitLocalBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult {

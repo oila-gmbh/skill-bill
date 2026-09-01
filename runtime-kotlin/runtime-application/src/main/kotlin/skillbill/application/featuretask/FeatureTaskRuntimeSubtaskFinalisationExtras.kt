@@ -1,7 +1,9 @@
 package skillbill.application.featuretask
 
+import skillbill.ports.workflow.gitops.WorkflowGitRemoteOperations
 import skillbill.ports.workflow.gitops.captureIndexState
 import skillbill.ports.workflow.gitops.headCommitMessage
+import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.gitops.restoreIndexState
 import skillbill.ports.workflow.gitops.stagePaths
 
@@ -156,27 +158,38 @@ internal fun FeatureTaskRuntimeSubtaskFinalisation.push(
     return if (pushed.ok) null else "the finalised subtask commit '$commitSha' could not be pushed (${pushed.error})"
   }
   record(forceWithLeaseRecord(identity, branch, commitSha))
-  refreshRemote(identity, branch)
+  val refreshed = refreshRemote(identity, branch)
+  if (refreshed.namesAbsentRemote()) return pushAmended(branch, commitSha)
   val first = gitOperations.pushBranchWithLease(repoRoot, branch)
   if (first.ok) return null
   record(leaseRetryRecord(identity, branch, first.error))
-  refreshRemote(identity, branch)
+  val retried = refreshRemote(identity, branch)
+  if (retried.namesAbsentRemote()) return pushAmended(branch, commitSha)
   val second = gitOperations.pushBranchWithLease(repoRoot, branch)
   if (second.ok) return null
   record(leaseAbortRecord(identity, branch, second.error))
   return "the reopened subtask's amended commit '$commitSha' could not be pushed (${second.error})"
 }
 
+private fun FeatureTaskRuntimeSubtaskFinalisation.pushAmended(branch: String, commitSha: String): String? {
+  val pushed = gitOperations.pushBranch(repoRoot, branch)
+  return if (pushed.ok) null else "the reopened subtask's amended commit '$commitSha' could not be pushed (${pushed.error})"
+}
+
+private fun WorkflowGitOperationResult.namesAbsentRemote(): Boolean =
+  ok && value.trim() == WorkflowGitRemoteOperations.ABSENT_REMOTE_BRANCH
+
 private fun FeatureTaskRuntimeSubtaskFinalisation.refreshRemote(
   identity: FeatureTaskRuntimeSubtaskCommitIdentity,
   branch: String,
-) {
+): WorkflowGitOperationResult {
   val refreshed = gitOperations.refreshRemoteBranch(repoRoot, branch)
-  if (refreshed.ok) {
-    record(leaseRefreshRecord(identity, branch))
-  } else {
-    record(leaseRefreshFailedRecord(identity, branch, refreshed.error))
+  when {
+    refreshed.namesAbsentRemote() -> record(leaseAbsentRecord(identity, branch))
+    refreshed.ok -> record(leaseRefreshRecord(identity, branch))
+    else -> record(leaseRefreshFailedRecord(identity, branch, refreshed.error))
   }
+  return refreshed
 }
 
 internal fun FeatureTaskRuntimeSubtaskFinalisation.restoring(
