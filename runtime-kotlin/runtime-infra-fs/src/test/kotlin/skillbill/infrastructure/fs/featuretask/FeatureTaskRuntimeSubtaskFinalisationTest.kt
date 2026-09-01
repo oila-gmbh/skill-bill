@@ -268,9 +268,6 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertEquals("", remoteBranchTip(second.remote), "an unrecorded commit must not be published")
   }
 
-  // The bug: a reopened subtask whose first checkpoint amends its published commit leaves the remote
-  // tip off the new lineage; without a lease the finalisation push is rejected, and treating that as a
-  // plain push failure strands a subtask that legitimately owns the commit it rewrote.
   @Test
   fun `a reopened subtask that checkpointed over its published commit still leases its push`() {
     val repo = repoWithRemote()
@@ -296,8 +293,6 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertTrue(finalised.commitSha != publishedSha)
   }
 
-  // Clean implementation worktree (only governed spec dirt): finalisation must refuse rather than
-  // amend/publish the unchanged checkpoint tree as if deliverable work landed.
   @Test
   fun `a finalisation with nothing stageable is refused instead of publishing the checkpoint tree`() {
     val repo = repoWithRemote()
@@ -318,8 +313,48 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertEquals("", remoteBranchTip(repo.remote), "a refused finalisation must not publish")
   }
 
-  // Incomplete agent changed_paths must not strand validate repairs (or operator edits): finalisation
-  // sweeps every dirty non-ignored implementation path, while still leaving governed specs local.
+  @Test
+  fun `an already-finalised HEAD still pushes when only the governed spec is dirty`() {
+    val repo = repoWithRemote()
+    Files.createDirectories(repo.root.resolve(".feature-specs/$issueKey"))
+    Files.writeString(
+      repo.root.resolve(".feature-specs/$issueKey/decomposition-manifest.yaml"),
+      "status: pending\n",
+    )
+    git(repo.root, "add", ".feature-specs")
+    git(repo.root, "commit", "-m", "operator committed the spec")
+    Files.writeString(repo.root.resolve("owned.txt"), "checkpoint\n")
+    git(repo.root, "add", "owned.txt")
+    git(repo.root, "commit", "-m", "$issueKey: subtask $subtaskId\n\nprovisional\n\n${identity.trailer}")
+    val checkpointSha = git(repo.root, "rev-parse", "HEAD")
+    Files.writeString(repo.root.resolve("owned.txt"), "final\n")
+    val published = assertIs<FeatureTaskRuntimeSubtaskFinalised>(
+      finalise(repo, durableCommitSha = checkpointSha, paths = listOf("owned.txt")),
+    )
+
+    Files.writeString(
+      repo.root.resolve(".feature-specs/$issueKey/decomposition-manifest.yaml"),
+      "status: blocked\n",
+    )
+    records.clear()
+    val pushed = assertIs<FeatureTaskRuntimeSubtaskFinalised>(
+      finalise(
+        repo,
+        durableCommitSha = published.commitSha,
+        paths = listOf(".feature-specs/$issueKey/decomposition-manifest.yaml"),
+        sequenceNumber = 1,
+      ),
+    )
+
+    assertEquals(pushed.commitSha, git(repo.remote, "rev-parse", branch))
+    assertEquals("final\n", git(repo.root, "show", "HEAD:owned.txt") + "\n")
+    assertEquals(
+      ".feature-specs/$issueKey/decomposition-manifest.yaml",
+      git(repo.root, "diff", "--name-only"),
+      "the governed spec must stay dirty locally",
+    )
+  }
+
   @Test
   fun `a partial changed_paths list still commits every dirty implementation path`() {
     val repo = repoWithRemote()

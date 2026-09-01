@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.nio.file.Path
 
-/** The agent's half of the finalisation contract: the commit subject. `changedPaths` is advisory. */
 internal data class FeatureTaskRuntimeCommitPushHandoff(
   val outcomeMessage: String,
   val changedPaths: List<String>,
@@ -32,22 +31,6 @@ internal data class FeatureTaskRuntimeSubtaskFinalisationBlocked(
   val reason: String,
 ) : FeatureTaskRuntimeSubtaskFinalisationResult
 
-/**
- * SKILL-190: the runtime half of `commit_push`.
- *
- * The agent supplies the commit subject; every git write below is the runtime's. Staging sweeps every
- * dirty non-ignored worktree path except governed `.feature-specs/` inputs (gitignored paths never
- * appear in porcelain status, so they stay out). Order is load-bearing: the handoff message is
- * validated before anything is staged, so a rejected finalisation leaves the repository exactly as
- * the agent left it; the message is applied in the same amend that stages the content, so no commit
- * ever reaches a pushed state carrying the provisional subject; and the sha is captured after that
- * amend, so the value threaded into the manifest is the final one rather than an intermediate.
- *
- * [recordCommit] persists the durable pointer to the commit just written and runs BEFORE the push,
- * returning a blocking reason when it cannot. Recording after the push left a failed push blocked with
- * HEAD at the finalisation commit while the pointer still named the pre-amend checkpoint sha, so the
- * re-entry resolved Create against a clean index and the subtask could never finish.
- */
 internal class FeatureTaskRuntimeSubtaskFinalisation(
   internal val gitOperations: WorkflowGitOperations,
   internal val repoRoot: Path,
@@ -59,8 +42,11 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     if (dirtyOrError is DirtyPathsError) return blocked(dirtyOrError.reason)
     val paths = stageablePathsFrom((dirtyOrError as DirtyPaths).paths)
     if (paths.excluded.isNotEmpty()) record(specExclusionRecord(request.identity, paths.excluded))
-    val alreadyCommitted = paths.stageable.isEmpty()
-    if (alreadyCommitted && paths.excluded.isNotEmpty()) {
+    if (
+      paths.stageable.isEmpty() &&
+      paths.excluded.isNotEmpty() &&
+      !ownedHeadAlreadyFinalised(request.durableCommitSha)
+    ) {
       return blocked(emptyStageableReason(paths.excluded))
     }
     val staging = when (val outcome = prepareStaging(paths.stageable)) {
