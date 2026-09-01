@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-104"
 feature_name: "internal-review-packs"
 parent_spec_path: ".feature-specs/SKILL-104-internal-review-packs/spec.md"

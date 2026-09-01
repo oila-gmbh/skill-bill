@@ -38,7 +38,7 @@ internal fun CliRunState.goalStatusRequest(options: GoalStatusCliRequestOptions)
     dbPathOverride = dbOverride,
     repoRoot = options.repoRoot?.let(Path::of)
       ?.let { root -> if (options.monitorOnly) canonicalRepositoryRoot(root) else root.toAbsolutePath().normalize() }
-      ?: if (options.monitorOnly) canonicalRepositoryRoot(Path.of("")) else Path.of("").toAbsolutePath().normalize(),
+      ?: canonicalRepositoryRoot(Path.of("")),
     includeDiffStat = options.diff.includeDiffStat,
     selectedDiffHunkPaths = options.diff.selectedDiffHunkPaths,
     selectedDiffMaxHunks = options.diff.selectedDiffMaxHunks,

@@ -1,3 +1,13 @@
+## [2026-09-01] SKILL-227 subtask 2 — Ambient inputs and loud-fail seams
+Areas: runtime-kotlin/{runtime-ports/{model,process},runtime-infra-fs,runtime-core/di,runtime-application/{workflow,decomposition,featuretask,goalrunner},runtime-cli,runtime-mcp,runtime-domain/goalrunner,runtime-infra-sqlite}
+- Injected `RepositoryRoot` (canonical git-root resolve at composition root); removed `Path.of("").toAbsolutePath()` and `repoRoot()` from `runtime-application`; CLI/MCP contexts pre-resolve the same root.
+- Emptied ambient-clock baseline; shutdown-hook, daemon-thread, and identifier generation go through ports + infra adapters with explicit bindings.
+- `DecompositionManifestWriter` is an `@Inject` service; failed manifest projection, corrupt phase output, progress-read failures, and invalid findings-ledger schemas loud-fail or record degradation instead of silent empty/drop.
+- Validation-quality retry budget and pending causes are durable on `GoalRunnerControlState` via `persistControlState`, not process-local maps. reusable
+- Limitation: plan-listed restart-simulation and cwd-outside-repo-root workflow boundary tests deferred; bounded retry and manifest-save cwd coverage remain.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-31] SKILL-227 subtask 1 — Architecture guardrails and DI hardening
 Areas: runtime-kotlin/{runtime-core/architecture,runtime-core/di,runtime-application/{runtime,featuretask,goalrunner,review,workflow,work,system,idestatus},ARCHITECTURE.md}
 - Added four architecture guards (logical-type line ceiling, application-package acyclicity, ambient-clock ban, no `@Inject` constructor defaults) with shrink-only baselines; registered in `PrincipleEnforcementInventory` and documented in `ARCHITECTURE.md`. reusable

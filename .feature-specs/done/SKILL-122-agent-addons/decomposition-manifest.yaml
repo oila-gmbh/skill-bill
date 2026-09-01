@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-122"
 feature_name: "agent-addons"
 parent_spec_path: ".feature-specs/SKILL-122-agent-addons/spec.md"

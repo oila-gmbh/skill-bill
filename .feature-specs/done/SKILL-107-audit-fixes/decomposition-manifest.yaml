@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-107"
 feature_name: "audit-fixes"
 parent_spec_path: ".feature-specs/SKILL-107-audit-fixes/spec.md"

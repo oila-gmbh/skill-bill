@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-109"
 feature_name: "reliable-telemetry"
 parent_spec_path: ".feature-specs/SKILL-109-reliable-telemetry/spec.md"

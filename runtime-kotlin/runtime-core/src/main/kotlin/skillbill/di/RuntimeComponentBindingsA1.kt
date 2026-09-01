@@ -2,6 +2,7 @@ package skillbill.di
 
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
+import skillbill.infrastructure.fs.canonicalRepositoryRoot
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
@@ -40,7 +41,7 @@ internal object RuntimeComponentBindingsA1 {
       }
     val resolvedRepositoryRoot =
       if (environmentWithEnv.repositoryRoot == EnvironmentContext.UnspecifiedRepositoryRoot) {
-        environmentWithEnv.copy(repositoryRoot = Path.of("").toAbsolutePath().normalize())
+        environmentWithEnv.copy(repositoryRoot = canonicalRepositoryRoot(Path.of("")))
       } else {
         environmentWithEnv.copy(
           repositoryRoot = environmentWithEnv.repositoryRoot.toAbsolutePath().normalize(),

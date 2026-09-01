@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-128"
 feature_name: "goal-planning-context-reuse"
 parent_spec_path: ".feature-specs/SKILL-128-goal-planning-context-reuse/spec.md"
