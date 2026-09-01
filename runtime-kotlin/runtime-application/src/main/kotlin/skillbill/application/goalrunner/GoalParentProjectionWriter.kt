@@ -4,9 +4,10 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.normalizeRequiredIssueKey
-import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.db.UnitOfWork
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -14,10 +15,11 @@ import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 
-internal class GoalParentProjectionWriter(
+class GoalParentProjectionWriter(
   private val engine: WorkflowEngine,
   private val validator: DecompositionManifestValidator,
 ) {
+  @OpenBoundaryMap("Goal parent decomposition runtime artifact patch")
   fun artifacts(manifest: DecompositionManifest, existingArtifactsJson: String? = null): Map<String, Any?> =
     LinkedHashMap(
       existingArtifactsJson

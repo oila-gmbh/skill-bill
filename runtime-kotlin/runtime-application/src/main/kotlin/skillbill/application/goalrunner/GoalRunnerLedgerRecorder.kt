@@ -12,7 +12,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequ
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import java.time.Clock
 
-internal class GoalRunnerLedgerRecorder(
+class GoalRunnerLedgerRecorder(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val request: GoalRunnerRunRequest,
   private val clock: Clock,
@@ -33,7 +33,7 @@ internal class GoalRunnerLedgerRecorder(
   private val cumulativeBackwardEdgeCounts: MutableMap<String, Int> =
     watermarks?.backwardEdgeCounts?.toMutableMap() ?: mutableMapOf()
 
-  fun recordBackwardEdgeEntry(edge: GoalRunnerBackwardEdge) {
+  internal fun recordBackwardEdgeEntry(edge: GoalRunnerBackwardEdge) {
     val key = "${edge.subtaskId}:${edge.loopId}"
     val newCount = (cumulativeBackwardEdgeCounts[key] ?: 0) + edge.edgeIteration.coerceAtLeast(1)
     cumulativeBackwardEdgeCounts[key] = newCount
@@ -50,7 +50,7 @@ internal class GoalRunnerLedgerRecorder(
     )
   }
 
-  fun recordLedgerEntry(context: GoalRunnerLedgerContext) {
+  internal fun recordLedgerEntry(context: GoalRunnerLedgerContext) {
     val targetWorkflowId = context.workflowId?.takeIf(String::isNotBlank) ?: return
     val facts = context.launchOutcome as? AgentRunLaunchFacts
     val entry = GoalAttemptLedgerEntry(

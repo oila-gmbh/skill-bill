@@ -15,15 +15,16 @@ import skillbill.application.review.SpecIntentProjectionResolver
 import skillbill.application.review.diffForChanges
 import skillbill.application.review.diffForPaths
 import skillbill.application.review.harnessRequest
-import skillbill.application.review.model.DiffResolutionException
+import skillbill.application.review.model.DefaultParallelCodeReviewRunnerLaneLaunchPort
+import skillbill.application.review.model.DefaultParallelCodeReviewRunnerPlanningPort
 import skillbill.application.review.model.ParallelCodeReviewRequest
-import skillbill.application.review.model.ParallelCodeReviewRunnerDeps
-import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.application.review.sparseReviewPack
+import skillbill.application.reviewevidence.model.DiffResolutionException
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.config.model.RepoLocalConfig
 import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.model.InstallAgent
@@ -1405,70 +1406,77 @@ internal fun runner(
 
 internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner {
   val endpointRoot = config.evidenceEndpointRoot ?: Files.createTempDirectory("endpoint")
-  return ParallelCodeReviewRunner(
-    ParallelCodeReviewRunnerDeps(
-      parentReviewLauncher = launcher,
-      diffResolver = config.diffResolver,
-      repoLocalConfig = object : RepoLocalConfigPort {
-        override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
-          ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
-      },
-      reviewContextEnvelopeValidator = object : ReviewContextEnvelopeValidator {
-        override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
-      },
-      reviewRubricResolver = config.rubricResolver,
-      reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
-      database = config.database,
-      installedPackCatalog = config.installedPackCatalog,
-      specIntentProjectionResolver = SpecIntentProjectionResolver(
+  val sharedEvidenceLocatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE
+  val planningPort = DefaultParallelCodeReviewRunnerPlanningPort(
+    diffResolver = config.diffResolver,
+    repoLocalConfig = object : RepoLocalConfigPort {
+      override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
+        ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
+    },
+    reviewContextEnvelopeValidator = object : ReviewContextEnvelopeValidator {
+      override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+    },
+    reviewRubricResolver = config.rubricResolver,
+    reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
+    database = config.database,
+    installedPackCatalog = config.installedPackCatalog,
+    sharedEvidenceResolver = FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+    sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
+    specIntentProjectionResolver = SpecIntentProjectionResolver(
+      TestDecompositionManifestFileStore,
+      testDecompositionManifestValidator,
+      SpecIntentProjectionExtractor(
+        object : ReviewContextEnvelopeValidator {
+          override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+        },
         TestDecompositionManifestFileStore,
-        testDecompositionManifestValidator,
-        SpecIntentProjectionExtractor(
-          object : ReviewContextEnvelopeValidator {
-            override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
-          },
-          TestDecompositionManifestFileStore,
-        ),
       ),
-      nativeAgentPreflight = config.nativeAgentPreflight,
-      reviewLaunchAgentStaging = config.reviewLaunchAgentStaging,
-      reviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
-        object : ReviewEvidenceBroker {
-          override fun readBatch(request: ReviewEvidenceBatchRequest) = ReviewEvidenceBatchResult(
-            results = emptyList(),
-            cumulativeBytes = 0,
-            expansions = emptyList(),
-          )
-
-          override fun recordToolCall(call: ReviewToolCall) = ReviewToolCallResult()
-
-          override fun recordModelTurn() = null
-
-          override fun validateLaneResult(result: String) = null
-
-          override fun observeLaneResultChunk(chunk: String) = null
-
-          override fun accounting() = ReviewLaneAccounting(
-            lane = binding.assignment.lane,
-            reviewId = binding.assignment.reviewId,
-            packetDigest = binding.assignment.packetDigest,
-            evidenceBytes = 0,
-            expansions = emptyList(),
-            toolCalls = 0,
-            modelTurns = 0,
-            resultBytes = 0,
-          )
-
-          override fun terminalOutcome() = null
-        }
-      },
-      governedEvidenceEndpointBinder = stubGovernedReviewEvidenceEndpointBinder(endpointRoot),
-      sharedEvidenceResolver = FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-      sharedEvidenceLocatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
-      registerParse = config.registerParse,
-      diagnostics = NoopRuntimeDiagnostics,
-      clock = testHarnessClock,
     ),
+    parentReviewLauncher = launcher,
+    nativeAgentPreflight = config.nativeAgentPreflight,
+    registerParse = config.registerParse,
+    diagnostics = NoopRuntimeDiagnostics,
+    clock = testHarnessClock,
+  )
+  val laneLaunchPort = DefaultParallelCodeReviewRunnerLaneLaunchPort(
+    parentReviewLauncher = launcher,
+    reviewEvidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+      object : ReviewEvidenceBroker {
+        override fun readBatch(request: ReviewEvidenceBatchRequest) = ReviewEvidenceBatchResult(
+          results = emptyList(),
+          cumulativeBytes = 0,
+          expansions = emptyList(),
+        )
+
+        override fun recordToolCall(call: ReviewToolCall) = ReviewToolCallResult()
+
+        override fun recordModelTurn() = null
+
+        override fun validateLaneResult(result: String) = null
+
+        override fun observeLaneResultChunk(chunk: String) = null
+
+        override fun accounting() = ReviewLaneAccounting(
+          lane = binding.assignment.lane,
+          reviewId = binding.assignment.reviewId,
+          packetDigest = binding.assignment.packetDigest,
+          evidenceBytes = 0,
+          expansions = emptyList(),
+          toolCalls = 0,
+          modelTurns = 0,
+          resultBytes = 0,
+        )
+
+        override fun terminalOutcome() = null
+      }
+    },
+    governedEvidenceEndpointBinder = stubGovernedReviewEvidenceEndpointBinder(endpointRoot),
+    reviewLaunchAgentStaging = config.reviewLaunchAgentStaging,
+    sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
+  )
+  return ParallelCodeReviewRunner(
+    planningPort,
+    laneLaunchPort,
     AgentActivityStampWriter(config.database, Clock.systemUTC()),
   )
 }

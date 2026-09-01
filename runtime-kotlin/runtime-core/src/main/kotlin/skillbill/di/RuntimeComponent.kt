@@ -9,6 +9,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
+import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
 import skillbill.application.goalrunner.GoalOperatorDecisionService
 import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.GoalRunner
@@ -37,7 +38,6 @@ import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
-import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
@@ -68,7 +68,9 @@ abstract class RuntimeComponent(
   RuntimeComponentProvides8,
   RuntimeComponentProvides9,
   RuntimeComponentProvides10,
-  RuntimeComponentProvides11 {
+  RuntimeComponentProvides11,
+  RuntimeComponentProvides12,
+  RuntimeComponentProvides13 {
   @Provides @JvmSynthetic
   fun runtimeContext(): RuntimeContext = RuntimeComponentBindingsA1.runtimeContext(inputRuntimeContext)
 

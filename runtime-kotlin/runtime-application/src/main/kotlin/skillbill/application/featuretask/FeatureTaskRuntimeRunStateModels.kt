@@ -5,12 +5,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 internal data class FeatureTaskRuntimeNonOutputAttempt(val paused: Boolean, val reason: String)
 
-internal val NON_OUTPUT_LEDGER_ACTIONS = setOf(
+val NON_OUTPUT_LEDGER_ACTIONS = setOf(
   FeatureTaskRuntimePhaseLedgerAction.BLOCKED,
   FeatureTaskRuntimePhaseLedgerAction.PAUSED,
 )
 
-internal const val REVIEW_INVALIDATION_AGENT_ID: String = "audit-gate-migration"
+const val REVIEW_INVALIDATION_AGENT_ID: String = "audit-gate-migration"
 
 internal data class InFlightReentry(
   val destinationPhaseId: String,

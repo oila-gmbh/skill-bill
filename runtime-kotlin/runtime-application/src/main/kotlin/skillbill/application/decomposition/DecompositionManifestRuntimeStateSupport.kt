@@ -1,7 +1,7 @@
 package skillbill.application.decomposition
 
+import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.telemetry.normalizedBlockedReason
-import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -14,7 +14,7 @@ private val statusTrackedSteps = setOf("implement", "review", "audit", "validate
 private val completionSteps = setOf("pr", "pr_description", "finish")
 private val terminalSkippedSteps = setOf("pr", "pr_description", "finish")
 
-internal fun DecompositionSubtask.withRuntimeFields(
+fun DecompositionSubtask.withRuntimeFields(
   manifest: DecompositionManifest,
   update: DecompositionManifestRuntimeUpdate,
   status: String?,
@@ -47,10 +47,7 @@ internal fun DecompositionSubtask.withRuntimeFields(
   )
 }
 
-internal fun DecompositionManifest.currentSubtaskIdForUpdate(
-  repoRoot: Path,
-  update: DecompositionManifestRuntimeUpdate,
-): Int? {
+fun DecompositionManifest.currentSubtaskIdForUpdate(repoRoot: Path, update: DecompositionManifestRuntimeUpdate): Int? {
   val assessment = mergedArtifacts(update)["assessment"] as? Map<*, *>
   val specPath = assessment?.get("spec_path")?.toString()?.takeIf(String::isNotBlank)
   val matchedId = specPath?.let { matchingSubtaskId(repoRoot, it) }
@@ -61,7 +58,7 @@ internal fun DecompositionManifest.currentSubtaskIdForUpdate(
   }
 }
 
-internal fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): String? {
+fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): String? {
   val stepUpdates = update.stepUpdates.orEmpty()
   return when {
     update.workflowStatus == "blocked" || stepUpdates.any { it["status"] == "blocked" } -> "blocked"
@@ -76,14 +73,14 @@ internal fun statusFromUpdate(update: DecompositionManifestRuntimeUpdate): Strin
   }
 }
 
-internal fun intentFor(subtaskId: Int, status: String?): CurrentSubtaskIntent = when (status) {
+fun intentFor(subtaskId: Int, status: String?): CurrentSubtaskIntent = when (status) {
   "blocked" -> CurrentSubtaskIntent(subtaskId = subtaskId, action = "blocked")
   "complete", "skipped" -> CurrentSubtaskIntent(subtaskId = 0, action = "complete")
   "in_progress" -> CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume")
   else -> CurrentSubtaskIntent(subtaskId = subtaskId, action = "start")
 }
 
-internal fun DecompositionManifest.withParentStatus(): DecompositionManifest {
+fun DecompositionManifest.withParentStatus(): DecompositionManifest {
   val parentStatus = when {
     subtasks.all { it.status in setOf("complete", "skipped") } -> "complete"
     subtasks.any { it.status == "blocked" } -> "blocked"

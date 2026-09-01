@@ -146,7 +146,7 @@ internal fun recordLaunchObservabilityAndLedger(
   )
 }
 
-internal fun GoalRunnerRunRequest.emitStoppedSubtaskEvent(
+fun GoalRunnerRunRequest.emitStoppedSubtaskEvent(
   issueKey: String,
   subtaskId: Int,
   stoppedOutcome: GoalRunnerReconciledOutcome.Stop,

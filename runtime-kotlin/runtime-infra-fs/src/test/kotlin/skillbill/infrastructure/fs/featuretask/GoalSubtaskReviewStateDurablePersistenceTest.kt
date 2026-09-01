@@ -1,13 +1,13 @@
 package skillbill.infrastructure.fs.featuretask
 
 import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
-import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
-import skillbill.application.featuretask.GoalSubtaskReviewInputReady
-import skillbill.application.featuretask.GoalSubtaskReviewPassInFlight
-import skillbill.application.featuretask.RemediationBaseBlocked
-import skillbill.application.featuretask.RemediationBaseCoherent
 import skillbill.application.featuretask.featureTaskRuntimeParseRepairReceiptOrNull
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.featuretask.model.GoalSubtaskReviewInputBlocked
+import skillbill.application.featuretask.model.GoalSubtaskReviewInputReady
+import skillbill.application.featuretask.model.GoalSubtaskReviewPassInFlight
+import skillbill.application.featuretask.model.RemediationBaseBlocked
+import skillbill.application.featuretask.model.RemediationBaseCoherent
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.infrastructure.fs.GitWorkflowGitOperations

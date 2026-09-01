@@ -23,7 +23,7 @@ internal class GoalRunnerIterationOutcome(
   private val phaseRecorder get() = deps.phaseRecorder
   private val validationQualityState get() = pendingState.validationQualityState
 
-  fun stoppedIteration(args: StoppedIterationArgs): GoalRunnerIterationResult {
+  internal fun stoppedIteration(args: StoppedIterationArgs): GoalRunnerIterationResult {
     val state = args.state
     val subtaskId = args.subtaskId
     val reconciled = args.reconciled
@@ -143,7 +143,7 @@ internal class GoalRunnerIterationOutcome(
     )
   }
 
-  fun completedIteration(args: CompletedIterationArgs): GoalRunnerIterationResult {
+  internal fun completedIteration(args: CompletedIterationArgs): GoalRunnerIterationResult {
     val state = args.state
     val subtaskId = args.subtaskId
     val reconciled = args.reconciled

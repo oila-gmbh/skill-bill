@@ -1,8 +1,8 @@
 package skillbill.application.goalrunner.planning
-
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.planning.model.GoalPlanningStatusAlignRequest
-import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot

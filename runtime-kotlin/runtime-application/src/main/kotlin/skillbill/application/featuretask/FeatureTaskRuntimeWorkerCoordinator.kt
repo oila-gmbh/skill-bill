@@ -22,7 +22,7 @@ import java.util.UUID
  * trigger reconciliation. This keeps liveness detection behind the injectable supervisor port with
  * no agent-identity branching (AC-005).
  */
-internal object FeatureTaskRuntimeCrashLiveness {
+object FeatureTaskRuntimeCrashLiveness {
   fun isConfirmedDead(inspection: FeatureTaskRuntimeProcessInspection): Boolean = when (inspection) {
     FeatureTaskRuntimeProcessInspection.NotRunning -> true
     FeatureTaskRuntimeProcessInspection.ExactLive -> false

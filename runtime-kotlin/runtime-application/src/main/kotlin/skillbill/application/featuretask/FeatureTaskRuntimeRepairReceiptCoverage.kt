@@ -14,7 +14,7 @@ import skillbill.workflow.taskruntime.model.withStableFindingRefs
  * that omitted one cannot fail coverage on an identity it never had, and findings verification
  * refuted are then dropped: they are not carried, so nothing owes them an entry.
  */
-internal fun featureTaskRuntimeCarriedFindings(
+fun featureTaskRuntimeCarriedFindings(
   reviewState: GoalSubtaskReviewState,
   refutedFindingIds: Set<String> = emptySet(),
 ): List<GoalSubtaskReviewCompactFinding> = withoutRefutedFindings(
@@ -23,18 +23,18 @@ internal fun featureTaskRuntimeCarriedFindings(
 )
 
 /** The carried findings this round neither closed, waived, nor declared it had tried and failed. */
-internal fun featureTaskRuntimeRepairReceiptOmittedFindings(
+fun featureTaskRuntimeRepairReceiptOmittedFindings(
   receipt: FeatureTaskRuntimeRepairReceipt,
   reviewState: GoalSubtaskReviewState,
   refutedFindingIds: Set<String> = emptySet(),
 ): List<GoalSubtaskReviewCompactFinding> =
   receipt.omittedCarriedFindings(featureTaskRuntimeCarriedFindings(reviewState, refutedFindingIds))
 
-internal fun featureTaskRuntimeCompactFindingRef(finding: GoalSubtaskReviewCompactFinding): String =
+fun featureTaskRuntimeCompactFindingRef(finding: GoalSubtaskReviewCompactFinding): String =
   finding.findingId?.takeIf(String::isNotBlank)
     ?: error("Carried finding must carry a stable finding_id before coverage runs.")
 
-internal fun featureTaskRuntimeOmittedFindingsRetryReason(omitted: List<GoalSubtaskReviewCompactFinding>): String =
+fun featureTaskRuntimeOmittedFindingsRetryReason(omitted: List<GoalSubtaskReviewCompactFinding>): String =
   "The repair receipt left these carried findings unaccounted for under finding_id: " +
     omitted.joinToString(", ", transform = ::featureTaskRuntimeCompactFindingRef) +
     ". Continue this round: add one entry per owed ref using finding_id (aliases finding_ref, id, " +
@@ -47,7 +47,7 @@ internal fun featureTaskRuntimeOmittedFindingsRetryReason(omitted: List<GoalSubt
  * the detail is the producer's own account for whichever surface ends up reading it: the retry
  * prompt on the first report, the operator's blocked reason on a repeat.
  */
-internal class FeatureTaskRuntimeUnresolvedFindings(
+class FeatureTaskRuntimeUnresolvedFindings(
   val refs: Set<String>,
   val detail: String,
 ) {
@@ -57,7 +57,7 @@ internal class FeatureTaskRuntimeUnresolvedFindings(
     "the receipt and do not restate the same attempt as if it were new work."
 }
 
-internal fun featureTaskRuntimeUnresolvedFindings(
+fun featureTaskRuntimeUnresolvedFindings(
   receipt: FeatureTaskRuntimeRepairReceipt,
 ): FeatureTaskRuntimeUnresolvedFindings? {
   val unresolved = receipt.attemptedUnresolvedEntries().ifEmpty { return null }

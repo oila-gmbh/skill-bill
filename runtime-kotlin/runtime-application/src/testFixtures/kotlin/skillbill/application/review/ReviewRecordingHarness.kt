@@ -1,10 +1,11 @@
 package skillbill.application.review
 
 import skillbill.application.idestatus.AgentActivityStampWriter
+import skillbill.application.review.model.DefaultParallelCodeReviewRunnerLaneLaunchPort
+import skillbill.application.review.model.DefaultParallelCodeReviewRunnerPlanningPort
 import skillbill.application.review.model.ParallelCodeReviewRequest
-import skillbill.application.review.model.ParallelCodeReviewRunnerDeps
-import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.model.ReviewPrelaunchExpansion
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
@@ -162,76 +163,84 @@ data class ReviewHarnessConfig(
 
 fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): ParallelCodeReviewRunner {
   val database = recordingDatabase(recorder)
-  return ParallelCodeReviewRunner(
-    ParallelCodeReviewRunnerDeps(
-      parentReviewLauncher = GoalRunnerSubtaskLauncher { request ->
-        recorder.parentLaunches += request
-        if (config.simulateEvidenceReads) simulateGovernedEvidenceReads(request.skillRunRequest)
-        config.parentLaunch?.invoke(request)?.let { return@GoalRunnerSubtaskLauncher it }
-        val response = config.response(request)
-        AgentRunLaunchFacts(
-          agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-          exitStatus = if (response.timedOut || response.spawnFailed || response.interrupted) {
-            null
-          } else {
-            response.exitStatus
-          },
-          stdout = response.stdout,
-          stderr = "",
-          timedOut = response.timedOut,
-          interrupted = response.interrupted,
-          spawnFailed = response.spawnFailed,
-          liveness = response.liveness,
-          processStarted = response.processStarted && !response.spawnFailed,
-          mcpStartupObserved = response.mcpStartupObserved,
-        ) as AgentRunLaunchOutcome
+  val launcher = GoalRunnerSubtaskLauncher { request ->
+    recorder.parentLaunches += request
+    if (config.simulateEvidenceReads) simulateGovernedEvidenceReads(request.skillRunRequest)
+    config.parentLaunch?.invoke(request)?.let { return@GoalRunnerSubtaskLauncher it }
+    val response = config.response(request)
+    AgentRunLaunchFacts(
+      agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+      exitStatus = if (response.timedOut || response.spawnFailed || response.interrupted) {
+        null
+      } else {
+        response.exitStatus
       },
-      installedPackCatalog = InstalledPlatformPackCatalogPort { config.manifests },
-      diffResolver = object : DiffResolverPort {
-        override fun runProcess(args: List<String>, workDir: Path): String? {
-          recorder.diffCommands += args
-          return when (args.getOrNull(1)) {
-            "rev-parse" -> args.last().removeSuffix("^{commit}")
-            "rev-list" -> config.commits.joinToString("\n") { it.sha }
-            "show" -> config.commits.single { it.sha == args.last() }.let { commit ->
-              "${parentOf(config.commits, commit)}\n${commit.subject}"
-            }
-            else -> config.commits.firstOrNull {
-              it.sha == args.getOrNull(3) && parentOf(config.commits, it) == args.getOrNull(2)
-            }?.diff ?: config.diff
+      stdout = response.stdout,
+      stderr = "",
+      timedOut = response.timedOut,
+      interrupted = response.interrupted,
+      spawnFailed = response.spawnFailed,
+      liveness = response.liveness,
+      processStarted = response.processStarted && !response.spawnFailed,
+      mcpStartupObserved = response.mcpStartupObserved,
+    ) as AgentRunLaunchOutcome
+  }
+  val sharedEvidenceLocatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE
+  val planningPort = DefaultParallelCodeReviewRunnerPlanningPort(
+    diffResolver = object : DiffResolverPort {
+      override fun runProcess(args: List<String>, workDir: Path): String? {
+        recorder.diffCommands += args
+        return when (args.getOrNull(1)) {
+          "rev-parse" -> args.last().removeSuffix("^{commit}")
+          "rev-list" -> config.commits.joinToString("\n") { it.sha }
+          "show" -> config.commits.single { it.sha == args.last() }.let { commit ->
+            "${parentOf(config.commits, commit)}\n${commit.subject}"
           }
+          else -> config.commits.firstOrNull {
+            it.sha == args.getOrNull(3) && parentOf(config.commits, it) == args.getOrNull(2)
+          }?.diff ?: config.diff
         }
-      },
-      repoLocalConfig = object : RepoLocalConfigPort {
-        override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
-          ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
-      },
-      reviewContextEnvelopeValidator = object : ReviewContextEnvelopeValidator {
-        override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
-      },
-      reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
-      reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
-      database = database,
-      specIntentProjectionResolver = SpecIntentProjectionResolver(
+      }
+    },
+    repoLocalConfig = object : RepoLocalConfigPort {
+      override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest) =
+        ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
+    },
+    reviewContextEnvelopeValidator = object : ReviewContextEnvelopeValidator {
+      override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+    },
+    reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
+    reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
+    database = database,
+    installedPackCatalog = InstalledPlatformPackCatalogPort { config.manifests },
+    sharedEvidenceResolver = FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+    sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
+    specIntentProjectionResolver = SpecIntentProjectionResolver(
+      FileSystemDecompositionManifestFileStore(),
+      DecompositionManifestValidatorAdapter(),
+      SpecIntentProjectionExtractor(
+        object : ReviewContextEnvelopeValidator {
+          override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+        },
         FileSystemDecompositionManifestFileStore(),
-        DecompositionManifestValidatorAdapter(),
-        SpecIntentProjectionExtractor(
-          object : ReviewContextEnvelopeValidator {
-            override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
-          },
-          FileSystemDecompositionManifestFileStore(),
-        ),
       ),
-      reviewEvidenceBrokerFactory = config.evidenceBrokerFactory,
-      governedEvidenceEndpointBinder = config.evidenceEndpointBinder,
-      sharedEvidenceResolver = FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
-      sharedEvidenceLocatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
-      nativeAgentPreflight = ReviewNativeAgentPreflightPort.NONE,
-      reviewLaunchAgentStaging = ReviewLaunchAgentStagingPort.NONE,
-      registerParse = ParallelReviewFindingParser::parse,
-      diagnostics = NoopRuntimeDiagnostics,
-      clock = Clock.systemUTC(),
     ),
+    parentReviewLauncher = launcher,
+    nativeAgentPreflight = ReviewNativeAgentPreflightPort.NONE,
+    registerParse = ParallelReviewFindingParser::parse,
+    diagnostics = NoopRuntimeDiagnostics,
+    clock = Clock.systemUTC(),
+  )
+  val laneLaunchPort = DefaultParallelCodeReviewRunnerLaneLaunchPort(
+    parentReviewLauncher = launcher,
+    reviewEvidenceBrokerFactory = config.evidenceBrokerFactory,
+    governedEvidenceEndpointBinder = config.evidenceEndpointBinder,
+    reviewLaunchAgentStaging = ReviewLaunchAgentStagingPort.NONE,
+    sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
+  )
+  return ParallelCodeReviewRunner(
+    planningPort,
+    laneLaunchPort,
     AgentActivityStampWriter(database, Clock.systemUTC()),
   )
 }

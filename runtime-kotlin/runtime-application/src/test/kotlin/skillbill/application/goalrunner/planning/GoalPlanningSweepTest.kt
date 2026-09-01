@@ -1,23 +1,23 @@
 package skillbill.application.goalrunner.planning
-
 import skillbill.application.InMemoryGoalManifestStore
 import skillbill.application.PlanningProjectionFixtures
 import skillbill.application.RecordingOutcomeStore
 import skillbill.application.RecordingPullRequestPort
+import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
+import skillbill.application.goalplanning.sha256HexUtf8
+import skillbill.application.goalrunner.GoalPlanningSweepPortsParams
 import skillbill.application.goalrunner.goalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptRecord
 import skillbill.application.goalrunner.planning.model.GoalPlanningBurstSchedule
 import skillbill.application.goalrunner.planning.model.GoalPlanningRejectionRecord
-import skillbill.application.goalrunner.planning.model.GoalPlanningSweepDeps
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
-import skillbill.application.goalrunner.testDefaultGoalPlanningSweep
+import skillbill.application.goalrunner.testGoalPlanningSweepPorts
 import skillbill.application.goalrunner.testGoalRunner
 import skillbill.application.launchFacts
 import skillbill.application.manifest
 import skillbill.application.realFeatureTaskRuntimePhaseOutputValidator
 import skillbill.application.realPlanningProjectionValidator
-import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
@@ -1139,7 +1139,7 @@ class GoalPlanningSweepPrepareAndResumeTest {
     val runOneLauncher = SweepPlanningLauncher { phase, subtaskId, _ ->
       if (subtaskId == 2 && phase == "plan") spawnBlockedOutcome() else validPhaseOutcome(phase)
     }
-    val runOne = testDefaultGoalPlanningSweep(crashResumeSweepDeps(fixtures, runOneLauncher, discovery))
+    val runOne = crashResumeSweepDeps(fixtures, runOneLauncher, discovery)
     val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(
       runOne.prepare(fixtures.stateFor(initial), fixtures.request()),
@@ -1148,7 +1148,7 @@ class GoalPlanningSweepPrepareAndResumeTest {
     assertEquals(1, fixtures.preparedCount())
     assertEquals(3, runOneLauncher.requests.size)
     val runTwoLauncher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
-    val runTwo = testDefaultGoalPlanningSweep(crashResumeSweepDeps(fixtures, runTwoLauncher, discovery))
+    val runTwo = crashResumeSweepDeps(fixtures, runTwoLauncher, discovery)
     val resumed = initial.copy(
       subtasks = initial.subtasks.map { subtask ->
         if (subtask.id == 1) subtask.copy(status = "complete") else subtask
@@ -1167,25 +1167,15 @@ class GoalPlanningSweepPrepareAndResumeTest {
     fixtures: SweepFixtures,
     launcher: SweepPlanningLauncher,
     discovery: CountingContextDiscovery,
-  ): GoalPlanningSweepDeps = GoalPlanningSweepDeps(
-    checkpoint = fixtures.checkpoint,
-    outputValidator = fixtures.outputValidator,
-    subtaskLauncher = launcher,
-    invariantsSource = fixtures.invariantsSource,
-    manifestFileStore = fixtures.manifestFileStore,
-    contextDiscovery = discovery,
-    planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
-    planningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
-    manifestStore = NoopGoalPlanningManifestStore,
-    planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
-    timingPort = NoopRuntimeTimingPort,
-    burstSchedule = GoalPlanningBurstSchedule(
-      planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
-      emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
-      emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
-      waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
+  ): DefaultGoalPlanningSweep = testGoalPlanningSweepPorts(
+    GoalPlanningSweepPortsParams(
+      checkpoint = fixtures.checkpoint,
+      outputValidator = fixtures.outputValidator,
+      subtaskLauncher = launcher,
+      invariantsSource = fixtures.invariantsSource,
+      manifestFileStore = fixtures.manifestFileStore,
+      contextDiscovery = discovery,
     ),
-    refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
   )
 
   @Test
@@ -1630,26 +1620,14 @@ class GoalPlanningSweepRejectionTest {
         validPhaseOutcome(phase)
       }
     }
-    val sweep = testDefaultGoalPlanningSweep(
-      GoalPlanningSweepDeps(
+    val sweep = testGoalPlanningSweepPorts(
+      GoalPlanningSweepPortsParams(
         checkpoint = fixtures.checkpoint,
         outputValidator = fixtures.outputValidator,
         subtaskLauncher = sharedLauncher,
         invariantsSource = fixtures.invariantsSource,
         manifestFileStore = fixtures.manifestFileStore,
         contextDiscovery = fakeContextDiscovery,
-        planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
-        planningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
-        manifestStore = NoopGoalPlanningManifestStore,
-        planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
-        timingPort = NoopRuntimeTimingPort,
-        burstSchedule = GoalPlanningBurstSchedule(
-          planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
-          emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
-          emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
-          waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
-        ),
-        refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
       ),
     )
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
@@ -1714,26 +1692,14 @@ class GoalPlanningSweepRejectionTest {
       planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
     )
     val launcher = SweepPlanningLauncher { phase, _, _ -> validPhaseOutcome(phase) }
-    val sweep = testDefaultGoalPlanningSweep(
-      GoalPlanningSweepDeps(
+    val sweep = testGoalPlanningSweepPorts(
+      GoalPlanningSweepPortsParams(
         checkpoint = checkpoint,
         outputValidator = outputValidator,
         subtaskLauncher = launcher,
         invariantsSource = FakeInvariantsSource(),
         manifestFileStore = ThrowingManifestFileStore(),
         contextDiscovery = fakeContextDiscovery,
-        planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
-        planningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
-        manifestStore = NoopGoalPlanningManifestStore,
-        planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
-        timingPort = NoopRuntimeTimingPort,
-        burstSchedule = GoalPlanningBurstSchedule(
-          planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
-          emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
-          emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
-          waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
-        ),
-        refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
       ),
     )
     val state = GoalRunnerManifestState(
@@ -2837,26 +2803,14 @@ private data class SweepHarnessConfig(
 )
 
 private fun sweepFromFixtures(fixtures: SweepFixtures, launcher: SweepPlanningLauncher): DefaultGoalPlanningSweep =
-  testDefaultGoalPlanningSweep(
-    GoalPlanningSweepDeps(
+  testGoalPlanningSweepPorts(
+    GoalPlanningSweepPortsParams(
       checkpoint = fixtures.checkpoint,
       outputValidator = fixtures.outputValidator,
       subtaskLauncher = launcher,
       invariantsSource = fixtures.invariantsSource,
       manifestFileStore = fixtures.manifestFileStore,
       contextDiscovery = fakeContextDiscovery,
-      planningProjectionValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
-      planningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
-      manifestStore = NoopGoalPlanningManifestStore,
-      planningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
-      timingPort = NoopRuntimeTimingPort,
-      burstSchedule = GoalPlanningBurstSchedule(
-        planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
-        emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
-        emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
-        waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
-      ),
-      refreshLiveness = GoalPlanningRefreshLiveness.IDLE,
     ),
   )
 
@@ -2910,8 +2864,8 @@ private fun sweepHarness(
     outputValidator = config.outputValidator,
   )
   val launcher = SweepPlanningLauncher(behavior)
-  val sweep = testDefaultGoalPlanningSweep(
-    GoalPlanningSweepDeps(
+  val sweep = testGoalPlanningSweepPorts(
+    GoalPlanningSweepPortsParams(
       checkpoint = fixtures.checkpoint,
       outputValidator = fixtures.outputValidator,
       subtaskLauncher = launcher,

@@ -2,9 +2,14 @@ package skillbill.application.featuretask
 
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.application.featuretask.model.AppendCheckpointIdentityArgs
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeProducerOutputRead
+import skillbill.application.featuretask.model.FeatureTaskRuntimeProjectionRejection
+import skillbill.application.featuretask.model.GoalReviewPhaseCompletionRequest
+import skillbill.application.featuretask.model.ProducerOutputQueryArgs
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
@@ -29,7 +34,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProg
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 
-internal interface FeatureTaskRuntimePhaseWorkflowApi {
+interface FeatureTaskRuntimePhaseWorkflowApi {
   fun existingWorkflowMode(workflowId: String, dbOverride: String? = null): FeatureTaskWorkflowMode?
   fun workerOwnership(workflowId: String, dbOverride: String? = null): FeatureTaskRuntimeWorkerOwnership?
   fun ensureWorkflowOpen(
@@ -40,7 +45,7 @@ internal interface FeatureTaskRuntimePhaseWorkflowApi {
   ): Boolean
 }
 
-internal interface FeatureTaskRuntimePhaseRejectedApi {
+interface FeatureTaskRuntimePhaseRejectedApi {
   fun recordRejectedOutput(
     request: RejectedOutputDiagnosticRequest,
     dbOverride: String? = null,
@@ -51,7 +56,7 @@ internal interface FeatureTaskRuntimePhaseRejectedApi {
   fun loadDiagnosticSignals(workflowId: String, dbOverride: String? = null): List<FeatureTaskRuntimeDiagnosticSignal>
 }
 
-internal interface FeatureTaskRuntimePhaseStateApi {
+interface FeatureTaskRuntimePhaseStateApi {
   fun recordPhaseState(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean
   fun recordCompletedPhase(request: FeatureTaskRuntimePhaseStateRequest, dbOverride: String? = null): Boolean
   fun recordIncompleteImplementationAttempt(
@@ -68,11 +73,11 @@ internal interface FeatureTaskRuntimePhaseStateApi {
   fun loadPhaseLedger(workflowId: String, dbOverride: String? = null): List<FeatureTaskRuntimePhaseLedgerEntry>?
 }
 
-internal interface FeatureTaskRuntimePhaseReviewApi {
+interface FeatureTaskRuntimePhaseReviewApi {
   fun completeGoalReviewPhase(completion: GoalReviewPhaseCompletionRequest, dbOverride: String? = null): Boolean
 }
 
-internal interface FeatureTaskRuntimePhaseReviewGenerationApi {
+interface FeatureTaskRuntimePhaseReviewGenerationApi {
   fun persistReviewGenerationInvalidation(workflowId: String, dbOverride: String? = null): Int?
   fun reconcileReviewGeneration(workflowId: String, dbOverride: String? = null): Int
   fun invalidateQuarantinedProducerRecord(
@@ -92,7 +97,7 @@ internal interface FeatureTaskRuntimePhaseReviewGenerationApi {
   )
 }
 
-internal interface FeatureTaskRuntimePhaseFindingVerificationApi {
+interface FeatureTaskRuntimePhaseFindingVerificationApi {
   fun loadFindingVerificationCheckpoint(
     workflowId: String,
     dbOverride: String? = null,
@@ -118,11 +123,11 @@ internal interface FeatureTaskRuntimePhaseFindingVerificationApi {
   fun clearFindingVerificationCheckpoint(workflowId: String, dbOverride: String? = null): Boolean
 }
 
-internal interface FeatureTaskRuntimePhaseReviewCheckpointApi :
+interface FeatureTaskRuntimePhaseReviewCheckpointApi :
   FeatureTaskRuntimePhaseReviewGenerationApi,
   FeatureTaskRuntimePhaseFindingVerificationApi
 
-internal interface FeatureTaskRuntimePhaseBriefingApi {
+interface FeatureTaskRuntimePhaseBriefingApi {
   fun recordPhaseBriefing(
     workflowId: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
@@ -148,7 +153,7 @@ internal interface FeatureTaskRuntimePhaseBriefingApi {
   ): Map<String, FeatureTaskRuntimeDeliveredProjectionRecord>?
 }
 
-internal interface FeatureTaskRuntimePhaseGateApi {
+interface FeatureTaskRuntimePhaseGateApi {
   fun loadValidationGateProgress(
     workflowId: String,
     dbOverride: String? = null,
@@ -178,7 +183,7 @@ internal interface FeatureTaskRuntimePhaseGateApi {
   )
 }
 
-internal interface FeatureTaskRuntimePhaseEvidenceApi {
+interface FeatureTaskRuntimePhaseEvidenceApi {
   fun appendLedgerEntry(request: FeatureTaskRuntimePhaseLedgerRequest, dbOverride: String? = null): Boolean
   fun appendQuarantineEntry(
     workflowId: String,

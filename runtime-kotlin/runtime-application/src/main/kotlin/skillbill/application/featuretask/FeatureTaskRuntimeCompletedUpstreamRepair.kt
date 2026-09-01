@@ -10,14 +10,14 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap
 
-internal fun featureSizeFromArtifacts(artifacts: Map<String, Any?>): FeatureTaskRuntimeFeatureSize {
+fun featureSizeFromArtifacts(artifacts: Map<String, Any?>): FeatureTaskRuntimeFeatureSize {
   val raw = artifacts[FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY] as? Map<*, *>
     ?: return FeatureTaskRuntimeFeatureSize.MEDIUM
   val invariantsMap = JsonSupport.anyToStringAnyMap(raw) ?: return FeatureTaskRuntimeFeatureSize.MEDIUM
   return featureTaskRuntimeRunInvariantsFromArtifactMap(invariantsMap).featureSize
 }
 
-internal fun diagnoseUnsettledCompletedUpstreamPhaseId(
+fun diagnoseUnsettledCompletedUpstreamPhaseId(
   phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
   featureSize: FeatureTaskRuntimeFeatureSize,
   qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
@@ -47,7 +47,7 @@ internal fun diagnoseUnsettledCompletedUpstreamPhaseId(
   return null
 }
 
-internal fun buildCompletedUpstreamMissingOutputRepair(request: CompletedUpstreamRepairRequest): WorkflowUpdateInput {
+fun buildCompletedUpstreamMissingOutputRepair(request: CompletedUpstreamRepairRequest): WorkflowUpdateInput {
   val recordedOutputs = settledPhaseOutputs(request.phaseRecords)
   val phasesToReopen = phasesToReopenForCompletedUpstreamRepair(request, recordedOutputs)
   val reopenedRecords = LinkedHashMap(request.phaseRecords)

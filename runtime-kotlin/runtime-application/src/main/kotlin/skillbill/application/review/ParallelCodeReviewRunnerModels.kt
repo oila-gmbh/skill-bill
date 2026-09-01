@@ -1,11 +1,11 @@
 package skillbill.application.review
-
-import skillbill.application.evidence.SharedReviewEvidenceCommits
-import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
+import skillbill.application.reviewevidence.ReviewDiffEvidence
+import skillbill.application.reviewevidence.SharedReviewEvidenceCommits
+import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -61,7 +61,7 @@ internal data class ParallelCodeReviewRunnerLaneLaunchDeps(
   val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
   val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort,
   val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
-  val failureHelpers: ParallelCodeReviewRunnerFailureHelpers,
+  val failureHelpers: ParallelCodeReviewRunnerFailureAdmission,
   val activityStampWriter: AgentActivityStampWriter,
 )
 
@@ -146,7 +146,7 @@ internal data class ParallelCodeReviewSoftRegisterAdmission(
   val rejectedCandidateCount: Int,
 )
 
-internal class ParallelCodeReviewInlineParentLaunch(
+class ParallelCodeReviewInlineParentLaunch(
   val agentId: String,
   val selected: List<ReviewSpecialistLaunchRequest>,
   val prompt: String,

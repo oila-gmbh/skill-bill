@@ -3,7 +3,6 @@ package skillbill.application
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
-import skillbill.application.featuretask.AppendCheckpointIdentityArgs
 import skillbill.application.featuretask.ApprovingReviewDriverStub
 import skillbill.application.featuretask.FeatureTaskRuntimeAgentResolver
 import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
@@ -11,10 +10,8 @@ import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.GoalContinuationStateRecordRequest
-import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
-import skillbill.application.featuretask.GoalSubtaskReviewInputReady
 import skillbill.application.featuretask.NON_FILE_MUTATING_PHASES
-import skillbill.application.featuretask.RemediationBaseCoherent
+import skillbill.application.featuretask.model.AppendCheckpointIdentityArgs
 import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFinishedTelemetryContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
@@ -22,6 +19,9 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.featuretask.model.GoalSubtaskReviewInputBlocked
+import skillbill.application.featuretask.model.GoalSubtaskReviewInputReady
+import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.contracts.JsonSupport

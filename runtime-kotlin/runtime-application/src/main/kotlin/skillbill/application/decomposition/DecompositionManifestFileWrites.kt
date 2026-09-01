@@ -1,11 +1,12 @@
 package skillbill.application.decomposition
 
+import skillbill.application.decomposition.model.LoadedDecompositionManifest
+import skillbill.application.decomposition.model.ValidatedDecompositionManifestYaml
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.workflow.decomposition.DecompositionManifestCodec
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationFailureCode
 import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
 import skillbill.workflow.decomposition.model.requireAccepted
@@ -27,13 +28,7 @@ fun loadDecompositionManifest(
   return loadValidatedDecompositionManifest(path, fileStore, validator, recoverPending).manifest
 }
 
-internal data class LoadedDecompositionManifest(
-  val manifest: DecompositionManifest,
-  val yamlText: String,
-  val repairEvidence: DecompositionManifestRepairEvidence?,
-)
-
-internal fun loadValidatedDecompositionManifest(
+fun loadValidatedDecompositionManifest(
   path: Path,
   fileStore: DecompositionManifestFileStore,
   validator: DecompositionManifestValidator,
@@ -51,7 +46,7 @@ internal fun loadValidatedDecompositionManifest(
  * Keeps a repaired read-back inside the caller's atomic write transaction. A second repair means
  * the first repair did not produce a stable validated document, so the caller must roll back.
  */
-internal fun loadValidatedDecompositionManifestPersistingRepair(
+fun loadValidatedDecompositionManifestPersistingRepair(
   path: Path,
   fileStore: DecompositionManifestFileStore,
   validator: DecompositionManifestValidator,
@@ -71,7 +66,7 @@ internal fun loadValidatedDecompositionManifestPersistingRepair(
   return persisted.copy(repairEvidence = repairEvidence)
 }
 
-internal fun loadValidatedDecompositionManifestOrNull(
+fun loadValidatedDecompositionManifestOrNull(
   path: Path,
   fileStore: DecompositionManifestFileStore,
   validator: DecompositionManifestValidator,
@@ -81,13 +76,7 @@ internal fun loadValidatedDecompositionManifestOrNull(
   null
 }
 
-internal data class ValidatedDecompositionManifestYaml(
-  val manifest: DecompositionManifest,
-  val yamlText: String,
-  val repairEvidence: DecompositionManifestRepairEvidence?,
-)
-
-internal fun validateDecompositionManifestYaml(
+fun validateDecompositionManifestYaml(
   path: Path,
   fileStore: DecompositionManifestFileStore,
   validator: DecompositionManifestValidator,
@@ -140,7 +129,7 @@ fun encodeDecompositionManifestYaml(
   return encodeValidatedDecompositionManifestYaml(manifest, validator, fileStore, sourceLabel).yamlText
 }
 
-internal fun encodeValidatedDecompositionManifestYaml(
+fun encodeValidatedDecompositionManifestYaml(
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
   fileStore: DecompositionManifestFileStore,

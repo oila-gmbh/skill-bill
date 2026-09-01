@@ -15,7 +15,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.nio.file.Path
 
-internal class GoalRunnerRepairCoordinator(
+class GoalRunnerRepairCoordinator(
   private val manifestStore: GoalRunnerManifestStore,
   private val phaseRecorder: FeatureTaskRuntimePhaseRecorder,
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,

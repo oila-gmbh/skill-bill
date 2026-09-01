@@ -36,7 +36,7 @@ class GoalRunnerExecutionAlreadyRunningException(parentWorkflowId: String, detai
  * Shared by the execution coordinator's reclaim path and the stop verb so both judge liveness and
  * process identity by exactly the same evidence.
  */
-internal fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: String) = FeatureTaskRuntimeWorkerOwnership(
+fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: String) = FeatureTaskRuntimeWorkerOwnership(
   workflowId = parentWorkflowId,
   generation = generation,
   ownerToken = ownerToken,
@@ -117,7 +117,7 @@ class DefaultGoalRunnerExecutionCoordinator(
    * makes it idempotent with the stop verb — a stop that killed this process already wrote the more
    * specific `operator_stop`, and the hook leaves it alone.
    */
-  internal fun recordInterruption(parentWorkflowId: String, dbPathOverride: String?) {
+  fun recordInterruption(parentWorkflowId: String, dbPathOverride: String?) {
     daemonThreadPort.runWithJoinBudget(
       action = {
         runCatching {

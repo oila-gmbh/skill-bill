@@ -5,7 +5,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 
-internal fun retryCorrectionDirective(
+fun retryCorrectionDirective(
   briefing: FeatureTaskRuntimePhaseLaunchBriefing,
   priorSchemaFailure: String?,
   correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext?,

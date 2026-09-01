@@ -10,7 +10,6 @@ import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
@@ -26,6 +25,7 @@ internal data class FeatureTaskRuntimeRunLoopDependencies(
   val phaseSettlementService: FeatureTaskPhaseSettlementService,
   val activityStampWriter: AgentActivityStampWriter,
   val clock: Clock,
+  val collaborators: FeatureTaskRuntimeRunLoopCollaborators,
 )
 
 internal data class FeatureTaskRuntimeRunLoopContext(
@@ -65,7 +65,7 @@ internal fun resolveLaunchRejectionAttribution(
 
 private const val FEATURE_SPEC_ROOT = ".feature-specs"
 
-internal fun isFeatureSpecPathForIssue(path: String, issueKey: String): Boolean {
+fun isFeatureSpecPathForIssue(path: String, issueKey: String): Boolean {
   val normalized = path.trim().trimEnd('/')
   if (normalized == FEATURE_SPEC_ROOT) return true
   if (!normalized.startsWith("$FEATURE_SPEC_ROOT/")) return false
@@ -74,7 +74,7 @@ internal fun isFeatureSpecPathForIssue(path: String, issueKey: String): Boolean 
   return issueDirectory == key || issueDirectory.startsWith("$key-")
 }
 
-internal fun reconcileCheckpointPathInventory(
+fun reconcileCheckpointPathInventory(
   repoRoot: Path,
   issueKey: String,
   specReference: String,
@@ -91,7 +91,7 @@ internal fun reconcileCheckpointPathInventory(
 
 // A reservation at or below the completed-review-output count is a stale latch from the pass that
 // already produced a result: re-entry must report the next ordinal, not replay pass one forever.
-internal fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPassCount: Int): Int {
+fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPassCount: Int): Int {
   reservedPassNumber?.let { pass ->
     require(pass == 1) { "Review reservation allows only pass 1, was $pass." }
   }
@@ -101,100 +101,91 @@ internal fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPa
   return 1
 }
 
-internal class FeatureTaskRuntimeRunLoop(
+class FeatureTaskRuntimeRunLoop internal constructor(
   internal val dependencies: FeatureTaskRuntimeRunLoopDependencies,
   context: FeatureTaskRuntimeRunLoopContext,
-  internal val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
-  internal val request = context.request
-  internal val state = context.state
-  internal val observability = context.observability
-  internal val specSource = context.specSource
-  internal val transitions = context.transitions
-  internal val phaseTokenAccumulator = context.phaseTokenAccumulator
-  internal val recorder get() = dependencies.recorder
-  internal val goalContinuationRecorder get() = dependencies.goalContinuationRecorder
-  internal val outputValidator get() = dependencies.outputValidator
-  internal val phaseGates get() = dependencies.phaseGates
-  internal val subtaskLauncher get() = dependencies.subtaskLauncher
-  internal val phaseSettlementService get() = dependencies.phaseSettlementService
-  internal val activityStampWriter get() = dependencies.activityStampWriter
-  internal val clock get() = dependencies.clock
-  internal val branchSetupRunner get() = phaseGates.branchSetupRunner
-  internal val planningStopper get() = phaseGates.planningStopper
-  internal val gitOperations get() = phaseGates.gitOperations
-  internal val planningProjectionValidator get() = phaseGates.planningProjectionValidator
-  internal val buildReceiptValidator get() = phaseGates.buildReceiptValidator
-  internal val validationGateCoordinator get() = phaseGates.validationGateCoordinator
-  internal val buildGateCoordinator get() = phaseGates.buildGateCoordinator
+  val collaborators get() = dependencies.collaborators
+  val request = context.request
+  val state = context.state
+  val observability = context.observability
+  val specSource = context.specSource
+  val transitions = context.transitions
+  val phaseTokenAccumulator = context.phaseTokenAccumulator
+  val recorder get() = dependencies.recorder
+  val goalContinuationRecorder get() = dependencies.goalContinuationRecorder
+  val outputValidator get() = dependencies.outputValidator
+  val phaseGates get() = dependencies.phaseGates
+  val subtaskLauncher get() = dependencies.subtaskLauncher
+  val phaseSettlementService get() = dependencies.phaseSettlementService
+  val activityStampWriter get() = dependencies.activityStampWriter
+  val clock get() = dependencies.clock
+  val branchSetupRunner get() = phaseGates.branchSetupRunner
+  val planningStopper get() = phaseGates.planningStopper
+  val gitOperations get() = phaseGates.gitOperations
+  val planningProjectionValidator get() = phaseGates.planningProjectionValidator
+  val buildReceiptValidator get() = phaseGates.buildReceiptValidator
+  val validationGateCoordinator get() = phaseGates.validationGateCoordinator
+  val buildGateCoordinator get() = phaseGates.buildGateCoordinator
 
-  // Content identity of every dirty path the moment a phase stopped writing, keyed by phase. The
-  // checkpoint compares against it to tell this run's own work from an edit that landed beside it.
-  internal val phaseContentIdentities = mutableMapOf<String, Map<String, String>>()
+  internal val session = FeatureTaskRuntimeRunLoopSession(
+    operatorBlockRetry = dependencies.recorder
+      .loadOperatorBlockRetry(context.request.workflowId, context.request.dbPathOverride)
+      ?.takeIf { retry ->
+        context.state.recordFor(retry.phaseId)?.status.let { status -> status == null || status == "pending" }
+      },
+    initialPendingReentry = null,
+  )
 
-  internal var resolvedBranch: String? = null
-
-  // Set once a checkpoint has decided ownership in this process. Until then the durable inventory is
-  // only a seed and the working tree still bootstraps the scope; afterwards the checkpoint decision is
-  // authoritative and ambient dirt must not widen it.
-  internal var checkpointOwnershipDecided: Boolean = false
-  internal var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
-  internal var paused: FeatureTaskRuntimeRunReport.Paused? = null
-  internal var auditGapRetryResumePending: Boolean = false
-  internal var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
-  internal val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = recorder
-    .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
-    ?.takeIf { retry ->
-      state.recordFor(retry.phaseId)?.status.let { status -> status == null || status == "pending" }
-    }
-  internal var operatorBlockRetryCompleted: Boolean = false
-
-  internal var pendingReentry: PendingReentry? = resumedReentry()
-  internal var activeReentry: PendingReentry? = pendingReentry
-
-  internal val goalContinuationManifestCommitSha: String? = null
-
-  // SKILL-140: set when a phase launch quarantined an upstream record and requested regeneration, so
-  // advance() settles the consumer with the RECORD_REJECTED verdict rather than a normal completion.
-  internal var recordRejectionSettlementPending: Boolean = false
+  init {
+    session.pendingReentry = collaborators.drive.resumedReentry(this)
+    session.activeReentry = session.pendingReentry
+  }
 
   fun drive() {
-    invalidateReviewGenerationIfNeeded()
-    loadMigratedAuditGapPause()?.let { pause ->
-      if (resolveAuditGapPauseDriveAction(pause) == AuditGapDriveAction.Stop) return
+    collaborators.driveContinued3.invalidateReviewGenerationIfNeeded(this)
+    collaborators.driveContinued3.loadMigratedAuditGapPause(this)?.let { pause ->
+      if (collaborators.driveContinued3.resolveAuditGapPauseDriveAction(
+          this,
+          pause,
+        ) == FeatureTaskRuntimeRunLoopDriveContinued3.AuditGapDriveAction.Stop
+      ) {
+        return
+      }
     }
-    if (!validateAuditGapResumeOrBlock()) return
-    runPhaseDriveLoop()
+    if (!collaborators.driveContinued3.validateAuditGapResumeOrBlock(this)) return
+    collaborators.driveContinued3.runPhaseDriveLoop(this)
   }
 
   internal fun advance(phaseId: String): PhaseSettlement {
-    phaseEntryBlockReason(phaseId)?.let { reason ->
-      blockAt(phaseId, reason)
+    collaborators.drive.phaseEntryBlockReason(this, phaseId)?.let { reason ->
+      collaborators.planningBranch.blockAt(this, phaseId, reason)
       return PhaseSettlement.stop()
     }
     if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW && isGoalContinuationRun(request)) {
-      val carriedForward = carriedForwardGoalReviewSettlement()
+      val carriedForward = collaborators.driveContinued2.carriedForwardGoalReviewSettlement(this)
       if (carriedForward != null) {
         return carriedForward
       }
     }
-    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT && auditGapRetryResumePending) {
-      auditGapRetryResumePending = false
-      val carried = settleCarriedForwardAuditGapAudit()
+    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT && session.auditGapRetryResumePending) {
+      session.auditGapRetryResumePending = false
+      val carried = collaborators.driveContinued1.settleCarriedForwardAuditGapAudit(this)
       if (carried != null) return carried
     }
-    val reason = advancePhaseReason(phaseId)
-    return settleAdvanceOutcome(phaseId, reason)
+    val reason = collaborators.driveContinued4.advancePhaseReason(this, phaseId)
+    return collaborators.driveContinued4.settleAdvanceOutcome(this, phaseId, reason)
   }
 
   // Every reason the phase cannot be entered, evaluated in order and short-circuiting: the declared
   // ordering gate, then the resume cap guard, then the goal review-pass reconciliation.
   fun report(): FeatureTaskRuntimeRunReport {
-    val branch = resolvedBranch
+    val branch = session.resolvedBranch
       ?: recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch
-    return decomposed ?: paused?.let { report ->
+    return session.decomposed ?: session.paused?.let { report ->
       if (report.resolvedBranch == null && branch != null) report.copy(resolvedBranch = branch) else report
-    } ?: blocked?.let { report ->
+    } ?: session.blocked?.let { report ->
       if (report.resolvedBranch == null && branch != null) report.copy(resolvedBranch = branch) else report
     } ?: FeatureTaskRuntimeRunReport.Completed(
       issueKey = request.issueKey,
@@ -205,10 +196,10 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  internal fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
+  fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
     val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
     if (auditGapPause != null) {
-      return applyAuditGapPauseDecision(auditGapPause, decision)
+      return collaborators.planningBranch.applyAuditGapPauseDecision(this, auditGapPause, decision)
     }
     return "Operator decisions over review remediation are removed; " +
       "the run advances to validate after one implement_fix round."

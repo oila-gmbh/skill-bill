@@ -1,0 +1,13 @@
+package skillbill.application.goalrunner
+
+import skillbill.application.goalrunner.model.WorkflowGoalRunnerManifestStoreDeps
+import skillbill.application.goalrunner.model.WorkflowGoalRunnerOutcomeStoreDeps
+import skillbill.infrastructure.sqlite.goalrunner.WorkflowGoalRunnerManifestStore
+import skillbill.infrastructure.sqlite.goalrunner.WorkflowGoalRunnerOutcomeStore
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+
+fun testWorkflowGoalRunnerManifestStore(deps: WorkflowGoalRunnerManifestStoreDeps): GoalRunnerManifestStore =
+  WorkflowGoalRunnerManifestStore(deps)
+
+fun testWorkflowGoalRunnerOutcomeStore(deps: WorkflowGoalRunnerOutcomeStoreDeps): WorkflowGoalRunnerOutcomeStore =
+  WorkflowGoalRunnerOutcomeStore(deps)

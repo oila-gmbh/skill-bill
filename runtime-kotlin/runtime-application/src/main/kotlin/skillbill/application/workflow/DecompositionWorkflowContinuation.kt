@@ -2,7 +2,6 @@ package skillbill.application.workflow
 
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.resolveDecompositionManifest
-import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.model.AdvanceCompletedSubtasksRequest
 import skillbill.application.workflow.model.CheckoutAndValidateBranchRequest
@@ -21,7 +20,7 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
 
-internal class DecompositionWorkflowContinuation(
+class DecompositionWorkflowContinuation(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
   private val validator: DecompositionManifestValidator,
@@ -29,7 +28,7 @@ internal class DecompositionWorkflowContinuation(
   private val repoRoot: Path,
   private val manifestWriter: DecompositionManifestWriter,
 ) {
-  fun continueDecomposedParentByIssueKey(
+  internal fun continueDecomposedParentByIssueKey(
     issueKey: String,
     unitOfWork: UnitOfWork,
     requestedSubtaskId: Int? = null,

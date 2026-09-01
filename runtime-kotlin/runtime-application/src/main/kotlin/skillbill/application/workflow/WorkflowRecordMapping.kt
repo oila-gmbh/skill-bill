@@ -1,6 +1,7 @@
 package skillbill.application.workflow
 
 import skillbill.application.telemetry.specInputTypes
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
@@ -27,7 +28,7 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
  * shim by design — see the runtime-contract backward-compatibility
  * paragraph in `AGENTS.md` for the operator recovery story.
  */
-internal fun WorkflowStateRecord.toSnapshot(): WorkflowStateSnapshot = WorkflowStateSnapshot(
+fun WorkflowStateRecord.toSnapshot(): WorkflowStateSnapshot = WorkflowStateSnapshot(
   workflowId = workflowId,
   sessionId = sessionId,
   workflowName = workflowName,
@@ -42,7 +43,7 @@ internal fun WorkflowStateRecord.toSnapshot(): WorkflowStateSnapshot = WorkflowS
   finishedAt = finishedAt,
 )
 
-internal fun WorkflowStateSnapshot.toRecord(): WorkflowStateRecord = WorkflowStateRecord(
+fun WorkflowStateSnapshot.toRecord(): WorkflowStateRecord = WorkflowStateRecord(
   workflowId = workflowId,
   sessionId = sessionId,
   workflowName = workflowName,
@@ -57,7 +58,8 @@ internal fun WorkflowStateSnapshot.toRecord(): WorkflowStateRecord = WorkflowSta
   mode = mode?.let(FeatureTaskWorkflowMode::fromWireValue),
 )
 
-internal fun FeatureImplementSessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(
+@OpenBoundaryMap("Feature-implement session summary wire payload")
+fun FeatureImplementSessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(
   "session_id" to sessionId,
   "issue_key_provided" to issueKeyProvided,
   "issue_key_type" to issueKeyType,
@@ -71,7 +73,8 @@ internal fun FeatureImplementSessionSummary.toPayload(): Map<String, Any?> = lin
   "spec_summary" to specSummary,
 )
 
-internal fun FeatureVerifySessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(
+@OpenBoundaryMap("Feature-verify session summary wire payload")
+fun FeatureVerifySessionSummary.toPayload(): Map<String, Any?> = linkedMapOf(
   "session_id" to sessionId,
   "acceptance_criteria_count" to acceptanceCriteriaCount,
   "rollout_relevant" to rolloutRelevant,

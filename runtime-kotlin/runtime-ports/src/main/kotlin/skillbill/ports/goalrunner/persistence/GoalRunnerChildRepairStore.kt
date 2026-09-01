@@ -1,0 +1,12 @@
+package skillbill.ports.goalrunner.persistence
+
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyResult
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosis
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosisRequest
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeRepairRequest
+
+interface GoalRunnerChildRepairStore {
+  fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis
+
+  fun applyChildWedgeRepairs(request: GoalRunnerChildWedgeRepairRequest): GoalRunnerChildRepairApplyResult
+}

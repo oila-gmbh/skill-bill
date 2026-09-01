@@ -4,7 +4,6 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.executionModel
-import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
 import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
 import skillbill.application.workflow.model.WorkflowContinueResult
@@ -83,7 +82,7 @@ private fun canRefreshDecompositionRuntime(family: WorkflowFamily, args: Continu
 private fun ContinueExistingWorkflowArgs.hasWriteTargets(): Boolean =
   validator != null && repoRoot != null && manifestWriter != null
 
-internal fun WorkflowEngine.alignSubtaskResumeStep(
+fun WorkflowEngine.alignSubtaskResumeStep(
   record: WorkflowStateSnapshot,
   resumeStepId: String,
   unitOfWork: UnitOfWork,
@@ -129,7 +128,7 @@ private data class ResumeAlignment(
   val staleBlockedStep: WorkflowStepState?,
 )
 
-internal fun WorkflowEngine.persistParentDecompositionRuntime(
+fun WorkflowEngine.persistParentDecompositionRuntime(
   parentRecord: WorkflowStateSnapshot,
   manifest: DecompositionManifest,
   unitOfWork: UnitOfWork,
@@ -161,7 +160,7 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
   )
 }
 
-internal fun DecompositionManifest.withStartedSubtask(
+fun DecompositionManifest.withStartedSubtask(
   subtaskId: Int,
   workflowId: String,
   branch: String,
@@ -182,16 +181,16 @@ internal fun DecompositionManifest.withStartedSubtask(
   },
 )
 
-internal fun DecompositionManifest.withCommittedSubtask(subtaskId: Int, commitSha: String): DecompositionManifest =
+fun DecompositionManifest.withCommittedSubtask(subtaskId: Int, commitSha: String): DecompositionManifest =
   copy(subtasks = subtasks.map { if (it.id == subtaskId) it.copy(commitSha = commitSha) else it })
 
-internal fun DecompositionManifest.branchForSubtask(subtaskId: Int): String = when (executionModel) {
+fun DecompositionManifest.branchForSubtask(subtaskId: Int): String = when (executionModel) {
   DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK -> featureBranch.orEmpty()
   DecompositionExecutionModel.STACKED_BRANCHES ->
     stackBranches.firstOrNull { it.subtaskId == subtaskId }?.branch.orEmpty()
 }
 
-internal fun DecompositionManifest.baseForSubtask(subtaskId: Int): String? = when (executionModel) {
+fun DecompositionManifest.baseForSubtask(subtaskId: Int): String? = when (executionModel) {
   DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK -> baseBranch
   DecompositionExecutionModel.STACKED_BRANCHES ->
     stackBranches.firstOrNull { it.subtaskId == subtaskId }?.baseBranch ?: baseBranch

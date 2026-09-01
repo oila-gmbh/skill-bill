@@ -4,9 +4,11 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeProducerOutputRead
+import skillbill.application.featuretask.model.ProducerOutputQueryArgs
 import skillbill.application.featuretask.model.RejectedOutputDiagnosticDegradeRequest
 import skillbill.application.featuretask.model.RejectedOutputDiagnosticPersistRequest
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
@@ -43,15 +45,7 @@ private fun RejectedOutputDiagnosticError.degradableFailureClass(): FeatureTaskR
     -> null
   }
 
-internal sealed class FeatureTaskRuntimeProducerOutputRead {
-  internal data class Found(val evidence: ProducerOutputEvidence) : FeatureTaskRuntimeProducerOutputRead()
-  internal data object Absent : FeatureTaskRuntimeProducerOutputRead()
-  internal data class Unreadable(
-    val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
-  ) : FeatureTaskRuntimeProducerOutputRead()
-}
-
-internal class FeatureTaskRuntimeRejectedOutputRecorder(
+class FeatureTaskRuntimeRejectedOutputRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   private val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator,

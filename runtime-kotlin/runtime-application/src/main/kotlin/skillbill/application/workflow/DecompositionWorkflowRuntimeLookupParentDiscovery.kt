@@ -2,13 +2,14 @@ package skillbill.application.workflow
 
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.decomposition.isActiveGoalRuntime
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 
-internal fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
+fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
   issueKey: String,
   validator: DecompositionManifestValidator,
   currentProjectedManifest: DecompositionManifest?,
@@ -76,7 +77,7 @@ private fun DecompositionManifest.sameRuntimeIdentity(other: DecompositionManife
     parentSpecPath == other.parentSpecPath &&
     subtasks.map { it.specPath } == other.subtasks.map { it.specPath }
 
-internal fun WorkflowStateRepository.findDecomposedParentWorkflowForRuntime(
+fun WorkflowStateRepository.findDecomposedParentWorkflowForRuntime(
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
 ): WorkflowStateRecord? = listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).firstOrNull { row ->

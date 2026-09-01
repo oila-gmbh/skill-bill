@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

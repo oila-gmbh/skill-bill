@@ -8,7 +8,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand

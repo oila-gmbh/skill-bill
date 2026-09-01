@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner.planning
 
-internal object GoalPlanningSharedContextPacketLegacy {
+object GoalPlanningSharedContextPacketLegacy {
   fun migrateFromV01(packet: Map<String, Any?>): Map<String, Any?> {
     require(packet.keys == GoalPlanningSharedContextPacket.LEGACY_V01_FIELDS) {
       "shared context packet fields are invalid for version '${GoalPlanningSharedContextPacket.LEGACY_VERSION_0_1}'"

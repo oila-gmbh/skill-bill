@@ -25,14 +25,14 @@ data class WorkflowServiceDeps(
   val goalObservabilityEventValidator: GoalObservabilityEventValidator,
 )
 
-internal data class ContinueExistingWorkflowArgs(
+data class ContinueExistingWorkflowArgs(
   val validator: DecompositionManifestValidator? = null,
   val fileStore: DecompositionManifestFileStore,
   val repoRoot: Path? = null,
   val manifestWriter: DecompositionManifestWriter? = null,
 )
 
-internal data class DecompositionRuntimeWriteArgs(
+data class DecompositionRuntimeWriteArgs(
   val existing: WorkflowStateSnapshot,
   val input: WorkflowUpdateInput,
   val workflowId: String,

@@ -12,7 +12,7 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
  * packet's integrity_sha256 is unaffected. The runtime computes no relevance of its own — it emits the
  * ids it was handed.
  */
-internal object GoalPlanningContextPromptFormatter {
+object GoalPlanningContextPromptFormatter {
   fun append(
     prompt: String,
     packet: Map<String, Any?>,

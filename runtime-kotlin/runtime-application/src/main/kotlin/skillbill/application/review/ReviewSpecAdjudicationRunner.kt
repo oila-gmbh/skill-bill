@@ -25,7 +25,7 @@ import java.nio.file.Path
 import java.time.Clock
 import kotlin.time.Duration
 
-internal class ReviewSpecAdjudicationRunner(
+class ReviewSpecAdjudicationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
   private val clock: Clock,

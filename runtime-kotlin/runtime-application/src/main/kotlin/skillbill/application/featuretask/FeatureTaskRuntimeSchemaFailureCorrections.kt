@@ -10,7 +10,7 @@ import skillbill.workflow.taskruntime.model.MAX_BOUNDED_POINTER_LENGTH
  * testable. The corrections that DO need briefing context — the fill-in skeleton, the audit-remediation
  * item list — stay with the composer that owns that context.
  */
-internal object FeatureTaskRuntimeSchemaFailureCorrections {
+object FeatureTaskRuntimeSchemaFailureCorrections {
   // The receipt's `reconciled` is `const: true`, so a producer that reports 'completed' while asserting
   // `reconciled: false` is not describing a repairable field error — it is describing work it did not
   // finish, and no edit to that field makes the claim true. This names the envelope that carries

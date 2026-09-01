@@ -1,5 +1,4 @@
 package skillbill.application
-
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.encodeDecompositionManifestMap
@@ -8,20 +7,19 @@ import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.application.goalrunner.model.WorkflowGoalRunnerManifestStoreDeps
 import skillbill.application.goalrunner.outcomeStoreDeps
-import skillbill.application.goalrunner.planning.sha256HexUtf8
+import skillbill.application.goalrunner.testGoalChildPlanningHydratorPort
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testPhaseRecorder
 import skillbill.application.goalrunner.testWorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.application.workflow.ContinuationStepResult
 import skillbill.application.workflow.DecompositionWorkflowContinuation
-import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.alignSubtaskResumeStep
 import skillbill.application.workflow.decompositionRuntime
@@ -29,6 +27,7 @@ import skillbill.application.workflow.findDecomposedParentWorkflow
 import skillbill.application.workflow.isGoalContinuationChildWorkflow
 import skillbill.application.workflow.model.RepairFeatureTaskRuntimeIdentityArgs
 import skillbill.application.workflow.model.WorkflowContinueResult
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowGetResult
 import skillbill.application.workflow.model.WorkflowOpenResult
@@ -42,6 +41,7 @@ import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.application.workflow.workflowFamily
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidDecompositionManifestSchemaError
@@ -76,6 +76,7 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
@@ -1054,6 +1055,7 @@ class WorkflowServiceGoalManifestStoreTest {
         clock = Clock.systemUTC(),
         decompositionManifestWriter = DecompositionManifestWriter(),
         repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+        planningHydrator = testGoalChildPlanningHydratorPort,
       ),
     )
 
@@ -1130,6 +1132,7 @@ class WorkflowServiceGoalManifestStoreTest {
         clock = Clock.systemUTC(),
         decompositionManifestWriter = DecompositionManifestWriter(),
         repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+        planningHydrator = testGoalChildPlanningHydratorPort,
       ),
     )
 
@@ -1193,6 +1196,7 @@ class WorkflowServiceGoalManifestStoreTest {
         clock = Clock.systemUTC(),
         decompositionManifestWriter = DecompositionManifestWriter(),
         repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+        planningHydrator = testGoalChildPlanningHydratorPort,
       ),
     )
 
@@ -1233,6 +1237,7 @@ class WorkflowServiceGoalManifestStoreTest {
         clock = Clock.systemUTC(),
         decompositionManifestWriter = DecompositionManifestWriter(),
         repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+        planningHydrator = testGoalChildPlanningHydratorPort,
       ),
     )
     val loaded = assertNotNull(store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot))
@@ -1367,6 +1372,7 @@ class WorkflowServiceGoalManifestStoreTest {
         clock = Clock.systemUTC(),
         decompositionManifestWriter = DecompositionManifestWriter(),
         repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+        planningHydrator = testGoalChildPlanningHydratorPort,
       ),
     )
     val completed = pending.copy(
@@ -1420,6 +1426,7 @@ class WorkflowServiceGoalManifestStoreTest {
         clock = Clock.systemUTC(),
         decompositionManifestWriter = DecompositionManifestWriter(),
         repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+        planningHydrator = testGoalChildPlanningHydratorPort,
       ),
     )
 
@@ -1639,6 +1646,7 @@ class WorkflowGoalStatusProjectionTest {
             clock = Clock.systemUTC(),
             decompositionManifestWriter = DecompositionManifestWriter(),
             repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+            planningHydrator = testGoalChildPlanningHydratorPort,
           ),
         ),
         outcomeStore = testWorkflowGoalRunnerOutcomeStore(
@@ -3078,6 +3086,7 @@ private fun manifestStore(rejecting: Set<String>) = testWorkflowGoalRunnerManife
     clock = Clock.systemUTC(),
     decompositionManifestWriter = DecompositionManifestWriter(),
     repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+    planningHydrator = testGoalChildPlanningHydratorPort,
   ),
 )
 
@@ -3094,7 +3103,7 @@ private fun rejectingDecompositionManifestValidator(rejectedSources: Set<String>
 private fun scopedReplanStore(
   workflows: RecordingGoalChildDeletionWorkflowStates,
   manifest: DecompositionManifest,
-): WorkflowGoalRunnerManifestStore {
+): GoalRunnerManifestStore {
   workflows.saveFeatureTaskRuntimeWorkflow(
     workflowRecord(
       workflowId = "wfl-parent",
@@ -3117,6 +3126,7 @@ private fun scopedReplanStore(
       clock = Clock.systemUTC(),
       decompositionManifestWriter = DecompositionManifestWriter(),
       repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+      planningHydrator = testGoalChildPlanningHydratorPort,
     ),
   )
 }
@@ -3671,6 +3681,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         clock = Clock.fixed(Instant.parse(instant), UTC),
         decompositionManifestWriter = DecompositionManifestWriter(),
         repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+        planningHydrator = testGoalChildPlanningHydratorPort,
       ),
     )
 
@@ -3690,6 +3701,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
         clock = Clock.systemUTC(),
         decompositionManifestWriter = DecompositionManifestWriter(),
         repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+        planningHydrator = testGoalChildPlanningHydratorPort,
       ),
     )
 
@@ -3724,7 +3736,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     // projection gate, so a placeholder produced_outputs would be rejected before any child artifact.
     val PREPLAN_PAYLOAD = """
       {
-        "contract_version":"0.4","phase_id":"preplan","status":"completed","summary":"shared",
+        "contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"preplan","status":"completed","summary":"shared",
         "produced_outputs":{"value":"shared preplan prose for hydration"}
       }
     """.trimIndent()
@@ -3732,7 +3744,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     // A settled plan whose produced_outputs omits the required non-blank value.
     val EMPTY_VALUE_PLAN_PAYLOAD = """
       {
-        "contract_version":"0.4","phase_id":"plan","status":"completed","summary":"no value",
+        "contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"plan","status":"completed","summary":"no value",
         "produced_outputs":{"prompt":"optional only"}
       }
     """.trimIndent()
@@ -3741,7 +3753,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
 
     fun planPayload(description: String): String = """
       {
-        "contract_version":"0.4","phase_id":"plan","status":"completed","summary":"$description",
+        "contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"plan","status":"completed","summary":"$description",
         "produced_outputs":{"value":"$description prose for downstream implement."}
       }
     """.trimIndent()

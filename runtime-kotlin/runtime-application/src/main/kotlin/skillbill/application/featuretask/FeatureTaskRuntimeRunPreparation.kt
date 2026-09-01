@@ -13,7 +13,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelecti
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.orLegacyValidate
 
-internal class FeatureTaskRuntimeRunPreparation(
+class FeatureTaskRuntimeRunPreparation(
   private val recorder: FeatureTaskRuntimePhaseRecorder,
   private val continuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
   private val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,

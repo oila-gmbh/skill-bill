@@ -12,12 +12,17 @@ import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
+import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewLaunchAgentStagingRequest
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewContextPacket
+import skillbill.review.context.model.ReviewDependencyAllowlist
+import skillbill.review.context.model.ReviewLaneBundle
+import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
@@ -31,11 +36,11 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
   private val reviewEvidenceBrokerFactory = deps.reviewEvidenceBrokerFactory
   private val governedEvidenceEndpointBinder = deps.governedEvidenceEndpointBinder
   private val reviewLaunchAgentStaging = deps.reviewLaunchAgentStaging
-  internal val sharedEvidenceLocatorReader = deps.sharedEvidenceLocatorReader
+  val sharedEvidenceLocatorReader = deps.sharedEvidenceLocatorReader
   private val failureHelpers = deps.failureHelpers
   private val activityStampWriter = deps.activityStampWriter
 
-  fun runLanes(initial: ParallelCodeReviewInitialRun): ParallelReviewLaneRunResult {
+  internal fun runLanes(initial: ParallelCodeReviewInitialRun): ParallelReviewLaneRunResult {
     val request = initial.request
     val byAgent = initial.preparedLaunchRequests.groupBy { it.agentId }
     val lane1 = parallelCodeReviewCaptureLane {
@@ -250,10 +255,8 @@ internal class ParallelCodeReviewRunnerLaneLaunch(
     )
   }
 
-  internal fun parentEvidenceBroker(
-    selected: List<ReviewSpecialistLaunchRequest>,
-    repoRoot: Path,
-  ): ReviewEvidenceBroker = reviewEvidenceBrokerFactory.brokerFor(parentBrokerBinding(selected, repoRoot))
+  fun parentEvidenceBroker(selected: List<ReviewSpecialistLaunchRequest>, repoRoot: Path): ReviewEvidenceBroker =
+    reviewEvidenceBrokerFactory.brokerFor(parentBrokerBinding(selected, repoRoot))
 }
 
 private inline fun <T> Result<T>.getOrElseRethrowingCancellation(onFailure: () -> T): T {
@@ -290,3 +293,79 @@ private fun inlineParentAccounting(
   budgetDimension = completionState.budgetDimension,
   unreviewedUnits = completionState.unreviewedUnits,
 )
+
+internal fun ParallelCodeReviewRunnerLaneLaunch.mergedBudget(
+  selected: List<ReviewSpecialistLaunchRequest>,
+): ReviewContextBudgetPolicy {
+  val primary = selected.minByOrNull { it.assignment.laneDecision.orderIndex } ?: selected.first()
+  return primary.budget.copy(
+    maxLaneEvidenceBytes = selected.sumOf { it.budget.maxLaneEvidenceBytes },
+    maxSpecialistToolCalls = primary.budget.maxSpecialistToolCalls * selected.size,
+    maxAssignmentExpansions = primary.budget.maxAssignmentExpansions * selected.size,
+  )
+}
+
+internal fun ParallelCodeReviewRunnerLaneLaunch.mergedBundle(
+  packet: ReviewContextPacket,
+  assignedHunks: Set<String>,
+): ReviewLaneBundle = ReviewLaneBundle(
+  packet.commitUnits.sortedBy { it.orderIndex }.mapNotNull { unit ->
+    unit.hunkIds.filter { it in assignedHunks }
+      .takeIf { it.isNotEmpty() }
+      ?.let { ReviewLaneBundleEntry(unit.commitSha, unit.orderIndex, it) }
+  },
+)
+
+internal fun ParallelCodeReviewRunnerLaneLaunch.parentBrokerBinding(
+  selected: List<ReviewSpecialistLaunchRequest>,
+  repoRoot: Path,
+): ReviewEvidenceBrokerBinding {
+  val primary = selected.minByOrNull { it.assignment.laneDecision.orderIndex } ?: selected.first()
+  if (selected.size == 1) return brokerBinding(primary, repoRoot)
+  val assignedPaths = selected.flatMap { it.assignment.assignedPaths }.distinct()
+  val assignedHunks = selected.flatMap { it.assignment.assignedHunks }.distinct()
+  val expansions = selected.flatMap { it.assignment.expansions }.distinctBy { it.expansionId }
+  val assigned = assignedHunks.toSet()
+  val merged = primary.assignment.copy(
+    laneRouting = emptyList(),
+    assignedPaths = assignedPaths,
+    assignedHunks = assignedHunks,
+    assignedBundle = mergedBundle(primary.packet, assigned),
+    evidenceTargets = selected.flatMap { it.assignment.evidenceTargets }.distinctBy { it.targetId },
+    dependencyAllowlist = ReviewDependencyAllowlist(
+      selected.flatMap { it.assignment.dependencyAllowlist.normalized }
+        .distinct()
+        .filterNot { it in assignedPaths.toSet() },
+    ),
+    expansions = expansions,
+  )
+  return ReviewEvidenceBrokerBinding(
+    repoRoot = repoRoot,
+    assignment = merged,
+    laneRubricId = primary.rubrics.first().rubricId,
+    budget = mergedBudget(selected),
+    namedDependencies = selected.flatMap { it.namedDependencies }.toSet(),
+    trustedExpansionLedger = expansions,
+    projectedHunks = primary.packet.changedHunks.filter { it.hunkId in assigned },
+    locatorReader = sharedEvidenceLocatorReader,
+    bodyExtractor = ReviewLocatorHunkBodyExtractor,
+  )
+}
+
+internal fun ParallelCodeReviewRunnerLaneLaunch.brokerBinding(
+  launch: ReviewSpecialistLaunchRequest,
+  repoRoot: Path,
+): ReviewEvidenceBrokerBinding {
+  val assigned = launch.assignment.assignedHunks.toSet()
+  return ReviewEvidenceBrokerBinding(
+    repoRoot = repoRoot,
+    assignment = launch.assignment,
+    laneRubricId = launch.rubrics.first().rubricId,
+    budget = launch.budget,
+    namedDependencies = launch.namedDependencies,
+    trustedExpansionLedger = launch.assignment.expansions,
+    projectedHunks = launch.packet.changedHunks.filter { it.hunkId in assigned },
+    locatorReader = sharedEvidenceLocatorReader,
+    bodyExtractor = ReviewLocatorHunkBodyExtractor,
+  )
+}

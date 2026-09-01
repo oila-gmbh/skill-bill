@@ -4,7 +4,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
-internal object FeatureTaskRuntimePhaseProjectionShapes {
+object FeatureTaskRuntimePhaseProjectionShapes {
   fun exampleFor(phaseId: String, agentRunValidateFallback: Boolean = false): String = when (phaseId) {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> PREPLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> PLAN

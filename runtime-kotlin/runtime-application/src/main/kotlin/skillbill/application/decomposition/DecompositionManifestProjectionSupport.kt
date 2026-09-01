@@ -1,8 +1,8 @@
 package skillbill.application.decomposition
 
-import skillbill.application.workflow.model.DecompositionManifestWriteResult
+import skillbill.application.decomposition.model.DecompositionManifestWriteResult
 
-internal object DecompositionManifestProjectionSupport {
+object DecompositionManifestProjectionSupport {
   fun requireWritten(
     result: DecompositionManifestWriteResult?,
     failureDetail: String,

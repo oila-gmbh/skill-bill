@@ -11,9 +11,9 @@ import skillbill.application.review.ReviewRecorder
 import skillbill.application.review.ReviewSpecAdjudicationRunner
 import skillbill.application.review.diffForPaths
 import skillbill.application.review.model.ParallelCodeReviewRequest
-import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.sparseReviewPack
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.model.ParallelReviewMergeResult

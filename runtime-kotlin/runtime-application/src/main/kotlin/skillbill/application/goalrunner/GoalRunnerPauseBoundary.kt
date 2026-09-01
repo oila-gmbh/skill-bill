@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -10,10 +11,11 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import kotlin.coroutines.cancellation.CancellationException
 
-internal class GoalRunnerProgressReader(
+@Inject
+public class GoalRunnerProgressReader(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
 ) {
-  fun read(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerChildProgressRead =
+  internal fun read(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerChildProgressRead =
     runCatching { GoalRunnerChildProgressRead.Present(outcomeStore.progress(workflowId, request.dbPathOverride)) }
       .fold(
         onSuccess = { it },
@@ -37,10 +39,11 @@ internal class GoalRunnerProgressReader(
     }
 }
 
-internal class GoalRunnerPauseBoundary(
+@Inject
+public class GoalRunnerPauseBoundary(
   private val manifestStore: GoalRunnerManifestStore,
 ) {
-  fun pauseBeforeLaunch(
+  internal fun pauseBeforeLaunch(
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
     knownControl: GoalRunnerControlState? = null,

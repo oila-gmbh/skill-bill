@@ -17,7 +17,7 @@ private const val GRACEFUL_TERMINATION_POLL_MILLIS: Long = 250
 private const val GRACEFUL_TERMINATION_POLLS: Int =
   (GRACEFUL_TERMINATION_WAIT_MILLIS / GRACEFUL_TERMINATION_POLL_MILLIS).toInt()
 
-internal class GoalRunnerStatusControlVerbs(
+class GoalRunnerStatusControlVerbs(
   private val manifestStore: GoalRunnerManifestStore,
   private val clock: Clock,
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,

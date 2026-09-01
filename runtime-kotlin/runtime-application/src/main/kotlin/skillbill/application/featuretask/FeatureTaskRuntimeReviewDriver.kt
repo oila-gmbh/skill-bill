@@ -2,11 +2,11 @@ package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
-import skillbill.application.review.model.ParallelReviewScope
+import skillbill.application.reviewevidence.model.ParallelReviewScope
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
@@ -54,8 +54,8 @@ internal data class FeatureTaskRuntimeReviewCycleContext(
   val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
 )
 
-internal object FeatureTaskRuntimeReviewDriverMapper {
-  fun request(
+object FeatureTaskRuntimeReviewDriverMapper {
+  internal fun request(
     input: GoalSubtaskReviewInput,
     runInvariants: FeatureTaskRuntimeRunInvariants,
     agents: FeatureTaskRuntimeReviewDriverAgents,
@@ -88,12 +88,12 @@ internal object FeatureTaskRuntimeReviewDriverMapper {
   fun specPath(specReference: String): Path = Path.of(specReference)
 }
 
-internal object FeatureTaskRuntimeReviewEnvelope {
+object FeatureTaskRuntimeReviewEnvelope {
   private val CRITERION_GAP_KEYS = setOf("unmet_criteria", "gaps", "failing_criteria")
   private const val REVIEW_RUN_ID_SUFFIX_LENGTH = 4
   private const val SUMMARY_MAX_CHARS = 2_000
 
-  fun assemble(
+  internal fun assemble(
     result: ParallelCodeReviewResult,
     reviewRunId: String,
     cycle: FeatureTaskRuntimeReviewCycleContext,
@@ -217,8 +217,8 @@ internal data class FeatureTaskRuntimeReviewDriverCycleOutcome(
   val verdict: FeatureTaskRuntimeVerdict,
 )
 
-internal object FeatureTaskRuntimeReviewDriverCycle {
-  fun assemble(
+object FeatureTaskRuntimeReviewDriverCycle {
+  internal fun assemble(
     result: ParallelCodeReviewResult,
     request: ParallelCodeReviewRequest,
     cycle: FeatureTaskRuntimeReviewCycleContext,
@@ -230,7 +230,7 @@ internal object FeatureTaskRuntimeReviewDriverCycle {
     return FeatureTaskRuntimeReviewDriverCycleOutcome(outputText, outcome.verdict)
   }
 
-  fun run(
+  internal fun run(
     driver: FeatureTaskRuntimeReviewDriver,
     request: ParallelCodeReviewRequest,
     cycle: FeatureTaskRuntimeReviewCycleContext,

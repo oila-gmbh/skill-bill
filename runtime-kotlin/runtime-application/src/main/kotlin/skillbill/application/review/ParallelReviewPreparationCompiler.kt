@@ -1,11 +1,12 @@
 package skillbill.application.review
-
 import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.ReviewPreparationRequest
 import skillbill.application.review.model.ReviewPreparationResult
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
+import skillbill.application.reviewevidence.ResolvedCommitSequence
+import skillbill.application.reviewevidence.ReviewDiffEvidence
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
 import skillbill.ports.review.ReviewLaneSelectionPort
@@ -37,8 +38,8 @@ import java.nio.file.Path
 import java.security.MessageDigest
 
 /** Compiles the already-resolved parallel-review facts into validated assignment-owned launches. */
-internal object ParallelReviewPreparationCompiler {
-  fun compile(
+object ParallelReviewPreparationCompiler {
+  internal fun compile(
     input: ParallelReviewPreparationInput,
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,

@@ -7,13 +7,13 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 
-internal fun goalRepositoryIdentity(repoRoot: Path): String {
+fun goalRepositoryIdentity(repoRoot: Path): String {
   val canonical = runCatching { repoRoot.toRealPath() }
     .getOrElse { repoRoot.toAbsolutePath().normalize() }
   return "repo-root-realpath-v1:$canonical"
 }
 
-internal fun GoalRunnerManifestStore.effectiveAgentAddonSelection(
+fun GoalRunnerManifestStore.effectiveAgentAddonSelection(
   parentWorkflowId: String,
   request: GoalRunnerRunRequest,
 ): AgentAddonSelection = request.agentAddonSelection.persisted
@@ -34,7 +34,7 @@ internal fun effectiveGoalRunnerReviewPolicy(
     ?: CodeReviewExecutionMode.DEFAULT,
 )
 
-internal fun goalRunnerReviewPolicyMismatch(
+fun goalRunnerReviewPolicyMismatch(
   parentWorkflowId: String,
   requestedReviewMode: CodeReviewExecutionMode?,
   persisted: GoalRunnerReviewPolicy,

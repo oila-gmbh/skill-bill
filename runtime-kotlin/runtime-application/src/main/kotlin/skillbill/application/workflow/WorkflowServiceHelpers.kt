@@ -1,7 +1,9 @@
 package skillbill.application.workflow
 
-import skillbill.application.goalrunner.GoalObservabilityArtifacts
 import skillbill.application.normalizeIssueKey
+import skillbill.application.workflow.model.GoalObservabilityProgressInput
+import skillbill.application.workflow.model.GoalObservabilityWorktreeActivity
+import skillbill.application.workflow.model.PersistOpenedWorkflowArgs
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
@@ -9,8 +11,6 @@ import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.JsonSupport
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.engine.RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
 import skillbill.workflow.engine.WorkflowEngine
@@ -25,7 +25,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import kotlin.random.Random
 
-internal fun incompleteFeatureTaskIdentityError(args: WorkflowServiceOpenArgs): WorkflowOpenResult.Error? {
+fun incompleteFeatureTaskIdentityError(args: WorkflowServiceOpenArgs): WorkflowOpenResult.Error? {
   val hasIdentityCoordinates = args.repositoryIdentity != null || args.governedSpecPath != null
   val hasIncompleteIdentity = hasIncompleteFeatureTaskIdentity(
     args.kind,
@@ -44,19 +44,7 @@ internal fun incompleteFeatureTaskIdentityError(args: WorkflowServiceOpenArgs): 
   }
 }
 
-internal data class PersistOpenedWorkflowArgs(
-  val family: WorkflowFamily,
-  val workflowId: String,
-  val effectiveSessionId: String,
-  val stepId: String,
-  val dbOverride: String?,
-  val issueKey: String?,
-  val executionIdentity: FeatureTaskExecutionIdentity?,
-  val engine: WorkflowEngine,
-  val database: DatabaseSessionFactory,
-)
-
-internal fun persistOpenedWorkflow(args: PersistOpenedWorkflowArgs): WorkflowOpenResult =
+fun persistOpenedWorkflow(args: PersistOpenedWorkflowArgs): WorkflowOpenResult =
   args.database.transaction(args.dbOverride) { unitOfWork ->
     val engine = args.engine
     val family = args.family
@@ -94,14 +82,14 @@ internal fun persistOpenedWorkflow(args: PersistOpenedWorkflowArgs): WorkflowOpe
     )
   }
 
-internal val resolveEffectiveSessionId =
+val resolveEffectiveSessionId =
   { kind: WorkflowFamilyKind, sessionId: String, definition: WorkflowDefinition, workflowId: String ->
     sessionId.ifBlank {
       if (kind == WorkflowFamilyKind.TASK_RUNTIME) "${definition.defaultSessionPrefix}-$workflowId" else ""
     }
   }
 
-internal fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = WorkflowUpdateInput(
+fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = WorkflowUpdateInput(
   workflowStatus = workflowStatus,
   currentStepId = currentStepId,
   stepUpdates = stepUpdates,
@@ -109,7 +97,7 @@ internal fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput 
   sessionId = sessionId,
 )
 
-internal fun WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput = WorkflowUpdateInput(
+fun WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput = WorkflowUpdateInput(
   workflowStatus = "running",
   currentStepId = resumeStepId,
   stepUpdates =
@@ -124,7 +112,7 @@ internal fun WorkflowContinueDecision.toReopenInput(sessionId: String): Workflow
   sessionId = sessionId,
 )
 
-internal fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
+fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
   existing: WorkflowStateSnapshot,
   workflowId: String,
   validator: GoalObservabilityEventValidator,
@@ -141,7 +129,7 @@ internal fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
       .orEmpty()
     val mergedArtifacts = LinkedHashMap(existingArtifacts).apply { putAll(patch) }
     val observabilityPatch = GoalObservabilityArtifacts.patchForProgressEvent(
-      input = GoalObservabilityArtifacts.ProgressInput(
+      input = GoalObservabilityProgressInput(
         artifacts = mergedArtifacts,
         workflowId = workflowId,
         workflowStatus = workflowStatus,
@@ -149,7 +137,7 @@ internal fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
         worktreeActivity = gitOperations.worktreeActivity(repoRoot.normalize())
           .takeIf { activity -> activity.ok }
           ?.let { activity ->
-            GoalObservabilityArtifacts.GoalObservabilityWorktreeActivity(
+            GoalObservabilityWorktreeActivity(
               changedFileSummary = activity.changedFileSummary,
               diffStat = activity.diffStat,
             )
@@ -161,7 +149,7 @@ internal fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
   }
 }
 
-internal fun buildUpdateOk(
+fun buildUpdateOk(
   engine: WorkflowEngine,
   definition: WorkflowDefinition,
   updated: WorkflowStateSnapshot,
@@ -187,7 +175,7 @@ internal fun buildUpdateOk(
   )
 }
 
-internal fun launchProjectionIfReady(
+fun launchProjectionIfReady(
   engine: WorkflowEngine,
   definition: WorkflowDefinition,
   snapshot: WorkflowSnapshotView,
@@ -219,7 +207,7 @@ fun WorkflowService.openFeatureTask(args: WorkflowServiceOpenFeatureTaskArgs): W
   )
 }
 
-internal fun generateWorkflowId(prefix: String): String {
+fun generateWorkflowId(prefix: String): String {
   val now = OffsetDateTime.now(ZoneOffset.UTC)
   val suffix = (1..WORKFLOW_ID_SUFFIX_LENGTH).map { SUFFIX_CHARS[Random.nextInt(SUFFIX_CHARS.length)] }
     .joinToString("")

@@ -8,7 +8,7 @@ import skillbill.application.idestatus.model.IdeStatusSnapshot
 import skillbill.application.idestatus.model.IdeStatusStep
 import java.time.Instant
 
-internal object IdeStatusProblemSnapshots {
+object IdeStatusProblemSnapshots {
   fun invalidRepositoryInput(observedAt: Instant, message: String): IdeStatusSnapshot = problemSnapshot(
     ProblemParts(
       repositoryIdentity = "repo-root-realpath-v1:invalid",

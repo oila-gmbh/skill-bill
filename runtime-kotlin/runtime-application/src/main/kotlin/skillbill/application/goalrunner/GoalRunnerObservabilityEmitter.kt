@@ -1,5 +1,5 @@
 package skillbill.application.goalrunner
-
+import skillbill.application.agentoutput.stderrExcerpt
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -10,7 +10,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequ
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import java.time.Clock
 
-internal class GoalRunnerObservabilityEmitter(
+class GoalRunnerObservabilityEmitter(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val clock: Clock,
   private val diagnostics: RuntimeDiagnostics,
@@ -19,7 +19,7 @@ internal class GoalRunnerObservabilityEmitter(
   private val dbPathOverride: String? = request.dbPathOverride
   private var sequence: Int = request.observabilitySequenceStart
 
-  fun recordLaunchLifecycle(
+  internal fun recordLaunchLifecycle(
     subject: GoalRunnerObservabilitySubject,
     action: String,
     progress: GoalRunnerWorkflowProgress?,
@@ -33,7 +33,7 @@ internal class GoalRunnerObservabilityEmitter(
     }
   }
 
-  fun record(subject: GoalRunnerObservabilitySubject, signal: GoalRunnerObservabilitySignal) {
+  internal fun record(subject: GoalRunnerObservabilitySubject, signal: GoalRunnerObservabilitySignal) {
     runCatching {
       outcomeStore.recordObservabilityEvent(
         request = GoalRunnerObservabilityRecordRequest(

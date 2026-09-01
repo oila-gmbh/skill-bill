@@ -8,15 +8,15 @@ import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.long
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.RequestedReviewMode
-import skillbill.application.review.model.DiffResolutionException
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelReviewLaneStatus
-import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.model.StackDetectionException
 import skillbill.application.review.model.UsageValidationException
 import skillbill.application.review.toBoundedPayload
+import skillbill.application.reviewevidence.model.DiffResolutionException
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.invokingAgentResolutionHelp

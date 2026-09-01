@@ -16,7 +16,7 @@ private const val SCOPED_REVIEW_PATH_DELIMITER: Char = '\u0000'
  * staleness check is what let a foreign tracked edit or a post-baseline untracked file reopen a
  * settled capped review on every resume, so both sides call through here.
  */
-internal object FeatureTaskRuntimeScopedReviewBaseline {
+object FeatureTaskRuntimeScopedReviewBaseline {
   fun untrackedExclusions(
     gitOperations: WorkflowGitOperations,
     repoRoot: Path,

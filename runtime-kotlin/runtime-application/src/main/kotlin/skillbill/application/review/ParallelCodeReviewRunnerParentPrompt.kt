@@ -6,7 +6,7 @@ import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.structuredString
 import skillbill.scaffold.model.PlatformManifest
 
-internal object ParallelCodeReviewRunnerParentPrompt {
+object ParallelCodeReviewRunnerParentPrompt {
   fun build(
     selected: List<ReviewSpecialistLaunchRequest>,
     routedManifests: List<PlatformManifest>,

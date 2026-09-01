@@ -49,7 +49,7 @@ internal data class PendingReentry(
   val expectedRepositoryCheckpoint: String? = null,
 )
 
-internal class MissingCarriedForwardGoalReviewResultException : IllegalStateException()
+class MissingCarriedForwardGoalReviewResultException : IllegalStateException()
 
 internal sealed class RuntimeOwnedReviewPrep
 
@@ -92,7 +92,7 @@ internal class PhaseAttemptLoopState(
   var outputGateFailures: Int,
   var semanticIteration: Int,
   var continuationSegmentCount: Int,
-  var carryForward: PhaseAttemptLoopCarryForward = PhaseAttemptLoopCarryForward(),
+  private var carryForward: PhaseAttemptLoopCarryForward = PhaseAttemptLoopCarryForward(),
 ) {
   var priorCorrection: PriorAttemptCorrection?
     get() = carryForward.priorCorrection
@@ -153,12 +153,12 @@ internal data class FixLoopBranchContext(
   val agentId: String,
 )
 
-internal class ValidatedOutputCapture(
-  val run: PhaseRun,
+class ValidatedOutputCapture internal constructor(
+  internal val run: PhaseRun,
   val iteration: Int,
-  val captured: CapturedPhaseOutput,
+  internal val captured: CapturedPhaseOutput,
   val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
-  val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  internal val fileManifest: FeatureTaskRuntimePhaseFileManifest,
 ) {
   val outputText: String get() = captured.text
   val outputBytes: ByteArray get() = captured.bytes
@@ -267,7 +267,7 @@ internal data class PhaseReviewPersistenceArgs(
 
 internal sealed interface CommitPushFinalisation
 
-internal data object CommitPushNotApplicable : CommitPushFinalisation
+data object CommitPushNotApplicable : CommitPushFinalisation
 
 internal data class CommitPushSettled(
   val output: NormalizedFeatureTaskRuntimePhaseOutput,

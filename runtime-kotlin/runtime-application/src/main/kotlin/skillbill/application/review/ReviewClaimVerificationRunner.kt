@@ -28,7 +28,7 @@ import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewStage
 import java.time.Clock
 
-internal class ReviewClaimVerificationRunner(
+class ReviewClaimVerificationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
   private val clock: Clock,

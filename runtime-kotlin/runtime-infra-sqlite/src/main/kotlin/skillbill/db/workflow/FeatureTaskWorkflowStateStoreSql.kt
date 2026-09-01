@@ -14,6 +14,8 @@ import java.sql.ResultSet
 import java.time.Instant
 import java.time.format.DateTimeParseException
 
+internal object FeatureTaskWorkflowStateStoreSql
+
 internal fun Connection.insertWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
   prepareStatement(
     """

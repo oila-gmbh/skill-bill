@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState

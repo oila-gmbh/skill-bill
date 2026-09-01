@@ -6,7 +6,6 @@ import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.goalrunner.GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY
 import skillbill.application.goalrunner.PASSED_CONTINUATION_OUTCOME
 import skillbill.application.goalrunner.PASSED_PHASE_OUTPUT_CONTRACT
@@ -24,7 +23,8 @@ import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.goalrunner.outcomeStoreDeps
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.phaseartifacts.phaseRecordsFrom
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -1019,7 +1019,7 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
 
     assertEquals(GoalRunnerRepairStatus.NOT_WEDGED, result.status)
     assertNotNull(result.refusalReason)
-    assertTrue(result.refusalReason.contains(PASSED_VALIDATION_DEPTH))
+    assertTrue(checkNotNull(result.refusalReason).contains(PASSED_VALIDATION_DEPTH))
   }
 }
 
@@ -1067,8 +1067,8 @@ internal abstract class GoalRunnerRepairFixtures {
     outcomeStoreDeps(
       FakeDatabaseSessionFactory(workflows),
       testWorkflowSnapshotValidator,
-    ).copy(
       gitOperations = git,
+    ).copy(
       decompositionManifestFileStore = InMemoryRepairManifestFileStore(),
     ),
   )

@@ -3,7 +3,7 @@ package skillbill.application.goalrunner
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 
-internal class GoalRunnerValidationQualityPendingState(
+class GoalRunnerValidationQualityPendingState(
   private val manifestStore: GoalRunnerManifestStore,
 ) {
   private var parentWorkflowId: String = ""

@@ -40,7 +40,7 @@ sealed interface GoalPlanningSweepOutcome {
   ) : GoalPlanningSweepOutcome
 }
 
-internal sealed interface GoalPlanningPhaseProduction {
+sealed interface GoalPlanningPhaseProduction {
   data class Captured(
     val payload: String,
     val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,

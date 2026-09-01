@@ -1,11 +1,14 @@
 package skillbill.application.goalrunner
 
-import skillbill.contracts.JsonSupport
+import skillbill.application.goalrunner.model.GoalContinuation
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
+import skillbill.workflow.engine.model.WorkflowStepState
 
-internal fun terminalOutcomeFor(
+@OpenBoundaryMap("Terminal goal outcome derivation from durable workflow artifacts")
+fun terminalOutcomeFor(
   snapshot: WorkflowStateSnapshot,
   artifacts: Map<String, Any?>,
   goalContinuation: GoalContinuation,
@@ -33,7 +36,8 @@ internal fun terminalOutcomeFor(
   return derivedTerminalOutcomeFor(snapshot, artifacts, goalContinuation, measuredCommitSha)
 }
 
-internal fun derivedTerminalOutcomeFor(
+@OpenBoundaryMap("Derived terminal goal outcome from durable workflow artifacts")
+fun derivedTerminalOutcomeFor(
   snapshot: WorkflowStateSnapshot,
   artifacts: Map<String, Any?>,
   goalContinuation: GoalContinuation,
@@ -54,7 +58,7 @@ internal fun derivedTerminalOutcomeFor(
   }
 }
 
-internal fun nonCompleteStoredOutcomeIsCorroborated(
+fun nonCompleteStoredOutcomeIsCorroborated(
   stored: GoalRunnerStoredOutcome,
   derived: GoalRunnerStoredOutcome?,
   snapshot: WorkflowStateSnapshot,
@@ -71,80 +75,46 @@ internal fun nonCompleteStoredOutcomeIsCorroborated(
   -> false
 }
 
-internal fun List<GoalContinuationCandidate>.authoritativeOutcomesBySubtask(): Map<Int, GoalRunnerStoredOutcome> =
-  groupBy { candidate -> candidate.goalContinuation.subtaskId }
-    .mapNotNull { (subtaskId, candidates) ->
-      candidates.selectAuthoritativeOutcome()?.let { outcome -> subtaskId to outcome }
+fun terminalStatus(
+  snapshot: WorkflowStateSnapshot,
+  steps: List<WorkflowStepState>,
+  suppressPr: Boolean,
+  commitSha: String?,
+): GoalRunnerTerminalStatus? = when {
+  commitPushCompletedUnderSuppressPr(steps, suppressPr) ->
+    if (commitSha.isNullOrBlank()) {
+      GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME
+    } else {
+      GoalRunnerTerminalStatus.COMPLETE
     }
-    .toMap()
-
-internal fun List<GoalContinuationCandidate>.selectAuthoritativeOutcome(): GoalRunnerStoredOutcome? {
-  val completeWinner = asSequence()
-    .filter { candidate -> candidate.outcome?.status == GoalRunnerTerminalStatus.COMPLETE }
-    .maxWithOrNull(compareBy<GoalContinuationCandidate> { it.snapshot.updatedAt }.thenBy { it.snapshot.workflowId })
-  if (completeWinner != null) {
-    return completeWinner.outcome
-  }
-  val fallbackWinner = asSequence()
-    .filter { candidate -> candidate.outcome != null }
-    .maxWithOrNull(compareBy<GoalContinuationCandidate> { it.snapshot.updatedAt }.thenBy { it.snapshot.workflowId })
-  return fallbackWinner?.outcome
+  snapshot.workflowStatus == "failed" || steps.any { it.status == "failed" } -> GoalRunnerTerminalStatus.FAILED
+  snapshot.workflowStatus == "blocked" || liveBlockedStep(snapshot, steps) != null -> GoalRunnerTerminalStatus.BLOCKED
+  snapshot.workflowStatus in setOf("completed", "abandoned") -> GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME
+  else -> null
 }
 
-internal fun staleRunningReason(
-  staleWorkflowId: String,
-  issueKey: String,
-  subtaskId: Int,
-  authoritative: GoalRunnerStoredOutcome?,
-): String = authoritative?.let { outcome ->
-  if (outcome.workflowId == staleWorkflowId) {
-    "Goal status reconciliation closed inactive running child '$staleWorkflowId' for issue '$issueKey' " +
-      "subtask $subtaskId because a terminal outcome was already durable."
-  } else {
-    "Goal status reconciliation closed stale running child '$staleWorkflowId' for issue '$issueKey' " +
-      "subtask $subtaskId in favor of authoritative ${outcome.status.name.lowercase()} workflow " +
-      "'${outcome.workflowId}'."
-  }
-} ?: (
-  "Goal status reconciliation closed stale running child '$staleWorkflowId' for issue '$issueKey' " +
-    "subtask $subtaskId because it was no longer active."
-  )
-
-internal fun missingResultPrefixTerminalOutcomeArtifact(
-  output: Map<String, Any?>,
-  issueKey: String,
-  subtaskId: Int,
-  workflowId: String,
-): Map<String, Any?>? = (JsonSupport.anyToStringAnyMap(output["subtask_outcome"]) ?: output)
-  .takeIf { candidate -> candidate.matchesGoalContinuation(issueKey, subtaskId) }
-  ?.let { candidate ->
-    candidate["status"]?.toString()?.let(::goalContinuationTerminalStatus)?.let { status ->
-      candidate.toMissingResultPrefixOutcomeArtifact(issueKey, subtaskId, workflowId, status)
-    }
-  }
-
-internal fun Map<String, Any?>.matchesGoalContinuation(issueKey: String, subtaskId: Int): Boolean {
-  val candidateIssueKey = this["issue_key"]?.toString()?.takeIf(String::isNotBlank) ?: issueKey
-  val candidateSubtaskId = this["subtask_id"].asGoalRunnerIntOrNull() ?: subtaskId
-  return candidateIssueKey == issueKey && candidateSubtaskId == subtaskId
+fun liveBlockedStep(snapshot: WorkflowStateSnapshot, steps: List<WorkflowStepState>): WorkflowStepState? {
+  val currentIndex = steps.indexOfFirst { it.stepId == snapshot.currentStepId }
+  if (currentIndex < 0) return steps.firstOrNull { it.status == "blocked" }
+  return steps.drop(currentIndex).firstOrNull { it.status == "blocked" }
 }
 
-internal fun Map<String, Any?>.toMissingResultPrefixOutcomeArtifact(
-  issueKey: String,
-  subtaskId: Int,
-  workflowId: String,
+@OpenBoundaryMap("Blocked reason extraction from durable workflow artifacts")
+fun blockedReasonFrom(
+  artifacts: Map<String, Any?>,
+  steps: List<WorkflowStepState>,
   status: GoalRunnerTerminalStatus,
-): Map<String, Any?> = linkedMapOf<String, Any?>(
-  "issue_key" to issueKey,
-  "subtask_id" to subtaskId,
-  "status" to status.toGoalContinuationWireStatus(),
-  "workflow_id" to (this["workflow_id"]?.toString()?.takeIf(String::isNotBlank) ?: workflowId),
-  "last_resumable_step" to (
-    this["last_resumable_step"]?.toString()?.takeIf(String::isNotBlank) ?: "preplan"
-    ),
-).apply {
-  this@toMissingResultPrefixOutcomeArtifact["commit_sha"]?.toString()?.takeIf(String::isNotBlank)
-    ?.let { put("commit_sha", it) }
-  this@toMissingResultPrefixOutcomeArtifact["blocked_reason"]?.toString()?.takeIf(String::isNotBlank)
-    ?.let { put("blocked_reason", it) }
-}
+): String? = artifacts["blocked_reason"]?.toString()?.takeIf(String::isNotBlank)
+  ?: (artifacts["goal_continuation_outcome"] as? Map<*, *>)
+    ?.get("blocked_reason")?.toString()?.takeIf(String::isNotBlank)
+  ?: steps.firstOrNull { it.status in setOf("failed", "blocked") }
+    ?.let { step -> "Workflow step '${step.stepId}' is ${step.status}." }
+  ?: "Workflow reached a terminal state without a goal-continuation commit SHA."
+    .takeIf { status == GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME }
+
+@OpenBoundaryMap("Commit SHA extraction from durable workflow artifacts")
+fun commitShaFrom(artifacts: Map<String, Any?>): String? =
+  (artifacts["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
+
+fun commitPushCompletedUnderSuppressPr(steps: List<WorkflowStepState>, suppressPr: Boolean): Boolean =
+  suppressPr && steps.any { it.stepId == "commit_push" && it.status == "completed" }

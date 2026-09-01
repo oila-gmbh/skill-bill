@@ -18,12 +18,12 @@ internal data class FeatureTaskRuntimeCurrentPhaseExecutionContext(
   val gateRunCount: Int?,
 )
 
-internal class FeatureTaskRuntimeCurrentPhaseExecutionDeriver {
+class FeatureTaskRuntimeCurrentPhaseExecutionDeriver {
   /**
    * Derives one current-phase execution value from the same durable inputs that selected the
    * current phase. Never reads a completed neighbour's historical counter as current.
    */
-  fun derive(context: FeatureTaskRuntimeCurrentPhaseExecutionContext): IdeStatusCurrentPhaseExecution? {
+  internal fun derive(context: FeatureTaskRuntimeCurrentPhaseExecutionContext): IdeStatusCurrentPhaseExecution? {
     val phaseId = context.currentPhaseId?.takeIf(String::isNotBlank) ?: return null
     val phaseStatus = context.phases.firstOrNull { it.phaseId == phaseId } ?: return null
     val record = context.records[phaseId]

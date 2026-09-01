@@ -11,6 +11,7 @@ import skillbill.application.goalrunner.model.GoalRunnerReplanResult
 import skillbill.application.goalrunner.model.GoalRunnerResetRequest
 import skillbill.application.goalrunner.model.GoalRunnerResetResult
 import skillbill.application.goalrunner.model.GoalRunnerResumeResult
+import skillbill.application.goalrunner.model.GoalRunnerStatusProjectionAssemblerDeps
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.application.goalrunner.model.GoalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
@@ -106,5 +107,4 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
   fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptResult = acceptanceCoordinator.accept(request)
 }
 
-internal fun effectiveGoalRepoRoot(repoRoot: Path?, repositoryRoot: RepositoryRoot): Path =
-  repoRoot ?: repositoryRoot.path
+fun effectiveGoalRepoRoot(repoRoot: Path?, repositoryRoot: RepositoryRoot): Path = repoRoot ?: repositoryRoot.path

@@ -255,11 +255,21 @@ internal sealed interface GoalReviewRunPreparation {
 
 internal data class GoalReviewRunReady(val run: PhaseRun) : GoalReviewRunPreparation
 
-internal const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
+const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 
-internal const val LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION =
+const val LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION =
   "rejected an upstream bounded planning projection at the launch seam"
 
-internal const val OWNED_PATH_DELIMITER = '\u0000'
+const val OWNED_PATH_DELIMITER = '\u0000'
 
-internal const val MAX_CHECKPOINT_OWNED_PATHS = 500
+const val MAX_CHECKPOINT_OWNED_PATHS = 500
+
+fun parseContentIdentities(raw: String): Map<String, String> = raw
+  .split(OWNED_PATH_DELIMITER)
+  .filter(String::isNotBlank)
+  .mapNotNull { record ->
+    val identity = record.substringBefore('\t', missingDelimiterValue = "")
+    val path = record.substringAfter('\t', missingDelimiterValue = "")
+    if (identity.isBlank() || path.isBlank()) null else path to identity
+  }
+  .toMap()

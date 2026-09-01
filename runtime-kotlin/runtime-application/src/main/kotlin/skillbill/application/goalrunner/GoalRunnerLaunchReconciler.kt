@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
-
+import me.tatarka.inject.annotations.Inject
+import skillbill.application.agentoutput.stderrExcerpt
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
@@ -27,14 +28,15 @@ import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.time.Clock
 
-internal class GoalRunnerLaunchReconciler(
+@Inject
+public class GoalRunnerLaunchReconciler(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val activityStampWriter: AgentActivityStampWriter,
   private val clock: Clock,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
-  fun subtaskLaunchRequest(args: SubtaskLaunchRequestArgs): GoalRunnerSubtaskLaunchRequest {
+  internal fun subtaskLaunchRequest(args: SubtaskLaunchRequestArgs): GoalRunnerSubtaskLaunchRequest {
     val issueKey = args.issueKey
     val subtaskId = args.subtaskId
     val request = args.request
@@ -132,7 +134,7 @@ internal class GoalRunnerLaunchReconciler(
     }
   }
 
-  fun reconcileLaunchOutcome(
+  internal fun reconcileLaunchOutcome(
     attemptedState: GoalRunnerManifestState,
     launchOutcome: AgentRunLaunchOutcome,
     subtaskId: Int,
@@ -224,7 +226,7 @@ internal class GoalRunnerLaunchReconciler(
   }
 }
 
-internal fun AgentRunLaunchOutcome.toGoalRunnerLaunchFacts(): GoalRunnerLaunchFacts = when (this) {
+fun AgentRunLaunchOutcome.toGoalRunnerLaunchFacts(): GoalRunnerLaunchFacts = when (this) {
   is AgentRunLaunchFacts -> GoalRunnerLaunchFacts(
     timedOut = timedOut,
     interrupted = interrupted,

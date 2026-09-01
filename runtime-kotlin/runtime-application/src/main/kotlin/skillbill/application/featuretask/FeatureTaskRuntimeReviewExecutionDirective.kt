@@ -31,9 +31,11 @@ private fun materializedScope(inputs: ReviewExecutionDirectiveInputs): String =
   inputs.goalSubtaskReviewInput?.let { input ->
     """
     ## Immutable-base review scope
-    Review only this run-owned delta from durable base `${input.reviewBaseSha}` to the current worktree (HEAD `${input.currentHeadSha}` plus staged, unstaged, and owned untracked changes).
+    Review only this run-owned delta from durable base `${input.reviewBaseSha}` to the current worktree
+    (HEAD `${input.currentHeadSha}` plus staged, unstaged, and owned untracked changes).
     Do not use `origin/main...HEAD`, a merge base, the full feature branch, or a replacement baseline.
-    The shared review driver resolves that scope itself from the durable base; it does not receive a pre-baked diff blob.
+    The shared review driver resolves that scope itself from the durable base; it does not receive a pre-baked
+    diff blob.
     """.trimIndent()
   }.orEmpty()
 

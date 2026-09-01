@@ -2,7 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.ports.db.DatabaseSessionFactory
 
-internal class FeatureTaskRuntimeReviewCheckpointRecorder(
+class FeatureTaskRuntimeReviewCheckpointRecorder(
   database: DatabaseSessionFactory,
   workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,

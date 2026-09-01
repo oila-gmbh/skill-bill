@@ -1,7 +1,10 @@
 package skillbill.application.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.featuretask.model.GoalSubtaskReviewInputBlocked
+import skillbill.application.featuretask.model.GoalSubtaskReviewInputPreparation
+import skillbill.application.featuretask.model.GoalSubtaskReviewInputReady
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
@@ -9,6 +12,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
+import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
@@ -17,12 +21,12 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import java.nio.file.Path
 
-internal class FeatureTaskRuntimeGoalReviewInputBuilder(
+class FeatureTaskRuntimeGoalReviewInputBuilder(
   private val database: DatabaseSessionFactory,
   private val patcher: FeatureTaskRuntimeGoalContinuationArtifactPatcher,
   private val persistGoalReviewInput: (String, GoalSubtaskReviewInput, String?) -> GoalSubtaskReviewState?,
 ) {
-  internal fun loadGoalReviewDurable(
+  fun loadGoalReviewDurable(
     workflowId: String,
     scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
   ): Pair<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact>? =
@@ -211,4 +215,39 @@ internal data class GoalReviewInputRecoveryExecution(
 private val recoverableReviewBaseFailures: Set<GoalSubtaskReviewInputFailureReason> = setOf(
   GoalSubtaskReviewInputFailureReason.BASE_MISSING,
   GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+)
+
+internal fun selectedGoalReviewBaseline(
+  state: GoalSubtaskReviewState,
+  scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
+): Pair<GoalSubtaskReviewBaseline, GoalReviewBaseField> {
+  val exclusions = scope.scopedUntrackedExclusions ?: state.baselineUntrackedPaths
+  val remediationBaseline = state.remediationBaseSha
+    ?.takeIf { state.completedPassCount >= 1 && state.reservedPassNumber == null }
+    ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, exclusions, scope.ownedPathspec) }
+  return if (remediationBaseline != null) {
+    remediationBaseline to GoalReviewBaseField.REMEDIATION_BASE
+  } else {
+    GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions, scope.ownedPathspec) to GoalReviewBaseField.REVIEW_BASE
+  }
+}
+
+internal fun FeatureTaskRuntimeGoalReviewInputBuilder.goalReviewInputFromBuildResult(
+  result: GoalSubtaskReviewInputResult,
+  recovery: GoalReviewInputRecovery?,
+): GoalSubtaskReviewInput? = when {
+  result.ok -> requireNotNull(result.input)
+  recovery is GoalReviewInputRecovery.Recovered -> recovery.input
+  else -> null
+}
+
+internal fun goalReviewBlockedPreparation(
+  result: GoalSubtaskReviewInputResult,
+  recovery: GoalReviewInputRecovery?,
+): GoalSubtaskReviewInputPreparation = GoalSubtaskReviewInputBlocked(
+  when (recovery) {
+    is GoalReviewInputRecovery.Failed -> recovery.reason
+    is GoalReviewInputRecovery.Ineligible, null -> result.error
+    is GoalReviewInputRecovery.Recovered -> error("blocked preparation requested for recovered input")
+  },
 )

@@ -17,7 +17,7 @@ import skillbill.application.idestatus.model.IdeStatusProgress
 import skillbill.application.idestatus.model.IdeStatusSnapshot
 import skillbill.application.idestatus.model.IdeStatusStep
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalPlanningStatusState

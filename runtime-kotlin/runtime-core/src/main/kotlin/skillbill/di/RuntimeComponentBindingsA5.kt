@@ -1,8 +1,8 @@
 package skillbill.di
 
-import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.planning.DurableGoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.planning.GoalPlanningRejectionRecorder
+import skillbill.application.telemetry.GoalLifecycleTelemetryEmitter
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver

@@ -1,40 +1,40 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 
-internal val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
+val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
 
-internal const val FEATURE_SPEC_ROOT = ".feature-specs"
-internal const val GIT_PORCELAIN_MIN_LENGTH = 4
-internal const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
-internal const val MAX_VALIDATION_QUALITY_RETRIES = 3
-internal const val MAX_REPORTED_FINALIZE_DIRTY_PATHS = 10
+const val FEATURE_SPEC_ROOT = ".feature-specs"
+const val GIT_PORCELAIN_MIN_LENGTH = 4
+const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
+const val MAX_VALIDATION_QUALITY_RETRIES = 3
+const val MAX_REPORTED_FINALIZE_DIRTY_PATHS = 10
 
-internal val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
-internal val CHILD_WORKFLOW_BLOCK_REASONS: Set<GoalRunnerStopReason> = setOf(
+val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
+val CHILD_WORKFLOW_BLOCK_REASONS: Set<GoalRunnerStopReason> = setOf(
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
   GoalRunnerStopReason.TIMEOUT,
   GoalRunnerStopReason.INTERRUPTED,
 )
 
-internal fun isFeatureSpecPath(path: String): Boolean {
+fun isFeatureSpecPath(path: String): Boolean {
   val normalized = path.trim().trimEnd('/').removeSurrounding("\"").removePrefix("./")
   val dotted = if (normalized.startsWith(".")) normalized else ".$normalized"
   return dotted == FEATURE_SPEC_ROOT || dotted.startsWith("$FEATURE_SPEC_ROOT/")
 }
 
-internal fun protectedBranchName(branch: String?): String? = branch
+fun protectedBranchName(branch: String?): String? = branch
   ?.trim()
   ?.takeIf(String::isNotBlank)
   ?.takeIf { normalized -> normalized.lowercase() in PROTECTED_GOAL_BRANCHES }
 
-internal fun parseGitPorcelainPaths(output: String): List<String> = output
+fun parseGitPorcelainPaths(output: String): List<String> = output
   .lineSequence()
   .map(String::trimEnd)
   .filter { line -> line.length >= GIT_PORCELAIN_MIN_LENGTH }
@@ -47,7 +47,7 @@ internal data class GoalRunnerProgressState(
   val childProgress: GoalRunnerWorkflowProgress?,
 )
 
-internal class GoalRunnerTickProgressReader(
+class GoalRunnerTickProgressReader(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val issueKey: String,
@@ -59,7 +59,7 @@ internal class GoalRunnerTickProgressReader(
   private var cachedHasValue: Boolean = false
   private var cached: GoalRunnerProgressState? = null
 
-  fun progressState(): GoalRunnerProgressState? {
+  internal fun progressState(): GoalRunnerProgressState? {
     val now = clockNanos()
     if (cachedHasValue && now - cachedAtNanos < TICK_MEMO_WINDOW_NANOS) {
       return cached

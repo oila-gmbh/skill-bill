@@ -22,7 +22,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
-internal class WorkflowServiceBlockedPhaseRetry(
+class WorkflowServiceBlockedPhaseRetry(
   private val engine: WorkflowEngine,
   private val decompositionManifestValidator: DecompositionManifestValidator,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,

@@ -5,10 +5,10 @@ import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 
-internal fun progressProbe(reader: GoalRunnerTickProgressReader, subtaskId: Int): AgentRunProgressProbe =
+fun progressProbe(reader: GoalRunnerTickProgressReader, subtaskId: Int): AgentRunProgressProbe =
   GoalRunnerWorkflowProgressProbe(reader = reader, subtaskId = subtaskId)
 
-internal class GoalRunnerWorkflowProgressProbe(
+class GoalRunnerWorkflowProgressProbe(
   private val reader: GoalRunnerTickProgressReader,
   private val subtaskId: Int,
 ) : AgentRunProgressProbe {
@@ -31,7 +31,7 @@ internal class GoalRunnerWorkflowProgressProbe(
   }
 }
 
-internal fun declaredProgressProbe(reader: GoalRunnerTickProgressReader): AgentRunDeclaredProgressProbe =
+fun declaredProgressProbe(reader: GoalRunnerTickProgressReader): AgentRunDeclaredProgressProbe =
   AgentRunDeclaredProgressProbe {
     reader.progressState()
       ?.childProgress
@@ -44,7 +44,7 @@ internal fun declaredProgressProbe(reader: GoalRunnerTickProgressReader): AgentR
       }
   }
 
-internal fun DecompositionSubtask.progressToken(): String = listOf(
+fun DecompositionSubtask.progressToken(): String = listOf(
   status,
   workflowId.orEmpty(),
   branch.orEmpty(),

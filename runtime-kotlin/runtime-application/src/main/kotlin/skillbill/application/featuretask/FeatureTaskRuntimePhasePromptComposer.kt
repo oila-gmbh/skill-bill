@@ -4,7 +4,7 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
 
-internal object FeatureTaskRuntimePhasePromptComposer {
+object FeatureTaskRuntimePhasePromptComposer {
   fun compose(
     issueKey: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
@@ -20,7 +20,7 @@ internal object FeatureTaskRuntimePhasePromptComposer {
 
   fun compose(inputs: FeatureTaskRuntimePhasePromptComposeInputs): String = composePhasePrompt(inputs)
 
-  internal fun budgetedAddonsFor(selection: HydratedAgentAddonSelection): HydratedAgentAddonSelection = selection
+  fun budgetedAddonsFor(selection: HydratedAgentAddonSelection): HydratedAgentAddonSelection = selection
 
   internal const val ADDON_CONTENT_PROJECTION_NAME: String = "agent_addon_content"
 }

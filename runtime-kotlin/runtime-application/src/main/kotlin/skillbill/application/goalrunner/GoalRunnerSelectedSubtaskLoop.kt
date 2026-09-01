@@ -21,7 +21,7 @@ internal class GoalRunnerSelectedSubtaskLoop(
   private val launchPrepare get() = deps.launchPrepare
   private val clock get() = deps.clock
   private val validationQualityState get() = deps.pendingState.validationQualityState
-  fun runSelectedSubtask(args: RunSelectedSubtaskArgs): GoalRunnerIterationResult {
+  internal fun runSelectedSubtask(args: RunSelectedSubtaskArgs): GoalRunnerIterationResult {
     val state = args.state
     val selection = args.selection
     val request = args.request

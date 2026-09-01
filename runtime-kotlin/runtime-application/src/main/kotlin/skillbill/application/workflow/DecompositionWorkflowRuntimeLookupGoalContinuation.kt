@@ -1,13 +1,12 @@
 package skillbill.application.workflow
 
-import skillbill.application.featuretask.model.GoalContinuationCandidate
+import skillbill.application.continuation.model.GoalContinuationCandidate
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.workflow.decomposition.DecompositionManifestValidator
-import skillbill.workflow.decomposition.model.DecompositionManifest
 
 private val GOAL_TERMINAL_MANIFEST_STATUSES: Set<String> = setOf("complete", "skipped")
 
-internal fun WorkflowStateRepository.goalContinuationFor(
+fun WorkflowStateRepository.goalContinuationFor(
   issueKey: String,
   repositoryIdentity: String,
   validator: DecompositionManifestValidator,
@@ -39,6 +38,3 @@ internal fun WorkflowStateRepository.goalContinuationFor(
     },
   )
 }
-
-internal fun DecompositionManifest.isActiveGoalRuntime(): Boolean = status !in setOf("complete", "skipped") &&
-  subtasks.any { subtask -> subtask.status !in setOf("complete", "skipped") }

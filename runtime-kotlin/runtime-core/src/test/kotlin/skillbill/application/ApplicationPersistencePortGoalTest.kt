@@ -1,6 +1,5 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.toRecord
 import skillbill.application.review.ReviewService
 import skillbill.application.review.model.GoalStatsResult
 import skillbill.application.telemetry.toRecord

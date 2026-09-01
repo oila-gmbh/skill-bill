@@ -1,9 +1,9 @@
 package skillbill.application.goalrunner.planning
-
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.decomposition.model.DecompositionManifest
 
-internal fun goalPlanningImmutableDecompositionHash(manifest: DecompositionManifest): String {
+fun goalPlanningImmutableDecompositionHash(manifest: DecompositionManifest): String {
   val immutable = linkedMapOf<String, Any?>(
     "contract_version" to manifest.contractVersion,
     "issue_key" to manifest.issueKey,

@@ -1,8 +1,9 @@
 package skillbill.application.goalrunner.planning
-
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.featuretask.requireValidPlanningProjection
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.decodeWorkflowSteps
+import skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration
+import skillbill.application.planningprojection.requireValidPlanningProjection
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -27,18 +28,12 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.time.Clock
 
-internal data class GoalChildPlanningHydration(
-  val currentStepId: String,
-  val stepUpdates: List<Map<String, Any?>>,
-  val artifacts: Map<String, Any?>,
-)
-
 private data class PreparedGoalPlanning(
   val shared: SharedGoalPreplanCheckpoint,
   val plan: GoalSubtaskPlanCheckpoint,
 )
 
-internal class GoalChildPlanningHydrator(
+class GoalChildPlanningHydrator(
   phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
   private val clock: Clock,

@@ -9,7 +9,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 
-internal fun goalContinuationConflict(
+fun goalContinuationConflict(
   request: FeatureTaskRuntimeRunRequest,
   durable: FeatureTaskRuntimeGoalContinuationArtifact,
   baseline: GoalSubtaskReviewBaseline,
@@ -66,7 +66,7 @@ private fun suppliedIdentityMatchesDurable(
   supplied.suppressPr == durable.suppressPr &&
   supplied.parentWorkflowId == durable.parentWorkflowId
 
-internal fun newGoalContinuationConflict(
+fun newGoalContinuationConflict(
   request: FeatureTaskRuntimeRunRequest,
   selectedReviewMode: CodeReviewExecutionMode,
 ): String? {
@@ -76,7 +76,7 @@ internal fun newGoalContinuationConflict(
   }
 }
 
-internal fun goalContinuationPolicyBlockedReport(
+fun goalContinuationPolicyBlockedReport(
   request: FeatureTaskRuntimeRunRequest,
   runInvariants: FeatureTaskRuntimeRunInvariants,
   reason: String,

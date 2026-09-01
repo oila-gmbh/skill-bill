@@ -11,7 +11,7 @@ import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 
-internal fun executeFeatureTaskContinuationLookup(
+fun executeFeatureTaskContinuationLookup(
   query: FeatureTaskContinuationLookupQuery,
   unitOfWork: UnitOfWork,
   decompositionManifestValidator: DecompositionManifestValidator,

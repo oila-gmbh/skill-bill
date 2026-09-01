@@ -16,7 +16,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 
-internal fun FeatureTaskRuntimeRunner.executePreparedRun(
+fun FeatureTaskRuntimeRunner.executePreparedRun(
   runRequest: FeatureTaskRuntimeRunRequest,
   reconciliation: FeatureTaskRuntimeCrashReconciliationResult,
 ): FeatureTaskRuntimeRunReport {
@@ -55,14 +55,14 @@ internal fun FeatureTaskRuntimeRunner.executePreparedRun(
   return terminalReport
 }
 
-internal fun FeatureTaskRuntimeRunner.reopenCappedReviewOnChangedDelta(request: FeatureTaskRuntimeRunRequest) {
+fun FeatureTaskRuntimeRunner.reopenCappedReviewOnChangedDelta(request: FeatureTaskRuntimeRunRequest) {
   if (!cappedReviewIsStale(request)) return
   checkNotNull(recorder.persistReviewGenerationInvalidation(request.workflowId, request.dbPathOverride)) {
     "Could not durably reopen the stale capped review for workflow '${request.workflowId}'."
   }
 }
 
-internal fun FeatureTaskRuntimeRunner.cappedReviewIsStale(request: FeatureTaskRuntimeRunRequest): Boolean {
+fun FeatureTaskRuntimeRunner.cappedReviewIsStale(request: FeatureTaskRuntimeRunRequest): Boolean {
   val goalBranch = request.goalContinuation?.goalBranch ?: return false
   val state = goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
     ?.takeIf { it.reviewCapReached || it.pausedForOperatorDecision }
@@ -79,7 +79,7 @@ internal fun FeatureTaskRuntimeRunner.cappedReviewIsStale(request: FeatureTaskRu
   return digests.isNotEmpty() && judgedDigest !in digests
 }
 
-internal fun FeatureTaskRuntimeRunner.reviewBaseline(
+fun FeatureTaskRuntimeRunner.reviewBaseline(
   request: FeatureTaskRuntimeRunRequest,
   resolved: FeatureTaskRuntimeResolvedBranch?,
   state: GoalSubtaskReviewState,
@@ -88,7 +88,7 @@ internal fun FeatureTaskRuntimeRunner.reviewBaseline(
   ?.let { FeatureTaskRuntimeScopedReviewBaseline.of(phaseGates.gitOperations, request.repoRoot, it, reviewBaseSha) }
   ?: GoalSubtaskReviewBaseline(reviewBaseSha, state.baselineUntrackedPaths)
 
-internal fun FeatureTaskRuntimeRunner.loadReviewFixIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
+fun FeatureTaskRuntimeRunner.loadReviewFixIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
   recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride)
     .orEmpty()
     .filter {
@@ -99,7 +99,7 @@ internal fun FeatureTaskRuntimeRunner.loadReviewFixIterationCount(request: Featu
     .maxOrNull()
     ?: 0
 
-internal fun FeatureTaskRuntimeRunner.loadAuditRepairProgress(
+fun FeatureTaskRuntimeRunner.loadAuditRepairProgress(
   request: FeatureTaskRuntimeRunRequest,
 ): FeatureTaskRuntimeAuditProgress = FeatureTaskRuntimeAuditConvergence.progressFrom(
   auditRecord = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
@@ -107,7 +107,7 @@ internal fun FeatureTaskRuntimeRunner.loadAuditRepairProgress(
   auditGapIterationCount = loadAuditGapIterationCount(request),
 )
 
-internal fun FeatureTaskRuntimeRunner.loadFindingVerificationTelemetry(
+fun FeatureTaskRuntimeRunner.loadFindingVerificationTelemetry(
   request: FeatureTaskRuntimeRunRequest,
 ): FeatureTaskRuntimeFindingVerificationTelemetry {
   val verifyRecord = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
@@ -129,12 +129,12 @@ internal fun FeatureTaskRuntimeRunner.loadFindingVerificationTelemetry(
   )
 }
 
-internal fun FeatureTaskRuntimeRunner.loadAuditGapIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
+fun FeatureTaskRuntimeRunner.loadAuditGapIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
   FeatureTaskRuntimeAuditConvergence.auditGapIterationCount(
     recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty(),
   )
 
-internal fun FeatureTaskRuntimeRunner.loadRegenerationTelemetry(
+fun FeatureTaskRuntimeRunner.loadRegenerationTelemetry(
   request: FeatureTaskRuntimeRunRequest,
 ): FeatureTaskRuntimeRegenerationTelemetry {
   val ledger = recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty()
@@ -171,16 +171,16 @@ internal fun FeatureTaskRuntimeRunner.loadRegenerationTelemetry(
   )
 }
 
-internal fun FeatureTaskRuntimeRunner.finalizingAgentId(request: FeatureTaskRuntimeRunRequest): String? =
+fun FeatureTaskRuntimeRunner.finalizingAgentId(request: FeatureTaskRuntimeRunRequest): String? =
   agentAttributionFromPhaseState(recorder, request.workflowId, request.dbPathOverride).finalizingAgentId
 
-internal val FeatureTaskRuntimeRunner.recorder get() = dependencies.recorder
-internal val FeatureTaskRuntimeRunner.goalContinuationRecorder get() = dependencies.goalContinuationRecorder
-internal val FeatureTaskRuntimeRunner.runInvariantsStore get() = dependencies.runInvariantsStore
-internal val FeatureTaskRuntimeRunner.outputValidator get() = dependencies.outputValidator
-internal val FeatureTaskRuntimeRunner.phaseGates get() = dependencies.phaseGates
-internal val FeatureTaskRuntimeRunner.subtaskLauncher get() = dependencies.subtaskLauncher
-internal val FeatureTaskRuntimeRunner.phaseSettlementService get() = dependencies.phaseSettlementService
-internal val FeatureTaskRuntimeRunner.runnerDiagnostics get() = dependencies.diagnostics
-internal val FeatureTaskRuntimeRunner.lifecycleTelemetry get() = phaseGates.lifecycleTelemetry
-internal val FeatureTaskRuntimeRunner.specSourceResolver get() = phaseGates.specGate.specSourceResolver
+val FeatureTaskRuntimeRunner.recorder get() = dependencies.recorder
+val FeatureTaskRuntimeRunner.goalContinuationRecorder get() = dependencies.goalContinuationRecorder
+val FeatureTaskRuntimeRunner.runInvariantsStore get() = dependencies.runInvariantsStore
+val FeatureTaskRuntimeRunner.outputValidator get() = dependencies.outputValidator
+val FeatureTaskRuntimeRunner.phaseGates get() = dependencies.phaseGates
+val FeatureTaskRuntimeRunner.subtaskLauncher get() = dependencies.subtaskLauncher
+val FeatureTaskRuntimeRunner.phaseSettlementService get() = dependencies.phaseSettlementService
+val FeatureTaskRuntimeRunner.runnerDiagnostics get() = dependencies.diagnostics
+val FeatureTaskRuntimeRunner.lifecycleTelemetry get() = phaseGates.lifecycleTelemetry
+val FeatureTaskRuntimeRunner.specSourceResolver get() = phaseGates.specGate.specSourceResolver

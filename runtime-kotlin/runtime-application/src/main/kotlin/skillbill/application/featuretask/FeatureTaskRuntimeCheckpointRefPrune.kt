@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.deleteCheckpointRef
 import skillbill.ports.workflow.gitops.listCheckpointRefs
@@ -8,15 +9,7 @@ import java.nio.file.Path
 
 private const val REF_LISTING_DELIMITER: Char = '\u0000'
 
-internal data class FeatureTaskRuntimeCheckpointRefPruneRequest(
-  val issueKey: String,
-  val subtaskId: String,
-  val manifestCommitSha: String?,
-  val bypassEligibilityGate: Boolean = false,
-  val featureBranch: String? = null,
-)
-
-internal fun subtaskCommitReachableOnRemote(
+fun subtaskCommitReachableOnRemote(
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
   featureBranch: String,
@@ -31,7 +24,7 @@ internal fun subtaskCommitReachableOnRemote(
   return reachable.ok && reachable.value.orEmpty().trim().equals("true", ignoreCase = true)
 }
 
-internal fun subtaskCommitSupersededOnPublishedBranch(
+fun subtaskCommitSupersededOnPublishedBranch(
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
   featureBranch: String,
@@ -53,7 +46,7 @@ internal data class FeatureTaskRuntimeCheckpointRefPruneResult(
   val skippedReason: String? = null,
 )
 
-internal fun featureTaskRuntimeSubtaskCheckpointRefPrefix(issueKey: String, subtaskId: String): String =
+fun featureTaskRuntimeSubtaskCheckpointRefPrefix(issueKey: String, subtaskId: String): String =
   "${FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE}/${issueKey.trim()}/$subtaskId/"
 
 internal fun WorkflowGitOperations.pruneSubtaskCheckpointRefs(
@@ -167,7 +160,7 @@ private fun WorkflowGitOperations.deleteListedCheckpointRefs(
   return FeatureTaskRuntimeCheckpointRefPruneResult(attempted = true, deletedRefCount = deleted)
 }
 
-internal fun parseCheckpointRefListing(raw: String): List<String> = raw.split(REF_LISTING_DELIMITER)
+fun parseCheckpointRefListing(raw: String): List<String> = raw.split(REF_LISTING_DELIMITER)
   .filter(String::isNotBlank)
   .chunked(2)
   .mapNotNull { parts ->
@@ -183,7 +176,7 @@ internal fun pruneCompletedSubtaskCheckpointRefs(
   record: (String) -> Unit,
 ): FeatureTaskRuntimeCheckpointRefPruneResult = gitOperations.pruneSubtaskCheckpointRefs(repoRoot, request, record)
 
-internal fun pruneResetSubtaskCheckpointRefs(
+fun pruneResetSubtaskCheckpointRefs(
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,
   issueKey: String,

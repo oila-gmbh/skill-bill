@@ -10,7 +10,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequ
 import skillbill.workflow.goal.model.GoalProgressEvent
 import java.time.Clock
 
-internal class GoalRunnerProgressEventEmitter(
+class GoalRunnerProgressEventEmitter(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val request: GoalRunnerRunRequest,
   private val resolveWorkflowId: () -> String?,

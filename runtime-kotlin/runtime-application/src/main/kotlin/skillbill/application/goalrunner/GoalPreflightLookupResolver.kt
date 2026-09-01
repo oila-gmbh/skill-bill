@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.continuation.model.GoalContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
-import skillbill.application.featuretask.model.GoalContinuationCandidate
 import skillbill.application.goalrunner.model.GoalPreflightLookupInput
 import skillbill.application.goalrunner.model.GoalPreflightRequest
 import skillbill.application.goalrunner.model.GoalPreflightResult
@@ -11,7 +11,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import java.nio.file.Path
 
-internal class GoalPreflightLookupResolver(
+class GoalPreflightLookupResolver(
   private val gateBlockBuilder: GoalPreflightGateBlockBuilder,
 ) {
   fun resolve(input: GoalPreflightLookupInput): GoalPreflightResult = when (input.lookup) {

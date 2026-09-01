@@ -16,11 +16,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 
-internal fun schemaError(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)
+fun schemaError(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)
 
 // Strict decode of a keyed artifact map. Corrupt state loud-fails rather than being coerced to
 // empty, which would otherwise turn it into a blind re-run / lost outputs on resume.
-internal fun <T> decodeStrictKeyedArtifactMap(
+fun <T> decodeStrictKeyedArtifactMap(
   artifacts: Map<String, Any?>,
   artifactKey: String,
   decodeEntry: (String, Map<String, Any?>) -> T,
@@ -37,12 +37,12 @@ internal fun <T> decodeStrictKeyedArtifactMap(
   }
 }
 
-internal fun phaseRecordsFrom(artifacts: Map<String, Any?>): Map<String, FeatureTaskRuntimePhaseRecord> =
+fun phaseRecordsFrom(artifacts: Map<String, Any?>): Map<String, FeatureTaskRuntimePhaseRecord> =
   decodeStrictKeyedArtifactMap(artifacts, FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY) { _, recordMap ->
     FeatureTaskRuntimePhaseRecord.fromArtifactMap(recordMap)
   }
 
-internal fun resolvedBranchFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeResolvedBranch? {
+fun resolvedBranchFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeResolvedBranch? {
   val raw = artifacts[FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY] ?: return null
   val entryMap = JsonSupport.anyToStringAnyMap(raw)
     ?: schemaError(
@@ -51,7 +51,7 @@ internal fun resolvedBranchFrom(artifacts: Map<String, Any?>): FeatureTaskRuntim
   return FeatureTaskRuntimeResolvedBranch.fromArtifactMap(entryMap)
 }
 
-internal fun reviewGenerationFrom(artifacts: Map<String, Any?>): Int {
+fun reviewGenerationFrom(artifacts: Map<String, Any?>): Int {
   val raw = artifacts[FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY] ?: return 0
   val ordinal = when (raw) {
     is Int -> raw
@@ -66,7 +66,7 @@ internal fun reviewGenerationFrom(artifacts: Map<String, Any?>): Int {
     )
 }
 
-internal fun operatorBlockRetryFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeOperatorBlockRetry? {
+fun operatorBlockRetryFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeOperatorBlockRetry? {
   val raw = artifacts[FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY] ?: return null
   val entryMap = JsonSupport.anyToStringAnyMap(raw)
     ?: schemaError(
@@ -79,9 +79,7 @@ internal fun operatorBlockRetryFrom(artifacts: Map<String, Any?>): FeatureTaskRu
   )
 }
 
-internal fun goalContinuationFieldAdoptionFrom(
-  artifacts: Map<String, Any?>,
-): FeatureTaskRuntimeGoalContinuationFieldAdoption? {
+fun goalContinuationFieldAdoptionFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationFieldAdoption? {
   val raw = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY] ?: return null
   val entryMap = JsonSupport.anyToStringAnyMap(raw)
     ?: schemaError(
@@ -98,7 +96,7 @@ private fun Map<String, Any?>.requiredOperatorRetryString(field: String): String
         "'$field' must decode to a non-blank string.",
     )
 
-internal fun decomposeTerminalFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeDecomposeTerminal? {
+fun decomposeTerminalFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeDecomposeTerminal? {
   val raw = artifacts[FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY] ?: return null
   val entryMap = JsonSupport.anyToStringAnyMap(raw)
     ?: schemaError(
@@ -107,7 +105,7 @@ internal fun decomposeTerminalFrom(artifacts: Map<String, Any?>): FeatureTaskRun
   return FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap(entryMap)
 }
 
-internal fun phaseLedgerFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimePhaseLedgerEntry> {
+fun phaseLedgerFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimePhaseLedgerEntry> {
   val raw = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] ?: return emptyList()
   val rawList = raw as? List<*>
     ?: throw InvalidWorkflowStateSchemaError(

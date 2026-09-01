@@ -79,9 +79,7 @@ internal fun commitCompletedSubtask(
   }
 }
 
-internal fun WorkflowEngine.checkoutAndValidateBranch(
-  request: CheckoutAndValidateBranchRequest,
-): WorkflowContinueResult? {
+fun WorkflowEngine.checkoutAndValidateBranch(request: CheckoutAndValidateBranchRequest): WorkflowContinueResult? {
   val branchPlan = request.selection.branchPlan
   fun blockedBranchStartResult(reason: String): WorkflowContinueResult {
     val blockedManifest = request.manifest.withBlockedSubtask(request.selection.subtask.id, reason, "create_branch")
@@ -114,7 +112,7 @@ internal fun WorkflowEngine.checkoutAndValidateBranch(
   return errorResult
 }
 
-internal fun subtaskStartArtifacts(
+fun subtaskStartArtifacts(
   selection: DecompositionContinuationSelection.Start,
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
@@ -145,7 +143,7 @@ internal fun subtaskStartArtifacts(
   ),
 )
 
-internal fun parentProjectionArtifacts(
+fun parentProjectionArtifacts(
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
   existingArtifactsJson: String,
@@ -158,7 +156,7 @@ internal fun parentProjectionArtifacts(
   )
 }
 
-internal fun terminalSubtaskResult(
+fun terminalSubtaskResult(
   parentRecord: WorkflowStateSnapshot,
   manifest: DecompositionManifest,
   selection: DecompositionContinuationSelection.TerminalSubtask,
@@ -172,13 +170,12 @@ internal fun terminalSubtaskResult(
   outcome = selection.subtask.toGoalContinuationOutcome(manifest.issueKey),
 )
 
-internal fun DecompositionSubtask.toGoalContinuationOutcome(issueKey: String): GoalContinuationOutcome =
-  GoalContinuationOutcome(
-    issueKey = issueKey,
-    subtaskId = id,
-    status = status,
-    workflowId = workflowId.orEmpty(),
-    commitSha = commitSha,
-    blockedReason = blockedReason,
-    lastResumableStep = lastResumableStep,
-  )
+fun DecompositionSubtask.toGoalContinuationOutcome(issueKey: String): GoalContinuationOutcome = GoalContinuationOutcome(
+  issueKey = issueKey,
+  subtaskId = id,
+  status = status,
+  workflowId = workflowId.orEmpty(),
+  commitSha = commitSha,
+  blockedReason = blockedReason,
+  lastResumableStep = lastResumableStep,
+)

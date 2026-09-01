@@ -2,10 +2,11 @@ package skillbill.application.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
-import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
-import skillbill.application.goalrunner.recordedVerdicts
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.featuretask.model.GoalReviewPhaseCompletionRequest
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.application.subtaskreview.UnaddressedFindingLedgerScope
+import skillbill.application.subtaskreview.recordedVerdicts
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
@@ -14,9 +15,7 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
-import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
-import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.goal.model.unionRefutedBlockerDispositions
@@ -28,20 +27,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.time.Clock
 
-internal data class GoalReviewPhaseCompletionRequest(
-  val phaseState: FeatureTaskRuntimePhaseStateRequest,
-  val verdict: FeatureTaskRuntimeVerdict,
-  val unresolvedFindingCount: Int,
-  val findings: List<GoalSubtaskReviewCompactFinding>,
-  val rawReviewResult: String,
-  val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
-  val commitFocusedAccounting: GoalSubtaskCommitFocusedAccounting? = null,
-)
-
-internal class FeatureTaskRuntimeGoalReviewCompletionRecorder(
+class FeatureTaskRuntimeGoalReviewCompletionRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   private val clock: Clock,

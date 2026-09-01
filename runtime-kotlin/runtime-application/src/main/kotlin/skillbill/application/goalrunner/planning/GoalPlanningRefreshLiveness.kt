@@ -34,7 +34,7 @@ class ChildAwareGoalPlanningRefreshLiveness(
  * Child-workflow liveness only. When no child workflow id is selected, returns IDLE — the parent
  * execution lease is held by the owning prepare() and must not block in-run refresh.
  */
-internal fun resolveChildExecutionLiveness(
+fun resolveChildExecutionLiveness(
   currentSubtask: DecompositionSubtask?,
   dbPathOverride: String?,
   phaseRecorder: FeatureTaskRuntimePhaseRecorder,
@@ -55,7 +55,7 @@ internal fun resolveChildExecutionLiveness(
   }.getOrDefault(ExecutionLiveness.UNKNOWN)
 }
 
-internal fun refuseRefreshReason(issueKey: String, liveness: ExecutionLiveness): String? = when (liveness) {
+fun refuseRefreshReason(issueKey: String, liveness: ExecutionLiveness): String? = when (liveness) {
   ExecutionLiveness.LIVE ->
     "Goal '$issueKey' is live; refuse shared-preplan refresh while the current child run is active."
   ExecutionLiveness.UNKNOWN ->
