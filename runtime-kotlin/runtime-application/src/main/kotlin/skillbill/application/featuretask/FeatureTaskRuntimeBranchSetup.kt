@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.decomposition.defaultFeatureBranch
 import skillbill.application.decomposition.issueAndFeature
+import skillbill.ports.workflow.gitops.ProtectedBranches
 import java.nio.file.Path
 
 /**
@@ -18,7 +19,7 @@ import java.nio.file.Path
  * proceeds on `main`/`master`/`trunk`.
  */
 object FeatureTaskRuntimeBranchSetup {
-  private val PROTECTED_BRANCHES: Set<String> = setOf("main", "master", "trunk")
+  private val PROTECTED_BRANCHES: Set<String> = ProtectedBranches.names
   private const val DEFAULT_BASE_BRANCH: String = "main"
 
   /**

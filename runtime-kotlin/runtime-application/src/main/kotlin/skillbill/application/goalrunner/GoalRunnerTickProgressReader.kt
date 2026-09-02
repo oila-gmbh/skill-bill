@@ -6,6 +6,7 @@ import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.workflow.gitops.ProtectedBranches
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 
 val RUNTIME_WORKFLOW_ID_PREFIX: String = WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix
@@ -16,7 +17,7 @@ const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
 const val MAX_VALIDATION_QUALITY_RETRIES = 3
 const val MAX_REPORTED_FINALIZE_DIRTY_PATHS = 10
 
-val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
+val PROTECTED_GOAL_BRANCHES: Set<String> = ProtectedBranches.names
 val CHILD_WORKFLOW_BLOCK_REASONS: Set<GoalRunnerStopReason> = setOf(
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,
   GoalRunnerStopReason.TIMEOUT,

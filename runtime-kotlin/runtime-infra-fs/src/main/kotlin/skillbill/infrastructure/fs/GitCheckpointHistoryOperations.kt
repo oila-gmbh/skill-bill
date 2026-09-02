@@ -12,10 +12,10 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     allowUnchangedIndex: Boolean,
   ): WorkflowGitOperationResult {
     val expected = expectedOwnedHeadSha.trim()
-    gitCheckpointOwnedHeadFailure(repoRoot, expected)?.let { return it }
-    if (!allowUnchangedIndex) {
-      gitCheckpointStagedContentFailure(repoRoot, expected)?.let { return it }
-    }
+    val precondition = gitCheckpointProtectedBranchFailure(repoRoot)
+      ?: gitCheckpointOwnedHeadFailure(repoRoot, expected)
+      ?: if (allowUnchangedIndex) null else gitCheckpointStagedContentFailure(repoRoot, expected)
+    precondition?.let { return it }
     val message = replacementMessage?.trim()
     val amendArgs = if (message.isNullOrBlank()) {
       listOf("commit", "--amend", "--no-edit")
