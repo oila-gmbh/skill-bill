@@ -171,18 +171,34 @@ class CliFeatureTaskRuntimeWorkflowTest {
   }
 
   @Test
-  fun `feature-task-runtime run rejects a non-positive max wall-clock minutes at the CLI boundary`() {
+  fun `feature-task-runtime run defaults wall-clock cap and treats zero as disabled`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()
 
-    val result = CliRuntime.run(
+    val defaulted = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(launcher),
+    )
+    assertEquals(0, defaulted.exitCode, defaulted.stdout)
+    assertTrue(launcher.requests.isNotEmpty(), defaulted.stdout)
+    launcher.requests.forEach { request ->
+      if (PHASE_LINE.containsMatchIn(request.skillRunRequest.promptOverride.orEmpty())) {
+        assertEquals(180.minutes, request.skillRunRequest.timeout, defaulted.stdout)
+      }
+    }
+
+    launcher.requests.clear()
+    val disabled = CliRuntime.run(
       fixture.runCommand(extra = listOf("--agent", "codex", "--max-wall-clock-minutes", "0")),
       fixture.context(launcher),
     )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    // Rejected before any phase launch or durable workflow row open.
-    assertEquals(emptyList(), launcher.requests, result.stdout)
+    assertEquals(0, disabled.exitCode, disabled.stdout)
+    assertTrue(launcher.requests.isNotEmpty(), disabled.stdout)
+    launcher.requests.forEach { request ->
+      if (PHASE_LINE.containsMatchIn(request.skillRunRequest.promptOverride.orEmpty())) {
+        assertEquals(null, request.skillRunRequest.timeout, disabled.stdout)
+      }
+    }
   }
 
   @Test

@@ -2645,6 +2645,46 @@ class WorkflowGoalRunnerProgressStoreTest {
   }
 
   @Test
+  fun `goal runner progress returns declared progress when unrelated artifact keys are oversized`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      workflowRecord(
+        workflowId = "wfl-child",
+        artifactsPatch = mapOf(
+          "feature_task_runtime_delivered_projections" to mapOf(
+            "validate|1" to "z".repeat(1_500_000),
+          ),
+          GoalProgressEvent(
+            eventKind = GoalProgressEventKind.OPERATION_HEARTBEAT,
+            workflowId = "wfl-child",
+            workflowPhase = "validate",
+            processAlive = true,
+            sequenceNumber = 9,
+            timestamp = "2026-06-02T11:00:00Z",
+            operationName = "pack validation gate",
+            operationKind = "validate",
+            expectedLong = true,
+          ).let { event -> "goal_progress_latest_event" to event.toArtifactMap() },
+        ),
+      ),
+    )
+    val store = testWorkflowGoalRunnerOutcomeStore(
+      outcomeStoreDeps(
+        database = FakeDatabaseSessionFactory(workflows),
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      ),
+    )
+
+    val progress = requireNotNull(store.progress("wfl-child"))
+
+    assertTrue(progress.progressToken.length < 4_000)
+    assertFalse(progress.progressToken.contains("zzzz"))
+    val declared = requireNotNull(progress.latestDeclaredProgressEvent)
+    assertEquals("pack validation gate", declared.operationName)
+    assertEquals(9, declared.sequenceNumber)
+  }
+
+  @Test
   fun `goal runner outcome store appends worker subtask request outcomes`() {
     val workflows = InMemoryWorkflowStates()
     workflows.saveFeatureImplementWorkflow(workflowRecord("wfl-child", emptyMap()))

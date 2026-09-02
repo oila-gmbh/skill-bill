@@ -1041,6 +1041,7 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate",
     "skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate",
     "skillbill.ports.workflow.decomposition.runtime.decodeArtifacts",
+    "skillbill.ports.workflow.decomposition.runtime.decodeArtifactKeys",
     "skillbill.ports.workflow.decomposition.runtime.decodeDecompositionManifestMap",
     "skillbill.ports.workflow.decomposition.runtime.encodeDecompositionManifestMap",
     "skillbill.ports.workflow.decomposition.runtime.manifestPathFromArtifacts",

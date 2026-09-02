@@ -48,7 +48,10 @@ class FeatureTaskRuntimePhaseBriefingRecorder(
     recordProjectionMeasurements(unitOfWork, workflowId, briefing, delivered, artifacts)
     recordSharedEvidenceMeasurement(unitOfWork, sharedEvidenceMeasurement)
     val updatedDelivered = LinkedHashMap(deliveredHistory)
-      .apply { put(deliveredProjectionKey(delivered), delivered) }
+      .apply {
+        entries.removeIf { (_, value) -> value.consumerPhaseId == briefing.phaseId }
+        put(deliveredProjectionKey(delivered), delivered)
+      }
     val patch = mapOf(
       FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY to
         updatedBriefings.mapValues { (_, value) -> value.toArtifactMap() },

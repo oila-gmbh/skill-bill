@@ -12,6 +12,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 
 class CliGoalRuntimeExecutionTest {
   @Test
@@ -176,7 +177,7 @@ class CliGoalRuntimeExecutionTest {
     assertContains(liveStdout.toString(), "goal status SKILL-901 --repo-root")
     assertContains(liveStdout.toString(), "child-1-stdout")
     assertContains(liveStderr.toString(), "child-1-stderr")
-    assertEquals(listOf(null, null), launcher.childLaunches.map { it.skillRunRequest.timeout })
+    assertEquals(listOf(180.minutes, 180.minutes), launcher.childLaunches.map { it.skillRunRequest.timeout })
     assertEquals(1, fixture.pullRequests.requests.size)
     DriverManager.getConnection("jdbc:sqlite:${fixture.dbPath}").use { connection ->
       connection.prepareStatement(
