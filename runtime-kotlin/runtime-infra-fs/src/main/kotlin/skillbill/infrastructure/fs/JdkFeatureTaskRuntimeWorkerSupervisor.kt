@@ -47,6 +47,9 @@ private fun bootIdentityIsDecisive(value: String): Boolean = value.isNotBlank() 
   value != BOOT_IDENTITY_UNAVAILABLE &&
   !value.startsWith(LEGACY_BOOT_IDENTITY_PREFIX)
 
+private fun birthToken(handle: ProcessHandle): String? =
+  handle.info().startInstant().orElse(null)?.toEpochMilli()?.toString()
+
 @Inject
 class JdkFeatureTaskRuntimeWorkerSupervisor(
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
@@ -144,9 +147,6 @@ class JdkFeatureTaskRuntimeWorkerSupervisor(
     } else {
       null
     }
-
-  private fun birthToken(handle: ProcessHandle): String? =
-    handle.info().startInstant().orElse(null)?.toEpochMilli()?.toString()
 
   /**
    * An identity that is the same for every process on this boot and changes across reboots.

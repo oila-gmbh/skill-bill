@@ -4,6 +4,8 @@ import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.verification.model.GoalVerificationContext
 import java.nio.file.Files
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -37,7 +39,7 @@ class FileSystemGoalPlanningVerificationDiscoveryCapTest {
     val repo = Files.createTempDirectory("goal-verification-discovery-cap")
     val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
     val headings = (0 until GoalVerificationBoundaryCaps.maxHeadingsPerFile + 5).joinToString("\n\n") { index ->
-      "## [2026-08-${"%02d".format((index % 28) + 1)}] entry-$index\n\nbody $index"
+      "## [${LocalDate.now(ZoneOffset.UTC).minusDays((index % 28).toLong())}] entry-$index\n\nbody $index"
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$headings\n")
 
