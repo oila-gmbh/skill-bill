@@ -84,8 +84,10 @@ class GoalRunCommand(
   private val maxWallClockMinutes by option(
     "--max-wall-clock-minutes",
     "--timeout-minutes",
-    help = "Optional per-subtask wall-clock cap in minutes. Default is no wall-clock cap.",
-  ).int()
+    help = "Per-subtask wall-clock cap in minutes (default " +
+      "$DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES). Hard ceiling even when a child process is still " +
+      "alive (progress-idle spares active work). Pass 0 to disable.",
+  ).int().default(DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES)
   private val progressIdleTimeoutMinutes by option(
     "--progress-idle-timeout-minutes",
     help = "Per-subtask durable workflow-progress idle timeout in minutes (default " +
@@ -200,7 +202,7 @@ class GoalRunCommand(
     invokedAgentId = invokedAgentId,
     configuredAgentOverrideId = agentOverride,
     dbPathOverride = deps.state.dbOverride,
-    timeout = maxWallClockMinutes?.minutes,
+    timeout = maxWallClockMinutes.takeIf { it > 0 }?.minutes,
     progressIdleTimeout = progressIdleTimeoutMinutes.takeIf { it > 0 }?.minutes,
     planningBudget = planningBudgetMinutes.takeIf { it > 0 }?.minutes,
     outputSink = presenter.outputSink(includeRawChildOutput = debugChildOutput),
