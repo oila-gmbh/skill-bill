@@ -13,10 +13,13 @@ internal fun WorkflowStateSnapshot.progressToken(): String = listOf(
   workflowStatus,
   currentStepId,
   stepsJson,
-  artifactsJson,
+  artifactsFingerprint(artifactsJson),
   updatedAt.orEmpty(),
   finishedAt.orEmpty(),
 ).joinToString("\n")
+
+internal fun artifactsFingerprint(artifactsJson: String): String =
+  "${artifactsJson.length}:${artifactsJson.hashCode()}"
 
 internal fun decodeWorkflowSteps(stepsJson: String): List<WorkflowStepState> =
   parseWorkflowStepsArray(stepsJson).mapIndexed(::decodeWorkflowStepAt)
