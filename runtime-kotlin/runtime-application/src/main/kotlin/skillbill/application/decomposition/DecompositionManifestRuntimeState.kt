@@ -18,6 +18,17 @@ internal fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
     ?.let(JsonSupport::anyToStringAnyMap)
     .orEmpty()
 
+internal fun decodeArtifactKeys(existingArtifactsJson: String, keys: Set<String>): Map<String, Any?> {
+  if (keys.isEmpty()) return emptyMap()
+  val root = JsonSupport.parseObjectOrNull(existingArtifactsJson) ?: return emptyMap()
+  return buildMap {
+    keys.forEach { key ->
+      val element = root[key] ?: return@forEach
+      put(key, JsonSupport.jsonElementToValue(element))
+    }
+  }
+}
+
 internal fun loadManifestOrNull(
   path: Path,
   validator: DecompositionManifestValidator,

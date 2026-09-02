@@ -39,7 +39,7 @@ no-defaults guard prevents any of them from acquiring a convenience default.
   a row that does not exist. An invalid findings-ledger schema is recorded
   rather than dropped.
 - *Observability emission.* Failures inside the observability emitter itself
-  emit a record rather than vanishing, per `docs/observability-policy.md`.
+  emit a record rather than vanishing, per `../../../docs/observability-policy.md`.
 
 **Durable retry budget.** `GoalRunner` holds `validationQualityRetries`,
 `pendingReAttemptCause`, and `pendingCausingLoopEntry` as instance maps. With the

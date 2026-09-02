@@ -54,7 +54,7 @@ object graph per access. `GoalRunner`'s in-memory
    removed default is replaced by an explicit binding in `RuntimeComponent`.
 4. Dependency-injection scoping is explicit: adapters holding a cache,
    connection, or lease are scoped and reused; every service left unscoped is
-   recorded in `runtime-kotlin/ARCHITECTURE.md` as a deliberate choice.
+   recorded in `../../../runtime-kotlin/ARCHITECTURE.md` as a deliberate choice.
 5. The repository root reaches `workflow/`, `decomposition/`, and every
    consumer through an injected coordinate. `Path.of("").toAbsolutePath()` and
    `WorkflowServiceHelpers.repoRoot()` no longer exist in `runtime-application`.
@@ -93,7 +93,7 @@ object graph per access. `GoalRunner`'s in-memory
   product change.
 - New guards land green against a recorded baseline so the build never sits red
   between subtasks. Baselines shrink; they never grow.
-- Loud-fail changes follow `docs/observability-policy.md`: every remaining
+- Loud-fail changes follow `../../../docs/observability-policy.md`: every remaining
   fallback emits a record through a bound `RuntimeDiagnostics`.
 - Ports added here belong in `runtime-ports` with adapters in the matching
   `runtime-infra-*` module. Application code gains no new concrete dependency.

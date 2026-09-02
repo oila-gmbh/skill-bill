@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.decomposition.decodeArtifactKeys
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.workflow.WorkflowFamily
@@ -18,11 +19,18 @@ import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 import skillbill.workflow.goal.GoalProgressEventValidator
+import skillbill.workflow.goal.model.GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_PROGRESS_HISTORY_LIMIT
 import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts
+
+private val PROGRESS_POLL_ARTIFACT_KEYS = setOf(
+  "progress_event",
+  GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY,
+  GOAL_OBSERVABILITY_LATEST_EVENT_ARTIFACT_KEY,
+)
 
 internal class WorkflowGoalRunnerProgressRecording(
   private val database: DatabaseSessionFactory,
@@ -36,7 +44,7 @@ internal class WorkflowGoalRunnerProgressRecording(
       val record = family.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       engine.snapshotView(family.definition, record)
       val steps = decodeWorkflowSteps(record.stepsJson)
-      val artifacts = decodeArtifacts(record.artifactsJson)
+      val artifacts = decodeArtifactKeys(record.artifactsJson, PROGRESS_POLL_ARTIFACT_KEYS)
       val finishCompleted = steps.any { step -> step.stepId == "pr" && step.status == "completed" }
       val currentStep = if (record.workflowStatus == "completed" || finishCompleted) "pr" else record.currentStepId
       val progressEvent = progressEventFrom(artifacts)
