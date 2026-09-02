@@ -14,40 +14,40 @@ val RUNTIME_OWNED_VALIDATE_PHASE_TASK: String =
   validatePhaseTask(packCollectAllCommand = null, packGateDeclared = true)
 
 private const val VALIDATE_REPAIR_FORBIDDEN_EXTRAS: String =
-  "Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, `bill-code-check`, " +
-    "`./gradlew check`, `check " + "--" + "continue`, or the pack collect_all_full_gate_command. Those are not " +
-    "this repair turn. "
+  "Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, or any other " +
+    "repo-root checklist. Those commands are not this repair turn. "
 
-const val VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF: String =
+internal const val VALIDATE_REPAIR_BATCH_LOOP: String =
   "Before editing, copy the open findings into a numbered free-form checklist (file, rule, one-line " +
-    "fix intent). Work through every checklist item — fix shared root causes once, not one Gradle proof " +
-    "per item. Do not run the pack collect_all_full_gate_command, `bill-code-check`, `./gradlew check`, " +
-    "or `check " + "--" + "continue` during this repair turn; the runtime re-runs the full gate after you stop. " +
-    "After you have attempted a fix for every open finding, you may run any targeted proof command " +
-    "relevant to those findings: project-wide `./gradlew spotlessApply` from the Gradle root for " +
-    "spotless/format findings (never module-scoped `:module:spotlessApply`); module-scoped `detekt`, " +
-    "`ktlintCheck`, `spotlessCheck`, `spotlessKotlinCheck`, `compileKotlin`, or `test` when the finding names that " +
-    "task; read-only inspection anytime. Detekt threshold hits " +
-    "(TooManyFunctions, CyclomaticComplexMethod, LongMethod) need structural refactors — extract " +
-    "helpers or move code to a sibling file; do not add @Suppress. "
+    "fix intent). Work in batches: fix one shared root cause or a coherent group of findings, then " +
+    "re-run the pack collect_all_full_gate_command (via `bill-code-check` or the same argv directly) to " +
+    "refresh the open set. Repeat check → fix-batch → check until green or you have used 3 full " +
+    "collect-all runs in this session (the first discovery run and every refresh/confirm count). Never " +
+    "run a full collect-all once per individual finding. Between full collect-all runs you may use " +
+    "targeted proofs: project-wide `./gradlew spotlessApply` from the Gradle root for spotless/format " +
+    "findings (never module-scoped `:module:spotlessApply`); module-scoped `detekt`, `ktlintCheck`, " +
+    "`spotlessCheck`, `spotlessKotlinCheck`, `compileKotlin`, or `test` when the finding names that task; " +
+    "read-only inspection anytime. Detekt threshold hits (TooManyFunctions, CyclomaticComplexMethod, " +
+    "LongMethod) need structural refactors — extract helpers or move code to a sibling file; do not add " +
+    "@Suppress. "
 
 fun validateRepairPhaseTask(): String =
   "You are the only validate repair agent for this step — do not spawn delegated subagents. The runtime " +
-    "already ran the pack collect-all gate and listed the open findings in this briefing. The runtime may " +
-    "give you up to three repair turns against whatever remains; each turn is another session of this same " +
-    "agent. Fix every listed finding in this same session (shared root causes may collapse several into one " +
-    "change). $VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
-    VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF +
-    "Do not re-run the full gate or bill-code-check to rediscover " +
-    "or confirm findings — after you stop, the runtime re-runs the pack gate and mints the receipt. Never " +
-    "silence findings with annotations, baselines, disabled rules, weakened configuration, or skipped " +
-    "tests; fix root causes instead. Return prose only; do not emit validation_result, gate_run_count, or " +
-    "any phase-output JSON."
+    "already ran the pack collect-all gate and listed the open findings in this briefing. Prefer finishing " +
+    "in this single session with the check → fix-batch → check loop below; the runtime may still give you " +
+    "up to three repair turns if this session stops with findings open. $VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
+    VALIDATE_REPAIR_BATCH_LOOP +
+    "Stop when the pack collect-all is green or the 3-run budget is spent. After you stop, the runtime " +
+    "re-runs the pack gate and mints the receipt — agent-green is not the receipt. Never silence findings " +
+    "with annotations, baselines, disabled rules, weakened configuration, or skipped tests; fix root " +
+    "causes instead. Return prose only; do not emit validation_result, gate_run_count, or any phase-output " +
+    "JSON."
 
 fun validateGateTriagePhaseTask(): String =
   "You are triaging an unparseable validation gate failure blob before the first repair turn — do not spawn " +
     "delegated subagents. Read the gate stdout blob and repository files as needed to understand failures; " +
-    "prefer read-only inspection. $VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
+    "prefer read-only inspection. Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, " +
+    "`bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, or the pack collect_all_full_gate_command. " +
     "Do not mutate the tree unless strictly needed to understand failures. Emit a recommended " +
     "validation_repair_plan as prose inside produced_outputs.value (JSON string) with suggested fields per " +
     "item: item_id, module, rule_or_task, location, failure_summary, fix_intent. Extra keys are allowed. " +
@@ -69,18 +69,17 @@ fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared: Boolean)
         "quality-check skill; never name a stack-specific quality-check skill such as " +
         "bill-kotlin-code-check."
   }
-  return "You are the only validate agent for this step — do not spawn delegated subagents. The runtime " +
-    "may give you up to three repair turns against the remaining findings; each turn is another session " +
-    "of this same agent. $collectAllLine Read that output, and fix every finding in this same session. " +
+  return "You are the only validate agent for this step — do not spawn delegated subagents. Prefer " +
+    "finishing in this single session with the check → fix-batch → check loop below; the runtime may still " +
+    "give you up to three repair turns if needed. $collectAllLine Read that output, then keep looping " +
+    "until green or the session collect-all budget is spent. " +
     VALIDATE_PHASE_FORBIDDEN_EXTRAS +
-    "Do not rerun the full gate, bill-code-check, a cache-bypassing full check, or any targeted Gradle " +
-    "proof after each individual finding. " + VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF +
-    "When the set looks clean, run bill-code-check " +
-    "once to confirm (same pack collect-all). Findings that share one root cause are one fix, not several. " +
-    "Validation findings are repair work, not a reason to block the phase. Fix findings at their root " +
-    "cause; never silence them with annotations, baselines, disabled rules, weakened configuration, or " +
-    "skipped tests. After you stop, the runtime re-runs the pack gate and mints the receipt — do not emit " +
-    "validation_result, gate_run_count, or any phase-output JSON."
+    VALIDATE_REPAIR_BATCH_LOOP +
+    "Findings that share one root cause are one fix, not several. Validation findings are repair work, " +
+    "not a reason to block the phase. Fix findings at their root cause; never silence them with " +
+    "annotations, baselines, disabled rules, weakened configuration, or skipped tests. After you stop, " +
+    "the runtime re-runs the pack gate and mints the receipt — agent-green is not the receipt; do not " +
+    "emit validation_result, gate_run_count, or any phase-output JSON."
 }
 
 fun absentValidationGateDegradationDirective(phaseId: String, agentRunValidateFallback: Boolean): String {
@@ -146,9 +145,10 @@ fun gateRepairNoOutputSchemaDirective(phaseId: String, triage: Boolean = false):
   output JSON object, build_receipt, validation_receipt, gate_run_count, or any other phase envelope.
   Do not spawn delegated subagents. Work in this single agent session in ordinary prose.
 
-  The runtime already ran the pack command and parsed the failures listed in this briefing. It will
-  re-run that command after you stop, and it may give you up to three repair turns against whatever
-  remains. Address every open finding in this turn — all at once, not one finding per turn.
+  The runtime already ran the pack command and parsed the failures listed in this briefing. Prefer
+  finishing here with check → fix-batch → check (max 3 full collect-all runs this session). The
+  runtime re-runs the pack gate after you stop for the receipt, and it may give you up to three
+  repair turns if findings remain.
 
   Before editing, do brief reasoned planning in prose for each finding (or for a shared root cause
   that covers several). Scale the plan to the finding:
@@ -156,10 +156,10 @@ fun gateRepairNoOutputSchemaDirective(phaseId: String, triage: Boolean = false):
   - Complex: a real short plan — blast radius, surrounding callers/contracts you checked, whether
     the change can introduce new bugs, and how you will keep the fix local.
 
-  No defined plan schema. Do the thinking, then edit. After you have attempted a fix for every open
-  finding, you may run targeted proof commands relevant to those findings (for example project-wide
-  `./gradlew spotlessApply` for format findings, or the module-scoped task named in the finding).
-  Stop when done; the runtime re-runs the pack gate.
+  No defined plan schema. Do the thinking, then edit a batch, re-run the pack collect-all to refresh,
+  and repeat until green or the session budget is spent. Between full collect-all runs you may use
+  targeted proofs (for example project-wide `./gradlew spotlessApply`, or the module-scoped task
+  named in the finding). Never run a full collect-all once per individual finding.
   Never silence findings with @Suppress, @file:Suppress, baselines, disabled rules, weakened
   configuration, or skipped tests — fix the root cause instead.
   """.trimIndent()
@@ -174,10 +174,10 @@ fun validationGateFindingsDirective(
   val (sectionTitle, preamble) = when (phaseId) {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> Pair(
       "## Runtime validation gate findings",
-      "A prior gate run parsed these items. They are the full open set for this repair turn — fix " +
-        "every one in this session (shared root causes may collapse several into one change). Do not " +
-        "run `skill-bill validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, " +
-        "or the pack collect_all_full_gate_command. $VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF" +
+      "A prior gate run parsed these items. They are the starting open set for this repair turn — " +
+        "fix batches and re-run the pack collect-all to refresh (shared root causes may collapse " +
+        "several into one change). Do not run `skill-bill validate`, `npx agnix`, or other repo-root " +
+        "checklists. $VALIDATE_REPAIR_BATCH_LOOP" +
         "Do not spawn delegated subagents.",
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> Pair(

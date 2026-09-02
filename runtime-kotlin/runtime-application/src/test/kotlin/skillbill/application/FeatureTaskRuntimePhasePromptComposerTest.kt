@@ -351,13 +351,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "Do not run `skill-bill validate`")
       assertContains(prompt, "`npx agnix`")
       assertContains(prompt, "scripts/validate_agent_configs")
-      assertContains(prompt, "run bill-code-check once to confirm")
+      assertContains(prompt, "check → fix-batch → check")
       assertContains(prompt, "only validate agent for this step")
       assertContains(prompt, "do not spawn delegated subagents")
       assertContains(prompt, "up to three repair turns")
       assertContains(prompt, "delegated subagents")
       assertContains(prompt, "numbered free-form checklist")
-      assertContains(prompt, "After you have attempted a fix for every open finding")
+      assertContains(prompt, "Repeat check → fix-batch → check until green")
       assertContains(prompt, "project-wide `./gradlew spotlessApply`")
       assertContains(prompt, "`detekt`")
       assertContains(prompt, "`ktlintCheck`")
@@ -384,7 +384,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     ) { copy(agentRunValidateFallback = true) }
 
-    assertContains(prompt, "After you have attempted a fix for every open finding")
+    assertContains(prompt, "Repeat check → fix-batch → check until green")
     assertContains(prompt, "project-wide `./gradlew spotlessApply`")
     assertContains(prompt, "`detekt`")
     assertContains(prompt, "`ktlintCheck`")
@@ -393,7 +393,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "only validate agent for this step")
     assertContains(prompt, "do not spawn delegated subagents")
     assertContains(prompt, "up to three repair turns")
-    assertContains(prompt, "Do not rerun the full gate, bill-code-check, a cache-bypassing full check")
+    assertContains(prompt, "Never run a full collect-all once per individual finding")
     assertContains(prompt, "Do not run `skill-bill validate`")
     assertContains(prompt, "`npx agnix`")
     assertFalse(prompt.contains("First action every repair turn"))
@@ -419,14 +419,14 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     ) { copy(validationGateFindings = page, validationGateRepair = true) }
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
       assertContains(prompt, "A prior gate run parsed these items")
-      assertContains(prompt, "full open set for this repair turn")
+      assertContains(prompt, "starting open set for this repair turn")
       assertContains(prompt, "validate repair agent")
-      assertFalse(prompt.contains("Invoke bill-code-check for collect-all and confirmation"))
+      assertContains(prompt, "check → fix-batch → check")
       assertContains(prompt, "collect_all_full_gate_command")
       assertContains(prompt, "Do not run `skill-bill validate`")
       assertContains(prompt, "Do not spawn delegated subagents")
       assertContains(prompt, "numbered free-form checklist")
-      assertContains(prompt, "After you have attempted a fix for every open finding")
+      assertContains(prompt, "Repeat check → fix-batch → check until green")
       assertContains(prompt, "project-wide `./gradlew spotlessApply`")
       assertFalse(prompt.contains("First action every repair turn"))
       assertFalse(prompt.contains("Do not start the next checklist item"))
@@ -467,7 +467,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `validate triage prompt forbids gate argv with same strength as repair prompt`() {
+  fun `validate triage prompt forbids gate argv while repair owns the check loop`() {
     val finding = ValidationGateFinding("m", "t", "broken", "loc")
     val page = ValidationFindingSetProjection(
       findings = listOf(finding),
@@ -480,16 +480,19 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       PROMPT_COMPOSER_ISSUE_KEY,
       promptComposerBriefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     ) { copy(validationGateFindings = page, validationGateRepair = true) }
-    val forbiddenPhrases = listOf(
+    listOf(
       "Do not run `skill-bill validate`",
       "bill-code-check",
       "./gradlew check",
       "collect_all_full_gate_command",
-    )
-    forbiddenPhrases.forEach { phrase ->
+    ).forEach { phrase ->
       assertContains(triagePrompt, phrase)
-      assertContains(repairPrompt, phrase)
     }
+    assertContains(repairPrompt, "Do not run `skill-bill validate`")
+    assertContains(repairPrompt, "check → fix-batch → check")
+    assertContains(repairPrompt, "bill-code-check")
+    assertContains(repairPrompt, "collect_all_full_gate_command")
+    assertFalse(repairPrompt.contains("Do not run `bill-code-check`"))
     assertContains(triagePrompt, "triage")
     assertContains(triagePrompt, "validation_repair_plan")
   }

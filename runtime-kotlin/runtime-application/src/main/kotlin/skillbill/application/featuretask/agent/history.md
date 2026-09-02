@@ -1,5 +1,13 @@
 # featuretask runtime boundary history
 
+## [2026-09-02] Validate repair uses check → fix-batch → check with a 3-run budget
+Areas: runtime-application/featuretask, skills/bill-code-check, platform-packs/kotlin, platform-packs/kmp
+- Validate prompts and kotlin/kmp quality-check Repair Windows own a tight loop: collect-all → fix batch → collect-all, max 3 full collect-all runs per session; no per-finding full suites.
+- Targeted proofs stay allowed between full collect-all runs; runtime still mints the receipt with a post-stop pack gate re-run.
+- Pattern: agent-owned feedback loop with a hard full-gate budget; receipt stays runtime-owned. reusable
+Feature flag: N/A
+Acceptance criteria: n/a (main hotfix)
+
 ## [2026-09-01] SKILL-228 subtask 1 — Validate/build needs_user_action operator block
 Areas: runtime-application/featuretask, runtime-application/featuretask/validation, runtime-application/goalrunner
 - Validate and build `blocked` + `failure_disposition: needs_user_action` settle once as terminal operator blocks: phase record + ledger before any parent-PID hold; no repair-turn increment or gate relaunch.

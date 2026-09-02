@@ -4,13 +4,22 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
-
 ## [2026-09-02] Empty architecture baselines are the permanent floor
 Context: SKILL-227 subtask 3 emptied the logical-type line-ceiling and application-package-cycle baselines after god-object decomposition and cycle breaks. Subtask 1 had baselined seven cycle pairs as shrink-only.
 Decision: Keep both baselines empty. Any new ceiling offender or application-package cycle fails the guard. Do not reintroduce *Helpers*/*Extras*/*Support* files solely to stay under the per-file line ceiling — fold into the owning type or a named domain collaborator instead.
 Reason: Shrink-only measurement did its job; an empty floor is the enforceable target. Filename-suffix splits hide god objects from the logical-type ceiling without reducing complexity.
 Alternatives considered: Keep a non-empty shrink-only residual (rejected: would allow the debt to persist indefinitely). Raise the ceiling or add exemptions (rejected: defeats the guard). Permit Helpers/Extras splits when a type is near 500 lines (rejected: that is how the prior evasion landed).
 Revisit when: a measured logical type legitimately cannot be split without harming a boundary, and the alternative is an explicit named exemption with rationale — not a suffix file.
+
+## [2026-09-02] Validate owns check → fix-batch → check with a full-gate budget
+
+Context: Blind repair turns that forbade mid-session `./gradlew check --continue` were slower than asking an agent to run check and fix, because fixes only got feedback after a cold new session and a runtime re-run.
+
+Decision: Validate (and kotlin/kmp `bill-*-code-check` repair windows) use one agent-owned loop: run the pack collect-all, fix a coherent batch, re-run collect-all, repeat until green or 3 full collect-all runs in the session. Forbid per-finding full suites. Targeted proofs remain allowed between full collect-all runs. Runtime still re-runs the pack gate after the agent stops and mints the receipt. Outer repair turns (up to three) remain a safety net when a session stops dirty.
+
+Reason: The useful part of ad-hoc "run check and fix" is the tight feedback loop, not dropping receipts, silence bans, or pack-command authority. SKILL-176's failure mode was per-finding Gradle thrash; a session budget of 3 full collect-all runs keeps that closed.
+
+Alternatives considered: Replace validate with a one-line prompt and no receipt (rejected: agent-green is not proof). Keep blind edit-only repair turns (rejected: wall-clock loss). Allow unlimited mid-session full checks (rejected: recreates the 39-run failure mode).
 
 ## [2026-08-31] RuntimeSingleton lives in skillbill.application.runtime
 Context: SKILL-227 subtask 1 needed a kotlin-inject scope for services that hold caches, connections, or leases. Placing `@RuntimeSingleton` under `skillbill.di` failed `ImplementationOwnershipArchitectureTest`.
@@ -1470,4 +1479,3 @@ Machine-parseable rows: `path | symbol | rule | why`. Complexity rule names neve
 | runtime-application/src/test/kotlin/skillbill/application/FeatureTaskRuntimeRunnerTestSupport.kt | recordHarnessFindingVerdicts | UNCHECKED_CAST | Dynamic ReviewRepository proxy passes typed verdict list through erased invoke |
 | runtime-application/src/test/kotlin/skillbill/application/ParallelCodeReviewRunnerTest.kt | RecordingReviewDatabase | UNCHECKED_CAST | Dynamic ReviewRepository proxy passes typed args through erased invoke |
 | runtime-application/src/test/kotlin/skillbill/application/review/SpecIntentProjectionResolverTest.kt | SpecIntentProjectionResolverTest | UNCHECKED_CAST | Launch envelope wire map stores criteria_references as strings |
-
