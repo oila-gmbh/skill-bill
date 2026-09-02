@@ -10,7 +10,7 @@ private const val VALIDATE_PHASE_FORBIDDEN_EXTRAS: String =
   "Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, or any other " +
     "repo-root checklist. Those commands are not this phase. "
 
-internal val RUNTIME_OWNED_VALIDATE_PHASE_TASK: String =
+val RUNTIME_OWNED_VALIDATE_PHASE_TASK: String =
   validatePhaseTask(packCollectAllCommand = null, packGateDeclared = true)
 
 private const val VALIDATE_REPAIR_FORBIDDEN_EXTRAS: String =
@@ -18,7 +18,7 @@ private const val VALIDATE_REPAIR_FORBIDDEN_EXTRAS: String =
     "`./gradlew check`, `check " + "--" + "continue`, or the pack collect_all_full_gate_command. Those are not " +
     "this repair turn. "
 
-internal const val VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF: String =
+const val VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF: String =
   "Before editing, copy the open findings into a numbered free-form checklist (file, rule, one-line " +
     "fix intent). Work through every checklist item — fix shared root causes once, not one Gradle proof " +
     "per item. Do not run the pack collect_all_full_gate_command, `bill-code-check`, `./gradlew check`, " +
@@ -31,7 +31,7 @@ internal const val VALIDATE_REPAIR_FIX_ALL_NO_MID_PROOF: String =
     "(TooManyFunctions, CyclomaticComplexMethod, LongMethod) need structural refactors — extract " +
     "helpers or move code to a sibling file; do not add @Suppress. "
 
-internal fun validateRepairPhaseTask(): String =
+fun validateRepairPhaseTask(): String =
   "You are the only validate repair agent for this step — do not spawn delegated subagents. The runtime " +
     "already ran the pack collect-all gate and listed the open findings in this briefing. The runtime may " +
     "give you up to three repair turns against whatever remains; each turn is another session of this same " +
@@ -44,7 +44,7 @@ internal fun validateRepairPhaseTask(): String =
     "tests; fix root causes instead. Return prose only; do not emit validation_result, gate_run_count, or " +
     "any phase-output JSON."
 
-internal fun validateGateTriagePhaseTask(): String =
+fun validateGateTriagePhaseTask(): String =
   "You are triaging an unparseable validation gate failure blob before the first repair turn — do not spawn " +
     "delegated subagents. Read the gate stdout blob and repository files as needed to understand failures; " +
     "prefer read-only inspection. $VALIDATE_REPAIR_FORBIDDEN_EXTRAS" +
@@ -53,7 +53,7 @@ internal fun validateGateTriagePhaseTask(): String =
     "item: item_id, module, rule_or_task, location, failure_summary, fix_intent. Extra keys are allowed. " +
     "Return prose guidance only; do not fix code or emit validation_result, gate_run_count, or gate evidence."
 
-internal fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared: Boolean): String {
+fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared: Boolean): String {
   val collectAllLine = when {
     !packCollectAllCommand.isNullOrBlank() ->
       "Invoke bill-code-check for collect-all and confirmation. The dominant pack declares " +
@@ -83,7 +83,7 @@ internal fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared:
     "validation_result, gate_run_count, or any phase-output JSON."
 }
 
-internal fun absentValidationGateDegradationDirective(phaseId: String, agentRunValidateFallback: Boolean): String {
+fun absentValidationGateDegradationDirective(phaseId: String, agentRunValidateFallback: Boolean): String {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || !agentRunValidateFallback) {
     return ""
   }
@@ -128,7 +128,7 @@ internal fun phaseTaskDirective(phaseId: String, args: PhaseTaskDirectiveArgs = 
     else -> phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
   }
 
-internal fun gateRepairNoOutputSchemaDirective(phaseId: String, triage: Boolean = false): String {
+fun gateRepairNoOutputSchemaDirective(phaseId: String, triage: Boolean = false): String {
   if (triage) {
     return """
       ## Gate triage — optional capture surface, no phase-output schema
@@ -165,7 +165,7 @@ internal fun gateRepairNoOutputSchemaDirective(phaseId: String, triage: Boolean 
   """.trimIndent()
 }
 
-internal fun validationGateFindingsDirective(
+fun validationGateFindingsDirective(
   phaseId: String,
   findings: ValidationFindingSetProjection?,
   triagePlan: String?,
@@ -207,7 +207,7 @@ internal fun validationGateFindingsDirective(
   return lines.joinToString("\n")
 }
 
-internal fun auditNoEarlierAuditLine(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
+fun auditNoEarlierAuditLine(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
   if (briefing.priorGapMemory == null) {
     "      Every audit re-checks every listed criterion from scratch against the tree, so there is no\n" +
       "      earlier audit to account for and nothing to carry forward except the notes you emit now.\n"
@@ -217,7 +217,7 @@ internal fun auditNoEarlierAuditLine(briefing: FeatureTaskRuntimePhaseLaunchBrie
       "      context you must account for, and a repeated criterion needs an explicit re-justification (below).\n"
   }
 
-internal fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
   val memoryBlock = briefing.priorGapMemory?.let { memory ->
     buildString {
       append("\n      Prior-gap memory (round ${memory.round}): prior audit value strings:\n")

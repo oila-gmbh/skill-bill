@@ -1,5 +1,6 @@
 package skillbill.application.review.model
 
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.review.context.model.ReviewAccountingSummary
@@ -12,14 +13,6 @@ import skillbill.review.model.ReviewStageResumeReport
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration
-
-enum class ParallelReviewScope {
-  STAGED,
-  UNSTAGED,
-  BRANCH,
-  PR,
-  WORKTREE_FROM_BASE,
-}
 
 data class ParallelCodeReviewRequest(
   val agent1Id: String,
@@ -121,8 +114,6 @@ data class ParallelReviewLaneStatus(
   val accounting: ReviewLaneAccounting? = null,
   val specialistAccounting: List<ReviewLaneAccounting> = accounting?.let(::listOf) ?: emptyList(),
 )
-
-class DiffResolutionException(message: String) : RuntimeException(message)
 
 class UsageValidationException(message: String) : RuntimeException(message)
 

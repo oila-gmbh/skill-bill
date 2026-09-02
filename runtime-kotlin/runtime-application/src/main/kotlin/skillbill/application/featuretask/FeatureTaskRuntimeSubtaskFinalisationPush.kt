@@ -1,9 +1,10 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import skillbill.ports.workflow.gitops.WorkflowGitRemoteOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 
-internal fun FeatureTaskRuntimeSubtaskFinalisation.push(
+fun FeatureTaskRuntimeSubtaskFinalisation.push(
   branch: String,
   identity: FeatureTaskRuntimeSubtaskCommitIdentity,
   commitSha: String,

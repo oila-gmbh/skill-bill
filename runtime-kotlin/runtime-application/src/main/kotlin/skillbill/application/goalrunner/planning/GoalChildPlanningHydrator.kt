@@ -1,8 +1,9 @@
 package skillbill.application.goalrunner.planning
-
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.featuretask.requireValidPlanningProjection
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.application.goalrunner.decodeWorkflowSteps
+import skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration
+import skillbill.application.planningprojection.requireValidPlanningProjection
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -25,22 +26,17 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
-import java.time.Instant
-
-internal data class GoalChildPlanningHydration(
-  val currentStepId: String,
-  val stepUpdates: List<Map<String, Any?>>,
-  val artifacts: Map<String, Any?>,
-)
+import java.time.Clock
 
 private data class PreparedGoalPlanning(
   val shared: SharedGoalPreplanCheckpoint,
   val plan: GoalSubtaskPlanCheckpoint,
 )
 
-internal class GoalChildPlanningHydrator(
+class GoalChildPlanningHydrator(
   phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  private val clock: Clock,
 ) {
   private val payloadValidator = PreparedPlanningPayloadValidator(phaseOutputValidator, planningProjectionValidator)
   private val importMatcher = GoalChildPlanningImportMatcher(payloadValidator)
@@ -133,7 +129,7 @@ internal class GoalChildPlanningHydrator(
     preplan: AcceptedFeatureTaskRuntimePhaseOutput,
     plan: AcceptedFeatureTaskRuntimePhaseOutput,
   ): GoalChildPlanningHydration {
-    val importedAt = Instant.now().toString()
+    val importedAt = clock.instant().toString()
     val records = createImportedRecords(
       preplan.forPlanningImport(prepared.shared.preplanPayload, prepared.shared.repairEvidence),
       plan.forPlanningImport(prepared.plan.planPayload, prepared.plan.repairEvidence),

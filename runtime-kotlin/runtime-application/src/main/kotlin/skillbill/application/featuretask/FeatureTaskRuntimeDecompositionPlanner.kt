@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featurespec.FeatureSpecPreparationRuntime
 import skillbill.application.featurespec.FeatureSpecPreparationWriter
-import skillbill.application.workflow.repoRoot
 import skillbill.featurespec.model.FeatureSpecPreparationIntake
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation

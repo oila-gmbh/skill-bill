@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
+import skillbill.application.testHarnessClock
 import skillbill.contracts.JsonSupport
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import java.time.Instant
@@ -14,7 +15,7 @@ import kotlin.test.assertTrue
 class FeatureTaskPhaseSettlementServiceTest {
   @Test
   fun `complete then findEnvelope returns stuffed value`() {
-    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository())
+    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
     service.complete(
       FeatureTaskPhaseSettlementCompleteRequest(
         workflowId = "wftr-test",
@@ -31,7 +32,7 @@ class FeatureTaskPhaseSettlementServiceTest {
 
   @Test
   fun `last write wins for the same attempt`() {
-    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository())
+    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
     service.complete(
       FeatureTaskPhaseSettlementCompleteRequest(
         workflowId = "wftr-test",
@@ -55,7 +56,7 @@ class FeatureTaskPhaseSettlementServiceTest {
 
   @Test
   fun `block stores blocked status`() {
-    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository())
+    val service = FeatureTaskPhaseSettlementService(InMemoryFeatureTaskPhaseSettlementRepository(), testHarnessClock)
     service.block(
       FeatureTaskPhaseSettlementBlockRequest(
         workflowId = "wftr-test",
@@ -71,7 +72,7 @@ class FeatureTaskPhaseSettlementServiceTest {
   @Test
   fun `clear removes a stored settlement so findEnvelope returns null`() {
     val repo = InMemoryFeatureTaskPhaseSettlementRepository()
-    val service = FeatureTaskPhaseSettlementService(repo)
+    val service = FeatureTaskPhaseSettlementService(repo, testHarnessClock)
     repo.upsert(
       FeatureTaskPhaseSettlement(
         workflowId = "wftr-test",

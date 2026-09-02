@@ -4,6 +4,8 @@ import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RecordingLifecycleTelemetryRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
+import skillbill.application.testHarnessClock
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
@@ -82,6 +84,8 @@ class FeatureTaskRuntimeSharedEvidenceRecorderTest {
     NoopWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    testHarnessClock,
+    NoopRuntimeDiagnostics,
   )
 
   private fun emptyBriefing(phaseId: String) = FeatureTaskRuntimePhaseLaunchBriefing(

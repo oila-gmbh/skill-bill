@@ -1,7 +1,7 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.planning.GoalPlanningPreparationValidator
-import skillbill.application.goalrunner.planning.sha256HexUtf8
+import skillbill.application.goalplanning.GoalPlanningPreparationValidator
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GOAL_PLANNING_PREPARATION_CONTRACT_VERSION

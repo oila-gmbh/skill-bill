@@ -1,8 +1,8 @@
 package skillbill.application.review
-
-import skillbill.application.evidence.SharedReviewEvidenceCodec
-import skillbill.application.evidence.SharedReviewEvidenceCommits
-import skillbill.application.evidence.SharedReviewEvidenceRecord
+import skillbill.application.reviewevidence.ReviewDiffEvidence
+import skillbill.application.reviewevidence.SharedReviewEvidenceCodec
+import skillbill.application.reviewevidence.SharedReviewEvidenceCommits
+import skillbill.application.reviewevidence.SharedReviewEvidenceRecord
 import skillbill.error.ReviewHunkEvidenceIntegrityError
 import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.error.ReviewHunkEvidenceLocatorUnreadableError
@@ -19,8 +19,8 @@ internal data class IndexedReviewHunks(
   val commitUnits: List<ReviewCommitUnit>,
 )
 
-internal object ReviewHunkStoreIndexing {
-  fun index(
+object ReviewHunkStoreIndexing {
+  internal fun index(
     hunks: List<ReviewChangedHunk>,
     commitUnits: List<ReviewCommitUnit>,
     storePath: String?,

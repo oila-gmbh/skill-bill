@@ -1,14 +1,12 @@
 package skillbill.application.featuretask.model
 
-import skillbill.application.featuretask.RemediationReconcileSnapshot
-import skillbill.application.featuretask.RemediationReconciliationDecision
-import skillbill.application.featuretask.ResolvedReviewFixCheckpoint
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import java.nio.file.Path
 
-internal data class RemediationReconciliationApplyRequest(
+data class RemediationReconciliationApplyRequest(
   val reconciliation: RemediationReconciliationDecision,
   val snapshot: RemediationReconcileSnapshot,
   val workflowId: String,
@@ -18,7 +16,7 @@ internal data class RemediationReconciliationApplyRequest(
   val latestRemediationResolved: ResolvedReviewFixCheckpoint?,
 )
 
-internal data class RemediationBaseHealRequest(
+data class RemediationBaseHealRequest(
   val target: String,
   val stored: String?,
   val storedResolves: Boolean,
@@ -31,7 +29,7 @@ internal data class RemediationBaseHealRequest(
   val latestRemediationResolved: ResolvedReviewFixCheckpoint?,
 )
 
-internal data class PersistHealedRemediationBaseRequest(
+data class PersistHealedRemediationBaseRequest(
   val workflowId: String,
   val target: String,
   val stored: String?,
@@ -40,4 +38,23 @@ internal data class PersistHealedRemediationBaseRequest(
   val gitOperations: WorkflowGitOperations,
   val repoRoot: Path,
   val dbOverride: String?,
+)
+
+data class RemediationReconcileSnapshot(
+  val state: GoalSubtaskReviewState,
+  val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+  val checkpoints: List<FeatureTaskRuntimeCheckpointIdentity>,
+)
+
+sealed interface RemediationReconciliationDecision
+
+data object RemediationReconciliationCoherent : RemediationReconciliationDecision
+
+data object RemediationReconciliationBlocked : RemediationReconciliationDecision
+
+data class RemediationReconciliationHeal(val sha: String) : RemediationReconciliationDecision
+
+data class ResolvedReviewFixCheckpoint(
+  val identity: FeatureTaskRuntimeCheckpointIdentity,
+  val sha: String,
 )

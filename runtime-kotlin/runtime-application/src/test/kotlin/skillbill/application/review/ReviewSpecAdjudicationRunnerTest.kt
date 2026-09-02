@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
 import skillbill.application.review.model.ReviewSpecAdjudicationRunRequest
+import skillbill.application.testHarnessClock
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -320,7 +321,7 @@ class ReviewSpecAdjudicationRunnerTest {
   private fun runner(
     launcher: GoalRunnerSubtaskLauncher,
     validator: ReviewContextEnvelopeValidator = ReviewContextEnvelopeValidator { _, _ -> },
-  ) = ReviewSpecAdjudicationRunner(launcher, validator)
+  ) = ReviewSpecAdjudicationRunner(launcher, validator, testHarnessClock)
 
   private fun facts(request: GoalRunnerSubtaskLaunchRequest, stdout: String) = AgentRunLaunchFacts(
     agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),

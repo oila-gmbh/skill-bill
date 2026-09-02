@@ -389,6 +389,7 @@ object ArchitectureScanSupport {
   }
 
   private val PACKAGE_PATTERN = Regex("""^\s*package\s+([A-Za-z0-9_.]+)""", RegexOption.MULTILINE)
+  private val IMPORT_PATTERN = Regex("""^\s*import\s+([A-Za-z0-9_.]+)""", RegexOption.MULTILINE)
   private val TOP_LEVEL_DECLARATION_PATTERN =
     Regex(
       """^\s*((?:(?:public|internal|private|protected|abstract|sealed|open|final|data|enum|value|fun)\s+)*)""" +
@@ -396,87 +397,156 @@ object ArchitectureScanSupport {
     )
   private val FUNCTION_PATTERN = Regex("""\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
   private val CAMEL_TOKEN_PATTERN = Regex("""[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)""")
+  private val EXTENSION_FUN_PATTERN =
+    Regex("""^\s*(?:(?:public|internal|private|protected)\s+)*fun\s+([A-Za-z0-9_.]+)\.""")
 
-  data class AuthoredSuppression(val relativePath: String, val symbol: String, val rule: String)
+  data class ApplicationPackageCycle(val areas: List<String>)
 
-  val COMPLEXITY_SUPPRESSION_RULES: Set<String> = setOf(
-    "TooManyFunctions",
-    "LargeClass",
-    "LongMethod",
-    "CyclomaticComplexMethod",
-    "ComplexCondition",
-    "NestedBlockDepth",
-    "ReturnCount",
-    "ThrowsCount",
-    "LongParameterList",
-  )
+  data class AmbientClockCallSite(val relativePath: String, val lineNumber: Int, val call: String)
 
-  val suppressionScanRoots: List<String> = listOf(
-    "runtime-kotlin",
-    "runtime-kotlin/build-logic",
-  )
+  data class InjectConstructorDefaultSite(val relativePath: String, val symbol: String, val parameter: String)
 
-  fun parseSuppressionAllowList(decisionsMarkdown: String): Set<Triple<String, String, String>> {
-    val sectionStart = decisionsMarkdown.indexOf("Compiler suppression allow-list")
-    if (sectionStart < 0) return emptySet()
-    val tableBody = decisionsMarkdown.substring(sectionStart)
-    val rows = mutableSetOf<Triple<String, String, String>>()
-    TABLE_ROW_PATTERN.findAll(tableBody).forEach { match ->
-      val path = match.groupValues[1].trim()
-      val symbol = match.groupValues[2].trim()
-      val rule = match.groupValues[3].trim()
-      if (path == "path" || path.startsWith("-")) return@forEach
-      if (path.isNotBlank() && symbol.isNotBlank() && rule.isNotBlank()) {
-        rows += Triple(path, symbol, rule)
+  fun declaredImports(source: String): List<String> =
+    IMPORT_PATTERN.findAll(source).map { match -> match.groupValues[1] }.toList()
+
+  fun logicalTypeLineCounts(productionRoots: List<String>): Map<String, Int> {
+    val counts = linkedMapOf<String, Int>()
+    productionRoots.forEach { productionRoot ->
+      kotlinFilesUnder(runtimeRoot.resolve(productionRoot)).forEach { sourceFile ->
+        val relativePath = runtimeRoot.relativize(sourceFile).toString().replace('\\', '/')
+        if (isNonProductionKotlinSourceSet(relativePath)) return@forEach
+        val source = sourceFile.readText()
+        val lineCount = source.lineSequence().count()
+        val packageName = declaredPackage(source) ?: return@forEach
+        val topLevelType = primaryTopLevelDeclarationName(source)
+        val targets =
+          if (topLevelType != null) {
+            listOf("$packageName.$topLevelType")
+          } else {
+            extensionReceiverFqns(source, packageName, declaredImports(source))
+          }
+        if (targets.isEmpty()) return@forEach
+        targets.distinct().forEach { fqn ->
+          counts[fqn] = counts.getOrDefault(fqn, 0) + lineCount
+        }
       }
     }
-    return rows
+    return counts
   }
 
-  fun authoredSuppressions(scanRoots: List<String> = suppressionScanRoots): List<AuthoredSuppression> =
-    scanRoots.flatMap { scanRoot ->
-      kotlinFilesUnder(runtimeRoot.resolve(scanRoot))
-        .filter { path -> !path.toString().replace('\\', '/').contains("/generated/") }
-        .flatMap { sourceFile ->
-          val normalized = runtimeRoot.relativize(sourceFile).toString().replace('\\', '/')
-          val relativePath = normalized.removePrefix("runtime-kotlin/")
-          authoredSuppressionsFromFile(relativePath, sourceFile.readText())
-        }
-    }
-
-  fun authoredSuppressionsFromFile(relativePath: String, source: String): List<AuthoredSuppression> =
-    AuthoredSuppressionScanner.scan(relativePath, source.lineSequence())
-
-  fun authoredSuppressionsInSource(relativePath: String, source: String): List<AuthoredSuppression> =
-    AuthoredSuppressionScanner.scan(relativePath, source.lineSequence())
-
-  fun suppressionViolations(
-    suppressions: List<AuthoredSuppression>,
-    allowList: Set<Triple<String, String, String>>,
-  ): List<String> = suppressions.mapNotNull { site ->
-    when {
-      site.rule in COMPLEXITY_SUPPRESSION_RULES ->
-        "${site.relativePath}::${site.symbol} uses banned complexity suppression '${site.rule}'; refactor instead."
-      Triple(site.relativePath, site.symbol, site.rule) !in allowList ->
-        "${site.relativePath}::${site.symbol} has @Suppress('${site.rule}') without a dated allow-list row; " +
-          "fix the finding or add path, symbol, rule, and why to runtime-kotlin/agent/decisions.md."
-      else -> null
-    }
-  }.sorted()
-
-  fun detektComplexityPinViolations(detektYaml: String): List<String> =
-    COMPLEXITY_SUPPRESSION_RULES.mapNotNull { rule ->
-      val section = Regex("""\n\s*$rule:\s*\n\s*active:\s*(true|false)""").find(detektYaml)
+  fun logicalTypeLineCeilingViolations(
+    productionRoots: List<String>,
+    ceiling: Int,
+    baseline: Map<String, Int>,
+  ): List<String> {
+    val counts = logicalTypeLineCounts(productionRoots)
+    val violations = mutableListOf<String>()
+    counts.forEach { (fqn, lineCount) ->
+      val baselineCount = baseline[fqn]
       when {
-        section == null -> "detekt.yml missing pinned complexity rule '$rule'."
-        section.groupValues[1] != "true" -> "detekt.yml must pin '$rule' with active: true."
-        else -> null
+        baselineCount != null && lineCount > baselineCount ->
+          violations += "$fqn has $lineCount lines; baseline allows $baselineCount."
+        baselineCount == null && lineCount > ceiling ->
+          violations +=
+            "$fqn has $lineCount lines; exceeds the $ceiling-line ceiling without a baseline entry."
       }
     }
+    return violations.sorted()
+  }
 
-  private val TABLE_ROW_PATTERN =
-    Regex(
-      """^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|""",
-      RegexOption.MULTILINE,
-    )
+  fun parseIntBaseline(text: String): Map<String, Int> = text.lineSequence()
+    .map { it.trim() }
+    .filter { it.isNotBlank() && !it.startsWith("#") }
+    .mapNotNull { line ->
+      val parts = line.split(Regex("""\s+"""), limit = 2)
+      if (parts.size != 2) return@mapNotNull null
+      val count = parts[1].toIntOrNull() ?: return@mapNotNull null
+      parts[0] to count
+    }
+    .toMap()
+
+  fun applicationPackageImportEdges(): Map<String, Set<String>> {
+    val edges = linkedMapOf<String, MutableSet<String>>()
+    val root = runtimeRoot.resolve("runtime-kotlin/runtime-application/src/main/kotlin")
+    kotlinFilesUnder(root).forEach { sourceFile ->
+      val source = sourceFile.readText()
+      val packageName = declaredPackage(source) ?: return@forEach
+      if (!packageName.startsWith("skillbill.application.")) return@forEach
+      val area = packageName.removePrefix("skillbill.application.").substringBefore('.')
+      if (area.isBlank()) return@forEach
+      declaredImports(source)
+        .filter { it.startsWith("skillbill.application.") }
+        .map { imported -> imported.removePrefix("skillbill.application.").substringBefore('.') }
+        .filter { it.isNotBlank() && it != area }
+        .forEach { importedArea -> edges.getOrPut(area) { mutableSetOf() }.add(importedArea) }
+    }
+    return edges.mapValues { (_, value) -> value.toSet() }
+  }
+
+  fun applicationPackageCycles(): Set<ApplicationPackageCycle> =
+    mutualImportCyclesForEdges(applicationPackageImportEdges())
+      .map { cycle -> ApplicationPackageCycle(cycle) }
+      .toSet()
+
+  fun applicationPackageCycleViolations(baselineCycles: Set<ApplicationPackageCycle>): List<String> =
+    packageCycleViolationsForEdges(applicationPackageImportEdges(), baselineCycles)
+
+  fun packageCycleViolationsForEdges(
+    edges: Map<String, Set<String>>,
+    baselineCycles: Set<ApplicationPackageCycle>,
+  ): List<String> {
+    val baselineKeys = baselineCycles.map { cycle -> cycle.areas.sorted().joinToString("|") }.toSet()
+    val currentKeys = mutualImportCyclesForEdges(edges)
+      .map { cycle -> cycle.sorted().joinToString("|") }
+      .toSet()
+    return (currentKeys - baselineKeys).sorted().map { cycle ->
+      "New package cycle not in baseline: ${cycle.replace("|", " <-> ")}"
+    }
+  }
+
+  private fun mutualImportCyclesForEdges(edges: Map<String, Set<String>>): List<List<String>> {
+    val cycles = linkedSetOf<List<String>>()
+    edges.forEach { (from, targets) ->
+      targets.forEach { to ->
+        if (from != to && edges[to]?.contains(from) == true) {
+          cycles += listOf(from, to).sorted()
+        }
+      }
+    }
+    return cycles.toList()
+  }
+
+  fun parsePackageCycleBaseline(text: String): Set<ApplicationPackageCycle> = text.lineSequence()
+    .map { it.trim() }
+    .filter { it.isNotBlank() && !it.startsWith("#") }
+    .map { line ->
+      ApplicationPackageCycle(line.split('|').map(String::trim).filter(String::isNotBlank).sorted())
+    }
+    .toSet()
+
+  fun extensionReceiverFqns(source: String, packageName: String, imports: List<String>): List<String> {
+    val importMap = imports.associateBy { imported -> imported.substringAfterLast('.') }
+    val receivers = linkedSetOf<String>()
+    var braceDepth = 0
+    source.lineSequence().forEach { rawLine ->
+      val line = rawLine.withoutCommentText().text
+      if (braceDepth == 0) {
+        EXTENSION_FUN_PATTERN.find(line)?.groupValues?.get(1)?.let { receiverType ->
+          resolveTypeFqn(receiverType, packageName, importMap)?.let(receivers::add)
+        }
+      }
+      braceDepth += line.count { character -> character == '{' }
+      braceDepth -= line.count { character -> character == '}' }
+      if (braceDepth < 0) braceDepth = 0
+    }
+    return receivers.toList()
+  }
+
+  private fun resolveTypeFqn(typeName: String, packageName: String, importMap: Map<String, String>): String? = when {
+    '.' in typeName -> typeName
+    typeName in importMap -> importMap.getValue(typeName)
+    else -> "$packageName.$typeName"
+  }
+
+  data class AuthoredSuppression(val relativePath: String, val symbol: String, val rule: String)
 }

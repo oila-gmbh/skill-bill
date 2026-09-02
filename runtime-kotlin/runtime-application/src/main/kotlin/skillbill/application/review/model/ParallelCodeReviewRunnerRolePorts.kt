@@ -1,0 +1,46 @@
+package skillbill.application.review.model
+
+import skillbill.application.review.SpecIntentProjectionResolver
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.ReviewLaunchAgentStagingPort
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
+import skillbill.ports.review.ReviewRubricResolver
+import skillbill.ports.review.ReviewSpecialistContractProvider
+import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.model.ParallelReviewParseResult
+import java.time.Clock
+
+interface ParallelCodeReviewRunnerPlanningPort {
+  val diffResolver: DiffResolverPort
+  val repoLocalConfig: RepoLocalConfigPort
+  val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator
+  val reviewRubricResolver: ReviewRubricResolver
+  val reviewSpecialistContractProvider: ReviewSpecialistContractProvider
+  val installedPackCatalog: InstalledPlatformPackCatalogPort
+  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort
+  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+  val specIntentProjectionResolver: SpecIntentProjectionResolver
+  val parentReviewLauncher: GoalRunnerSubtaskLauncher
+  val database: DatabaseSessionFactory
+  val diagnostics: RuntimeDiagnostics
+  val registerParse: (String) -> ParallelReviewParseResult
+  val nativeAgentPreflight: ReviewNativeAgentPreflightPort
+  val clock: Clock
+}
+
+interface ParallelCodeReviewRunnerLaneLaunchPort {
+  val parentReviewLauncher: GoalRunnerSubtaskLauncher
+  val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory
+  val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder
+  val reviewLaunchAgentStaging: ReviewLaunchAgentStagingPort
+  val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+}

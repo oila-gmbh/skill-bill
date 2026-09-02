@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
@@ -15,6 +16,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureC
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+
+@Inject
+class FeatureTaskRuntimeRunLoopSharedArgsHolder
 
 internal data class PhaseAttemptContext(
   val run: PhaseRun,
@@ -69,7 +73,7 @@ internal data class ProducerEvidenceRecordRejectionArgs(
 internal data class QuarantineRecordRejectionArgs(
   val context: PhaseAttemptContext,
   val rejection: RecordRejection,
-  val regeneration: RecordRejectionRegenerationEdge,
+  val regeneration: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued2.RecordRejectionRegenerationEdge,
   val producerEvidence: ProducerOutputEvidence,
 )
 
@@ -245,124 +249,4 @@ internal data class ReconstructFixLoopBudgetBasesArgs(
   val completed: Set<String>,
   val gateInvalidatedPhases: Set<String>,
   val nextIteration: (String) -> Int,
-)
-
-internal data class ProducerOutputQueryArgs(
-  val workflowId: String,
-  val phaseId: String,
-  val attempt: Int,
-  val agentId: String,
-  val dbOverride: String?,
-  val generation: Int,
-)
-
-internal data class AppendCheckpointIdentityArgs(
-  val workflowId: String,
-  val issueKey: String,
-  val subtaskId: String,
-  val branch: String,
-  val phaseId: String,
-  val loopId: String?,
-  val generation: Int,
-  val parentSha: String?,
-  val ownedPaths: List<String>,
-  val commitSha: String,
-  val dbOverride: String?,
-)
-
-internal data class RejectedOutputTargetingArgs(
-  val run: PhaseRun,
-  val phaseId: String,
-  val agentId: String,
-  val model: String,
-  val path: String,
-  val repairTurn: Int,
-)
-
-internal data class SettleValidatedOutputAfterFingerprintArgs(
-  val capture: ValidatedOutputCapture,
-  val outputMap: Map<String, Any?>,
-  val attested: NormalizedFeatureTaskRuntimePhaseOutput,
-  val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
-  val observability: FeatureTaskRuntimeRunObservability,
-  val repositoryFingerprint: String?,
-  val reject: (String, String) -> AttemptResult,
-)
-
-internal data class RejectedOutputTargetingOverrides(
-  val phaseId: String? = null,
-  val agentId: String? = null,
-  val model: String? = null,
-  val path: String? = null,
-  val repairTurn: Int? = null,
-)
-
-internal fun defaultRejectedOutputTargetingArgs(
-  run: PhaseRun,
-  overrides: RejectedOutputTargetingOverrides = RejectedOutputTargetingOverrides(),
-): RejectedOutputTargetingArgs {
-  val phaseId = overrides.phaseId ?: run.phaseId
-  return RejectedOutputTargetingArgs(
-    run = run,
-    phaseId = phaseId,
-    agentId = overrides.agentId ?: run.resolvedAgent.resolvedAgentId,
-    model = overrides.model ?: run.modelDirective?.model ?: "unspecified",
-    path = overrides.path ?: "/",
-    repairTurn = overrides.repairTurn ?: if (phaseId == run.phaseId) run.validationGateRepairTurn else 0,
-  )
-}
-
-internal data class PhaseBlockRequest(
-  val run: PhaseRun,
-  val attemptCount: Int,
-  val reason: String,
-  val observability: FeatureTaskRuntimeRunObservability,
-  val payload: BlockAndPersistPayload = BlockAndPersistPayload(),
-  val failureDisposition: FeatureTaskRuntimeFailureDisposition =
-    FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-)
-
-internal fun BlockAndPersistInPhaseArgs.withDisposition(
-  failureDisposition: FeatureTaskRuntimeFailureDisposition,
-): BlockAndPersistInPhaseArgs = copy(failureDisposition = failureDisposition)
-
-internal fun phaseBlockArgs(
-  run: PhaseRun,
-  attemptCount: Int,
-  reason: String,
-  observability: FeatureTaskRuntimeRunObservability,
-  payload: BlockAndPersistPayload = BlockAndPersistPayload(),
-): BlockAndPersistInPhaseArgs = BlockAndPersistInPhaseArgs(
-  run = run,
-  attemptCount = attemptCount,
-  reason = reason,
-  observability = observability,
-  failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-  payload = payload,
-)
-
-internal fun recordRejectionAttemptArgs(
-  context: PhaseAttemptContext,
-  priorCorrection: PriorAttemptCorrection? = null,
-  phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
-): RecordRejectionAttemptArgs = RecordRejectionAttemptArgs(
-  context = context,
-  priorCorrection = priorCorrection,
-  phaseTokenAccumulator = phaseTokenAccumulator,
-)
-
-internal fun phaseAttemptAccumulatorContext(
-  run: PhaseRun,
-  state: FeatureTaskRuntimeRunState,
-  iteration: Int,
-  observability: FeatureTaskRuntimeRunObservability,
-  phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
-): PhaseAttemptAccumulatorContext = PhaseAttemptAccumulatorContext(
-  attempt = PhaseAttemptContext(run, state, iteration, observability),
-  phaseTokenAccumulator = phaseTokenAccumulator,
-)
-
-internal fun FeatureTaskRuntimeRunLoop.blockInPhase(request: PhaseBlockRequest): PhaseOutcome = blockAndPersistInPhase(
-  phaseBlockArgs(request.run, request.attemptCount, request.reason, request.observability, request.payload)
-    .withDisposition(request.failureDisposition),
 )

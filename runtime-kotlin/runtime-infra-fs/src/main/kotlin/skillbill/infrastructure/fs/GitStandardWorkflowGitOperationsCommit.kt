@@ -1,5 +1,6 @@
 package skillbill.infrastructure.fs
 
+import skillbill.ports.workflow.gitops.ProtectedBranches
 import skillbill.ports.workflow.gitops.WorkflowGitRemoteOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
@@ -44,6 +45,12 @@ internal fun gitPushBranch(repoRoot: Path, branch: String, withLease: Boolean): 
     return WorkflowGitOperationResult(status = "error", error = "Branch name is required to push.")
   }
   val args = if (withLease) {
+    ProtectedBranches.protectedName(normalized)?.let { protected ->
+      return WorkflowGitOperationResult(
+        status = "error",
+        error = "Refusing to force-push protected branch '$protected'.",
+      )
+    }
     listOf("push", "--force-with-lease", "-u", "origin", normalized)
   } else {
     listOf("push", "-u", "origin", normalized)

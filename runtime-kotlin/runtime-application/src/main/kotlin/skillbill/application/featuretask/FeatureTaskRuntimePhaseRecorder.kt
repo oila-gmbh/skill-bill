@@ -6,6 +6,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderDe
 private class FeatureTaskRuntimePhaseRecorderParts(
   deps: FeatureTaskRuntimePhaseRecorderDeps,
 ) {
+  private val clock = deps.clock
   val workflowPersistence =
     FeatureTaskRuntimeWorkflowPersistence(deps.database, deps.workflowSnapshotValidator)
   val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(deps.database, deps.diagnostics)
@@ -14,12 +15,14 @@ private class FeatureTaskRuntimePhaseRecorderParts(
     workflowPersistence,
     deps.validators.rejectedOutputDiagnosticMetadataValidator,
     deps.validators.producerOutputEvidenceValidator,
+    clock,
   )
   val phaseState = FeatureTaskRuntimePhaseStateRecorder(
     deps.database,
     workflowPersistence,
     runtimeOwnedPersistence,
     deps.validators.implementationAttemptValidator,
+    clock,
   )
   val reviewCheckpoint = FeatureTaskRuntimeReviewCheckpointRecorder(
     deps.database,
@@ -27,7 +30,7 @@ private class FeatureTaskRuntimePhaseRecorderParts(
     runtimeOwnedPersistence,
   )
   val goalReviewCompletion =
-    FeatureTaskRuntimeGoalReviewCompletionRecorder(deps.database, workflowPersistence)
+    FeatureTaskRuntimeGoalReviewCompletionRecorder(deps.database, workflowPersistence, clock)
   val briefingRecorder = FeatureTaskRuntimePhaseBriefingRecorder(
     deps.database,
     workflowPersistence,
@@ -39,6 +42,7 @@ private class FeatureTaskRuntimePhaseRecorderParts(
     deps.database,
     workflowPersistence,
     deps.validators.quarantineValidator,
+    clock,
   )
 }
 

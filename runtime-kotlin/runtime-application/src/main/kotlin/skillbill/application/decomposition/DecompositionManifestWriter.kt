@@ -1,27 +1,29 @@
 package skillbill.application.decomposition
 
-import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
-import skillbill.application.workflow.model.DecompositionManifestWriteRequest
-import skillbill.application.workflow.model.DecompositionManifestWriteResult
-import skillbill.application.workflow.model.DecompositionPlanManifestInput
-import skillbill.application.workflow.repoRoot
+import me.tatarka.inject.annotations.Inject
+import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.decomposition.model.DecompositionManifestWorkflowProjectionInput
+import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
+import skillbill.application.decomposition.model.DecompositionPlanManifestInput
+import skillbill.application.decomposition.model.PreparedDecompositionManifestWrite
 import skillbill.error.InvalidDecompositionManifestSchemaError
+import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWriteResult
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionManifestPlan
-import skillbill.workflow.decomposition.model.DecompositionManifestRepairEvidence
 import java.io.IOException
 import java.nio.file.Path
 
 private const val DECOMPOSITION_MODE: String = "decompose"
-internal const val DECOMPOSITION_RUNTIME_ARTIFACT_KEY: String = "decomposition_runtime"
+const val DECOMPOSITION_RUNTIME_ARTIFACT_KEY: String = "decomposition_runtime"
 
-object DecompositionManifestWriter {
+@Inject
+class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
   fun writeFromWorkflowUpdate(input: DecompositionManifestWorkflowProjectionInput): DecompositionManifestWriteResult? {
     val manifest = manifestFromWorkflowUpdate(input) ?: return null
     return writeProjection(input.repoRoot, manifest, input.validator, fileStore = input.fileStore)
@@ -53,11 +55,11 @@ object DecompositionManifestWriter {
   fun maybeWriteFromWorkflowUpdate(input: DecompositionManifestWorkflowProjectionInput): Path? =
     writeFromWorkflowUpdate(input)?.manifestPath
 
-  fun writeProjectionFromWorkflowState(
+  override fun writeProjectionFromWorkflowState(
     repoRoot: Path,
     artifactsJson: String,
     validator: DecompositionManifestValidator,
-    fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+    fileStore: DecompositionManifestFileStore,
   ): DecompositionManifestWriteResult? {
     val artifacts = decodeArtifacts(artifactsJson)
     val runtime = artifacts[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
@@ -97,7 +99,7 @@ object DecompositionManifestWriter {
     )
   }
 
-  internal fun prepare(
+  fun prepare(
     request: DecompositionManifestWriteRequest,
     validator: DecompositionManifestValidator,
     runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
@@ -214,13 +216,6 @@ object DecompositionManifestWriter {
   }
 }
 
-internal data class PreparedDecompositionManifestWrite(
-  val manifestPath: Path,
-  val manifest: DecompositionManifest,
-  val yaml: String,
-  val repairEvidence: List<DecompositionManifestRepairEvidence> = emptyList(),
-)
-
 private fun assertParentSpecIsNotDecomposedSubtask(
   repoRoot: Path,
   parentSpecPath: Path,
@@ -230,6 +225,7 @@ private fun assertParentSpecIsNotDecomposedSubtask(
   val normalizedParentSpec = resolvedParentSpecPath(repoRoot, parentSpecPath).normalize()
   val parentSpecLabel = repoRelativePath(repoRoot, parentSpecPath)
   val referringManifests = fileStore.findDecompositionManifestFiles(repoRoot)
+    .filterNot { manifestPath -> archivedDecompositionManifest(repoRoot, manifestPath) }
     .mapNotNull { manifestPath ->
       val manifest = try {
         loadDecompositionManifest(manifestPath, fileStore, validator)

@@ -1,10 +1,11 @@
 package skillbill.application.review
-
-import skillbill.application.evidence.SharedReviewEvidenceCodec
-import skillbill.application.evidence.SharedReviewEvidenceCommits
-import skillbill.application.evidence.SharedReviewEvidenceRecord
 import skillbill.application.review.model.ReviewPreparationRequest
 import skillbill.application.review.model.ReviewPreparationResult
+import skillbill.application.reviewevidence.RawCommitDiff
+import skillbill.application.reviewevidence.ReviewDiffEvidence
+import skillbill.application.reviewevidence.SharedReviewEvidenceCodec
+import skillbill.application.reviewevidence.SharedReviewEvidenceCommits
+import skillbill.application.reviewevidence.SharedReviewEvidenceRecord
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.error.REVIEW_HUNK_EVIDENCE_INTEGRITY
 import skillbill.error.ReviewHunkEvidenceIntegrityError

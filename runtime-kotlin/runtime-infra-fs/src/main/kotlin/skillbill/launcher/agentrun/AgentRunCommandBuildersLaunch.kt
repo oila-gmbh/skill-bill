@@ -77,6 +77,10 @@ internal fun goalContinuationArguments(request: SkillRunRequest, agent: InstallA
     addGoalContinuationArguments(context)
     add("--agent")
     add(agent.id)
+    request.timeout?.inWholeMinutes?.takeIf { it > 0L }?.let { minutes ->
+      add("--max-wall-clock-minutes")
+      add(minutes.toString())
+    }
   }
 }
 

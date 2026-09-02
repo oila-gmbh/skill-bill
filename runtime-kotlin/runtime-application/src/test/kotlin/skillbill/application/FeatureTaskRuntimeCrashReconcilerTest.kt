@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -37,6 +38,8 @@ class FeatureTaskRuntimeCrashReconcilerTest {
     val reconciler = FeatureTaskRuntimeCrashReconciler(
       RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository()),
       inspectionSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning),
+      NoopRuntimeDiagnostics,
+      testHarnessClock,
     )
 
     val result = reconciler.reconcile(null)
@@ -51,6 +54,8 @@ class FeatureTaskRuntimeCrashReconcilerTest {
     val reconciler = FeatureTaskRuntimeCrashReconciler(
       RuntimeFakeDatabaseSessionFactory(repository),
       inspectionSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning),
+      NoopRuntimeDiagnostics,
+      testHarnessClock,
     )
 
     val first = reconciler.reconcile(null)
@@ -69,6 +74,8 @@ class FeatureTaskRuntimeCrashReconcilerTest {
     val reconciler = FeatureTaskRuntimeCrashReconciler(
       RuntimeFakeDatabaseSessionFactory(repository),
       inspectionSupervisor(FeatureTaskRuntimeProcessInspection.ExactLive),
+      NoopRuntimeDiagnostics,
+      testHarnessClock,
     )
 
     val result = reconciler.reconcile(null)
@@ -87,6 +94,8 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       val reconciler = FeatureTaskRuntimeCrashReconciler(
         RuntimeFakeDatabaseSessionFactory(repository),
         inspectionSupervisor(inspection),
+        NoopRuntimeDiagnostics,
+        testHarnessClock,
       )
 
       assertEquals(0, reconciler.reconcile(null).reconciledCount)
@@ -109,8 +118,12 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       ) = NoopFeatureTaskRuntimeHeartbeat
       override fun pause(durationMillis: Long) = Unit
     }
-    val reconciler =
-      FeatureTaskRuntimeCrashReconciler(RuntimeFakeDatabaseSessionFactory(repository), faultingSupervisor)
+    val reconciler = FeatureTaskRuntimeCrashReconciler(
+      RuntimeFakeDatabaseSessionFactory(repository),
+      faultingSupervisor,
+      NoopRuntimeDiagnostics,
+      testHarnessClock,
+    )
 
     val result = reconciler.reconcile(null)
 

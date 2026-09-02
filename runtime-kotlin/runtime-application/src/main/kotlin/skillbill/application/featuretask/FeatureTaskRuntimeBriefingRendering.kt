@@ -14,7 +14,7 @@ import skillbill.workflow.taskruntime.model.canonicalAcceptanceCriterionRef
  * section renders in the framing pass too, so an oversized owned-path inventory hits the framing
  * ceiling and loud-fails instead of being silently trimmed.
  */
-internal fun StringBuilder.appendRepositoryCheckpoint(
+fun StringBuilder.appendRepositoryCheckpoint(
   handoff: FeatureTaskRuntimePhaseHandoff,
   envelope: FeatureTaskRuntimeHandoffEnvelope,
 ) {
@@ -38,7 +38,7 @@ internal fun StringBuilder.appendRepositoryCheckpoint(
 }
 
 // Only prompt-visible projections render; a private-evidence-only projection stays durable state.
-internal fun StringBuilder.appendProjections(envelope: FeatureTaskRuntimeHandoffEnvelope) {
+fun StringBuilder.appendProjections(envelope: FeatureTaskRuntimeHandoffEnvelope) {
   val visible = envelope.promptVisibleProjections
   if (visible.isEmpty()) {
     appendLine("(none)")
@@ -59,11 +59,11 @@ internal fun StringBuilder.appendProjections(envelope: FeatureTaskRuntimeHandoff
  * invariants section is the sole delivery path for operator mandates. Escaping keeps the content
  * intact and readable while making it structurally incapable of opening a new section.
  */
-internal fun escapeBriefingLineBreaks(value: String): String =
+fun escapeBriefingLineBreaks(value: String): String =
   value.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "\\n")
 
 // Layer 1 rendering is allowlist-driven per phase; the typed fields stay on the briefing regardless.
-internal fun StringBuilder.appendAllowlistedRunInvariants(handoff: FeatureTaskRuntimePhaseHandoff) {
+fun StringBuilder.appendAllowlistedRunInvariants(handoff: FeatureTaskRuntimePhaseHandoff) {
   val invariants = handoff.runInvariants
   val allowlist = FeatureTaskRuntimeRunInvariantPromptAllowlist.forPhase(handoff.phaseId)
   appendLine("## Run invariants (layer 1, unconditional)")
@@ -92,7 +92,7 @@ internal fun StringBuilder.appendAllowlistedRunInvariants(handoff: FeatureTaskRu
   }
 }
 
-internal fun StringBuilder.appendAcceptanceCriteria(handoff: FeatureTaskRuntimePhaseHandoff) {
+fun StringBuilder.appendAcceptanceCriteria(handoff: FeatureTaskRuntimePhaseHandoff) {
   appendLine("acceptance_criteria:")
   val closedCriterionRefs = handoff.durablyClosedCriterionRefs.toSet()
   handoff.runInvariants.acceptanceCriteria.forEachIndexed { index, criterion ->
@@ -139,7 +139,7 @@ private fun derivedContextInstruction(key: String, sharedEvidenceDelivered: Bool
   else -> null
 }
 
-internal fun renderFeatureTaskRuntimePhaseBriefing(
+fun renderFeatureTaskRuntimePhaseBriefing(
   handoff: FeatureTaskRuntimePhaseHandoff,
   envelope: FeatureTaskRuntimeHandoffEnvelope,
 ): String = buildString {

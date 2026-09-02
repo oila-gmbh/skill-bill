@@ -61,6 +61,9 @@ data class GoalRunnerControlState(
   val currentSubtaskId: Int? = null,
   val subtaskActiveDurationMs: Long = 0,
   val subtaskActiveDurationAsOf: String? = null,
+  val validationQualityRetriesBySubtask: Map<Int, Int> = emptyMap(),
+  val pendingReAttemptCauseBySubtask: Map<Int, String> = emptyMap(),
+  val pendingCausingLoopEntryBySubtask: Map<Int, String> = emptyMap(),
 ) {
   init {
     stopAfterSubtaskId?.let { require(it > 0) { "stopAfterSubtaskId must be positive when provided." } }

@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -10,24 +11,39 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import kotlin.coroutines.cancellation.CancellationException
 
-internal class GoalRunnerProgressReader(
+@Inject
+public class GoalRunnerProgressReader(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
 ) {
-  fun safeProgress(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerWorkflowProgress? = try {
-    outcomeStore.progress(workflowId, request.dbPathOverride)
-  } catch (error: CancellationException) {
-    throw error
-  } catch (error: ShellContentContractException) {
-    throw error
-  } catch (_: Exception) {
-    null
-  }
+  internal fun read(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerChildProgressRead =
+    runCatching { GoalRunnerChildProgressRead.Present(outcomeStore.progress(workflowId, request.dbPathOverride)) }
+      .fold(
+        onSuccess = { it },
+        onFailure = { error ->
+          when (error) {
+            is CancellationException -> throw error
+            is ShellContentContractException -> throw error
+            else -> {
+              val exception = error as? Exception ?: throw error
+              GoalRunnerChildProgressRead.Failed(exception)
+            }
+          }
+        },
+      )
+
+  fun safeProgress(workflowId: String, request: GoalRunnerRunRequest): GoalRunnerWorkflowProgress? =
+    when (val read = read(workflowId, request)) {
+      is GoalRunnerChildProgressRead.Present -> read.progress
+      is GoalRunnerChildProgressRead.Absent -> null
+      is GoalRunnerChildProgressRead.Failed -> null
+    }
 }
 
-internal class GoalRunnerPauseBoundary(
+@Inject
+public class GoalRunnerPauseBoundary(
   private val manifestStore: GoalRunnerManifestStore,
 ) {
-  fun pauseBeforeLaunch(
+  internal fun pauseBeforeLaunch(
     state: GoalRunnerManifestState,
     request: GoalRunnerRunRequest,
     knownControl: GoalRunnerControlState? = null,

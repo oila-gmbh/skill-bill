@@ -1,7 +1,8 @@
 package skillbill.application.review
-
-import skillbill.application.review.model.DiffResolutionException
-import skillbill.application.review.model.ParallelReviewScope
+import skillbill.application.reviewevidence.ReviewCommitRange
+import skillbill.application.reviewevidence.ReviewDiffEvidence
+import skillbill.application.reviewevidence.model.DiffResolutionException
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.review.context.model.ReviewCommitSource
 import java.nio.file.Path

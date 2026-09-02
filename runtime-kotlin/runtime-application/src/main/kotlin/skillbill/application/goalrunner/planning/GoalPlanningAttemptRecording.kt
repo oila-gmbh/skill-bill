@@ -7,10 +7,12 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
 
-internal fun DefaultGoalPlanningSweep.recordEmptyProviderTurn(
+internal fun recordEmptyProviderTurn(
+  sweep: DefaultGoalPlanningSweep,
   scope: GoalPlanningAttemptScope,
   production: GoalPlanningPhaseProduction.EmptyProviderTurn,
 ) = recordPlanningRejection(
+  sweep,
   GoalPlanningRejectionRecordArgs(
     scope = scope,
     rule = GoalPlanningSweepConstants.EMPTY_PLANNING_HARVEST_RULE,
@@ -20,9 +22,9 @@ internal fun DefaultGoalPlanningSweep.recordEmptyProviderTurn(
   ),
 )
 
-internal fun DefaultGoalPlanningSweep.recordPlanningRejection(args: GoalPlanningRejectionRecordArgs) {
+internal fun recordPlanningRejection(sweep: DefaultGoalPlanningSweep, args: GoalPlanningRejectionRecordArgs) {
   val scope = args.scope
-  planningRejectionRecorder.record(
+  sweep.planningRejectionRecorder.record(
     GoalPlanningRejectionRecord(
       parentWorkflowId = scope.shared.parentWorkflowId,
       issueKey = scope.shared.issueKey,
@@ -38,15 +40,17 @@ internal fun DefaultGoalPlanningSweep.recordPlanningRejection(args: GoalPlanning
   )
 }
 
-internal fun diagnosticPhaseId(phaseId: String, subtask: DecompositionSubtask?): String =
+fun diagnosticPhaseId(phaseId: String, subtask: DecompositionSubtask?): String =
   subtask?.let { "$phaseId:${it.id}" } ?: phaseId
 
-internal fun DefaultGoalPlanningSweep.declineRetryStop(
+internal fun declineRetryStop(
+  sweep: DefaultGoalPlanningSweep,
   scope: GoalPlanningAttemptScope,
   declines: Int,
   production: GoalPlanningPhaseProduction.RetryableDecline,
 ): GoalPlanningPhaseProduction.Stopped? {
   recordFailedAttempt(
+    sweep,
     scope,
     GoalPlanningSweepConstants.RETRYABLE_PLANNING_DECLINE_RULE,
     production,
@@ -56,24 +60,26 @@ internal fun DefaultGoalPlanningSweep.declineRetryStop(
       stopped(scope.shared, scope.subtask?.id ?: 0, exhaustedDeclineReason(production, declines), scope.phaseId),
     )
   }
-  return backoffStop(scope)
+  return backoffStop(sweep, scope)
 }
 
-internal fun DefaultGoalPlanningSweep.backoffStop(
+internal fun backoffStop(
+  sweep: DefaultGoalPlanningSweep,
   scope: GoalPlanningAttemptScope,
-): GoalPlanningPhaseProduction.Stopped? = interruptibleWait(
-  burstSchedule.emptyTurnBackoffAfterAttempt(scope.attempt),
+): GoalPlanningPhaseProduction.Stopped? = sweep.interruptibleWait(
+  sweep.burstSchedule.emptyTurnBackoffAfterAttempt(scope.attempt),
   scope.shared,
   scope.subtask?.id ?: 0,
   scope.phaseId,
 )?.let { stoppedOutcome -> GoalPlanningPhaseProduction.Stopped(stoppedOutcome) }
 
-internal fun DefaultGoalPlanningSweep.recordFailedAttempt(
+internal fun recordFailedAttempt(
+  sweep: DefaultGoalPlanningSweep,
   scope: GoalPlanningAttemptScope,
   rule: String,
   production: GoalPlanningPhaseProduction,
 ) {
-  recordPlanningAttempt(GoalPlanningAttemptRecordArgs(scope, GoalProgressOutcome.FAILED))
+  recordPlanningAttempt(sweep, GoalPlanningAttemptRecordArgs(scope, GoalProgressOutcome.FAILED))
   val (reason, output, agentId) = when (production) {
     is GoalPlanningPhaseProduction.SchemaRejected ->
       Triple(production.reason, production.rejectedOutput, production.agentId)
@@ -90,6 +96,7 @@ internal fun DefaultGoalPlanningSweep.recordFailedAttempt(
     -> return
   }
   recordPlanningRejection(
+    sweep,
     GoalPlanningRejectionRecordArgs(
       scope = scope,
       rule = rule,
@@ -100,9 +107,9 @@ internal fun DefaultGoalPlanningSweep.recordFailedAttempt(
   )
 }
 
-internal fun DefaultGoalPlanningSweep.recordPlanningAttempt(args: GoalPlanningAttemptRecordArgs) {
+internal fun recordPlanningAttempt(sweep: DefaultGoalPlanningSweep, args: GoalPlanningAttemptRecordArgs) {
   val scope = args.scope
-  planningAttemptRecorder.record(
+  sweep.planningAttemptRecorder.record(
     GoalPlanningAttemptRecord(
       scope.shared.parentWorkflowId,
       scope.shared.issueKey,
@@ -116,8 +123,9 @@ internal fun DefaultGoalPlanningSweep.recordPlanningAttempt(args: GoalPlanningAt
   )
 }
 
-internal fun DefaultGoalPlanningSweep.recordPlanningAttemptStarted(scope: GoalPlanningAttemptScope) =
+internal fun recordPlanningAttemptStarted(sweep: DefaultGoalPlanningSweep, scope: GoalPlanningAttemptScope) =
   recordPlanningAttempt(
+    sweep,
     GoalPlanningAttemptRecordArgs(
       scope = scope,
       outcome = GoalProgressOutcome.NONE,
@@ -125,7 +133,7 @@ internal fun DefaultGoalPlanningSweep.recordPlanningAttemptStarted(scope: GoalPl
     ),
   )
 
-internal fun DefaultGoalPlanningSweep.planningAttemptScope(
+internal fun planningAttemptScope(
   shared: GoalPlanningSharedContext,
   phaseId: String,
   subtask: DecompositionSubtask?,

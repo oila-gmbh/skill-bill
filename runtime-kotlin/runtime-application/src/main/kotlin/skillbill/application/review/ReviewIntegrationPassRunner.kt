@@ -26,7 +26,7 @@ import skillbill.review.model.ParallelReviewRawFinding
  * launches no specialist rubric. A review with nothing to integrate over — a synthetic unit or a
  * lone commit — is skipped deterministically with a stated reason rather than run on empty input.
  */
-internal class ReviewIntegrationPassRunner(
+class ReviewIntegrationPassRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
 ) {

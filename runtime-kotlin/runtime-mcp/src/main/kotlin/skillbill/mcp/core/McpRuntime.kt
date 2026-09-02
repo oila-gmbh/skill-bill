@@ -30,11 +30,13 @@ data class McpRuntimeContext(
   val environment: Map<String, String> = System.getenv(),
   val userHome: Path = Path.of(System.getProperty("user.home")),
   val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  val repositoryRoot: Path? = null,
 ) {
   fun toRuntimeContext(stdinText: String? = null): RuntimeContext = RuntimeContext(
     stdinText = stdinText,
     environment = environment,
     userHome = userHome,
+    repositoryRoot = repositoryRoot?.let(::canonicalRepositoryRoot) ?: canonicalRepositoryRoot(Path.of("")),
     requester = requester,
     workflowGitOperations = workflowGitOperations,
   )
@@ -265,4 +267,13 @@ object McpWorkflowRuntime {
 internal fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {
   val runtimeComponent = RuntimeComponent::class.create(context.toRuntimeContext(stdinText))
   return McpComponent::class.create(runtimeComponent).services
+}
+
+internal fun canonicalRepositoryRoot(start: Path): Path {
+  val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
+  var candidate = resolvedStart
+  while (!candidate.resolve(".git").toFile().exists()) {
+    candidate = candidate.parent ?: return resolvedStart
+  }
+  return candidate.toRealPath()
 }

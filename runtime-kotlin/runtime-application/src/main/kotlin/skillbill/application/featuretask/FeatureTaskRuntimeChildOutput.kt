@@ -3,7 +3,7 @@ package skillbill.application.featuretask
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 
 /** The `rule` a process-failure diagnostic is stored under, distinct from every schema-gate rule. */
-internal const val FEATURE_TASK_RUNTIME_PROCESS_FAILURE_RULE: String = "process-failure"
+const val FEATURE_TASK_RUNTIME_PROCESS_FAILURE_RULE: String = "process-failure"
 
 /**
  * What a child wrote before it died, kept so a process failure leaves something to read.

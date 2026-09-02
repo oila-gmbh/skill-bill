@@ -13,7 +13,7 @@ import java.nio.file.Path
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
-internal class GoalRunnerAcceptanceCoordinator(
+class GoalRunnerAcceptanceCoordinator(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val gitOperations: WorkflowGitOperations,

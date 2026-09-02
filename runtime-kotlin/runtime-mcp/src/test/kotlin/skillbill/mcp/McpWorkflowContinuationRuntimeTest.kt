@@ -139,6 +139,7 @@ private fun mcpDecompositionFixture(): McpDecompositionFixture {
       ),
       userHome = tempDir,
       workflowGitOperations = TestWorkflowGitOperations,
+      repositoryRoot = tempDir,
     ),
     dbPath = dbPath,
     parentSpec = parentSpec,

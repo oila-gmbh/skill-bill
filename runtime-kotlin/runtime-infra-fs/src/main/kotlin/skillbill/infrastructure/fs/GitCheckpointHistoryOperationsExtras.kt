@@ -1,7 +1,23 @@
 package skillbill.infrastructure.fs
 
+import skillbill.ports.workflow.gitops.ProtectedBranches
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
+
+internal fun gitCheckpointProtectedBranchFailure(repoRoot: Path): WorkflowGitOperationResult? {
+  val branch = runGitCommand(repoRoot, "branch", "--show-current")
+  if (!branch.ok) {
+    return WorkflowGitOperationResult(
+      status = "error",
+      error = "Could not read the current branch; refusing to amend. ${branch.error}".trim(),
+    )
+  }
+  val protected = ProtectedBranches.protectedName(branch.value) ?: return null
+  return WorkflowGitOperationResult(
+    status = "error",
+    error = "HEAD is on protected branch '$protected'; refusing to amend shared history.",
+  )
+}
 
 internal fun gitCheckpointOwnedHeadFailure(repoRoot: Path, expected: String): WorkflowGitOperationResult? {
   if (expected.isBlank()) {

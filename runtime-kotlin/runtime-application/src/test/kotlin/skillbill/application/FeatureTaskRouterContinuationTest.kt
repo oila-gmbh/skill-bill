@@ -6,11 +6,14 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
+import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.openFeatureTask
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,10 +31,16 @@ class FeatureTaskRouterContinuationTest {
     val states = InMemoryWorkflowStates()
     val database = FakeDatabaseSessionFactory(states)
     val service = WorkflowService(
-      database = database,
-      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      decompositionManifestValidator = testDecompositionManifestValidator,
+      WorkflowServiceDeps(
+        database = database,
+        gitOperations = NoopWorkflowGitOperations,
+        decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+        workflowSnapshotValidator = testWorkflowSnapshotValidator,
+        decompositionManifestValidator = testDecompositionManifestValidator,
+        decompositionManifestWriter = testDecompositionManifestWriter,
+        repositoryRoot = testRepositoryRoot,
+        goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
+      ),
     )
     val lookup = FeatureTaskContinuationLookupService(
       database,

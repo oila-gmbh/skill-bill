@@ -9,6 +9,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
+import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
 import skillbill.application.goalrunner.GoalOperatorDecisionService
 import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.GoalRunner
@@ -21,6 +22,7 @@ import skillbill.application.learning.LearningService
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.review.ReviewSnapshotPruneService
+import skillbill.application.runtime.RuntimeSingleton
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.McpRegistrationService
 import skillbill.application.scaffold.NativeAgentInstallService
@@ -36,7 +38,6 @@ import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
-import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
@@ -52,6 +53,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
 
+@RuntimeSingleton
 @Component
 abstract class RuntimeComponent(
   private val inputRuntimeContext: RuntimeContext,
@@ -65,7 +67,10 @@ abstract class RuntimeComponent(
   RuntimeComponentProvides7,
   RuntimeComponentProvides8,
   RuntimeComponentProvides9,
-  RuntimeComponentProvides10 {
+  RuntimeComponentProvides10,
+  RuntimeComponentProvides11,
+  RuntimeComponentProvides12,
+  RuntimeComponentProvides13 {
   @Provides @JvmSynthetic
   fun runtimeContext(): RuntimeContext = RuntimeComponentBindingsA1.runtimeContext(inputRuntimeContext)
 
@@ -81,7 +86,7 @@ abstract class RuntimeComponent(
   @Provides @JvmSynthetic
   fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = RuntimeComponentBindingsA1.optionalCallbacks(ctx)
 
-  @Provides @JvmSynthetic
+  @Provides @RuntimeSingleton @JvmSynthetic
   fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
     RuntimeComponentBindingsA1.databaseSessionFactory(context)
 

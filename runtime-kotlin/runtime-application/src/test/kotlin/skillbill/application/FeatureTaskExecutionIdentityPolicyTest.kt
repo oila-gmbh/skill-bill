@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import kotlin.test.Test
 import kotlin.test.assertContains

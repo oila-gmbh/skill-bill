@@ -1,8 +1,6 @@
 package skillbill.application.telemetry
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
-import skillbill.application.goalrunner.toRecord
 import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.telemetry.model.FeatureVerifyFinishedRequest

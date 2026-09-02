@@ -11,6 +11,7 @@ import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusResult
+import skillbill.application.testHarnessClock
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -23,6 +24,7 @@ import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
@@ -193,6 +195,8 @@ internal fun service(
     snapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    testHarnessClock,
+    NoopRuntimeDiagnostics,
   )
   val runtimeStatusService = FeatureTaskRuntimeStatusService(
     recorder = phaseRecorder,
@@ -212,6 +216,7 @@ internal fun service(
       ),
     ),
     featureTaskRuntimeStatusService = runtimeStatusService,
+    diagnostics = NoopRuntimeDiagnostics,
   )
   return IdeStatusService(
     database = database,

@@ -5,9 +5,11 @@ import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvel
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.manifest
+import skillbill.application.testHarnessClock
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
@@ -137,6 +139,8 @@ private class RefreshLivenessHarness(clock: Clock) {
     NoopRefreshLivenessSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    testHarnessClock,
+    NoopRuntimeDiagnostics,
   )
   val liveness = ChildAwareGoalPlanningRefreshLiveness(recorder, clock)
 

@@ -2,7 +2,7 @@ package skillbill.application.goalrunner.planning
 
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
-internal object GoalPlanningSweepConstants {
+object GoalPlanningSweepConstants {
   const val PHASE_PREPLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
   const val PHASE_PLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
   const val SHARED_CONTEXT_FIELD = "_goal_planning_shared_context"

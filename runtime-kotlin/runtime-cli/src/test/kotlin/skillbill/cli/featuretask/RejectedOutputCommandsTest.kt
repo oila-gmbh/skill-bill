@@ -8,6 +8,7 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import java.io.ByteArrayOutputStream
+import java.time.Clock
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -19,7 +20,7 @@ class RejectedOutputCommandsTest {
   @Test
   fun `metadata is safe by default and raw output is byte exact`() {
     val repository = CliDiagnosticRepository()
-    val service = RejectedOutputDiagnosticService(repository, { }, { })
+    val service = RejectedOutputDiagnosticService(repository, { }, { }, clock = Clock.systemUTC())
     val raw = byteArrayOf(0, -1, 10, 13, 0, 42)
     service.record(request(raw))
 
@@ -42,7 +43,7 @@ class RejectedOutputCommandsTest {
   @Test
   fun `raw output rejects ambiguous workflow selection`() {
     val repository = CliDiagnosticRepository()
-    val service = RejectedOutputDiagnosticService(repository, { }, { })
+    val service = RejectedOutputDiagnosticService(repository, { }, { }, clock = Clock.systemUTC())
     service.record(request(byteArrayOf(1), attempt = 1))
     service.record(request(byteArrayOf(2), attempt = 2))
 
@@ -57,7 +58,7 @@ class RejectedOutputCommandsTest {
   @Test
   fun `metadata rendering encodes control characters onto one line`() {
     val repository = CliDiagnosticRepository()
-    val service = RejectedOutputDiagnosticService(repository, { }, { })
+    val service = RejectedOutputDiagnosticService(repository, { }, { }, clock = Clock.systemUTC())
     service.record(request(byteArrayOf(1)).copy(reason = "invalid\nforged=value\u0000"))
     val output = ByteArrayOutputStream()
 

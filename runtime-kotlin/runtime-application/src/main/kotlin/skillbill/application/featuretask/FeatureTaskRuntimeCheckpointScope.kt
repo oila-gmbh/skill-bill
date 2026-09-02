@@ -2,14 +2,14 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import java.util.Locale
 
 private const val RUNTIME_PRIVATE_ROOT = ".skill-bill/"
 private const val RUNTIME_TRACKABLE_CONFIG = ".skill-bill/config.yaml"
-private const val SUBTASK_TRAILER_KEY = "Skill-Bill-Subtask"
 private const val MAX_REPORTED_PATHS = 10
 
-internal object FeatureTaskRuntimeCheckpointScope {
+object FeatureTaskRuntimeCheckpointScope {
   fun decide(input: FeatureTaskRuntimeCheckpointScopeInput): FeatureTaskRuntimeCheckpointDecision {
     val deleted = input.deletedPaths.filter(String::isNotBlank)
       .filterNot(::isRuntimePrivatePath)
@@ -53,14 +53,14 @@ internal object FeatureTaskRuntimeCheckpointScope {
     .sorted()
 }
 
-internal fun isRuntimePrivatePath(path: String): Boolean {
+fun isRuntimePrivatePath(path: String): Boolean {
   val normalized = normalizeForAliasComparison(path)
   if (normalized == RUNTIME_TRACKABLE_CONFIG) return false
   return normalized == RUNTIME_PRIVATE_ROOT.trimEnd('/') ||
     normalized.startsWith(RUNTIME_PRIVATE_ROOT)
 }
 
-internal fun phaseWrittenPaths(worktreeDeltaPaths: List<String>, phaseManifestPaths: List<String>): List<String> {
+fun phaseWrittenPaths(worktreeDeltaPaths: List<String>, phaseManifestPaths: List<String>): List<String> {
   val manifest = phaseManifestPaths.filter(String::isNotBlank)
     .filterNot(::isRuntimePrivatePath)
     .map(::normalizeForAliasComparison)
@@ -73,7 +73,7 @@ internal fun phaseWrittenPaths(worktreeDeltaPaths: List<String>, phaseManifestPa
     }.distinct().sorted()
 }
 
-internal fun reviewUntrackedExclusions(
+fun reviewUntrackedExclusions(
   baselineUntrackedPaths: List<String>,
   currentUntrackedPaths: List<String>,
   ownedPaths: List<String>,
@@ -84,12 +84,12 @@ internal fun reviewUntrackedExclusions(
   return (baselineUntrackedPaths + foreign).filter(String::isNotBlank).distinct().sorted()
 }
 
-internal fun adoptionWarning(branch: String, paths: List<String>): String =
+fun adoptionWarning(branch: String, paths: List<String>): String =
   "Feature-task-runtime checkpoint adopted owned path(s) ${formatCheckpointPaths(paths)} whose index or " +
     "working-tree content diverged from what this run wrote. The working-tree content is committed " +
     "to '$branch' as this workflow's work rather than blocking the run."
 
-internal fun normalizeForAliasComparison(path: String): String = path.trim().trimEnd('/').lowercase(Locale.ROOT)
+fun normalizeForAliasComparison(path: String): String = path.trim().trimEnd('/').lowercase(Locale.ROOT)
 
 private fun formatCheckpointPaths(paths: List<String>): String {
   val reported = paths.take(MAX_REPORTED_PATHS).joinToString(", ") { "'$it'" }
@@ -97,7 +97,7 @@ private fun formatCheckpointPaths(paths: List<String>): String {
   return if (overflow > 0) "$reported (+$overflow more)" else reported
 }
 
-internal class FeatureTaskRuntimeCheckpointMetadata(
+class FeatureTaskRuntimeCheckpointMetadata(
   val phaseId: String,
   val loopId: String?,
   val generation: Int,
@@ -111,37 +111,7 @@ internal class FeatureTaskRuntimeCheckpointMetadata(
   }.joinToString(" ")
 }
 
-internal data class FeatureTaskRuntimeSubtaskCommitIdentity(val issueKey: String, val subtaskId: String) {
-  init {
-    require(issueKey.isNotBlank()) { "FeatureTaskRuntimeSubtaskCommitIdentity.issueKey must be non-blank." }
-    require(subtaskId.isNotBlank()) { "FeatureTaskRuntimeSubtaskCommitIdentity.subtaskId must be non-blank." }
-  }
-
-  val trailer: String get() = "$SUBTASK_TRAILER_KEY: $issueKey/$subtaskId"
-
-  fun checkpointRefName(sequenceNumber: Int): String =
-    skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber)
-
-  fun matches(commitMessage: String): Boolean = parse(commitMessage) == this
-
-  companion object {
-    fun parse(commitMessage: String): FeatureTaskRuntimeSubtaskCommitIdentity? = commitMessage.lineSequence()
-      .map(String::trim)
-      .filter { it.startsWith("$SUBTASK_TRAILER_KEY:") }
-      .mapNotNull { line -> identityFrom(line.removePrefix("$SUBTASK_TRAILER_KEY:").trim()) }
-      .lastOrNull()
-
-    private fun identityFrom(value: String): FeatureTaskRuntimeSubtaskCommitIdentity? {
-      val segments = value.split('/')
-      if (segments.size != 2) return null
-      val (issueKey, subtaskId) = segments
-      if (issueKey.isBlank() || subtaskId.isBlank()) return null
-      return FeatureTaskRuntimeSubtaskCommitIdentity(issueKey, subtaskId)
-    }
-  }
-}
-
-internal object FeatureTaskRuntimeCheckpointMessage {
+object FeatureTaskRuntimeCheckpointMessage {
   fun build(
     issueKey: String,
     subtaskName: String?,

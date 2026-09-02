@@ -4,7 +4,7 @@ import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
 import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.testActivityStampWriter
-import skillbill.application.workflow.repoRoot
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,6 +21,8 @@ class GoalRunnerDirectRuntimeContinuationTest {
       manifestStore = store,
       outcomeStore = RecordingOutcomeStore(),
       activityStampWriter = testActivityStampWriter(),
+      clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -53,6 +55,8 @@ class GoalRunnerDirectRuntimeContinuationTest {
       manifestStore = store,
       outcomeStore = RecordingOutcomeStore(),
       activityStampWriter = testActivityStampWriter(),
+      clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(

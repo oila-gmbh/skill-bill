@@ -5,7 +5,6 @@ import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.writeDecompositionManifestText
 import skillbill.application.testDecompositionManifestValidator
-import skillbill.application.workflow.repoRoot
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask

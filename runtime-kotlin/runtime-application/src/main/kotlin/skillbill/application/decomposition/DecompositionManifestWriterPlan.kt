@@ -7,7 +7,7 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.decomposition.model.SpecSource
 import java.nio.file.Path
 
-internal fun parseSubtasks(
+fun parseSubtasks(
   planningResult: Map<String, Any?>,
   sourceLabel: String,
   specSource: SpecSource = specSource(planningResult, sourceLabel),
@@ -35,7 +35,7 @@ internal fun parseSubtasks(
   }
 }
 
-internal fun specSource(plan: Map<String, Any?>, sourceLabel: String = "<planning-result>"): SpecSource {
+fun specSource(plan: Map<String, Any?>, sourceLabel: String = "<planning-result>"): SpecSource {
   val raw = plan["spec_source"] ?: return SpecSource.LOCAL
   val value = raw as? String
     ?: invalidManifest(sourceLabel, "spec_source must be a string when present.")
@@ -60,7 +60,7 @@ private fun linearIssueId(item: Map<String, Any?>, index: Int, sourceLabel: Stri
   return value
 }
 
-internal fun parseDependencies(raw: Any?, sourceLabel: String, subtaskIndex: Int): List<DecompositionDependency> {
+fun parseDependencies(raw: Any?, sourceLabel: String, subtaskIndex: Int): List<DecompositionDependency> {
   if (raw == null) {
     return emptyList()
   }
@@ -85,7 +85,7 @@ internal fun parseDependencies(raw: Any?, sourceLabel: String, subtaskIndex: Int
   }
 }
 
-internal fun parentSpecPath(plan: Map<String, Any?>): String {
+fun parentSpecPath(plan: Map<String, Any?>): String {
   when (val rawParentPath = plan["parent_spec_path"]) {
     is String -> if (rawParentPath.isNotBlank()) return rawParentPath
     null -> Unit
@@ -99,7 +99,7 @@ internal fun parentSpecPath(plan: Map<String, Any?>): String {
   return Path.of(firstSpecPath).parent.resolve("spec.md").toString()
 }
 
-internal fun executionModel(plan: Map<String, Any?>): DecompositionExecutionModel {
+fun executionModel(plan: Map<String, Any?>): DecompositionExecutionModel {
   val raw = when (val value = plan["execution_model"]) {
     null -> DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK.wireValue
     is String -> value.takeIf(String::isNotBlank)
@@ -110,13 +110,13 @@ internal fun executionModel(plan: Map<String, Any?>): DecompositionExecutionMode
     ?: invalidManifest("<planning-result>", "execution_model '$raw' is not supported.")
 }
 
-internal fun baseBranch(plan: Map<String, Any?>, sourceLabel: String): String {
+fun baseBranch(plan: Map<String, Any?>, sourceLabel: String): String {
   val raw = plan["base_branch"] ?: return "main"
   return (raw as? String)?.takeIf(String::isNotBlank)
     ?: invalidManifest(sourceLabel, "base_branch must be a nonblank string when present.")
 }
 
-internal fun parseStackBranches(plan: Map<String, Any?>): List<DecompositionStackBranch> =
+fun parseStackBranches(plan: Map<String, Any?>): List<DecompositionStackBranch> =
   (plan["stack_branches"] as? List<*>).orEmpty().mapIndexed { index, raw ->
     val item = raw.asStringAnyMap("<planning-result>", "stack_branches[$index]")
     DecompositionStackBranch(

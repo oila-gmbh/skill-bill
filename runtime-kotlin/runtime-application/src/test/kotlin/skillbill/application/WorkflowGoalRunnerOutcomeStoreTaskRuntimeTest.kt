@@ -1,9 +1,9 @@
 package skillbill.application
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.goalrunner.outcomeStoreDeps
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
+import skillbill.application.phaseartifacts.phaseRecordsFrom
 import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.goalrunner.model.GoalAttemptLedgerAction

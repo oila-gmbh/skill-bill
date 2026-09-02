@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.goalrunner.GoalRunnerBackwardEdge
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 import java.nio.file.Path
 import kotlin.test.Test
@@ -17,6 +18,8 @@ class GoalRunnerLedgerRecorderBackwardEdgeTest {
       invokedAgentId = "claude",
       dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
     ),
+    testHarnessClock,
+    NoopRuntimeDiagnostics,
   )
 
   @Test

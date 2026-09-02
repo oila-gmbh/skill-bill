@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidGoalProgressEventSchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEvent
 import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
@@ -7,11 +8,13 @@ import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
 
-internal fun progressEventFrom(artifacts: Map<String, Any?>): GoalRunnerProgressEvent? =
+@OpenBoundaryMap("Legacy progress_event artifact decode for goal-runner progress recording")
+fun progressEventFrom(artifacts: Map<String, Any?>): GoalRunnerProgressEvent? =
   (artifacts["progress_event"] as? Map<*, *>)
     ?.toGoalRunnerProgressEventOrNull()
 
-internal fun declaredProgressEventFrom(artifacts: Map<String, Any?>): GoalProgressEvent? =
+@OpenBoundaryMap("Declared goal progress latest-event artifact decode")
+fun declaredProgressEventFrom(artifacts: Map<String, Any?>): GoalProgressEvent? =
   when (val raw = artifacts[GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY]) {
     null -> null
     is Map<*, *> -> raw.decodeDeclaredGoalProgressEvent(GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY)
@@ -22,7 +25,7 @@ internal fun declaredProgressEventFrom(artifacts: Map<String, Any?>): GoalProgre
     )
   }
 
-internal fun Map<*, *>.decodeDeclaredGoalProgressEvent(sourceLabel: String): GoalProgressEvent {
+fun Map<*, *>.decodeDeclaredGoalProgressEvent(sourceLabel: String): GoalProgressEvent {
   val eventKind = requiredProgressEventKind(sourceLabel)
   val workflowId = requiredNonBlankField(sourceLabel, "workflow_id")
   val workflowPhase = requiredNonBlankField(sourceLabel, "workflow_phase")
@@ -77,7 +80,7 @@ private fun Map<*, *>.buildDeclaredGoalProgressEvent(args: BuildDeclaredGoalProg
     throw InvalidGoalProgressEventSchemaError(args.sourceLabel, "<root>", error.message ?: "invalid event.", error)
   }
 
-internal fun Any?.asDeclaredGoalProgressInt(sourceLabel: String, fieldPath: String): Int {
+fun Any?.asDeclaredGoalProgressInt(sourceLabel: String, fieldPath: String): Int {
   val value = parseDeclaredGoalProgressInt(this, sourceLabel, fieldPath)
   requireNonNegativeDeclaredGoalProgressInt(value, sourceLabel, fieldPath)
   return value

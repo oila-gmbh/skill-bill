@@ -1,6 +1,7 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
+import skillbill.application.runtime.RuntimeSingleton
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
@@ -34,7 +35,7 @@ internal interface RuntimeComponentProvides7 {
   fun externalAgentAddonSourceConfigPort(store: FileExternalAgentAddonSourceConfigStore) =
     RuntimeComponentBindingsB3.externalAgentAddonSourceConfigPort(store)
 
-  @Provides @JvmSynthetic
+  @Provides @RuntimeSingleton @JvmSynthetic
   fun featureTaskRuntimeWorkerSupervisor(adapter: JdkFeatureTaskRuntimeWorkerSupervisor) =
     RuntimeComponentBindingsB3.featureTaskRuntimeWorkerSupervisor(adapter)
 

@@ -31,6 +31,7 @@ class GitCheckpointHistoryOperationsTest {
     write("foreign/Other.kt", "other\n")
     git("add", "-A")
     git("commit", "-m", "base")
+    git("checkout", "-b", "feat/checkpoint-history")
   }
 
   @AfterTest
@@ -74,6 +75,22 @@ class GitCheckpointHistoryOperationsTest {
     val amended = GitCheckpointHistoryOperations.amendHeadCommit(repo, before)
 
     assertFalse(amended.ok)
+    assertEquals(before, head())
+  }
+
+  // The accident this guards: a run whose branch resolution lands on an integration branch amends
+  // its tip, then force-pushes, replacing commits merged after the run started.
+  @Test
+  fun `amend refuses while HEAD sits on a protected branch`() {
+    git("checkout", "main")
+    val before = head()
+    write("owned/Base.kt", "amended\n")
+    git("add", "--", "owned/Base.kt")
+
+    val amended = GitCheckpointHistoryOperations.amendHeadCommit(repo, before)
+
+    assertFalse(amended.ok)
+    assertContains(amended.error.orEmpty(), "protected branch 'main'")
     assertEquals(before, head())
   }
 

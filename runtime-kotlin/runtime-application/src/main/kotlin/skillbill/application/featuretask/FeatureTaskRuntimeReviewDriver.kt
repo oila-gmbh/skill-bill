@@ -2,16 +2,14 @@ package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
-import skillbill.application.review.model.ParallelReviewLaneStatus
-import skillbill.application.review.model.ParallelReviewScope
+import skillbill.application.reviewevidence.model.ParallelReviewScope
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
@@ -21,6 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Path
+import java.time.Clock
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -28,18 +27,6 @@ import kotlin.time.Duration
 
 fun interface FeatureTaskRuntimeReviewDriver {
   fun run(request: ParallelCodeReviewRequest): ParallelCodeReviewResult
-
-  companion object {
-    val EMPTY: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver { request ->
-      ParallelCodeReviewResult(
-        mergeResult = ParallelReviewMergeResult(
-          findings = emptyList(),
-          formattedOutput = "verdict: approved",
-        ),
-        lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
-      )
-    }
-  }
 }
 
 internal data class FeatureTaskRuntimeReviewDriverAgents(
@@ -67,8 +54,8 @@ internal data class FeatureTaskRuntimeReviewCycleContext(
   val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
 )
 
-internal object FeatureTaskRuntimeReviewDriverMapper {
-  fun request(
+object FeatureTaskRuntimeReviewDriverMapper {
+  internal fun request(
     input: GoalSubtaskReviewInput,
     runInvariants: FeatureTaskRuntimeRunInvariants,
     agents: FeatureTaskRuntimeReviewDriverAgents,
@@ -101,12 +88,12 @@ internal object FeatureTaskRuntimeReviewDriverMapper {
   fun specPath(specReference: String): Path = Path.of(specReference)
 }
 
-internal object FeatureTaskRuntimeReviewEnvelope {
+object FeatureTaskRuntimeReviewEnvelope {
   private val CRITERION_GAP_KEYS = setOf("unmet_criteria", "gaps", "failing_criteria")
   private const val REVIEW_RUN_ID_SUFFIX_LENGTH = 4
   private const val SUMMARY_MAX_CHARS = 2_000
 
-  fun assemble(
+  internal fun assemble(
     result: ParallelCodeReviewResult,
     reviewRunId: String,
     cycle: FeatureTaskRuntimeReviewCycleContext,
@@ -162,8 +149,9 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     ?.let(JsonSupport::anyToStringAnyMap)
     .orEmpty()
 
-  fun mintReviewRunId(): String {
-    val stamp = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
+  fun mintReviewRunId(clock: Clock): String {
+    val stamp = LocalDateTime.ofInstant(clock.instant(), ZoneOffset.UTC)
+      .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
     val alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
     val suffix = CharArray(REVIEW_RUN_ID_SUFFIX_LENGTH) { alphabet.random() }.concatToString()
     return "rvw-$stamp-$suffix"
@@ -229,8 +217,8 @@ internal data class FeatureTaskRuntimeReviewDriverCycleOutcome(
   val verdict: FeatureTaskRuntimeVerdict,
 )
 
-internal object FeatureTaskRuntimeReviewDriverCycle {
-  fun assemble(
+object FeatureTaskRuntimeReviewDriverCycle {
+  internal fun assemble(
     result: ParallelCodeReviewResult,
     request: ParallelCodeReviewRequest,
     cycle: FeatureTaskRuntimeReviewCycleContext,
@@ -242,7 +230,7 @@ internal object FeatureTaskRuntimeReviewDriverCycle {
     return FeatureTaskRuntimeReviewDriverCycleOutcome(outputText, outcome.verdict)
   }
 
-  fun run(
+  internal fun run(
     driver: FeatureTaskRuntimeReviewDriver,
     request: ParallelCodeReviewRequest,
     cycle: FeatureTaskRuntimeReviewCycleContext,

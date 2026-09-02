@@ -103,3 +103,31 @@ internal fun Any?.toPositiveIntOrNull(key: String): Int? = when (this) {
 } else {
   goalRunnerControlSchemaError("field '$key' must be a positive integer or null.")
 }
+
+internal fun Map<String, Any?>.intIntMap(key: String): Map<Int, Int> {
+  val raw = this[key] ?: return emptyMap()
+  val map = JsonSupport.anyToStringAnyMap(raw)
+    ?: goalRunnerControlSchemaError("field '$key' must be an object.")
+  return map.entries.associate { (entryKey, value) ->
+    val subtaskId = entryKey.toIntOrNull()
+      ?: goalRunnerControlSchemaError("field '$key' keys must be integer strings.")
+    val retries = when (value) {
+      is Number -> value.toInt()
+      else -> goalRunnerControlSchemaError("field '$key' values must be integers.")
+    }
+    subtaskId to retries
+  }
+}
+
+internal fun Map<String, Any?>.intStringMap(key: String): Map<Int, String> {
+  val raw = this[key] ?: return emptyMap()
+  val map = JsonSupport.anyToStringAnyMap(raw)
+    ?: goalRunnerControlSchemaError("field '$key' must be an object.")
+  return map.entries.associate { (entryKey, value) ->
+    val subtaskId = entryKey.toIntOrNull()
+      ?: goalRunnerControlSchemaError("field '$key' keys must be integer strings.")
+    val text = value as? String
+      ?: goalRunnerControlSchemaError("field '$key' values must be strings.")
+    subtaskId to text
+  }
+}

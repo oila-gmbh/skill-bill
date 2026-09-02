@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
-
+import me.tatarka.inject.annotations.Inject
+import skillbill.application.agentoutput.stderrExcerpt
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
@@ -14,7 +15,6 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
@@ -25,14 +25,17 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import java.time.Clock
 
-internal class GoalRunnerLaunchReconciler(
+@Inject
+public class GoalRunnerLaunchReconciler(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val activityStampWriter: AgentActivityStampWriter,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val clock: Clock,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
-  fun subtaskLaunchRequest(args: SubtaskLaunchRequestArgs): GoalRunnerSubtaskLaunchRequest {
+  internal fun subtaskLaunchRequest(args: SubtaskLaunchRequestArgs): GoalRunnerSubtaskLaunchRequest {
     val issueKey = args.issueKey
     val subtaskId = args.subtaskId
     val request = args.request
@@ -54,6 +57,7 @@ internal class GoalRunnerLaunchReconciler(
       request = request,
       resolveWorkflowId = { tickReader.progressState()?.subtask?.workflowId?.takeIf(String::isNotBlank) },
       watermarkSeed = progressWatermark,
+      clock = clock,
       diagnostics = diagnostics,
     )
     val goalContinuation = goalContinuationContext(issueKey, subtaskId, request, assignedWorkflowId, reviewBaseline)
@@ -129,7 +133,7 @@ internal class GoalRunnerLaunchReconciler(
     }
   }
 
-  fun reconcileLaunchOutcome(
+  internal fun reconcileLaunchOutcome(
     attemptedState: GoalRunnerManifestState,
     launchOutcome: AgentRunLaunchOutcome,
     subtaskId: Int,
@@ -221,7 +225,7 @@ internal class GoalRunnerLaunchReconciler(
   }
 }
 
-internal fun AgentRunLaunchOutcome.toGoalRunnerLaunchFacts(): GoalRunnerLaunchFacts = when (this) {
+fun AgentRunLaunchOutcome.toGoalRunnerLaunchFacts(): GoalRunnerLaunchFacts = when (this) {
   is AgentRunLaunchFacts -> GoalRunnerLaunchFacts(
     timedOut = timedOut,
     interrupted = interrupted,

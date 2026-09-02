@@ -14,7 +14,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 // FeatureTaskRuntimePhasePromptComposer so the composer object stays within its size budget.
 // Validate Task-line specialization lives in FeatureTaskRuntimePhasePromptValidateDirectives.
 
-internal fun implementationContinuationDirective(
+fun implementationContinuationDirective(
   phaseId: String,
   continuation: FeatureTaskRuntimeImplementationContinuation?,
 ): String {
@@ -53,7 +53,7 @@ internal fun implementationContinuationDirective(
  * rejected response. Retryable-terminal and incomplete-work paths must not carry it, so they never
  * receive a raw-output repair section.
  */
-internal class PriorAttemptCorrection private constructor(
+class PriorAttemptCorrection private constructor(
   private val reason: String,
   private val kind: Kind,
   val correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
@@ -93,7 +93,7 @@ internal class PriorAttemptCorrection private constructor(
  * output was rejected invites a re-serialization of the same two entries, which is exactly what has
  * to stop happening — what is missing is repair work on the named findings, not a better document.
  */
-internal fun findingCoverageDirective(priorFindingCoverage: String?): String {
+fun findingCoverageDirective(priorFindingCoverage: String?): String {
   if (priorFindingCoverage.isNullOrBlank()) return ""
   return """
     ## Findings still owed — continue this round
@@ -113,7 +113,7 @@ internal fun findingCoverageDirective(priorFindingCoverage: String?): String {
  * output was rejected and must be re-emitted describes an event that did not happen and invites a
  * cosmetic re-serialization of the same blocked state instead of an attempt at the blocker itself.
  */
-internal fun terminalRetryDirective(priorTerminalFailure: String?): String {
+fun terminalRetryDirective(priorTerminalFailure: String?): String {
   if (priorTerminalFailure.isNullOrBlank()) return ""
   return """
     ## Previous attempt reported a retryable block — try again
@@ -143,7 +143,7 @@ internal data class ReviewExecutionDirectiveInputs(
 
 // Emits for every commit phase: the runtime and agent never stage feature specs. A human operator
 // may already have committed them; leave those HEAD files alone and leave remaining spec dirt local.
-internal fun commitExclusionDirective(phaseId: String, issueKey: String): String {
+fun commitExclusionDirective(phaseId: String, issueKey: String): String {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH) {
     return ""
   }
@@ -159,7 +159,7 @@ internal fun commitExclusionDirective(phaseId: String, issueKey: String): String
   """.trimIndent()
 }
 
-internal fun goalContinuationDirective(phaseId: String, suppressDecomposition: Boolean): String {
+fun goalContinuationDirective(phaseId: String, suppressDecomposition: Boolean): String {
   if (!suppressDecomposition || phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN) {
     return ""
   }
@@ -192,7 +192,7 @@ private const val AUDIT_STICKY_REJUSTIFICATION_SENTENCE: String =
     "earlier audit value string requires explicit re-justification — name what the prior implement " +
     "claimed and why the tree still fails it."
 
-internal const val AUDIT_READONLY_EVIDENCE_SENTENCE: String =
+const val AUDIT_READONLY_EVIDENCE_SENTENCE: String =
   "All evidence is read-only repository facts: never run a build, a test, or any " +
     "other command as audit evidence; validation owns test execution and failures."
 
@@ -212,7 +212,7 @@ private const val IMPLEMENT_GATE_PROOF_REPAIR_SENTENCE: String =
     "re-run that same gate once at the end to confirm. Otherwise treat repair evidence as read-only " +
     "repository facts and do not run builds or tests here."
 
-internal val phaseDirectives: Map<String, String> = mapOf(
+val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN to
     "Produce the scaled pre-planning digest for the resolved feature size. Do not modify " +
     "repository files during this phase. Emit produced_outputs with a non-blank value string " +
@@ -323,7 +323,7 @@ internal val phaseDirectives: Map<String, String> = mapOf(
  * gate-proof ACs returns the shared static wording byte-for-byte; memory swaps the blank-slate
  * sentence; gate-proof ACs swap the absolute no-command evidence sentence.
  */
-internal fun auditPhaseTaskDirective(
+fun auditPhaseTaskDirective(
   memory: FeatureTaskRuntimePriorGapMemory?,
   acceptanceCriteria: List<String> = emptyList(),
 ): String {
@@ -337,10 +337,7 @@ internal fun auditPhaseTaskDirective(
   return text
 }
 
-internal fun implementPhaseTaskDirective(
-  auditGapImplement: Boolean,
-  acceptanceCriteria: List<String>,
-): String {
+fun implementPhaseTaskDirective(auditGapImplement: Boolean, acceptanceCriteria: List<String>): String {
   val base = phaseDirectives.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
   if (
     auditGapImplement &&

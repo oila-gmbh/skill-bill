@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.review.model.ReviewClaimVerificationRunRequest
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
+import skillbill.application.testHarnessClock
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -155,7 +156,7 @@ class ReviewClaimVerificationRunnerTest {
   private fun runner(
     launcher: GoalRunnerSubtaskLauncher,
     validator: ReviewContextEnvelopeValidator = ReviewContextEnvelopeValidator { _, _ -> },
-  ) = ReviewClaimVerificationRunner(launcher, validator)
+  ) = ReviewClaimVerificationRunner(launcher, validator, testHarnessClock)
 
   private fun facts(request: GoalRunnerSubtaskLaunchRequest, stdout: String) = AgentRunLaunchFacts(
     agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),

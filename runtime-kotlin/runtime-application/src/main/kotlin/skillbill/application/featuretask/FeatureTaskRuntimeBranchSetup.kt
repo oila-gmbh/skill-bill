@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.decomposition.defaultFeatureBranch
 import skillbill.application.decomposition.issueAndFeature
+import skillbill.ports.workflow.gitops.ProtectedBranches
 import java.nio.file.Path
 
 /**
@@ -17,8 +18,8 @@ import java.nio.file.Path
  * guard mirrors `GoalRunner` (`PROTECTED_GOAL_BRANCHES` + `protectedBranchName`) so a run never
  * proceeds on `main`/`master`/`trunk`.
  */
-internal object FeatureTaskRuntimeBranchSetup {
-  private val PROTECTED_BRANCHES: Set<String> = setOf("main", "master", "trunk")
+object FeatureTaskRuntimeBranchSetup {
+  private val PROTECTED_BRANCHES: Set<String> = ProtectedBranches.names
   private const val DEFAULT_BASE_BRANCH: String = "main"
 
   /**
@@ -27,7 +28,7 @@ internal object FeatureTaskRuntimeBranchSetup {
    * [issueKey] is validated against the parsed issue key rather than mixed into the branch name, so a
    * caller-supplied key can never produce a branch that diverges from `defaultFeatureBranch`.
    */
-  fun targetBranch(issueKey: String, specReference: String): FeatureTaskRuntimeTargetBranch {
+  internal fun targetBranch(issueKey: String, specReference: String): FeatureTaskRuntimeTargetBranch {
     val parentName = Path.of(specReference).parent?.fileName?.toString().orEmpty()
     if (parentName.isBlank()) {
       return FeatureTaskRuntimeTargetBranch.invalid(
@@ -56,7 +57,11 @@ internal object FeatureTaskRuntimeBranchSetup {
    * - When the target branch cannot be derived (malformed spec reference or issue-key mismatch),
    *   returns an invalid decision so the runner can block loudly.
    */
-  fun decide(issueKey: String, specReference: String, currentBranch: String): FeatureTaskRuntimeBranchDecision {
+  internal fun decide(
+    issueKey: String,
+    specReference: String,
+    currentBranch: String,
+  ): FeatureTaskRuntimeBranchDecision {
     val normalizedCurrent = currentBranch.trim()
     val mustCreate = normalizedCurrent.isBlank() || protectedBranchName(normalizedCurrent) != null
     if (!mustCreate) {
@@ -72,7 +77,7 @@ internal object FeatureTaskRuntimeBranchSetup {
     } ?: FeatureTaskRuntimeBranchDecision.invalid(requireNotNull(target.invalidReason))
   }
 
-  fun goalContinuationDecision(goalBranch: String): FeatureTaskRuntimeBranchDecision {
+  internal fun goalContinuationDecision(goalBranch: String): FeatureTaskRuntimeBranchDecision {
     val normalized = goalBranch.trim()
     val protected = protectedBranchName(normalized)
     return when {

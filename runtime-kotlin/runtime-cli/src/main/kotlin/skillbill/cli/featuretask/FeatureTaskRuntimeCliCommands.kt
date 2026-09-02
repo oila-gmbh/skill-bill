@@ -9,13 +9,13 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
-import com.github.ajalt.clikt.parameters.types.restrictTo
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.invokingAgentResolutionHelp
+import skillbill.cli.goal.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
 import skillbill.cli.telemetry.drainTelemetryOnCompletion
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
@@ -33,8 +33,10 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   internal val maxWallClockMinutes by option(
     "--max-wall-clock-minutes",
     "--timeout-minutes",
-    help = "Optional per-phase wall-clock cap in minutes (must be >= 1). Default is no wall-clock cap.",
-  ).int().restrictTo(min = 1)
+    help = "Per-phase wall-clock cap in minutes (default " +
+      "$DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES). Hard ceiling even when a child process is still " +
+      "alive. Pass 0 to disable.",
+  ).int().default(DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES)
   internal val monitor by option(
     "--monitor",
     help = "Tee phase agent output and structured progress to this terminal.",
@@ -160,7 +162,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           environment = state.environment,
           dbPathOverride = state.dbOverride,
           repoRoot = prepared.repoRoot,
-          timeout = maxWallClockMinutes?.minutes,
+          timeout = maxWallClockMinutes.takeIf { it > 0 }?.minutes,
           requestedCodeReviewMode = requestedReviewMode,
           goalContinuation = goalContinuation,
           operatorDecision = requestedOperatorDecision(),

@@ -1,9 +1,9 @@
 package skillbill.application.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
-import skillbill.application.goalrunner.reviewRunIdOf
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.application.subtaskreview.reviewRunIdOf
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.review.model.ReviewFindingVerdict
@@ -16,7 +16,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 
-internal class FeatureTaskRuntimeReviewGenerationRecorder(
+class FeatureTaskRuntimeReviewGenerationRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   private val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,

@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.GoalRunnerWorkerSubtaskRequestParser
 import skillbill.goalrunner.GoalRunnerWorkerSubtaskScheduler
@@ -13,11 +14,12 @@ import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.workflow.decomposition.model.DecompositionManifest
 
-internal class GoalRunnerWorkerRequestHandler(
+@Inject
+public class GoalRunnerWorkerRequestHandler(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
 ) {
-  fun handle(
+  internal fun handle(
     state: GoalRunnerManifestState,
     launchOutcome: AgentRunLaunchOutcome,
     subtaskId: Int,
@@ -106,7 +108,7 @@ internal data class GoalRunnerWorkerRequestHandlingResult(
   val operatorConfirmationStop: GoalRunnerReconciledOutcome.Stop? = null,
 )
 
-internal fun DecompositionManifest.workflowIdFor(subtaskId: Int): String? =
+fun DecompositionManifest.workflowIdFor(subtaskId: Int): String? =
   subtasks.firstOrNull { subtask -> subtask.id == subtaskId }?.workflowId?.takeIf(String::isNotBlank)
 
 private data class WorkerLaunchOutput(

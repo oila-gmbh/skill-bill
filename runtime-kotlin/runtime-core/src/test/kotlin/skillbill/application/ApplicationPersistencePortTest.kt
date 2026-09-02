@@ -8,6 +8,7 @@ import skillbill.application.telemetry.TelemetryService
 import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.model.EnvironmentContext
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import java.nio.file.Files
@@ -106,6 +107,7 @@ class ApplicationPersistencePortTest {
         FakeTelemetrySettingsProvider(enabled = false),
         FakeReviewInputSource,
         EmptyReviewAttributionPort,
+        NoopRuntimeDiagnostics,
       )
 
     val result =
@@ -172,6 +174,7 @@ class ApplicationPersistencePortTest {
       FakeTelemetrySettingsProvider(enabled = false),
       FakeReviewInputSource,
       EmptyReviewAttributionPort,
+      NoopRuntimeDiagnostics,
     )
 
     service.importReview(input = "-", dbOverride = null)
@@ -198,6 +201,7 @@ class ApplicationPersistencePortTest {
       FakeTelemetrySettingsProvider(enabled = false),
       FakeReviewInputSource,
       ThrowingPlanReviewAttributionPort,
+      NoopRuntimeDiagnostics,
     )
 
     service.importReview(input = "-", dbOverride = null)

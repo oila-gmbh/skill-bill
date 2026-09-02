@@ -1,7 +1,8 @@
 package skillbill.application.review
-
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewWorkerKind.GENERIC
+import skillbill.application.reviewevidence.ReviewChangedFileEvidence
+import skillbill.application.reviewevidence.ReviewDiffEvidence
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
@@ -16,11 +17,11 @@ import skillbill.review.plan.model.ReviewRootLanes
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 
-internal class ParallelCodeReviewRunnerRubricPlanning(
+class ParallelCodeReviewRunnerRubricPlanning(
   private val reviewRubricResolver: ReviewRubricResolver,
   private val installedPackCatalog: InstalledPlatformPackCatalogPort,
 ) {
-  fun resolvePlannedRubrics(
+  internal fun resolvePlannedRubrics(
     evidence: ReviewDiffEvidence,
     routedManifests: List<PlatformManifest>,
     manifests: List<PlatformManifest>,

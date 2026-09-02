@@ -1,13 +1,14 @@
 package skillbill.application.review
-
-import skillbill.application.evidence.SharedReviewEvidenceProjection
-import skillbill.application.evidence.SharedReviewEvidenceQuery
-import skillbill.application.evidence.SharedReviewEvidenceResolution
-import skillbill.application.featuretask.RuntimeOwnedPersistenceBoundary
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelReviewLaneStatus
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
+import skillbill.application.reviewevidence.ReviewCommitRange
+import skillbill.application.reviewevidence.ReviewDiffEvidence
+import skillbill.application.reviewevidence.SharedReviewEvidenceProjection
+import skillbill.application.reviewevidence.SharedReviewEvidenceQuery
+import skillbill.application.reviewevidence.SharedReviewEvidenceResolution
+import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.ports.config.RepoLocalConfigPort
@@ -33,23 +34,23 @@ import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageReached
 import java.nio.file.Path
-import java.time.Instant
 
 internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPlanningDeps) {
-  internal val diffResolver: DiffResolverPort = deps.diffResolver
-  internal val repoLocalConfig: RepoLocalConfigPort = deps.repoLocalConfig
+  val diffResolver: DiffResolverPort = deps.diffResolver
+  val repoLocalConfig: RepoLocalConfigPort = deps.repoLocalConfig
   private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator = deps.reviewContextEnvelopeValidator
   private val reviewSpecialistContractProvider: ReviewSpecialistContractProvider =
     deps.reviewSpecialistContractProvider
-  internal val installedPackCatalog: InstalledPlatformPackCatalogPort = deps.installedPackCatalog
+  val installedPackCatalog: InstalledPlatformPackCatalogPort = deps.installedPackCatalog
   private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort = deps.sharedEvidenceResolver
   private val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
     deps.sharedEvidenceLocatorReader
   private val specIntentProjectionResolver: SpecIntentProjectionResolver = deps.specIntentProjectionResolver
-  internal val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary = deps.runtimeOwnedPersistence
+  val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary = deps.runtimeOwnedPersistence
   private val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning = deps.rubricPlanning
+  private val clock = deps.clock
 
-  fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewInitialRun {
+  internal fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewInitialRun {
     val agent1 = resolveAgent(originalRequest.agent1Id, "--agent1")
     val revisions = resolveReviewRevisions(originalRequest)
     val sharedEvidence = SharedReviewEvidenceResolution(sharedEvidenceResolver, diffResolver).resolve(
@@ -143,7 +144,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
           ReviewStageBoundary(
             stage = ReviewStage.ADJUDICATION,
             reached = ReviewStageReached.NOT_REACHED,
-            recordedAt = Instant.now().toString(),
+            recordedAt = clock.instant().toString(),
             contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
           ),
         )
@@ -282,7 +283,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
     ),
   )
 
-  internal fun currentHeadBranchName(repoRoot: Path): String = diffResolver.runProcess(
+  fun currentHeadBranchName(repoRoot: Path): String = diffResolver.runProcess(
     listOf("git", "rev-parse", "--abbrev-ref", "HEAD"),
     repoRoot,
   )?.trim().orEmpty()

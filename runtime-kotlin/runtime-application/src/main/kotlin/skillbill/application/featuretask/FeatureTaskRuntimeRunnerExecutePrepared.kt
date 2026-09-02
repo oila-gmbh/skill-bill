@@ -4,11 +4,13 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeCrashReconcilia
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFinishedTelemetryContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.featuretask.model.RemediationBaseBlocked
+import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 
-internal fun FeatureTaskRuntimeRunner.buildExecutePreparedRunTelemetryContext(
+fun FeatureTaskRuntimeRunner.buildExecutePreparedRunTelemetryContext(
   runRequest: FeatureTaskRuntimeRunRequest,
   telemetrySessionId: String,
   reconciliation: FeatureTaskRuntimeCrashReconciliationResult,
@@ -30,7 +32,7 @@ internal fun FeatureTaskRuntimeRunner.buildExecutePreparedRunTelemetryContext(
   crashReconciliation = { reconciliation },
 )
 
-internal fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
+fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
   runRequest: FeatureTaskRuntimeRunRequest,
   specSource: SpecSource,
   transitions: FeatureTaskRuntimeTransitionDeclaration,
@@ -61,13 +63,15 @@ internal fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
   )
   val loop = FeatureTaskRuntimeRunLoop(
     FeatureTaskRuntimeRunLoopDependencies(
-      recorder,
-      goalContinuationRecorder,
-      outputValidator,
-      phaseGates,
-      subtaskLauncher,
-      phaseSettlementService,
-      activityStampWriter,
+      recorder = recorder,
+      goalContinuationRecorder = goalContinuationRecorder,
+      outputValidator = outputValidator,
+      phaseGates = phaseGates,
+      subtaskLauncher = subtaskLauncher,
+      phaseSettlementService = phaseSettlementService,
+      activityStampWriter = activityStampWriter,
+      clock = dependencies.clock,
+      collaborators = runLoopCollaborators,
     ),
     FeatureTaskRuntimeRunLoopContext(
       runRequest,
@@ -88,7 +92,7 @@ internal fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
   return loop.report()
 }
 
-internal fun FeatureTaskRuntimeRunner.finalizeExecutePreparedRunReport(
+fun FeatureTaskRuntimeRunner.finalizeExecutePreparedRunReport(
   runRequest: FeatureTaskRuntimeRunRequest,
   report: FeatureTaskRuntimeRunReport,
   specSource: SpecSource,

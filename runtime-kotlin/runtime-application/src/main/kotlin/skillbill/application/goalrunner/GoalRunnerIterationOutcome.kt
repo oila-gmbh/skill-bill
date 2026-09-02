@@ -21,11 +21,9 @@ internal class GoalRunnerIterationOutcome(
   private val progressReader get() = deps.progressReader
   private val clock get() = deps.clock
   private val phaseRecorder get() = deps.phaseRecorder
-  private val validationQualityRetries get() = pendingState.validationQualityRetries
-  private val pendingReAttemptCause get() = pendingState.pendingReAttemptCause
-  private val pendingCausingLoopEntry get() = pendingState.pendingCausingLoopEntry
+  private val validationQualityState get() = pendingState.validationQualityState
 
-  fun stoppedIteration(args: StoppedIterationArgs): GoalRunnerIterationResult {
+  internal fun stoppedIteration(args: StoppedIterationArgs): GoalRunnerIterationResult {
     val state = args.state
     val subtaskId = args.subtaskId
     val reconciled = args.reconciled
@@ -145,7 +143,7 @@ internal class GoalRunnerIterationOutcome(
     )
   }
 
-  fun completedIteration(args: CompletedIterationArgs): GoalRunnerIterationResult {
+  internal fun completedIteration(args: CompletedIterationArgs): GoalRunnerIterationResult {
     val state = args.state
     val subtaskId = args.subtaskId
     val reconciled = args.reconciled
@@ -252,8 +250,8 @@ internal class GoalRunnerIterationOutcome(
         ),
       )
     }
-    if (reAttemptCause != null) pendingReAttemptCause[subtaskId] = reAttemptCause
-    causingLoopEntry?.let { pendingCausingLoopEntry[subtaskId] = it }
+    if (reAttemptCause != null) validationQualityState.storePendingReAttemptCause(subtaskId, reAttemptCause)
+    causingLoopEntry?.let { validationQualityState.storePendingCausingLoopEntry(subtaskId, it) }
   }
 
   private fun validationRetryIteration(
@@ -266,11 +264,11 @@ internal class GoalRunnerIterationOutcome(
     if (!stoppedOutcome.isRecoverableValidationBlock(phaseRecorder, request.dbPathOverride)) {
       return null
     }
-    val priorRetries = validationQualityRetries[subtaskId] ?: 0
+    val priorRetries = validationQualityState.validationQualityRetryCount(subtaskId)
     if (priorRetries >= MAX_VALIDATION_QUALITY_RETRIES) {
       return null
     }
-    validationQualityRetries[subtaskId] = priorRetries + 1
+    validationQualityState.incrementValidationQualityRetry(subtaskId)
     return GoalRunnerIterationResult(
       state = manifestStore.save(
         state.copy(manifest = blocked.withValidationQualityRetrySubtask(subtaskId)),

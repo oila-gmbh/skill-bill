@@ -23,7 +23,7 @@ import skillbill.workflow.decomposition.model.SpecSource.LINEAR
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 
-internal class GoalPreflightGateBlockBuilder(
+class GoalPreflightGateBlockBuilder(
   private val manifestStore: GoalRunnerManifestStore,
   private val agentAddonSelectionPort: AgentAddonSelectionPort,
   private val externalAgentAddonSourceConfigPort: ExternalAgentAddonSourceConfigPort,

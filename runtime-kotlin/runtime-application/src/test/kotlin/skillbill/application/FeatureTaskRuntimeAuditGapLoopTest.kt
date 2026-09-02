@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.ApprovingReviewDriverStub
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
@@ -117,7 +118,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           commitMessagesObservedAtReview = git.createCommitMessages + git.amendCommitMessages
-          FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+          ApprovingReviewDriverStub.run(request)
         },
       ).copy(launcher = launcher),
     )

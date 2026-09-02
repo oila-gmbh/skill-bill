@@ -7,6 +7,7 @@ import skillbill.application.goalrunner.planning.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.planning.DurableGoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.planning.DurableGoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.planning.LaunchAlignedGoalPlanningStatusReasonCoherence
+import skillbill.application.runtime.RuntimeSingleton
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
@@ -27,7 +28,7 @@ internal interface RuntimeComponentProvides3 {
   fun goalRunnerExecutionCoordinator(coordinator: DefaultGoalRunnerExecutionCoordinator) =
     RuntimeComponentBindingsA4.goalRunnerExecutionCoordinator(coordinator)
 
-  @Provides @JvmSynthetic
+  @Provides @RuntimeSingleton @JvmSynthetic
   fun goalPlanningAttemptRecorder(recorder: DurableGoalPlanningAttemptRecorder) =
     RuntimeComponentBindingsA4.goalPlanningAttemptRecorder(recorder)
 
@@ -48,5 +49,5 @@ internal interface RuntimeComponentProvides3 {
     RuntimeComponentBindingsA5.goalLifecycleTelemetryEmitter(service)
 
   @Provides @JvmSynthetic
-  fun runtimeClock() = RuntimeComponentBindingsA5.runtimeClock()
+  fun runtimeClock() = RuntimeComponentBindingsA6.runtimeClock()
 }

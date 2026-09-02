@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.ApprovingReviewDriverStub
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.featuretask.model.FeatureTaskRuntimeModelAssignment
@@ -301,7 +302,7 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
       RuntimeHarnessConfig(
         reviewDriver = FeatureTaskRuntimeReviewDriver { request ->
           capturedAgent1 = request.agent1Id
-          FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+          ApprovingReviewDriverStub.run(request)
         },
       ).copy(
         agentAssignment = FeatureTaskRuntimeAgentAssignment(

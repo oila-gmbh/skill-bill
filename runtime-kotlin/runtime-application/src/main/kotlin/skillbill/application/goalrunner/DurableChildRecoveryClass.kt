@@ -19,7 +19,7 @@ internal fun classifyDurableChild(progress: GoalRunnerWorkflowProgress?): Durabl
     else -> DurableChildRecoveryClass.INCOMPATIBLE_TERMINAL // untrusted durable workflow status wire value
   }
 
-internal fun scopedChildRecoveryCommand(issueKey: String, subtaskId: Int): String =
+fun scopedChildRecoveryCommand(issueKey: String, subtaskId: Int): String =
   "skill-bill goal reset $issueKey --subtask $subtaskId --delete-child-workflow"
 
 /**
@@ -28,5 +28,5 @@ internal fun scopedChildRecoveryCommand(issueKey: String, subtaskId: Int): Strin
  * one re-imports the stale bytes and blocks again. Scoped replan is the command that both regenerates
  * the subtask's plan and drops the stale child, so it is what a planning-import conflict advertises.
  */
-internal fun staleChildPlanningRecoveryCommand(issueKey: String, subtaskId: Int): String =
+fun staleChildPlanningRecoveryCommand(issueKey: String, subtaskId: Int): String =
   "skill-bill goal replan $issueKey --subtask $subtaskId"

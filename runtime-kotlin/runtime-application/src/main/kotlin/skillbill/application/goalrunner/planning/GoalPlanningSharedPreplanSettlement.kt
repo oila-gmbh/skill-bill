@@ -1,11 +1,9 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
-import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 
 internal sealed class SharedPreplanSettlement {
   class Ready(
@@ -22,7 +20,7 @@ internal data class RefreshedSharedPreplan(
   val checkpoint: SharedGoalPreplanCheckpoint,
 )
 
-internal class RefreshRefused(val reason: String) : RuntimeException(reason)
+class RefreshRefused(val reason: String) : RuntimeException(reason)
 
 internal fun DefaultGoalPlanningSweep.settleSharedPreplan(args: SharedPreplanSettlementArgs): SharedPreplanSettlement {
   var working = args.shared
@@ -33,7 +31,7 @@ internal fun DefaultGoalPlanningSweep.settleSharedPreplan(args: SharedPreplanSet
       return SharedPreplanSettlement.Halt(incompatibleProvenance(working, recoverability.recoveryKind))
     is GoalPlanningProvenanceRecoverability.Reuse -> {
       val settled = args.existingShared
-        ?: produceSharedPreplan(working, args.request, recoverability.provenance)
+        ?: produceSharedPreplan(this, working, args.request, recoverability.provenance)
           .getOrElse { error ->
             return SharedPreplanSettlement.Halt(
               stopped(working, 0, error.message.orEmpty(), GoalPlanningSweepConstants.PHASE_PREPLAN),
@@ -204,7 +202,7 @@ internal fun DefaultGoalPlanningSweep.refreshStaleSharedPreplan(
     throw RefreshRefused(reason)
   }
   val refreshShared = shared.copy(planningPacket = freshPlanningPacket(shared, state))
-  val produced = produceSharedPreplanCheckpoint(refreshShared, request, currentProvenance)
+  val produced = produceSharedPreplanCheckpoint(this, refreshShared, request, currentProvenance)
     .getOrElse { throw it }
   val savedValueHash = preplanProseValueHash(existing.preplanPayload)
   val newValueHash = preplanProseValueHash(produced.preplanPayload)
@@ -235,31 +233,4 @@ internal fun DefaultGoalPlanningSweep.refreshStaleSharedPreplan(
     )
     RefreshedSharedPreplan(currentProvenance, replaced)
   }
-}
-
-internal fun DefaultGoalPlanningSweep.freshPlanningPacket(
-  shared: GoalPlanningSharedContext,
-  state: GoalRunnerManifestState,
-): Map<String, Any?> {
-  val discovered = contextDiscovery.discover(shared.repoRoot)
-  val decomposition = manifestFileStore.readText(
-    resolvedGovernedPath(
-      shared.repoRoot,
-      state.manifest.parentSpecPath.substringBeforeLast("/") + "/" + DECOMPOSITION_MANIFEST_FILENAME,
-    ),
-  )
-  val packet = linkedMapOf<String, Any?>(
-    "packet_version" to GoalPlanningSharedContextPacket.VERSION,
-    "repository_identity" to shared.repositoryIdentity,
-    "normalized_issue_key" to shared.normalizedIssueKey,
-    "parent_spec_path" to state.manifest.parentSpecPath,
-    "parent_spec" to shared.parentSpec.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
-    "decomposition_manifest" to decomposition.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
-    "boundary_memory" to GoalPlanningSharedContextPacket.catalog(discovered),
-    "validation_guidance" to discovered.validationGuidance.take(
-      GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS,
-    ),
-    "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(state.manifest.subtasks),
-  )
-  return packet + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(packet))
 }

@@ -22,12 +22,13 @@ import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewStage
 import java.nio.file.Path
-import java.time.Instant
+import java.time.Clock
 import kotlin.time.Duration
 
-internal class ReviewSpecAdjudicationRunner(
+class ReviewSpecAdjudicationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
+  private val clock: Clock,
 ) {
   fun run(request: ReviewSpecAdjudicationRunRequest): ReviewSpecAdjudicationOutcome {
     if (request.projection == null || request.packet == null) {
@@ -35,7 +36,7 @@ internal class ReviewSpecAdjudicationRunner(
     }
     val survivorState = resolveAdjudicationSurvivors(request)
     survivorState.earlyOutcome?.let { return it }
-    val recordedAt = Instant.now().toString()
+    val recordedAt = clock.instant().toString()
     val launched = survivorState.pending.map { finding ->
       when (
         val job = prepareLaunch(

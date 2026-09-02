@@ -5,7 +5,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 
-internal data class FeatureTaskRuntimeBriefingProjectionInputs(
+data class FeatureTaskRuntimeBriefingProjectionInputs(
   val handoff: FeatureTaskRuntimePhaseHandoff,
   val declarations: List<PhaseHandoffProjectionDeclaration>,
   val workflowId: String?,

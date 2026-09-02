@@ -2,10 +2,11 @@ package skillbill.application.goalrunner.planning
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.planning.model.GoalPlanningAttemptRecord
+import skillbill.application.runtime.RuntimeSingleton
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.workflow.goal.model.GoalProgressEvent
-import java.time.Instant
+import java.time.Clock
 
 fun interface GoalPlanningAttemptRecorder {
   fun record(attempt: GoalPlanningAttemptRecord)
@@ -15,9 +16,11 @@ fun interface GoalPlanningAttemptRecorder {
   }
 }
 
+@RuntimeSingleton
 @Inject
 class DurableGoalPlanningAttemptRecorder(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  private val clock: Clock,
 ) : GoalPlanningAttemptRecorder {
   private val nextSequenceByWorkflow = mutableMapOf<String, Int>()
 
@@ -37,7 +40,7 @@ class DurableGoalPlanningAttemptRecorder(
               ?.plus(1)
               ?: 0
           },
-          timestamp = Instant.now().toString(),
+          timestamp = clock.instant().toString(),
           stepId = attempt.phaseId,
           operationName = "${attempt.phaseId}:${attempt.subtaskId}:attempt:${attempt.attempt}",
           operationKind = "planning_projection_attempt",

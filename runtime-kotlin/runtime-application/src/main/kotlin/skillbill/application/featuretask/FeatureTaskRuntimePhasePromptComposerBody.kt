@@ -3,10 +3,10 @@ package skillbill.application.featuretask
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 
-internal fun composePhasePrompt(inputs: FeatureTaskRuntimePhasePromptComposeInputs): String =
+fun composePhasePrompt(inputs: FeatureTaskRuntimePhasePromptComposeInputs): String =
   phasePromptSections(inputs).filter(String::isNotBlank).joinToString(separator = "\n\n")
 
-internal fun phasePromptSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): List<String> {
+fun phasePromptSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): List<String> {
   requireComposableInputs(
     issueKey = inputs.issueKey,
     priorSchemaFailure = inputs.priorSchemaFailure,

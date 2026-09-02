@@ -445,17 +445,45 @@ class CliGoalWatchRuntimeTest {
 
 class CliGoalExecutionOptionsTest {
   @Test
-  fun `goal max wall clock flag passes optional cap to child run`() {
+  fun `goal max wall clock defaults to the telemetry-backed cap when flag absent`() {
     val fixture = goalFixture(subtaskCount = 1)
     val launcher = GoalFixtureAgentRunLauncher(fixture)
 
     val result = CliRuntime.run(
-      fixture.goalCommand(extra = listOf("--max-wall-clock-minutes", "180")),
+      fixture.goalCommand(extra = emptyList()),
       fixture.context(launcher = launcher),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
     assertEquals(180.minutes, launcher.childLaunches.single().skillRunRequest.timeout)
+  }
+
+  @Test
+  fun `goal max wall clock flag passes optional cap to child run`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--max-wall-clock-minutes", "90")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(90.minutes, launcher.childLaunches.single().skillRunRequest.timeout)
+  }
+
+  @Test
+  fun `goal max wall clock zero disables the cap`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(extra = listOf("--max-wall-clock-minutes", "0")),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(null, launcher.childLaunches.single().skillRunRequest.timeout)
   }
 
   @Test

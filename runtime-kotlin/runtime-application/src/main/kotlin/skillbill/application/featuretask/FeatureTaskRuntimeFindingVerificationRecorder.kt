@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
@@ -9,7 +9,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFIC
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 
-internal class FeatureTaskRuntimeFindingVerificationRecorder(
+class FeatureTaskRuntimeFindingVerificationRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
 ) : FeatureTaskRuntimePhaseFindingVerificationApi {

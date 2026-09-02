@@ -1,3 +1,34 @@
+## [2026-09-02] SKILL-227 subtask 3 — God-object decomposition and package acyclicity
+Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,review,subtaskreview,decomposition,workflow,reviewevidence,phaseartifacts,planningprojection,telemetry,work},runtime-ports,runtime-infra-sqlite/goalrunner,runtime-core/{di,architecture},ARCHITECTURE.md}
+- Split FeatureTaskRuntimeRunLoop and GoalRunner into injected collaborators with explicit run-scoped state; collapsed oversized dependency bags into role-scoped ports; broke featuretask↔goalrunner, goalrunner↔workflow, workflow↔decomposition, and review↔evidence cycles.
+- Emptied logical-type line-ceiling and application-package-cycle baselines; guards now fail on any new offender or cycle with no exemptions. reusable
+- Folded *Helpers*/*Extras*/*Support* ceiling-evasion files into owning types or named domain collaborators (recorders, status, OutcomeDerivation, FailureAdmission, OutcomeStoreBridges, WorkflowFamilyLookup); those filename suffixes are gone under the touched packages.
+- Moved WorkflowGoalRunner* persistence adapters to infra-sqlite; request DTOs sit with their boundaries; agent identity branching uses an injectable request strategy.
+- Pattern: split by responsibility and name, never by line-count suffix; empty baselines are the permanent floor. reusable
+- Limitation: structure moved only — phase graph, gate policy, and commit finalisation unchanged; observable behavior preserved.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
+## [2026-09-01] SKILL-227 subtask 2 — Ambient inputs and loud-fail seams
+Areas: runtime-kotlin/{runtime-ports/{model,process},runtime-infra-fs,runtime-core/di,runtime-application/{workflow,decomposition,featuretask,goalrunner},runtime-cli,runtime-mcp,runtime-domain/goalrunner,runtime-infra-sqlite}
+- Injected `RepositoryRoot` (canonical git-root resolve at composition root); removed `Path.of("").toAbsolutePath()` and `repoRoot()` from `runtime-application`; CLI/MCP contexts pre-resolve the same root.
+- Emptied ambient-clock baseline; shutdown-hook, daemon-thread, and identifier generation go through ports + infra adapters with explicit bindings.
+- `DecompositionManifestWriter` is an `@Inject` service; failed manifest projection, corrupt phase output, progress-read failures, and invalid findings-ledger schemas loud-fail or record degradation instead of silent empty/drop.
+- Validation-quality retry budget and pending causes are durable on `GoalRunnerControlState` via `persistControlState`, not process-local maps. reusable
+- Limitation: plan-listed restart-simulation and cwd-outside-repo-root workflow boundary tests deferred; bounded retry and manifest-save cwd coverage remain.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-08-31] SKILL-227 subtask 1 — Architecture guardrails and DI hardening
+Areas: runtime-kotlin/{runtime-core/architecture,runtime-core/di,runtime-application/{runtime,featuretask,goalrunner,review,workflow,work,system,idestatus},ARCHITECTURE.md}
+- Added four architecture guards (logical-type line ceiling, application-package acyclicity, ambient-clock ban, no `@Inject` constructor defaults) with shrink-only baselines; registered in `PrincipleEnforcementInventory` and documented in `ARCHITECTURE.md`. reusable
+- Cleared every `@Inject` / dependency-bag default in `runtime-application`; composition root binds Noop/DEFAULT/Clock explicitly; deleted auto-approving `FeatureTaskRuntimeReviewDriver.EMPTY`.
+- Introduced `@RuntimeSingleton` (package `skillbill.application.runtime`) on cache/connection/lease holders; unscoped services listed in `ARCHITECTURE.md` as deliberate per-access construction.
+- Pattern: measure-first baselines that fail on growth or new offenders; defaults belong in the composition root, never on injected parameters. reusable
+- Limitation: package-cycle baseline still holds seven mutual-import pairs (shrink is later); ambient-clock call sites remain for subtask 2; no production type moves in this subtask.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-30] SKILL-225 subtask 1 — Agent activity pulse
 Areas: runtime-kotlin/{runtime-domain/idestatus,runtime-ports/{idestatus,agentrun},runtime-infra-sqlite,runtime-infra-fs/launcher,runtime-application/{idestatus,work,featuretask,goalrunner,review},runtime-contracts/workflow}, orchestration/contracts/ide-status-schema, intellij-plugin/{domain,cli,presentation,ui}
 - Mid-run wait-loop probes and governed evidence reads persist durable `last_agent_activity_at` / closed `last_agent_activity_label` on the active (and parent) workflow; IdeStatus projects both optionally and omits them together; freshness stays on lease/workflow anchors.

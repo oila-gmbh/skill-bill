@@ -4,7 +4,6 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequ
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.config.model.PhaseModelDirective
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.coroutines.cancellation.CancellationException
@@ -40,7 +39,7 @@ internal data class FeatureTaskRuntimePhaseStartReentry(
   }
 }
 
-internal fun emitFeatureTaskRuntimeEventSafely(diagnostics: RuntimeDiagnostics, seam: String, emit: () -> Unit) {
+fun emitFeatureTaskRuntimeEventSafely(diagnostics: RuntimeDiagnostics, seam: String, emit: () -> Unit) {
   runCatching { emit() }
     .exceptionOrNull()
     ?.let { error ->
@@ -54,10 +53,10 @@ internal fun emitFeatureTaskRuntimeEventSafely(diagnostics: RuntimeDiagnostics, 
     }
 }
 
-internal class FeatureTaskRuntimeRunObservability(
-  internal val recorder: FeatureTaskRuntimePhaseRecorder,
-  internal val request: FeatureTaskRuntimeRunRequest,
-  internal val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+class FeatureTaskRuntimeRunObservability(
+  val recorder: FeatureTaskRuntimePhaseRecorder,
+  val request: FeatureTaskRuntimeRunRequest,
+  val diagnostics: RuntimeDiagnostics,
 ) {
   fun branchResolved(phaseId: String, branch: String, created: Boolean, reused: Boolean) {
     emitSafely(
@@ -91,7 +90,7 @@ internal class FeatureTaskRuntimeRunObservability(
     )
   }
 
-  fun started(
+  internal fun started(
     phaseId: String,
     resolvedAgentId: String,
     attemptCount: Int,

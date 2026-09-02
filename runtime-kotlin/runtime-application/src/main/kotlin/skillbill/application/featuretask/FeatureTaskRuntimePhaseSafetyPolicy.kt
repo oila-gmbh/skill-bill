@@ -9,7 +9,7 @@ internal data class FeatureTaskRuntimePhaseFileManifest(
   val introduced: List<String> = (after.toSet() - before.toSet()).sorted()
 }
 
-internal object FeatureTaskRuntimePhaseSafetyPolicy {
+object FeatureTaskRuntimePhaseSafetyPolicy {
   fun lineSeparatedPaths(raw: String): List<String> = raw
     .lineSequence()
     .map(String::trim)
