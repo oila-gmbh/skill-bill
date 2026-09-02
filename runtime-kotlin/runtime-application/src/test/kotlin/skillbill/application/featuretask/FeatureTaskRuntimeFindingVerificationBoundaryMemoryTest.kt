@@ -8,6 +8,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificatio
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDispositionVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 import java.nio.file.Files
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -26,12 +28,12 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n\n" +
-        "## [2026-08-01] unselected-title\n\nunselected body sentence\n",
+      "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n\n" +
+        "## [${LocalDate.now(ZoneOffset.UTC)}] unselected-title\n\nunselected body sentence\n",
     )
     Files.writeString(
       agent.resolve("decisions.md"),
-      "# Boundary Decisions\n\n## [2026-08-01] decision-title\n\ndecision body sentence\n",
+      "# Boundary Decisions\n\n## [${LocalDate.now(ZoneOffset.UTC)}] decision-title\n\ndecision body sentence\n",
     )
 
     val prompt = memory.promptSection(
@@ -90,7 +92,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -141,8 +143,8 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n\n" +
-        "## [2026-08-01] unselected-title\n\nunselected body sentence\n",
+      "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n\n" +
+        "## [${LocalDate.now(ZoneOffset.UTC)}] unselected-title\n\nunselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -179,10 +181,10 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val repo = Files.createTempDirectory("verify-findings-cap-gate")
     val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
     val headings = (0 until GoalVerificationBoundaryCaps.maxHeadingsPerFile).joinToString("\n\n") { index ->
-      "## [2026-08-${"%02d".format((index % 28) + 1)}] history-$index\n\nhistory body $index"
+      "## [${LocalDate.now(ZoneOffset.UTC).minusDays((index % 28).toLong())}] history-$index\n\nhistory body $index"
     }
     val decisions = (0 until GoalVerificationBoundaryCaps.maxHeadingsPerFile).joinToString("\n\n") { index ->
-      "## [2026-08-${"%02d".format((index % 28) + 1)}] decision-$index\n\ndecision body $index"
+      "## [${LocalDate.now(ZoneOffset.UTC).minusDays((index % 28).toLong())}] decision-$index\n\ndecision body $index"
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$headings\n")
     Files.writeString(agent.resolve("decisions.md"), "# Boundary Decisions\n\n$decisions\n")
@@ -243,7 +245,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -271,7 +273,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -315,7 +317,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -387,7 +389,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,
@@ -431,7 +433,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
       agent.resolve("history.md"),
-      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+      "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n",
     )
     val sections = memory.sectionsForFindings(
       repo,

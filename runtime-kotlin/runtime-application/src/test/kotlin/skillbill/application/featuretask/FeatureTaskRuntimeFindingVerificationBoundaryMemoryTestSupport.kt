@@ -6,6 +6,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificatio
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.test.assertTrue
 
 private fun boundaryMemoryTestRepo(): Path {
@@ -13,7 +15,7 @@ private fun boundaryMemoryTestRepo(): Path {
   val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
   Files.writeString(
     agent.resolve("history.md"),
-    "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+    "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n",
   )
   return repo
 }
