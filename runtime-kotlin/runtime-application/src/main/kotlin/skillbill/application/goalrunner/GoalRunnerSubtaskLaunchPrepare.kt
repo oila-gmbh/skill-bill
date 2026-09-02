@@ -19,7 +19,6 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import java.nio.file.Files
 import java.nio.file.Path
 
 @Inject
@@ -179,10 +178,6 @@ public class GoalRunnerSubtaskLaunchPrepare(
       "Goal subtask '$subtaskId' governed spec path escapes repository '$canonicalRepository'."
     }
     val governedSpecPath = canonicalRepository.relativize(resolvedSpecPath).joinToString("/")
-    check(Files.isRegularFile(resolvedSpecPath)) {
-      "Goal subtask '$subtaskId' governed spec is missing at '$governedSpecPath'. " +
-        "Restore the spec scratch or re-run bill-feature-spec before resuming this goal."
-    }
     val attemptedManifest = state.manifest.withAttemptedSubtask(subtaskId)
       .let { manifest -> if (firstRun) manifest.withWorkflowId(subtaskId, assignedWorkflowId) else manifest }
     val attemptedState = run {

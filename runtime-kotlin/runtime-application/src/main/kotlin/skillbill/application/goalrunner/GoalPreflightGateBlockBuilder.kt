@@ -136,8 +136,7 @@ class GoalPreflightGateBlockBuilder(
   fun governedSpecPreflightViolation(
     manifest: DecompositionManifest,
     root: Path,
-  ): InvalidDecompositionManifestSchemaError? =
-    governedSpecPreflightViolation(manifest, root, manifestFileStore)
+  ): InvalidDecompositionManifestSchemaError? = governedSpecPreflightViolation(manifest, root, manifestFileStore)
 
   private fun subtaskBlock(subtask: DecompositionSubtask): GoalPreflightSubtask = GoalPreflightSubtask(
     id = subtask.id,
@@ -157,8 +156,6 @@ class GoalPreflightGateBlockBuilder(
       )
     },
   )
-
-  private fun relativePath(root: Path, rawPath: String): String = relativeGovernedSpecPath(root, rawPath)
 }
 
 private fun CodeReviewExecutionMode.displayName(omitted: Boolean): String = when {
