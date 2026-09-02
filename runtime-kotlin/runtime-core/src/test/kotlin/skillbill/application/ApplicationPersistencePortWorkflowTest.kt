@@ -157,7 +157,6 @@ class ApplicationPersistencePortWorkflowTest {
     assertEquals(handoffBriefing().handoffEnvelope, requireNotNull(delivered).envelope)
     assertEquals(1, delivered.iteration)
 
-    // A second delivery to the same consumer is a new iteration, not a silent overwrite of history.
     assertTrue(recorder.recordPhaseBriefing(workflowId, handoffBriefing()))
     assertEquals(2, requireNotNull(recorder.loadDeliveredProjections(workflowId))["implement"]?.iteration)
     val afterSecondDelivery = decodeArtifactsForTest(
@@ -166,10 +165,10 @@ class ApplicationPersistencePortWorkflowTest {
     val deliveredHistory = requireNotNull(
       JsonSupport.anyToStringAnyMap(afterSecondDelivery[FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY]),
     )
-    assertEquals(2, deliveredHistory.size, "distinct producer iterations must remain independently durable")
+    assertEquals(1, deliveredHistory.size, "only the latest delivered projection per consumer phase is retained")
     assertTrue(
-      deliveredHistory.keys.all { "|plan#1|" in it },
-      "durable selection keys must carry the normalized source producer identity",
+      deliveredHistory.keys.single().let { key -> "|2|" in key && "|plan#1|" in key },
+      "retained key must be the bumped iteration with normalized source producer identity",
     )
   }
 
