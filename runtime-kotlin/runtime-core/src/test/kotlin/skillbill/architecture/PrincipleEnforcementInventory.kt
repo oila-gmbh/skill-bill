@@ -1,12 +1,19 @@
 package skillbill.architecture
 
 object PrincipleEnforcementInventory {
+  const val RUNTIME_APPLICATION_MAIN: String = "runtime-kotlin/runtime-application/src/main/kotlin"
+  const val RUNTIME_CLI_MAIN: String = "runtime-kotlin/runtime-cli/src/main/kotlin"
+  const val APPLICATION_PACKAGE_PREFIX: String = "skillbill.application."
+  const val CLI_PACKAGE_PREFIX: String = "skillbill.cli."
+
   val enforceableRules: List<String> = listOf(
     "Package clustering: loose files in a subpackaged area must not belong to a sibling area cluster.",
     "Production line ceiling: no production Kotlin file may exceed 500 lines without an explicit exemption.",
     "Production logical-type line ceiling: attribute extension files to receiver types and enforce combined totals.",
-    "Application package acyclicity: mutual imports among skillbill.application areas must stay within baseline.",
-    "Runtime-application ambient clock ban: Instant.now, LocalDateTime.now, and Clock.systemUTC require baseline.",
+    "Package acyclicity: mutual imports among skillbill.application and skillbill.cli areas must stay " +
+      "within baseline.",
+    "Ambient clock ban: Instant.now, LocalDateTime.now, LocalDate.now, and Clock.systemUTC require baseline " +
+      "in runtime-application and runtime-cli main source.",
     "No @Inject constructor defaults: dependency bags and @Inject constructors must not carry default arguments.",
     "Failure wire codes: in-scope FailureWireCode hierarchies must map cases to codes totally and injectively.",
     "Typed parse boundaries: named untrusted-input decode sites must not report malformation via error, require, or" +
@@ -14,6 +21,8 @@ object PrincipleEnforcementInventory {
     "Inline FQN ban: production and test Kotlin must not use inline fully-qualified references outside the keep-list.",
     "Convention ownership: module build files must not re-apply Test or toolchain settings " +
       "owned by configureKotlinJvm.",
+    "Ambient environment ban: System.getenv, System.getProperty, and empty-string Path.of or Paths.get " +
+      "require baseline in runtime-cli main source.",
   )
 
   val parseBoundarySites: List<ArchitectureScanSupport.ParseBoundarySite> = listOf(
@@ -179,7 +188,7 @@ object PrincipleEnforcementInventory {
   )
 
   val packageClusteringSourceRoots: List<String> = listOf(
-    "runtime-kotlin/runtime-application/src/main/kotlin",
+    RUNTIME_APPLICATION_MAIN,
     "runtime-kotlin/runtime-domain/src/main/kotlin",
     "runtime-kotlin/runtime-ports/src/main/kotlin",
   )

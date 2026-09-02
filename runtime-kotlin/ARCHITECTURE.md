@@ -1386,17 +1386,49 @@ extension-receiver FQN. A shrink-only baseline records offenders above the
 at or below the ceiling.
 
 `ApplicationPackageAcyclicityArchitectureTest` tracks mutual import pairs among
-`skillbill.application.<area>` packages. The recorded baseline is shrink-only;
-any new mutual-import pair not already baselined fails the build.
+the areas of one package prefix under one scan root, both passed as parameters.
+The `runtime-application` baseline is shrink-only; any new mutual-import pair
+not already baselined fails the build.
 
 `RuntimeApplicationAmbientClockArchitectureTest` bans `Instant.now()`,
-`LocalDateTime.now()`, and `Clock.systemUTC()` in `runtime-application` main
-source. Existing call sites are baselined for subtask 2 removal.
+`LocalDateTime.now()`, `LocalDate.now()`, and `Clock.systemUTC()` under a
+parameterized scan root. The `runtime-application` baseline is shrink-only.
 
 `InjectConstructorDefaultsArchitectureTest` bans default arguments on
-`@Inject` constructors and dependency bags consumed by them. Production wiring
-must bind every port explicitly in `RuntimeComponent`; test-only stubs such as
-`ApprovingReviewDriverStub` are never reachable through an unbound dependency.
+`@Inject` constructors and dependency bags consumed by them, and non-private
+property initializers on an `@Inject` class that declares no primary
+constructor. Production wiring must bind every port explicitly in
+`RuntimeComponent`; test-only stubs such as `ApprovingReviewDriverStub` are
+never reachable through an unbound dependency.
+
+The scanner strips comments and string and character literals before it walks
+delimiters, so a default whose literal holds an unbalanced brace or paren does
+not hide the properties declared after it. The `runtime-application` baseline is
+empty by rule, not by census: the recorder never rewrites it and the test
+asserts it stays empty, so a new default fails the build instead of being
+recorded away.
+
+### SKILL-229 runtime-cli guardrails
+
+The acyclicity, ambient-clock, and `@Inject`-defaults scanners are shared, not
+copied: each takes its scan root (and, for acyclicity, its package prefix) as a
+parameter, and `runtime-cli` is a second case over the same scanner body. A
+second copy of a scanner scoped to another module is not an acceptable
+substitute.
+
+`AmbientEnvironmentArchitectureTest` bans `System.getenv`, `System.getProperty`,
+`Path.of("")`, and `Paths.get("")` in `runtime-cli` main source. Its scope is
+the scan root plus a recorded baseline, with no per-pattern carve-outs; test
+infrastructure stays outside the scanned root.
+
+The four `runtime-cli` baselines record today's census exactly: 16 mutual-import
+pairs, 2 ambient-clock sites, 22 ambient-environment sites, and `CliRunState`'s
+8 default-valued fields. Each `runtime-cli` case asserts set equality against
+its baseline rather than absence of unlisted sites, so a scanner that ignored
+its new scan-root or package-prefix parameter cannot pass against a stale
+baseline. These four baselines are transitional; subtasks 2 and 3 empty them.
+Regenerate these baselines from the scanners with
+`RECORD_ARCHITECTURE_BASELINES=1`, never by hand.
 
 `skillbill.application.runtime.RuntimeSingleton` scopes services and adapters that hold a cache, connection,
 or lease across accessor reads (`DatabaseSessionFactory`,

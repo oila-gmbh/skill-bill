@@ -400,9 +400,9 @@ object ArchitectureScanSupport {
   private val EXTENSION_FUN_PATTERN =
     Regex("""^\s*(?:(?:public|internal|private|protected)\s+)*fun\s+([A-Za-z0-9_.]+)\.""")
 
-  data class ApplicationPackageCycle(val areas: List<String>)
+  data class PackageCycle(val areas: List<String>)
 
-  data class AmbientClockCallSite(val relativePath: String, val lineNumber: Int, val call: String)
+  data class AmbientCallSite(val relativePath: String, val lineNumber: Int, val call: String)
 
   data class InjectConstructorDefaultSite(val relativePath: String, val symbol: String, val parameter: String)
 
@@ -465,35 +465,37 @@ object ArchitectureScanSupport {
     }
     .toMap()
 
-  fun applicationPackageImportEdges(): Map<String, Set<String>> {
+  fun packageImportEdges(scanRoot: String, packagePrefix: String): Map<String, Set<String>> {
     val edges = linkedMapOf<String, MutableSet<String>>()
-    val root = runtimeRoot.resolve("runtime-kotlin/runtime-application/src/main/kotlin")
-    kotlinFilesUnder(root).forEach { sourceFile ->
+    kotlinFilesUnder(runtimeRoot.resolve(scanRoot)).forEach { sourceFile ->
       val source = sourceFile.readText()
       val packageName = declaredPackage(source) ?: return@forEach
-      if (!packageName.startsWith("skillbill.application.")) return@forEach
-      val area = packageName.removePrefix("skillbill.application.").substringBefore('.')
+      if (!packageName.startsWith(packagePrefix)) return@forEach
+      val area = packageName.removePrefix(packagePrefix).substringBefore('.')
       if (area.isBlank()) return@forEach
       declaredImports(source)
-        .filter { it.startsWith("skillbill.application.") }
-        .map { imported -> imported.removePrefix("skillbill.application.").substringBefore('.') }
+        .filter { it.startsWith(packagePrefix) }
+        .map { imported -> imported.removePrefix(packagePrefix).substringBefore('.') }
         .filter { it.isNotBlank() && it != area }
         .forEach { importedArea -> edges.getOrPut(area) { mutableSetOf() }.add(importedArea) }
     }
     return edges.mapValues { (_, value) -> value.toSet() }
   }
 
-  fun applicationPackageCycles(): Set<ApplicationPackageCycle> =
-    mutualImportCyclesForEdges(applicationPackageImportEdges())
-      .map { cycle -> ApplicationPackageCycle(cycle) }
+  fun packageCycles(scanRoot: String, packagePrefix: String): Set<PackageCycle> =
+    mutualImportCyclesForEdges(packageImportEdges(scanRoot, packagePrefix))
+      .map { cycle -> PackageCycle(cycle) }
       .toSet()
 
-  fun applicationPackageCycleViolations(baselineCycles: Set<ApplicationPackageCycle>): List<String> =
-    packageCycleViolationsForEdges(applicationPackageImportEdges(), baselineCycles)
+  fun packageCycleViolations(
+    baselineCycles: Set<PackageCycle>,
+    scanRoot: String,
+    packagePrefix: String,
+  ): List<String> = packageCycleViolationsForEdges(packageImportEdges(scanRoot, packagePrefix), baselineCycles)
 
   fun packageCycleViolationsForEdges(
     edges: Map<String, Set<String>>,
-    baselineCycles: Set<ApplicationPackageCycle>,
+    baselineCycles: Set<PackageCycle>,
   ): List<String> {
     val baselineKeys = baselineCycles.map { cycle -> cycle.areas.sorted().joinToString("|") }.toSet()
     val currentKeys = mutualImportCyclesForEdges(edges)
@@ -516,11 +518,11 @@ object ArchitectureScanSupport {
     return cycles.toList()
   }
 
-  fun parsePackageCycleBaseline(text: String): Set<ApplicationPackageCycle> = text.lineSequence()
+  fun parsePackageCycleBaseline(text: String): Set<PackageCycle> = text.lineSequence()
     .map { it.trim() }
     .filter { it.isNotBlank() && !it.startsWith("#") }
     .map { line ->
-      ApplicationPackageCycle(line.split('|').map(String::trim).filter(String::isNotBlank).sorted())
+      PackageCycle(line.split('|').map(String::trim).filter(String::isNotBlank).sorted())
     }
     .toSet()
 
