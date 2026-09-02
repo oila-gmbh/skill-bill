@@ -196,6 +196,7 @@ internal fun service(
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
     testHarnessClock,
+    NoopRuntimeDiagnostics,
   )
   val runtimeStatusService = FeatureTaskRuntimeStatusService(
     recorder = phaseRecorder,

@@ -3583,7 +3583,7 @@ class GoalRunnerLedgerRecorderSeedingTest {
     val outcomes = RecordingOutcomeStore()
     outcomes.ledgerSequenceWatermarks =
       GoalRunnerLedgerSequenceWatermarks(maxLedgerSequence = 7)
-    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest(), testHarnessClock)
+    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest(), testHarnessClock, NoopRuntimeDiagnostics)
 
     recorder.recordLedgerEntry(
       GoalRunnerLedgerContext(
@@ -3599,7 +3599,7 @@ class GoalRunnerLedgerRecorderSeedingTest {
   @Test
   fun `recorder starts at zero when no durable entries exist`() {
     val outcomes = RecordingOutcomeStore()
-    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest(), testHarnessClock)
+    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest(), testHarnessClock, NoopRuntimeDiagnostics)
 
     recorder.recordLedgerEntry(
       GoalRunnerLedgerContext(
@@ -3637,6 +3637,7 @@ class GoalRunnerProgressEventEmitterTest {
       resolveWorkflowId = { "wfl-child" },
       watermarkSeed = null,
       clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
@@ -3672,6 +3673,7 @@ class GoalRunnerProgressEventEmitterTest {
       resolveWorkflowId = { "wfl-child" },
       watermarkSeed = 41,
       clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
@@ -3690,6 +3692,7 @@ class GoalRunnerProgressEventEmitterTest {
       resolveWorkflowId = { workflowId },
       watermarkSeed = null,
       clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
@@ -3711,6 +3714,7 @@ class GoalRunnerProgressEventEmitterTest {
       resolveWorkflowId = { "wfl-child" },
       watermarkSeed = null,
       clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     emitter.emit(emission(GoalProgressEventKind.OPERATION_STARTED, processAlive = true))
@@ -3759,6 +3763,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
       outcomeStore = outcomes,
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -3813,6 +3818,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
       outcomeStore = outcomes,
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -3850,6 +3856,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
       outcomeStore = outcomes,
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(

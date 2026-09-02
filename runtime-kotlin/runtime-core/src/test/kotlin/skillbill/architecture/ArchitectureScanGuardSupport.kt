@@ -3,8 +3,10 @@ package skillbill.architecture
 import kotlin.io.path.readText
 
 private val INJECT_ANNOTATION_PATTERN = Regex("""@Inject\b""")
+private const val CLASS_MODIFIERS =
+  "public|internal|private|protected|open|abstract|sealed|value|data|annotation|inner|final"
 private val INJECT_TYPE_PATTERN =
-  Regex("""@Inject\s+(?:\n\s*)*(?:data\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)""")
+  Regex("""@Inject\s+(?:\n\s*)*(?:(?:$CLASS_MODIFIERS)\s+)*class\s+([A-Za-z_][A-Za-z0-9_]*)""")
 private val AMBIENT_INSTANT_NOW = Regex("""\bInstant\.now\s*\(""")
 private val AMBIENT_LOCAL_DATE_TIME_NOW = Regex("""\bLocalDateTime\.now\s*\(""")
 private val AMBIENT_CLOCK_SYSTEM_UTC = Regex("""\bClock\.systemUTC\s*\(""")

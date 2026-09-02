@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.idestatus.AgentActivityStampWriter
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.workflow.decomposition.model.SpecSource
@@ -104,7 +103,7 @@ fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPassCount: 
 class FeatureTaskRuntimeRunLoop internal constructor(
   internal val dependencies: FeatureTaskRuntimeRunLoopDependencies,
   context: FeatureTaskRuntimeRunLoopContext,
-  val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  val diagnostics: RuntimeDiagnostics,
 ) {
   val collaborators get() = dependencies.collaborators
   val request = context.request

@@ -7,6 +7,7 @@ import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFound
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.testHarnessClock
 import skillbill.application.testWorkflowSnapshotValidator
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import kotlin.test.Test
@@ -24,6 +25,7 @@ class FeatureTaskRuntimeBuildGateProgressStoreIsolationTest {
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
       AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
       testHarnessClock,
+      NoopRuntimeDiagnostics,
     )
     val workflowId = "wf-build-gate-isolation"
     recorder.ensureWorkflowOpen(workflowId, "session-1")

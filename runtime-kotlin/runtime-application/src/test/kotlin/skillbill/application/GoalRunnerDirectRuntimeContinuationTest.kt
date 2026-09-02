@@ -9,6 +9,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 
 class GoalRunnerDirectRuntimeContinuationTest {
   @Test
@@ -21,6 +22,7 @@ class GoalRunnerDirectRuntimeContinuationTest {
       outcomeStore = RecordingOutcomeStore(),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(
@@ -54,6 +56,7 @@ class GoalRunnerDirectRuntimeContinuationTest {
       outcomeStore = RecordingOutcomeStore(),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
+      diagnostics = NoopRuntimeDiagnostics,
     )
 
     val launchRequest = reconciler.subtaskLaunchRequest(

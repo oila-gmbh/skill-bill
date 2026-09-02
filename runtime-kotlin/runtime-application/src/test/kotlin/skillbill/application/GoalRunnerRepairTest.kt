@@ -29,6 +29,7 @@ import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
@@ -930,6 +931,7 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
       AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
       testHarnessClock,
+      NoopRuntimeDiagnostics,
     )
     val service = testGoalRunnerStatusService(
       goalRunnerStatusServiceDeps(

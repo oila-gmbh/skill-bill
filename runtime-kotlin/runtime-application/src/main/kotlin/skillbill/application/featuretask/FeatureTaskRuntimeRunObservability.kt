@@ -4,7 +4,6 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequ
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.config.model.PhaseModelDirective
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.coroutines.cancellation.CancellationException
@@ -57,7 +56,7 @@ fun emitFeatureTaskRuntimeEventSafely(diagnostics: RuntimeDiagnostics, seam: Str
 class FeatureTaskRuntimeRunObservability(
   val recorder: FeatureTaskRuntimePhaseRecorder,
   val request: FeatureTaskRuntimeRunRequest,
-  val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  val diagnostics: RuntimeDiagnostics,
 ) {
   fun branchResolved(phaseId: String, branch: String, created: Boolean, reused: Boolean) {
     emitSafely(

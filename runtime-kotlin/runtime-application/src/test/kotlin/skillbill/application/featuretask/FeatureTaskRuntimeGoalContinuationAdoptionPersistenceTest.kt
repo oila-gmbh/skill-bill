@@ -228,6 +228,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
       AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
       testHarnessClock,
+      NoopRuntimeDiagnostics,
     )
     val continuationRecorder =
       FeatureTaskRuntimeGoalContinuationRecorder(

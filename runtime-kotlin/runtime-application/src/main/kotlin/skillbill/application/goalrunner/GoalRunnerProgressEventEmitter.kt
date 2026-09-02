@@ -3,7 +3,6 @@ package skillbill.application.goalrunner
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
@@ -16,7 +15,7 @@ class GoalRunnerProgressEventEmitter(
   private val resolveWorkflowId: () -> String?,
   watermarkSeed: Int?,
   private val clock: Clock,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) : AgentRunProgressEmitter {
   private var sequence: Int = watermarkSeed?.let { it + 1 } ?: 0
 

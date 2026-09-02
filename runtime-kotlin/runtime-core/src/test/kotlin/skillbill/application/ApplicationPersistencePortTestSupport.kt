@@ -1126,6 +1126,7 @@ internal fun testPhaseRecorder(database: DatabaseSessionFactory) = featureTaskRu
   FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter(),
   FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter(),
   Clock.systemUTC(),
+  NoopRuntimeDiagnostics,
 )
 
 internal fun openTaskRuntimeWorkflow(database: DatabaseSessionFactory): String = (

@@ -42,4 +42,25 @@ class InjectConstructorDefaultsArchitectureTest {
       violations,
     )
   }
+
+  @Test
+  fun `inject constructor default scanner sees past a visibility modifier`() {
+    val source = """
+      package skillbill.example
+
+      import me.tatarka.inject.annotations.Inject
+      import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+      import skillbill.ports.diagnostics.RuntimeDiagnostics
+
+      @Inject
+      public class ModifierShieldedInjectClass(
+        private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+      )
+    """.trimIndent()
+    val sites = ArchitectureScanSupport.injectConstructorDefaultSitesInSource(
+      relativePath = "runtime-kotlin/runtime-example/src/main/kotlin/ModifierShieldedInjectClass.kt",
+      source = source,
+    ).map { site -> "${site.symbol}::${site.parameter}" }
+    assertEquals(listOf("ModifierShieldedInjectClass::diagnostics"), sites)
+  }
 }

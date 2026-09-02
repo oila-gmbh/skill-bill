@@ -8,6 +8,7 @@ import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
@@ -107,6 +108,7 @@ private fun recorderFor(repository: InMemoryRuntimeWorkflowRepository): FeatureT
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
     testHarnessClock,
+    NoopRuntimeDiagnostics,
   )
 
 private fun verificationCheckpointArtifactsJson(

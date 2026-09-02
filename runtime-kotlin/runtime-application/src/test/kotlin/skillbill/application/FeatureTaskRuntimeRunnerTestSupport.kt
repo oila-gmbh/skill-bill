@@ -894,6 +894,7 @@ private fun harnessPhaseRecorder(database: RuntimeFakeDatabaseSessionFactory): F
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
     testHarnessClock,
+    NoopRuntimeDiagnostics,
   )
 
 private fun harnessGoalContinuationRecorder(
