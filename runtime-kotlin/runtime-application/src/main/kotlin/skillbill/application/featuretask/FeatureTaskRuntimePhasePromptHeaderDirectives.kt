@@ -7,14 +7,14 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowQueries
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 
-internal const val PHASE_PROMPT_TEMPLATE_INDENT = "      "
+const val PHASE_PROMPT_TEMPLATE_INDENT = "      "
 
-internal val forwardPhaseOrder: String =
+val forwardPhaseOrder: String =
   FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
     .filterNot { it in FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds }
     .joinToString(" -> ")
 
-internal fun operatorBlockRetryDirective(phaseId: String, retry: FeatureTaskRuntimeOperatorBlockRetry?): String {
+fun operatorBlockRetryDirective(phaseId: String, retry: FeatureTaskRuntimeOperatorBlockRetry?): String {
   if (retry == null) return ""
   require(retry.phaseId == phaseId) {
     "Operator blocked-phase retry guidance for '${retry.phaseId}' cannot be delivered to phase '$phaseId'."
@@ -28,7 +28,7 @@ internal fun operatorBlockRetryDirective(phaseId: String, retry: FeatureTaskRunt
   """.trimIndent()
 }
 
-internal fun phasePromptHeader(inputs: PhasePromptHeaderInputs): String {
+fun phasePromptHeader(inputs: PhasePromptHeaderInputs): String {
   val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[inputs.phaseId] ?: inputs.phaseId
   val directive = phaseTaskDirective(
     inputs.phaseId,
@@ -55,7 +55,7 @@ internal fun phasePromptHeader(inputs: PhasePromptHeaderInputs): String {
   }
 }
 
-internal fun installedRuntimeAuthorityDirective(): String = """
+fun installedRuntimeAuthorityDirective(): String = """
   ## Installed runtime is the contract source
   This briefing was composed by the installed Skill Bill runtime that will validate your output.
   Use the contract_version, envelope fields, skills, packs, and commands it names.
@@ -65,7 +65,7 @@ internal fun installedRuntimeAuthorityDirective(): String = """
   never this checkout.
 """.trimIndent()
 
-internal fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
   val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
   val scaling = FeatureTaskRuntimePhaseWorkflowQueries.ceremonyScaling(featureSize)
   val reviewScope = scaling.reviewScope.wireValue

@@ -1,19 +1,18 @@
 package skillbill.application.goalrunner
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.application.goalrunner.model.GoalRunnerSubtaskLaunchBoundariesPort
 import skillbill.application.goalrunner.planning.goalPlanningChildImportConflictBlockedReason
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.application.workflow.generateWorkflowId
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.goalrunner.model.GoalRunnerStopReason
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
@@ -22,11 +21,14 @@ import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 
-internal class GoalRunnerSubtaskLaunchPrepare(
-  private val manifestStore: GoalRunnerManifestStore,
-  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
-  private val gitOperations: WorkflowGitOperations,
+@Inject
+public class GoalRunnerSubtaskLaunchPrepare(
+  private val launchBoundaries: GoalRunnerSubtaskLaunchBoundariesPort,
 ) {
+  private val manifestStore get() = launchBoundaries.manifestStore
+  private val outcomeStore get() = launchBoundaries.outcomeStore
+  private val gitOperations get() = launchBoundaries.gitOperations
+
   fun goalReviewBaseline(
     state: GoalRunnerManifestState,
     subtaskId: Int,
@@ -66,7 +68,7 @@ internal class GoalRunnerSubtaskLaunchPrepare(
     return gitOperations.captureGoalSubtaskReviewBaseline(request.repoRoot, branch)
   }
 
-  fun blockedReviewBaselineIteration(
+  internal fun blockedReviewBaselineIteration(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     reason: String,
@@ -99,7 +101,7 @@ internal class GoalRunnerSubtaskLaunchPrepare(
     )
   }
 
-  fun blockedOnRecoveryError(
+  internal fun blockedOnRecoveryError(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     error: Throwable,
@@ -147,7 +149,7 @@ internal class GoalRunnerSubtaskLaunchPrepare(
     }
   }
 
-  fun prepareAttemptedLaunch(
+  internal fun prepareAttemptedLaunch(
     state: GoalRunnerManifestState,
     subtaskId: Int,
     request: GoalRunnerRunRequest,
@@ -204,7 +206,7 @@ internal class GoalRunnerSubtaskLaunchPrepare(
     return PreparedLaunch(attemptedState, assignedWorkflowId.takeIf { firstRun })
   }
 
-  fun goalBranchSetupFailure(
+  internal fun goalBranchSetupFailure(
     state: GoalRunnerManifestState,
     selection: GoalRunnerSelection.Run,
     request: GoalRunnerRunRequest,

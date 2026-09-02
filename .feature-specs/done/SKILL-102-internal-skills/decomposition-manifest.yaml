@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-102"
 feature_name: "internal-skills"
 parent_spec_path: ".feature-specs/SKILL-102-internal-skills/spec.md"

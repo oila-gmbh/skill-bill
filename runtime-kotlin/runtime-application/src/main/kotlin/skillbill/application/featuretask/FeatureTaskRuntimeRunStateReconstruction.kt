@@ -7,8 +7,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
-internal object FeatureTaskRuntimeRunStateReconstruction {
-  fun reconstructInFlightReentries(
+object FeatureTaskRuntimeRunStateReconstruction {
+  internal fun reconstructInFlightReentries(
     transitions: FeatureTaskRuntimeTransitionDeclaration,
     initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry>,
     initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
@@ -51,7 +51,7 @@ internal object FeatureTaskRuntimeRunStateReconstruction {
     }
   }
 
-  fun reconstructFixLoopBudgetBases(args: ReconstructFixLoopBudgetBasesArgs): MutableMap<String, Int> {
+  internal fun reconstructFixLoopBudgetBases(args: ReconstructFixLoopBudgetBasesArgs): MutableMap<String, Int> {
     val transitions = args.transitions
     val edgeIterationByLoop = args.edgeIterationByLoop
     val initialRecords = args.initialRecords
@@ -75,7 +75,7 @@ internal object FeatureTaskRuntimeRunStateReconstruction {
     return bases
   }
 
-  fun invalidateIncompleteReentrySpans(
+  internal fun invalidateIncompleteReentrySpans(
     inFlightReentries: Collection<InFlightReentry>,
     completedPhases: MutableSet<String>,
   ) {

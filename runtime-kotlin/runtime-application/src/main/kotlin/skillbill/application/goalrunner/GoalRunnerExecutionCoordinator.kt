@@ -6,6 +6,9 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.process.DaemonThreadPort
+import skillbill.ports.process.IdentifierGeneratorPort
+import skillbill.ports.process.ShutdownHookPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
@@ -13,7 +16,6 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.time.Clock
 import java.time.Duration
-import java.util.UUID
 
 interface GoalRunnerExecutionCoordinator {
   fun <T> runOwned(parentWorkflowId: String, dbPathOverride: String?, block: () -> T): T
@@ -34,7 +36,7 @@ class GoalRunnerExecutionAlreadyRunningException(parentWorkflowId: String, detai
  * Shared by the execution coordinator's reclaim path and the stop verb so both judge liveness and
  * process identity by exactly the same evidence.
  */
-internal fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: String) = FeatureTaskRuntimeWorkerOwnership(
+fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: String) = FeatureTaskRuntimeWorkerOwnership(
   workflowId = parentWorkflowId,
   generation = generation,
   ownerToken = ownerToken,
@@ -53,7 +55,10 @@ internal fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: String
 class DefaultGoalRunnerExecutionCoordinator(
   private val manifestStore: GoalRunnerManifestStore,
   private val supervisor: FeatureTaskRuntimeWorkerSupervisor,
-  private val clock: Clock = Clock.systemUTC(),
+  private val clock: Clock,
+  private val shutdownHookPort: ShutdownHookPort,
+  private val daemonThreadPort: DaemonThreadPort,
+  private val identifierGeneratorPort: IdentifierGeneratorPort,
 ) : GoalRunnerExecutionCoordinator {
   override fun <T> runOwned(parentWorkflowId: String, dbPathOverride: String?, block: () -> T): T {
     val existing = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
@@ -83,13 +88,13 @@ class DefaultGoalRunnerExecutionCoordinator(
     }
     // Registered only for the span this process owns the lease: a runner killed from outside records
     // why it stopped, so an operator stop is never indistinguishable from a crash.
-    val shutdownHook = Thread { recordInterruption(parentWorkflowId, dbPathOverride) }
-    // Both registration and removal tolerate a shutdown already in progress rather than failing the run.
-    runCatching { Runtime.getRuntime().addShutdownHook(shutdownHook) }
+    val shutdownHookRegistration = shutdownHookPort.register {
+      recordInterruption(parentWorkflowId, dbPathOverride)
+    }
     val result = try {
       block()
     } finally {
-      runCatching { Runtime.getRuntime().removeShutdownHook(shutdownHook) }
+      shutdownHookRegistration.unregister()
       heartbeat.stop()
       manifestStore.releaseExecutionLease(
         parentWorkflowId,
@@ -112,23 +117,21 @@ class DefaultGoalRunnerExecutionCoordinator(
    * makes it idempotent with the stop verb — a stop that killed this process already wrote the more
    * specific `operator_stop`, and the hook leaves it alone.
    */
-  internal fun recordInterruption(parentWorkflowId: String, dbPathOverride: String?) {
-    val writer = Thread {
-      runCatching {
-        manifestStore.pauseNow(
-          parentWorkflowId = parentWorkflowId,
-          reason = GOAL_PAUSE_REASON_RUNNER_INTERRUPTED,
-          pausedAt = clock.instant().toString(),
-          overwriteExistingReason = false,
-          dbPathOverride = dbPathOverride,
-        )
-      }
-    }
-    writer.isDaemon = true
-    runCatching {
-      writer.start()
-      writer.join(SHUTDOWN_WRITE_BUDGET.toMillis())
-    }
+  fun recordInterruption(parentWorkflowId: String, dbPathOverride: String?) {
+    daemonThreadPort.runWithJoinBudget(
+      action = {
+        runCatching {
+          manifestStore.pauseNow(
+            parentWorkflowId = parentWorkflowId,
+            reason = GOAL_PAUSE_REASON_RUNNER_INTERRUPTED,
+            pausedAt = clock.instant().toString(),
+            overwriteExistingReason = false,
+            dbPathOverride = dbPathOverride,
+          )
+        }
+      },
+      joinBudgetMillis = SHUTDOWN_WRITE_BUDGET.toMillis(),
+    )
   }
 
   private fun reclaimableOwnerToken(parentWorkflowId: String, existing: GoalRunnerExecutionLease): String {
@@ -194,7 +197,7 @@ class DefaultGoalRunnerExecutionCoordinator(
     val now = clock.instant()
     return GoalRunnerExecutionLease(
       generation = (existing?.generation ?: 0) + 1,
-      ownerToken = UUID.randomUUID().toString(),
+      ownerToken = identifierGeneratorPort.randomToken(),
       hostIdentity = process.hostIdentity,
       bootIdentity = process.bootIdentity,
       pid = process.pid,

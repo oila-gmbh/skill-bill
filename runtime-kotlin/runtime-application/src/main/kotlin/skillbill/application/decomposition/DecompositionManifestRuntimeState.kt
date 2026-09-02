@@ -1,8 +1,8 @@
 package skillbill.application.decomposition
 
-import skillbill.application.workflow.isActiveGoalRuntime
-import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.workflow.repoRoot
+import skillbill.application.decomposition.model.DecompositionManifestFileCandidate
+import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
@@ -12,24 +12,21 @@ import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 
-internal fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
+fun archivedDecompositionManifest(repoRoot: Path, manifestPath: Path): Boolean {
+  val relative = runCatching { repoRoot.normalize().relativize(manifestPath.normalize()).toString() }
+    .getOrDefault(manifestPath.toString())
+    .replace('\\', '/')
+  return relative.startsWith(".feature-specs/done/")
+}
+
+@OpenBoundaryMap("Persisted workflow artifact JSON decoded for decomposition runtime updates")
+fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
   JsonSupport.parseObjectOrNull(existingArtifactsJson)
     ?.let(JsonSupport::jsonElementToValue)
     ?.let(JsonSupport::anyToStringAnyMap)
     .orEmpty()
 
-internal fun decodeArtifactKeys(existingArtifactsJson: String, keys: Set<String>): Map<String, Any?> {
-  if (keys.isEmpty()) return emptyMap()
-  val root = JsonSupport.parseObjectOrNull(existingArtifactsJson) ?: return emptyMap()
-  return buildMap {
-    keys.forEach { key ->
-      val element = root[key] ?: return@forEach
-      put(key, JsonSupport.jsonElementToValue(element))
-    }
-  }
-}
-
-internal fun loadManifestOrNull(
+fun loadManifestOrNull(
   path: Path,
   validator: DecompositionManifestValidator,
   fileStore: DecompositionManifestFileStore,
@@ -39,12 +36,7 @@ internal fun loadManifestOrNull(
   null
 }
 
-internal data class DecompositionManifestFileCandidate(
-  val path: Path,
-  val manifest: DecompositionManifest,
-)
-
-internal fun findMatchingDecompositionManifests(
+fun findMatchingDecompositionManifests(
   repoRoot: Path,
   issueKey: String,
   fileStore: DecompositionManifestFileStore,
@@ -61,6 +53,7 @@ internal fun findMatchingDecompositionManifests(
   return manifestFiles
     .asSequence()
     .sortedBy { path -> path.toString() }
+    .filterNot { path -> archivedDecompositionManifest(repoRoot, path) }
     .filter { path ->
       val relativePath = runCatching { repoRoot.relativize(path).toString() }
         .getOrElse { path.toString() }
@@ -91,7 +84,7 @@ internal fun findMatchingDecompositionManifests(
     .toList()
 }
 
-internal fun resolveDecompositionManifest(
+fun resolveDecompositionManifest(
   repoRoot: Path,
   issueKey: String,
   fileStore: DecompositionManifestFileStore,
@@ -117,7 +110,8 @@ internal fun resolveDecompositionManifest(
   return activeCandidates.firstOrNull()?.manifest ?: candidates.firstOrNull()?.manifest
 }
 
-internal fun manifestPathFromArtifacts(
+@OpenBoundaryMap("Merged workflow artifact maps used to resolve the decomposition manifest path")
+fun manifestPathFromArtifacts(
   repoRoot: Path,
   artifactsPatch: Map<String, Any?>?,
   existingArtifacts: Map<String, Any?>,
@@ -132,7 +126,7 @@ internal fun manifestPathFromArtifacts(
   return specPath?.let { resolvedParentSpecPath(repoRoot, Path.of(it)).parent.resolve(DECOMPOSITION_MANIFEST_FILENAME) }
 }
 
-internal fun DecompositionManifest.assertExecutionModelCanReplace(
+fun DecompositionManifest.assertExecutionModelCanReplace(
   existing: DecompositionManifest?,
   manifestPath: Path,
 ): DecompositionManifest {
@@ -151,7 +145,7 @@ private fun planSubtaskSpecPaths(plan: Map<String, Any?>): List<String> =
     raw.asStringAnyMapOrNull()?.get("spec_path")?.toString()?.takeIf(String::isNotBlank)
   }
 
-internal fun DecompositionManifest.withPreservedRuntimeState(existing: DecompositionManifest?): DecompositionManifest {
+fun DecompositionManifest.withPreservedRuntimeState(existing: DecompositionManifest?): DecompositionManifest {
   if (existing == null) {
     return this
   }
@@ -159,21 +153,25 @@ internal fun DecompositionManifest.withPreservedRuntimeState(existing: Decomposi
   return copy(
     status = existing.status,
     subtasks = subtasks.map { planned ->
-      val previous = existingById[planned.id] ?: return@map planned
-      planned.copy(
-        status = previous.status,
-        branch = previous.branch,
-        commitSha = previous.commitSha,
-        workflowId = previous.workflowId,
-        blockedReason = previous.blockedReason,
-        lastResumableStep = previous.lastResumableStep,
-      )
+      val previous = existingById[planned.id]
+      if (previous == null) {
+        planned
+      } else {
+        planned.copy(
+          status = previous.status,
+          branch = previous.branch,
+          commitSha = previous.commitSha,
+          workflowId = previous.workflowId,
+          blockedReason = previous.blockedReason,
+          lastResumableStep = previous.lastResumableStep,
+        )
+      }
     },
     currentSubtaskIntent = existing.currentSubtaskIntent,
   )
 }
 
-internal fun DecompositionManifest.withRuntimeUpdate(
+fun DecompositionManifest.withRuntimeUpdate(
   repoRoot: Path,
   update: DecompositionManifestRuntimeUpdate,
 ): DecompositionManifest {

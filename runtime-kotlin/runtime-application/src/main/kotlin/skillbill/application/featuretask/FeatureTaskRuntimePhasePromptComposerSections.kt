@@ -4,7 +4,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationC
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
 import skillbill.application.featuretask.model.PhasePromptHeaderInputs
 
-internal fun phasePromptLeadingSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): List<String> {
+fun phasePromptLeadingSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): List<String> {
   val auditGapImplement = isAuditGapImplement(inputs.briefing)
   return listOf(
     phasePromptHeader(
@@ -40,7 +40,7 @@ internal fun phasePromptLeadingSections(inputs: FeatureTaskRuntimePhasePromptCom
   )
 }
 
-internal fun phasePromptMiddleSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): List<String> = listOf(
+fun phasePromptMiddleSections(inputs: FeatureTaskRuntimePhasePromptComposeInputs): List<String> = listOf(
   goalContinuationDirective(inputs.briefing.phaseId, inputs.suppressDecomposition),
   absentValidationGateDegradationDirective(inputs.briefing.phaseId, inputs.agentRunValidateFallback),
   validationGateFindingsDirective(
@@ -65,7 +65,7 @@ internal fun phasePromptMiddleSections(inputs: FeatureTaskRuntimePhasePromptComp
   inputs.briefing.briefingText,
 )
 
-internal fun phasePromptTrailingSections(
+fun phasePromptTrailingSections(
   inputs: FeatureTaskRuntimePhasePromptComposeInputs,
   effectiveContinuation: FeatureTaskRuntimeImplementationContinuation?,
 ): List<String> = listOf(

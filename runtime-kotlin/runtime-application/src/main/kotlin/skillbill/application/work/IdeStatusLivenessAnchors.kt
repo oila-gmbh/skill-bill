@@ -1,12 +1,12 @@
 package skillbill.application.work
 
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.work.model.WorkItem
 import java.time.Instant
 
-internal class IdeStatusLivenessAnchors(
+class IdeStatusLivenessAnchors(
   private val unitOfWork: UnitOfWork,
   private val repositoryIdentity: String,
 ) {

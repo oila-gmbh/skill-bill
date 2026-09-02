@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-112"
 feature_name: "pack-specialist-parity"
 parent_spec_path: ".feature-specs/SKILL-112-pack-specialist-parity/spec.md"

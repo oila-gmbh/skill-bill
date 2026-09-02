@@ -11,9 +11,9 @@ import skillbill.application.review.ReviewRecorder
 import skillbill.application.review.ReviewSpecAdjudicationRunner
 import skillbill.application.review.diffForPaths
 import skillbill.application.review.model.ParallelCodeReviewRequest
-import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.sparseReviewPack
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.model.ParallelReviewMergeResult
@@ -135,7 +135,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
 
   @Test
   fun `settlement envelope takes findings and review_run_id from the driver register`() {
-    val result = FeatureTaskRuntimeReviewDriver.EMPTY.run(
+    val result = ApprovingReviewDriverStub.run(
       mappedRequest(
         agents = FeatureTaskRuntimeReviewDriverAgents("codex"),
         pass = FeatureTaskRuntimeReviewDriverPass(1, CodeReviewExecutionMode.INLINE, "rvw-191-empty-register"),

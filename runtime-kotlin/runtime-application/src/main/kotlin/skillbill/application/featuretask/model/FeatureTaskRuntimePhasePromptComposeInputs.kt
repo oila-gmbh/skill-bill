@@ -8,7 +8,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 
-internal data class FeatureTaskRuntimePhasePromptComposeInputs(
+data class FeatureTaskRuntimePhasePromptComposeInputs(
   val issueKey: String,
   val briefing: FeatureTaskRuntimePhaseLaunchBriefing,
   val suppressDecomposition: Boolean = false,

@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.application.goalrunner.model.GoalRunPreparation
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
@@ -9,7 +10,8 @@ import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 
-internal class GoalRunnerRunPreparation(
+@Inject
+public class GoalRunnerRunPreparation(
   private val manifestStore: GoalRunnerManifestStore,
 ) {
   fun prepareRun(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalRunPreparation {

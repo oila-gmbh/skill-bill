@@ -26,11 +26,12 @@ import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewStage
-import java.time.Instant
+import java.time.Clock
 
-internal class ReviewClaimVerificationRunner(
+class ReviewClaimVerificationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
+  private val clock: Clock,
 ) {
   fun run(request: ReviewClaimVerificationRunRequest): ReviewClaimVerificationOutcome {
     if (request.packet == null) {
@@ -66,7 +67,7 @@ internal class ReviewClaimVerificationRunner(
         skipReason = "every finding already holds a durable verification verdict",
       )
     }
-    val recordedAt = Instant.now().toString()
+    val recordedAt = clock.instant().toString()
     val verdicts = pending.map { finding ->
       verifyOne(
         VerificationFindingInput(

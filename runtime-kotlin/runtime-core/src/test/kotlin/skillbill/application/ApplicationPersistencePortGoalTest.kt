@@ -1,11 +1,11 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.toRecord
 import skillbill.application.review.ReviewService
 import skillbill.application.review.model.GoalStatsResult
 import skillbill.application.telemetry.toRecord
 import skillbill.model.EnvironmentContext
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.review.EmptyReviewAttributionPort
@@ -121,6 +121,7 @@ class ApplicationPersistencePortGoalTest {
       FakeTelemetrySettingsProvider(enabled = false),
       FakeReviewInputSource,
       EmptyReviewAttributionPort,
+      NoopRuntimeDiagnostics,
     )
 
     val result: GoalStatsResult = service.goalStats(dbOverride = null)

@@ -1,15 +1,12 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.goalrunner.model.GoalRunnerChildRepairApplyResult
-import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
-import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosisRequest
-import skillbill.application.goalrunner.model.GoalRunnerChildWedgeRepairRequest
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyResult
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosis
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosisRequest
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeRepairRequest
+import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore as GoalRunnerChildRepairStorePort
 
-interface GoalRunnerChildRepairStore {
-  fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis
-
-  fun applyChildWedgeRepairs(request: GoalRunnerChildWedgeRepairRequest): GoalRunnerChildRepairApplyResult
-}
+typealias GoalRunnerChildRepairStore = GoalRunnerChildRepairStorePort
 
 object NoopGoalRunnerChildRepairStore : GoalRunnerChildRepairStore {
   override fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis =

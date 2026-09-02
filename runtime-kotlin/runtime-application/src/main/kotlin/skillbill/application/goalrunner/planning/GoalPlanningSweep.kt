@@ -3,7 +3,8 @@ package skillbill.application.goalrunner.planning
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.ProduceMissingPlansArgs
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.application.goalrunner.planning.model.GoalPlanningSweepDeps
+import skillbill.application.goalrunner.planning.model.GoalPlanningSweepCheckpointPort
+import skillbill.application.goalrunner.planning.model.GoalPlanningSweepLaunchPort
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
@@ -41,20 +42,23 @@ internal data class GoalPlanningSharedContext(
 )
 
 @Inject
-class DefaultGoalPlanningSweep(deps: GoalPlanningSweepDeps) : GoalPlanningSweep {
-  internal val checkpoint = deps.checkpoint
-  internal val outputValidator = deps.outputValidator
-  internal val subtaskLauncher = deps.subtaskLauncher
-  internal val invariantsSource = deps.invariantsSource
-  internal val manifestFileStore = deps.manifestFileStore
-  internal val contextDiscovery = deps.contextDiscovery
-  internal val planningProjectionValidator = deps.planningProjectionValidator
-  internal val planningAttemptRecorder = deps.planningAttemptRecorder
-  internal val manifestStore = deps.manifestStore
-  internal val planningRejectionRecorder = deps.planningRejectionRecorder
-  internal val timingPort = deps.timingPort
-  internal val burstSchedule = deps.burstSchedule
-  internal val refreshLiveness = deps.refreshLiveness
+class DefaultGoalPlanningSweep(
+  checkpointPort: GoalPlanningSweepCheckpointPort,
+  launchPort: GoalPlanningSweepLaunchPort,
+) : GoalPlanningSweep {
+  val checkpoint = checkpointPort.checkpoint
+  val outputValidator = checkpointPort.outputValidator
+  val invariantsSource = checkpointPort.invariantsSource
+  val manifestFileStore = checkpointPort.manifestFileStore
+  val contextDiscovery = checkpointPort.contextDiscovery
+  val planningProjectionValidator = checkpointPort.planningProjectionValidator
+  val subtaskLauncher = launchPort.subtaskLauncher
+  val manifestStore = launchPort.manifestStore
+  val planningAttemptRecorder = launchPort.planningAttemptRecorder
+  val planningRejectionRecorder = launchPort.planningRejectionRecorder
+  val timingPort = launchPort.timingPort
+  val burstSchedule = launchPort.burstSchedule
+  val refreshLiveness = launchPort.refreshLiveness
 
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
     val identity = GoalPlanningIdentity(
@@ -76,7 +80,7 @@ class DefaultGoalPlanningSweep(deps: GoalPlanningSweepDeps) : GoalPlanningSweep 
         ),
       )
     }
-    val gathered = runCatching { gatherSharedContext(state, request, recoveredPacket) }
+    val gathered = runCatching { gatherSharedContext(this, state, request, recoveredPacket) }
       .getOrElse { error -> return preSweepStopped(request, sharedContextReason(error)) }
     return continueAfterSharedContext(state, request, identity, existingShared, gathered)
   }

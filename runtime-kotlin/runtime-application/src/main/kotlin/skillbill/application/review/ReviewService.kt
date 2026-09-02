@@ -13,7 +13,6 @@ import skillbill.application.telemetry.feedbackTelemetryOptions
 import skillbill.application.telemetry.telemetrySettingsOrNull
 import skillbill.model.EnvironmentContext
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
@@ -31,7 +30,7 @@ class ReviewService(
   private val settingsProvider: TelemetrySettingsProvider,
   private val reviewInputSource: ReviewInputSource,
   private val reviewAttributionPort: ReviewAttributionPort,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   fun previewImport(input: String): ReviewPreviewResult {
     val (text) = reviewInputSource.readInput(input, context.stdinText)

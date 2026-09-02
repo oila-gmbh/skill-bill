@@ -2,12 +2,12 @@ package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
-internal fun FeatureTaskRuntimeRunState.auditGapPlanningContextError(): String? = listOf(
+fun FeatureTaskRuntimeRunState.auditGapPlanningContextError(): String? = listOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
 ).firstNotNullOfOrNull(::planningContextError)
 
-internal fun FeatureTaskRuntimeRunState.planningContextError(phaseId: String): String? {
+fun FeatureTaskRuntimeRunState.planningContextError(phaseId: String): String? {
   val record = initialRecords[phaseId]
   val output = outputFor(phaseId)
   if (output == null || record?.status?.let { it != STATUS_COMPLETED } == true) {

@@ -3,7 +3,6 @@ package skillbill.application.review
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.model.ReviewSnapshotPruneResult
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.review.model.ReviewSnapshot
@@ -26,7 +25,7 @@ import java.io.IOException
 class ReviewSnapshotPruneService(
   private val database: DatabaseSessionFactory,
   private val gateway: ReviewSnapshotGateway,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   fun prune(confirmed: Boolean, dbOverride: String? = null): ReviewSnapshotPruneResult {
     val liveDbPath = database.resolveDbPath(dbOverride)

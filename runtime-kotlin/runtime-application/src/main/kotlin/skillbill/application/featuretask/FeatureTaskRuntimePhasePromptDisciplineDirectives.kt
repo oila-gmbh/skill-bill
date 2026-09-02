@@ -3,7 +3,7 @@ package skillbill.application.featuretask
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 
-internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
+fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
   if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
     return ""
   }
@@ -20,7 +20,7 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
   """.trimIndent()
 }
 
-internal fun priorGapMemoryRemediationDirective(phaseId: String, memory: FeatureTaskRuntimePriorGapMemory?): String {
+fun priorGapMemoryRemediationDirective(phaseId: String, memory: FeatureTaskRuntimePriorGapMemory?): String {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT || memory == null) {
     return ""
   }
@@ -40,7 +40,7 @@ internal fun priorGapMemoryRemediationDirective(phaseId: String, memory: Feature
   """.trimIndent()
 }
 
-internal fun minimalismDisciplineDirective(phaseId: String): String {
+fun minimalismDisciplineDirective(phaseId: String): String {
   if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
     return ""
   }
@@ -85,7 +85,7 @@ internal fun minimalismDisciplineDirective(phaseId: String): String {
   """.trimIndent()
 }
 
-internal fun testValueDisciplineDirective(phaseId: String): String {
+fun testValueDisciplineDirective(phaseId: String): String {
   if (phaseId !in TEST_VALUE_DISCIPLINE_PHASES) {
     return ""
   }

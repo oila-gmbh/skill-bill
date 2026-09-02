@@ -5,9 +5,9 @@ import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import kotlin.coroutines.cancellation.CancellationException
 
-internal class RuntimeOwnedFactUnavailable(message: String) : IllegalStateException(message)
+class RuntimeOwnedFactUnavailable(message: String) : IllegalStateException(message)
 
-internal class RuntimeOwnedPersistenceBoundary(
+class RuntimeOwnedPersistenceBoundary(
   private val database: DatabaseSessionFactory,
   private val diagnostics: RuntimeDiagnostics,
 ) {

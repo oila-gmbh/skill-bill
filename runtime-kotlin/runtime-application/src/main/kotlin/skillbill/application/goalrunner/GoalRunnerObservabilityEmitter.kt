@@ -1,22 +1,25 @@
 package skillbill.application.goalrunner
-
+import skillbill.application.agentoutput.stderrExcerpt
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import java.time.Instant
+import java.time.Clock
 
-internal class GoalRunnerObservabilityEmitter(
+class GoalRunnerObservabilityEmitter(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  private val clock: Clock,
+  private val diagnostics: RuntimeDiagnostics,
   request: GoalRunnerRunRequest,
 ) {
   private val dbPathOverride: String? = request.dbPathOverride
   private var sequence: Int = request.observabilitySequenceStart
 
-  fun recordLaunchLifecycle(
+  internal fun recordLaunchLifecycle(
     subject: GoalRunnerObservabilitySubject,
     action: String,
     progress: GoalRunnerWorkflowProgress?,
@@ -30,7 +33,7 @@ internal class GoalRunnerObservabilityEmitter(
     }
   }
 
-  fun record(subject: GoalRunnerObservabilitySubject, signal: GoalRunnerObservabilitySignal) {
+  internal fun record(subject: GoalRunnerObservabilitySubject, signal: GoalRunnerObservabilitySignal) {
     runCatching {
       outcomeStore.recordObservabilityEvent(
         request = GoalRunnerObservabilityRecordRequest(
@@ -42,9 +45,16 @@ internal class GoalRunnerObservabilityEmitter(
           livenessClass = signal.livenessClass,
           activitySummary = signal.activitySummary.takeIf(String::isNotBlank) ?: signal.livenessClass,
           sequenceNumber = sequence++,
-          timestamp = Instant.now().toString(),
+          timestamp = clock.instant().toString(),
         ),
         dbPathOverride = dbPathOverride,
+      )
+    }.onFailure { error ->
+      diagnostics.warning(
+        "Best-effort goal observability emit failed: workflowId='${subject.workflowId}' " +
+          "livenessClass='${signal.livenessClass}' errorType='${error::class.qualifiedName}' " +
+          "message='${error.message.orEmpty()}'",
+        error,
       )
     }
   }
@@ -54,8 +64,6 @@ internal class GoalRunnerObservabilityEmitter(
     action: String,
     progress: GoalRunnerWorkflowProgress?,
   ) {
-    // SKILL-64 Subtask 3 (AC24): prefer the authoritative durable step; fall
-    // back to "preplan" only when no durable step exists yet for the child.
     record(
       subject = subject,
       signal = GoalRunnerObservabilitySignal(

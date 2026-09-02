@@ -382,219 +382,456 @@ runtime-ports
 
     <!-- open-boundary-allowlist:start -->
 
-    - `skillbill.application.workflow.model.DecompositionPlanManifestInput.plan`
-    - `skillbill.application.workflow.model.DecompositionPlanManifestInput.artifactsPatch`
-    - `skillbill.application.workflow.model.DecompositionPlanManifestInput.existingArtifacts`
-    - `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowProgressStore.progressEvents`
-    - `skillbill.workflow.engine.WorkflowEngine.snapshotMap`
-    - `skillbill.workflow.engine.WorkflowEngine.summaryMap`
-    - `skillbill.workflow.engine.WorkflowEngine.resumeMap`
-    - `skillbill.workflow.engine.WorkflowEngine.continueMap`
-    - `skillbill.workflow.engine.WorkflowEngine.compactContinueMap`
-    - `skillbill.workflow.engine.WorkflowEngine.updateAcknowledgementMap`
-    - `skillbill.workflow.engine.WorkflowEngine.inputProjectionMap`
-    - `skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary.value`
-    - `skillbill.workflow.engine.model.WorkflowInputProjection.artifacts`
-    - `skillbill.workflow.engine.WorkflowEngine.continueDecision`
-    - `skillbill.workflow.engine.WorkflowSnapshotValidator.validate`
-    - `skillbill.workflow.idestatus.IdeStatusValidator.validate`
-    - `skillbill.application.idestatus.model.IdeStatusSnapshot.toStatusWireMap`
+    - `skillbill.application.decomposition.baseBranch`
+    - `skillbill.application.decomposition.executionModel`
+    - `skillbill.application.decomposition.parentSpecPath`
+    - `skillbill.application.decomposition.parseStackBranches`
+    - `skillbill.application.decomposition.parseSubtasks`
+    - `skillbill.application.decomposition.specSource`
+    - `skillbill.application.featuretask.CompletedImplementationOutputArgs.outputMap`
+    - `skillbill.application.featuretask.CompletionProjectionRejectionArgs.outputMap`
+    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.auditSettle`
+    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.block`
+    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.complete`
+    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.findEnvelope`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationArtifactPatcher.save`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.auditProseValue`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.dispositionsFrom`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.rejectedFindingDispositions`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.verdictFor`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.verifiedFindingDispositions`
+    - `skillbill.application.featuretask.FeatureTaskRuntimePhaseReviewGenerationApi.recordedFindingVerdicts`
+    - `skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeReviewEnvelope.envelopeMap`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued2.settleValidatedOutputBoundary`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued3.rejectValidatedOutput`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued1.completedImplementFixProducedOutputs`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued1.completeReservedGoalReviewPass`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinued3.outputEnvelopeOf`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence.persistRejectedVerificationFindings`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.firstValidatedOutputRejection`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued1.auditGapProgressPause`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryBodyDeliveryDecision`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryDispositionGate`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryDispositionGateImpl`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.outputVerificationGateReason`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4.verifyFindingsBoundaryContext`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4.verifyFindingsDispositionGateContext`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.payloadFreeSemanticGateConstraint`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.scrubResponseDerivedGateDetail`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.implementFixRepairReceiptSettlement`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.repairReceiptShapeSettlement`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit.revalidated`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.gateTriageCapturedProducedOutputs`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.looseOutputEnvelope`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunState.parsedOutputsByPayload`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.readHandoff`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.withCommitSha`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisationHandoff.readHandoff`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisationHandoff.withCommitSha`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeWorkflowPersistence.persistPatch`
+    - `skillbill.application.featuretask.GoalReviewPassCompletionRequest.normalizedOutput`
+    - `skillbill.application.featuretask.ImplementFixRepairReceiptArgs.outputMap`
+    - `skillbill.application.featuretask.SettleValidatedOutputAfterFingerprintArgs.outputMap`
+    - `skillbill.application.featuretask.SettleValidatedOutputPauseArgs.outputMap`
+    - `skillbill.application.featuretask.TerminalOutputAttemptArgs.outputMap`
+    - `skillbill.application.featuretask.WorkflowRowAdvance.stepUpdates`
+    - `skillbill.application.featuretask.checkpointIdentitiesFrom`
+    - `skillbill.application.featuretask.continuationFromArtifacts`
+    - `skillbill.application.featuretask.continuationPatch`
+    - `skillbill.application.featuretask.decodeStrictKeyedArtifactMap`
+    - `skillbill.application.featuretask.decomposeTerminalFrom`
+    - `skillbill.application.featuretask.deliveredProjectionHistoryFrom`
+    - `skillbill.application.featuretask.deliveredProjectionsFrom`
+    - `skillbill.application.featuretask.featureSizeFromArtifacts`
+    - `skillbill.application.featuretask.featureTaskRuntimeParseRepairReceipt`
+    - `skillbill.application.featuretask.featureTaskRuntimeParseRepairReceiptOrNull`
+    - `skillbill.application.featuretask.featureTaskRuntimeRepairReceiptShapeRejection`
+    - `skillbill.application.featuretask.findingVerificationCheckpointPatch`
+    - `skillbill.application.featuretask.goalContinuationFieldAdoptionFrom`
+    - `skillbill.application.featuretask.implementationAttemptPatch`
+    - `skillbill.application.featuretask.implementationAttemptsFrom`
+    - `skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
+    - `skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
+    - `skillbill.application.featuretask.mutatingReconciliationGateReason`
+    - `skillbill.application.featuretask.operatorBlockRetryFrom`
+    - `skillbill.application.featuretask.parsedOutput`
+    - `skillbill.application.featuretask.phaseBriefingsFrom`
+    - `skillbill.application.featuretask.phaseLedgerFrom`
+    - `skillbill.application.featuretask.phaseRecordsFrom`
+    - `skillbill.application.featuretask.producerProjectionGateReason`
+    - `skillbill.application.featuretask.quarantineEntriesFrom`
+    - `skillbill.application.featuretask.rawReviewResultsFromArtifacts`
+    - `skillbill.application.featuretask.recordProjectionMeasurements`
+    - `skillbill.application.featuretask.remediationBaseRecoveryEvidenceEntry`
+    - `skillbill.application.featuretask.requireValidPlanningProjection`
+    - `skillbill.application.featuretask.resolvedBranchFrom`
+    - `skillbill.application.featuretask.reviewGenerationFrom`
+    - `skillbill.application.featuretask.reviewStateFromArtifacts`
+    - `skillbill.application.featuretask.reviewStatePatch`
+    - `skillbill.application.featuretask.stepUpdatesFrom`
+    - `skillbill.application.featuretask.terminalBlockedReasonFrom`
+    - `skillbill.application.featuretask.validateEnvelopeWire`
+    - `skillbill.application.featuretask.validatePersistenceWire`
+    - `skillbill.application.goalplanning.toEnvelopeMap`
+    - `skillbill.application.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.artifacts`
+    - `skillbill.application.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.evidenceEntries`
+    - `skillbill.application.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.patch`
+    - `skillbill.application.goalrunner.GoalRunnerMissingResultPrefixCandidate.output`
+    - `skillbill.application.goalrunner.GoalRunnerStaleBlockedOutcomeContext.artifacts`
+    - `skillbill.application.goalrunner.childRepairWedgeEvidenceMap`
+    - `skillbill.application.goalrunner.continuationArtifactFromMap`
+    - `skillbill.application.goalrunner.planning.GoalPlanningContextPromptFormatter.append`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContext.planningPacket`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.catalog`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.catalogHeadingIds`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.digest`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.discardedCatalog`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.emptyCatalog`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.includedSubtaskIds`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.migrate`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.orderedSubtasks`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.validate`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromV01`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromV02`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromV03`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketValidation.digest`
+    - `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketValidation.normalizedSubtasks`
+    - `skillbill.application.goalrunner.planning.enrichPreplan`
+    - `skillbill.application.goalrunner.planning.freshPlanningPacket`
+    - `skillbill.application.goalrunner.planning.gatherSharedContext`
+    - `skillbill.application.goalrunner.planning.planningPacketFrom`
+    - `skillbill.application.goalrunner.planning.unsuccessfulStatusReason`
+    - `skillbill.application.goalrunner.terminalJsonObjectWithoutResultPrefix`
+    - `skillbill.application.goalrunner.toStatusMap`
     - `skillbill.application.idestatus.model.IdeStatusProblem.details`
-    - `skillbill.install.model.InstallPlanWireValidator.validate`
-    - `skillbill.workflow.decomposition.DecompositionManifestValidator.validate`
-    - `skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText`
-    - `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
-    - `skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap`
-    - `skillbill.workflow.decomposition.toWireMap`
-    - `skillbill.application.decomposition.decodeDecompositionManifestMap`
-    - `skillbill.application.decomposition.encodeDecompositionManifestMap`
-    - `skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate`
-    - `skillbill.application.decomposition.DecompositionManifestWriter.manifestFromWorkflowUpdate`
-    - `skillbill.application.decomposition.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
-    - `skillbill.application.workflow.WorkflowFamily.sessionSummary`
-    - `skillbill.workflow.goal.GoalObservabilityEventValidator.validate`
-    - `skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator.validate`
-    - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
-    - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
+    - `skillbill.application.idestatus.model.IdeStatusSnapshot.toStatusWireMap`
+    - `skillbill.application.planningprojection.producerProjectionGateReason`
+    - `skillbill.application.planningprojection.requireValidPlanningProjection`
     - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
     - `skillbill.application.review.toBoundedPayload`
-    - `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
-    - `skillbill.workflow.goal.model.GoalObservabilityEvent.toArtifactMap`
-    - `skillbill.workflow.goal.model.GoalObservabilityEvent.toCompactSummaryMap`
-    - `skillbill.workflow.goal.model.GoalObservabilityHistory.toArtifactList`
-    - `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
-    - `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
+    - `skillbill.application.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
+    - `skillbill.application.subtaskreview.recordedVerdicts`
+    - `skillbill.application.subtaskreview.reviewPassVerdict`
+    - `skillbill.application.subtaskreview.reviewRunIdOf`
+    - `skillbill.application.subtaskreview.structuredFindings`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyStarted`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.goalFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.goalIssueFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.goalStarted`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.prDescriptionGenerated`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckFinished`
+    - `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted`
+    - `skillbill.application.telemetry.lifecycleErrorPayload`
+    - `skillbill.application.telemetry.lifecycleOkPayload`
+    - `skillbill.application.telemetry.lifecycleSkippedPayload`
+    - `skillbill.application.telemetry.orchestratedPayload`
+    - `skillbill.application.telemetry.orchestratedStartedSkippedPayload`
+    - `skillbill.application.workflow.FeatureTaskRuntimePhaseLedgerDecoder.decode`
+    - `skillbill.application.workflow.decodeFeatureTaskRuntimePhaseRecords`
+    - `skillbill.application.workflow.decodeWorkflowArtifacts`
+    - `skillbill.application.workflow.model.WorkflowUpdateRequest.artifactsPatch`
+    - `skillbill.application.workflow.model.WorkflowUpdateRequest.stepUpdates`
+    - `skillbill.application.workflow.parentProjectionArtifacts`
+    - `skillbill.application.workflow.subtaskStartArtifacts`
+    - `skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry`
+    - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
+    - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
     - `skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent`
     - `skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras.latestObservabilityEvent`
     - `skillbill.goalrunner.model.GoalRunnerStatusProjector.project`
-    - `skillbill.workflow.goal.model.GoalProgressEvent.toArtifactMap`
-    - `skillbill.workflow.goal.model.GoalProgressHistory.toArtifactList`
-    - `skillbill.workflow.goal.GoalProgressEventValidator.validate`
-    - `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
-    - `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
-    - `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
-    - `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.trySynthesize`
-    - `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.envelopeFromSettlement`
-    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.complete`
-    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.block`
-    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.auditSettle`
-    - `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.findEnvelope`
-    - `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint.toEnvelopeMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection.toEnvelopeMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.toEnvelopeMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef.toDeclarationMap`
-    - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement.toTelemetryMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement.toTelemetryMap`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator.validateImplementationAttemptRecord`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
-    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateSharedEvidenceProjection`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.toArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.fromArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decode`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewState.toArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewState.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.validateEntries`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry.toProjectionMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerProjection.toProjectionMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.toArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.fromArtifactMap`
-    - `skillbill.workflow.goal.model.GoalSubtaskReviewState.boundedDispositionSummary`
-    - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`
-    - `skillbill.ports.goalrunner.runner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput`
-    - `skillbill.workflow.taskruntime.model.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull`
-    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
-    - `skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
-    - `skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory.fromMap`
-    - `skillbill.application.telemetry.lifecycleOkPayload`
-    - `skillbill.application.telemetry.lifecycleSkippedPayload`
-    - `skillbill.application.telemetry.lifecycleErrorPayload`
-    - `skillbill.application.telemetry.orchestratedStartedSkippedPayload`
-    - `skillbill.application.telemetry.orchestratedPayload`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckFinished`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyStarted`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.prDescriptionGenerated`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.goalStarted`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.goalFinished`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.goalIssueFinished`
+    - `skillbill.install.model.InstallPlanWireValidator.validate`
+    - `skillbill.install.model.buildInstallPlanWireMap`
+    - `skillbill.learnings.learningEntryPayload`
     - `skillbill.learnings.learningPayload`
+    - `skillbill.learnings.learningSessionJson`
     - `skillbill.learnings.learningSummaryPayload`
     - `skillbill.learnings.scopeCounts`
-    - `skillbill.learnings.learningSessionJson`
     - `skillbill.learnings.summarizeLearningReferences`
-    - `skillbill.learnings.learningEntryPayload`
-    - `skillbill.application.workflow.model.WorkflowUpdateRequest.stepUpdates`
-    - `skillbill.application.workflow.model.WorkflowUpdateRequest.artifactsPatch`
-    - `skillbill.application.workflow.model.DecompositionManifestWriteRequest.planningResult`
-    - `skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.stepUpdates`
-    - `skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
-    - `skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
-    - `skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput.artifactsPatch`
-    - `skillbill.install.model.buildInstallPlanWireMap`
+    - `skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter.artifacts`
+    - `skillbill.ports.goalrunner.persistence.backwardEdgeCountsFromLedger`
+    - `skillbill.ports.goalrunner.persistence.blockedReasonFrom`
+    - `skillbill.ports.goalrunner.persistence.commitShaFrom`
+    - `skillbill.ports.goalrunner.persistence.declaredProgressEventFrom`
+    - `skillbill.ports.goalrunner.persistence.derivedTerminalOutcomeFor`
+    - `skillbill.ports.goalrunner.persistence.goalContinuation`
+    - `skillbill.ports.goalrunner.persistence.goalContinuationOutcome`
+    - `skillbill.ports.goalrunner.persistence.goalReviewArtifacts`
+    - `skillbill.ports.goalrunner.persistence.goalReviewEmissionEnvelope`
+    - `skillbill.ports.goalrunner.persistence.maxHistorySequence`
+    - `skillbill.ports.goalrunner.persistence.missingResultPrefixTerminalOutcomeArtifact`
+    - `skillbill.ports.goalrunner.persistence.model.GoalChildPlanningHydrationResult.artifacts`
+    - `skillbill.ports.goalrunner.persistence.model.GoalChildPlanningHydrationResult.stepUpdates`
+    - `skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyStateInit.artifacts`
+    - `skillbill.ports.goalrunner.persistence.model.HistoryArtifactAppend.entryMap`
+    - `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.artifacts`
+    - `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.stepUpdates`
+    - `skillbill.ports.goalrunner.persistence.progressEventFrom`
+    - `skillbill.ports.goalrunner.persistence.terminalOutcomeFor`
+    - `skillbill.ports.goalrunner.persistence.toArtifactMap`
+    - `skillbill.ports.goalrunner.persistence.toArtifactsMap`
+    - `skillbill.ports.goalrunner.runner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput`
+    - `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowProgressStore.progressEvents`
+    - `skillbill.ports.phaseartifacts.decodeStrictKeyedArtifactMap`
+    - `skillbill.ports.phaseartifacts.decomposeTerminalFrom`
+    - `skillbill.ports.phaseartifacts.goalContinuationFieldAdoptionFrom`
+    - `skillbill.ports.phaseartifacts.operatorBlockRetryFrom`
+    - `skillbill.ports.phaseartifacts.phaseLedgerFrom`
+    - `skillbill.ports.phaseartifacts.phaseRecordsFrom`
+    - `skillbill.ports.phaseartifacts.resolvedBranchFrom`
+    - `skillbill.ports.phaseartifacts.reviewGenerationFrom`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
+    - `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
+    - `skillbill.ports.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
+    - `skillbill.ports.subtaskreview.recordedVerdicts`
+    - `skillbill.ports.subtaskreview.reviewPassVerdict`
+    - `skillbill.ports.subtaskreview.reviewRunIdOf`
+    - `skillbill.ports.subtaskreview.structuredFindings`
+    - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
+    - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
+    - `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
+    - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.manifestFromWorkflowUpdate`
+    - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
+    - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
+    - `skillbill.ports.workflow.decomposition.runtime.decodeArtifacts`
+    - `skillbill.ports.workflow.decomposition.runtime.decodeArtifactKeys`
+    - `skillbill.ports.workflow.decomposition.runtime.decodeDecompositionManifestMap`
+    - `skillbill.ports.workflow.decomposition.runtime.encodeDecompositionManifestMap`
+    - `skillbill.ports.workflow.decomposition.runtime.manifestPathFromArtifacts`
+    - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
+    - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
+    - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.stepUpdates`
+    - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWorkflowProjectionInput.artifactsPatch`
+    - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWriteRequest.planningResult`
+    - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.artifactsPatch`
+    - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.existingArtifacts`
+    - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
+    - `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
+    - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
+    - `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForProgressEvent`
+    - `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForRuntimeEvent`
+    - `skillbill.ports.workflow.persistence.model.GoalObservabilityProgressInput.artifacts`
+    - `skillbill.ports.workflow.persistence.model.GoalObservabilityRuntimeEventInput.artifacts`
+    - `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
+    - `skillbill.ports.workflow.persistence.outOfBandAcceptancesFromLegacyArtifacts`
+    - `skillbill.ports.workflow.persistence.reviewPolicyFromLegacyArtifacts`
+    - `skillbill.ports.workflow.persistence.toPayload`
+    - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
+    - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
     - `skillbill.scaffold.model.PlatformManifest.customFields`
     - `skillbill.telemetry.model.TelemetryConfigDocument.payload`
     - `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
     - `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
-    - `skillbill.workflow.engine.model.WorkflowSnapshotView.artifacts`
-    - `skillbill.workflow.engine.model.WorkflowContinueView.stepArtifacts`
+    - `skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap`
+    - `skillbill.workflow.decomposition.DecompositionManifestValidator.validate`
+    - `skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText`
+    - `skillbill.workflow.decomposition.toWireMap`
+    - `skillbill.workflow.engine.WorkflowEngine.compactContinueMap`
+    - `skillbill.workflow.engine.WorkflowEngine.continueDecision`
+    - `skillbill.workflow.engine.WorkflowEngine.continueMap`
+    - `skillbill.workflow.engine.WorkflowEngine.inputProjectionMap`
+    - `skillbill.workflow.engine.WorkflowEngine.resumeMap`
+    - `skillbill.workflow.engine.WorkflowEngine.snapshotMap`
+    - `skillbill.workflow.engine.WorkflowEngine.summaryMap`
+    - `skillbill.workflow.engine.WorkflowEngine.updateAcknowledgementMap`
+    - `skillbill.workflow.engine.WorkflowSnapshotValidator.validate`
+    - `skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary.value`
     - `skillbill.workflow.engine.model.WorkflowContinueView.extraFields`
     - `skillbill.workflow.engine.model.WorkflowContinueView.sessionSummary`
-    - `skillbill.workflow.engine.model.WorkflowUpdateInput.stepUpdates`
+    - `skillbill.workflow.engine.model.WorkflowContinueView.stepArtifacts`
+    - `skillbill.workflow.engine.model.WorkflowInputProjection.artifacts`
+    - `skillbill.workflow.engine.model.WorkflowSnapshotView.artifacts`
     - `skillbill.workflow.engine.model.WorkflowUpdateInput.artifactsPatch`
-    - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
-    - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
-    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
-    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
-    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
-    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
+    - `skillbill.workflow.engine.model.WorkflowUpdateInput.stepUpdates`
+    - `skillbill.workflow.goal.GoalObservabilityEventValidator.validate`
+    - `skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator.validate`
+    - `skillbill.workflow.goal.GoalProgressEventValidator.validate`
+    - `skillbill.workflow.goal.model.GoalObservabilityEvent.toArtifactMap`
+    - `skillbill.workflow.goal.model.GoalObservabilityEvent.toCompactSummaryMap`
+    - `skillbill.workflow.goal.model.GoalObservabilityHistory.toArtifactList`
+    - `skillbill.workflow.goal.model.GoalProgressEvent.toArtifactMap`
+    - `skillbill.workflow.goal.model.GoalProgressHistory.toArtifactList`
+    - `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
+    - `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.toArtifactMap`
+    - `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
+    - `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decode`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.fromArtifactMap`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.toArtifactMap`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewState.boundedDispositionSummary`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewState.fromArtifactMap`
+    - `skillbill.workflow.goal.model.GoalSubtaskReviewState.toArtifactMap`
+    - `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
+    - `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
+    - `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
+    - `skillbill.workflow.idestatus.IdeStatusValidator.validate`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateSharedEvidenceProjection`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator.validateImplementationAttemptRecord`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
+    - `skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
+    - `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.envelopeFromSettlement`
+    - `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.trySynthesize`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement.toTelemetryMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.toEnvelopeMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection.toEnvelopeMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef.toDeclarationMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory.fromMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement.toTelemetryMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry.toProjectionMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerProjection.toProjectionMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.validateEntries`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint.toEnvelopeMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
+    - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.toArtifactMap`
 
-    <!-- open-boundary-allowlist:end -->
+        - `skillbill.application.decomposition.decodeArtifacts`
+    - `skillbill.application.decomposition.decodeDecompositionManifestMap`
+    - `skillbill.application.decomposition.encodeDecompositionManifestMap`
+    - `skillbill.application.decomposition.manifestPathFromArtifacts`
+    - `skillbill.application.goalrunner.GoalParentProjectionWriter.artifacts`
+    - `skillbill.application.goalrunner.backwardEdgeCountsFromLedger`
+    - `skillbill.application.goalrunner.blockedReasonFrom`
+    - `skillbill.application.goalrunner.commitShaFrom`
+    - `skillbill.application.goalrunner.declaredProgressEventFrom`
+    - `skillbill.application.goalrunner.derivedTerminalOutcomeFor`
+    - `skillbill.application.goalrunner.goalContinuation`
+    - `skillbill.application.goalrunner.goalContinuationOutcome`
+    - `skillbill.application.goalrunner.goalReviewArtifacts`
+    - `skillbill.application.goalrunner.goalReviewEmissionEnvelope`
+    - `skillbill.application.goalrunner.maxHistorySequence`
+    - `skillbill.application.goalrunner.missingResultPrefixTerminalOutcomeArtifact`
+    - `skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.artifacts`
+    - `skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.stepUpdates`
+    - `skillbill.application.goalrunner.progressEventFrom`
+    - `skillbill.application.goalrunner.terminalOutcomeFor`
+    - `skillbill.application.goalrunner.toArtifactMap`
+    - `skillbill.application.goalrunner.toArtifactsMap`
+    - `skillbill.application.phaseartifacts.decodeStrictKeyedArtifactMap`
+    - `skillbill.application.phaseartifacts.decomposeTerminalFrom`
+    - `skillbill.application.phaseartifacts.goalContinuationFieldAdoptionFrom`
+    - `skillbill.application.phaseartifacts.operatorBlockRetryFrom`
+    - `skillbill.application.phaseartifacts.phaseLedgerFrom`
+    - `skillbill.application.phaseartifacts.phaseRecordsFrom`
+    - `skillbill.application.phaseartifacts.resolvedBranchFrom`
+    - `skillbill.application.phaseartifacts.reviewGenerationFrom`
+    - `skillbill.application.workflow.GoalObservabilityArtifacts.patchForProgressEvent`
+    - `skillbill.application.workflow.GoalObservabilityArtifacts.patchForRuntimeEvent`
+    - `skillbill.application.workflow.outOfBandAcceptancesFromLegacyArtifacts`
+    - `skillbill.application.workflow.reviewPolicyFromLegacyArtifacts`
+    - `skillbill.application.workflow.toPayload`
+<!-- open-boundary-allowlist:end -->
 
     The allow-list grandfathers legacy raw-map surfaces. The rule
     applies prospectively: new public declarations cannot join the
@@ -1139,6 +1376,38 @@ The architecture tests enforce the following rules:
   allow-list constant stay in sync). New exceptions MUST be added to both
   the allow-list constant and ARCHITECTURE.md in the same change.
 
+### SKILL-227 runtime-application guardrails
+
+`ProductionLogicalTypeLineCeilingArchitectureTest` attributes each production
+Kotlin file to a logical type: type-declaring files bill to the first top-level
+named type FQN; extension-only files bill every line to each distinct
+extension-receiver FQN. A shrink-only baseline records offenders above the
+500-line ceiling; baselined units may only shrink and unlisted units must stay
+at or below the ceiling.
+
+`ApplicationPackageAcyclicityArchitectureTest` tracks mutual import pairs among
+`skillbill.application.<area>` packages. The recorded baseline is shrink-only;
+any new mutual-import pair not already baselined fails the build.
+
+`RuntimeApplicationAmbientClockArchitectureTest` bans `Instant.now()`,
+`LocalDateTime.now()`, and `Clock.systemUTC()` in `runtime-application` main
+source. Existing call sites are baselined for subtask 2 removal.
+
+`InjectConstructorDefaultsArchitectureTest` bans default arguments on
+`@Inject` constructors and dependency bags consumed by them. Production wiring
+must bind every port explicitly in `RuntimeComponent`; test-only stubs such as
+`ApprovingReviewDriverStub` are never reachable through an unbound dependency.
+
+`skillbill.application.runtime.RuntimeSingleton` scopes services and adapters that hold a cache, connection,
+or lease across accessor reads (`DatabaseSessionFactory`,
+`FeatureTaskRuntimeWorkerSupervisor`, `FeatureTaskRuntimeWorkerCoordinator`,
+`DurableGoalPlanningAttemptRecorder`). Deliberately unscoped services:
+
+- `GoalRunner` — per-access construction is intentional until subtask 2 makes
+  `validationQualityRetries` durable across accessor reads.
+- Stateless orchestration services (`WorkflowService`, `ReviewService`,
+  `ParallelCodeReviewRunner`, and similar) — no cross-call mutable state.
+
 ## SKILL-52.2 — Runtime boundary closure inventory
 
 This section classifies every current public raw-map declaration in
@@ -1184,256 +1453,466 @@ Categories:
 
 ### must_type_now
 
-- `skillbill.learnings.learningPayload` [subtask 5] — typed learnings
-  payload DTO.
-- `skillbill.learnings.learningSummaryPayload` [subtask 5] — typed
-  learnings summary DTO.
-- `skillbill.learnings.scopeCounts` [subtask 5] — typed learnings scope
-  counts DTO.
-- `skillbill.learnings.learningSessionJson` [subtask 5] — typed learnings
-  session DTO.
-- `skillbill.learnings.summarizeLearningReferences` [subtask 5] — typed
-  learnings reference summary DTO.
-- `skillbill.learnings.learningEntryPayload` [subtask 5] — typed learnings
-  entry DTO.
+- `skillbill.learnings.learningEntryPayload` [subtask 5] — typed learnings surface.
+- `skillbill.learnings.learningPayload` [subtask 5] — typed learnings surface.
+- `skillbill.learnings.learningSessionJson` [subtask 5] — typed learnings surface.
+- `skillbill.learnings.learningSummaryPayload` [subtask 5] — typed learnings surface.
+- `skillbill.learnings.scopeCounts` [subtask 5] — typed learnings surface.
+- `skillbill.learnings.summarizeLearningReferences` [subtask 5] — typed learnings surface.
 
 ### open_extension (@OpenBoundaryMap)
 
-- `skillbill.application.workflow.model.DecompositionPlanManifestInput.plan`
-- `skillbill.application.workflow.model.DecompositionPlanManifestInput.artifactsPatch`
-- `skillbill.application.workflow.model.DecompositionPlanManifestInput.existingArtifacts`
-- `skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput.artifactsPatch`
-- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
-- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
-- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
-- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
-- `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowProgressStore.progressEvents`
-- `skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator.validate`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
-- `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
-- `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
+- `skillbill.application.decomposition.baseBranch`
+- `skillbill.application.decomposition.executionModel`
+- `skillbill.application.decomposition.parentSpecPath`
+- `skillbill.application.decomposition.parseStackBranches`
+- `skillbill.application.decomposition.parseSubtasks`
+- `skillbill.application.decomposition.specSource`
+- `skillbill.application.featuretask.CompletedImplementationOutputArgs.outputMap`
+- `skillbill.application.featuretask.CompletionProjectionRejectionArgs.outputMap`
+- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.auditSettle`
+- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.block`
+- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.complete`
+- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.findEnvelope`
+- `skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationArtifactPatcher.save`
+- `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.auditProseValue`
+- `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.dispositionsFrom`
+- `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.rejectedFindingDispositions`
+- `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.unresolvedReviewFindings`
+- `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.verdictFor`
+- `skillbill.application.featuretask.FeatureTaskRuntimeOutputVerification.verifiedFindingDispositions`
+- `skillbill.application.featuretask.FeatureTaskRuntimePhaseReviewGenerationApi.recordedFindingVerdicts`
+- `skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput`
+- `skillbill.application.featuretask.FeatureTaskRuntimeReviewEnvelope.envelopeMap`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued2.settleValidatedOutputBoundary`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued3.rejectValidatedOutput`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued1.completedImplementFixProducedOutputs`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued1.completeReservedGoalReviewPass`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinued3.outputEnvelopeOf`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence.persistRejectedVerificationFindings`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.firstValidatedOutputRejection`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued1.auditGapProgressPause`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryBodyDeliveryDecision`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryDispositionGate`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryDispositionGateImpl`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.outputVerificationGateReason`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4.verifyFindingsBoundaryContext`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4.verifyFindingsDispositionGateContext`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.payloadFreeSemanticGateConstraint`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.scrubResponseDerivedGateDetail`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.implementFixRepairReceiptSettlement`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.repairReceiptShapeSettlement`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit.revalidated`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.gateTriageCapturedProducedOutputs`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.looseOutputEnvelope`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunState.parsedOutputsByPayload`
+- `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.readHandoff`
+- `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.withCommitSha`
+- `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisationHandoff.readHandoff`
+- `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisationHandoff.withCommitSha`
+- `skillbill.application.featuretask.FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition`
+- `skillbill.application.featuretask.FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal`
+- `skillbill.application.featuretask.FeatureTaskRuntimeWorkflowPersistence.persistPatch`
+- `skillbill.application.featuretask.GoalReviewPassCompletionRequest.normalizedOutput`
+- `skillbill.application.featuretask.ImplementFixRepairReceiptArgs.outputMap`
+- `skillbill.application.featuretask.SettleValidatedOutputAfterFingerprintArgs.outputMap`
+- `skillbill.application.featuretask.SettleValidatedOutputPauseArgs.outputMap`
+- `skillbill.application.featuretask.TerminalOutputAttemptArgs.outputMap`
+- `skillbill.application.featuretask.WorkflowRowAdvance.stepUpdates`
+- `skillbill.application.featuretask.checkpointIdentitiesFrom`
+- `skillbill.application.featuretask.continuationFromArtifacts`
+- `skillbill.application.featuretask.continuationPatch`
+- `skillbill.application.featuretask.decodeStrictKeyedArtifactMap`
+- `skillbill.application.featuretask.decomposeTerminalFrom`
+- `skillbill.application.featuretask.deliveredProjectionHistoryFrom`
+- `skillbill.application.featuretask.deliveredProjectionsFrom`
+- `skillbill.application.featuretask.featureSizeFromArtifacts`
+- `skillbill.application.featuretask.featureTaskRuntimeParseRepairReceipt`
+- `skillbill.application.featuretask.featureTaskRuntimeParseRepairReceiptOrNull`
+- `skillbill.application.featuretask.featureTaskRuntimeRepairReceiptShapeRejection`
+- `skillbill.application.featuretask.findingVerificationCheckpointPatch`
+- `skillbill.application.featuretask.goalContinuationFieldAdoptionFrom`
+- `skillbill.application.featuretask.implementationAttemptPatch`
+- `skillbill.application.featuretask.implementationAttemptsFrom`
+- `skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
+- `skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
+- `skillbill.application.featuretask.mutatingReconciliationGateReason`
+- `skillbill.application.featuretask.operatorBlockRetryFrom`
+- `skillbill.application.featuretask.parsedOutput`
+- `skillbill.application.featuretask.phaseBriefingsFrom`
+- `skillbill.application.featuretask.phaseLedgerFrom`
+- `skillbill.application.featuretask.phaseRecordsFrom`
+- `skillbill.application.featuretask.producerProjectionGateReason`
+- `skillbill.application.featuretask.quarantineEntriesFrom`
+- `skillbill.application.featuretask.rawReviewResultsFromArtifacts`
+- `skillbill.application.featuretask.recordProjectionMeasurements`
+- `skillbill.application.featuretask.remediationBaseRecoveryEvidenceEntry`
+- `skillbill.application.featuretask.requireValidPlanningProjection`
+- `skillbill.application.featuretask.resolvedBranchFrom`
+- `skillbill.application.featuretask.reviewGenerationFrom`
+- `skillbill.application.featuretask.reviewStateFromArtifacts`
+- `skillbill.application.featuretask.reviewStatePatch`
+- `skillbill.application.featuretask.stepUpdatesFrom`
+- `skillbill.application.featuretask.terminalBlockedReasonFrom`
+- `skillbill.application.featuretask.validateEnvelopeWire`
+- `skillbill.application.featuretask.validatePersistenceWire`
+- `skillbill.application.goalplanning.toEnvelopeMap`
+- `skillbill.application.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.artifacts`
+- `skillbill.application.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.evidenceEntries`
+- `skillbill.application.goalrunner.GoalRunnerChildRepairWedgeApplyLoop.ApplyState.patch`
+- `skillbill.application.goalrunner.GoalRunnerMissingResultPrefixCandidate.output`
+- `skillbill.application.goalrunner.GoalRunnerStaleBlockedOutcomeContext.artifacts`
+- `skillbill.application.goalrunner.childRepairWedgeEvidenceMap`
+- `skillbill.application.goalrunner.continuationArtifactFromMap`
+- `skillbill.application.goalrunner.planning.GoalPlanningContextPromptFormatter.append`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContext.planningPacket`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.catalog`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.catalogHeadingIds`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.digest`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.discardedCatalog`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.emptyCatalog`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.includedSubtaskIds`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.migrate`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.orderedSubtasks`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacket.validate`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromV01`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromV02`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketLegacy.migrateFromV03`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketValidation.digest`
+- `skillbill.application.goalrunner.planning.GoalPlanningSharedContextPacketValidation.normalizedSubtasks`
+- `skillbill.application.goalrunner.planning.enrichPreplan`
+- `skillbill.application.goalrunner.planning.freshPlanningPacket`
+- `skillbill.application.goalrunner.planning.gatherSharedContext`
+- `skillbill.application.goalrunner.planning.planningPacketFrom`
+- `skillbill.application.goalrunner.planning.unsuccessfulStatusReason`
+- `skillbill.application.goalrunner.terminalJsonObjectWithoutResultPrefix`
+- `skillbill.application.goalrunner.toStatusMap`
+- `skillbill.application.idestatus.model.IdeStatusProblem.details`
+- `skillbill.application.idestatus.model.IdeStatusSnapshot.toStatusWireMap`
+- `skillbill.application.planningprojection.producerProjectionGateReason`
+- `skillbill.application.planningprojection.requireValidPlanningProjection`
 - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
 - `skillbill.application.review.toBoundedPayload`
-- `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
-- `skillbill.workflow.engine.WorkflowEngine.snapshotMap`
-- `skillbill.workflow.engine.WorkflowEngine.summaryMap`
-- `skillbill.workflow.engine.WorkflowEngine.resumeMap`
-- `skillbill.workflow.engine.WorkflowEngine.continueMap`
-- `skillbill.workflow.engine.WorkflowEngine.compactContinueMap`
-- `skillbill.workflow.engine.WorkflowEngine.updateAcknowledgementMap`
-- `skillbill.workflow.engine.WorkflowEngine.inputProjectionMap`
-- `skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary.value`
-- `skillbill.workflow.engine.model.WorkflowInputProjection.artifacts`
-- `skillbill.workflow.engine.WorkflowSnapshotValidator.validate`
-- `skillbill.workflow.idestatus.IdeStatusValidator.validate`
-- `skillbill.application.idestatus.model.IdeStatusSnapshot.toStatusWireMap`
-- `skillbill.application.idestatus.model.IdeStatusProblem.details`
-- `skillbill.install.model.InstallPlanWireValidator.validate`
-- `skillbill.workflow.decomposition.DecompositionManifestValidator.validate`
-- `skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText`
-- `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
-- `skillbill.application.workflow.WorkflowFamily.sessionSummary`
-- `skillbill.workflow.goal.GoalObservabilityEventValidator.validate`
-- `skillbill.workflow.goal.model.GoalObservabilityEvent.toArtifactMap`
-- `skillbill.workflow.goal.model.GoalObservabilityEvent.toCompactSummaryMap`
-- `skillbill.workflow.goal.model.GoalObservabilityHistory.toArtifactList`
-- `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
-- `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
+- `skillbill.application.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
+- `skillbill.application.subtaskreview.recordedVerdicts`
+- `skillbill.application.subtaskreview.reviewPassVerdict`
+- `skillbill.application.subtaskreview.reviewRunIdOf`
+- `skillbill.application.subtaskreview.structuredFindings`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyStarted`
+- `skillbill.application.telemetry.LifecycleTelemetryService.goalFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.goalIssueFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.goalStarted`
+- `skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.prDescriptionGenerated`
+- `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckFinished`
+- `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted`
+- `skillbill.application.telemetry.lifecycleErrorPayload`
+- `skillbill.application.telemetry.lifecycleOkPayload`
+- `skillbill.application.telemetry.lifecycleSkippedPayload`
+- `skillbill.application.telemetry.orchestratedPayload`
+- `skillbill.application.telemetry.orchestratedStartedSkippedPayload`
+- `skillbill.application.workflow.FeatureTaskRuntimePhaseLedgerDecoder.decode`
+- `skillbill.application.workflow.decodeFeatureTaskRuntimePhaseRecords`
+- `skillbill.application.workflow.decodeWorkflowArtifacts`
+- `skillbill.application.workflow.model.WorkflowUpdateRequest.artifactsPatch`
+- `skillbill.application.workflow.model.WorkflowUpdateRequest.stepUpdates`
+- `skillbill.application.workflow.parentProjectionArtifacts`
+- `skillbill.application.workflow.subtaskStartArtifacts`
+- `skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry`
+- `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
+- `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
 - `skillbill.goalrunner.model.GoalRunnerStatusProjection.latestObservabilityEvent`
 - `skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras.latestObservabilityEvent`
 - `skillbill.goalrunner.model.GoalRunnerStatusProjector.project`
-- `skillbill.workflow.goal.model.GoalProgressEvent.toArtifactMap`
-- `skillbill.workflow.goal.model.GoalProgressHistory.toArtifactList`
-- `skillbill.workflow.goal.GoalProgressEventValidator.validate`
-- `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
-- `skillbill.goalrunner.model.GoalAttemptLedgerEntry.toArtifactMap`
-- `skillbill.goalrunner.model.GoalAttemptLedger.toArtifactList`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
-- `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.trySynthesize`
-- `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.envelopeFromSettlement`
-- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.complete`
-- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.block`
-- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.auditSettle`
-- `skillbill.application.featuretask.FeatureTaskPhaseSettlementService.findEnvelope`
-- `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint.toEnvelopeMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection.toEnvelopeMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.toEnvelopeMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef.toDeclarationMap`
-- `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement.toTelemetryMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement.toTelemetryMap`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator.validateImplementationAttemptRecord`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
-- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateSharedEvidenceProjection`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.toArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.fromArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decode`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewState.toArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewState.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.validateEntries`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry.toProjectionMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerProjection.toProjectionMap`
-- `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.toArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.fromArtifactMap`
-- `skillbill.workflow.goal.model.GoalSubtaskReviewState.boundedDispositionSummary`
-- `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`
-- `skillbill.ports.goalrunner.runner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput`
-- `skillbill.workflow.taskruntime.model.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull`
-- `skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
-- `skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
-- `skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory.fromMap`
-- `skillbill.application.workflow.model.WorkflowUpdateRequest.stepUpdates`
-- `skillbill.application.workflow.model.WorkflowUpdateRequest.artifactsPatch`
-- `skillbill.application.workflow.model.DecompositionManifestWriteRequest.planningResult`
-- `skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.stepUpdates`
-- `skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
-- `skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
+- `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.install.model.buildInstallPlanWireMap`
+- `skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter.artifacts`
+- `skillbill.ports.goalrunner.persistence.backwardEdgeCountsFromLedger`
+- `skillbill.ports.goalrunner.persistence.blockedReasonFrom`
+- `skillbill.ports.goalrunner.persistence.commitShaFrom`
+- `skillbill.ports.goalrunner.persistence.declaredProgressEventFrom`
+- `skillbill.ports.goalrunner.persistence.derivedTerminalOutcomeFor`
+- `skillbill.ports.goalrunner.persistence.goalContinuation`
+- `skillbill.ports.goalrunner.persistence.goalContinuationOutcome`
+- `skillbill.ports.goalrunner.persistence.goalReviewArtifacts`
+- `skillbill.ports.goalrunner.persistence.goalReviewEmissionEnvelope`
+- `skillbill.ports.goalrunner.persistence.maxHistorySequence`
+- `skillbill.ports.goalrunner.persistence.missingResultPrefixTerminalOutcomeArtifact`
+- `skillbill.ports.goalrunner.persistence.model.GoalChildPlanningHydrationResult.artifacts`
+- `skillbill.ports.goalrunner.persistence.model.GoalChildPlanningHydrationResult.stepUpdates`
+- `skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyStateInit.artifacts`
+- `skillbill.ports.goalrunner.persistence.model.HistoryArtifactAppend.entryMap`
+- `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.artifacts`
+- `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.stepUpdates`
+- `skillbill.ports.goalrunner.persistence.progressEventFrom`
+- `skillbill.ports.goalrunner.persistence.terminalOutcomeFor`
+- `skillbill.ports.goalrunner.persistence.toArtifactMap`
+- `skillbill.ports.goalrunner.persistence.toArtifactsMap`
+- `skillbill.ports.goalrunner.runner.GoalRunnerTerminalOutcomeStore.recoverMissingResultPrefixOutput`
+- `skillbill.ports.goalrunner.runner.GoalRunnerWorkflowProgressStore.progressEvents`
+- `skillbill.ports.phaseartifacts.decodeStrictKeyedArtifactMap`
+- `skillbill.ports.phaseartifacts.decomposeTerminalFrom`
+- `skillbill.ports.phaseartifacts.goalContinuationFieldAdoptionFrom`
+- `skillbill.ports.phaseartifacts.operatorBlockRetryFrom`
+- `skillbill.ports.phaseartifacts.phaseLedgerFrom`
+- `skillbill.ports.phaseartifacts.phaseRecordsFrom`
+- `skillbill.ports.phaseartifacts.resolvedBranchFrom`
+- `skillbill.ports.phaseartifacts.reviewGenerationFrom`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
+- `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewOutcomeDispositionReduction.blockerDispositions`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.reviewRunIdOf`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse.structuredFindings`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.blockerDispositions`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.commitFocusedAccounting`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.fromOutput`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.outcomeFor`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.unaddressedFindings`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer.unresolvedCount`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewSummarySanitize.labelFor`
+- `skillbill.ports.subtaskreview.GoalSubtaskReviewVerificationRejection.rejectedVerificationFindings`
+- `skillbill.ports.subtaskreview.recordedVerdicts`
+- `skillbill.ports.subtaskreview.reviewPassVerdict`
+- `skillbill.ports.subtaskreview.reviewRunIdOf`
+- `skillbill.ports.subtaskreview.structuredFindings`
+- `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
+- `skillbill.ports.validation.model.RepoValidationReport.toPayload`
+- `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
+- `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.manifestFromWorkflowUpdate`
+- `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
+- `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
+- `skillbill.ports.workflow.decomposition.runtime.decodeArtifacts`
+- `skillbill.ports.workflow.decomposition.runtime.decodeArtifactKeys`
+- `skillbill.ports.workflow.decomposition.runtime.manifestPathFromArtifacts`
+- `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
+- `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
+- `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.stepUpdates`
+- `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWorkflowProjectionInput.artifactsPatch`
+- `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWriteRequest.planningResult`
+- `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.artifactsPatch`
+- `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.existingArtifacts`
+- `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
+- `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
+- `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
+- `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForProgressEvent`
+- `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForRuntimeEvent`
+- `skillbill.ports.workflow.persistence.model.GoalObservabilityProgressInput.artifacts`
+- `skillbill.ports.workflow.persistence.model.GoalObservabilityRuntimeEventInput.artifacts`
+- `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
+- `skillbill.ports.workflow.persistence.outOfBandAcceptancesFromLegacyArtifacts`
+- `skillbill.ports.workflow.persistence.reviewPolicyFromLegacyArtifacts`
+- `skillbill.ports.workflow.persistence.toPayload`
+- `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
+- `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
 - `skillbill.scaffold.model.PlatformManifest.customFields`
 - `skillbill.telemetry.model.TelemetryConfigDocument.payload`
 - `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
 - `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
-- `skillbill.workflow.engine.model.WorkflowSnapshotView.artifacts`
-- `skillbill.workflow.engine.model.WorkflowContinueView.stepArtifacts`
+- `skillbill.workflow.decomposition.DecompositionManifestValidator.validate`
+- `skillbill.workflow.decomposition.DecompositionManifestValidator.validateYamlText`
+- `skillbill.workflow.engine.WorkflowEngine.compactContinueMap`
+- `skillbill.workflow.engine.WorkflowEngine.continueMap`
+- `skillbill.workflow.engine.WorkflowEngine.inputProjectionMap`
+- `skillbill.workflow.engine.WorkflowEngine.resumeMap`
+- `skillbill.workflow.engine.WorkflowEngine.snapshotMap`
+- `skillbill.workflow.engine.WorkflowEngine.summaryMap`
+- `skillbill.workflow.engine.WorkflowEngine.updateAcknowledgementMap`
+- `skillbill.workflow.engine.WorkflowSnapshotValidator.validate`
+- `skillbill.workflow.engine.model.WorkflowContinuationArtifactSummary.value`
 - `skillbill.workflow.engine.model.WorkflowContinueView.extraFields`
 - `skillbill.workflow.engine.model.WorkflowContinueView.sessionSummary`
-- `skillbill.workflow.engine.model.WorkflowUpdateInput.stepUpdates`
+- `skillbill.workflow.engine.model.WorkflowContinueView.stepArtifacts`
+- `skillbill.workflow.engine.model.WorkflowInputProjection.artifacts`
+- `skillbill.workflow.engine.model.WorkflowSnapshotView.artifacts`
 - `skillbill.workflow.engine.model.WorkflowUpdateInput.artifactsPatch`
-- `skillbill.ports.validation.model.RepoValidationReport.toPayload`
-- `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
-- `skillbill.application.telemetry.lifecycleOkPayload`
-- `skillbill.application.telemetry.lifecycleSkippedPayload`
-- `skillbill.application.telemetry.lifecycleErrorPayload`
-- `skillbill.application.telemetry.orchestratedStartedSkippedPayload`
-- `skillbill.application.telemetry.orchestratedPayload`
-- `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
-- `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
-- `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted`
-- `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckFinished`
-- `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyStarted`
-- `skillbill.application.telemetry.LifecycleTelemetryService.featureVerifyFinished`
-- `skillbill.application.telemetry.LifecycleTelemetryService.prDescriptionGenerated`
-- `skillbill.application.telemetry.LifecycleTelemetryService.goalStarted`
-- `skillbill.application.telemetry.LifecycleTelemetryService.goalSubtaskFinished`
-- `skillbill.application.telemetry.LifecycleTelemetryService.goalFinished`
-- `skillbill.application.telemetry.LifecycleTelemetryService.goalIssueFinished`
+- `skillbill.workflow.engine.model.WorkflowUpdateInput.stepUpdates`
+- `skillbill.workflow.goal.GoalObservabilityEventValidator.validate`
+- `skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator.validate`
+- `skillbill.workflow.goal.GoalProgressEventValidator.validate`
+- `skillbill.workflow.goal.model.GoalObservabilityEvent.toArtifactMap`
+- `skillbill.workflow.goal.model.GoalObservabilityEvent.toCompactSummaryMap`
+- `skillbill.workflow.goal.model.GoalObservabilityHistory.toArtifactList`
+- `skillbill.workflow.goal.model.GoalProgressEvent.toArtifactMap`
+- `skillbill.workflow.goal.model.GoalProgressHistory.toArtifactList`
+- `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
+- `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.toArtifactMap`
+- `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
+- `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decode`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.fromArtifactMap`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewPassResult.toArtifactMap`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewState.boundedDispositionSummary`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewState.fromArtifactMap`
+- `skillbill.workflow.goal.model.GoalSubtaskReviewState.toArtifactMap`
+- `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
+- `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
+- `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
+- `skillbill.workflow.idestatus.IdeStatusValidator.validate`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateSharedEvidenceProjection`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator.validateImplementationAttemptRecord`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator.validateAndReadPhaseOutput`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
+- `skillbill.workflow.taskruntime.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
+- `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.envelopeFromSettlement`
+- `skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer.trySynthesize`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement.toTelemetryMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.toEnvelopeMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection.toEnvelopeMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef.toDeclarationMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory.fromMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement.toTelemetryMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry.toProjectionMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerProjection.toProjectionMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.validateEntries`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint.toEnvelopeMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope`
+- `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeDecomposePlanOutcomeOrNull`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeIsDecompositionPackage`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeRunInvariantsFromArtifactMap`
+- `skillbill.workflow.taskruntime.model.toArtifactMap`
+
+- `skillbill.application.decomposition.decodeArtifacts`
+- `skillbill.application.decomposition.decodeDecompositionManifestMap`
+- `skillbill.application.decomposition.encodeDecompositionManifestMap`
+- `skillbill.application.decomposition.manifestPathFromArtifacts`
+- `skillbill.application.goalrunner.GoalParentProjectionWriter.artifacts`
+- `skillbill.application.goalrunner.backwardEdgeCountsFromLedger`
+- `skillbill.application.goalrunner.blockedReasonFrom`
+- `skillbill.application.goalrunner.commitShaFrom`
+- `skillbill.application.goalrunner.declaredProgressEventFrom`
+- `skillbill.application.goalrunner.derivedTerminalOutcomeFor`
+- `skillbill.application.goalrunner.goalContinuation`
+- `skillbill.application.goalrunner.goalContinuationOutcome`
+- `skillbill.application.goalrunner.goalReviewArtifacts`
+- `skillbill.application.goalrunner.goalReviewEmissionEnvelope`
+- `skillbill.application.goalrunner.maxHistorySequence`
+- `skillbill.application.goalrunner.missingResultPrefixTerminalOutcomeArtifact`
+- `skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.artifacts`
+- `skillbill.application.goalrunner.planning.model.GoalChildPlanningHydration.stepUpdates`
+- `skillbill.application.goalrunner.progressEventFrom`
+- `skillbill.application.goalrunner.terminalOutcomeFor`
+- `skillbill.application.goalrunner.toArtifactMap`
+- `skillbill.application.goalrunner.toArtifactsMap`
+- `skillbill.application.phaseartifacts.decodeStrictKeyedArtifactMap`
+- `skillbill.application.phaseartifacts.decomposeTerminalFrom`
+- `skillbill.application.phaseartifacts.goalContinuationFieldAdoptionFrom`
+- `skillbill.application.phaseartifacts.operatorBlockRetryFrom`
+- `skillbill.application.phaseartifacts.phaseLedgerFrom`
+- `skillbill.application.phaseartifacts.phaseRecordsFrom`
+- `skillbill.application.phaseartifacts.resolvedBranchFrom`
+- `skillbill.application.phaseartifacts.reviewGenerationFrom`
+- `skillbill.application.workflow.GoalObservabilityArtifacts.patchForProgressEvent`
+- `skillbill.application.workflow.GoalObservabilityArtifacts.patchForRuntimeEvent`
+- `skillbill.application.workflow.outOfBandAcceptancesFromLegacyArtifacts`
+- `skillbill.application.workflow.reviewPolicyFromLegacyArtifacts`
+- `skillbill.application.workflow.toPayload`
 
 ### private_serializer
 
-_None — the SKILL-52.1 allow-list tracks only public open-boundary surfaces.
-Private/internal serializer scratch space (e.g. `WorkflowEngine.validatedSnapshotMap`,
-`DecompositionManifestCodec` private extensions, `DecompositionManifestWriterSupport`
-internals, `baseStatusPayload`, `telemetryMutationPayload`, internal helpers in
-`TelemetryHttpRuntime` and `DefaultTelemetrySettingsProvider`) is intentionally
-out-of-scope for the public-surface architecture scanner and therefore not
-enumerated here. Future audits MAY attach private serializer FQNs to this
-category without reshaping the marker block._
+_None — placeholder._
 
 ### postponed_with_reason
 
-- `skillbill.workflow.engine.WorkflowEngine.continueDecision` [subtask 4] —
-  workflow-engine continue-decision raw-map `sessionSummary` parameter
-  stays a wire-shape seam until the workflow-snapshot typed-DTO pass.
-- `skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap` [subtask 4] —
-  decomposition manifest codec entrypoint; retired together with the
-  workflow-snapshot typed-DTO pass.
-- `skillbill.workflow.decomposition.toWireMap` [subtask 4] — decomposition
-  manifest wire-map encoder; retired together with the workflow-snapshot
-  typed-DTO pass.
-- `skillbill.application.decomposition.decodeDecompositionManifestMap` [subtask 4] —
-  decomposition manifest decode entrypoint; postponed with the workflow
-  family.
-- `skillbill.application.decomposition.encodeDecompositionManifestMap` [subtask 4] —
-  decomposition manifest encode entrypoint; postponed with the workflow
-  family.
-- `skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate`
-  [subtask 4] — decomposition manifest writer entrypoint; postponed with
-  the workflow family.
-- `skillbill.application.decomposition.DecompositionManifestWriter.manifestFromWorkflowUpdate`
-  [subtask 4] — decomposition manifest writer entrypoint; postponed with
-  the workflow family.
-- `skillbill.application.decomposition.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
-  [subtask 4] — decomposition manifest writer entrypoint; postponed with
-  the workflow family.
+- `skillbill.ports.workflow.decomposition.runtime.decodeDecompositionManifestMap` [subtask 4] — decomposition manifest decode entrypoint.
+- `skillbill.ports.workflow.decomposition.runtime.encodeDecompositionManifestMap` [subtask 4] — decomposition manifest encode entrypoint.
+- `skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap` [subtask 4] — decomposition manifest codec entrypoint.
+- `skillbill.workflow.decomposition.toWireMap` [subtask 4] — decomposition manifest wire-map encoder.
+- `skillbill.workflow.engine.WorkflowEngine.continueDecision` [subtask 4] — workflow-engine continue-decision raw-map seam.
+
 <!-- skill-52-2-inventory:end -->
 # Native-agent installation integrity
 

@@ -20,7 +20,6 @@ import skillbill.ports.work.model.WorkItemKind
 import skillbill.workflow.idestatus.IdeStatusValidator
 import java.nio.file.Path
 import java.time.Clock
-import java.time.Instant
 
 /**
  * SKILL-148 Subtask 1: read-only application projection for IDE status.
@@ -34,11 +33,11 @@ class IdeStatusService(
   private val projector: IdeStatusProjector,
   private val ideStatusValidator: IdeStatusValidator,
   private val branchSource: CheckedOutBranchSource,
-  private val clock: Clock = Clock.systemUTC(),
+  private val clock: Clock,
 ) {
 
   fun status(request: IdeStatusRequest): IdeStatusResult {
-    val observedAt = request.observedAt ?: Instant.now(clock)
+    val observedAt = request.observedAt ?: clock.instant()
     val identityResult = resolveRepositoryIdentity(request.repoRoot)
     if (identityResult is IdeStatusRepositoryResolution.Invalid) {
       return emit(IdeStatusProblemSnapshots.invalidRepositoryInput(observedAt, identityResult.message))

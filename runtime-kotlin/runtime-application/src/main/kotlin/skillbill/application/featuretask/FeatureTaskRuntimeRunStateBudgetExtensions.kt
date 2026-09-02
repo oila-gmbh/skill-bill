@@ -4,10 +4,10 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 
-internal fun FeatureTaskRuntimeRunState.fixLoopIterationFor(phaseId: String, absoluteIteration: Int): Int =
+fun FeatureTaskRuntimeRunState.fixLoopIterationFor(phaseId: String, absoluteIteration: Int): Int =
   absoluteIteration - (fixLoopBudgetBaseByPhase[phaseId] ?: 0)
 
-internal fun FeatureTaskRuntimeRunState.restartAttemptBudget(phaseId: String) {
+fun FeatureTaskRuntimeRunState.restartAttemptBudget(phaseId: String) {
   fixLoopBudgetBaseByPhase[phaseId] = maxOf(nextIteration(phaseId) - 1, 0)
 }
 
@@ -35,7 +35,7 @@ internal fun FeatureTaskRuntimeRunState.trailingNonOutputAttempts(
     }
 }
 
-internal fun FeatureTaskRuntimeRunState.legacyReviewPreparationRetryConsumedBudget(
+fun FeatureTaskRuntimeRunState.legacyReviewPreparationRetryConsumedBudget(
   phaseId: String,
   currentReason: String,
 ): Boolean {
@@ -55,7 +55,7 @@ internal fun FeatureTaskRuntimeRunState.legacyReviewPreparationRetryConsumedBudg
       ?.startsWith("Goal-subtask review state or durable raw evidence is malformed: [SQLITE_BUSY]") == true
 }
 
-internal fun FeatureTaskRuntimeRunState.legacyLaunchSeamRejectionConsumedBudget(
+fun FeatureTaskRuntimeRunState.legacyLaunchSeamRejectionConsumedBudget(
   phaseId: String,
   currentReason: String,
 ): Boolean {

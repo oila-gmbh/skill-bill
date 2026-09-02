@@ -1,5 +1,5 @@
 package skillbill.application.goalrunner.planning
-
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError

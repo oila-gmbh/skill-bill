@@ -4,7 +4,7 @@ import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 
-internal fun producerProjectionGateReason(
+fun producerProjectionGateReason(
   phaseId: String,
   outputMap: Map<String, Any?>,
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
@@ -15,7 +15,7 @@ internal fun producerProjectionGateReason(
   return unresolvedProducerProjectionKindReason(phaseId, expectedKind, planningProjectionValidator)
 }
 
-internal fun requireValidPlanningProjection(
+fun requireValidPlanningProjection(
   envelope: Map<String, Any?>,
   phaseId: String,
   sourceLabel: String,

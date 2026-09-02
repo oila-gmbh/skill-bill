@@ -4,15 +4,14 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.defaultFeatureBranch
 import skillbill.application.decomposition.loadValidatedDecompositionManifestPersistingRepair
+import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
 import skillbill.application.decomposition.repoRelativePath
-import skillbill.application.workflow.model.DecompositionManifestWriteRequest
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation
 import skillbill.featurespec.model.FeatureSpecWriteRequest
 import skillbill.featurespec.model.FeatureSpecWriteResult
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.decomposition.writeBundleAtomically
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.SpecSource
@@ -21,7 +20,8 @@ import java.nio.file.Path
 @Inject
 class FeatureSpecPreparationWriter(
   private val decompositionManifestValidator: DecompositionManifestValidator,
-  private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+  private val fileStore: DecompositionManifestFileStore,
+  private val decompositionManifestWriter: DecompositionManifestWriter,
 ) {
   fun write(repoRoot: Path, request: FeatureSpecWriteRequest): FeatureSpecWriteResult {
     val issueKey = request.decision.issueKey.trim()
@@ -62,7 +62,7 @@ class FeatureSpecPreparationWriter(
     )
     val subtaskRecords = prepareSubtasks(repoRoot, request, parentSpecPath, parentSpecRelativePath)
     val planningResult = planningResult(parentSpecPath, subtaskRecords)
-    val preparedManifest = DecompositionManifestWriter.prepare(
+    val preparedManifest = decompositionManifestWriter.prepare(
       request = DecompositionManifestWriteRequest(
         repoRoot = repoRoot,
         parentSpecPath = parentSpecPath,

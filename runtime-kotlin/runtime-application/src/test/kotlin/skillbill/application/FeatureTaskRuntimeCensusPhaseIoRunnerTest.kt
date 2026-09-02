@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.ApprovingReviewDriverStub
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
@@ -259,7 +260,7 @@ private const val NIT_MESSAGE = "Hourly selection is never read"
 private fun censusReviewDriver(findings: List<ParallelReviewMergedFinding>): FeatureTaskRuntimeReviewDriver =
   FeatureTaskRuntimeReviewDriver { request ->
     harnessPendingVerifyFindingIds = findings.map { it.fNumber }
-    FeatureTaskRuntimeReviewDriver.EMPTY.run(request).copy(
+    ApprovingReviewDriverStub.run(request).copy(
       mergeResult = ParallelReviewMergeResult(
         findings = findings,
         formattedOutput = "findings",

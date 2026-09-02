@@ -4,6 +4,10 @@ object PrincipleEnforcementInventory {
   val enforceableRules: List<String> = listOf(
     "Package clustering: loose files in a subpackaged area must not belong to a sibling area cluster.",
     "Production line ceiling: no production Kotlin file may exceed 500 lines without an explicit exemption.",
+    "Production logical-type line ceiling: attribute extension files to receiver types and enforce combined totals.",
+    "Application package acyclicity: mutual imports among skillbill.application areas must stay within baseline.",
+    "Runtime-application ambient clock ban: Instant.now, LocalDateTime.now, and Clock.systemUTC require baseline.",
+    "No @Inject constructor defaults: dependency bags and @Inject constructors must not carry default arguments.",
     "Failure wire codes: in-scope FailureWireCode hierarchies must map cases to codes totally and injectively.",
     "Typed parse boundaries: named untrusted-input decode sites must not report malformation via error, require, or" +
       "bare throw.",

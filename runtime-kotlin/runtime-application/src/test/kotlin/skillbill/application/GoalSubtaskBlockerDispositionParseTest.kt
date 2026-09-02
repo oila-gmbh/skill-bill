@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDispositionVerdict
 import kotlin.test.Test

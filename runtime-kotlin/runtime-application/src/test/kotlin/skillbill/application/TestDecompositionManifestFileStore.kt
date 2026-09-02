@@ -4,13 +4,13 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
-import skillbill.application.workflow.model.DecompositionManifestRuntimeUpdate
-import skillbill.application.workflow.model.DecompositionManifestWorkflowProjectionInput
-import skillbill.application.workflow.model.DecompositionManifestWriteRequest
-import skillbill.application.workflow.model.DecompositionManifestWriteResult
-import skillbill.application.workflow.repoRoot
+import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
+import skillbill.application.decomposition.model.DecompositionManifestWorkflowProjectionInput
+import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
+import skillbill.application.decomposition.model.DecompositionManifestWriteResult
 import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallPlanWireValidator
+import skillbill.model.RepositoryRoot
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
@@ -19,6 +19,10 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import java.time.Clock
+
+internal val testHarnessClock: Clock = Clock.systemUTC()
+internal val testRepositoryRoot: RepositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize())
 
 internal fun seedHarnessSpecIntentProjection(repoRoot: Path, specReference: String) {
   val specPath = repoRoot.resolve(specReference)
@@ -112,11 +116,13 @@ internal val testInstallPlanWireValidator: InstallPlanWireValidator =
     override fun validate(plan: Map<String, Any?>) = Unit
   }
 
+internal val testDecompositionManifestWriter = DecompositionManifestWriter()
+
 internal fun loadDecompositionManifest(path: Path) =
   loadDecompositionManifest(path, TestDecompositionManifestFileStore, testDecompositionManifestValidator)
 
 internal fun writeIfDecomposed(request: DecompositionManifestWriteRequest): DecompositionManifestWriteResult? =
-  DecompositionManifestWriter.writeIfDecomposed(
+  testDecompositionManifestWriter.writeIfDecomposed(
     request,
     testDecompositionManifestValidator,
     TestDecompositionManifestFileStore,
@@ -127,7 +133,7 @@ internal fun writeFromWorkflowUpdate(
   existingArtifactsJson: String,
   artifactsPatch: Map<String, Any?>?,
   runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
-): DecompositionManifestWriteResult? = DecompositionManifestWriter.writeFromWorkflowUpdate(
+): DecompositionManifestWriteResult? = testDecompositionManifestWriter.writeFromWorkflowUpdate(
   DecompositionManifestWorkflowProjectionInput(
     repoRoot = repoRoot,
     existingArtifactsJson = existingArtifactsJson,
@@ -141,7 +147,7 @@ internal fun writeFromWorkflowUpdate(
 internal fun writeProjectionFromWorkflowState(
   repoRoot: Path,
   artifactsJson: String,
-): DecompositionManifestWriteResult? = DecompositionManifestWriter.writeProjectionFromWorkflowState(
+): DecompositionManifestWriteResult? = testDecompositionManifestWriter.writeProjectionFromWorkflowState(
   repoRoot = repoRoot,
   artifactsJson = artifactsJson,
   validator = testDecompositionManifestValidator,

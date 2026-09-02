@@ -1,8 +1,10 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
+
 internal sealed interface FeatureTaskRuntimeSubtaskCommitDecision
 
-internal data object FeatureTaskRuntimeSubtaskCommitCreate : FeatureTaskRuntimeSubtaskCommitDecision
+data object FeatureTaskRuntimeSubtaskCommitCreate : FeatureTaskRuntimeSubtaskCommitDecision
 
 internal data class FeatureTaskRuntimeSubtaskCommitAmend(
   val ownedHeadSha: String,
@@ -17,8 +19,8 @@ internal data class FeatureTaskRuntimeSubtaskCommitHeadState(
   val isUnpushed: Boolean,
 )
 
-internal object FeatureTaskRuntimeSubtaskCommitResolver {
-  fun decide(
+object FeatureTaskRuntimeSubtaskCommitResolver {
+  internal fun decide(
     identity: FeatureTaskRuntimeSubtaskCommitIdentity,
     durableCommitSha: String?,
     head: FeatureTaskRuntimeSubtaskCommitHeadState,

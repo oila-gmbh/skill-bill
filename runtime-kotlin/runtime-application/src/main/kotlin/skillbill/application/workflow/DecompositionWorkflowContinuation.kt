@@ -1,10 +1,11 @@
 package skillbill.application.workflow
 
+import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.resolveDecompositionManifest
-import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.model.AdvanceCompletedSubtasksRequest
 import skillbill.application.workflow.model.CheckoutAndValidateBranchRequest
+import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
@@ -19,14 +20,15 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.nio.file.Path
 
-internal class DecompositionWorkflowContinuation(
+class DecompositionWorkflowContinuation(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
   private val validator: DecompositionManifestValidator,
   private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
-  private val repoRootProvider: () -> Path = ::repoRoot,
+  private val repoRoot: Path,
+  private val manifestWriter: DecompositionManifestWriter,
 ) {
-  fun continueDecomposedParentByIssueKey(
+  internal fun continueDecomposedParentByIssueKey(
     issueKey: String,
     unitOfWork: UnitOfWork,
     requestedSubtaskId: Int? = null,
@@ -60,7 +62,7 @@ internal class DecompositionWorkflowContinuation(
   private fun findProjectedManifestByIssueKey(issueKey: String): DecompositionManifest? {
     if (fileStore === UnavailableDecompositionManifestFileStore) return null
     return resolveDecompositionManifest(
-      repoRoot = repoRootProvider(),
+      repoRoot = repoRoot,
       issueKey = issueKey,
       fileStore = fileStore,
       validator = validator,
@@ -126,7 +128,7 @@ internal class DecompositionWorkflowContinuation(
           unitOfWork = unitOfWork,
           validator = validator,
           gitOperations = gitOperations,
-          repoRootProvider = repoRootProvider,
+          repoRootProvider = { repoRoot },
         ),
       )
     } else {
@@ -179,7 +181,12 @@ internal class DecompositionWorkflowContinuation(
         WorkflowFamily.TASK_RUNTIME,
         alignedRecord,
         unitOfWork,
-        validator,
+        ContinueExistingWorkflowArgs(
+          validator = validator,
+          fileStore = fileStore,
+          repoRoot = repoRoot,
+          manifestWriter = manifestWriter,
+        ),
       ).withDecompositionFields(
         issueKey = manifest.issueKey,
         subtaskId = selection.subtask.id,
@@ -204,7 +211,7 @@ internal class DecompositionWorkflowContinuation(
         unitOfWork = unitOfWork,
         validator = validator,
         gitOperations = gitOperations,
-        repoRootProvider = repoRootProvider,
+        repoRootProvider = { repoRoot },
       ),
     )
     return if (branchError != null) {
@@ -252,7 +259,12 @@ internal class DecompositionWorkflowContinuation(
       WorkflowFamily.TASK_RUNTIME,
       saved,
       unitOfWork,
-      validator,
+      ContinueExistingWorkflowArgs(
+        validator = validator,
+        fileStore = fileStore,
+        repoRoot = repoRoot,
+        manifestWriter = manifestWriter,
+      ),
     )
       .withProjection(updatedManifest, validator)
       .withDecompositionFields(

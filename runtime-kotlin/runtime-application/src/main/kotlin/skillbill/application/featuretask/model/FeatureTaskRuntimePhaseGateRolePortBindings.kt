@@ -1,0 +1,43 @@
+package skillbill.application.featuretask.model
+
+import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
+import skillbill.application.featuretask.FeatureTaskRuntimeFindingVerificationBoundaryMemory
+import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
+import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
+import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
+import skillbill.application.featuretask.validation.ValidationGateResolver
+import skillbill.application.review.SpecIntentProjectionResolver
+import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.ports.validation.ValidationGateRunner
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+
+@Inject
+data class DefaultFeatureTaskRuntimePhaseGateBranchPort(
+  override val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
+  override val planningStopper: FeatureTaskRuntimePlanningStopper,
+  override val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry,
+  override val gitOperations: WorkflowGitOperations,
+  override val specGate: FeatureTaskRuntimeSpecGate,
+) : FeatureTaskRuntimePhaseGateBranchPort
+
+@Inject
+data class DefaultFeatureTaskRuntimePhaseGateValidationPort(
+  override val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  override val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator,
+  override val validationGateResolver: ValidationGateResolver,
+  override val validationGateRunner: ValidationGateRunner,
+  override val validationGateCoordinator: FeatureTaskRuntimeValidationGateCoordinator,
+  override val buildGateCoordinator: FeatureTaskRuntimeBuildGateCoordinator,
+  override val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort,
+  override val diffResolver: DiffResolverPort,
+  override val reviewDriver: FeatureTaskRuntimeReviewDriver,
+  override val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  override val findingVerificationBoundaryMemory: FeatureTaskRuntimeFindingVerificationBoundaryMemory,
+) : FeatureTaskRuntimePhaseGateValidationPort

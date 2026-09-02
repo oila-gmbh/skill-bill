@@ -1,7 +1,7 @@
 package skillbill.application
 
-import skillbill.application.workflow.toEnvelopeMap
-import skillbill.application.workflow.toGoalPlanningPreparationRecord
+import skillbill.application.goalplanning.toEnvelopeMap
+import skillbill.application.goalplanning.toGoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState

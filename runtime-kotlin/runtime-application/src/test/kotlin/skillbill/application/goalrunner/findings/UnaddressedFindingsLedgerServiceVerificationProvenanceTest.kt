@@ -4,9 +4,10 @@ import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.testWorkflowSnapshotValidator
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY
@@ -52,7 +53,7 @@ class UnaddressedFindingsLedgerServiceVerificationProvenanceTest {
         summary = "example",
       ),
     )
-    val service = UnaddressedFindingsLedgerService(database)
+    val service = UnaddressedFindingsLedgerService(database, NoopRuntimeDiagnostics)
 
     val dispositions = service.verificationDispositions("SKILL-202")
 

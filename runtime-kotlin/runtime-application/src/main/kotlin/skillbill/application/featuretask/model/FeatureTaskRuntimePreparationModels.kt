@@ -3,13 +3,13 @@ package skillbill.application.featuretask.model
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 
-internal sealed interface FeatureTaskRuntimePreparation {
+sealed interface FeatureTaskRuntimePreparation {
   data class Prepared(val request: FeatureTaskRuntimeRunRequest) : FeatureTaskRuntimePreparation
 
   data class PreparationBlocked(val report: FeatureTaskRuntimeRunReport.Blocked) : FeatureTaskRuntimePreparation
 }
 
-internal sealed interface ContinuationRead {
+sealed interface ContinuationRead {
   data object None : ContinuationRead
 
   data class Available(

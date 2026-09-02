@@ -5,8 +5,6 @@ import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.specsource.SpecSourceResolver
-import skillbill.application.workflow.repoRoot
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.workflow.specscratch.SpecScratchStore
@@ -25,7 +23,7 @@ class FeatureTaskRuntimeSpecGate(
   val specSourceResolver: SpecSourceResolver,
   val specScratchStore: SpecScratchStore,
   private val specStatusWriter: FeatureTaskRuntimeSpecStatusWriter,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   // Single terminal-finalize entry point for the runner: reconcile the single-spec `Agent:` line and
   // delete linear-mode scratch. Keeps the runner's finalize path to one call; each step self-gates.

@@ -10,20 +10,12 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import java.time.Instant
+import java.time.Clock
 
-/**
- * SKILL-64 Subtask 3 (AC10, AC11): isolates the durable side effects for the
- * append-only attempt/event ledger. Timestamps are minted here (the
- * adapter/effect layer), keeping the domain models effect-free. Writes are
- * best-effort: a failure to record never fails an otherwise valid goal run.
- *
- * The ledger sequence space is distinct from the goal_event and
- * goal_observability sequence spaces.
- */
-internal class GoalRunnerLedgerRecorder(
+class GoalRunnerLedgerRecorder(
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
   private val request: GoalRunnerRunRequest,
+  private val clock: Clock,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   // SKILL-64 Subtask 3 (F-D01): the durable attempt ledger is append-only
@@ -41,7 +33,7 @@ internal class GoalRunnerLedgerRecorder(
   private val cumulativeBackwardEdgeCounts: MutableMap<String, Int> =
     watermarks?.backwardEdgeCounts?.toMutableMap() ?: mutableMapOf()
 
-  fun recordBackwardEdgeEntry(edge: GoalRunnerBackwardEdge) {
+  internal fun recordBackwardEdgeEntry(edge: GoalRunnerBackwardEdge) {
     val key = "${edge.subtaskId}:${edge.loopId}"
     val newCount = (cumulativeBackwardEdgeCounts[key] ?: 0) + edge.edgeIteration.coerceAtLeast(1)
     cumulativeBackwardEdgeCounts[key] = newCount
@@ -58,13 +50,13 @@ internal class GoalRunnerLedgerRecorder(
     )
   }
 
-  fun recordLedgerEntry(context: GoalRunnerLedgerContext) {
+  internal fun recordLedgerEntry(context: GoalRunnerLedgerContext) {
     val targetWorkflowId = context.workflowId?.takeIf(String::isNotBlank) ?: return
     val facts = context.launchOutcome as? AgentRunLaunchFacts
     val entry = GoalAttemptLedgerEntry(
       action = context.action,
       sequenceNumber = ledgerSequence++,
-      timestamp = Instant.now().toString(),
+      timestamp = clock.instant().toString(),
       issueKey = context.issueKey.takeIf(String::isNotBlank),
       subtaskId = context.subtaskId.takeIf { it > 0 },
       previousWorkflowId = targetWorkflowId,

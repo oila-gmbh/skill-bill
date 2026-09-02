@@ -1,7 +1,5 @@
 package skillbill.application.telemetry
 
-import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
-import skillbill.application.goalrunner.toRecord
 import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.telemetry.model.GoalFinishedRequest
 import skillbill.application.telemetry.model.GoalIssueFinishedRequest
@@ -15,7 +13,7 @@ import skillbill.review.normalizeRoutedSkill
 import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.TelemetrySettings
 
-internal class LifecycleTelemetryGoalEmission(
+class LifecycleTelemetryGoalEmission(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
 ) : GoalLifecycleTelemetryEmitter {

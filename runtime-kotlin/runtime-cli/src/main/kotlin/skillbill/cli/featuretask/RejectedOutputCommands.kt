@@ -15,6 +15,7 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import java.io.OutputStream
+import java.time.Clock
 
 private const val CONTROL_CHARACTER_LIMIT: Int = 0x20
 private const val DELETE_CHARACTER_CODE: Int = 0x7f
@@ -125,10 +126,12 @@ class RejectedOutputCleanupCliCommand(
 
 private fun UnitOfWork.diagnosticService(
   metadataValidator: RejectedOutputDiagnosticMetadataValidator,
+  clock: Clock = Clock.systemUTC(),
 ): RejectedOutputDiagnosticService = RejectedOutputDiagnosticService(
   rejectedOutputDiagnostics ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable"),
   rejectedOutputDiagnosticPermissions ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable"),
   metadataValidator,
+  clock = clock,
 )
 
 private fun RejectedOutputInspectRequest.selector() =

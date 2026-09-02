@@ -4,6 +4,7 @@ import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.asStringAnyMapOrNull
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.decodeDecompositionManifestMap
+import skillbill.application.decomposition.isActiveGoalRuntime
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
@@ -12,17 +13,16 @@ import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
-internal fun WorkflowStateSnapshot.decompositionRuntime(
-  validator: DecompositionManifestValidator,
-): DecompositionManifest? = decodeArtifacts(artifactsJson)[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
-  ?.let { decodeDecompositionManifestMap(it, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
+fun WorkflowStateSnapshot.decompositionRuntime(validator: DecompositionManifestValidator): DecompositionManifest? =
+  decodeArtifacts(artifactsJson)[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
+    ?.let { decodeDecompositionManifestMap(it, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY) }
 
-internal fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
+fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
   decodeArtifacts(artifactsJson)["plan"].asStringAnyMapOrNull()?.get("mode") == "decompose"
 
-internal val IMPLEMENT_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
+val IMPLEMENT_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
 
-internal fun WorkflowStateRepository.listFeatureTaskWorkflowsForParentDiscovery(): List<WorkflowStateRecord> {
+fun WorkflowStateRepository.listFeatureTaskWorkflowsForParentDiscovery(): List<WorkflowStateRecord> {
   val byId = LinkedHashMap<String, WorkflowStateRecord>()
   listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).forEach { row ->
     byId[row.workflowId] = row
@@ -33,13 +33,13 @@ internal fun WorkflowStateRepository.listFeatureTaskWorkflowsForParentDiscovery(
   return byId.values.toList()
 }
 
-internal fun WorkflowStateRecord.requireRuntimeModeForEngineWrite() {
+fun WorkflowStateRecord.requireRuntimeModeForEngineWrite() {
   if (mode != FeatureTaskWorkflowMode.RUNTIME) {
     throw LegacyProseWorkflowError(workflowId, issueKey)
   }
 }
 
-internal fun WorkflowStateRepository.findDecomposedParentWorkflow(
+fun WorkflowStateRepository.findDecomposedParentWorkflow(
   issueKey: String,
   validator: DecompositionManifestValidator,
   currentProjectedManifest: DecompositionManifest? = null,
@@ -83,7 +83,7 @@ private fun DecomposedParentLookupCandidate.isStaleAbandonedLineage(
   return manifest.subtasks.map { it.specPath } != currentProjectedManifest.subtasks.map { it.specPath }
 }
 
-internal fun WorkflowStateSnapshot.isGoalContinuationChildWorkflow(): Boolean {
+fun WorkflowStateSnapshot.isGoalContinuationChildWorkflow(): Boolean {
   val goalContinuation = decodeArtifacts(artifactsJson)["goal_continuation"].asStringAnyMapOrNull() ?: return false
   return goalContinuation["enabled"] == true ||
     goalContinuation.containsKey("issue_key") ||

@@ -1,6 +1,6 @@
 package skillbill.mcp
 
-import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.mcp.core.McpToolRegistry
 import kotlin.test.Test
 import kotlin.test.assertContains

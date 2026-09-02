@@ -4,7 +4,7 @@ import skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressEvent
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEvent
 import skillbill.workflow.goal.model.GoalObservabilityEvent
 
-internal fun Map<*, *>.toGoalRunnerProgressEventOrNull(): GoalRunnerProgressEvent? {
+fun Map<*, *>.toGoalRunnerProgressEventOrNull(): GoalRunnerProgressEvent? {
   val stepId = this["step_id"]?.toString()?.takeIf(String::isNotBlank)
   val kind = this["kind"]?.toString()?.takeIf(String::isNotBlank)
   val timestamp = this["timestamp"]?.toString()?.takeIf(String::isNotBlank)
@@ -22,7 +22,7 @@ internal fun Map<*, *>.toGoalRunnerProgressEventOrNull(): GoalRunnerProgressEven
   }
 }
 
-internal fun GoalRunnerProgressEvent.summary(): String = buildString {
+fun GoalRunnerProgressEvent.summary(): String = buildString {
   append("durable_progress step=")
   append(stepId)
   append(" attempt=")
@@ -39,7 +39,7 @@ internal fun GoalRunnerProgressEvent.summary(): String = buildString {
   }
 }
 
-internal fun GoalObservabilityEvent.toProgressEvent(): GoalObservabilityProgressEvent = GoalObservabilityProgressEvent(
+fun GoalObservabilityEvent.toProgressEvent(): GoalObservabilityProgressEvent = GoalObservabilityProgressEvent(
   issueKey = issueKey,
   subtaskId = subtaskId,
   workflowPhase = workflowPhase,

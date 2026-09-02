@@ -8,18 +8,21 @@ import kotlin.test.assertEquals
 class GateCommandOwnershipTest {
   @Test
   fun `runtime main sources do not hardcode collect-all or cache-bypass gradle flags`() {
-    val mainRoots = repoRootFromTest().resolve("runtime-kotlin")
+    val runtimeKotlin = repoRootFromTest().resolve("runtime-kotlin")
     val forbidden = listOf("--continue", "--rerun-tasks", "--no-build-cache")
-    val hits = buildList {
-      Files.walk(mainRoots).use { stream ->
-        stream.forEach { path ->
-          if (!Files.isRegularFile(path)) return@forEach
-          if (path.fileName.toString().endsWith(".kt").not()) return@forEach
-          if ("/src/main/" !in path.toString().replace('\\', '/')) return@forEach
-          val text = Files.readString(path)
-          forbidden.forEach { token ->
-            if (token in text) add("$path contains $token")
-          }
+    val hits = mutableListOf<String>()
+    Files.list(runtimeKotlin).use { modules ->
+      modules.filter { Files.isDirectory(it) }.forEach { module ->
+        val srcMain = module.resolve("src/main")
+        if (!Files.isDirectory(srcMain)) return@forEach
+        Files.walk(srcMain).use { stream ->
+          stream.filter { path -> Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt") }
+            .forEach { path ->
+              val text = Files.readString(path)
+              forbidden.forEach { token ->
+                if (token in text) hits += "$path contains $token"
+              }
+            }
         }
       }
     }

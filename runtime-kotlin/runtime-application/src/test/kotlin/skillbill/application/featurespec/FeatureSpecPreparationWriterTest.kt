@@ -5,6 +5,7 @@ import skillbill.application.TestDecompositionManifestFileStore
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.testDecompositionManifestValidator
+import skillbill.application.testDecompositionManifestWriter
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
@@ -34,6 +35,7 @@ class FeatureSpecPreparationWriterTest {
   private val writer = FeatureSpecPreparationWriter(
     decompositionManifestValidator = testDecompositionManifestValidator,
     fileStore = TestDecompositionManifestFileStore,
+    decompositionManifestWriter = testDecompositionManifestWriter,
   )
 
   @Test
@@ -223,7 +225,7 @@ class FeatureSpecPreparationWriterTest {
     }
 
     assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      FeatureSpecPreparationWriter(rejectingValidator, store).write(
+      FeatureSpecPreparationWriter(rejectingValidator, store, testDecompositionManifestWriter).write(
         repoRoot,
         FeatureSpecWriteRequest(
           decision = decomposedDecision(),
@@ -256,7 +258,11 @@ class FeatureSpecPreparationWriterTest {
     }
 
     assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      FeatureSpecPreparationWriter(readbackRejectingValidator, TestDecompositionManifestFileStore).write(
+      FeatureSpecPreparationWriter(
+        readbackRejectingValidator,
+        TestDecompositionManifestFileStore,
+        testDecompositionManifestWriter,
+      ).write(
         repoRoot,
         FeatureSpecWriteRequest(
           decision = decomposedDecision(),
@@ -300,7 +306,11 @@ class FeatureSpecPreparationWriterTest {
     }
 
     assertFailsWith<InvalidDecompositionManifestSchemaError> {
-      FeatureSpecPreparationWriter(readbackRejectingValidator, TestDecompositionManifestFileStore).write(
+      FeatureSpecPreparationWriter(
+        readbackRejectingValidator,
+        TestDecompositionManifestFileStore,
+        testDecompositionManifestWriter,
+      ).write(
         repoRoot,
         request,
       )
@@ -348,7 +358,11 @@ class FeatureSpecPreparationWriterTest {
     }
 
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-evidence")
-    val result = FeatureSpecPreparationWriter(repairingValidator, TestDecompositionManifestFileStore).write(
+    val result = FeatureSpecPreparationWriter(
+      repairingValidator,
+      TestDecompositionManifestFileStore,
+      testDecompositionManifestWriter,
+    ).write(
       repoRoot,
       FeatureSpecWriteRequest(
         decision = decomposedDecision(),
@@ -402,7 +416,11 @@ class FeatureSpecPreparationWriterTest {
     }
 
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-readback-evidence")
-    val result = FeatureSpecPreparationWriter(repairingValidator, TestDecompositionManifestFileStore).write(
+    val result = FeatureSpecPreparationWriter(
+      repairingValidator,
+      TestDecompositionManifestFileStore,
+      testDecompositionManifestWriter,
+    ).write(
       repoRoot,
       FeatureSpecWriteRequest(
         decision = decomposedDecision(),

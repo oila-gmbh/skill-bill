@@ -1,13 +1,13 @@
 package skillbill.di
 
-import skillbill.application.goalrunner.GoalRunnerChildRepairStore
-import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
-import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.infrastructure.fs.FileSystemDeclaredReviewSpecialists
 import skillbill.infrastructure.fs.FileSystemInstalledPlatformPackCatalog
 import skillbill.infrastructure.fs.FileSystemReviewLaunchAgentStaging
 import skillbill.infrastructure.fs.GhGoalPullRequestPort
+import skillbill.infrastructure.sqlite.goalrunner.WorkflowGoalRunnerManifestStore
+import skillbill.infrastructure.sqlite.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.model.OptionalCallbacks
+import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
@@ -15,8 +15,11 @@ import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
+import java.time.Clock
 
 internal object RuntimeComponentBindingsA6 {
+  internal fun runtimeClock(): Clock = Clock.systemUTC()
+
   internal fun reviewLaunchAgentStagingPort(
     adapter: FileSystemReviewLaunchAgentStaging,
   ): ReviewLaunchAgentStagingPort = adapter

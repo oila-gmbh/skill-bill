@@ -1,7 +1,6 @@
 package skillbill.application.install
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.workflow.repoRoot
 import skillbill.install.model.BaselineManifest
 import skillbill.install.model.InstallApplyResult
 import skillbill.install.model.InstallApplyStatus

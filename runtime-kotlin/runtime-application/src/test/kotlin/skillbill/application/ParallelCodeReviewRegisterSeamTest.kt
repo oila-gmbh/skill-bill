@@ -1,7 +1,7 @@
 package skillbill.application
 
-import skillbill.application.review.model.ParallelReviewScope
 import skillbill.application.review.parseLaneRegisterSeam
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher

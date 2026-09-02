@@ -26,6 +26,7 @@ internal fun resolveInvokedAgentId(explicitAgent: String?, environment: Map<Stri
   requireInvokingAgentId(explicitAgent, environment, "--agent")
 
 internal const val DEFAULT_GOAL_PROGRESS_IDLE_TIMEOUT_MINUTES = 10
+
 /**
  * Default per-subtask wall-clock cap. Chosen from local goal_subtask_events telemetry:
  * p95 ≈ 96m, p99 ≈ 142m, observed max ≈ 178m. A live forever-command (e.g. attached

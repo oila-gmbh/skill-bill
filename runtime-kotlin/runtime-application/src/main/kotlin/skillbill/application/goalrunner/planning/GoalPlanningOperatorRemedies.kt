@@ -7,7 +7,7 @@ import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 
 /** Copy-pasteable operator remedy for incompatible shared-preplan provenance. */
-internal fun goalPlanningIncludeSharedPreplanRemedy(issueKey: String, subtaskId: Int): String =
+fun goalPlanningIncludeSharedPreplanRemedy(issueKey: String, subtaskId: Int): String =
   "skill-bill goal replan $issueKey --subtask $subtaskId --include-shared-preplan"
 
 /**
@@ -16,7 +16,7 @@ internal fun goalPlanningIncludeSharedPreplanRemedy(issueKey: String, subtaskId:
  * runtime then rejects, which is what happens on every goal whose early subtasks already finished.
  * Null means no subtask is replannable and no command should be advertised.
  */
-internal fun goalPlanningRemedySubtaskId(subtasks: List<DecompositionSubtask>): Int? =
+fun goalPlanningRemedySubtaskId(subtasks: List<DecompositionSubtask>): Int? =
   subtasks.firstOrNull { it.status != "complete" && it.status != "skipped" }?.id
 
 private fun recoverySuffix(issueKey: String, subtaskId: Int?, kind: GoalPlanningRecoveryKind): String = when (kind) {
@@ -40,7 +40,7 @@ internal fun goalPlanningIncompatibleProvenanceStopReason(
       recoverySuffix(issueKey, subtaskId, kind)
 }
 
-internal fun goalPlanningMissingSharedContextPacketStopReason(issueKey: String, subtaskId: Int?): String =
+fun goalPlanningMissingSharedContextPacketStopReason(issueKey: String, subtaskId: Int?): String =
   "Goal planning shared preplan does not contain a valid shared context packet. " +
     recoverySuffix(issueKey, subtaskId, GoalPlanningRecoveryKind.SCOPED_REPLAN)
 
@@ -49,7 +49,7 @@ internal fun goalPlanningMissingSharedContextPacketStopReason(issueKey: String, 
  * rather than [Throwable.message] so the stop does not claim the state "cannot be recovered" when
  * `--include-shared-preplan` is the documented recovery path.
  */
-internal fun goalPlanningPreparationStateReadStopReason(error: Throwable, issueKey: String, subtaskId: Int?): String {
+fun goalPlanningPreparationStateReadStopReason(error: Throwable, issueKey: String, subtaskId: Int?): String {
   val recovery = error as? IncompatibleGoalPlanningPreparationRecoveryError
     ?: return "Goal planning preparation state could not be read: ${error.message.orEmpty()}"
   val remedySubtaskId = subtaskId?.takeIf { it > 0 } ?: recovery.subtaskId.takeIf { it > 0 }

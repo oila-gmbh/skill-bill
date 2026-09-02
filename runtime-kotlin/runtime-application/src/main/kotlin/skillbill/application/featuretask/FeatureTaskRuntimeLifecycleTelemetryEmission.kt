@@ -9,7 +9,7 @@ import skillbill.application.telemetry.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.telemetry.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.telemetry.normalizedBlockedReason
 
-internal fun emitFeatureTaskRuntimeFinished(
+fun emitFeatureTaskRuntimeFinished(
   lifecycleTelemetryService: LifecycleTelemetryService,
   report: FeatureTaskRuntimeRunReport,
   context: FeatureTaskRuntimeFinishedTelemetryContext,
@@ -48,7 +48,7 @@ internal fun emitFeatureTaskRuntimeFinished(
   )
 }
 
-internal fun emitFeatureTaskRuntimeFinishedError(
+fun emitFeatureTaskRuntimeFinishedError(
   lifecycleTelemetryService: LifecycleTelemetryService,
   context: FeatureTaskRuntimeFinishedTelemetryContext,
   outcomes: Map<String, String>,
@@ -122,33 +122,32 @@ internal fun resolvedFeatureTaskRuntimeTelemetryPayload(
   )
 }
 
-internal fun completionStatusOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
+fun completionStatusOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
   is FeatureTaskRuntimeRunReport.Completed -> "completed"
   is FeatureTaskRuntimeRunReport.Blocked -> "blocked"
   is FeatureTaskRuntimeRunReport.Paused -> "paused"
   is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
 }
 
-internal fun completedPhaseIdsOf(report: FeatureTaskRuntimeRunReport): List<String> = when (report) {
+fun completedPhaseIdsOf(report: FeatureTaskRuntimeRunReport): List<String> = when (report) {
   is FeatureTaskRuntimeRunReport.Completed -> report.completedPhaseIds
   is FeatureTaskRuntimeRunReport.Blocked -> report.completedPhaseIds
   is FeatureTaskRuntimeRunReport.Paused -> report.completedPhaseIds
   is FeatureTaskRuntimeRunReport.Decomposed -> report.completedPhaseIds
 }
 
-internal fun lastIncompletePhaseOf(report: FeatureTaskRuntimeRunReport, outcomes: Map<String, String>): String =
-  when (report) {
-    is FeatureTaskRuntimeRunReport.Completed -> "completed"
-    is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
-    is FeatureTaskRuntimeRunReport.Paused -> report.pausedPhase
-    is FeatureTaskRuntimeRunReport.Blocked ->
-      report.lastIncompletePhase.takeIf(String::isNotBlank) ?: outcomes.firstIncompletePhase()
-  }
+fun lastIncompletePhaseOf(report: FeatureTaskRuntimeRunReport, outcomes: Map<String, String>): String = when (report) {
+  is FeatureTaskRuntimeRunReport.Completed -> "completed"
+  is FeatureTaskRuntimeRunReport.Decomposed -> "decomposed_at_planning"
+  is FeatureTaskRuntimeRunReport.Paused -> report.pausedPhase
+  is FeatureTaskRuntimeRunReport.Blocked ->
+    report.lastIncompletePhase.takeIf(String::isNotBlank) ?: outcomes.firstIncompletePhase()
+}
 
-internal fun Map<String, String>.firstIncompletePhase(): String =
+fun Map<String, String>.firstIncompletePhase(): String =
   entries.firstOrNull { it.value != "completed" }?.key?.takeIf(String::isNotBlank) ?: "unknown"
 
-internal fun blockedReasonOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
+fun blockedReasonOf(report: FeatureTaskRuntimeRunReport): String = when (report) {
   is FeatureTaskRuntimeRunReport.Blocked -> normalizedBlockedReason(
     reason = report.blockedReason,
     category = "runtime",

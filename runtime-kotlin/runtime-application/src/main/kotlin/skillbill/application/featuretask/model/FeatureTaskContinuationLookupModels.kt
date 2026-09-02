@@ -1,5 +1,6 @@
 package skillbill.application.featuretask.model
 
+import skillbill.application.continuation.model.GoalContinuationCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 
 sealed interface FeatureTaskContinuationLookupResult {
@@ -26,19 +27,6 @@ sealed interface FeatureTaskContinuationLookupResult {
     val summary: String,
   ) : FeatureTaskContinuationLookupResult
 }
-
-data class GoalContinuationCandidate(
-  val parentWorkflowId: String,
-  val issueKey: String,
-  val status: String,
-  val currentSubtaskId: Int?,
-  val currentAction: String,
-  val completeCount: Int,
-  val pendingCount: Int,
-  val blockedCount: Int,
-  val updatedAt: String?,
-  val summary: String,
-)
 
 data class FeatureTaskContinuationCandidate(
   val workflowId: String,

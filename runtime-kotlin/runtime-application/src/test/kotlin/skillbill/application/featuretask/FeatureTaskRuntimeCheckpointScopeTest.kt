@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
+import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskCommitIdentity
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

@@ -12,6 +12,8 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import java.sql.Connection
 import java.sql.SQLException
 
+internal object GoalPlanningPreparationSqlNormalize
+
 internal inline fun <T> translateSqlFailure(workflowId: String, subtaskId: Int, block: () -> T): T = try {
   block()
 } catch (failure: SQLException) {

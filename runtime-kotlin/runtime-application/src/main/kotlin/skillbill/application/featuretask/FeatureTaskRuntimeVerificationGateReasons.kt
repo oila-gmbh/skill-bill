@@ -6,7 +6,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.validateDispositionCoverage
 
-internal object FeatureTaskRuntimeVerificationGateReasons {
+object FeatureTaskRuntimeVerificationGateReasons {
   fun findingVerificationDisposition(
     phaseId: String,
     outputMap: Map<String, Any?>,

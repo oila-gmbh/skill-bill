@@ -5,7 +5,7 @@ package skillbill.application.featuretask
  * shared by the gate ([FeatureTaskRuntimeRunner]) and the prompt that instructs the agent to emit them
  * ([FeatureTaskRuntimePhasePromptComposer]) so the two cannot drift.
  */
-internal object FeatureTaskRuntimeVerificationSignalKeys {
+object FeatureTaskRuntimeVerificationSignalKeys {
   /** Top-level verdict string both verifying gates accept as an explicit advance/remediation signal. */
   const val VERDICT = "verdict"
 

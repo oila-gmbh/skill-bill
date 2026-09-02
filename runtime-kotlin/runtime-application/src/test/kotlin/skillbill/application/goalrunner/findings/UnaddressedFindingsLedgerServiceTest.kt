@@ -6,6 +6,7 @@ import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.UnaddressedFindingsRepository
 import skillbill.ports.learning.LearningRepository
@@ -98,7 +99,7 @@ class UnaddressedFindingsLedgerServiceTest {
   }
 
   private fun serviceFor(findings: InMemoryUnaddressedFindings) =
-    UnaddressedFindingsLedgerService(LedgerOnlySessionFactory(findings))
+    UnaddressedFindingsLedgerService(LedgerOnlySessionFactory(findings), NoopRuntimeDiagnostics)
 
   private fun finding(
     subtaskId: Int,

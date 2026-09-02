@@ -3,8 +3,9 @@ package skillbill.application.featuretask
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.testHarnessClock
 import skillbill.application.testWorkflowSnapshotValidator
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
 import skillbill.workflow.engine.WorkflowEngine
@@ -105,6 +106,7 @@ private fun recorderFor(repository: InMemoryRuntimeWorkflowRepository): FeatureT
     testWorkflowSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    testHarnessClock,
   )
 
 private fun verificationCheckpointArtifactsJson(

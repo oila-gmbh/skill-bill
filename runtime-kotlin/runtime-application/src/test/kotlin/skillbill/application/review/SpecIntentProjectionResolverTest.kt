@@ -1,8 +1,9 @@
 package skillbill.application.review
-
 import skillbill.application.TestDecompositionManifestFileStore
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
+import skillbill.application.reviewevidence.ResolvedCommitSequence
+import skillbill.application.reviewevidence.ReviewDiffEvidence
 import skillbill.application.testDecompositionManifestValidator
 import skillbill.error.UnreadableSpecIntentProjectionError
 import skillbill.review.context.ReviewContextEnvelopeValidator

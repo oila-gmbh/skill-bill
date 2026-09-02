@@ -1,7 +1,9 @@
 package skillbill.application.workflow
 
+import skillbill.application.decomposition.DecompositionManifestProjectionSupport
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
@@ -17,14 +19,15 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import java.nio.file.Path
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
-internal class WorkflowServiceBlockedPhaseRetry(
+class WorkflowServiceBlockedPhaseRetry(
   private val engine: WorkflowEngine,
   private val decompositionManifestValidator: DecompositionManifestValidator,
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
+  private val decompositionManifestWriter: DecompositionManifestWriter,
+  private val repositoryRoot: RepositoryRoot,
 ) {
   fun retry(
     database: DatabaseSessionFactory,
@@ -57,16 +60,16 @@ internal class WorkflowServiceBlockedPhaseRetry(
       retryInTransaction(unitOfWork, request)
     }
     persistence.projectionArtifactsJson?.let { artifactsJson ->
-      checkNotNull(
-        DecompositionManifestWriter.writeProjectionFromWorkflowState(
-          Path.of("").toAbsolutePath(),
+      DecompositionManifestProjectionSupport.requireWritten(
+        decompositionManifestWriter.writeProjectionFromWorkflowState(
+          repositoryRoot.path,
           artifactsJson,
           decompositionManifestValidator,
           decompositionManifestFileStore,
         ),
-      ) {
-        "Blocked-phase retry reopened the durable goal child but could not write its decomposition manifest projection."
-      }
+        "Blocked-phase retry reopened the durable goal child but could not write " +
+          "its decomposition manifest projection.",
+      )
     }
     return persistence.result
   }

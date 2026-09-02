@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.telemetry.GoalLifecycleTelemetryEmitter
 import skillbill.application.telemetry.model.GoalFinishedRequest
 import skillbill.application.telemetry.model.GoalIssueFinishedRequest
 import skillbill.application.telemetry.model.GoalStartedRequest
@@ -14,29 +15,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 
-interface GoalLifecycleTelemetryEmitter {
-  fun goalStarted(request: GoalStartedRequest, dbOverride: String?)
-
-  fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?)
-
-  fun goalFinished(request: GoalFinishedRequest, dbOverride: String?)
-
-  fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?)
-
-  companion object {
-    val NONE: GoalLifecycleTelemetryEmitter = object : GoalLifecycleTelemetryEmitter {
-      override fun goalStarted(request: GoalStartedRequest, dbOverride: String?) = Unit
-
-      override fun goalSubtaskFinished(request: GoalSubtaskFinishedRequest, dbOverride: String?) = Unit
-
-      override fun goalFinished(request: GoalFinishedRequest, dbOverride: String?) = Unit
-
-      override fun goalIssueFinished(request: GoalIssueFinishedRequest, dbOverride: String?) = Unit
-    }
-  }
-}
-
-internal class GoalRunnerTelemetryEmitter(
+class GoalRunnerTelemetryEmitter(
   private val telemetry: GoalLifecycleTelemetryEmitter,
   private val clock: Clock,
   private val state: GoalRunnerManifestState,

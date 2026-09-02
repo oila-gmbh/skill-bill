@@ -27,34 +27,31 @@ private val BUILD_PROOF_TOKENS: List<String> = listOf(
   "compile proof",
 )
 
-internal fun acceptanceCriteriaRequireGateProof(criteria: List<String>): Boolean {
+fun acceptanceCriteriaRequireGateProof(criteria: List<String>): Boolean {
   val haystack = criteria.joinToString("\n").lowercase()
   return GATE_PROOF_TOKENS.any { it in haystack }
 }
 
-internal fun acceptanceCriteriaRequireBuildProof(criteria: List<String>): Boolean {
+fun acceptanceCriteriaRequireBuildProof(criteria: List<String>): Boolean {
   val haystack = criteria.joinToString("\n").lowercase()
   return BUILD_PROOF_TOKENS.any { it in haystack }
 }
 
-internal fun isAuditGapImplement(briefing: FeatureTaskRuntimePhaseLaunchBriefing): Boolean =
+fun isAuditGapImplement(briefing: FeatureTaskRuntimePhaseLaunchBriefing): Boolean =
   briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
     (
       briefing.priorGapMemory != null ||
         briefing.handoffEnvelope.projections.any { it.projectionName == "audit_prose" }
       )
 
-internal fun phaseEligibleForGateProofException(
-  phaseId: String,
-  auditGapImplement: Boolean,
-): Boolean =
+fun phaseEligibleForGateProofException(phaseId: String, auditGapImplement: Boolean): Boolean =
   phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ||
     (
       phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
         auditGapImplement
       )
 
-internal fun nonValidatePhaseValidationOwnershipDirective(
+fun nonValidatePhaseValidationOwnershipDirective(
   phaseId: String,
   acceptanceCriteria: List<String>,
   auditGapImplement: Boolean,
@@ -93,7 +90,7 @@ internal fun nonValidatePhaseValidationOwnershipDirective(
   """.trimIndent()
 }
 
-internal fun nonBuildPhaseBuildOwnershipDirective(
+fun nonBuildPhaseBuildOwnershipDirective(
   phaseId: String,
   acceptanceCriteria: List<String>,
   auditGapImplement: Boolean,

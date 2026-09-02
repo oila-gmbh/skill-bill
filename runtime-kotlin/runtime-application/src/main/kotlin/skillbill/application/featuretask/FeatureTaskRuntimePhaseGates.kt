@@ -1,38 +1,28 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseGateDependencies
-import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
-import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
-import skillbill.application.featuretask.validation.ValidationGateResolver
-import skillbill.application.review.SpecIntentProjectionResolver
-import skillbill.ports.diff.DiffResolverPort
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
-import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseGateBranchPort
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseGateValidationPort
 
 @Inject
 class FeatureTaskRuntimePhaseGates(
-  dependencies: FeatureTaskRuntimePhaseGateDependencies,
+  branchPort: FeatureTaskRuntimePhaseGateBranchPort,
+  validationPort: FeatureTaskRuntimePhaseGateValidationPort,
 ) {
-  val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner = dependencies.branchSetupRunner
-  val planningStopper: FeatureTaskRuntimePlanningStopper = dependencies.planningStopper
-  val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry = dependencies.lifecycleTelemetry
-  val gitOperations: WorkflowGitOperations = dependencies.gitOperations
-  val specGate: FeatureTaskRuntimeSpecGate = dependencies.specGate
-  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
-    dependencies.planningProjectionValidator
-  val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator = dependencies.buildReceiptValidator
-  val validationGateResolver: ValidationGateResolver = dependencies.validationGateResolver
-  val validationGateRunner: ValidationGateRunner = dependencies.validationGateRunner
-  val validationGateCoordinator: FeatureTaskRuntimeValidationGateCoordinator = dependencies.validationGateCoordinator
-  val buildGateCoordinator: FeatureTaskRuntimeBuildGateCoordinator = dependencies.buildGateCoordinator
-  val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort = dependencies.sharedEvidenceResolver
-  val diffResolver: DiffResolverPort = dependencies.diffResolver
-  val reviewDriver: FeatureTaskRuntimeReviewDriver = dependencies.reviewDriver
-  val specIntentProjectionResolver: SpecIntentProjectionResolver = dependencies.specIntentProjectionResolver
-  val findingVerificationBoundaryMemory: FeatureTaskRuntimeFindingVerificationBoundaryMemory =
-    dependencies.findingVerificationBoundaryMemory
+  val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner = branchPort.branchSetupRunner
+  val planningStopper: FeatureTaskRuntimePlanningStopper = branchPort.planningStopper
+  val lifecycleTelemetry: FeatureTaskRuntimeLifecycleTelemetry = branchPort.lifecycleTelemetry
+  val gitOperations = branchPort.gitOperations
+  val specGate: FeatureTaskRuntimeSpecGate = branchPort.specGate
+  val planningProjectionValidator = validationPort.planningProjectionValidator
+  val buildReceiptValidator = validationPort.buildReceiptValidator
+  val validationGateResolver = validationPort.validationGateResolver
+  val validationGateRunner = validationPort.validationGateRunner
+  val validationGateCoordinator = validationPort.validationGateCoordinator
+  val buildGateCoordinator = validationPort.buildGateCoordinator
+  val sharedEvidenceResolver = validationPort.sharedEvidenceResolver
+  val diffResolver = validationPort.diffResolver
+  val reviewDriver = validationPort.reviewDriver
+  val specIntentProjectionResolver = validationPort.specIntentProjectionResolver
+  val findingVerificationBoundaryMemory = validationPort.findingVerificationBoundaryMemory
 }

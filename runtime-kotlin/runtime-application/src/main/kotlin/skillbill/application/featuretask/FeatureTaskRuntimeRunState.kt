@@ -10,11 +10,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 
-internal class FeatureTaskRuntimeRunState(
-  internal val initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
-  internal val transitions: FeatureTaskRuntimeTransitionDeclaration,
-  internal val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
-  internal val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
+class FeatureTaskRuntimeRunState(
+  val initialRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
+  val transitions: FeatureTaskRuntimeTransitionDeclaration,
+  val initialLedger: List<FeatureTaskRuntimePhaseLedgerEntry> = emptyList(),
+  val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   initialReviewGeneration: Int = 0,
 ) {
   internal var reviewGeneration: Int = initialReviewGeneration
@@ -32,11 +32,11 @@ internal class FeatureTaskRuntimeRunState(
         loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
     }.toMutableMap()
 
-  internal val gateInvalidatedPhases: MutableSet<String> = mutableSetOf()
+  val gateInvalidatedPhases: MutableSet<String> = mutableSetOf()
 
-  internal val parsedOutputsByPayload: MutableMap<String, Map<String, Any?>> = mutableMapOf()
+  val parsedOutputsByPayload: MutableMap<String, Map<String, Any?>> = mutableMapOf()
 
-  internal val completed: MutableSet<String> =
+  val completed: MutableSet<String> =
     initialRecords.values
       .filter { it.status == STATUS_COMPLETED }
       .map { it.phaseId }
@@ -51,14 +51,14 @@ internal class FeatureTaskRuntimeRunState(
           ::durableVerdictFor,
         )
       }
-  internal val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =
+  val outputs: MutableList<FeatureTaskRuntimePhaseOutput> =
     initialRecords.values
       .mapNotNull(::validatedRecordToOutput)
       .filterNot { it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN && it.phaseId !in completed }
       .filterNot { it.phaseId in gateInvalidatedPhases }
       .toMutableList()
 
-  internal fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
+  fun validatedRecordToOutput(record: FeatureTaskRuntimePhaseRecord): FeatureTaskRuntimePhaseOutput? =
     record.outputArtifact?.let { artifact ->
       val accepted = try {
         outputValidator.validatePhaseOutput(artifact, record.phaseId).requireAcceptedOutput(record.phaseId)
@@ -74,8 +74,8 @@ internal class FeatureTaskRuntimeRunState(
         repairEvidence = record.repairEvidence ?: accepted.repairEvidence,
       )
     }
-  internal val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
-  internal val phasesLaunchedThisProcess: MutableSet<String> = mutableSetOf()
+  val priorRecords: MutableSet<String> = initialRecords.keys.toMutableSet()
+  val phasesLaunchedThisProcess: MutableSet<String> = mutableSetOf()
   private val initialReviewRecord = initialRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
     ?.takeIf { FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW !in gateInvalidatedPhases }
   internal var currentReviewPassNumber: Int? = initialReviewRecord?.reviewPassNumber
@@ -83,20 +83,20 @@ internal class FeatureTaskRuntimeRunState(
   internal var completedReviewPassNumber: Int? = currentReviewPassNumber
     ?.takeIf { initialReviewRecord?.status == STATUS_COMPLETED }
 
-  internal val persistedAttemptCounts: MutableMap<String, Int> =
+  val persistedAttemptCounts: MutableMap<String, Int> =
     initialRecords.mapValues { (_, record) -> record.attemptCount }.toMutableMap()
 
-  internal val blockedRecords: MutableMap<String, String> = initialRecords
+  val blockedRecords: MutableMap<String, String> = initialRecords
     .filterValues { it.status == STATUS_BLOCKED && it.resolvedAgentId != BRANCH_SETUP_AGENT_ID }
     .mapValues { (_, record) -> record.blockedReason.orEmpty() }
     .toMutableMap()
 
-  internal val branchSetupBlockedPhases: MutableSet<String> = initialRecords
+  val branchSetupBlockedPhases: MutableSet<String> = initialRecords
     .filterValues { it.status == STATUS_BLOCKED && it.resolvedAgentId == BRANCH_SETUP_AGENT_ID }
     .keys
     .toMutableSet()
 
-  internal val edgeIterationByLoop: MutableMap<String, Int> = (
+  val edgeIterationByLoop: MutableMap<String, Int> = (
     initialRecords.values
       .mapNotNull { record -> record.loopId?.let { loopId -> record.edgeIteration?.let { loopId to it } } } +
       initialLedger.mapNotNull { entry ->
@@ -111,9 +111,9 @@ internal class FeatureTaskRuntimeRunState(
       if (hasDurableReviewInvalidationTombstone) remove(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
     }
 
-  internal val liveClaimedLoops: MutableSet<String> = inFlightReentries.keys.toMutableSet()
+  val liveClaimedLoops: MutableSet<String> = inFlightReentries.keys.toMutableSet()
 
-  internal val fixLoopBudgetBaseByPhase: MutableMap<String, Int> =
+  val fixLoopBudgetBaseByPhase: MutableMap<String, Int> =
     FeatureTaskRuntimeRunStateReconstruction.reconstructFixLoopBudgetBases(
       ReconstructFixLoopBudgetBasesArgs(
         transitions = transitions,

@@ -3,7 +3,7 @@ package skillbill.application.featuretask
 import skillbill.application.featuretask.model.FeatureTaskRuntimeBriefingProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 
-internal fun briefingProjectionInputs(
+fun briefingProjectionInputs(
   inputs: FeatureTaskRuntimeBriefingProjectionInputs,
 ): FeatureTaskRuntimeHandoffProjectionInputs = FeatureTaskRuntimeHandoffProjectionInputs(
   consumerPhaseId = inputs.handoff.phaseId,

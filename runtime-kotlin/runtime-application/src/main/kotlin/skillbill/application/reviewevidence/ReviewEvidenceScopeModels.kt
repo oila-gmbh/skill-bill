@@ -1,0 +1,7 @@
+package skillbill.application.reviewevidence
+
+import skillbill.application.reviewevidence.model.DiffResolutionException as DiffResolutionExceptionModel
+import skillbill.application.reviewevidence.model.ParallelReviewScope as ParallelReviewScopeModel
+
+typealias ParallelReviewScope = ParallelReviewScopeModel
+typealias DiffResolutionException = DiffResolutionExceptionModel

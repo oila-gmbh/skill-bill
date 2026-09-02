@@ -1,7 +1,6 @@
 package skillbill.application.scaffold
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult

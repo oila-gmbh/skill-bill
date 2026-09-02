@@ -83,7 +83,7 @@ internal fun missingSubtaskWorkflowResult(
   ),
 )
 
-internal fun blockedSubtaskResult(
+fun blockedSubtaskResult(
   parentRecord: WorkflowStateSnapshot,
   manifest: DecompositionManifest,
   selection: DecompositionContinuationSelection.Blocked,
@@ -97,7 +97,7 @@ internal fun blockedSubtaskResult(
   blockedReason = selection.reason,
 )
 
-internal fun doneDecompositionResult(
+fun doneDecompositionResult(
   parentRecord: WorkflowStateSnapshot,
   manifest: DecompositionManifest,
   dbPath: String,
@@ -108,7 +108,7 @@ internal fun doneDecompositionResult(
   decompositionStatus = manifest.status,
 )
 
-internal fun blockedGitResult(
+fun blockedGitResult(
   parentWorkflowId: String,
   issueKey: String,
   dbPath: String,
@@ -120,7 +120,7 @@ internal fun blockedGitResult(
   blockedReason = reason.ifBlank { "Subtask advancement failed." },
 )
 
-internal fun decompositionRuntimeArtifactsJson(
+fun decompositionRuntimeArtifactsJson(
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
 ): String = jsonString(

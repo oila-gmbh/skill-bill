@@ -22,7 +22,7 @@ class RejectedOutputDiagnosticService(
   private val permissions: RejectedOutputDiagnosticPermissions,
   private val metadataValidator: RejectedOutputDiagnosticMetadataValidator,
   private val config: RejectedOutputDiagnosticConfig = RejectedOutputDiagnosticConfig(),
-  private val clock: Clock = Clock.systemUTC(),
+  private val clock: Clock,
   private val producerEvidenceValidator: ProducerOutputEvidenceValidator = { },
 ) {
   fun record(request: RejectedOutputDiagnosticRequest): RejectedOutputDiagnostic {

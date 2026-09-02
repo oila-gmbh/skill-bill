@@ -40,7 +40,7 @@ sealed interface GoalPlanningSweepOutcome {
   ) : GoalPlanningSweepOutcome
 }
 
-internal sealed interface GoalPlanningPhaseProduction {
+sealed interface GoalPlanningPhaseProduction {
   data class Captured(
     val payload: String,
     val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
@@ -151,10 +151,10 @@ data class GoalPlanningRejectionRecord(
  */
 @Inject
 data class GoalPlanningBurstSchedule(
-  val planLaunchPace: Duration = DEFAULT_PLAN_LAUNCH_PACE,
-  val emptyTurnBackoffBase: Duration = DEFAULT_EMPTY_TURN_BACKOFF_BASE,
-  val emptyTurnBackoffFactor: Int = DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
-  val waitSlice: Duration = DEFAULT_WAIT_SLICE,
+  val planLaunchPace: Duration,
+  val emptyTurnBackoffBase: Duration,
+  val emptyTurnBackoffFactor: Int,
+  val waitSlice: Duration,
 ) {
   init {
     require(planLaunchPace.isPositive()) { "planLaunchPace must be positive." }
