@@ -61,6 +61,7 @@ class GoalPreflightServiceTest {
       manifestState = GoalRunnerManifestState("", "/fake/metrics.db", manifest),
     )
     val root = Files.createTempDirectory("goal-preflight-gate")
+    seedGovernedSpecs(root, manifest)
 
     val result = service.preflight(
       request(
@@ -102,8 +103,12 @@ class GoalPreflightServiceTest {
     val localResult = service(
       database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
       manifestState = GoalRunnerManifestState("", "/fake/metrics.db", manifest()),
-    ).preflight(request(root))
-    assertEquals(emptyList(), localResult.rehydrateTargets)
+    )
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
+      localResult.preflight(request(root))
+    }
+    assertEquals("missing_governed_spec", error.failureCode)
+    assertTrue(error.reason.contains(linear.parentSpecPath))
   }
 
   @Test
@@ -203,6 +208,8 @@ class GoalPreflightServiceTest {
   @Test
   fun `raw add-on resolution receives configured external source roots`() {
     val root = Files.createTempDirectory("goal-preflight-external-addon")
+    val manifest = manifest()
+    seedGovernedSpecs(root, manifest)
     val externalRoot = root.resolve("external-addons")
     val config = object : ExternalAgentAddonSourceConfigPort {
       override fun readExternalAgentAddonSources(
@@ -213,7 +220,7 @@ class GoalPreflightServiceTest {
     }
     val service = service(
       database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-      manifestState = GoalRunnerManifestState("", "/fake/metrics.db", manifest()),
+      manifestState = GoalRunnerManifestState("", "/fake/metrics.db", manifest),
       externalAgentAddonSourceConfigPort = config,
     )
 
@@ -226,6 +233,7 @@ class GoalPreflightServiceTest {
   @Test
   fun `requested add-ons cannot bypass an empty durable selection on goal resume`() {
     val root = Files.createTempDirectory("goal-preflight-addon-mismatch")
+    seedGovernedSpecs(root, manifest())
 
     assertFailsWith<InvalidAgentAddonSelectionError> {
       service(
@@ -243,6 +251,7 @@ class GoalPreflightServiceTest {
       currentSubtaskIntent = CurrentSubtaskIntent(2, "start"),
       subtasks = manifest().subtasks.map { it.copy(status = "pending") },
     )
+    seedGovernedSpecs(root, blocked)
     val result = service(
       database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
       manifestState = GoalRunnerManifestState("", "/fake/metrics.db", blocked),
@@ -287,6 +296,15 @@ class GoalPreflightServiceTest {
     requestedReviewMode = reviewMode,
     requestedAgentAddonSlugs = addons,
   )
+
+  private fun seedGovernedSpecs(root: Path, manifest: DecompositionManifest) {
+    Files.createDirectories(root.resolve(Path.of(manifest.parentSpecPath)).parent)
+    Files.writeString(root.resolve(manifest.parentSpecPath), "# parent\n")
+    manifest.subtasks.forEach { subtask ->
+      Files.createDirectories(root.resolve(Path.of(subtask.specPath)).parent)
+      Files.writeString(root.resolve(subtask.specPath), "# subtask ${subtask.id}\n")
+    }
+  }
 
   private fun manifest(specSource: SpecSource = SpecSource.LOCAL): DecompositionManifest = DecompositionManifest(
     issueKey = "SKILL-901",

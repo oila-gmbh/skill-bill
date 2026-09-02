@@ -43,6 +43,7 @@ class GoalPreflightLookupResolver(
     manifestState: GoalRunnerManifestState?,
   ): GoalPreflightResult {
     val activeManifest = manifest?.takeUnless { it.status in setOf("complete", "skipped") }
+    activeManifest?.let { gateBlockBuilder.governedSpecPreflightViolation(it, root)?.let { throw it } }
     return GoalPreflightResult(
       verdict = "new_work",
       issueKey = issueKey,
@@ -65,6 +66,7 @@ class GoalPreflightLookupResolver(
     issueKey = issueKey,
     candidate = lookup.candidate,
     gateBlock = manifestState?.manifest?.let {
+      gateBlockBuilder.governedSpecPreflightViolation(it, root)?.let { violation -> throw violation }
       gateBlockBuilder.build(request, it, root, manifestState.parentWorkflowId)
     },
     rehydrateTargets = manifestState?.manifest?.let { gateBlockBuilder.rehydrateTargets(root, it) }.orEmpty(),
@@ -109,6 +111,7 @@ class GoalPreflightLookupResolver(
       reason = "goal continuation has no readable decomposition manifest",
       failureCode = "missing_manifest",
     )
+    gateBlockBuilder.governedSpecPreflightViolation(manifest, root)?.let { throw it }
     return GoalPreflightResult(
       verdict = "goal_continuation",
       issueKey = issueKey,

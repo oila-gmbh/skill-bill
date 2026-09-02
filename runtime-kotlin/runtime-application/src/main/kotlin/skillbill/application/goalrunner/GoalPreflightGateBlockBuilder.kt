@@ -9,6 +9,7 @@ import skillbill.application.goalrunner.model.GoalPreflightRehydrateTarget
 import skillbill.application.goalrunner.model.GoalPreflightRequest
 import skillbill.application.goalrunner.model.GoalPreflightSubtask
 import skillbill.error.InvalidAgentAddonSelectionError
+import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalRunnerSelection
@@ -123,28 +124,20 @@ class GoalPreflightGateBlockBuilder(
 
   fun rehydrateTargets(root: Path, manifest: DecompositionManifest): List<GoalPreflightRehydrateTarget> {
     if (manifest.specSource != LINEAR) return emptyList()
-    val targets = buildList {
-      add(
-        GoalPreflightRehydrateTarget(
-          issueKey = manifest.issueKey,
-          linearIssueId = manifest.issueKey,
-          targetPath = relativePath(root, manifest.parentSpecPath),
-        ).takeUnless { manifestFileStore.isRegularFileWithoutRecovery(root.resolve(it.targetPath)) },
+    return missingGovernedSpecPaths(root, manifest, manifestFileStore).map { targetPath ->
+      GoalPreflightRehydrateTarget(
+        issueKey = manifest.issueKey,
+        linearIssueId = manifest.issueKey,
+        targetPath = targetPath,
       )
-      manifest.subtasks
-        .filterNot { it.status == "complete" || it.status == "skipped" }
-        .forEach { subtask ->
-          add(
-            GoalPreflightRehydrateTarget(
-              issueKey = manifest.issueKey,
-              linearIssueId = subtask.linearIssueId,
-              targetPath = relativePath(root, subtask.specPath),
-            ).takeUnless { manifestFileStore.isRegularFileWithoutRecovery(root.resolve(it.targetPath)) },
-          )
-        }
     }
-    return targets.filterNotNull()
   }
+
+  fun governedSpecPreflightViolation(
+    manifest: DecompositionManifest,
+    root: Path,
+  ): InvalidDecompositionManifestSchemaError? =
+    governedSpecPreflightViolation(manifest, root, manifestFileStore)
 
   private fun subtaskBlock(subtask: DecompositionSubtask): GoalPreflightSubtask = GoalPreflightSubtask(
     id = subtask.id,
@@ -165,15 +158,7 @@ class GoalPreflightGateBlockBuilder(
     },
   )
 
-  private fun relativePath(root: Path, rawPath: String): String {
-    val path = Path.of(rawPath)
-    val resolved = (if (path.isAbsolute) path else root.resolve(path)).toAbsolutePath().normalize()
-    return if (resolved.startsWith(root)) {
-      root.relativize(resolved).joinToString("/")
-    } else {
-      rawPath
-    }
-  }
+  private fun relativePath(root: Path, rawPath: String): String = relativeGovernedSpecPath(root, rawPath)
 }
 
 private fun CodeReviewExecutionMode.displayName(omitted: Boolean): String = when {
