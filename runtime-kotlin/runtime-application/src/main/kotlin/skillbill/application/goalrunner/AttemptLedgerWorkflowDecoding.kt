@@ -8,7 +8,7 @@ import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
 import kotlin.coroutines.cancellation.CancellationException
 
-internal fun WorkflowStateSnapshot.progressToken(): String = listOf(
+fun WorkflowStateSnapshot.progressToken(): String = listOf(
   workflowId,
   workflowStatus,
   currentStepId,
@@ -20,7 +20,7 @@ internal fun WorkflowStateSnapshot.progressToken(): String = listOf(
 
 internal fun artifactsFingerprint(artifactsJson: String): String = "${artifactsJson.length}:${artifactsJson.hashCode()}"
 
-internal fun decodeWorkflowSteps(stepsJson: String): List<WorkflowStepState> =
+fun decodeWorkflowSteps(stepsJson: String): List<WorkflowStepState> =
   parseWorkflowStepsArray(stepsJson).mapIndexed(::decodeWorkflowStepAt)
 
 private fun parseWorkflowStepsArray(stepsJson: String): List<*> =
@@ -48,7 +48,7 @@ private fun decodeWorkflowStepAt(index: Int, raw: Any?): WorkflowStepState {
   )
 }
 
-internal fun blockedStepId(
+fun blockedStepId(
   record: WorkflowStateSnapshot,
   steps: List<WorkflowStepState>,
   requestedStepId: String,
@@ -62,7 +62,7 @@ internal fun blockedStepId(
   ?: requestedStepId.takeIf(String::isNotBlank)
   ?: "preplan"
 
-internal fun firstUnfinishedStepId(steps: List<WorkflowStepState>, definitionStepIds: List<String>): String? {
+fun firstUnfinishedStepId(steps: List<WorkflowStepState>, definitionStepIds: List<String>): String? {
   val statusByStepId = steps.associate { step -> step.stepId to step.status }
   return definitionStepIds.firstOrNull { stepId ->
     statusByStepId[stepId]?.let { status -> status != "completed" && status != "skipped" } ?: true

@@ -1,7 +1,6 @@
 package skillbill.application.scaffold
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.validation.RepoValidationGateway
 import skillbill.ports.validation.model.ReleaseRefMetadata
 import skillbill.ports.validation.model.RepoValidationReport

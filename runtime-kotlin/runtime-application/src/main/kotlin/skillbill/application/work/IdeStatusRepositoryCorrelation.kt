@@ -5,7 +5,7 @@ import skillbill.ports.db.UnitOfWork
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
 
-internal class IdeStatusRepositoryCorrelation(
+class IdeStatusRepositoryCorrelation(
   private val unitOfWork: UnitOfWork,
   private val repositoryIdentity: String,
 ) {

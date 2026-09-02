@@ -4,7 +4,7 @@ import skillbill.application.telemetry.model.FeatureTaskRuntimeFindingVerificati
 import skillbill.application.telemetry.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 
-internal data class FeatureTaskRuntimeFinishedTelemetryContext(
+data class FeatureTaskRuntimeFinishedTelemetryContext(
   val telemetrySessionId: String,
   val phaseOutcomes: () -> Map<String, String>,
   val reviewFixIterationCount: () -> Int,

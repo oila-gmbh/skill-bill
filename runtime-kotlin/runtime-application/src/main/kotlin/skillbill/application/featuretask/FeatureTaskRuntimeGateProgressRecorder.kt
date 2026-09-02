@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
@@ -15,7 +15,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 
-internal class FeatureTaskRuntimeGateProgressRecorder(
+class FeatureTaskRuntimeGateProgressRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
 ) : FeatureTaskRuntimePhaseGateApi {

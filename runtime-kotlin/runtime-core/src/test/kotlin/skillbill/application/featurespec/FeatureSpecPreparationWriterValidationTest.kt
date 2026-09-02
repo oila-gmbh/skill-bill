@@ -1,5 +1,6 @@
 package skillbill.application.featurespec
 
+import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.di.RuntimeComponent
@@ -24,7 +25,7 @@ import kotlin.test.assertTrue
 class FeatureSpecPreparationWriterValidationTest {
   private val validator = DecompositionManifestValidatorAdapter()
   private val fileStore = FileSystemDecompositionManifestFileStore()
-  private val writer = FeatureSpecPreparationWriter(validator, fileStore)
+  private val writer = FeatureSpecPreparationWriter(validator, fileStore, DecompositionManifestWriter())
 
   @Test
   fun `one subtask preparation writes schema valid manifest and is goal readable`() {

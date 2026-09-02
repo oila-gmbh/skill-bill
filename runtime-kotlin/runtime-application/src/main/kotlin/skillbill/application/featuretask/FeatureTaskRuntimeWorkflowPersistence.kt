@@ -2,7 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.normalizeIssueKey
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
@@ -35,7 +35,7 @@ internal data class WorkflowRowAdvance(
   }
 }
 
-internal class FeatureTaskRuntimeWorkflowPersistence(
+class FeatureTaskRuntimeWorkflowPersistence(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
 ) : FeatureTaskRuntimePhaseWorkflowApi {
@@ -113,7 +113,7 @@ internal class FeatureTaskRuntimeWorkflowPersistence(
   }
 }
 
-internal fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<Map<String, Any?>> {
+fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<Map<String, Any?>> {
   fun stepStatusFor(record: FeatureTaskRuntimePhaseRecord): String = when {
     record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
     record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
@@ -133,7 +133,7 @@ internal fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>
   }
 }
 
-internal fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): String = when {
+fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): String = when {
   request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> "paused"
   request.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> "blocked"
   request.finished && request.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.last() ->
@@ -141,19 +141,18 @@ internal fun workflowStatusFor(request: FeatureTaskRuntimePhaseStateRequest): St
   else -> "running"
 }
 
-internal fun attemptStatusFor(
-  request: FeatureTaskRuntimePhaseStateRequest,
-): FeatureTaskRuntimeImplementationAttemptStatus = when (request.status) {
-  "completed" -> FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED
-  FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FeatureTaskRuntimeImplementationAttemptStatus.BLOCKED
-  else -> FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
-}
+fun attemptStatusFor(request: FeatureTaskRuntimePhaseStateRequest): FeatureTaskRuntimeImplementationAttemptStatus =
+  when (request.status) {
+    "completed" -> FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED
+    FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FeatureTaskRuntimeImplementationAttemptStatus.BLOCKED
+    else -> FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE
+  }
 
-internal fun durationMillis(startedAt: String, finishedAt: String): Long =
+fun durationMillis(startedAt: String, finishedAt: String): Long =
   Duration.between(Instant.parse(startedAt), Instant.parse(finishedAt)).toMillis().coerceAtLeast(0)
 
-internal fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")
+fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")
   .digest(value.toByteArray())
   .joinToString("") { "%02x".format(it) }
 
-internal const val PHASE_RECORDER_STATUS_RUNNING = "running"
+const val PHASE_RECORDER_STATUS_RUNNING = "running"

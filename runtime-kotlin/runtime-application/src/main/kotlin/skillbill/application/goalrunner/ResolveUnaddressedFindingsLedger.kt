@@ -5,7 +5,7 @@ import skillbill.error.InvalidUnaddressedFindingsLedgerSchemaError
 import skillbill.error.UnaddressedFindingsLedgerAbsentError
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 
-internal fun resolveUnaddressedFindingsLedger(
+fun resolveUnaddressedFindingsLedger(
   service: UnaddressedFindingsLedgerService?,
   issueKey: String,
   dbPathOverride: String?,

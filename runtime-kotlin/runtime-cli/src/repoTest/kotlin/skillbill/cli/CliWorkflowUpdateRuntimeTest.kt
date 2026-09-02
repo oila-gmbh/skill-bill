@@ -1,6 +1,7 @@
 package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
+import skillbill.cli.model.canonicalRepositoryRoot
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import java.nio.file.Files
@@ -26,7 +27,7 @@ class CliWorkflowUpdateRuntimeTest {
       "json",
     )
     val workflowId = opened["workflow_id"] as String
-    val checkpoint = GitWorkflowGitOperations().repositoryFingerprint(Path.of("").toAbsolutePath()).value
+    val checkpoint = GitWorkflowGitOperations().repositoryFingerprint(canonicalRepositoryRoot(Path.of(""))).value
 
     val update = runJson(
       "--db",

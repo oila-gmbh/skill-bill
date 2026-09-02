@@ -5,7 +5,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
-internal fun FeatureTaskRuntimeRunObservability.fixLoopIteration(
+fun FeatureTaskRuntimeRunObservability.fixLoopIteration(
   phaseId: String,
   resolvedAgentId: String,
   attemptCount: Int,
@@ -50,11 +50,7 @@ internal fun FeatureTaskRuntimeRunObservability.continuation(
   )
 }
 
-internal fun FeatureTaskRuntimeRunObservability.completedEvent(
-  phaseId: String,
-  resolvedAgentId: String,
-  attemptCount: Int,
-) {
+fun FeatureTaskRuntimeRunObservability.completedEvent(phaseId: String, resolvedAgentId: String, attemptCount: Int) {
   emitSafely(
     FeatureTaskRuntimeRunEvent.PhaseCompleted(
       workflowId = observabilityRequest.workflowId,
@@ -65,7 +61,7 @@ internal fun FeatureTaskRuntimeRunObservability.completedEvent(
   )
 }
 
-internal fun FeatureTaskRuntimeRunObservability.paused(
+fun FeatureTaskRuntimeRunObservability.paused(
   phaseId: String,
   resolvedAgentId: String,
   attemptCount: Int,
@@ -92,7 +88,7 @@ internal fun FeatureTaskRuntimeRunObservability.paused(
   )
 }
 
-internal fun FeatureTaskRuntimeRunObservability.blocked(
+fun FeatureTaskRuntimeRunObservability.blocked(
   phaseId: String,
   resolvedAgentId: String,
   attemptCount: Int,
@@ -119,7 +115,7 @@ internal fun FeatureTaskRuntimeRunObservability.blocked(
   )
 }
 
-internal fun FeatureTaskRuntimeRunObservability.loopEdge(
+fun FeatureTaskRuntimeRunObservability.loopEdge(
   phaseId: String,
   loopId: String,
   edgeIteration: Int,
@@ -150,8 +146,8 @@ internal fun FeatureTaskRuntimeRunObservability.loopEdge(
   )
 }
 
-internal val FeatureTaskRuntimeRunObservability.observabilityRequest get() = request
-internal fun FeatureTaskRuntimeRunObservability.emitSafely(event: FeatureTaskRuntimeRunEvent) {
+val FeatureTaskRuntimeRunObservability.observabilityRequest get() = request
+fun FeatureTaskRuntimeRunObservability.emitSafely(event: FeatureTaskRuntimeRunEvent) {
   emitFeatureTaskRuntimeEventSafely(
     diagnostics = observabilityDiagnostics,
     seam = "event-sink emission (${event::class.simpleName})",
@@ -160,9 +156,9 @@ internal fun FeatureTaskRuntimeRunObservability.emitSafely(event: FeatureTaskRun
   }
 }
 
-internal fun FeatureTaskRuntimeRunObservability.appendLedger(ledgerRequest: FeatureTaskRuntimePhaseLedgerRequest) {
+fun FeatureTaskRuntimeRunObservability.appendLedger(ledgerRequest: FeatureTaskRuntimePhaseLedgerRequest) {
   observabilityRecorder.appendLedgerEntry(ledgerRequest, observabilityRequest.dbPathOverride)
 }
 
-internal val FeatureTaskRuntimeRunObservability.observabilityRecorder get() = recorder
-internal val FeatureTaskRuntimeRunObservability.observabilityDiagnostics get() = diagnostics
+val FeatureTaskRuntimeRunObservability.observabilityRecorder get() = recorder
+val FeatureTaskRuntimeRunObservability.observabilityDiagnostics get() = diagnostics

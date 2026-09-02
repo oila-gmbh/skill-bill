@@ -1,0 +1,5 @@
+package skillbill.application.continuation
+
+import skillbill.application.continuation.model.GoalContinuationCandidate as GoalContinuationCandidateModel
+
+typealias GoalContinuationCandidate = GoalContinuationCandidateModel

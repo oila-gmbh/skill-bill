@@ -1,10 +1,14 @@
 package skillbill.application.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
-import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
-import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
-import skillbill.application.goalrunner.recordedVerdicts
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.featuretask.model.GoalSubtaskReviewPassCarryForward
+import skillbill.application.featuretask.model.GoalSubtaskReviewPassInFlight
+import skillbill.application.featuretask.model.GoalSubtaskReviewPassReservation
+import skillbill.application.featuretask.model.GoalSubtaskReviewPassReserved
+import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
+import skillbill.application.subtaskreview.UnaddressedFindingLedgerScope
+import skillbill.application.subtaskreview.recordedVerdicts
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
@@ -16,7 +20,7 @@ import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 
-internal class FeatureTaskRuntimeGoalReviewPassRecorder(
+class FeatureTaskRuntimeGoalReviewPassRecorder(
   private val database: DatabaseSessionFactory,
   private val patcher: FeatureTaskRuntimeGoalContinuationArtifactPatcher,
   private val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
@@ -93,7 +97,7 @@ internal class FeatureTaskRuntimeGoalReviewPassRecorder(
     updated
   }
 
-  fun completeGoalReviewPass(
+  internal fun completeGoalReviewPass(
     request: GoalReviewPassCompletionRequest,
     dbOverride: String? = null,
   ): GoalSubtaskReviewState? = runtimeOwnedPersistence.requiredWrite(

@@ -11,8 +11,9 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 @Inject
 class FeatureTaskRuntimeRunner(
-  internal val dependencies: FeatureTaskRuntimeRunnerDependencies,
-  internal val activityStampWriter: AgentActivityStampWriter,
+  val dependencies: FeatureTaskRuntimeRunnerDependencies,
+  val activityStampWriter: AgentActivityStampWriter,
+  val runLoopCollaborators: FeatureTaskRuntimeRunLoopCollaborators,
 ) {
   fun run(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeRunReport {
     val reconciliation = dependencies.crashReconciler.reconcile(request.dbPathOverride)

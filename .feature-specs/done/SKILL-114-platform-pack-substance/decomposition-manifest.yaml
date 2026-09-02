@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-114"
 feature_name: "platform-pack-substance"
 parent_spec_path: ".feature-specs/SKILL-114-platform-pack-substance/spec.md"

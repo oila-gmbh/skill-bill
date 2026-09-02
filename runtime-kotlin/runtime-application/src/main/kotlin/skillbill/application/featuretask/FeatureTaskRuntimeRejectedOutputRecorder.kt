@@ -4,9 +4,11 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeProducerOutputRead
+import skillbill.application.featuretask.model.ProducerOutputQueryArgs
 import skillbill.application.featuretask.model.RejectedOutputDiagnosticDegradeRequest
 import skillbill.application.featuretask.model.RejectedOutputDiagnosticPersistRequest
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
@@ -25,7 +27,7 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendDiagnosticSi
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionCapOf
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionViolationClassOf
-import java.time.Instant
+import java.time.Clock
 
 private fun RejectedOutputDiagnosticError.degradableFailureClass(): FeatureTaskRuntimeDiagnosticFailureClass? =
   when (this) {
@@ -43,19 +45,12 @@ private fun RejectedOutputDiagnosticError.degradableFailureClass(): FeatureTaskR
     -> null
   }
 
-internal sealed class FeatureTaskRuntimeProducerOutputRead {
-  internal data class Found(val evidence: ProducerOutputEvidence) : FeatureTaskRuntimeProducerOutputRead()
-  internal data object Absent : FeatureTaskRuntimeProducerOutputRead()
-  internal data class Unreadable(
-    val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
-  ) : FeatureTaskRuntimeProducerOutputRead()
-}
-
-internal class FeatureTaskRuntimeRejectedOutputRecorder(
+class FeatureTaskRuntimeRejectedOutputRecorder(
   private val database: DatabaseSessionFactory,
   private val workflowPersistence: FeatureTaskRuntimeWorkflowPersistence,
   private val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator,
   private val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator,
+  private val clock: Clock,
 ) : FeatureTaskRuntimePhaseRejectedApi {
   private sealed class DiagnosticWriteOutcome<out T> {
     class Written<T>(val value: T) : DiagnosticWriteOutcome<T>()
@@ -75,7 +70,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
       attempt = request.attempt,
       agentId = request.agentId,
       model = request.model,
-      recordedAt = Instant.now(),
+      recordedAt = clock.instant(),
       byteSize = request.observedByteSize,
       sha256 = request.observedSha256,
       payload = request.rawResponse.takeUnless { request.truncated },
@@ -233,7 +228,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
       attempt = request.attempt.coerceAtLeast(0),
       repairTurn = request.repairTurn?.coerceAtLeast(0),
       generation = request.generation.coerceAtLeast(0),
-      recordedAt = Instant.now().toString(),
+      recordedAt = clock.instant().toString(),
     )
     persistDiagnosticSignal(request.workflowId, signal, request.dbOverride)
     recordDegradationMeasurement(request.workflowId, signal, request.dbOverride)
@@ -304,6 +299,7 @@ internal class FeatureTaskRuntimeRejectedOutputRecorder(
       permissions = permissions,
       metadataValidator = rejectedOutputDiagnosticMetadataValidator,
       producerEvidenceValidator = producerOutputEvidenceValidator,
+      clock = clock,
     )
   }
 }

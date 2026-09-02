@@ -54,6 +54,12 @@ internal fun GoalRunnerControlState.toArtifactMap(): Map<String, Any?> = mapOf(
   "current_subtask_id" to currentSubtaskId,
   "subtask_active_duration_ms" to subtaskActiveDurationMs,
   "subtask_active_duration_as_of" to subtaskActiveDurationAsOf,
+  "validation_quality_retries_by_subtask" to
+    validationQualityRetriesBySubtask.entries.associate { (k, v) -> k.toString() to v },
+  "pending_re_attempt_cause_by_subtask" to
+    pendingReAttemptCauseBySubtask.entries.associate { (k, v) -> k.toString() to v },
+  "pending_causing_loop_entry_by_subtask" to
+    pendingCausingLoopEntryBySubtask.entries.associate { (k, v) -> k.toString() to v },
 )
 
 /**

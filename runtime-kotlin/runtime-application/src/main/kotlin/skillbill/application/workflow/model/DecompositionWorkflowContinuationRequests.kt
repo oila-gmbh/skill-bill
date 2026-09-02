@@ -8,7 +8,7 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import java.nio.file.Path
 
-internal data class AdvanceCompletedSubtasksRequest(
+data class AdvanceCompletedSubtasksRequest(
   val parentRecord: WorkflowStateSnapshot,
   val manifest: DecompositionManifest,
   val unitOfWork: UnitOfWork,
@@ -17,7 +17,7 @@ internal data class AdvanceCompletedSubtasksRequest(
   val repoRootProvider: () -> Path,
 )
 
-internal data class CheckoutAndValidateBranchRequest(
+data class CheckoutAndValidateBranchRequest(
   val parentRecord: WorkflowStateSnapshot,
   val manifest: DecompositionManifest,
   val selection: DecompositionContinuationSelection.Start,

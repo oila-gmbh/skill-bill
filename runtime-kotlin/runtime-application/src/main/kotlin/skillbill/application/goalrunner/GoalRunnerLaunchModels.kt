@@ -75,7 +75,7 @@ internal fun malformedResultJsonDiagnostics(
     )
   }
 
-internal fun terminalJsonObjectWithoutResultPrefix(stdout: String, stderr: String): Map<String, Any?>? {
+fun terminalJsonObjectWithoutResultPrefix(stdout: String, stderr: String): Map<String, Any?>? {
   val combined = listOf(stdout, stderr)
     .filter(String::isNotBlank)
     .joinToString("\n")
@@ -90,10 +90,10 @@ internal fun terminalJsonObjectWithoutResultPrefix(stdout: String, stderr: Strin
     ?.takeIf { it.isImplementationReturnContract() || it.isRuntimeTerminalEnvelope() }
 }
 
-internal fun childOutputHasJsonLikeContent(stdout: String, stderr: String): Boolean =
+fun childOutputHasJsonLikeContent(stdout: String, stderr: String): Boolean =
   listOf(stdout, stderr).any { output -> output.contains('{') || output.contains('}') || output.contains("RESULT:") }
 
-internal fun Map<String, Any?>.isImplementationReturnContract(): Boolean = keys.containsAll(
+fun Map<String, Any?>.isImplementationReturnContract(): Boolean = keys.containsAll(
   setOf(
     "tasks_completed",
     "files_created",
@@ -104,11 +104,11 @@ internal fun Map<String, Any?>.isImplementationReturnContract(): Boolean = keys.
   ),
 )
 
-internal fun Map<String, Any?>.isRuntimeTerminalEnvelope(): Boolean =
+fun Map<String, Any?>.isRuntimeTerminalEnvelope(): Boolean =
   this["status"]?.toString() in setOf("complete", "completed", "blocked", "failed", "timeout", "timed_out") &&
     this["workflow_id"]?.toString().orEmpty().isNotBlank()
 
-internal fun topLevelJsonObjectCandidates(text: String): List<String> {
+fun topLevelJsonObjectCandidates(text: String): List<String> {
   val candidates = mutableListOf<String>()
   var depth = 0
   var start = -1

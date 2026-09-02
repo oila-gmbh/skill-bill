@@ -2,7 +2,7 @@ package skillbill.application.featuretask.model
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 
-internal data class RejectedOutputDiagnosticDegradeRequest(
+data class RejectedOutputDiagnosticDegradeRequest(
   val workflowId: String,
   val operation: String,
   val conflictingKey: String,
@@ -13,7 +13,7 @@ internal data class RejectedOutputDiagnosticDegradeRequest(
   val dbOverride: String?,
 )
 
-internal data class RejectedOutputDiagnosticPersistRequest(
+data class RejectedOutputDiagnosticPersistRequest(
   val workflowId: String,
   val operation: String,
   val conflictingKey: String,

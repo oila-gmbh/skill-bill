@@ -23,7 +23,7 @@ internal class GoalRunnerGoalLoop(
   private val pauseBoundary: GoalRunnerPauseBoundary,
   private val progressReader: GoalRunnerProgressReader,
 ) {
-  fun driveGoalLoop(args: DriveGoalLoopArgs): GoalRunnerIterationResult {
+  internal fun driveGoalLoop(args: DriveGoalLoopArgs): GoalRunnerIterationResult {
     var state = args.initialState
     var currentPlanning = args.planning
     var terminalReport: GoalRunnerRunReport? = preflightPolicyBlockedReport(state, args.request, args.ledger)

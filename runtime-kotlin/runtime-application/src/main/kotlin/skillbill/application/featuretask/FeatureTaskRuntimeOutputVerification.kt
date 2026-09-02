@@ -12,7 +12,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
-internal object FeatureTaskRuntimeOutputVerification {
+object FeatureTaskRuntimeOutputVerification {
   fun verdictFor(phaseId: String, outputObject: Map<String, Any?>?): FeatureTaskRuntimeVerdict {
     val wireVerdict = (outputObject?.get("verdict") as? String)
       ?.takeIf(String::isNotBlank)

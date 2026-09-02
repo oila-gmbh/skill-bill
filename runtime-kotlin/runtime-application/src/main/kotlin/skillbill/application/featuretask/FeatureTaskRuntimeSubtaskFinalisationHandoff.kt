@@ -1,5 +1,9 @@
 package skillbill.application.featuretask
 
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoff
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffInvalid
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffResult
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCommitPushHandoffValid
 import skillbill.contracts.JsonSupport
 
 private const val COMMIT_PUSH_RESULT_KEY = "commit_push_result"
@@ -7,7 +11,7 @@ private const val OUTCOME_MESSAGE_KEY = "message"
 private const val CHANGED_PATHS_KEY = "changed_paths"
 private const val COMMIT_SHA_KEY = "commit_sha"
 
-internal object FeatureTaskRuntimeSubtaskFinalisationHandoff {
+object FeatureTaskRuntimeSubtaskFinalisationHandoff {
   fun readHandoff(envelope: Map<String, Any?>): FeatureTaskRuntimeCommitPushHandoffResult {
     val result = commitPushResult(envelope)
       ?: return invalid("`produced_outputs.$COMMIT_PUSH_RESULT_KEY` is absent")

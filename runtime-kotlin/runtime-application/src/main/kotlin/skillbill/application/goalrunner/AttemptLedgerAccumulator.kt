@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerSummary
 import java.time.Instant
@@ -7,7 +8,7 @@ import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
-internal class AttemptLedgerAccumulator {
+class AttemptLedgerAccumulator {
   var blockedAttemptCount = 0
   var supervisorKillCount = 0
   val phaseAttemptCounts = mutableMapOf<String, Int>()
@@ -54,7 +55,7 @@ internal class AttemptLedgerAccumulator {
   )
 }
 
-internal val BLOCK_STOP_REASONS: Set<String> = setOf(
+val BLOCK_STOP_REASONS: Set<String> = setOf(
   "failed",
   "blocked",
   "policy_blocked",
@@ -62,7 +63,8 @@ internal val BLOCK_STOP_REASONS: Set<String> = setOf(
   "pull_request_failed",
 )
 
-internal fun backwardEdgeCountsFromLedger(artifacts: Map<String, Any?>): Map<String, Int> {
+@OpenBoundaryMap("Backward-edge counts derived from the goal attempt ledger artifact")
+fun backwardEdgeCountsFromLedger(artifacts: Map<String, Any?>): Map<String, Int> {
   val entries = (artifacts[GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY] as? List<*>).orEmpty()
   val counts = mutableMapOf<String, Int>()
   entries.forEach { item ->
@@ -77,9 +79,9 @@ internal fun backwardEdgeCountsFromLedger(artifacts: Map<String, Any?>): Map<Str
   return counts
 }
 
-internal fun parseInstantOrNull(value: String): Instant? = runCatching { Instant.parse(value) }.getOrNull()
+fun parseInstantOrNull(value: String): Instant? = runCatching { Instant.parse(value) }.getOrNull()
   ?: runCatching {
     LocalDateTime.parse(value.trim(), SQLITE_TIMESTAMP_FORMATTER).toInstant(ZoneOffset.UTC)
   }.getOrNull()
 
-internal val SQLITE_TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+val SQLITE_TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")

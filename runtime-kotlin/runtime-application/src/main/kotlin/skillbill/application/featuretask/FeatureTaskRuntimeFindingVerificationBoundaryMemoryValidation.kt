@@ -5,7 +5,7 @@ import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 
-internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.selectionsRequiringBodyDelivery(
+fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.selectionsRequiringBodyDelivery(
   sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
   dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
 ): Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>> {
@@ -22,7 +22,7 @@ internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.selectionsRequi
   }.toMap()
 }
 
-internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateDispositionBoundaryContext(
+fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateDispositionBoundaryContext(
   sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
   dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
 ): String? {
@@ -32,7 +32,7 @@ internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateDisposi
   }
 }
 
-internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateDispositionBoundaryProvenance(
+fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateDispositionBoundaryProvenance(
   sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
   dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
 ): String? = when {
@@ -40,7 +40,7 @@ internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateDisposi
   else -> null
 }
 
-internal fun catalogValidatedBoundaryHeadings(
+fun catalogValidatedBoundaryHeadings(
   catalog: List<GoalPlanningBoundaryHeading>,
   selected: List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>,
 ): List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance> {
@@ -49,7 +49,7 @@ internal fun catalogValidatedBoundaryHeadings(
   return selected.filter { heading -> byId[heading.headingId]?.sourcePath == heading.sourcePath }
 }
 
-internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validatePersistedBoundarySelectionsMatch(
+fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validatePersistedBoundarySelectionsMatch(
   sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
   dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
   persisted: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
@@ -72,7 +72,7 @@ internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validatePersist
   }
 }
 
-internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validatePersistedBoundarySelectionsAgainstCatalog(
+fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validatePersistedBoundarySelectionsAgainstCatalog(
   sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
   persisted: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
 ): Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>> {
@@ -84,7 +84,7 @@ internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validatePersist
   }.toMap()
 }
 
-internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateBoundarySelectionsDelivered(
+fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateBoundarySelectionsDelivered(
   sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
   dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
   persisted: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>?,
@@ -99,12 +99,28 @@ internal fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.validateBoundar
   }
 }
 
-internal fun boundaryHeadingsMatch(
+fun boundaryHeadingsMatch(
   persisted: List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>,
   disposition: List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>,
 ): Boolean {
   if (persisted.size != disposition.size) return false
   return persisted.zip(disposition).all { (left, right) ->
     left.headingId == right.headingId && left.sourcePath == right.sourcePath
+  }
+}
+
+fun dispositionBoundaryContextFailure(
+  section: FeatureTaskRuntimeFindingBoundaryMemorySection?,
+  disposition: FeatureTaskRuntimeFindingVerificationDisposition,
+): String? {
+  if (section == null || !section.discovery.boundaryContextUnavailable) return null
+  return when {
+    !disposition.boundaryContextUnavailable ->
+      "finding verification disposition for ${disposition.findingId} must set " +
+        "boundary_context_unavailable when no eligible boundary owns its paths."
+    disposition.selectedBoundaryHeadings.isNotEmpty() ->
+      "finding verification disposition for ${disposition.findingId} must not select " +
+        "boundary headings when boundary context is unavailable."
+    else -> null
   }
 }

@@ -7,10 +7,7 @@ import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
 
-internal fun outputContract(
-  briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-  agentRunValidateFallback: Boolean,
-): String {
+fun outputContract(briefing: FeatureTaskRuntimePhaseLaunchBriefing, agentRunValidateFallback: Boolean): String {
   val phaseId = briefing.phaseId
   return """
     ## Required final output (validated schema gate)

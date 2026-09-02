@@ -1,8 +1,30 @@
-age# runtime-kotlin/ boundary decisions
+# runtime-kotlin/ boundary decisions
 
 This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
+
+
+## [2026-09-02] Empty architecture baselines are the permanent floor
+Context: SKILL-227 subtask 3 emptied the logical-type line-ceiling and application-package-cycle baselines after god-object decomposition and cycle breaks. Subtask 1 had baselined seven cycle pairs as shrink-only.
+Decision: Keep both baselines empty. Any new ceiling offender or application-package cycle fails the guard. Do not reintroduce *Helpers*/*Extras*/*Support* files solely to stay under the per-file line ceiling — fold into the owning type or a named domain collaborator instead.
+Reason: Shrink-only measurement did its job; an empty floor is the enforceable target. Filename-suffix splits hide god objects from the logical-type ceiling without reducing complexity.
+Alternatives considered: Keep a non-empty shrink-only residual (rejected: would allow the debt to persist indefinitely). Raise the ceiling or add exemptions (rejected: defeats the guard). Permit Helpers/Extras splits when a type is near 500 lines (rejected: that is how the prior evasion landed).
+Revisit when: a measured logical type legitimately cannot be split without harming a boundary, and the alternative is an explicit named exemption with rationale — not a suffix file.
+
+## [2026-08-31] RuntimeSingleton lives in skillbill.application.runtime
+Context: SKILL-227 subtask 1 needed a kotlin-inject scope for services that hold caches, connections, or leases. Placing `@RuntimeSingleton` under `skillbill.di` failed `ImplementationOwnershipArchitectureTest`.
+Decision: Define `@RuntimeSingleton` in `skillbill.application.runtime` and apply `@Provides @RuntimeSingleton` on composition-root bindings unchanged.
+Reason: Application-legal packages may own injectable annotations consumed by runtime-application; `skillbill.di` is composition-root wiring only and must not host types that application modules import as API.
+Alternatives considered: Keep the annotation in `skillbill.di` and widen the ownership allow-list (rejected: would re-open application→di type ownership). Duplicate annotation per module (rejected: one scope must apply across the graph).
+
+## [2026-08-31] Package-cycle baseline is shrink-only at seven pairs
+Context: Preplan named four `skillbill.application.<area>` mutual-import cycles; the recorded scan found seven. Subtask 1 ships measurement before structural shrink.
+Decision: Baseline all seven pairs and fail on any new cycle or growth; do not delete or rewrite production packages in this subtask to reach the preplan count.
+Reason: Guards define the target later subtasks shrink; inventing a smaller baseline would hide existing cycles and defeat shrink-only policy.
+Alternatives considered: Force the four-pair baseline by moving types now (rejected: non-goal for subtask 1). Drop unlisted pairs from the baseline (rejected: would allow growth of unmeasured cycles).
+Revisit when: subtask 3 (or later) empties the baseline.
+Superseded by: Empty architecture baselines are the permanent floor (2026-09-02)
 
 ## [2026-08-29] Capability vocabulary boundaries for fallback capabilities, entrypoints, and idle policy
 

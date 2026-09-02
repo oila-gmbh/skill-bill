@@ -1,7 +1,7 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.planning.sha256HexUtf8
-import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
+import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError

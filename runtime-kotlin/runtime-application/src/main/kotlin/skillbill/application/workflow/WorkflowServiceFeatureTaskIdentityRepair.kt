@@ -1,6 +1,6 @@
 package skillbill.application.workflow
 
-import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.normalizeIssueKey
 import skillbill.application.workflow.model.FeatureTaskIdentityRepairArgs
 import skillbill.application.workflow.model.WorkflowUpdateResult
@@ -12,7 +12,7 @@ import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
-internal class WorkflowServiceFeatureTaskIdentityRepair(
+class WorkflowServiceFeatureTaskIdentityRepair(
   private val engine: WorkflowEngine,
 ) {
   fun repair(args: FeatureTaskIdentityRepairArgs): WorkflowUpdateResult {

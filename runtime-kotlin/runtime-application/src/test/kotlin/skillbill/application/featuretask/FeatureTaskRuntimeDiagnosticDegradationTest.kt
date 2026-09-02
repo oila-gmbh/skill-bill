@@ -6,6 +6,9 @@ import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.application.diagnostics.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.diagnostics.model.RejectedOutputDiagnosticRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeProducerOutputRead
+import skillbill.application.featuretask.model.ProducerOutputQueryArgs
+import skillbill.application.testHarnessClock
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.workflow.engine.WorkflowSnapshotValidator
@@ -222,6 +225,7 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     NoopSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    testHarnessClock,
   )
 
   private fun evidence(payload: ByteArray, repairTurn: Int) = ProducerOutputEvidence(

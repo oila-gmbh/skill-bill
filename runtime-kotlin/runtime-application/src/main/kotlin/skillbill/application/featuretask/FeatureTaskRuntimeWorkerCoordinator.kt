@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.runtime.RuntimeSingleton
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
@@ -9,6 +10,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
@@ -20,7 +22,7 @@ import java.util.UUID
  * trigger reconciliation. This keeps liveness detection behind the injectable supervisor port with
  * no agent-identity branching (AC-005).
  */
-internal object FeatureTaskRuntimeCrashLiveness {
+object FeatureTaskRuntimeCrashLiveness {
   fun isConfirmedDead(inspection: FeatureTaskRuntimeProcessInspection): Boolean = when (inspection) {
     FeatureTaskRuntimeProcessInspection.NotRunning -> true
     FeatureTaskRuntimeProcessInspection.ExactLive -> false
@@ -29,10 +31,12 @@ internal object FeatureTaskRuntimeCrashLiveness {
   }
 }
 
+@RuntimeSingleton
 @Inject
 class FeatureTaskRuntimeWorkerCoordinator(
   private val database: DatabaseSessionFactory,
   private val supervisor: FeatureTaskRuntimeWorkerSupervisor,
+  private val clock: Clock,
 ) {
   fun <T> runOwned(workflowId: String, dbOverride: String?, block: () -> T): T {
     val ownership = acquireOrRecover(workflowId, dbOverride)
@@ -132,7 +136,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
   }
 
   private fun leaseIsActive(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean =
-    Instant.parse(ownership.expiresAt).isAfter(Instant.now())
+    Instant.parse(ownership.expiresAt).isAfter(clock.instant())
 
   private fun stopExactWorker(existing: FeatureTaskRuntimeWorkerOwnership) {
     supervisor.terminateGracefully(existing)
@@ -152,7 +156,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
     base: FeatureTaskRuntimeWorkerOwnership,
     dbOverride: String?,
   ): FeatureTaskRuntimeHeartbeatTick {
-    val now = Instant.now()
+    val now = clock.instant()
     val updated = base.copy(heartbeatAt = now.toString(), expiresAt = now.plus(LEASE_DURATION).toString())
     val persisted = database.transaction(dbOverride) {
       it.workflowStates.heartbeatFeatureTaskRuntimeWorker(updated)
@@ -173,7 +177,7 @@ class FeatureTaskRuntimeWorkerCoordinator(
     phaseAttempt: Int,
   ): FeatureTaskRuntimeWorkerOwnership {
     val process = supervisor.currentProcess()
-    val now = Instant.now()
+    val now = clock.instant()
     return FeatureTaskRuntimeWorkerOwnership(
       workflowId = workflowId,
       generation = generation,

@@ -3,6 +3,7 @@ package skillbill.cli.goal
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.detectInvokingAgentId
+import skillbill.cli.model.canonicalRepositoryRoot
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
@@ -37,7 +38,7 @@ internal fun CliRunState.goalStatusRequest(options: GoalStatusCliRequestOptions)
     dbPathOverride = dbOverride,
     repoRoot = options.repoRoot?.let(Path::of)
       ?.let { root -> if (options.monitorOnly) canonicalRepositoryRoot(root) else root.toAbsolutePath().normalize() }
-      ?: if (options.monitorOnly) canonicalRepositoryRoot(Path.of("")) else Path.of("").toAbsolutePath().normalize(),
+      ?: canonicalRepositoryRoot(Path.of("")),
     includeDiffStat = options.diff.includeDiffStat,
     selectedDiffHunkPaths = options.diff.selectedDiffHunkPaths,
     selectedDiffMaxHunks = options.diff.selectedDiffMaxHunks,

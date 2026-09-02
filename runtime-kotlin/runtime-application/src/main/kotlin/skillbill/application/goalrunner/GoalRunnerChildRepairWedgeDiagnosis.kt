@@ -3,11 +3,11 @@ package skillbill.application.goalrunner
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
 import skillbill.application.featuretask.featureSizeFromArtifacts
-import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.goalrunner.model.GoalRunnerWedgeFinding
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.phaseartifacts.phaseRecordsFrom
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.WorkflowStateRepository
@@ -19,15 +19,15 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import java.nio.file.Path
 
-internal const val PASSED_VALIDATION_DEPTH: String = "validation_depth_present"
-internal const val PASSED_QUALITY_GATE_SELECTION: String = "quality_gate_selection_present"
-internal const val PASSED_REVIEW_BASE: String = "review_base_reachable"
-internal const val PASSED_REMEDIATION_BASE: String = "remediation_base_reachable_or_absent"
-internal const val PASSED_CONTINUATION_OUTCOME: String = "continuation_outcome_corroborated_or_absent"
-internal const val PASSED_UPSTREAM_OUTPUT: String = "upstream_output_present"
-internal const val PASSED_PHASE_OUTPUT_CONTRACT: String = "phase_output_contract_compatible"
+const val PASSED_VALIDATION_DEPTH: String = "validation_depth_present"
+const val PASSED_QUALITY_GATE_SELECTION: String = "quality_gate_selection_present"
+const val PASSED_REVIEW_BASE: String = "review_base_reachable"
+const val PASSED_REMEDIATION_BASE: String = "remediation_base_reachable_or_absent"
+const val PASSED_CONTINUATION_OUTCOME: String = "continuation_outcome_corroborated_or_absent"
+const val PASSED_UPSTREAM_OUTPUT: String = "upstream_output_present"
+const val PASSED_PHASE_OUTPUT_CONTRACT: String = "phase_output_contract_compatible"
 
-internal class GoalRunnerChildRepairWedgeDiagnosis(
+class GoalRunnerChildRepairWedgeDiagnosis(
   private val gitOperations: WorkflowGitOperations,
 ) {
   fun diagnose(

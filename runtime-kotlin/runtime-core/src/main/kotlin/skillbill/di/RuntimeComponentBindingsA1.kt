@@ -2,10 +2,12 @@ package skillbill.di
 
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
+import skillbill.infrastructure.fs.canonicalRepositoryRoot
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
+import skillbill.model.RepositoryRoot
 import skillbill.model.RuntimeContext
 import skillbill.model.TransportContext
 import skillbill.model.WorkflowOpsContext
@@ -37,8 +39,21 @@ internal object RuntimeComponentBindingsA1 {
       } else {
         inputTransport
       }
-    return inputRuntimeContext.copy(environment = environmentWithEnv, transport = resolvedTransport)
+    val resolvedRepositoryRoot =
+      if (environmentWithEnv.repositoryRoot == EnvironmentContext.UnspecifiedRepositoryRoot) {
+        environmentWithEnv.copy(repositoryRoot = canonicalRepositoryRoot(Path.of("")))
+      } else {
+        environmentWithEnv.copy(
+          repositoryRoot = environmentWithEnv.repositoryRoot.toAbsolutePath().normalize(),
+        )
+      }
+    return inputRuntimeContext.copy(
+      environment = resolvedRepositoryRoot,
+      transport = resolvedTransport,
+    )
   }
+
+  fun repositoryRoot(context: EnvironmentContext): RepositoryRoot = RepositoryRoot(context.repositoryRoot)
 
   fun environmentContext(ctx: RuntimeContext): EnvironmentContext = ctx.environment
 

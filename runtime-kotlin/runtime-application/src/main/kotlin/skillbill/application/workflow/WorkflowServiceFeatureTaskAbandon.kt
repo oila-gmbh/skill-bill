@@ -11,7 +11,7 @@ import skillbill.workflow.engine.model.WorkflowUpdateInput
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 
-internal class WorkflowServiceFeatureTaskAbandon(
+class WorkflowServiceFeatureTaskAbandon(
   private val engine: WorkflowEngine,
 ) {
   fun abandonRuntimeFeatureTask(

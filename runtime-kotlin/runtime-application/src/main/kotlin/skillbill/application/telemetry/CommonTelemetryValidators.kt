@@ -1,13 +1,13 @@
 package skillbill.application.telemetry
 
 val specInputTypes = listOf("raw_text", "pdf", "markdown_file", "image", "directory")
-internal val historySignalValues = listOf("none", "irrelevant", "low", "medium", "high")
+val historySignalValues = listOf("none", "irrelevant", "low", "medium", "high")
 
-internal fun validateEnum(value: String, allowed: List<String>, fieldName: String): String? =
+fun validateEnum(value: String, allowed: List<String>, fieldName: String): String? =
   if (value in allowed) null else "Invalid $fieldName '$value'. Allowed: ${allowed.joinToString(", ")}"
 
-internal fun validateNonBlank(value: String, fieldName: String): String? =
+fun validateNonBlank(value: String, fieldName: String): String? =
   if (value.isBlank()) "$fieldName must be non-empty." else null
 
-internal fun validatePositive(value: Int, fieldName: String): String? =
+fun validatePositive(value: Int, fieldName: String): String? =
   if (value > 0) null else "$fieldName must be greater than 0."

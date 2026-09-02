@@ -1,0 +1,105 @@
+package skillbill.application.featuretask
+
+import me.tatarka.inject.annotations.Inject
+
+@Inject
+class FeatureTaskRuntimeRunLoopPrimaryCollaborators(
+  val drive: FeatureTaskRuntimeRunLoopDrive,
+  val phaseRunner: FeatureTaskRuntimeRunLoopPhaseRunner,
+  val phaseAttempts: FeatureTaskRuntimeRunLoopPhaseAttempts,
+  val launch: FeatureTaskRuntimeRunLoopLaunch,
+  val outputVerification: FeatureTaskRuntimeRunLoopOutputVerification,
+  val outputPersistence: FeatureTaskRuntimeRunLoopOutputPersistence,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopControlCollaborators(
+  val validationGate: FeatureTaskRuntimeRunLoopValidationGate,
+  val review: FeatureTaskRuntimeRunLoopReview,
+  val checkpoint: FeatureTaskRuntimeRunLoopCheckpoint,
+  val planningBranch: FeatureTaskRuntimeRunLoopPlanningBranch,
+  val backwardEdge: FeatureTaskRuntimeRunLoopBackwardEdge,
+  val attemptSettlement: FeatureTaskRuntimeRunLoopAttemptSettlement,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopSupportCollaborators(
+  val recordRejection: FeatureTaskRuntimeRunLoopRecordRejection,
+  val repairReceipt: FeatureTaskRuntimeRunLoopRepairReceipt,
+  val subtaskCommit: FeatureTaskRuntimeRunLoopSubtaskCommit,
+  val transitions: FeatureTaskRuntimeRunLoopTransitions,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopSettlementContinuationCollaborators(
+  val attemptSettlementContinued1: FeatureTaskRuntimeRunLoopAttemptSettlementContinued1,
+  val attemptSettlementContinued2: FeatureTaskRuntimeRunLoopAttemptSettlementContinued2,
+  val attemptSettlementContinued3: FeatureTaskRuntimeRunLoopAttemptSettlementContinued3,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopCheckpointContinuationCollaborators(
+  val checkpointContinued1: FeatureTaskRuntimeRunLoopCheckpointContinued1,
+  val checkpointContinued2: FeatureTaskRuntimeRunLoopCheckpointContinued2,
+  val checkpointContinued3: FeatureTaskRuntimeRunLoopCheckpointContinued3,
+  val checkpointContinued4: FeatureTaskRuntimeRunLoopCheckpointContinued4,
+  val checkpointContinued5: FeatureTaskRuntimeRunLoopCheckpointContinued5,
+  val checkpointContinued6: FeatureTaskRuntimeRunLoopCheckpointContinued6,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopDriveContinuationCollaborators(
+  val driveContinued1: FeatureTaskRuntimeRunLoopDriveContinued1,
+  val driveContinued2: FeatureTaskRuntimeRunLoopDriveContinued2,
+  val driveContinued3: FeatureTaskRuntimeRunLoopDriveContinued3,
+  val driveContinued4: FeatureTaskRuntimeRunLoopDriveContinued4,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopLaunchContinuationCollaborators(
+  val launchContinued1: FeatureTaskRuntimeRunLoopLaunchContinued1,
+  val launchContinued2: FeatureTaskRuntimeRunLoopLaunchContinued2,
+  val launchContinued3: FeatureTaskRuntimeRunLoopLaunchContinued3,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopOutputVerificationContinuationCollaborators(
+  val outputVerificationContinued1: FeatureTaskRuntimeRunLoopOutputVerificationContinued1,
+  val outputVerificationContinued2: FeatureTaskRuntimeRunLoopOutputVerificationContinued2,
+  val outputVerificationContinued3: FeatureTaskRuntimeRunLoopOutputVerificationContinued3,
+  val outputVerificationContinued4: FeatureTaskRuntimeRunLoopOutputVerificationContinued4,
+  val outputVerificationContinued5: FeatureTaskRuntimeRunLoopOutputVerificationContinued5,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopPhaseContinuationCollaborators(
+  val phaseAttemptsContinued1: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued1,
+  val phaseAttemptsContinued2: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued2,
+  val phaseAttemptsContinued3: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued3,
+  val phaseRunnerContinued1: FeatureTaskRuntimeRunLoopPhaseRunnerContinued1,
+  val phaseRunnerContinued2: FeatureTaskRuntimeRunLoopPhaseRunnerContinued2,
+  val phaseRunnerContinued3: FeatureTaskRuntimeRunLoopPhaseRunnerContinued3,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopValidationGateContinuationCollaborators(
+  val validationGateContinued1: FeatureTaskRuntimeRunLoopValidationGateContinued1,
+  val validationGateContinued2: FeatureTaskRuntimeRunLoopValidationGateContinued2,
+  val validationGateContinued3: FeatureTaskRuntimeRunLoopValidationGateContinued3,
+  val validationGateContinued4: FeatureTaskRuntimeRunLoopValidationGateContinued4,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopCoreContinuationCollaborators(
+  val settlement: FeatureTaskRuntimeRunLoopSettlementContinuationCollaborators,
+  val checkpoint: FeatureTaskRuntimeRunLoopCheckpointContinuationCollaborators,
+  val drive: FeatureTaskRuntimeRunLoopDriveContinuationCollaborators,
+  val launch: FeatureTaskRuntimeRunLoopLaunchContinuationCollaborators,
+)
+
+@Inject
+class FeatureTaskRuntimeRunLoopGateContinuationCollaborators(
+  val outputVerification: FeatureTaskRuntimeRunLoopOutputVerificationContinuationCollaborators,
+  val phase: FeatureTaskRuntimeRunLoopPhaseContinuationCollaborators,
+  val validationGate: FeatureTaskRuntimeRunLoopValidationGateContinuationCollaborators,
+)

@@ -1,7 +1,6 @@
 package skillbill.application.featurespec
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.featurespec.FeatureSpecPreparationPolicy
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationIntake
 
@@ -13,8 +12,7 @@ import skillbill.featurespec.model.FeatureSpecPreparationIntake
  */
 @Inject
 class FeatureSpecPreparationRuntime(
-  private val prepareCore: (FeatureSpecPreparationIntake) -> FeatureSpecPreparationDecision =
-    FeatureSpecPreparationPolicy::prepare,
+  private val prepareCore: (FeatureSpecPreparationIntake) -> FeatureSpecPreparationDecision,
 ) {
   fun prepareForFeatureSpec(intake: FeatureSpecPreparationIntake): FeatureSpecPreparationDecision = prepareCore(intake)
 

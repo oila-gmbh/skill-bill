@@ -6,7 +6,7 @@ package skillbill.application.work
  * (`feat/SKILL-167-...`), so scoping matches candidate issue keys against the branch
  * name instead of requiring a durable branch column on every work row.
  */
-internal object IdeStatusBranchScope {
+object IdeStatusBranchScope {
 
   /**
    * Case-insensitive whole-token containment: `SKILL-16` must not match

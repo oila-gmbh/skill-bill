@@ -4,7 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.work.model.WorkListItem
 import skillbill.application.work.model.WorkListItemKind
 import skillbill.application.work.model.WorkListResult
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.error.InvalidWorkListRowError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork

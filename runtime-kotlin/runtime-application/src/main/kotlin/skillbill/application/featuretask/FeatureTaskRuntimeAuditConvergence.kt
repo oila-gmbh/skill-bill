@@ -20,7 +20,7 @@ private const val AUDIT_RECORD_STATUS_COMPLETED = "completed"
  * found gaps whose loop edge is not on the ledger yet, or never reached it because the process died
  * between the two writes.
  */
-internal object FeatureTaskRuntimeAuditConvergence {
+object FeatureTaskRuntimeAuditConvergence {
   fun progressFrom(
     auditRecord: FeatureTaskRuntimePhaseRecord?,
     auditGapIterationCount: Int,

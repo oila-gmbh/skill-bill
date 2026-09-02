@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-100"
 feature_name: "zcode-agent-support"
 parent_spec_path: ".feature-specs/SKILL-100-zcode-agent-support/spec.md"

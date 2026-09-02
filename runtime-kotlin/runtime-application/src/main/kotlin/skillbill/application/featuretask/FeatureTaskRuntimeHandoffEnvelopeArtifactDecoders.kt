@@ -13,7 +13,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectio
  * wire map, not the decoded envelope, because the typed decoder tolerates undeclared wire keys and
  * any `contract_version` string: schema violations are only observable before decode discards them.
  */
-internal fun phaseBriefingsFrom(
+fun phaseBriefingsFrom(
   artifacts: Map<String, Any?>,
   validateEnvelope: (Map<String, Any?>) -> Unit = {},
 ): Map<String, FeatureTaskRuntimePhaseLaunchBriefing> =
@@ -30,7 +30,7 @@ private fun handoffEnvelopeWireMap(briefingMap: Map<String, Any?>): Map<String, 
         "'handoff_envelope' object.",
     )
 
-internal fun deliveredProjectionsFrom(
+fun deliveredProjectionsFrom(
   artifacts: Map<String, Any?>,
   validateEnvelope: (Map<String, Any?>) -> Unit = {},
   validatePersistenceRecord: (Map<String, Any?>) -> Unit = {},
@@ -40,7 +40,7 @@ internal fun deliveredProjectionsFrom(
     .groupBy(FeatureTaskRuntimeDeliveredProjectionRecord::consumerPhaseId)
     .mapValues { (_, records) -> records.maxBy(FeatureTaskRuntimeDeliveredProjectionRecord::iteration) }
 
-internal fun deliveredProjectionHistoryFrom(
+fun deliveredProjectionHistoryFrom(
   artifacts: Map<String, Any?>,
   validateEnvelope: (Map<String, Any?>) -> Unit = {},
   validatePersistenceRecord: (Map<String, Any?>) -> Unit = {},

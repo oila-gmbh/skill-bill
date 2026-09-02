@@ -1,16 +1,16 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.goalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerEventSink
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.testGoalRunner
-import skillbill.application.goalrunner.toRecord
+import skillbill.application.telemetry.GoalLifecycleTelemetryEmitter
 import skillbill.application.telemetry.model.GoalFinishedRequest
 import skillbill.application.telemetry.model.GoalIssueFinishedRequest
 import skillbill.application.telemetry.model.GoalStartedRequest
 import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
+import skillbill.application.telemetry.toRecord
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import java.nio.file.Path
 import java.time.Clock

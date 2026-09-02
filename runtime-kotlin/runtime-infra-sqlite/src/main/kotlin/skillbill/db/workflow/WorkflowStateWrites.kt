@@ -27,6 +27,8 @@ internal val FeatureTaskWorkflowMode.defaultContractVersion: String
     FeatureTaskWorkflowMode.RUNTIME -> DbConstants.FEATURE_TASK_RUNTIME_WORKFLOW_CONTRACT_VERSION
   }
 
+internal object WorkflowStateSqlWrites
+
 internal fun Connection.upsertWorkflowRow(tableName: String, row: WorkflowStateRecord, defaultContractVersion: String) {
   val transitionTimestamp = nextStateEnteredAtSql(tableName)
   val insertionTimestamp = row.startedAt.orInsertionTimestamp()

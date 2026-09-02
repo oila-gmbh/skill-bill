@@ -1,7 +1,6 @@
 package skillbill.application.scaffold
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.workflow.repoRoot
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.model.NativeAgentSourceProjection
 import java.nio.file.Path

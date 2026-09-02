@@ -1,9 +1,9 @@
 package skillbill.application.goalrunner.planning
-
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.contracts.JsonSupport
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 
-internal object GoalPlanningSharedContextPacketValidation {
+object GoalPlanningSharedContextPacketValidation {
   private val BOUNDARY_MEMORY_FIELDS = setOf("catalog", "truncated")
   private val CATALOG_ENTRY_FIELDS = setOf("heading_id", "source_path", "kind", "heading")
   private val CATALOG_KINDS = setOf(GoalPlanningContext.KIND_HISTORY, GoalPlanningContext.KIND_DECISIONS)

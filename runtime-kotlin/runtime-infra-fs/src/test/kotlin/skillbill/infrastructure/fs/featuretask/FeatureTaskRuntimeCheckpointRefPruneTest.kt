@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs.featuretask
 
-import skillbill.application.featuretask.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.application.featuretask.featureTaskRuntimeSubtaskCheckpointRefPrefix
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.application.featuretask.parseCheckpointRefListing
 import skillbill.application.featuretask.pruneResetSubtaskCheckpointRefs
 import skillbill.application.featuretask.pruneSubtaskCheckpointRefs

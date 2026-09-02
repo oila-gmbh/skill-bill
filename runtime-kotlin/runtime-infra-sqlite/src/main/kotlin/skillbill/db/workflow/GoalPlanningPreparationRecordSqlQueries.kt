@@ -7,6 +7,8 @@ import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationStatus
 import java.sql.Connection
 
+internal object GoalPlanningPreparationRecordSqlQueries
+
 internal fun Connection.upsertPreparedRow(record: GoalPlanningPreparationRecord): Boolean = prepareStatement(
   """
     INSERT INTO goal_planning_preparations (

@@ -1,13 +1,11 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-
 private const val BUILD_PHASE_FORBIDDEN_EXTRAS: String =
   "Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, `bill-code-check`, " +
     "`./gradlew check`, `check " + "--" + "continue`, or the pack collect_all_full_gate_command. Those are not " +
     "this phase. "
 
-internal fun runtimeOwnedBuildPhaseTask(packBuildCommand: String?): String {
+fun runtimeOwnedBuildPhaseTask(packBuildCommand: String?): String {
   val gateLine = if (packBuildCommand.isNullOrBlank()) {
     "Run only the pack-declared validation_gate build_command and read that command's output."
   } else {
@@ -26,7 +24,7 @@ internal fun runtimeOwnedBuildPhaseTask(packBuildCommand: String?): String {
     "or any phase-output JSON."
 }
 
-internal fun buildGateTriagePhaseTask(packBuildCommand: String?): String {
+fun buildGateTriagePhaseTask(packBuildCommand: String?): String {
   val gateLine = if (packBuildCommand.isNullOrBlank()) {
     "The dominant pack declares validation_gate.build_command for build proof."
   } else {
@@ -40,4 +38,3 @@ internal fun buildGateTriagePhaseTask(packBuildCommand: String?): String {
     "item: item_id, module, rule_or_task, location, failure_summary, fix_intent. Extra keys are allowed. " +
     "Return prose guidance only; do not fix code or emit build_receipt, gate_run_count, or gate evidence."
 }
-

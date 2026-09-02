@@ -1,12 +1,13 @@
 package skillbill.infrastructure.fs.featuretask
 
 import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
-import skillbill.application.featuretask.RemediationBaseBlocked
-import skillbill.application.featuretask.RemediationBaseCoherent
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.featuretask.model.RemediationBaseBlocked
+import skillbill.application.featuretask.model.RemediationBaseCoherent
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.workflow.engine.WorkflowEngine
@@ -26,6 +27,7 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentiti
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -340,6 +342,8 @@ class RemediationBaseReconciliationUnderAmendTest {
     return FeatureTaskRuntimeGoalContinuationRecorder(
       FeatureTaskGitIntegrationDatabase(repository),
       featureTaskGitIntegrationSnapshotValidator,
+      NoopRuntimeDiagnostics,
+      Clock.systemUTC(),
     )
   }
 

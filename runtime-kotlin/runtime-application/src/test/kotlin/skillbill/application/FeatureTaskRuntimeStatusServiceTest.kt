@@ -1088,6 +1088,7 @@ private fun statusHarness(): StatusHarness {
     StatusNoopSnapshotValidator,
     AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+    testHarnessClock,
   )
   val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, StatusNoopSnapshotValidator)
   val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, StatusNoopSnapshotValidator)

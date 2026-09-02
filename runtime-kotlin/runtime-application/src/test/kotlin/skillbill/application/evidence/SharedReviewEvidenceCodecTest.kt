@@ -1,6 +1,9 @@
 package skillbill.application.evidence
 
-import skillbill.application.review.RawCommitDiff
+import skillbill.application.reviewevidence.RawCommitDiff
+import skillbill.application.reviewevidence.SharedReviewEvidenceCodec
+import skillbill.application.reviewevidence.SharedReviewEvidenceCommits
+import skillbill.application.reviewevidence.SharedReviewEvidenceRecord
 import skillbill.review.context.model.ReviewCommitSource
 import kotlin.test.Test
 import kotlin.test.assertEquals

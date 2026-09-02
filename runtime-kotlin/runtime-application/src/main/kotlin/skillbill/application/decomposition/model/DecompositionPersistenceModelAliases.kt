@@ -1,0 +1,15 @@
+package skillbill.application.decomposition.model
+
+import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestFileCandidate as PFileCandidate
+import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate as PRuntimeUpdate
+import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWorkflowProjectionInput as PProjIn
+import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWriteRequest as PWriteRequest
+import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWriteResult as PWriteResult
+import skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput as PPlanInput
+
+typealias DecompositionManifestWriteResult = PWriteResult
+typealias DecompositionManifestRuntimeUpdate = PRuntimeUpdate
+typealias DecompositionManifestWorkflowProjectionInput = PProjIn
+typealias DecompositionManifestWriteRequest = PWriteRequest
+typealias DecompositionPlanManifestInput = PPlanInput
+typealias DecompositionManifestFileCandidate = PFileCandidate

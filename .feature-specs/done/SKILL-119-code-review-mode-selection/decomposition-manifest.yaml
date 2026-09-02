@@ -1,5 +1,5 @@
 ---
-contract_version: "0.4"
+contract_version: "0.5"
 issue_key: "SKILL-119"
 feature_name: "code-review-mode-selection"
 parent_spec_path: ".feature-specs/SKILL-119-code-review-mode-selection/spec.md"

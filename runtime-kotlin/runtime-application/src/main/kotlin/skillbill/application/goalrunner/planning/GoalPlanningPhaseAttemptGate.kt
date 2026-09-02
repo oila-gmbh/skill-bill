@@ -1,18 +1,11 @@
 package skillbill.application.goalrunner.planning
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy
-import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.model.GoalPlanningPhaseProduction
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.goalrunner.model.GoalRunnerStopReason
-import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.agentrun.model.SkillRunRequest
-import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.time.model.RuntimeWaitResult
-import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.goal.model.GoalProgressOutcome
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import kotlin.time.Duration
@@ -30,7 +23,7 @@ internal fun DefaultGoalPlanningSweep.producePhase(args: GoalPlanningProducePhas
   while (true) {
     attempt += 1
     val scope = planningAttemptScope(shared, phaseId, subtask, attempt)
-    recordPlanningAttemptStarted(scope)
+    recordPlanningAttemptStarted(this, scope)
     val step = advancePlanningProduceAttempt(
       PlanningProduceAdvanceArgs(
         attemptArgs = attemptArgs.copy(priorSchemaFailure = priorSchemaFailure),
@@ -52,64 +45,7 @@ internal fun DefaultGoalPlanningSweep.producePhase(args: GoalPlanningProducePhas
   }
 }
 
-private data class PlanningProduceAdvanceArgs(
-  val attemptArgs: GoalPlanningProduceAttemptArgs,
-  val scope: GoalPlanningAttemptScope,
-  val retryableDeclines: Int,
-  val phaseId: String,
-  val finalizePayload: (String) -> String,
-)
-
-private sealed interface PlanningProduceStep {
-  class Done(val production: GoalPlanningPhaseProduction) : PlanningProduceStep
-  class RetryDecline(val retryableDeclines: Int) : PlanningProduceStep
-  class RetrySchema(val priorSchemaFailure: String) : PlanningProduceStep
-}
-
-private fun DefaultGoalPlanningSweep.advancePlanningProduceAttempt(
-  args: PlanningProduceAdvanceArgs,
-): PlanningProduceStep {
-  val production = produceAttemptOrStop(args.attemptArgs)
-  return when (production) {
-    is GoalPlanningPhaseProduction.RetryableDecline -> {
-      val nextDeclines = args.retryableDeclines + 1
-      declineRetryStop(args.scope, nextDeclines, production)
-        ?.let { PlanningProduceStep.Done(it) }
-        ?: PlanningProduceStep.RetryDecline(nextDeclines)
-    }
-    is GoalPlanningPhaseProduction.EmptyProviderTurn -> {
-      recordPlanningAttempt(GoalPlanningAttemptRecordArgs(args.scope, GoalProgressOutcome.FAILED))
-      recordEmptyProviderTurn(args.scope, production)
-      backoffStop(args.scope)
-        ?.let { PlanningProduceStep.Done(it) }
-        ?: PlanningProduceStep.RetryDecline(args.retryableDeclines)
-    }
-    else -> when (val settlement = settlePlanningProductionAttempt(args.scope, production)) {
-      is GoalPlanningPhaseProductionSettlement.Settled ->
-        PlanningProduceStep.Done(settlement.production)
-      is GoalPlanningPhaseProductionSettlement.Retry ->
-        PlanningProduceStep.RetrySchema(settlement.priorSchemaFailure)
-      is GoalPlanningPhaseProductionSettlement.PendingCapture ->
-        when (
-          val captured = settleCapturedPlanningProduction(
-            args.scope,
-            settlement.production,
-            args.phaseId,
-            args.finalizePayload,
-          )
-        ) {
-          is GoalPlanningPhaseProductionSettlement.Settled ->
-            PlanningProduceStep.Done(captured.production)
-          is GoalPlanningPhaseProductionSettlement.Retry ->
-            PlanningProduceStep.RetrySchema(captured.priorSchemaFailure)
-          is GoalPlanningPhaseProductionSettlement.PendingCapture ->
-            error("Unexpected nested capture settlement.")
-        }
-    }
-  }
-}
-
-internal fun DefaultGoalPlanningSweep.gateCapturedPayload(
+fun DefaultGoalPlanningSweep.gateCapturedPayload(
   captured: GoalPlanningPhaseProduction.Captured,
   phaseId: String,
   finalizePayload: (String) -> String,
@@ -253,31 +189,3 @@ internal fun DefaultGoalPlanningSweep.validatePlanningAttemptOutput(
     }
   },
 )
-
-internal fun DefaultGoalPlanningSweep.launchPlanningAttempt(
-  shared: GoalPlanningSharedContext,
-  request: GoalRunnerRunRequest,
-  subtask: DecompositionSubtask?,
-  phaseId: String,
-  prompt: String,
-): AgentRunLaunchOutcome {
-  request.outputSink.write(AgentRunOutputStream.STDERR, planningProgressMessage(phaseId, subtask))
-  return subtaskLauncher.launch(
-    GoalRunnerSubtaskLaunchRequest(
-      invokedAgentId = shared.invokedAgentId,
-      configuredAgentOverrideId = shared.configuredAgentOverrideId,
-      skillRunRequest = SkillRunRequest(
-        issueKey = request.issueKey,
-        repoRoot = shared.repoRoot,
-        subtaskId = subtask?.id,
-        dbPathOverride = shared.dbPathOverride,
-        timeout = request.planningBudget,
-        progressIdleTimeout = request.progressIdleTimeout,
-        outputSink = request.outputSink,
-        promptOverride = prompt,
-        streamOutputForLiveness = true,
-        spawnAuthorization = manifestStore.authorizePlanningLaunch(shared.parentWorkflowId, shared.dbPathOverride),
-      ),
-    ),
-  )
-}

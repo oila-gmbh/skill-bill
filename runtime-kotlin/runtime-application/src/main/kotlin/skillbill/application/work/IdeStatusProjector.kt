@@ -17,13 +17,12 @@ import skillbill.application.idestatus.model.IdeStatusProgress
 import skillbill.application.idestatus.model.IdeStatusSnapshot
 import skillbill.application.idestatus.model.IdeStatusStep
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
-import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.ports.db.UnitOfWork
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.WorkflowSnapshotValidator
@@ -55,7 +54,7 @@ class IdeStatusProjector(
   workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val featureTaskRuntimeStatusService: FeatureTaskRuntimeStatusService,
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) {
   private val workflowEngine = WorkflowEngine(workflowSnapshotValidator)
 

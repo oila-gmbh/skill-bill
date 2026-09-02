@@ -1,8 +1,8 @@
 
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
+import skillbill.application.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator

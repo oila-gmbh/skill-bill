@@ -1,6 +1,6 @@
 package skillbill.application.review
 
-import skillbill.application.review.model.ParallelReviewScope
+import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files

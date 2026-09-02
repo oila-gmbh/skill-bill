@@ -1,0 +1,160 @@
+package skillbill.ports.workflow.decomposition.runtime
+
+import skillbill.error.InvalidDecompositionManifestSchemaError
+import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.runtime.model.LoadedDecompositionManifest
+import skillbill.ports.workflow.decomposition.runtime.model.ValidatedDecompositionManifestYaml
+import skillbill.workflow.decomposition.DecompositionManifestCodec
+import skillbill.workflow.decomposition.DecompositionManifestValidator
+import skillbill.workflow.decomposition.model.DecompositionManifest
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationFailureCode
+import skillbill.workflow.decomposition.model.DecompositionManifestValidationResult
+import skillbill.workflow.decomposition.model.requireAccepted
+import skillbill.workflow.decomposition.toWireMap
+import java.nio.file.NoSuchFileException
+import java.nio.file.Path
+
+/**
+ * Decomposition manifest parse/emission seam. This is where workflow artifact maps and
+ * repo-local YAML text from the workflow file-store port are schema-validated before
+ * callers persist or return them.
+ */
+fun loadDecompositionManifest(
+  path: Path,
+  fileStore: DecompositionManifestFileStore,
+  validator: DecompositionManifestValidator,
+  recoverPending: Boolean = true,
+): DecompositionManifest {
+  return loadValidatedDecompositionManifest(path, fileStore, validator, recoverPending).manifest
+}
+
+fun loadValidatedDecompositionManifest(
+  path: Path,
+  fileStore: DecompositionManifestFileStore,
+  validator: DecompositionManifestValidator,
+  recoverPending: Boolean = true,
+): LoadedDecompositionManifest {
+  val validated = validateDecompositionManifestYaml(path, fileStore, validator, recoverPending)
+  return LoadedDecompositionManifest(
+    manifest = validated.manifest,
+    yamlText = validated.yamlText,
+    repairEvidence = validated.repairEvidence,
+  )
+}
+
+/**
+ * Keeps a repaired read-back inside the caller's atomic write transaction. A second repair means
+ * the first repair did not produce a stable validated document, so the caller must roll back.
+ */
+fun loadValidatedDecompositionManifestPersistingRepair(
+  path: Path,
+  fileStore: DecompositionManifestFileStore,
+  validator: DecompositionManifestValidator,
+): LoadedDecompositionManifest {
+  val loaded = loadValidatedDecompositionManifest(path, fileStore, validator)
+  val repairEvidence = loaded.repairEvidence ?: return loaded
+
+  fileStore.writeTextAtomically(path, loaded.yamlText)
+  val persisted = loadValidatedDecompositionManifest(path, fileStore, validator)
+  if (persisted.repairEvidence != null) {
+    throw InvalidDecompositionManifestSchemaError(
+      sourceLabel = path.toString(),
+      reason = "repaired YAML did not validate unchanged after persistence.",
+      failureCode = DecompositionManifestValidationFailureCode.REPAIR_LIMIT_EXCEEDED.wireValue,
+    )
+  }
+  return persisted.copy(repairEvidence = repairEvidence)
+}
+
+fun loadValidatedDecompositionManifestOrNull(
+  path: Path,
+  fileStore: DecompositionManifestFileStore,
+  validator: DecompositionManifestValidator,
+): LoadedDecompositionManifest? = try {
+  loadValidatedDecompositionManifest(path, fileStore, validator)
+} catch (_: NoSuchFileException) {
+  null
+}
+
+fun validateDecompositionManifestYaml(
+  path: Path,
+  fileStore: DecompositionManifestFileStore,
+  validator: DecompositionManifestValidator,
+  recoverPending: Boolean = true,
+): ValidatedDecompositionManifestYaml {
+  val yamlText = if (recoverPending) fileStore.readText(path) else fileStore.readTextWithoutRecovery(path)
+  return when (val result = validator.validateYamlTextResult(yamlText, path.toString())) {
+    is DecompositionManifestValidationResult.AcceptedUnchanged -> ValidatedDecompositionManifestYaml(
+      manifest = result.manifest,
+      yamlText = result.yamlText,
+      repairEvidence = null,
+    )
+    is DecompositionManifestValidationResult.AcceptedAfterRepair -> ValidatedDecompositionManifestYaml(
+      manifest = result.manifest,
+      yamlText = result.yamlText,
+      repairEvidence = result.evidence,
+    )
+    is DecompositionManifestValidationResult.Rejected -> {
+      result.requireAccepted(path.toString())
+      error("Unreachable rejected decomposition manifest result.")
+    }
+  }
+}
+
+fun decodeDecompositionManifestMap(
+  wireMap: Map<String, Any?>,
+  validator: DecompositionManifestValidator,
+  sourceLabel: String = "<in-memory>",
+): DecompositionManifest {
+  validator.validate(wireMap, sourceLabel)
+  return DecompositionManifestCodec.decodeMap(wireMap, sourceLabel)
+}
+
+fun encodeDecompositionManifestMap(
+  manifest: DecompositionManifest,
+  validator: DecompositionManifestValidator,
+  sourceLabel: String = "<in-memory>",
+): Map<String, Any?> {
+  val wireMap = manifest.toWireMap()
+  validator.validate(wireMap, sourceLabel)
+  return wireMap
+}
+
+fun encodeDecompositionManifestYaml(
+  manifest: DecompositionManifest,
+  validator: DecompositionManifestValidator,
+  fileStore: DecompositionManifestFileStore,
+  sourceLabel: String = "<in-memory>",
+): String {
+  return encodeValidatedDecompositionManifestYaml(manifest, validator, fileStore, sourceLabel).yamlText
+}
+
+fun encodeValidatedDecompositionManifestYaml(
+  manifest: DecompositionManifest,
+  validator: DecompositionManifestValidator,
+  fileStore: DecompositionManifestFileStore,
+  sourceLabel: String = "<in-memory>",
+): ValidatedDecompositionManifestYaml {
+  val wireMap = encodeDecompositionManifestMap(manifest, validator, sourceLabel)
+  val yamlText = fileStore.encodeManifestYaml(wireMap)
+  return when (val result = validator.validateYamlTextResult(yamlText, sourceLabel)) {
+    is DecompositionManifestValidationResult.AcceptedUnchanged -> ValidatedDecompositionManifestYaml(
+      manifest = result.manifest,
+      yamlText = result.yamlText,
+      repairEvidence = null,
+    )
+    is DecompositionManifestValidationResult.AcceptedAfterRepair -> ValidatedDecompositionManifestYaml(
+      manifest = result.manifest,
+      yamlText = result.yamlText,
+      repairEvidence = result.evidence,
+    )
+    is DecompositionManifestValidationResult.Rejected -> {
+      result.requireAccepted(sourceLabel)
+      error("Unreachable rejected decomposition manifest result.")
+    }
+  }
+}
+
+fun writeDecompositionManifestText(target: Path, content: String, fileStore: DecompositionManifestFileStore) {
+  fileStore.writeTextAtomically(target, content)
+}

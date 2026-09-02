@@ -5,7 +5,7 @@ import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 
-internal object GoalPlanningSharedContextPacket {
+object GoalPlanningSharedContextPacket {
   const val VERSION = "0.4"
   const val LEGACY_VERSION_0_3 = "0.3"
   const val LEGACY_VERSION_0_2 = "0.2"
@@ -13,7 +13,7 @@ internal object GoalPlanningSharedContextPacket {
   const val MAX_GOVERNED_CONTEXT_CHARS = 65_536
   private const val MAX_PACKET_CHARS = 524_288
 
-  internal val PACKET_FIELDS = setOf(
+  val PACKET_FIELDS = setOf(
     "packet_version",
     "repository_identity",
     "normalized_issue_key",
@@ -25,7 +25,7 @@ internal object GoalPlanningSharedContextPacket {
     "ordered_subtasks",
     "integrity_sha256",
   )
-  internal val LEGACY_V01_FIELDS = PACKET_FIELDS + "platform_packs"
+  val LEGACY_V01_FIELDS = PACKET_FIELDS + "platform_packs"
 
   fun migrate(packet: Map<String, Any?>): Map<String, Any?> = when (val version = packet["packet_version"]) {
     VERSION -> withoutExcludedCatalogEntries(packet)
@@ -137,7 +137,7 @@ internal object GoalPlanningSharedContextPacket {
   fun digest(packet: Map<String, Any?>): String = GoalPlanningSharedContextPacketValidation.digest(packet)
 }
 
-internal object GoalPlanningSpecCanonicalization {
+object GoalPlanningSpecCanonicalization {
   private const val FRONTMATTER_FENCE = "---"
   private val STATUS_FRONTMATTER_LINE = Regex("^status\\s*:.*$")
 

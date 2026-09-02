@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.withParentStatus
-import skillbill.application.featuretask.FeatureTaskRuntimeCheckpointRefPruneRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointRefPruneRequest
 import skillbill.application.featuretask.pruneCompletedSubtaskCheckpointRefs
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
@@ -13,7 +13,7 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 
-internal fun reconcileGoalManifest(
+fun reconcileGoalManifest(
   manifest: DecompositionManifest,
   dbPathOverride: String?,
   authoritativeOutcomes: Map<Int, GoalRunnerStoredOutcome>,
@@ -32,7 +32,7 @@ internal fun reconcileGoalManifest(
     .withDerivedCurrentIntent()
 }
 
-internal fun pruneEligibleCheckpointRefsForManifest(
+fun pruneEligibleCheckpointRefsForManifest(
   manifest: DecompositionManifest,
   gitOperations: WorkflowGitOperations,
   repoRoot: Path,

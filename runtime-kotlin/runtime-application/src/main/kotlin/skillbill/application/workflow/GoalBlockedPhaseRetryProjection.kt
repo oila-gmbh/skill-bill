@@ -3,7 +3,6 @@ package skillbill.application.workflow
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.withRetriedSubtask
-import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.UnitOfWork
@@ -13,7 +12,7 @@ import skillbill.workflow.engine.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 
-internal fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
+fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
   unitOfWork: UnitOfWork,
   childWorkflowId: String,
   childArtifacts: Map<String, Any?>,

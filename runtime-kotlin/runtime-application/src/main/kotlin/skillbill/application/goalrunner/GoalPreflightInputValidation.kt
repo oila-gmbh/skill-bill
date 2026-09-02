@@ -1,11 +1,11 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import java.nio.file.Path
 
-internal object GoalPreflightInputValidation {
+object GoalPreflightInputValidation {
   fun requireInvokedAgentId(invokedAgentId: String) {
     if (invokedAgentId.isBlank()) {
       throw InvalidFeatureTaskExecutionIdentitySchemaError(

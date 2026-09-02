@@ -26,7 +26,7 @@ internal fun stopped(args: StoppedReportArgs): GoalRunnerRunReport.Stopped = Goa
   ),
 )
 
-internal fun completed(
+fun completed(
   manifest: DecompositionManifest,
   attempted: List<Int>,
   pullRequestUrl: String?,
@@ -47,7 +47,7 @@ internal fun completed(
   )
 }
 
-internal fun unknownGoal(issueKey: String): GoalRunnerRunReport.Stopped = stopped(
+fun unknownGoal(issueKey: String): GoalRunnerRunReport.Stopped = stopped(
   StoppedReportArgs(
     issueKey = issueKey,
     attempted = emptyList(),
@@ -59,7 +59,7 @@ internal fun unknownGoal(issueKey: String): GoalRunnerRunReport.Stopped = stoppe
   ),
 )
 
-internal fun String.withStopDiagnostics(
+fun String.withStopDiagnostics(
   knownWorkflowId: String?,
   progress: GoalRunnerWorkflowProgress?,
   liveness: GoalRunnerLivenessSnapshot?,
@@ -75,7 +75,7 @@ internal fun String.withStopDiagnostics(
   return if (details.isBlank()) this else "$this [$details]"
 }
 
-internal fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(
+fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(
   phaseRecorder: FeatureTaskRuntimePhaseRecorder? = null,
   dbPathOverride: String? = null,
 ): Boolean {
@@ -101,7 +101,7 @@ internal fun GoalRunnerReconciledOutcome.Stop.isRecoverableValidationBlock(
   return true
 }
 
-internal fun supervisionEvent(
+fun supervisionEvent(
   reason: GoalRunnerStopReason,
   knownWorkflowId: String,
   progress: GoalRunnerWorkflowProgress?,

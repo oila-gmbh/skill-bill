@@ -1,5 +1,5 @@
 package skillbill.application.goalrunner.planning
-
+import skillbill.application.goalplanning.sha256HexUtf8
 import skillbill.contracts.JsonSupport
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
@@ -40,7 +40,7 @@ internal fun classifyGoalPlanningProvenanceRecoverability(
   }
 }
 
-internal fun preplanProseValue(preplanPayload: String): String = runCatching {
+fun preplanProseValue(preplanPayload: String): String = runCatching {
   JsonSupport.parseObjectOrNull(preplanPayload)
     ?.let(JsonSupport::jsonElementToValue)
     ?.let(JsonSupport::anyToStringAnyMap)
@@ -51,7 +51,7 @@ internal fun preplanProseValue(preplanPayload: String): String = runCatching {
     .orEmpty()
 }.getOrDefault("")
 
-internal fun preplanProsePrompt(preplanPayload: String): String? = runCatching {
+fun preplanProsePrompt(preplanPayload: String): String? = runCatching {
   JsonSupport.parseObjectOrNull(preplanPayload)
     ?.let(JsonSupport::jsonElementToValue)
     ?.let(JsonSupport::anyToStringAnyMap)
@@ -62,7 +62,6 @@ internal fun preplanProsePrompt(preplanPayload: String): String? = runCatching {
     ?.takeIf(String::isNotBlank)
 }.getOrNull()
 
-internal fun preplanProseValueHash(preplanPayload: String): String = sha256HexUtf8(preplanProseValue(preplanPayload))
+fun preplanProseValueHash(preplanPayload: String): String = sha256HexUtf8(preplanProseValue(preplanPayload))
 
-internal fun preplanProsePromptHash(preplanPayload: String): String =
-  sha256HexUtf8(preplanProsePrompt(preplanPayload).orEmpty())
+fun preplanProsePromptHash(preplanPayload: String): String = sha256HexUtf8(preplanProsePrompt(preplanPayload).orEmpty())
