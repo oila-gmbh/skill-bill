@@ -11,7 +11,7 @@ Route dominant-stack quality checks to the pack-declared quality-check sidecar. 
 
 ## Repair Window
 
-Run the collect-all check once and read that output. Fix findings in batches in the same session: after each coherent batch (shared root cause or related group), re-run the same collect-all command to refresh the open set. Repeat check → fix-batch → check until green or you have used 3 full collect-all runs in the session (discovery and every refresh/confirm count). Never run a full collect-all once per individual finding. Targeted compile, test, format, or analysis proofs are allowed between full collect-all runs. If the final collect-all still fails, its output is the new complete finding set.
+Run the collect-all check once and read that output. Fix findings in batches in the same session: after each coherent batch (shared root cause or related group), re-run the same collect-all command to refresh the open set. Repeat check → fix-batch → check until green or you have used 3 full collect-all runs in the session (discovery and every refresh/confirm count). Do not invoke a full collect-all once per individual finding. Targeted compile, test, format, or analysis proofs are allowed between full collect-all runs. If the final collect-all still fails, its output is the new complete finding set.
 
 ## Pack validation_gate
 
