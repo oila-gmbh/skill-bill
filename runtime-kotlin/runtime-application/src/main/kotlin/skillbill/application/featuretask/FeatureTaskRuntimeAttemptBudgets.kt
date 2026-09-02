@@ -1,7 +1,15 @@
 package skillbill.application.featuretask
 
 internal object FeatureTaskRuntimeAttemptBudgets {
-  const val MAX_OUTPUT_GATE_RETRY_ATTEMPTS: Int = 1
+  /**
+   * A schema-invalid phase envelope is a serialisation slip, not a judgement the phase got wrong:
+   * the agent's work is already on disk by the time it reports, and a fresh attempt usually emits a
+   * well-formed envelope. Blocking on the first one spent an operator on a class of failure that
+   * retries cheaply, so the budget allows a couple of corrections before handing over. It stays
+   * small because an agent that cannot produce the envelope three times running is not going to
+   * produce it on the fourth.
+   */
+  const val MAX_OUTPUT_GATE_RETRY_ATTEMPTS: Int = 3
   const val MAX_FORMAT_RETRY_ATTEMPTS: Int = MAX_OUTPUT_GATE_RETRY_ATTEMPTS
   const val MAX_PROCESS_FAILURE_ATTEMPTS: Int = 3
 

@@ -289,8 +289,8 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   @Test
   fun `process-failure and malformed-output budgets stay pinned independently of the semantic loops`() {
     assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS)
-    assertEquals(1, FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS)
-    assertEquals(1, FeatureTaskRuntimeAttemptBudgets.MAX_OUTPUT_GATE_RETRY_ATTEMPTS)
+    assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS)
+    assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_OUTPUT_GATE_RETRY_ATTEMPTS)
   }
 
   private data class RunOutcome(
