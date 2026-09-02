@@ -9,9 +9,9 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeAttemptBudgetsTest {
   @Test
-  fun `output-gate retries cap at three and process-failure stays at three`() {
-    assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_OUTPUT_GATE_RETRY_ATTEMPTS)
-    assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS)
+  fun `output-gate retries cap at one and process-failure stays at three`() {
+    assertEquals(1, FeatureTaskRuntimeAttemptBudgets.MAX_OUTPUT_GATE_RETRY_ATTEMPTS)
+    assertEquals(1, FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS)
     assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS)
   }
 
@@ -39,12 +39,9 @@ class FeatureTaskRuntimeAttemptBudgetsTest {
   }
 
   @Test
-  fun `a schema-invalid output is corrected before it blocks`() {
-    assertEquals(null, FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason("audit", 1))
-    assertEquals(null, FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason("audit", 2))
-
-    val reason = FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason("audit", 3)
-    assertContains(requireNotNull(reason), "cap=3")
+  fun `the first schema-invalid output blocks instead of relaunching`() {
+    val reason = FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason("audit", 1)
+    assertContains(requireNotNull(reason), "cap=1")
     assertContains(reason, "blocks rather than relaunching")
   }
 
