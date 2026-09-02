@@ -4,12 +4,12 @@ import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
 import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.testActivityStampWriter
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 
 class GoalRunnerDirectRuntimeContinuationTest {
   @Test
