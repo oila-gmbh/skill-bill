@@ -37,7 +37,7 @@ application layer holds orchestration only.
 
 **Agent identity branching.** Replace the remaining identity branch on agent
 name with an injectable strategy on the request, per the runtime agent-behavior
-rule in `AGENTS.md`.
+rule in `../../../AGENTS.md`.
 
 **DTO aggregate.** `GoalRunnerRequests.kt` collects 482 lines of unrelated
 request types in one file. Split it so each request type sits with the boundary

@@ -6,7 +6,7 @@ Put the measurement and wiring rules in place before any structural change, so
 later subtasks are enforced rather than trusted.
 
 **Guardrails.** Extend the architecture suite under
-`runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/`:
+`../../../runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture`:
 
 - *Logical-type line ceiling.* `ProductionFileLineCeilingArchitectureTest`
   measures files, which is why `FeatureTaskRuntimeRunLoop` sits at ~8,834 lines
@@ -27,7 +27,7 @@ later subtasks are enforced rather than trusted.
   ships with an empty baseline because this subtask fixes every site.
 
 Register all four in `PrincipleEnforcementInventory` and document them in
-`runtime-kotlin/ARCHITECTURE.md`.
+`../../../runtime-kotlin/ARCHITECTURE.md`.
 
 **DI hardening.** Delete every default argument from `@Inject` constructors and
 dependency bags in `runtime-application`, and add the corresponding explicit
@@ -79,7 +79,7 @@ needs the scoping decision, and subtask 2 makes the budget durable regardless.
    holding a cache, connection, or lease; services left unscoped are listed in
    `ARCHITECTURE.md` with the reason.
 8. All four guards are registered in `PrincipleEnforcementInventory` and
-   documented in `runtime-kotlin/ARCHITECTURE.md`.
+   documented in `../../../runtime-kotlin/ARCHITECTURE.md`.
 9. `./gradlew compileKotlin`, the runtime module test suites, and
    `skill-bill validate` pass with no new suppression.
 

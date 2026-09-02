@@ -1,3 +1,14 @@
+## [2026-09-02] SKILL-227 subtask 3 — God-object decomposition and package acyclicity
+Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,review,subtaskreview,decomposition,workflow,reviewevidence,phaseartifacts,planningprojection,telemetry,work},runtime-ports,runtime-infra-sqlite/goalrunner,runtime-core/{di,architecture},ARCHITECTURE.md}
+- Split FeatureTaskRuntimeRunLoop and GoalRunner into injected collaborators with explicit run-scoped state; collapsed oversized dependency bags into role-scoped ports; broke featuretask↔goalrunner, goalrunner↔workflow, workflow↔decomposition, and review↔evidence cycles.
+- Emptied logical-type line-ceiling and application-package-cycle baselines; guards now fail on any new offender or cycle with no exemptions. reusable
+- Folded *Helpers*/*Extras*/*Support* ceiling-evasion files into owning types or named domain collaborators (recorders, status, OutcomeDerivation, FailureAdmission, OutcomeStoreBridges, WorkflowFamilyLookup); those filename suffixes are gone under the touched packages.
+- Moved WorkflowGoalRunner* persistence adapters to infra-sqlite; request DTOs sit with their boundaries; agent identity branching uses an injectable request strategy.
+- Pattern: split by responsibility and name, never by line-count suffix; empty baselines are the permanent floor. reusable
+- Limitation: structure moved only — phase graph, gate policy, and commit finalisation unchanged; observable behavior preserved.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-09-01] SKILL-227 subtask 2 — Ambient inputs and loud-fail seams
 Areas: runtime-kotlin/{runtime-ports/{model,process},runtime-infra-fs,runtime-core/di,runtime-application/{workflow,decomposition,featuretask,goalrunner},runtime-cli,runtime-mcp,runtime-domain/goalrunner,runtime-infra-sqlite}
 - Injected `RepositoryRoot` (canonical git-root resolve at composition root); removed `Path.of("").toAbsolutePath()` and `repoRoot()` from `runtime-application`; CLI/MCP contexts pre-resolve the same root.
