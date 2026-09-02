@@ -68,6 +68,24 @@ class UpdateCheckServiceTest {
   }
 
   @Test
+  fun `an unversioned build is never told to update`() {
+    val result = UpdateCheckService(
+      systemService = SystemService(
+        TestDatabaseSessionFactory(),
+        TestTelemetrySettingsProvider,
+        versionValue = "0.0.0-SNAPSHOT",
+      ),
+      transportContext = TransportContext(
+        requester = HttpRequester { _, _, _, _ -> error("release list must not be consulted") },
+      ),
+    ).check(includePrereleases = false)
+
+    assertEquals(UpdateCheckStatus.UNKNOWN, result.status)
+    assertEquals("0.0.0-SNAPSHOT", result.installedVersion)
+    assertNull(result.recommendedInstallCommand)
+  }
+
+  @Test
   fun `maps soft failures to unknown`() {
     assertEquals(UpdateCheckStatus.UNKNOWN, service(responseBody = "not-json").check(false).status)
     assertEquals(UpdateCheckStatus.UNKNOWN, service(responseBody = "[]").check(false).status)

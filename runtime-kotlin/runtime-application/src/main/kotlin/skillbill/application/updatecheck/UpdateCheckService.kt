@@ -22,6 +22,10 @@ class UpdateCheckService(
     return when {
       installedVersion.isBlank() -> unknown("missing local version metadata")
       installed == null -> unknown("local version is not semver", installedVersion = installedVersion)
+      installed.isUnversionedBuild -> unknown(
+        "local build carries no version provenance; reinstall with `skill-bill update --release <tag>`",
+        installedVersion = installedVersion,
+      )
       else -> checkReleases(installedVersion, installed, includePrereleases)
     }
   }

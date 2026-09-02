@@ -44,6 +44,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       # Spotless ratchetFrom("origin/main") fails task-graph creation when the
       # shallow default checkout has no origin/main (hosted ubuntu). Self-hosted

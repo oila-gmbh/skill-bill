@@ -7,6 +7,7 @@ data class Semver(
   val prerelease: List<String> = emptyList(),
 ) : Comparable<Semver> {
   val isPrerelease: Boolean = prerelease.isNotEmpty()
+  val isUnversionedBuild: Boolean = major == 0 && minor == 0 && patch == 0
 
   override fun compareTo(other: Semver): Int = compareValuesBy(this, other, Semver::major, Semver::minor, Semver::patch)
     .takeIf { it != 0 }

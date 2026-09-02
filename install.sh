@@ -1075,6 +1075,13 @@ install_runtime_distributions() {
   build_kotlin_runtime_distributions
 }
 
+release_version_for_untracked_build_tree() {
+  if git -C "$RUNTIME_KOTLIN_DIR" describe --tags --abbrev=0 --match 'v[0-9]*' >/dev/null 2>&1; then
+    return 0
+  fi
+  resolve_release_installer_tag 2>/dev/null || true
+}
+
 build_kotlin_runtime_distributions() {
   # Build output path: Gradle application installDist bin scripts at:
   # runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli
@@ -1102,13 +1109,20 @@ build_kotlin_runtime_distributions() {
     return 1
   fi
 
+  local stamped_version
+  stamped_version="$(release_version_for_untracked_build_tree)"
+
   info "Building packaged Kotlin runtime distributions..."
   rm -rf \
     "$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli" \
     "$RUNTIME_KOTLIN_DIR/runtime-mcp/build/install/runtime-mcp"
   (
     cd "$RUNTIME_KOTLIN_DIR"
-    ./gradlew -q :runtime-cli:installDist :runtime-mcp:installDist
+    if [[ -n "$stamped_version" ]]; then
+      RELEASE_VERSION="$stamped_version" ./gradlew -q :runtime-cli:installDist :runtime-mcp:installDist
+    else
+      ./gradlew -q :runtime-cli:installDist :runtime-mcp:installDist
+    fi
   )
   locate_packaged_runtime_bin "$RUNTIME_CLI_BUILD_BIN" "CLI"
   locate_packaged_runtime_bin "$RUNTIME_MCP_BUILD_BIN" "MCP"
