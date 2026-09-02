@@ -191,6 +191,17 @@ class IdeStatusJsonMapperTest {
     }
 
     @Test
+    fun `blocked lifecycle with pause reason maps to Blocked outcome`() {
+        val json = runtimeFixture(lifecycle = "blocked").dropLast(1) +
+            """,\"pause_reason\":{\"code\":\"awaiting_operator_decision\",\"label\":\"Run npm ci:safe after GITHUB_REGISTRY_AUTH\"}}"""
+        val outcome = IdeStatusJsonMapper.map(json, now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Blocked)
+        outcome as SkillBillStatusOutcome.Blocked
+        assertEquals("awaiting_operator_decision", outcome.pauseReason?.code)
+        assertEquals("Run npm ci:safe after GITHUB_REGISTRY_AUTH", outcome.pauseReason?.label)
+    }
+
+    @Test
     fun `stale freshness does not resurrect terminal work as an execution`() {
         val json = runtimeFixture(lifecycle = "terminal", freshness = "stale")
         val outcome = IdeStatusJsonMapper.map(json, now, 0)

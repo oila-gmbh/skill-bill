@@ -128,6 +128,9 @@ internal fun FeatureTaskRuntimeRunLoop.launchValidationGateRepair(
       settled.blockedReason
         ?: settled.pausedReason
         ?: "Validation repair attempt blocked.",
+      failureDisposition = recorder.loadPhaseRecords(run.request.workflowId, run.request.dbPathOverride)
+        ?.get(run.phaseId)
+        ?.failureDisposition,
     )
     else -> ValidationGateAgentRepairResult.Completed(
       FeatureTaskRuntimePhaseOutput(

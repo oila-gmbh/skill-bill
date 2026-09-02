@@ -61,6 +61,7 @@ import skillbill.workflow.idestatus.IdeStatusValidator
 import skillbill.workflow.idestatus.NoopIdeStatusValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
@@ -269,6 +270,8 @@ internal data class PhaseRecordOptions(
   val reviewPassNumber: Int? = null,
   val loopId: String? = null,
   val edgeIteration: Int? = null,
+  val blockedReason: String? = null,
+  val failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
 )
 
 internal fun phaseRecordWire(
@@ -288,7 +291,30 @@ internal fun phaseRecordWire(
   reviewPassNumber = options.reviewPassNumber,
   loopId = options.loopId,
   edgeIteration = options.edgeIteration,
+  blockedReason = options.blockedReason,
+  failureDisposition = options.failureDisposition,
 ).toArtifactMap()
+
+internal fun blockedQualityGateChildArtifacts(
+  phaseId: String,
+  blockedReason: String,
+  failureDisposition: FeatureTaskRuntimeFailureDisposition? = null,
+): String {
+  val priorPhases = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.takeWhile { it != phaseId }
+  val records = priorPhases.map { id -> id to phaseRecordWire(id, "completed", null) } +
+    (
+      phaseId to phaseRecordWire(
+        phaseId,
+        "blocked",
+        null,
+        options = PhaseRecordOptions(
+          blockedReason = blockedReason,
+          failureDisposition = failureDisposition,
+        ),
+      )
+      )
+  return phaseRecordsArtifactsJson(*records.toTypedArray())
+}
 
 internal fun phaseRecordsArtifactsJson(vararg records: Pair<String, Map<String, Any?>>): String =
   JsonSupport.mapToJsonString(

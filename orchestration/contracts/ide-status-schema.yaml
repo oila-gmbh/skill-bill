@@ -248,14 +248,15 @@ properties:
     required:
       - code
     description: >
-      Why a paused lifecycle is paused. Present only for a paused snapshot, so a
-      consumer can tell "waiting for you" from "waiting for capacity".
-      `awaiting_operator_decision` means the current subtask stopped pending a
-      bounded operator decision and will not resume on its own; the remaining codes
-      mirror the durable goal control record. Payload-free by construction: `label`
-      is the same sanitized goal-facing reason the CLI reports, carrying severity
-      counts and bounded finding labels but never a diff hunk, path, line number,
-      construct body, or raw review output.
+      Why a paused or blocked lifecycle is waiting. Present on paused snapshots so a
+      consumer can tell "waiting for you" from "waiting for capacity", and on blocked
+      feature-goal or feature-task-runtime snapshots when the runtime needs a bounded
+      operator decision before resume. `awaiting_operator_decision` means the current
+      subtask stopped pending a bounded operator decision and will not resume on its
+      own; the remaining codes mirror the durable goal control record. Payload-free by
+      construction: `label` is the same sanitized goal-facing reason the CLI reports,
+      carrying severity counts and bounded finding labels but never a diff hunk, path,
+      line number, construct body, or raw review output.
     properties:
       code:
         type: string
@@ -350,3 +351,15 @@ allOf:
     then:
       required:
         - last_agent_activity_at
+  - if:
+      properties:
+        lifecycle_state:
+          const: blocked
+      required:
+        - lifecycle_state
+    then:
+      properties:
+        pause_reason:
+          properties:
+            code:
+              const: awaiting_operator_decision

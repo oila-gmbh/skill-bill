@@ -79,6 +79,8 @@ internal fun FeatureTaskRuntimeRunLoop.settleBuildGateCycleResult(
             attemptCount = iteration,
             reason = terminal.reason,
             observability = observability,
+            failureDisposition = terminal.failureDisposition
+              ?: FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
           ),
         )
     }

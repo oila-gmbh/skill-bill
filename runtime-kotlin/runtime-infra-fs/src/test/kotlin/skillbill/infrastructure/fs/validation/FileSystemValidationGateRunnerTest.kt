@@ -295,6 +295,81 @@ class FileSystemValidationGateRunnerTest {
   }
 
   @Test
+  fun `COLLECT_ALL parses spotless step failures into file-level findings`() {
+    val repo = Files.createTempDirectory("gate-spotless-step")
+    try {
+      val kotlinDir = repo.resolve("runtime-kotlin/runtime-application/src/main/kotlin/Foo.kt")
+      Files.createDirectories(kotlinDir.parent)
+      Files.writeString(kotlinDir, "class Foo\n")
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        printf '%s\n' "> Task :runtime-application:spotlessKotlinCheck FAILED"
+        printf '%s\n' "Step 'ktlint' found problem in 'runtime-kotlin/runtime-application/src/main/kotlin/Foo.kt':"
+        printf '%s\n' "Error on line: 1, column: 1"
+        printf '%s\n' "rule: standard:max-line-length"
+        printf '%s\n' "Exceeded max line length (140)"
+        printf '%s\n' "Execution failed for task ':runtime-application:spotlessKotlinCheck'."
+        exit 1
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+        ),
+      )
+      val finding = result.findings.single { it.ruleOrTestId == "spotless" }
+      assertEquals("runtime-application", finding.module)
+      assertEquals(
+        "runtime-kotlin/runtime-application/src/main/kotlin/Foo.kt:1:1",
+        finding.location,
+      )
+      assertTrue(finding.message.contains("max-line-length"))
+      assertTrue(result.findings.none { it.ruleOrTestId == "spotlessKotlinCheck" })
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `COLLECT_ALL spotless task header enriches message when step detail is absent`() {
+    val repo = Files.createTempDirectory("gate-spotless-header-enrich")
+    try {
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        printf '%s\n' 'FAILURE: Build failed with an exception.'
+        printf '%s\n' '* What went wrong:'
+        printf '%s\n' "Execution failed for task ':runtime-infra-fs:spotlessCheck'."
+        printf '%s\n' "Violations detected in the following files:"
+        printf '%s\n' "runtime-kotlin/runtime-infra-fs/src/main/kotlin/Bar.kt"
+        exit 1
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+        ),
+      )
+      val finding = result.findings.single()
+      assertEquals("runtime-infra-fs", finding.module)
+      assertEquals("spotlessCheck", finding.ruleOrTestId)
+      assertTrue(finding.message.contains("Violations detected"))
+      assertTrue(finding.message.contains("Bar.kt"))
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
   fun `COLLECT_ALL uncovered task failure header yields structured finding`() {
     val repo = Files.createTempDirectory("gate-uncovered-task-header")
     try {

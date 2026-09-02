@@ -39,6 +39,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGN
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.BLOCKED
@@ -1004,6 +1005,45 @@ class FeatureTaskRuntimeStatusAttributionTest {
     assertEquals(IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE, execution.kind)
     assertEquals(1, execution.count)
     assertEquals(1, execution.total)
+  }
+
+  @Test
+  fun `validate blocked with needs user action yields operator decision pause`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    val operatorReason = "Configure GITHUB_REGISTRY_AUTH then run npm ci:safe"
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "validate",
+        status = "blocked",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = true,
+        blockedReason = operatorReason,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("validate", projection.operatorDecisionPause?.phaseId)
+    assertEquals(operatorReason, projection.operatorDecisionPause?.reason)
+  }
+
+  @Test
+  fun `validate blocked without needs user action yields no operator decision pause`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordBlocked("validate", attemptCount = 2, blockedReason = "fix loop exhausted")
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.operatorDecisionPause)
   }
 
   @Test

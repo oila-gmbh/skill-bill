@@ -206,6 +206,7 @@ object StatusUiMapper {
                     stale = outcome.stale,
                     currentModel = outcome.currentModel,
                     currentPhaseExecution = outcome.currentPhaseExecution,
+                    pauseReason = outcome.pauseReason,
                 )
 
             is SkillBillStatusOutcome.Failed ->

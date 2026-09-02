@@ -17,6 +17,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
+
   private val memory = FeatureTaskRuntimeFindingVerificationBoundaryMemory(
     FileSystemGoalPlanningContextDiscovery(),
     FileSystemGoalPlanningBoundaryBodyResolver(),

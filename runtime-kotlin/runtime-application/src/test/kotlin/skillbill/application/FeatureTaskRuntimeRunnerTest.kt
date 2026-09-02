@@ -35,6 +35,11 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError.Conflict
+import skillbill.ports.validation.ValidationGateRunner
+import skillbill.ports.validation.model.ValidationGateFinding
+import skillbill.ports.validation.model.ValidationGateRunOutcome
+import skillbill.ports.validation.model.ValidationGateRunRequest
+import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
@@ -57,6 +62,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -5280,6 +5286,137 @@ class FeatureTaskRuntimeReservedPassLedgerRecoveryTest {
     assertEquals(1, recovered.completedPassCount)
     assertEquals(null, recovered.reservedPassNumber)
     assertFullyAssociatedLedgerRows(harness, passNumber = 1, subtaskId = 5)
+  }
+}
+
+class FeatureTaskRuntimeOperatorBlockSettlementTest {
+  @Test
+  fun `validate blocked with needs_user_action settles once without validate relaunch`() {
+    var validateLaunches = 0
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "validate") {
+            validateLaunches += 1
+          }
+          facts(
+            if (phaseId == "validate") {
+              VALIDATE_BLOCKED_NEEDS_USER_ACTION_OUTPUT
+            } else {
+              validJsonOutput(phaseId)
+            },
+          )
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("validate", blocked.lastIncompletePhase)
+    assertEquals(1, validateLaunches)
+    assertContains(blocked.blockedReason, "Cannot connect to docker.sock.")
+    assertFalse(blocked.blockedReason.contains("retrying so the agent can fix failures"))
+    val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
+    assertEquals("blocked", validateRecord.status)
+    assertEquals(FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, validateRecord.failureDisposition)
+    assertEquals(1, validateRecord.attemptCount)
+    val ledger = requireNotNull(harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty())
+    assertTrue(ledger.any { it.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED && it.phaseId == "validate" })
+  }
+
+  @Test
+  fun `build blocked with needs_user_action settles once without build repair relaunch`() {
+    val finding = ValidationGateFinding("m", "compile", "broken", "Foo.kt")
+    var buildRepairLaunches = 0
+    val gateRunner = object : ValidationGateRunner {
+      override fun run(request: ValidationGateRunRequest): ValidationGateRunResult = ValidationGateRunResult(
+        exitCode = 1,
+        durationMs = 1,
+        outcome = ValidationGateRunOutcome.FAILED,
+        cacheMode = request.cacheMode,
+        executedWorkUnits = 1,
+        findings = listOf(finding),
+      )
+    }
+    val harness = runnerHarness(
+      RuntimeHarnessConfig(
+        goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+          parentIssueKey = RUNNER_TEST_ISSUE_KEY,
+          subtaskId = 5,
+          goalBranch = "feat/existing-runtime-branch",
+          suppressPr = true,
+          parentWorkflowId = "wfl-parent",
+          qualityGateSelection = FeatureTaskRuntimeQualityGateSelection.BUILD,
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+        validationGatePlatformManifests = listOf(kotlinPackWithBuildGate()),
+        validationGateRunner = gateRunner,
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId == "build") {
+            buildRepairLaunches += 1
+          }
+          facts(
+            if (phaseId == "build") {
+              BUILD_BLOCKED_NEEDS_USER_ACTION_OUTPUT
+            } else {
+              validJsonOutput(phaseId)
+            },
+          )
+        },
+        agentAssignment = phasePerAgentAssignment(),
+      ),
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("build", blocked.lastIncompletePhase)
+    assertEquals(1, buildRepairLaunches)
+    assertContains(blocked.blockedReason, "Cannot connect to Gradle daemon.")
+    val buildRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["build"])
+    assertEquals("blocked", buildRecord.status)
+    assertEquals(FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, buildRecord.failureDisposition)
+    val ledger = requireNotNull(harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty())
+    assertTrue(ledger.any { it.action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED && it.phaseId == "build" })
+  }
+
+  @Test
+  fun `goal continuation validate blocked with needs_user_action exposes blocked reason`() {
+    val git = RecordingWorkflowGitOperations()
+    git.runtimePhaseHeadCommitSequence.addAll(listOf("before", "after"))
+    var validateLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot = Path.of("/tmp/repo"),
+      git = git,
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "validate") {
+          validateLaunches += 1
+        }
+        facts(
+          when {
+            phaseId == "validate" -> VALIDATE_BLOCKED_NEEDS_USER_ACTION_OUTPUT
+            phaseId == "commit_push" -> validJsonOutput("commit_push")
+            else -> validJsonOutput(phaseId)
+          },
+        )
+      },
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals(1, validateLaunches)
+    assertEquals("validate", blocked.lastIncompletePhase)
+    assertTrue(blocked.blockedReason.isNotBlank())
+    assertContains(blocked.blockedReason, "Cannot connect to docker.sock.")
+    val subtaskOutcome = requireNotNull(blocked.subtaskOutcome)
+    assertEquals("blocked", subtaskOutcome.status)
+    assertEquals(blocked.blockedReason, subtaskOutcome.blockedReason)
+    assertTrue(subtaskOutcome.blockedReason.orEmpty().isNotBlank())
   }
 }
 

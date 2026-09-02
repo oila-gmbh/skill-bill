@@ -2,6 +2,7 @@ package skillbill.application.work
 
 import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.idestatus.model.IdeStatusLifecycleState
+import skillbill.application.idestatus.model.IdeStatusPauseReasonCode
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.goalrunner.model.GoalPlanningStatusState
@@ -10,11 +11,14 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.work.model.WorkItemKind
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class IdeStatusServiceGoalProjectionTest {
 
@@ -351,5 +355,145 @@ class IdeStatusServiceGoalProjectionTest {
     assertEquals(IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME, result.snapshot.workflowFamily)
     assertFalse(wire.containsKey("pause_requested"))
     assertFalse(wire.containsKey("paused_at"))
+  }
+
+  @Test
+  fun `active goal with child validate blocked on operator action projects blocked lifecycle`() {
+    val fixture = gitRepoFixture("ide-status-goal-validate-operator-block")
+    val identity = goalRepositoryIdentity(fixture)
+    val operatorReason = "Configure GITHUB_REGISTRY_AUTH then run npm ci:safe"
+    val asOf = Instant.parse("2026-08-06T11:59:00Z")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token",
+      hostIdentity = "test-host",
+      bootIdentity = "boot-id",
+      pid = 4321,
+      processBirthToken = "birth-token",
+      heartbeatAt = asOf.toString(),
+      expiresAt = ideStatusObservedAt.plusSeconds(30).toString(),
+    )
+    val database = goalWithLaunchedChildDatabase(
+      identity,
+      Instant.parse("2026-08-06T09:15:00Z"),
+      childArtifactsJson = blockedQualityGateChildArtifacts(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        operatorReason,
+        FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+      ),
+      childCurrentStep = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+    )
+    val service = service(
+      database,
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child"),
+        lease = lease,
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
+    val wire = result.snapshot.toStatusWireMap()
+
+    assertEquals(IdeStatusLifecycleState.BLOCKED, result.snapshot.lifecycleState)
+    assertEquals(IdeStatusPauseReasonCode.AWAITING_OPERATOR_DECISION, result.snapshot.pauseReason?.code)
+    assertEquals(operatorReason, result.snapshot.pauseReason?.label)
+    assertTrue(result.snapshot.summary.contains(operatorReason))
+    assertFalse(result.snapshot.summary.contains("active on validate", ignoreCase = true))
+    assertEquals("blocked", wire["lifecycle_state"])
+    assertTrue(wire.containsKey("pause_reason"))
+  }
+
+  @Test
+  fun `active goal with disposition-less validate blocked child stays active for repair loop`() {
+    val fixture = gitRepoFixture("ide-status-goal-validate-repair-loop")
+    val identity = goalRepositoryIdentity(fixture)
+    val asOf = Instant.parse("2026-08-06T11:59:00Z")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token",
+      hostIdentity = "test-host",
+      bootIdentity = "boot-id",
+      pid = 4321,
+      processBirthToken = "birth-token",
+      heartbeatAt = asOf.toString(),
+      expiresAt = ideStatusObservedAt.plusSeconds(30).toString(),
+    )
+    val database = goalWithLaunchedChildDatabase(
+      identity,
+      Instant.parse("2026-08-06T09:15:00Z"),
+      childArtifactsJson = blockedQualityGateChildArtifacts(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        "fix loop exhausted",
+      ),
+      childCurrentStep = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+    )
+    val service = service(
+      database,
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child"),
+        lease = lease,
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
+
+    assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
+    assertNull(result.snapshot.pauseReason)
+    assertEquals("Goal SKILL-148 is active on validate.", result.snapshot.summary)
+    assertFalse(result.snapshot.toStatusWireMap().containsKey("pause_reason"))
+  }
+
+  @Test
+  fun `WE-4364-shaped validate needs user action projects blocked wire with actionable summary`() {
+    val fixture = gitRepoFixture("ide-status-goal-we-4364")
+    val identity = goalRepositoryIdentity(fixture)
+    val operatorReason = "Configure GITHUB_REGISTRY_AUTH credential before validate can pass"
+    val asOf = Instant.parse("2026-08-06T11:59:00Z")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token",
+      hostIdentity = "test-host",
+      bootIdentity = "boot-id",
+      pid = 4321,
+      processBirthToken = "birth-token",
+      heartbeatAt = asOf.toString(),
+      expiresAt = ideStatusObservedAt.plusSeconds(30).toString(),
+    )
+    val manifest = goalManifestState(fixture, identity, childWorkflowId = "w-child").copy(
+      manifest = goalManifestState(fixture, identity, childWorkflowId = "w-child").manifest.copy(
+        subtasks = goalManifestState(fixture, identity, childWorkflowId = "w-child").manifest.subtasks.map { subtask ->
+          if (subtask.id == 2) {
+            subtask.copy(status = "blocked", blockedReason = operatorReason)
+          } else {
+            subtask
+          }
+        },
+      ),
+    )
+    val database = goalWithLaunchedChildDatabase(
+      identity,
+      Instant.parse("2026-08-06T09:15:00Z"),
+      childArtifactsJson = blockedQualityGateChildArtifacts(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        operatorReason,
+        FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+      ),
+      childCurrentStep = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+    )
+    val service = service(
+      database,
+      manifestStore = StubGoalManifestStore(manifest, lease = lease),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt))
+    val wire = result.snapshot.toStatusWireMap()
+    val pauseReason = nestedWireMap(wire, "pause_reason")
+
+    assertEquals(IdeStatusLifecycleState.BLOCKED, result.snapshot.lifecycleState)
+    assertEquals("blocked", wire["lifecycle_state"])
+    assertEquals("awaiting_operator_decision", pauseReason["code"])
+    assertEquals(operatorReason, pauseReason["label"])
+    assertTrue((wire["summary"] as String).contains(operatorReason))
+    assertFalse((wire["summary"] as String).contains("active on validate", ignoreCase = true))
   }
 }

@@ -61,6 +61,7 @@ class GoalRunner(
       unaddressedFindingsLedgerService,
       progressReader,
       clock,
+      deps.phaseRecorder,
     ),
     pendingState,
   )

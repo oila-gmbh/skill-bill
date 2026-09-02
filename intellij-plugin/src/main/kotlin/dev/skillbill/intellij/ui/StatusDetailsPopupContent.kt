@@ -54,7 +54,10 @@ object StatusDetailsPopupContent {
             add("Subtask ${details.elapsedNoun}" to details.subtaskElapsedText)
             details.agentActivityText?.let { add("Agent activity" to it) }
             details.lastUpdateText?.let { add("Last update" to it) }
-            details.pauseReasonText?.let { add("Pause reason" to it) }
+            details.pauseReasonText?.let { reason ->
+                val label = if (details.lifecycleState == "blocked") "Blocked reason" else "Pause reason"
+                add(label to reason)
+            }
             details.pauseActionText?.let { add("" to it) }
             details.problemSummary?.let { add("" to it) }
             details.staleNote?.let { add("" to it) }

@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
@@ -24,6 +25,7 @@ internal data class GoalRunnerIterationOutcomeDeps(
   val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService?,
   val progressReader: GoalRunnerProgressReader,
   val clock: Clock,
+  val phaseRecorder: FeatureTaskRuntimePhaseRecorder? = null,
 )
 
 internal data class GoalRunnerIterationPendingState(

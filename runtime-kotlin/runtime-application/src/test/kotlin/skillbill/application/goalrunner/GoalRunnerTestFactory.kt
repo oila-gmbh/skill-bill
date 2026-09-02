@@ -1,5 +1,9 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.InMemoryRuntimeWorkflowRepository
+import skillbill.application.RuntimeFakeDatabaseSessionFactory
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
+import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderDeps
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderValidators
@@ -13,6 +17,7 @@ import skillbill.application.goalrunner.planning.GoalPlanningSweep
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepDeps
 import skillbill.application.idestatus.AgentActivityStampWriter
 import skillbill.application.testDecompositionManifestValidator
+import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
@@ -89,6 +94,7 @@ internal fun goalRunnerDeps(
   subtaskLauncher: GoalRunnerSubtaskLauncher,
   outcomeStore: GoalRunnerWorkflowOutcomeStore,
   pullRequestPort: GoalPullRequestPort,
+  phaseRecorder: FeatureTaskRuntimePhaseRecorder = goalRunnerDefaultPhaseRecorder(),
 ): GoalRunnerDeps = GoalRunnerDeps(
   manifestStore = manifestStore,
   subtaskLauncher = subtaskLauncher,
@@ -102,6 +108,14 @@ internal fun goalRunnerDeps(
   diagnostics = NoopRuntimeDiagnostics,
   unaddressedFindingsLedgerService = null,
   executionCoordinator = GoalRunnerExecutionCoordinator.NONE,
+  phaseRecorder = phaseRecorder,
+)
+
+internal fun goalRunnerDefaultPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = testPhaseRecorder(
+  RuntimeFakeDatabaseSessionFactory(InMemoryRuntimeWorkflowRepository()),
+  testWorkflowSnapshotValidator,
+  AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+  AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
 )
 
 internal fun testGoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps): GoalRunnerStatusService =

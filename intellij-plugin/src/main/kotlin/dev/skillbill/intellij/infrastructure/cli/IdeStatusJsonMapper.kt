@@ -268,6 +268,7 @@ object IdeStatusJsonMapper {
                 subtaskActiveDurationAsOf = subtaskActiveDurationAsOf,
                 currentModel = currentModel,
                 currentPhaseExecution = currentPhaseExecution,
+                pauseReason = pauseReason,
             )
 
             "failed" -> SkillBillStatusOutcome.Failed(

@@ -8,6 +8,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleTer
 import skillbill.application.workflow.repoRoot
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.workflow.goal.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 
 internal fun FeatureTaskRuntimeRunLoop.validationGateCycleRequest(
   args: ValidationGateCycleRequestArgs,
@@ -77,6 +78,8 @@ internal fun FeatureTaskRuntimeRunLoop.settleValidationGateCycleResult(
               attemptCount = iteration,
               reason = terminal.reason,
               observability = observability,
+              failureDisposition = terminal.failureDisposition
+                ?: FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
             ),
           )
       }
