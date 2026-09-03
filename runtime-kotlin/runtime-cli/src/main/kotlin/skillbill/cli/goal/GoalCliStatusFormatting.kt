@@ -1,8 +1,8 @@
 package skillbill.cli.goal
 
 import skillbill.application.goalrunner.model.GoalRunnerStatusRequest
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.detectInvokingAgentId
+import skillbill.cli.kernel.detectInvokingAgentId
+import skillbill.cli.model.CliRunInputs
 import skillbill.cli.model.canonicalRepositoryRoot
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
@@ -30,15 +30,15 @@ internal data class GoalStatusCliDiffOptions(
   val selectedDiffMaxBytes: Int = DEFAULT_SELECTED_DIFF_MAX_BYTES,
 )
 
-internal fun CliRunState.goalStatusRequest(options: GoalStatusCliRequestOptions): GoalRunnerStatusRequest =
+internal fun CliRunInputs.goalStatusRequest(options: GoalStatusCliRequestOptions): GoalRunnerStatusRequest =
   GoalRunnerStatusRequest(
     issueKey = options.issueKey,
     invokedAgentId = detectInvokingAgentId(options.agent, environment),
     configuredAgentOverrideId = options.agentOverride,
-    dbPathOverride = dbOverride,
+    dbPathOverride = dbPathOverride,
     repoRoot = options.repoRoot?.let(Path::of)
       ?.let { root -> if (options.monitorOnly) canonicalRepositoryRoot(root) else root.toAbsolutePath().normalize() }
-      ?: canonicalRepositoryRoot(Path.of("")),
+      ?: repositoryRoot,
     includeDiffStat = options.diff.includeDiffStat,
     selectedDiffHunkPaths = options.diff.selectedDiffHunkPaths,
     selectedDiffMaxHunks = options.diff.selectedDiffMaxHunks,

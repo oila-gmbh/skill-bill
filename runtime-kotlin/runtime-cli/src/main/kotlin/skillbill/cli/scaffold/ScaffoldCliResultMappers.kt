@@ -1,6 +1,6 @@
 package skillbill.cli.scaffold
 
-import skillbill.cli.core.CliOutput
+import skillbill.cli.kernel.CliOutput
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
@@ -25,7 +25,7 @@ import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
  * (field-by-field + key-order assertions) and `AuthoringOperationsTest.kt`.
  *
  * Both success and error envelope paths flow through `authoringResult { ... }` /
- * `errorResult(...)` in `ScaffoldCliCommands.kt`; errors are surfaced by the catch
+ * `errorResult(...)` in `ScaffoldCliPayloadHelpers.kt`; errors are surfaced by the catch
  * blocks in `authoringResult` and do not pass through these mappers.
  */
 internal fun ScaffoldListResult.toCliMap(): Map<String, Any?> = linkedMapOf(

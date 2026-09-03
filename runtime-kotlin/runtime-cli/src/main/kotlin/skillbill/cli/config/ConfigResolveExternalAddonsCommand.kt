@@ -2,21 +2,23 @@ package skillbill.cli.config
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.ExternalAddonOverlayService
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.error.ShellContentContractException
 
 @Inject
 class ConfigResolveExternalAddonsCommand(
   private val service: ExternalAddonOverlayService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "resolve-external-addons",
   "Resolve external addon sources from the machine-global ~/.skill-bill/config.json.",
 ) {
   override fun run() {
     val sources = try {
-      service.resolveSources(state.userHome, state.environment)
+      service.resolveSources(inputs.userHome, inputs.environment)
     } catch (error: ShellContentContractException) {
       state.completeText(
         "${error.message}\n",

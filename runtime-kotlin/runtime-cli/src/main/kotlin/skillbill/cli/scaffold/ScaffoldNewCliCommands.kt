@@ -10,17 +10,26 @@ import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.scaffold.ScaffoldService
 import skillbill.application.scaffold.UnsupportedScaffoldService
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.model.CliRunInputs
+import java.time.Clock
+
+@Inject
+data class ScaffoldNewDependencies(
+  val clock: Clock,
+  val scaffoldService: ScaffoldService,
+  val scaffoldCatalogService: ScaffoldCatalogService,
+  val installAgentService: InstallAgentService,
+  val externalAddonOverlayService: ExternalAddonOverlayService,
+)
 
 @Inject
 class NewSkillCommand(
   private val state: CliRunState,
-  private val scaffoldService: ScaffoldService,
-  private val scaffoldCatalogService: ScaffoldCatalogService,
-  private val installAgentService: InstallAgentService,
-  private val externalAddonOverlayService: ExternalAddonOverlayService,
+  private val inputs: CliRunInputs,
+  private val deps: ScaffoldNewDependencies,
 ) : DocumentedCliCommand("new-skill", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
   private val interactive by option(
@@ -38,7 +47,16 @@ class NewSkillCommand(
   private val format by formatOption()
 
   override fun run() {
-    val runArgs = nativeScaffoldRunArgs(dryRun, format, state, scaffoldService, externalAddonOverlayService)
+    val runArgs =
+      NativeScaffoldRunArgs(
+        dryRun = dryRun,
+        format = format,
+        state = state,
+        inputs = inputs,
+        clock = deps.clock,
+        scaffoldService = deps.scaffoldService,
+        externalAddonOverlayService = deps.externalAddonOverlayService,
+      )
     state.result =
       if (assisted && payload != null) {
         errorResult("--assisted cannot be combined with --payload.", format)
@@ -46,15 +64,15 @@ class NewSkillCommand(
         runNativeAssistedScaffoldWizard(
           AssistedScaffoldWizardArgs(
             run = runArgs,
-            scaffoldCatalogService = scaffoldCatalogService,
-            installAgentService = installAgentService,
+            scaffoldCatalogService = deps.scaffoldCatalogService,
+            installAgentService = deps.installAgentService,
           ),
         )
       } else if (interactive || payload == null) {
         runNativeScaffoldWizard(
           ScaffoldWizardArgs(
             run = runArgs,
-            scaffoldCatalogService = scaffoldCatalogService,
+            scaffoldCatalogService = deps.scaffoldCatalogService,
           ),
         )
       } else {
@@ -68,10 +86,8 @@ class NewSkillCommand(
 @Inject
 class NewCommand(
   private val state: CliRunState,
-  private val scaffoldService: ScaffoldService,
-  private val scaffoldCatalogService: ScaffoldCatalogService,
-  private val installAgentService: InstallAgentService,
-  private val externalAddonOverlayService: ExternalAddonOverlayService,
+  private val inputs: CliRunInputs,
+  private val deps: ScaffoldNewDependencies,
 ) : DocumentedCliCommand("new", "Scaffold a new skill from a short wizard or payload file.") {
   private val payload by option("--payload", help = "Path to a JSON payload file (or '-' for stdin).")
   private val interactive by option(
@@ -89,7 +105,16 @@ class NewCommand(
   private val format by formatOption()
 
   override fun run() {
-    val runArgs = nativeScaffoldRunArgs(dryRun, format, state, scaffoldService, externalAddonOverlayService)
+    val runArgs =
+      NativeScaffoldRunArgs(
+        dryRun = dryRun,
+        format = format,
+        state = state,
+        inputs = inputs,
+        clock = deps.clock,
+        scaffoldService = deps.scaffoldService,
+        externalAddonOverlayService = deps.externalAddonOverlayService,
+      )
     state.result =
       if (assisted && payload != null) {
         errorResult("--assisted cannot be combined with --payload.", format)
@@ -97,15 +122,15 @@ class NewCommand(
         runNativeAssistedScaffoldWizard(
           AssistedScaffoldWizardArgs(
             run = runArgs,
-            scaffoldCatalogService = scaffoldCatalogService,
-            installAgentService = installAgentService,
+            scaffoldCatalogService = deps.scaffoldCatalogService,
+            installAgentService = deps.installAgentService,
           ),
         )
       } else if (interactive || payload == null) {
         runNativeScaffoldWizard(
           ScaffoldWizardArgs(
             run = runArgs,
-            scaffoldCatalogService = scaffoldCatalogService,
+            scaffoldCatalogService = deps.scaffoldCatalogService,
           ),
         )
       } else {
@@ -119,6 +144,8 @@ class NewCommand(
 @Inject
 class CreateAndFillCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
+  private val clock: Clock,
   private val scaffoldService: ScaffoldService,
   private val unsupportedScaffoldService: UnsupportedScaffoldService,
 ) : DocumentedCliCommand(
@@ -156,6 +183,8 @@ class CreateAndFillCommand(
           dryRun = dryRun,
           format = format,
           state = state,
+          inputs = inputs,
+          clock = clock,
           scaffoldService = scaffoldService,
           unsupportedScaffoldService = unsupportedScaffoldService,
         ),
@@ -166,6 +195,8 @@ class CreateAndFillCommand(
 @Inject
 class NewAddonCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
+  private val clock: Clock,
   private val scaffoldService: ScaffoldService,
   private val unsupportedScaffoldService: UnsupportedScaffoldService,
   private val externalAddonOverlayService: ExternalAddonOverlayService,
@@ -221,10 +252,18 @@ class NewAddonCommand(
               bodyFile = bodyFile,
               addonLocationPath = addonLocationPath,
               consumerSkillDirs = consumerSkillDirs,
-              state = state,
+              inputs = inputs,
             ),
           ),
-          nativeScaffoldRunArgs(dryRun, format, state, scaffoldService, externalAddonOverlayService),
+          NativeScaffoldRunArgs(
+            dryRun = dryRun,
+            format = format,
+            state = state,
+            inputs = inputs,
+            clock = clock,
+            scaffoldService = scaffoldService,
+            externalAddonOverlayService = externalAddonOverlayService,
+          ),
         )
       }
   }

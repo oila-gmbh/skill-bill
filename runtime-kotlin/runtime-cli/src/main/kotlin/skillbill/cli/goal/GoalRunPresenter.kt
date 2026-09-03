@@ -4,7 +4,7 @@ import skillbill.application.goalrunner.model.GoalRunnerEventSink
 import skillbill.application.goalrunner.model.GoalRunnerPauseResult
 import skillbill.application.goalrunner.model.GoalRunnerResumeResult
 import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
-import skillbill.cli.core.CliRunState
+import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.ports.agentrun.model.AgentRunOutputSink
@@ -13,7 +13,7 @@ import java.nio.file.Path
 
 class GoalRunPresenter(
   private val issueKey: String,
-  private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val liveOutput: Boolean,
   private val repoRoot: Path,
   private val dbOverride: String?,
@@ -25,7 +25,7 @@ class GoalRunPresenter(
       dbOverride?.let { append(" --db ").append(shellQuote(it)) }
     }
     val rootArgument = "--repo-root ${shellQuote(repoRoot.toString())}"
-    state.liveStdout(
+    inputs.liveStdout(
       "goal $issueKey: launched runtime executable=${runtimeProvenance.executablePath} " +
         "version=${runtimeProvenance.version} build_id=${runtimeProvenance.buildId}\n" +
         "monitor (read-only; mutates nothing; no model tokens):\n" +
@@ -42,8 +42,8 @@ class GoalRunPresenter(
     AgentRunOutputSink { stream, text ->
       if (includeRawChildOutput) {
         when (stream) {
-          AgentRunOutputStream.STDOUT -> state.liveStdout(text)
-          AgentRunOutputStream.STDERR -> state.liveStderr(text)
+          AgentRunOutputStream.STDOUT -> inputs.liveStdout(text)
+          AgentRunOutputStream.STDERR -> inputs.liveStderr(text)
         }
       }
     }
@@ -163,3 +163,5 @@ internal fun singleLineBounded(value: String, limit: Int = MAX_TERMINAL_FIELD_CH
 internal const val MAX_TERMINAL_FIELD_CHARS = 240
 
 internal const val GOAL_STATUS_DATABASE_UNAVAILABLE = "database_unavailable"
+
+internal fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"

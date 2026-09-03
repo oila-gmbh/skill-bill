@@ -4,14 +4,16 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.ExternalAddonOverlayService
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.error.ShellContentContractException
 import java.nio.file.Path
 
 @Inject
 class InstallApplyExternalAddonsCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val service: ExternalAddonOverlayService,
 ) : DocumentedCliCommand(
   "apply-external-addons",
@@ -27,14 +29,14 @@ class InstallApplyExternalAddonsCommand(
   )
 
   override fun run() {
-    if (state.refuseInstallMutationDuringGoalContinuation("apply-external-addons")) {
+    if (state.refuseInstallMutationDuringGoalContinuation(inputs, "apply-external-addons")) {
       return
     }
     val resolvedRepoRoot = Path.of(repoRoot).toAbsolutePath().normalize()
     val resolvedPlatformPacks = platformPacksRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
       ?: resolvedRepoRoot.resolve("platform-packs")
     val result = try {
-      service.applyOverlay(resolvedPlatformPacks, state.userHome, state.environment)
+      service.applyOverlay(resolvedPlatformPacks, inputs.userHome, inputs.environment)
     } catch (error: ShellContentContractException) {
       state.completeText(
         "${error.message}\n",

@@ -7,11 +7,25 @@ import kotlin.test.assertTrue
 class ApplicationPackageAcyclicityArchitectureTest {
   @Test
   fun `application package cycles match the recorded baseline`() {
-    val baseline = ArchitectureScanSupport.parsePackageCycleBaseline(
-      ArchitectureBaselineSupport.readBaseline("application-package-cycle-baseline.txt"),
+    val violations = ArchitectureScanSupport.packageCycleViolations(
+      baselineCycles = baselineCycles("application-package-cycle-baseline.txt"),
+      scanRoot = PrincipleEnforcementInventory.RUNTIME_APPLICATION_MAIN,
+      packagePrefix = PrincipleEnforcementInventory.APPLICATION_PACKAGE_PREFIX,
     )
-    val violations = ArchitectureScanSupport.applicationPackageCycleViolations(baseline)
     assertEquals(emptyList(), violations, violations.joinToString("\n"))
+  }
+
+  @Test
+  fun `runtime-cli package cycles equal the recorded census`() {
+    val current = ArchitectureScanSupport.packageCycles(
+      scanRoot = PrincipleEnforcementInventory.RUNTIME_CLI_MAIN,
+      packagePrefix = PrincipleEnforcementInventory.CLI_PACKAGE_PREFIX,
+    )
+    assertEquals(
+      baselineCycles("runtime-cli-package-cycle-baseline.txt"),
+      current,
+      "Re-record runtime-cli-package-cycle-baseline.txt with RECORD_ARCHITECTURE_BASELINES=1.",
+    )
   }
 
   @Test
@@ -29,4 +43,7 @@ class ApplicationPackageAcyclicityArchitectureTest {
     )
     assertTrue(violations.single().contains("alpha <-> beta"))
   }
+
+  private fun baselineCycles(name: String): Set<ArchitectureScanSupport.PackageCycle> =
+    ArchitectureScanSupport.parsePackageCycleBaseline(ArchitectureBaselineSupport.readBaseline(name))
 }

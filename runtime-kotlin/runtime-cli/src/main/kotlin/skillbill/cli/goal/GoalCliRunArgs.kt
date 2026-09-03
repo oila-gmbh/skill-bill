@@ -1,6 +1,6 @@
 package skillbill.cli.goal
 
-import skillbill.cli.core.CliRunState
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentrun.ExecutableLookup
@@ -13,7 +13,7 @@ internal data class GoalRunInputValidationArgs(
   val agentAddonSelectionJson: String?,
   val agent: String?,
   val agentOverride: String?,
-  val state: CliRunState,
+  val inputs: CliRunInputs,
   val executableLookup: ExecutableLookup,
 )
 
@@ -22,7 +22,7 @@ internal data class GoalRunAgentAddonHydrationArgs(
   val agentAddonSelectionJson: String?,
   val receivingAgents: List<String>,
   val effectiveRepoRoot: Path,
-  val state: CliRunState,
+  val inputs: CliRunInputs,
   val agentAddonSelectionPort: AgentAddonSelectionPort,
   val externalAgentAddonSourceConfigPort: ExternalAgentAddonSourceConfigPort,
 )

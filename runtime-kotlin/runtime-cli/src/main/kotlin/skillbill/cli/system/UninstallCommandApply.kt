@@ -14,7 +14,7 @@ internal fun cleanupAgentInstallTargets(
   installAgentService: InstallAgentService,
   removed: MutableList<String>,
   skipped: MutableList<String>,
-  warnings: MutableList<String>,
+  recorder: UninstallMutationRecorder,
 ) {
   plan.agentTargets.forEach { target ->
     runCatching {
@@ -29,7 +29,7 @@ internal fun cleanupAgentInstallTargets(
       removed += cleanup.removed.map(Path::toString)
       skipped += cleanup.skipped.map(Path::toString)
     }.onFailure { error ->
-      warnings += "agent cleanup failed for $target: ${error.message.orEmpty()}"
+      recorder.recordFailure("agent cleanup failed for $target", error)
     }
   }
 }
@@ -39,7 +39,7 @@ internal fun cleanupNativeAgentInstallLinks(
   nativeAgentInstallService: NativeAgentInstallService,
   uninstallFileSystem: UninstallFileSystemService,
   removed: MutableList<String>,
-  warnings: MutableList<String>,
+  recorder: UninstallMutationRecorder,
 ) {
   if (!plan.nativeSourceRoots.any(uninstallFileSystem::exists)) {
     return
@@ -53,7 +53,7 @@ internal fun cleanupNativeAgentInstallLinks(
     runCatching { nativeAgentInstallService.unlinkNativeAgents(provider, request) }
       .onSuccess { unlinked -> removed += unlinked.map(Path::toString) }
       .onFailure { error ->
-        warnings += "native agent cleanup failed for ${provider.name.lowercase()}: ${error.message.orEmpty()}"
+        recorder.recordFailure("native agent cleanup failed for ${provider.name.lowercase()}", error)
       }
   }
 }
@@ -62,7 +62,7 @@ internal fun cleanupMcpRegistrations(
   plan: UninstallPlan,
   mcpRegistrationService: McpRegistrationService,
   removed: MutableList<String>,
-  warnings: MutableList<String>,
+  recorder: UninstallMutationRecorder,
 ) {
   plan.mcpAgents.forEach { agent ->
     runCatching { mcpRegistrationService.unregisterMcp(agent, plan.home) }
@@ -73,7 +73,7 @@ internal fun cleanupMcpRegistrations(
         if (error is ClaudeMcpProfileFailure) {
           removed += error.succeeded.filter { it.changed }.map { it.configPath.toString() }
         }
-        warnings += "MCP cleanup failed for $agent: ${error.message.orEmpty()}"
+        recorder.recordFailure("MCP cleanup failed for $agent", error)
       }
   }
 }

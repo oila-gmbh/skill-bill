@@ -12,9 +12,10 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.goalrunner.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.invokingAgentResolutionHelp
-import skillbill.cli.telemetry.drainTelemetryOnCompletion
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.drainTelemetryOnCompletion
+import skillbill.cli.kernel.invokingAgentResolutionHelp
+import skillbill.cli.model.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -138,8 +139,8 @@ class GoalRunCommand(
       return
     }
     val effectiveRepoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
-      ?: Path.of("").toAbsolutePath().normalize()
-    val invokedAgentId = resolveInvokedAgentId(agent, deps.state.environment)
+      ?: deps.inputs.repositoryRoot
+    val invokedAgentId = resolveInvokedAgentId(agent, deps.inputs.environment)
     validateGoalRunInputs(
       GoalRunInputValidationArgs(
         issueKey = issueKey,
@@ -148,7 +149,7 @@ class GoalRunCommand(
         agentAddonSelectionJson = agentAddonSelectionJson,
         agent = agent,
         agentOverride = agentOverride,
-        state = deps.state,
+        inputs = deps.inputs,
         executableLookup = deps.executableLookup,
       ),
     )
@@ -163,22 +164,22 @@ class GoalRunCommand(
         agentAddonSelectionJson = agentAddonSelectionJson,
         receivingAgents = receivingAgents,
         effectiveRepoRoot = effectiveRepoRoot,
-        state = deps.state,
+        inputs = deps.inputs,
         agentAddonSelectionPort = deps.agentAddonSelectionPort,
         externalAgentAddonSourceConfigPort = deps.externalAgentAddonSourceConfigPort,
       ),
     )
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
-      state = deps.state,
+      inputs = deps.inputs,
       liveOutput = !noLiveOutput,
       repoRoot = effectiveRepoRoot,
-      dbOverride = deps.state.dbOverride,
+      dbOverride = deps.inputs.dbPathOverride,
       runtimeProvenance = deps.runtimeProvenanceService.current(
-        executablePathHint = deps.state.environment[RUNTIME_EXECUTABLE_ENV],
-        classPath = deps.state.environment[RUNTIME_CLASSPATH_ENV] ?: System.getProperty("java.class.path").orEmpty(),
+        executablePathHint = deps.inputs.environment[RUNTIME_EXECUTABLE_ENV],
+        classPath = deps.inputs.environment[RUNTIME_CLASSPATH_ENV] ?: deps.hostPlatform.jvmClassPath,
         javaCommand = ProcessHandle.current().info().command().orElse(null),
-        pathSeparator = deps.state.environment[RUNTIME_PATH_SEPARATOR_ENV] ?: System.getProperty("path.separator", ":"),
+        pathSeparator = deps.inputs.environment[RUNTIME_PATH_SEPARATOR_ENV] ?: deps.hostPlatform.pathSeparator,
       ),
     )
     presenter.emitStartupProvenance()
@@ -187,7 +188,7 @@ class GoalRunCommand(
     )
     val payload = report.toGoalRunCliMap()
     deps.state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
-    drainTelemetryOnCompletion(deps.telemetryService, deps.state.dbOverride)
+    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride, deps.diagnostics)
   }
 
   private fun runRequest(
@@ -201,7 +202,7 @@ class GoalRunCommand(
     repoRoot = effectiveRepoRoot,
     invokedAgentId = invokedAgentId,
     configuredAgentOverrideId = agentOverride,
-    dbPathOverride = deps.state.dbOverride,
+    dbPathOverride = deps.inputs.dbPathOverride,
     timeout = maxWallClockMinutes.takeIf { it > 0 }?.minutes,
     progressIdleTimeout = progressIdleTimeoutMinutes.takeIf { it > 0 }?.minutes,
     planningBudget = planningBudgetMinutes.takeIf { it > 0 }?.minutes,

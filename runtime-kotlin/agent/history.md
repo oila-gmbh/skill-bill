@@ -1,3 +1,16 @@
+## [2026-09-02] SKILL-229 subtask 1 — runtime-cli guardrails and recorded baselines
+Areas: runtime-kotlin/{runtime-core/src/test/kotlin/skillbill/architecture{,/baselines},ARCHITECTURE.md}
+- Parameterized the package-acyclicity, ambient-clock, and `@Inject`-defaults scanners on scan root / package prefix so one scanner body serves both `runtime-application` and `runtime-cli`; no scanner was copied. reusable
+- Added an ambient-environment guard banning `System.getenv`, `System.getProperty`, `Path.of("")`, `Paths.get("")` in `runtime-cli` main, and widened the clock ban to `LocalDate.now()`. reusable
+- Recorded `runtime-cli` baselines from generated censuses, not the spec table: 16 mutual-import pairs (spec said 15), 2 ambient-clock sites (spec said 1), 22 ambient-environment sites, 8 `CliRunState` `@Inject` defaults. The four `runtime-application` baselines stay empty.
+- Pattern: `runtime-cli` cases assert set equality with their baseline instead of the shrink-only ratchet the `runtime-application` cases use, so a scanner that ignored its new scan-root or package-prefix parameter cannot pass vacuously; the cost is that a legitimately removed site fails until re-recorded. reusable
+- The `@Inject` property-default scan is deliberately bounded to non-private properties of classes with no primary constructor; scanning every `@Inject` class body yields dozens of `runtime-application` hits and would break the empty-baseline criteria.
+- `ArchitectureBaselineRecorder` now generates `inject-constructor-defaults-baseline.txt` instead of writing empty, so `RECORD_ARCHITECTURE_BASELINES=1` leaves the tree clean; `logical-type-line-ceiling-baseline.txt` still drifts (0 bytes committed vs recorder's single newline) — pre-existing at base ref, left alone.
+- Shared-scanner renames: `ApplicationPackageCycle` -> `PackageCycle`, `AmbientClockCallSite` -> `AmbientCallSite`, `application*` scanner helpers -> `package*`. Test class names `ApplicationPackageAcyclicityArchitectureTest` / `RuntimeApplicationAmbientClockArchitectureTest` now understate their widened scope; left as-is to keep `ARCHITECTURE.md` prose out of the diff.
+- Limitation: baselines only record sites — subtasks 2 and 3 empty them. `gradlew check` still fails on two `CliFeatureTaskRuntimeContinuationTest` cases that assert the pre-build-phase goal-child plan (`review -> validate`); they reproduce byte-identically at base ref `818b42a1` and are not this subtask's regression.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-09-02] SKILL-227 subtask 3 — God-object decomposition and package acyclicity
 Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,review,subtaskreview,decomposition,workflow,reviewevidence,phaseartifacts,planningprojection,telemetry,work},runtime-ports,runtime-infra-sqlite/goalrunner,runtime-core/{di,architecture},ARCHITECTURE.md}
 - Split FeatureTaskRuntimeRunLoop and GoalRunner into injected collaborators with explicit run-scoped state; collapsed oversized dependency bags into role-scoped ports; broke featuretask↔goalrunner, goalrunner↔workflow, workflow↔decomposition, and review↔evidence cycles.

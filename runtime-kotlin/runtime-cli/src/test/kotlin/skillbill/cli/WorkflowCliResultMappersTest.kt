@@ -5,6 +5,7 @@ import skillbill.application.workflow.model.WorkflowGetResult
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.cli.goal.toGoalDiffStatCliMap
 import skillbill.cli.goal.toGoalSelectedDiffHunksCliMap
+import skillbill.cli.kernel.toPayload
 import skillbill.cli.workflow.toCliMap
 import skillbill.contracts.workflow.GoalObservabilityEventSchemaValidator
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
@@ -41,7 +42,7 @@ class WorkflowCliResultMappersTest {
         updatedArtifactKeys = listOf("implementation_summary"),
         readOnlyFullStateGuidance = "Use workflow show.",
       ),
-    ).toCliMap()
+    ).toPayload()
 
     assertEquals("ok", mapped["status"])
     assertEquals("wfl-1", mapped["workflow_id"])

@@ -7,18 +7,29 @@ import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.McpRegistrationService
 import skillbill.application.scaffold.NativeAgentInstallService
 import skillbill.application.system.UninstallFileSystemService
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.model.CliRunInputs
+import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.system.HostPlatformPort
 import java.nio.file.Path
+
+@Inject
+data class UninstallDependencies(
+  val installAgentService: InstallAgentService,
+  val nativeAgentInstallService: NativeAgentInstallService,
+  val mcpRegistrationService: McpRegistrationService,
+  val uninstallFileSystem: UninstallFileSystemService,
+  val hostPlatform: HostPlatformPort,
+  val diagnostics: RuntimeDiagnostics,
+)
 
 @Inject
 class UninstallCommand(
   private val state: CliRunState,
-  private val installAgentService: InstallAgentService,
-  private val nativeAgentInstallService: NativeAgentInstallService,
-  private val mcpRegistrationService: McpRegistrationService,
-  private val uninstallFileSystem: UninstallFileSystemService,
+  private val inputs: CliRunInputs,
+  private val deps: UninstallDependencies,
 ) : DocumentedCliCommand("uninstall", "Uninstall Skill Bill from local agents and runtime state.") {
   private val yes by option("--yes", "-y", help = "Skip the interactive confirmation prompt.")
     .flag(default = false)
@@ -28,7 +39,7 @@ class UninstallCommand(
   private val format by formatOption()
 
   override fun run() {
-    if (state.environment[GOAL_CONTINUATION_ENV] == "1") {
+    if (inputs.environment[GOAL_CONTINUATION_ENV] == "1") {
       val message =
         "Refusing to run skill-bill uninstall during skill-bill goal-continuation.\n" +
           "Goal workers must preserve the active workflow store; uninstall after the goal completes."
@@ -58,18 +69,19 @@ class UninstallCommand(
     }
 
     val result = applyUninstall(plan)
-    completeUninstall(result.toText(), result.toPayload(), exitCode = if (result.warnings.isEmpty()) 0 else 1)
+    completeUninstall(result.toText(), result.toPayload(), result.exitCode)
   }
 
   private fun uninstallPlan(): UninstallPlan {
-    val home = state.userHome
+    val home = inputs.userHome
     val stateRoot = home.resolve(".skill-bill")
-    val skillNames = installedSkillNames(uninstallFileSystem, stateRoot.resolve("installed-skills"))
+    val skillNames = installedSkillNames(deps.uninstallFileSystem, stateRoot.resolve("installed-skills"))
     val legacyNames = legacySkillNames(skillNames)
-    val claudeTargets = installAgentService.claudeRoots(home, state.environment).flatMap { root ->
+    val claudeTargets = deps.installAgentService.claudeRoots(home, inputs.environment).flatMap { root ->
       listOf(root.resolve("skills"), root.resolve("commands"))
     }
-    val codexTargets = installAgentService.codexRoots(home, state.environment).map { root -> root.resolve("skills") }
+    val codexTargets = deps.installAgentService.codexRoots(home, inputs.environment)
+      .map { root -> root.resolve("skills") }
     val agentTargets = listOf(
       home.resolve(".copilot/skills"),
       home.resolve(".agents/skills"),
@@ -77,7 +89,7 @@ class UninstallCommand(
       home.resolve(".cursor/skills"),
     ) + claudeTargets + codexTargets
     val stateRuntimeRoot = stateRoot.resolve("runtime")
-    val binDir = state.environment["SKILL_BILL_BIN_DIR"]?.let(Path::of) ?: home.resolve(".local/bin")
+    val binDir = inputs.environment["SKILL_BILL_BIN_DIR"]?.let(Path::of) ?: home.resolve(".local/bin")
     return UninstallPlan(
       home = home,
       stateRoot = stateRoot,
@@ -94,7 +106,8 @@ class UninstallCommand(
         home = home,
         binDir = binDir,
         desktopAppDir = desktopAppDir,
-        environment = state.environment,
+        environment = inputs.environment,
+        os = currentOs(deps.hostPlatform.osName),
       ),
     )
   }
@@ -102,28 +115,28 @@ class UninstallCommand(
   private fun applyUninstall(plan: UninstallPlan): UninstallResult {
     val removed = mutableListOf<String>()
     val skipped = mutableListOf<String>()
-    val warnings = mutableListOf<String>()
+    val recorder = UninstallMutationRecorder(deps.diagnostics)
 
-    cleanupAgentInstallTargets(plan, installAgentService, removed, skipped, warnings)
-    cleanupNativeAgentInstallLinks(plan, nativeAgentInstallService, uninstallFileSystem, removed, warnings)
-    cleanupMcpRegistrations(plan, mcpRegistrationService, removed, warnings)
+    cleanupAgentInstallTargets(plan, deps.installAgentService, removed, skipped, recorder)
+    cleanupNativeAgentInstallLinks(plan, deps.nativeAgentInstallService, deps.uninstallFileSystem, removed, recorder)
+    cleanupMcpRegistrations(plan, deps.mcpRegistrationService, removed, recorder)
 
     plan.launchers.forEach { launcher ->
-      removeLauncher(uninstallFileSystem, launcher, removed, skipped, warnings)
+      removeLauncher(deps.uninstallFileSystem, launcher, removed, skipped, recorder)
     }
-    removeDesktop(uninstallFileSystem, plan.desktop, removed, skipped, warnings)
-    removeRecursively(uninstallFileSystem, plan.stateRoot, removed, warnings)
+    removeDesktop(deps.uninstallFileSystem, plan.desktop, removed, skipped, recorder)
+    removeRecursively(deps.uninstallFileSystem, plan.stateRoot, removed, recorder)
 
     return UninstallResult(
-      status = if (warnings.isEmpty()) "completed" else "completed_with_warnings",
+      failed = recorder.failed(),
       removed = removed,
       skipped = skipped,
-      warnings = warnings,
+      warnings = recorder.failureMessages(),
     )
   }
 
   private fun confirmed(plan: UninstallPlan): Boolean {
-    state.liveStdout(plan.confirmationText())
+    inputs.liveStdout(plan.confirmationText())
     val answer = state.readInputLine()?.trim().orEmpty()
     return answer.equals("y", ignoreCase = true) || answer.equals("yes", ignoreCase = true)
   }
@@ -170,12 +183,12 @@ private fun legacySkillNames(skillNames: List<String>): List<String> {
   return names.sorted()
 }
 
-private fun removeLauncher(
+internal fun removeLauncher(
   fileSystem: UninstallFileSystemService,
   launcher: LauncherRemoval,
   removed: MutableList<String>,
   skipped: MutableList<String>,
-  warnings: MutableList<String>,
+  recorder: UninstallMutationRecorder,
 ) {
   if (!fileSystem.exists(launcher.path) && !fileSystem.isSymbolicLink(launcher.path)) {
     return
@@ -185,7 +198,7 @@ private fun removeLauncher(
     return
   }
   val target = runCatching { fileSystem.readSymbolicLink(launcher.path) }.getOrElse { error ->
-    warnings += "could not read launcher ${launcher.path}: ${error.message.orEmpty()}"
+    recorder.recordFailure("could not read launcher ${launcher.path}", error)
     return
   }
   if (target != launcher.expectedTarget) {
@@ -194,7 +207,7 @@ private fun removeLauncher(
   }
   runCatching { fileSystem.deleteIfExists(launcher.path) }
     .onSuccess { removed += launcher.path.toString() }
-    .onFailure { error -> warnings += "could not remove launcher ${launcher.path}: ${error.message.orEmpty()}" }
+    .onFailure { error -> recorder.recordFailure("could not remove launcher ${launcher.path}", error) }
 }
 
 private fun removeDesktop(
@@ -202,30 +215,30 @@ private fun removeDesktop(
   desktop: DesktopRemoval,
   removed: MutableList<String>,
   skipped: MutableList<String>,
-  warnings: MutableList<String>,
+  recorder: UninstallMutationRecorder,
 ) {
-  desktop.launcher?.let { removeLauncher(fileSystem, it, removed, skipped, warnings) }
+  desktop.launcher?.let { removeLauncher(fileSystem, it, removed, skipped, recorder) }
   desktop.files.forEach { file ->
     if (!fileSystem.exists(file)) return@forEach
     runCatching { fileSystem.deleteIfExists(file) }
       .onSuccess { removed += file.toString() }
-      .onFailure { error -> warnings += "could not remove $file: ${error.message.orEmpty()}" }
+      .onFailure { error -> recorder.recordFailure("could not remove $file", error) }
   }
-  desktop.directories.forEach { directory -> removeRecursively(fileSystem, directory, removed, warnings) }
+  desktop.directories.forEach { directory -> removeRecursively(fileSystem, directory, removed, recorder) }
 }
 
-private fun removeRecursively(
+internal fun removeRecursively(
   fileSystem: UninstallFileSystemService,
   path: Path,
   removed: MutableList<String>,
-  warnings: MutableList<String>,
+  recorder: UninstallMutationRecorder,
 ) {
   if (!fileSystem.exists(path) && !fileSystem.isSymbolicLink(path)) {
     return
   }
   runCatching { fileSystem.removeTree(path) }
     .onSuccess { entries -> entries.forEach { entry -> removed += entry.toString() } }
-    .onFailure { error -> warnings += "could not remove $path: ${error.message.orEmpty()}" }
+    .onFailure { error -> recorder.recordFailure("could not remove $path", error) }
 }
 
 private fun desktopPlan(
@@ -233,8 +246,8 @@ private fun desktopPlan(
   binDir: Path,
   desktopAppDir: String?,
   environment: Map<String, String>,
+  os: DesktopOs,
 ): DesktopRemoval {
-  val os = currentOs()
   val appDir = desktopAppDir?.let(Path::of) ?: defaultDesktopAppDir(home, environment, os)
   val executable = when (os) {
     DesktopOs.WINDOWS -> appDir.resolve("SkillBill.exe")
@@ -274,8 +287,8 @@ private fun defaultDesktopAppDir(home: Path, environment: Map<String, String>, o
     .resolve("skillbill/desktop/SkillBill")
 }
 
-private fun currentOs(): DesktopOs {
-  val osName = System.getProperty("os.name").lowercase()
+private fun currentOs(rawOsName: String): DesktopOs {
+  val osName = rawOsName.lowercase()
   return when {
     "mac" in osName || "darwin" in osName -> DesktopOs.MAC
     "win" in osName -> DesktopOs.WINDOWS
@@ -352,12 +365,16 @@ internal data class UninstallPlan(
   )
 }
 
-private data class UninstallResult(
-  val status: String,
+internal data class UninstallResult(
+  val failed: Boolean,
   val removed: List<String>,
   val skipped: List<String>,
   val warnings: List<String>,
 ) {
+  val status: String = if (failed) "failed_with_degradations" else "completed"
+
+  val exitCode: Int = if (failed) 1 else 0
+
   fun toText(): String = buildString {
     appendLine("uninstall_status: $status")
     appendLine("removed: ${removed.size}")

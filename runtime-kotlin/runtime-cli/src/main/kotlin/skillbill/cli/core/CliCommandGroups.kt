@@ -2,6 +2,7 @@ package skillbill.cli.core
 
 import com.github.ajalt.clikt.core.CliktCommand
 import me.tatarka.inject.annotations.Inject
+import skillbill.cli.install.InstallTopLevelCommands
 import skillbill.cli.learning.LearningsCommand
 import skillbill.cli.review.ReviewTopLevelCommands
 import skillbill.cli.scaffold.ScaffoldTopLevelCommands
@@ -23,8 +24,9 @@ class ReviewCliCommandGroup(
 @Inject
 class ScaffoldCliCommandGroup(
   scaffoldCommands: ScaffoldTopLevelCommands,
+  installCommands: InstallTopLevelCommands,
 ) {
-  val commands: List<CliktCommand> = scaffoldCommands.commands
+  val commands: List<CliktCommand> = scaffoldCommands.commands + installCommands.command
 }
 
 @Inject

@@ -11,12 +11,13 @@ import skillbill.application.system.SystemService
 import skillbill.application.updatecheck.UpdateCheckService
 import skillbill.application.updatecheck.model.UpdateCheckResult
 import skillbill.application.updatecheck.model.UpdateCheckStatus
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.ExternalCommand
-import skillbill.cli.core.formatOption
-import skillbill.cli.learning.toPayload
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliExecutionResult
+import skillbill.cli.model.CliRunInputs
+import skillbill.cli.model.ExternalCommand
 
 @Inject
 class VersionCommand(
@@ -55,6 +56,7 @@ class UpdateCheckCommand(
 class UpdateCommand(
   private val updateCheckService: UpdateCheckService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("update", "Update Skill Bill by running the official installer.") {
   private val release by option("--release", help = "Install a specific release tag instead of latest stable.")
   private val clean by option(
@@ -111,10 +113,10 @@ class UpdateCommand(
   }
 
   private fun runInstaller(command: String): InstallerRunResult {
-    val environment = state.environment.toMutableMap().apply {
-      put("HOME", state.userHome.toString())
+    val environment = inputs.environment.toMutableMap().apply {
+      put("HOME", inputs.userHome.toString())
     }
-    val result = state.externalCommandRunner.run(
+    val result = inputs.externalCommandRunner.run(
       ExternalCommand(
         executable = "bash",
         arguments = listOf("-c", command),
@@ -171,6 +173,7 @@ private fun updateSkipText(updateCheck: UpdateCheckResult): String = buildString
 class DoctorCliCommand(
   private val service: SystemService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("doctor", "Check skill-bill installation health.") {
   private val subject by argument(help = "Optional diagnostic subject. Use `skill` for one governed skill.")
     .optional()
@@ -183,7 +186,7 @@ class DoctorCliCommand(
 
   override fun run() {
     if (subject == null) {
-      state.complete(service.doctor(state.dbOverride).toPayload(), format)
+      state.complete(service.doctor(inputs.dbPathOverride).toPayload(), format)
     } else {
       state.result = retiredSubjectResult(subject.orEmpty(), skillName.orEmpty(), repoRoot, content)
     }

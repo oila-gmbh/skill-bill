@@ -7,8 +7,9 @@ import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.InstallService
 import skillbill.application.scaffold.InstallAgentService
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.error.SkillBillRuntimeException
@@ -28,7 +29,6 @@ import skillbill.install.model.SharedInstallSelection
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.model.EnvironmentContext
 import skillbill.model.RuntimeContext
 import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
 import skillbill.ports.install.reconcile.model.InstallReconcileRequest
@@ -40,10 +40,11 @@ import java.nio.file.Path
 @Inject
 class InstallPlanCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installService: InstallService,
 ) : InstallRequestCommand("plan", "Plan a governed Skill Bill install without mutating user files.") {
   override fun run() {
-    val plan = installService.planInstall(toRequest(state))
+    val plan = installService.planInstall(toRequest(inputs))
     state.complete(installPlanPayload(plan, installService), format)
   }
 }
@@ -51,6 +52,7 @@ class InstallPlanCommand(
 @Inject
 class InstallReconcileCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installService: InstallService,
 ) : InstallRequestCommand(
   "reconcile",
@@ -77,7 +79,7 @@ class InstallReconcileCommand(
     help = "Apply the computed plan: install changed upstream skills into the live tree and refresh the baseline.",
   ).flag(default = false)
   override fun run() {
-    val localRequest = toRequest(state)
+    val localRequest = toRequest(inputs)
     val resolvedUpstreamRepoRoot = Path.of(upstreamRepoRoot).toAbsolutePath().normalize()
     val resolvedUpstreamSkills = upstreamSkillsRoot?.let(Path::of) ?: resolvedUpstreamRepoRoot.resolve("skills")
     val resolvedUpstreamPacks =
@@ -85,12 +87,12 @@ class InstallReconcileCommand(
 
     if (apply) {
       // Apply is a durable mutation; gate it behind the goal-continuation refusal.
-      if (state.refuseInstallMutationDuringGoalContinuation("reconcile")) {
+      if (state.refuseInstallMutationDuringGoalContinuation(inputs, "reconcile")) {
         return
       }
       val outcome = installService.applyReconcile(
         InstallReconcileApplyRequest(
-          home = state.userHome,
+          home = inputs.userHome,
           upstreamRepoRoot = resolvedUpstreamRepoRoot,
           upstreamSkillsRoot = resolvedUpstreamSkills,
           upstreamPlatformPacksRoot = resolvedUpstreamPacks,
@@ -111,7 +113,7 @@ class InstallReconcileCommand(
 
     val plan = installService.reconcile(
       InstallReconcileRequest(
-        home = state.userHome,
+        home = inputs.userHome,
         upstreamRepoRoot = resolvedUpstreamRepoRoot,
         upstreamSkillsRoot = resolvedUpstreamSkills,
         upstreamPlatformPacksRoot = resolvedUpstreamPacks,
@@ -155,14 +157,14 @@ class InstallReconcileCommand(
 @Inject
 class InstallApplyCommand(
   private val state: CliRunState,
-  private val runtimeContext: EnvironmentContext,
+  private val inputs: CliRunInputs,
   private val installService: InstallService,
 ) : InstallRequestCommand("apply", "Apply a governed Skill Bill install through the shared runtime contract.") {
   override fun run() {
-    if (state.refuseInstallMutationDuringGoalContinuation("apply")) {
+    if (state.refuseInstallMutationDuringGoalContinuation(inputs, "apply")) {
       return
     }
-    val plan = installService.planInstall(toRequest(state))
+    val plan = installService.planInstall(toRequest(inputs))
     val result = installService.applyInstall(plan, telemetryLevelMutator(plan))
     state.complete(
       installApplyPayload(plan, result, installService),
@@ -173,7 +175,7 @@ class InstallApplyCommand(
 
   private fun telemetryLevelMutator(plan: InstallPlan): TelemetryLevelMutator {
     val reboundContext = RuntimeContext(
-      dbPathOverride = state.dbOverride ?: runtimeContext.dbPathOverride,
+      dbPathOverride = inputs.dbPathOverride,
       userHome = plan.request.home,
     )
     return RuntimeComponent::class.create(reboundContext).telemetryLevelMutator
@@ -183,6 +185,7 @@ class InstallApplyCommand(
 @Inject
 class InstallReplayLastSelectionCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
   private val installService: InstallService,
   private val installSelectionPersistencePort: InstallSelectionPersistencePort,
@@ -202,7 +205,7 @@ class InstallReplayLastSelectionCommand(
   override fun run() {
     try {
       val selection = installSelectionPersistencePort
-        .readLatestSuccessfulSelection(ReadLatestSuccessfulInstallSelectionRequest(state.userHome))
+        .readLatestSuccessfulSelection(ReadLatestSuccessfulInstallSelectionRequest(inputs.userHome))
         .selection
       val availablePlatformSlugs = installService.discoverPlatformPackSlugs(replayDiscoveryRequest())
       val staleSlugs = selection.platformPackSelection.selectedSlugs - availablePlatformSlugs
@@ -220,13 +223,13 @@ class InstallReplayLastSelectionCommand(
 
   private fun replayDiscoveryRequest(): InstallPlanRequest = InstallPlanRequest(
     repoRoot = Path.of(platformPacksRoot).toAbsolutePath().normalize().parent ?: Path.of(".").toAbsolutePath(),
-    home = state.userHome,
+    home = inputs.userHome,
     agentSelection = InstallAgentSelection(mode = InstallAgentSelectionMode.DETECTED),
     platformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.NONE),
     telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
     mcpRegistrationChoice = McpRegistrationChoice(register = false),
     runtimeDistributionInputs = RuntimeDistributionInputs(
-      runtimeInstallRoot = state.userHome.resolve(".skill-bill/runtime"),
+      runtimeInstallRoot = inputs.userHome.resolve(".skill-bill/runtime"),
     ),
     targetPaths = InstallationTargetPaths(
       skillsRoot = Path.of(skillsRoot),
@@ -236,7 +239,7 @@ class InstallReplayLastSelectionCommand(
       state = WindowsSymlinkPreflightState.NOT_WINDOWS,
       decision = WindowsSymlinkDecision.NOT_REQUIRED,
     ),
-    environment = state.environment,
+    environment = inputs.environment,
   )
 
   private fun SharedInstallSelection.toReplayText(): String = buildString {
@@ -244,7 +247,7 @@ class InstallReplayLastSelectionCommand(
       append("agent\t")
       append(agentId)
       append('\t')
-      append(installAgentService.agentPath(agentId, state.userHome, state.environment))
+      append(installAgentService.agentPath(agentId, inputs.userHome, inputs.environment))
       append('\n')
     }
     append("platform-mode\t")

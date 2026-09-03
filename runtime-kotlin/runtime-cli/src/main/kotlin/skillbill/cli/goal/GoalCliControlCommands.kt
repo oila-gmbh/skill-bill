@@ -14,8 +14,9 @@ import skillbill.application.goalrunner.model.GoalRunnerOperatorDecisionRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
 import skillbill.application.goalrunner.model.GoalRunnerResetRequest
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 
@@ -23,6 +24,7 @@ import java.nio.file.Path
 class GoalPauseCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("pause", "Request a durable pause for an already-running goal.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val repoRoot by option("--repo-root", help = "Repository root that owns the goal.")
@@ -30,8 +32,8 @@ class GoalPauseCommand(
   override fun run() {
     val result = goalRunnerStatusService.pause(
       issueKey,
-      state.dbOverride,
-      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: Path.of("").toAbsolutePath().normalize(),
+      inputs.dbPathOverride,
+      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: inputs.repositoryRoot,
     )
     val payload = result.toGoalPauseCliMap()
     state.completeText(goalPauseText(payload), payload, exitCode = payload.goalPauseExitCode())
@@ -42,6 +44,7 @@ class GoalPauseCommand(
 class GoalStopCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("stop", "Stop a running goal now: record the operator stop, then terminate the runner.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val repoRoot by option("--repo-root", help = "Repository root that owns the goal.")
@@ -49,8 +52,8 @@ class GoalStopCommand(
   override fun run() {
     val result = goalRunnerStatusService.stop(
       issueKey,
-      state.dbOverride,
-      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: Path.of("").toAbsolutePath().normalize(),
+      inputs.dbPathOverride,
+      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: inputs.repositoryRoot,
     )
     val payload = result.toGoalStopCliMap()
     state.completeText(goalStopText(payload), payload, exitCode = payload.goalStopExitCode())
@@ -61,6 +64,7 @@ class GoalStopCommand(
 class GoalResumeCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("resume", "Clear a durable pause for a goal without starting child runs.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val repoRoot by option("--repo-root", help = "Repository root that owns the goal.")
@@ -68,8 +72,8 @@ class GoalResumeCommand(
   override fun run() {
     val result = goalRunnerStatusService.resume(
       issueKey,
-      state.dbOverride,
-      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: Path.of("").toAbsolutePath().normalize(),
+      inputs.dbPathOverride,
+      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: inputs.repositoryRoot,
     )
     val payload = result.toGoalResumeCliMap()
     state.completeText(goalResumeText(payload), payload, exitCode = payload.goalPauseExitCode())
@@ -80,6 +84,7 @@ class GoalResumeCommand(
 class GoalResetCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("reset", "Reset decomposed goal runtime state.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val hard by option("--hard", help = "Reset all subtask runtime fields, including completed subtasks.")
@@ -135,7 +140,7 @@ class GoalResetCommand(
         preservePlanning = preservePlanning,
         subtaskId = subtaskId,
         deleteChildWorkflow = deleteChildWorkflow,
-        dbPathOverride = state.dbOverride,
+        dbPathOverride = inputs.dbPathOverride,
         repoRoot = repoRoot?.let(Path::of),
       ),
     )
@@ -145,9 +150,9 @@ class GoalResetCommand(
 
   private fun emitHardResetAcceptanceWarning() {
     if (!hard) return
-    val discardedAcceptances = goalRunnerStatusService.hardResetPreflight(issueKey, state.dbOverride)
+    val discardedAcceptances = goalRunnerStatusService.hardResetPreflight(issueKey, inputs.dbPathOverride)
     if (discardedAcceptances.isNotEmpty()) {
-      state.liveStdout(hardResetAcceptanceWarning(issueKey, discardedAcceptances))
+      inputs.liveStdout(hardResetAcceptanceWarning(issueKey, discardedAcceptances))
     }
   }
 }
@@ -156,6 +161,7 @@ class GoalResetCommand(
 class GoalReplanCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "replan",
   "Discard one subtask plan while preserving sibling plans, shared preplan, and runtime state; " +
@@ -181,8 +187,8 @@ class GoalReplanCommand(
       GoalRunnerReplanRequest(
         issueKey = issueKey,
         subtaskId = subtaskId,
-        dbPathOverride = state.dbOverride,
-        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+        dbPathOverride = inputs.dbPathOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: inputs.repositoryRoot,
         includeSharedPreplan = includeSharedPreplan,
       ),
     )
@@ -195,6 +201,7 @@ class GoalReplanCommand(
 class GoalAcceptCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "accept",
   "Restore an acceptance discarded by hard reset (--restore-after-hard-reset only). " +
@@ -219,8 +226,8 @@ class GoalAcceptCommand(
         subtaskId = subtaskId,
         commitSha = commit,
         reason = reason,
-        dbPathOverride = state.dbOverride,
-        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+        dbPathOverride = inputs.dbPathOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: inputs.repositoryRoot,
         restoreAfterHardReset = restoreAfterHardReset,
       ),
     )
@@ -233,6 +240,7 @@ class GoalAcceptCommand(
 class GoalRepairCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "repair",
   "Inspect or clear known goal-child resume wedges without discarding completed work. " +
@@ -263,8 +271,8 @@ class GoalRepairCommand(
         issueKey = issueKey,
         apply = apply,
         subtaskId = subtaskId,
-        dbPathOverride = state.dbOverride,
-        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+        dbPathOverride = inputs.dbPathOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: inputs.repositoryRoot,
       ),
     )
     val payload = result.toGoalRepairCliMap()
@@ -276,6 +284,7 @@ class GoalRepairCommand(
 class GoalOperatorDecisionCommand(
   private val goalOperatorDecisionService: GoalOperatorDecisionService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "operator-decision",
   "Record retry_fix, accept_and_advance, or abandon_subtask for a paused goal subtask " +
@@ -305,8 +314,8 @@ class GoalOperatorDecisionCommand(
         issueKey = issueKey,
         subtaskId = subtaskId,
         decision = parsed,
-        dbPathOverride = state.dbOverride,
-        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+        dbPathOverride = inputs.dbPathOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: inputs.repositoryRoot,
       ),
     )
     val payload = result.toGoalOperatorDecisionCliMap()

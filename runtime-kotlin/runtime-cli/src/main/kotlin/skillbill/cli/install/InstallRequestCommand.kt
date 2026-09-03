@@ -5,9 +5,9 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.choice
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.model.CliRunInputs
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode
@@ -108,13 +108,13 @@ abstract class InstallRequestCommand(
   ).flag(default = false)
   protected val format by formatOption()
 
-  protected fun toRequest(state: CliRunState): InstallPlanRequest {
+  protected fun toRequest(inputs: CliRunInputs): InstallPlanRequest {
     val resolvedRepoRoot = Path.of(repoRoot).toAbsolutePath().normalize()
     val explicitTargets = parseAgentTargets(agentTargets)
     val manualAgents = agents.map(InstallAgent::fromId).toSet()
     return InstallPlanRequest(
       repoRoot = resolvedRepoRoot,
-      home = state.userHome,
+      home = inputs.userHome,
       agentSelection = InstallAgentSelection(
         mode = selectedAgentMode(manualAgents, explicitTargets),
         manualAgents = manualAgents,
@@ -129,7 +129,7 @@ abstract class InstallRequestCommand(
         runtimeMcpBin = runtimeMcpBin?.let(Path::of),
       ),
       runtimeDistributionInputs = RuntimeDistributionInputs(
-        runtimeInstallRoot = runtimeInstallRoot?.let(Path::of) ?: state.userHome.resolve(".skill-bill/runtime"),
+        runtimeInstallRoot = runtimeInstallRoot?.let(Path::of) ?: inputs.userHome.resolve(".skill-bill/runtime"),
         runtimeCliBuildDir = runtimeCliBuildDir?.let(Path::of),
         runtimeMcpBuildDir = runtimeMcpBuildDir?.let(Path::of),
         runtimeCliInstallDir = runtimeCliInstallDir?.let(Path::of),
@@ -147,7 +147,7 @@ abstract class InstallRequestCommand(
         message = windowsSymlinkMessage,
       ),
       replaceExistingSkillBillLinks = replaceExistingSkillBillLinks,
-      environment = state.environment,
+      environment = inputs.environment,
     )
   }
 

@@ -7,10 +7,11 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.choice
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.telemetry.TelemetryService
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.DocumentedNoOpCliCommand
-import skillbill.cli.core.formatOption
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.DocumentedNoOpCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.model.CliRunInputs
 
 @Inject
 class TelemetryLocalCommands(
@@ -45,11 +46,12 @@ class TelemetryCommand(
 class TelemetryStatusCommand(
   private val service: TelemetryService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("status", "Show local telemetry configuration and sync status.") {
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.status(state.dbOverride).toCliMap(), format)
+    state.complete(service.status(inputs.dbPathOverride).toCliMap(), format)
   }
 }
 
@@ -57,11 +59,12 @@ class TelemetryStatusCommand(
 class TelemetrySyncCommand(
   private val service: TelemetryService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("sync", "Flush pending telemetry events to the active proxy target.") {
   private val format by formatOption()
 
   override fun run() {
-    val result = service.sync(state.dbOverride)
+    val result = service.sync(inputs.dbPathOverride)
     state.complete(result.result.toCliMap(), format, result.exitCode)
   }
 }
@@ -100,6 +103,7 @@ class TelemetryStatsCommand(
 class TelemetryEnableCommand(
   private val service: TelemetryService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("enable", "Enable remote telemetry sync.") {
   private val level by option("--level", help = "Telemetry detail level.")
     .choice("anonymous", "full")
@@ -107,7 +111,7 @@ class TelemetryEnableCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setLevel(level, state.dbOverride).toCliMap(), format)
+    state.complete(service.setLevel(level, inputs.dbPathOverride).toCliMap(), format)
   }
 }
 
@@ -115,11 +119,12 @@ class TelemetryEnableCommand(
 class TelemetryDisableCommand(
   private val service: TelemetryService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("disable", "Disable remote telemetry sync.") {
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setLevel("off", state.dbOverride).toCliMap(), format)
+    state.complete(service.setLevel("off", inputs.dbPathOverride).toCliMap(), format)
   }
 }
 
@@ -127,11 +132,12 @@ class TelemetryDisableCommand(
 class TelemetrySetLevelCommand(
   private val service: TelemetryService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("set-level", "Set the telemetry detail level directly.") {
   private val level by argument(help = "Telemetry level.").choice("off", "anonymous", "full")
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.setLevel(level, state.dbOverride).toCliMap(), format)
+    state.complete(service.setLevel(level, inputs.dbPathOverride).toCliMap(), format)
   }
 }

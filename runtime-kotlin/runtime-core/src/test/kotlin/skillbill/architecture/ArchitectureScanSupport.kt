@@ -395,14 +395,15 @@ object ArchitectureScanSupport {
       """^\s*((?:(?:public|internal|private|protected|abstract|sealed|open|final|data|enum|value|fun)\s+)*)""" +
         """(?:class|object|interface|fun)\s+([A-Za-z_][A-Za-z0-9_]*)\b""",
     )
+  private val SPILLOVER_FILE_NAME_PATTERN = Regex("""Extras[0-9]*$""")
   private val FUNCTION_PATTERN = Regex("""\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
   private val CAMEL_TOKEN_PATTERN = Regex("""[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)""")
   private val EXTENSION_FUN_PATTERN =
     Regex("""^\s*(?:(?:public|internal|private|protected)\s+)*fun\s+([A-Za-z0-9_.]+)\.""")
 
-  data class ApplicationPackageCycle(val areas: List<String>)
+  data class PackageCycle(val areas: List<String>)
 
-  data class AmbientClockCallSite(val relativePath: String, val lineNumber: Int, val call: String)
+  data class AmbientCallSite(val relativePath: String, val lineNumber: Int, val call: String)
 
   data class InjectConstructorDefaultSite(val relativePath: String, val symbol: String, val parameter: String)
 
@@ -465,35 +466,37 @@ object ArchitectureScanSupport {
     }
     .toMap()
 
-  fun applicationPackageImportEdges(): Map<String, Set<String>> {
+  fun packageImportEdges(scanRoot: String, packagePrefix: String): Map<String, Set<String>> {
     val edges = linkedMapOf<String, MutableSet<String>>()
-    val root = runtimeRoot.resolve("runtime-kotlin/runtime-application/src/main/kotlin")
-    kotlinFilesUnder(root).forEach { sourceFile ->
+    kotlinFilesUnder(runtimeRoot.resolve(scanRoot)).forEach { sourceFile ->
       val source = sourceFile.readText()
       val packageName = declaredPackage(source) ?: return@forEach
-      if (!packageName.startsWith("skillbill.application.")) return@forEach
-      val area = packageName.removePrefix("skillbill.application.").substringBefore('.')
+      if (!packageName.startsWith(packagePrefix)) return@forEach
+      val area = packageName.removePrefix(packagePrefix).substringBefore('.')
       if (area.isBlank()) return@forEach
       declaredImports(source)
-        .filter { it.startsWith("skillbill.application.") }
-        .map { imported -> imported.removePrefix("skillbill.application.").substringBefore('.') }
+        .filter { it.startsWith(packagePrefix) }
+        .map { imported -> imported.removePrefix(packagePrefix).substringBefore('.') }
         .filter { it.isNotBlank() && it != area }
         .forEach { importedArea -> edges.getOrPut(area) { mutableSetOf() }.add(importedArea) }
     }
     return edges.mapValues { (_, value) -> value.toSet() }
   }
 
-  fun applicationPackageCycles(): Set<ApplicationPackageCycle> =
-    mutualImportCyclesForEdges(applicationPackageImportEdges())
-      .map { cycle -> ApplicationPackageCycle(cycle) }
+  fun packageCycles(scanRoot: String, packagePrefix: String): Set<PackageCycle> =
+    mutualImportCyclesForEdges(packageImportEdges(scanRoot, packagePrefix))
+      .map { cycle -> PackageCycle(cycle) }
       .toSet()
 
-  fun applicationPackageCycleViolations(baselineCycles: Set<ApplicationPackageCycle>): List<String> =
-    packageCycleViolationsForEdges(applicationPackageImportEdges(), baselineCycles)
+  fun packageCycleViolations(
+    baselineCycles: Set<PackageCycle>,
+    scanRoot: String,
+    packagePrefix: String,
+  ): List<String> = packageCycleViolationsForEdges(packageImportEdges(scanRoot, packagePrefix), baselineCycles)
 
   fun packageCycleViolationsForEdges(
     edges: Map<String, Set<String>>,
-    baselineCycles: Set<ApplicationPackageCycle>,
+    baselineCycles: Set<PackageCycle>,
   ): List<String> {
     val baselineKeys = baselineCycles.map { cycle -> cycle.areas.sorted().joinToString("|") }.toSet()
     val currentKeys = mutualImportCyclesForEdges(edges)
@@ -516,13 +519,78 @@ object ArchitectureScanSupport {
     return cycles.toList()
   }
 
-  fun parsePackageCycleBaseline(text: String): Set<ApplicationPackageCycle> = text.lineSequence()
+  fun parsePackageCycleBaseline(text: String): Set<PackageCycle> = text.lineSequence()
     .map { it.trim() }
     .filter { it.isNotBlank() && !it.startsWith("#") }
     .map { line ->
-      ApplicationPackageCycle(line.split('|').map(String::trim).filter(String::isNotBlank).sorted())
+      PackageCycle(line.split('|').map(String::trim).filter(String::isNotBlank).sorted())
     }
     .toSet()
+
+  fun transitiveAreaClosure(edges: Map<String, Set<String>>, area: String): Set<String> {
+    val reached = linkedSetOf<String>()
+    val pending = ArrayDeque(listOf(area))
+    while (pending.isNotEmpty()) {
+      edges[pending.removeFirst()].orEmpty().forEach { next ->
+        if (reached.add(next)) pending.addLast(next)
+      }
+    }
+    return reached - area
+  }
+
+  fun areaIsolationViolationsForEdges(
+    edges: Map<String, Set<String>>,
+    area: String,
+    sharedAreas: Set<String>,
+  ): List<String> = transitiveAreaClosure(edges, area)
+    .filterNot { reached -> reached in sharedAreas }
+    .sorted()
+    .map { reached ->
+      "Area '$area' transitively imports '$reached'; only the shared leaves " +
+        "(${sharedAreas.sorted().joinToString(", ")}) may appear in a single area's import closure."
+    }
+
+  fun allAreaIsolationViolationsForEdges(
+    edges: Map<String, Set<String>>,
+    sharedAreas: Set<String>,
+    compositionRootArea: String,
+  ): List<String> = (edges.keys + edges.values.flatten())
+    .asSequence()
+    .filterNot { area -> area == compositionRootArea }
+    .distinct()
+    .sorted()
+    .flatMap { area -> areaIsolationViolationsForEdges(edges, area, sharedAreas).asSequence() }
+    .toList()
+
+  fun areaIsolationViolations(
+    scanRoot: String,
+    packagePrefix: String,
+    sharedAreas: Set<String>,
+    compositionRootArea: String,
+  ): List<String> = allAreaIsolationViolationsForEdges(
+    packageImportEdges(scanRoot, packagePrefix),
+    sharedAreas,
+    compositionRootArea,
+  )
+
+  fun spilloverFileNameViolationsForPaths(relativePaths: List<String>, exemptPaths: Set<String>): List<String> =
+    relativePaths
+      .filterNot { relativePath -> relativePath in exemptPaths }
+      .filter { relativePath -> SPILLOVER_FILE_NAME_PATTERN.containsMatchIn(relativePath.removeSuffix(".kt")) }
+      .sorted()
+      .map { relativePath ->
+        "$relativePath carries the spillover-filename signature; name the unit for the responsibility it holds."
+      }
+
+  fun spilloverFileNameViolations(scanRoots: List<String>, exemptPaths: Set<String>): List<String> =
+    spilloverFileNameViolationsForPaths(
+      scanRoots.flatMap { scanRoot ->
+        kotlinFilesUnder(runtimeRoot.resolve(scanRoot)).map { path ->
+          runtimeRoot.relativize(path).toString().replace('\\', '/')
+        }
+      },
+      exemptPaths,
+    )
 
   fun extensionReceiverFqns(source: String, packageName: String, imports: List<String>): List<String> {
     val importMap = imports.associateBy { imported -> imported.substringAfterLast('.') }

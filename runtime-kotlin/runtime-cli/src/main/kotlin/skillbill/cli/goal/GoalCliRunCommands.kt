@@ -18,11 +18,12 @@ import skillbill.application.goalrunner.planning.model.GoalPlanningLog
 import skillbill.application.goalrunner.planning.model.GoalPlanningLogAttempt
 import skillbill.application.goalrunner.planning.model.GoalPlanningLogRequest
 import skillbill.application.review.RuntimeOwnedReviewMode
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
-import skillbill.cli.core.invokingAgentResolutionHelp
-import skillbill.cli.core.requireSupportedOptionalAgentId
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.kernel.invokingAgentResolutionHelp
+import skillbill.cli.kernel.requireSupportedOptionalAgentId
+import skillbill.cli.model.CliRunInputs
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
@@ -34,6 +35,7 @@ import java.nio.file.Path
 class GoalPreflightCommand(
   private val service: GoalPreflightService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "preflight",
   "Show the read-only goal verdict, confirmation gate, and missing spec targets before launch.",
@@ -60,8 +62,8 @@ class GoalPreflightCommand(
 
   override fun run() {
     val root = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
-      ?: Path.of("").toAbsolutePath().normalize()
-    val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
+      ?: inputs.repositoryRoot
+    val invokedAgentId = resolveInvokedAgentId(agent, inputs.environment)
     val agentOverrideId = requireSupportedOptionalAgentId(agentOverride, "--agent-override")
     val result = service.preflight(
       GoalPreflightRequest(
@@ -71,9 +73,9 @@ class GoalPreflightCommand(
         agentOverrideId = agentOverrideId,
         requestedReviewMode = parseCodeReviewMode(codeReviewMode),
         requestedAgentAddonSlugs = agentAddonSlugs,
-        dbPathOverride = state.dbOverride,
-        userHome = state.userHome,
-        environment = state.environment,
+        dbPathOverride = inputs.dbPathOverride,
+        userHome = inputs.userHome,
+        environment = inputs.environment,
       ),
     )
     val payload = result.toGoalPreflightCliMap()
@@ -172,6 +174,7 @@ internal fun FeatureTaskContinuationCandidate.toGoalPreflightCandidateMap(): Map
 class GoalPlanningLogCommand(
   private val planningLogService: GoalPlanningLogService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "planning-log",
   "Show the durable goal-planning attempt log: start/end times, durations, outcomes, and failure reasons.",
@@ -192,7 +195,7 @@ class GoalPlanningLogCommand(
       GoalPlanningLogRequest(
         issueKey = issueKey,
         repoRoot = repoRoot?.let(Path::of),
-        dbPathOverride = state.dbOverride,
+        dbPathOverride = inputs.dbPathOverride,
         subtaskId = subtask,
         failuresOnly = failuresOnly,
       ),
@@ -272,13 +275,14 @@ internal fun renderPlanningLog(log: GoalPlanningLog): String = buildString {
 class GoalFindingsCommand(
   private val ledgerService: UnaddressedFindingsLedgerService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("findings", "Show the goal-wide unaddressed-findings ledger.") {
   private val issueKey by option("--issue-key", help = "Parent issue key.").required()
 
   override fun run() {
-    val ledger = ledgerService.ledger(issueKey, state.dbOverride)
-    val repairLedgers = ledgerService.repairLedgersByWorkflow(issueKey, state.dbOverride)
-    val verificationDispositions = ledgerService.verificationDispositions(issueKey, state.dbOverride)
+    val ledger = ledgerService.ledger(issueKey, inputs.dbPathOverride)
+    val repairLedgers = ledgerService.repairLedgersByWorkflow(issueKey, inputs.dbPathOverride)
+    val verificationDispositions = ledgerService.verificationDispositions(issueKey, inputs.dbPathOverride)
     state.completeText(
       findingsText(ledger, repairLedgers, verificationDispositions),
       findingsPayload(ledger, repairLedgers, verificationDispositions),

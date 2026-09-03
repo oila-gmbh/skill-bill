@@ -1,7 +1,7 @@
 
 package skillbill.cli.skillremove
 
-import skillbill.cli.core.CliOutput
+import skillbill.cli.kernel.CliOutput
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
 import skillbill.domain.skillremove.SkillRemovalRefusedException
@@ -25,8 +25,8 @@ internal fun executeRemoveCommand(request: RemoveCommandExecutionRequest): CliEx
   val removalRequest = SkillRemovalRequest(
     target = parsed,
     repoRootAbsolutePath = absoluteRepoRoot,
-    userHomeAbsolutePath = request.state.userHome.toAbsolutePath().normalize().toString(),
-    environment = request.state.environment,
+    userHomeAbsolutePath = request.inputs.userHome.toAbsolutePath().normalize().toString(),
+    environment = request.inputs.environment,
   )
   val outcome = try {
     if (request.dryRun) {

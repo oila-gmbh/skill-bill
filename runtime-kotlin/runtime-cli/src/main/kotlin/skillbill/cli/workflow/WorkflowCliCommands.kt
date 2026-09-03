@@ -16,10 +16,12 @@ import skillbill.application.workflow.model.WorkflowLatestResult.Error
 import skillbill.application.workflow.model.WorkflowLatestResult.Ok
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.DocumentedNoOpCliCommand
-import skillbill.cli.core.formatOption
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.DocumentedNoOpCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.kernel.toPayload
+import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.JsonSupport
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 
@@ -76,12 +78,14 @@ class VerifyWorkflowInspectionCommands(
 class VerifyWorkflowOpenCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowOpenCommand("open", service, state, WorkflowFamilyKind.VERIFY)
+  inputs: CliRunInputs,
+) : WorkflowOpenCommand("open", service, state, inputs, WorkflowFamilyKind.VERIFY)
 
 open class WorkflowOpenCommand(
   name: String,
   private val service: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val kind: WorkflowFamilyKind,
 ) : DocumentedCliCommand(name, "Open durable workflow state.") {
   private val sessionId by option("--session-id", help = "Optional workflow telemetry session id.").default("")
@@ -96,7 +100,7 @@ open class WorkflowOpenCommand(
           kind = kind,
           sessionId = sessionId,
           currentStepId = currentStepId,
-          dbOverride = state.dbOverride,
+          dbOverride = inputs.dbPathOverride,
           issueKey = issueKey,
           repositoryIdentity = null,
           governedSpecPath = null,
@@ -114,12 +118,14 @@ open class WorkflowOpenCommand(
 class VerifyWorkflowUpdateCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowUpdateCommand("update", service, state, WorkflowFamilyKind.VERIFY)
+  inputs: CliRunInputs,
+) : WorkflowUpdateCommand("update", service, state, inputs, WorkflowFamilyKind.VERIFY)
 
 open class WorkflowUpdateCommand(
   name: String,
   private val service: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val kind: WorkflowFamilyKind,
 ) : DocumentedCliCommand(name, "Update durable workflow state and return a compact acknowledgement.") {
   private val workflowId by argument(help = "Workflow id to update.")
@@ -141,7 +147,7 @@ open class WorkflowUpdateCommand(
         sessionId = sessionId,
       )
     val payload =
-      service.update(kind, request, state.dbOverride).toCliMap()
+      service.update(kind, request, inputs.dbPathOverride).toPayload()
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -150,18 +156,21 @@ open class WorkflowUpdateCommand(
 class VerifyWorkflowShowCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowGetCommand("show", service, state, WorkflowFamilyKind.VERIFY)
+  inputs: CliRunInputs,
+) : WorkflowGetCommand("show", service, state, inputs, WorkflowFamilyKind.VERIFY)
 
 @Inject
 class VerifyWorkflowGetCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowGetCommand("get", service, state, WorkflowFamilyKind.VERIFY)
+  inputs: CliRunInputs,
+) : WorkflowGetCommand("get", service, state, inputs, WorkflowFamilyKind.VERIFY)
 
 open class WorkflowGetCommand(
   name: String,
   private val service: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val kind: WorkflowFamilyKind,
 ) : DocumentedCliCommand(name, "Fetch read-only full durable workflow state.") {
   private val workflowId by argument(help = "Workflow id to inspect.").optional()
@@ -169,12 +178,12 @@ open class WorkflowGetCommand(
   private val format by formatOption()
 
   override fun run() {
-    val resolution = resolveWorkflowId(workflowId, latest, service, state, kind)
+    val resolution = resolveWorkflowId(workflowId, latest, service, inputs, kind)
     val payload =
       if (resolution.errorPayload != null) {
         resolution.errorPayload
       } else {
-        service.get(kind, requireNotNull(resolution.workflowId), state.dbOverride)
+        service.get(kind, requireNotNull(resolution.workflowId), inputs.dbPathOverride)
           .toCliMap(service.goalObservabilityEventValidator)
       }
     state.complete(payload, format, exitCode = payload.exitCode())
@@ -185,12 +194,14 @@ open class WorkflowGetCommand(
 class VerifyWorkflowListCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowListCommand("list", service, state, WorkflowFamilyKind.VERIFY)
+  inputs: CliRunInputs,
+) : WorkflowListCommand("list", service, state, inputs, WorkflowFamilyKind.VERIFY)
 
 open class WorkflowListCommand(
   name: String,
   private val service: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val kind: WorkflowFamilyKind,
 ) : DocumentedCliCommand(name, "List recent persisted workflow runs.") {
   private val limit by option("--limit", help = "Maximum number of workflows to return.").int()
@@ -199,7 +210,7 @@ open class WorkflowListCommand(
 
   override fun run() {
     val payload =
-      service.list(kind, limit, state.dbOverride).toCliMap()
+      service.list(kind, limit, inputs.dbPathOverride).toCliMap()
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -208,19 +219,21 @@ open class WorkflowListCommand(
 class VerifyWorkflowLatestCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowLatestCommand("latest", service, state, WorkflowFamilyKind.VERIFY)
+  inputs: CliRunInputs,
+) : WorkflowLatestCommand("latest", service, state, inputs, WorkflowFamilyKind.VERIFY)
 
 open class WorkflowLatestCommand(
   name: String,
   private val service: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val kind: WorkflowFamilyKind,
 ) : DocumentedCliCommand(name, "Fetch the most recently updated workflow run.") {
   private val format by formatOption()
 
   override fun run() {
     val payload =
-      service.latest(kind, state.dbOverride).toCliMap()
+      service.latest(kind, inputs.dbPathOverride).toCliMap()
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
@@ -229,12 +242,14 @@ open class WorkflowLatestCommand(
 class VerifyWorkflowResumeCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowResumeCommand("resume", service, state, WorkflowFamilyKind.VERIFY)
+  inputs: CliRunInputs,
+) : WorkflowResumeCommand("resume", service, state, inputs, WorkflowFamilyKind.VERIFY)
 
 open class WorkflowResumeCommand(
   name: String,
   private val service: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val kind: WorkflowFamilyKind,
 ) : DocumentedCliCommand(name, "Summarize how to resume or recover a workflow run.") {
   private val workflowId by argument(help = "Workflow id to resume or recover.").optional()
@@ -242,12 +257,12 @@ open class WorkflowResumeCommand(
   private val format by formatOption()
 
   override fun run() {
-    val resolution = resolveWorkflowId(workflowId, latest, service, state, kind)
+    val resolution = resolveWorkflowId(workflowId, latest, service, inputs, kind)
     val payload =
       if (resolution.errorPayload != null) {
         resolution.errorPayload
       } else {
-        service.resume(kind, requireNotNull(resolution.workflowId), state.dbOverride).toCliMap()
+        service.resume(kind, requireNotNull(resolution.workflowId), inputs.dbPathOverride).toCliMap()
       }
     state.complete(payload, format, exitCode = payload.exitCode())
   }
@@ -257,12 +272,14 @@ open class WorkflowResumeCommand(
 class VerifyWorkflowContinueCommand(
   service: WorkflowService,
   state: CliRunState,
-) : WorkflowContinueCommand("continue", service, state, WorkflowFamilyKind.VERIFY)
+  inputs: CliRunInputs,
+) : WorkflowContinueCommand("continue", service, state, inputs, WorkflowFamilyKind.VERIFY)
 
 open class WorkflowContinueCommand(
   name: String,
   private val service: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val kind: WorkflowFamilyKind,
 ) : DocumentedCliCommand(name, "Activate a resumable workflow and emit a recovered continuation brief.") {
   private val workflowId by argument(
@@ -276,7 +293,7 @@ open class WorkflowContinueCommand(
   private val format by formatOption()
 
   override fun run() {
-    val resolution = resolveWorkflowId(workflowId, latest, service, state, kind)
+    val resolution = resolveWorkflowId(workflowId, latest, service, inputs, kind)
     val payload =
       if (resolution.errorPayload != null) {
         resolution.errorPayload
@@ -285,7 +302,7 @@ open class WorkflowContinueCommand(
           kind,
           requireNotNull(resolution.workflowId),
           subtaskId = subtaskId,
-          dbOverride = state.dbOverride,
+          dbOverride = inputs.dbPathOverride,
         ).toCliMap()
       }
     state.complete(payload, format, exitCode = payload.exitCode())
@@ -313,12 +330,12 @@ private fun resolveWorkflowId(
   workflowId: String?,
   latest: Boolean,
   service: WorkflowService,
-  state: CliRunState,
+  inputs: CliRunInputs,
   kind: WorkflowFamilyKind,
 ): WorkflowIdResolution {
   workflowId?.let { return WorkflowIdResolution(workflowId = it) }
   require(latest) { "Provide a workflow_id or pass --latest." }
-  return when (val latestResult = service.latest(kind, state.dbOverride)) {
+  return when (val latestResult = service.latest(kind, inputs.dbPathOverride)) {
     is Ok ->
       WorkflowIdResolution(workflowId = latestResult.summary.workflowId)
     is Error ->

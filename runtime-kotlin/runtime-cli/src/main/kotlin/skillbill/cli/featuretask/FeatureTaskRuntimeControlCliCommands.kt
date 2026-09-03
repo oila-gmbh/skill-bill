@@ -14,16 +14,18 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.RepairFeatureTaskRuntimeIdentityArgs
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
-import skillbill.cli.workflow.toCliMap
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.kernel.toPayload
+import skillbill.cli.model.CliRunInputs
 import java.nio.file.Path
 
 @Inject
 class FeatureTaskLookupCommand(
   private val lookupService: FeatureTaskContinuationLookupService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "lookup",
   "Read-only, repository-scoped lookup of DB-authoritative feature-task continuation state.",
@@ -34,7 +36,8 @@ class FeatureTaskLookupCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = lookupService.lookup(issueKey, repositoryIdentity(Path.of(repoRoot)), workflowId, state.dbOverride)
+    val result =
+      lookupService.lookup(issueKey, repositoryIdentity(Path.of(repoRoot)), workflowId, inputs.dbPathOverride)
     val payload = result.toCliPayload()
     state.complete(payload, format, if (result is FeatureTaskContinuationLookupResult.Ambiguous) 2 else 0)
   }
@@ -92,12 +95,13 @@ private fun FeatureTaskContinuationCandidate.toMap(): Map<String, Any?> = mapOf(
 class FeatureTaskRuntimeStatusCommand(
   private val statusService: FeatureTaskRuntimeStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("status", "Show read-only feature-task phase status.") {
   private val workflowId by argument(help = "Runtime workflow id whose phase status to show.")
 
   override fun run() {
     val projection = statusService.status(
-      FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = state.dbOverride),
+      FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = inputs.dbPathOverride),
     )
     val payload = projection.toRuntimeStatusCliMap(workflowId)
     state.completeText(runtimeStatusText(payload), payload, exitCode = payload.runtimeStatusExitCode())
@@ -121,7 +125,7 @@ class FeatureTaskRuntimeResumeCommand(
     verifyRuntimeResume(
       VerifyRuntimeResumeArgs(
         lookupService = lookupService,
-        state = deps.state,
+        inputs = deps.inputs,
         workflowId = workflowId,
         issueKey = issueKey,
         specPath = specPath,
@@ -142,6 +146,7 @@ class FeatureTaskRuntimeResumeCommand(
 class FeatureTaskRuntimeAbandonCommand(
   private val workflowService: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "abandon",
   "Explicitly terminalize a nonterminal feature-task workflow while preserving its durable history.",
@@ -151,8 +156,8 @@ class FeatureTaskRuntimeAbandonCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = workflowService.abandonFeatureTaskRuntime(workflowId, reason, state.dbOverride)
-    state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
+    val result = workflowService.abandonFeatureTaskRuntime(workflowId, reason, inputs.dbPathOverride)
+    state.complete(result.toPayload(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }
 
@@ -160,6 +165,7 @@ class FeatureTaskRuntimeAbandonCommand(
 class FeatureTaskRuntimeRetryBlockedCommand(
   private val workflowService: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "retry-blocked",
   "Reopen one blocked runtime phase after an operator-applied fix.",
@@ -170,8 +176,8 @@ class FeatureTaskRuntimeRetryBlockedCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = workflowService.retryBlockedFeatureTaskRuntimePhase(workflowId, phaseId, reason, state.dbOverride)
-    state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
+    val result = workflowService.retryBlockedFeatureTaskRuntimePhase(workflowId, phaseId, reason, inputs.dbPathOverride)
+    state.complete(result.toPayload(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }
 
@@ -179,6 +185,7 @@ class FeatureTaskRuntimeRetryBlockedCommand(
 class FeatureTaskRuntimeRepairIdentityCommand(
   private val workflowService: WorkflowService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "repair-identity",
   "Explicitly supply missing immutable execution identity for a legacy runtime workflow.",
@@ -199,9 +206,9 @@ class FeatureTaskRuntimeRepairIdentityCommand(
         repositoryIdentity = repositoryIdentity(root),
         governedSpecPath = governedSpecPath(root, Path.of(specPath)),
         reason = reason,
-        dbOverride = state.dbOverride,
+        dbOverride = inputs.dbPathOverride,
       ),
     )
-    state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
+    state.complete(result.toPayload(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }

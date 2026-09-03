@@ -6,8 +6,8 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
@@ -69,8 +69,9 @@ class RejectedOutputCleanupCommand(
 @Inject
 class RejectedOutputInspectCliCommand(
   private val database: DatabaseSessionFactory,
-  private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val metadataValidator: RejectedOutputDiagnosticMetadataValidator,
+  private val clock: Clock,
 ) : DocumentedCliCommand(
   "rejected-output",
   "Inspect rejected phase output metadata, or emit one exact stored body with --raw-output.",
@@ -88,8 +89,8 @@ class RejectedOutputInspectCliCommand(
   ).flag(default = false)
 
   override fun run() {
-    database.selfManagedWrite(state.dbOverride) { unitOfWork ->
-      RejectedOutputInspectCommand(unitOfWork.diagnosticService(metadataValidator)).execute(
+    database.selfManagedWrite(inputs.dbPathOverride) { unitOfWork ->
+      RejectedOutputInspectCommand(unitOfWork.diagnosticService(metadataValidator, clock)).execute(
         RejectedOutputInspectRequest(workflowId, phaseId, attempt, rawOutput, repairTurn),
         System.out,
       )
@@ -100,8 +101,9 @@ class RejectedOutputInspectCliCommand(
 @Inject
 class RejectedOutputCleanupCliCommand(
   private val database: DatabaseSessionFactory,
-  private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val metadataValidator: RejectedOutputDiagnosticMetadataValidator,
+  private val clock: Clock,
 ) : DocumentedCliCommand(
   "rejected-output-cleanup",
   "Delete rejected-output diagnostics selected within one workflow.",
@@ -115,8 +117,8 @@ class RejectedOutputCleanupCliCommand(
   ).int()
 
   override fun run() {
-    val deleted = database.transaction(state.dbOverride) { unitOfWork ->
-      RejectedOutputCleanupCommand(unitOfWork.diagnosticService(metadataValidator)).execute(
+    val deleted = database.transaction(inputs.dbPathOverride) { unitOfWork ->
+      RejectedOutputCleanupCommand(unitOfWork.diagnosticService(metadataValidator, clock)).execute(
         RejectedOutputCleanupRequest(workflowId, phaseId, attempt, repairTurn),
       )
     }
@@ -126,7 +128,7 @@ class RejectedOutputCleanupCliCommand(
 
 private fun UnitOfWork.diagnosticService(
   metadataValidator: RejectedOutputDiagnosticMetadataValidator,
-  clock: Clock = Clock.systemUTC(),
+  clock: Clock,
 ): RejectedOutputDiagnosticService = RejectedOutputDiagnosticService(
   rejectedOutputDiagnostics ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable"),
   rejectedOutputDiagnosticPermissions ?: throw RejectedOutputDiagnosticError.Permission("permissions-unavailable"),

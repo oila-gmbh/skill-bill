@@ -12,11 +12,11 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.WorkflowService
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.invokingAgentResolutionHelp
-import skillbill.cli.goal.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
-import skillbill.cli.telemetry.drainTelemetryOnCompletion
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.drainTelemetryOnCompletion
+import skillbill.cli.kernel.invokingAgentResolutionHelp
+import skillbill.cli.model.CliRunInputs
+import skillbill.cli.model.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
@@ -117,13 +117,13 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
 
   protected fun resolveRunWorkflowId(
     workflowService: WorkflowService,
-    state: CliRunState,
+    inputs: CliRunInputs,
     issueKey: String,
     specPath: String,
     repoRoot: String,
   ): String = explicitWorkflowId?.takeIf(String::isNotBlank)
     ?: workflowService.openRuntimeWorkflowId(
-      state,
+      inputs,
       issueKey,
       specPath,
       repoRoot,
@@ -142,10 +142,10 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   ) {
     val state = deps.state
     val requestedReviewMode = requestedCodeReviewMode()
-    val goalContinuation = parseGoalContinuationContext(requestedReviewMode)
+    val goalContinuation = parseGoalContinuationContext(requestedReviewMode, deps.inputs.environment)
     val prepared = prepareRuntimeRun(deps)
     val resolvedWorkflowId = workflowId()
-    val report = deps.workerCoordinator.runOwned(resolvedWorkflowId, state.dbOverride) {
+    val report = deps.workerCoordinator.runOwned(resolvedWorkflowId, deps.inputs.dbPathOverride) {
       deps.runner.run(
         FeatureTaskRuntimeRunRequest(
           issueKey = issueKey,
@@ -159,21 +159,21 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           agentAssignment = prepared.agentAssignment,
           modelAssignment = prepared.modelAssignment,
           compactionSettings = prepared.compactionSettings,
-          environment = state.environment,
-          dbPathOverride = state.dbOverride,
+          environment = deps.inputs.environment,
+          dbPathOverride = deps.inputs.dbPathOverride,
           repoRoot = prepared.repoRoot,
           timeout = maxWallClockMinutes.takeIf { it > 0 }?.minutes,
           requestedCodeReviewMode = requestedReviewMode,
           goalContinuation = goalContinuation,
           operatorDecision = requestedOperatorDecision(),
           agentAddonSelection = prepared.agentAddonSelection,
-          eventSink = runtimeRunEventSink(state, monitor),
+          eventSink = runtimeRunEventSink(deps.inputs, monitor),
         ),
       )
     }
     val payload = report.toRuntimeRunCliMap()
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
-    drainTelemetryOnCompletion(deps.telemetryService, state.dbOverride)
+    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride, deps.diagnostics)
   }
 
   internal fun resolveSpecPath(
@@ -185,7 +185,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       FeatureSpecPathResolveInput(
         issueKey = issueKey,
         explicitSpecPath = explicitSpecPath,
-        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+        repoRoot = repoRoot?.let(Path::of) ?: deps.inputs.repositoryRoot,
       ),
     )
     return when (result) {
@@ -243,7 +243,7 @@ class FeatureTaskRuntimeRunCommand(
       deps = deps,
       issueKey = runIssueKey,
       specPath = runSpecPath,
-      workflowId = { resolveRunWorkflowId(workflowService, deps.state, runIssueKey, runSpecPath, repoRoot ?: ".") },
+      workflowId = { resolveRunWorkflowId(workflowService, deps.inputs, runIssueKey, runSpecPath, repoRoot ?: ".") },
     )
   }
 }
@@ -270,7 +270,7 @@ class FeatureTaskRuntimeExplicitRunCommand(
       deps = deps,
       issueKey = issueKey,
       specPath = runSpecPath,
-      workflowId = { resolveRunWorkflowId(workflowService, deps.state, issueKey, runSpecPath, repoRoot ?: ".") },
+      workflowId = { resolveRunWorkflowId(workflowService, deps.inputs, issueKey, runSpecPath, repoRoot ?: ".") },
     )
   }
 }

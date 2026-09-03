@@ -5,9 +5,8 @@ import skillbill.application.workflow.model.WorkflowLatestResult
 import skillbill.application.workflow.model.WorkflowListResult
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowResumeResult
-import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.cli.core.CliOutput
-import skillbill.cli.core.CliRunState
+import skillbill.cli.kernel.CliOutput
+import skillbill.cli.kernel.CliRunState
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.GoalObservabilityEventValidator
 
@@ -37,24 +36,6 @@ internal fun WorkflowOpenResult.toCliMap(
     "workflow_id" to workflowId,
     "error" to error,
   )
-}
-
-internal fun WorkflowUpdateResult.toCliMap(): Map<String, Any?> = when (this) {
-  is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowEngine.updateAcknowledgementMap(acknowledgement)).apply {
-    launchProjection?.let { put("launch_projection", WorkflowEngine.inputProjectionMap(it)) }
-    val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
-    val quotedWorkflowId = "'${acknowledgement.workflowId.replace("'", "'\"'\"'")}'"
-    put(
-      "read_only_full_state_command",
-      "skill-bill --db $quotedDbPath verify-workflow show $quotedWorkflowId --format json",
-    )
-    put("db_path", dbPath)
-  }
-  is WorkflowUpdateResult.Error -> linkedMapOf<String, Any?>(
-    "status" to "error",
-    "workflow_id" to workflowId,
-    "error" to error,
-  ).apply { dbPath?.let { put("db_path", it) } }
 }
 
 internal fun WorkflowGetResult.toCliMap(

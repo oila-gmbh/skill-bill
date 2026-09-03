@@ -50,6 +50,14 @@ class RuntimeArchitectureDocumentationTest {
     assertContains(architecture, "Open-Boundary Allow-List")
     assertContains(architecture, "@OpenBoundaryMap")
     assertContains(architecture, "RAW_MAP_OPEN_BOUNDARY_ALLOWLIST")
+    assertContains(architecture, "Destructive command failure policy")
+    assertContains(architecture, UNINSTALL_FAILURE_POLICY)
+    assertContains(architecture, "UninstallMutationRecorder")
+    assertContains(architecture, DRAIN_ABANDONMENT_POLICY)
+    assertContains(architecture, "RuntimeCliAreaIsolationArchitectureTest")
+    assertContains(architecture, "RuntimeCliSpilloverFileNameArchitectureTest")
+    assertContains(architecture, AREA_ISOLATION_GUARDRAIL)
+    assertContains(architecture, SPILLOVER_FILENAME_GUARDRAIL)
     assertFalse(architecture.contains("Temporary SKILL-52 blocker"))
     assertFalse(architecture.contains("compatibility umbrella"))
     assertFalse(architecture.contains("while the"))
@@ -155,6 +163,23 @@ class RuntimeArchitectureDocumentationTest {
   }
 
   private companion object {
+    const val UNINSTALL_FAILURE_POLICY =
+      "A mutation it cannot\napply is a recorded degradation with a non-zero exit code, never a warning\n" +
+        "string on a zero exit."
+
+    const val DRAIN_ABANDONMENT_POLICY =
+      "Every abandonment path — the worker still alive after\nthe join timeout, an interrupted join, and " +
+        "the worker's own failure — emits a\n`RuntimeDiagnostics` warning"
+
+    const val AREA_ISOLATION_GUARDRAIL =
+      "- Every `runtime-cli` command area's transitive `skillbill.cli` import closure\n  " +
+        "contains only the shared `kernel` and `model` leaves, never a sibling command\n  " +
+        "area and never the composition root `skillbill.cli.core`."
+
+    const val SPILLOVER_FILENAME_GUARDRAIL =
+      "- No `runtime-cli` file carries the `*Extras`, `*Extras2`, or `*Extras3`\n  " +
+        "filename signature outside a named exemption."
+
     const val CONTRACTS_NO_LONGER_OWNS_VALIDATORS =
       "It no longer owns the JSON-Schema\n  validators or their schema-resource copy tasks; " +
         "those moved to\n  `runtime-infra-fs`"

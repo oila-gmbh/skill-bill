@@ -9,12 +9,12 @@ import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.openFeatureTask
-import skillbill.cli.core.CliRunState
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import java.nio.file.Path
 
 internal fun WorkflowService.openRuntimeWorkflowId(
-  state: CliRunState,
+  inputs: CliRunInputs,
   issueKey: String?,
   specPath: String,
   repoRoot: String,
@@ -25,7 +25,7 @@ internal fun WorkflowService.openRuntimeWorkflowId(
       kind = WorkflowFamilyKind.TASK_RUNTIME,
       sessionId = "",
       currentStepId = null,
-      dbOverride = state.dbOverride,
+      dbOverride = inputs.dbPathOverride,
       issueKey = requireNotNull(issueKey),
       repositoryIdentity = repositoryIdentity(Path.of(repoRoot)),
       governedSpecPath = governedSpecPath(Path.of(repoRoot), Path.of(specPath)),
@@ -67,7 +67,7 @@ internal fun governedSpecPath(repositoryRoot: Path, specPath: Path): String {
 
 internal data class VerifyRuntimeResumeArgs(
   val lookupService: FeatureTaskContinuationLookupService,
-  val state: CliRunState,
+  val inputs: CliRunInputs,
   val workflowId: String,
   val issueKey: String,
   val specPath: String,
@@ -82,13 +82,14 @@ internal fun resumeRepositoryRoot(repoRoot: String, specPath: Path): Path {
   return candidate?.parent ?: Path.of(repoRoot)
 }
 
-internal fun runtimeRunEventSink(state: CliRunState, monitor: Boolean): FeatureTaskRuntimeRunEventSink = if (!monitor) {
-  FeatureTaskRuntimeRunEventSink.NONE
-} else {
-  FeatureTaskRuntimeRunEventSink { event ->
-    state.liveStdout(event.runtimeProgressLine())
+internal fun runtimeRunEventSink(inputs: CliRunInputs, monitor: Boolean): FeatureTaskRuntimeRunEventSink =
+  if (!monitor) {
+    FeatureTaskRuntimeRunEventSink.NONE
+  } else {
+    FeatureTaskRuntimeRunEventSink { event ->
+      inputs.liveStdout(event.runtimeProgressLine())
+    }
   }
-}
 
 internal fun FeatureTaskRuntimeRunEvent.runtimeProgressLine(): String = when (this) {
   is FeatureTaskRuntimeRunEvent.RunStarted ->

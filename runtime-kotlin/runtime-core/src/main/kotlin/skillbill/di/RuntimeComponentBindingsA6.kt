@@ -4,6 +4,7 @@ import skillbill.infrastructure.fs.FileSystemDeclaredReviewSpecialists
 import skillbill.infrastructure.fs.FileSystemInstalledPlatformPackCatalog
 import skillbill.infrastructure.fs.FileSystemReviewLaunchAgentStaging
 import skillbill.infrastructure.fs.GhGoalPullRequestPort
+import skillbill.infrastructure.fs.JdkHostPlatformPort
 import skillbill.infrastructure.sqlite.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.infrastructure.sqlite.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.model.OptionalCallbacks
@@ -15,10 +16,14 @@ import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
+import skillbill.ports.system.HostPlatformPort
 import java.time.Clock
 
 internal object RuntimeComponentBindingsA6 {
   internal fun runtimeClock(): Clock = Clock.systemUTC()
+
+  internal fun hostPlatformPort(callbacks: OptionalCallbacks): HostPlatformPort =
+    callbacks.hostPlatformPort ?: JdkHostPlatformPort
 
   internal fun reviewLaunchAgentStagingPort(
     adapter: FileSystemReviewLaunchAgentStaging,
