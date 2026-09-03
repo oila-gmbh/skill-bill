@@ -49,28 +49,35 @@ object IssueKeyShape {
       )
 
   internal fun parse(document: String): Contract {
-    val root = requireSchema(runCatching { Yaml().load<Any?>(document) }.getOrNull() as? Map<*, *>) {
-      "issue-key schema is not a YAML mapping"
-    }
+    val root = loadRootMapping(document)
     requireKnownKeysOnly(root)
-    requireSchema(root["\$id"] == ISSUE_KEY_SCHEMA_ID) {
-      "issue-key schema \$id '${root["\$id"]}' is unsupported; expected '$ISSUE_KEY_SCHEMA_ID'"
+    requireSchemaIdAndType(root)
+    val minLength = requiredPositiveInt(root, "minLength")
+    if (minLength != 1) {
+      throw InvalidIssueKeySchemaError("issue-key schema minLength must be 1")
     }
-    requireSchema(root["type"] == "string") { "issue-key schema type must be string" }
-    requireSchema(requiredPositiveInt(root, "minLength") == 1) { "issue-key schema minLength must be 1" }
-    val pattern = requireSchema(root["pattern"] as? String) { "issue-key schema pattern must be a string" }
+    val pattern = root["pattern"] as? String
+      ?: throw InvalidIssueKeySchemaError("issue-key schema pattern must be a string")
     return Contract(
       maxLength = requiredPositiveInt(root, "maxLength"),
       pattern = pattern,
     )
   }
 
-  private fun requireSchema(condition: Boolean, message: () -> String) {
-    if (!condition) throw InvalidIssueKeySchemaError(message())
-  }
+  private fun loadRootMapping(document: String): Map<*, *> =
+    runCatching { Yaml().load<Any?>(document) }.getOrNull() as? Map<*, *>
+      ?: throw InvalidIssueKeySchemaError("issue-key schema is not a YAML mapping")
 
-  private fun <T : Any> requireSchema(value: T?, message: () -> String): T =
-    value ?: throw InvalidIssueKeySchemaError(message())
+  private fun requireSchemaIdAndType(root: Map<*, *>) {
+    if (root["\$id"] != ISSUE_KEY_SCHEMA_ID) {
+      throw InvalidIssueKeySchemaError(
+        "issue-key schema \$id '${root["\$id"]}' is unsupported; expected '$ISSUE_KEY_SCHEMA_ID'",
+      )
+    }
+    if (root["type"] != "string") {
+      throw InvalidIssueKeySchemaError("issue-key schema type must be string")
+    }
+  }
 
   private fun requireKnownKeysOnly(root: Map<*, *>) {
     val unknown = root.keys.map(Any?::toString).filterNot { key -> key in KNOWN_KEYS }.sorted()
