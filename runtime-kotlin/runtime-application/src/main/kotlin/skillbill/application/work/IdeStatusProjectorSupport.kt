@@ -70,6 +70,7 @@ internal fun GoalPlanningStatusSnapshot.toIdeStatusPlanning(): IdeStatusPlanning
   plannedSubtaskCount = plannedSubtaskCount,
   totalSubtaskCount = totalSubtaskCount,
   currentPlanningSubtaskId = currentPlanningSubtaskId?.toString(),
+  planningWaveSubtaskIds = planningWaveSubtaskIds.map(Int::toString),
   reason = reason,
 )
 
@@ -77,9 +78,16 @@ internal fun IdeStatusLifecycleState.isSettled(): Boolean = this == IdeStatusLif
   this == IdeStatusLifecycleState.FAILED ||
   this == IdeStatusLifecycleState.TERMINAL
 
-internal fun goalPlanningSummary(issueKey: String, planning: IdeStatusPlanning): String =
-  "Goal $issueKey is planning subtasks " +
-    "(${planning.plannedSubtaskCount}/${planning.totalSubtaskCount} planned)."
+internal fun goalPlanningSummary(issueKey: String, planning: IdeStatusPlanning): String {
+  val concurrent = planning.planningWaveSubtaskIds.size
+  val wave = when (concurrent) {
+    0 -> ""
+    1 -> " 1 subtask is being planned now."
+    else -> " $concurrent subtasks are being planned now."
+  }
+  return "Goal $issueKey is planning subtasks " +
+    "(${planning.plannedSubtaskCount}/${planning.totalSubtaskCount} planned).$wave"
+}
 
 internal fun goalSummary(
   issueKey: String,

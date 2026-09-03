@@ -3478,12 +3478,12 @@ internal class InMemoryGoalManifestStore(
       PREPARED -> null
     }
     return GoalPlanningStatusSnapshot(
-      state,
-      sharedPreplanPrepared,
-      plannedIds.size,
-      orderedSubtaskIds.size,
-      blockedSubtaskId ?: firstMissing,
-      reason,
+      state = state,
+      sharedPreplanPrepared = sharedPreplanPrepared,
+      plannedSubtaskCount = plannedIds.size,
+      totalSubtaskCount = orderedSubtaskIds.size,
+      currentPlanningSubtaskId = blockedSubtaskId ?: firstMissing,
+      reason = reason,
     )
   }
 

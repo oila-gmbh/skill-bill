@@ -188,6 +188,41 @@ class IdeStatusGoldenFixturesTest {
     )
   }
 
+  /**
+   * SKILL-230: the concurrent-wave shape. Every other fixture here pins the absent-key shape,
+   * so this one only has to pin the emitted set.
+   */
+  @Test
+  fun `feature-goal concurrent-planning-wave golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-230",
+        "workflow_id" to "goal-wave",
+        "workflow_family" to "feature-goal",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "planning", "label" to "Planning"),
+        "progress" to linkedMapOf("completed" to 0, "total" to 8),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "planning" to linkedMapOf(
+          "state" to "partially_planned",
+          "shared_preplan_prepared" to true,
+          "planned_subtask_count" to 1,
+          "total_subtask_count" to 8,
+          "current_planning_subtask_id" to "2",
+          "planning_wave_subtask_ids" to listOf("2", "3", "4", "5", "6"),
+          "reason" to "Planning subtask 2.",
+        ),
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to
+          "Goal SKILL-230 is planning subtasks (1/8 planned). 5 subtasks are being planned now.",
+      ),
+      "golden-goal-planning-wave",
+    )
+  }
+
   @Test
   fun `feature-goal pause-requested-not-consumed golden validates`() {
     IdeStatusSchemaValidator.validate(

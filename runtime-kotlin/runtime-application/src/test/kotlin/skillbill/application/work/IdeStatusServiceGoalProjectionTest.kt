@@ -60,7 +60,11 @@ class IdeStatusServiceGoalProjectionTest {
     assertEquals("planning", result.snapshot.currentStep.id)
   }
 
-  private fun expiredLease(heartbeatAt: Instant): GoalRunnerExecutionLease = GoalRunnerExecutionLease(
+  private fun expiredLease(heartbeatAt: Instant): GoalRunnerExecutionLease = lease(heartbeatAt)
+
+  private fun liveLease(): GoalRunnerExecutionLease = lease(ideStatusObservedAt.minusSeconds(5))
+
+  private fun lease(heartbeatAt: Instant): GoalRunnerExecutionLease = GoalRunnerExecutionLease(
     generation = 1,
     ownerToken = "owner-token",
     hostIdentity = "test-host",
@@ -93,6 +97,29 @@ class IdeStatusServiceGoalProjectionTest {
     assertEquals("implement", result.snapshot.currentStep.label)
     assertEquals("Goal SKILL-148 is active on implement.", result.snapshot.summary)
     assertEquals(GoalPlanningStatusState.PREPARED, result.snapshot.planning?.state)
+  }
+
+  @Test
+  fun `mid-wave goal passes every planning subtask and the single id through to the wire`() {
+    val fixture = gitRepoFixture("ide-status-goal-planning-wave")
+    val identity = goalRepositoryIdentity(fixture)
+    val service = service(
+      goalOnlyDatabase(),
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = ""),
+        planning = planningSnapshot(GoalPlanningStatusState.PARTIALLY_PLANNED, wave = listOf(2, 3, 4, 5, 6)),
+        lease = liveLease(),
+      ),
+    )
+
+    val result = service.status(
+      IdeStatusRequest(repoRoot = fixture.toString(), observedAt = ideStatusObservedAt),
+    )
+
+    val planning = result.snapshot.toStatusWireMap()["planning"] as Map<*, *>
+    assertEquals(listOf("2", "3", "4", "5", "6"), planning["planning_wave_subtask_ids"])
+    assertEquals("2", planning["current_planning_subtask_id"])
+    assertTrue(result.snapshot.summary.contains("5 subtasks are being planned now."), result.snapshot.summary)
   }
 
   @Test

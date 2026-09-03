@@ -140,12 +140,16 @@ internal fun goalWithLaunchedChildDatabase(
   )
 }
 
-internal fun planningSnapshot(state: GoalPlanningStatusState): GoalPlanningStatusSnapshot = GoalPlanningStatusSnapshot(
+internal fun planningSnapshot(
+  state: GoalPlanningStatusState,
+  wave: List<Int> = emptyList(),
+): GoalPlanningStatusSnapshot = GoalPlanningStatusSnapshot(
   state = state,
   sharedPreplanPrepared = true,
   plannedSubtaskCount = 1,
   totalSubtaskCount = 2,
-  currentPlanningSubtaskId = 2,
+  currentPlanningSubtaskId = wave.minOrNull() ?: 2,
+  planningWaveSubtaskIds = wave,
   reason = null,
 )
 

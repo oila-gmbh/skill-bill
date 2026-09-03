@@ -72,6 +72,7 @@ internal fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): M
           "planned_subtask_count" to planning.plannedSubtaskCount,
           "total_subtask_count" to planning.totalSubtaskCount,
           "current_planning_subtask" to planning.currentPlanningSubtaskId,
+          "planning_wave_subtasks" to planning.planningWaveSubtaskIds,
           "reason" to planning.reason,
         ),
       )
@@ -174,7 +175,8 @@ internal fun goalStatusText(payload: Map<String, Any?>): String = buildString {
     appendLine(
       "planning: state=${planning["state"]} shared_preplan=${planning["shared_preplan_prepared"]} " +
         "planned=${planning["planned_subtask_count"]}/${planning["total_subtask_count"]} " +
-        "current=${planning["current_planning_subtask"] ?: "none"}",
+        "current=${planning["current_planning_subtask"] ?: "none"}" +
+        planningWaveText((planning["planning_wave_subtasks"] as? List<*>).orEmpty().size),
     )
     planning["reason"]?.let { appendLine("planning_reason: $it") }
   }
@@ -186,6 +188,12 @@ internal fun goalStatusText(payload: Map<String, Any?>): String = buildString {
   }
   appendOperatorSurfaceLines(payload)
   appendDiffStatusLines(payload)
+}
+
+private fun planningWaveText(waveSize: Int): String = when (waveSize) {
+  0 -> ""
+  1 -> " wave=1 subtask"
+  else -> " wave=$waveSize subtasks"
 }
 
 internal fun goalMonitorStatusText(payload: Map<String, Any?>): String = if (payload["status"] == "not_found") {

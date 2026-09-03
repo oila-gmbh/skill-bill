@@ -40,8 +40,16 @@ data class GoalPlanningStatusSnapshot(
   val plannedSubtaskCount: Int,
   val totalSubtaskCount: Int,
   val currentPlanningSubtaskId: Int?,
+  val planningWaveSubtaskIds: List<Int> = emptyList(),
   val reason: String?,
-)
+) {
+  init {
+    require(planningWaveSubtaskIds.isEmpty() || currentPlanningSubtaskId == planningWaveSubtaskIds.min()) {
+      "currentPlanningSubtaskId must equal the lowest planning wave subtask id, " +
+        "was $currentPlanningSubtaskId for wave $planningWaveSubtaskIds."
+    }
+  }
+}
 
 data class GoalRunnerStatusProjection(
   val issueKey: String,

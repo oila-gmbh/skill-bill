@@ -1130,8 +1130,8 @@ class GoalPlanningSweepPrepareAndResumeTest {
     assertEquals(
       listOf(
         "skill-bill: goal planning - parent goal shared preplan\n",
-        "skill-bill: goal planning - subtask 1 plan\n",
-        "skill-bill: goal planning - subtask 2 plan\n",
+        "[subtask 1] skill-bill: goal planning - subtask 1 plan\n",
+        "[subtask 2] skill-bill: goal planning - subtask 2 plan\n",
       ),
       progress,
     )
@@ -2165,7 +2165,7 @@ class GoalPlanningSweepFanOutTest {
       validPhaseOutcome(phase)
     }
     val sink = AgentRunOutputSink { _, text ->
-      if ("[subtask 2]" in text) throw IllegalStateException("plan output stream closed")
+      if ("[subtask 2]" in text) error("plan output stream closed")
     }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 3)), harness.request(sink))
@@ -2890,12 +2890,12 @@ private class InMemoryPreparationDatabase(
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
   override fun databaseExists(dbOverride: String?): Boolean = true
+
   @Synchronized
   override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   @Synchronized
-  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
-    transaction(dbOverride, block)
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
 
   @Synchronized
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
@@ -2929,14 +2929,13 @@ private data class SweepFixtures(
     manifest = manifest,
   )
 
-  fun request(outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE): GoalRunnerRunRequest =
-    GoalRunnerRunRequest(
-      issueKey = "SKILL-56",
-      repoRoot = repoRoot,
-      invokedAgentId = "claude",
-      dbPathOverride = dbOverride,
-      outputSink = outputSink,
-    )
+  fun request(outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = repoRoot,
+    invokedAgentId = "claude",
+    dbPathOverride = dbOverride,
+    outputSink = outputSink,
+  )
 
   fun preparedCount(): Int = database.repository.count()
 }

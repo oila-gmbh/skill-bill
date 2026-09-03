@@ -22,7 +22,7 @@ Deliver:
   needs no new durable state and no new hot-path query. Sourcing it from durable
   planning attempt records is acceptable only if it adds no query to the status
   read path and never reports a subtask whose plan is already checkpointed.
-- `orchestration/contracts/ide-status-schema.yaml`: the `planning` object sets
+- `../../../orchestration/contracts/ide-status-schema.yaml`: the `planning` object sets
   `additionalProperties: false`, so add the new optional array property there
   with a description stating its derivation. Keep `contract_version` at `"0.1"`
   unless the parity test requires otherwise; adding an optional property leaves

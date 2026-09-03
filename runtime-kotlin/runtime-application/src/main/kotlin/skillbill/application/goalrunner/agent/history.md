@@ -1,5 +1,18 @@
 # goalrunner boundary history
 
+## [2026-09-03] SKILL-230 subtask 2 — Concurrent planning status wire
+Areas: orchestration/contracts/ide-status-schema, runtime-contracts/workflow, runtime-domain/goalrunner.model, runtime-ports/goalrunner, runtime-infra-sqlite/db.workflow, runtime-application/{goalrunner/planning,idestatus,work}, runtime-cli/goal, runtime-mcp/workflow
+- `GoalPlanningStatusSnapshot` carries `planningWaveSubtaskIds` (manifest-ordered missing-plan ids, capped at `GOAL_PLANNING_WAVE_CAP`); the domain `init` requires `currentPlanningSubtaskId` to equal the wave minimum, so the IntelliJ plugin and VS Code extension keep reading one id with no edit.
+- `GOAL_PLANNING_WAVE_CAP` (5) lives in runtime-contracts beside `IDE_STATUS_CONTRACT_VERSION`; the burst-schedule default, the wire-model guard, and the schema `maxItems` parity test all read it, so one edit moves cap, dispatch, and contract together. reusable
+- Wave derivation moved out of `GoalPlanningStatusProjectionSql` into `GoalPlanningStatusSnapshotDerivation` (infra-sqlite): the wave is the first `cap` missing ids only for PREPLANNED/PARTIALLY_PLANNED, empty for NOT_STARTED/PREPARED/BLOCKED, and adds no query to the status read path.
+- Schema: additive optional `planning_wave_subtask_ids` (minItems 1, uniqueItems, maxItems 5) at unchanged `contract_version` 0.2; `IdeStatusPlanning.toStatusWireMap()` omits the key when empty and rejects blank, duplicate, or over-cap entries at construction.
+- `alignPlanningStatusWithLaunchRecoverability` clears the wave in the same copy that rewrites a resume-claiming reason to non-resumable, so status never names in-flight subtasks it cannot resume and `GoalPlanningStatusReasonCoherence` still holds.
+- Goal CLI JSON and MCP carry `planning_wave_subtasks` as integers; the `work status` summary and the goal human line name the concurrent count (`wave=N subtasks`).
+- Pattern: a defaulted field inserted before a non-defaulted one breaks positional constructors; three callers moved to named arguments instead of appending the field at the end. reusable
+- Limitation: the wave is a projection of the missing-plan set, not liveness — a wedged lane and a healthy one look identical; per-lane heartbeat stays a non-goal.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-09-03] SKILL-230 subtask 1 — Bounded parallel plan fan-out
 Areas: runtime-application/goalrunner/planning, runtime-ports/concurrency, runtime-ports/goalrunner.model, runtime-infra-fs, runtime-core/di
 - Goal planning sweep dispatches missing subtask plans in waves of at most `GoalPlanningBurstSchedule.planFanOutCap` (default 5) through the new `BoundedWorkFanOutPort`; the 20s `planLaunchPace` inter-launch gate and per-launch `firstMissingSubtaskId` re-derivation are gone, replaced by one `recoveryProgress` read into an ordered `missingSubtaskIds` set.

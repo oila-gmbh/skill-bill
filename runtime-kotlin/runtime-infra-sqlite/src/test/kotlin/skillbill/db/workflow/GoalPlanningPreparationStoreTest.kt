@@ -49,6 +49,51 @@ class GoalPlanningPreparationStoreTest {
   }
 
   @Test
+  fun `bounded status reports the capped wave of unplanned subtasks and nothing else`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      val ordered = (1..8).toList()
+
+      val notStarted = store.boundedStatus("goal-1", ordered)
+      assertEquals(emptyList<Int>(), notStarted.planningWaveSubtaskIds)
+
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      val preplanned = store.boundedStatus("goal-1", ordered)
+      assertEquals(GoalPlanningStatusState.PREPLANNED, preplanned.state)
+      assertEquals(listOf(1, 2, 3, 4, 5), preplanned.planningWaveSubtaskIds)
+      assertEquals(1, preplanned.currentPlanningSubtaskId)
+
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      val partial = store.boundedStatus("goal-1", ordered)
+      assertEquals(listOf(2, 3, 4, 5, 6), partial.planningWaveSubtaskIds)
+      assertEquals(2, partial.currentPlanningSubtaskId)
+
+      val blocked = store.boundedStatus("goal-1", ordered, 4, "plan agent exhausted")
+      assertEquals(emptyList<Int>(), blocked.planningWaveSubtaskIds)
+      assertEquals(4, blocked.currentPlanningSubtaskId)
+
+      (2..8).forEachIndexed { index, subtaskId -> store.checkpointSubtaskPlan(planCheckpoint(subtaskId, index + 1)) }
+      val prepared = store.boundedStatus("goal-1", ordered)
+      assertEquals(GoalPlanningStatusState.PREPARED, prepared.state)
+      assertEquals(emptyList<Int>(), prepared.planningWaveSubtaskIds)
+    }
+  }
+
+  @Test
+  fun `non-ascending manifest order keeps the single id and resume reason at the wave minimum`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+
+      val status = store.boundedStatus("goal-1", listOf(3, 1, 2))
+
+      assertEquals(listOf(3, 1, 2), status.planningWaveSubtaskIds)
+      assertEquals(1, status.currentPlanningSubtaskId)
+      assertEquals("Shared preplan is saved; planning can resume at subtask 1.", status.reason)
+    }
+  }
+
+  @Test
   fun `bounded status reads while another connection holds the writer lock`() {
     val tempDir = Files.createTempDirectory("skillbill-planning-status-contention")
     val dbPath = tempDir.resolve("metrics.db")

@@ -179,6 +179,21 @@ properties:
       current_planning_subtask_id:
         type: string
         minLength: 1
+      planning_wave_subtask_ids:
+        type: array
+        minItems: 1
+        maxItems: 5
+        uniqueItems: true
+        items:
+          type: string
+          minLength: 1
+          maxLength: 40
+        description: >
+          The bounded set of subtasks the next planning wave covers, in manifest order, capped at
+          the planning fan-out cap (GOAL_PLANNING_WAVE_CAP). Never includes a subtask whose plan is
+          already checkpointed. Absent when planning has not started, is prepared, or is blocked.
+          `current_planning_subtask_id` stays single-valued and equals the lowest id in this set
+          while a wave is reported.
       reason:
         type: string
         minLength: 1

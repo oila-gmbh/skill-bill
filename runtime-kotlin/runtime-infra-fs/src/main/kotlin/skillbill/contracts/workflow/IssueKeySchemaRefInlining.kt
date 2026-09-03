@@ -17,9 +17,7 @@ private fun issueKeySchemaBody(): JsonNode {
       ?: IssueKeyShapeClasspath::class.java.classLoader.getResourceAsStream(ISSUE_KEY_SCHEMA_RESOURCE),
   ) { "issue-key schema is missing from the classpath at $ISSUE_KEY_SCHEMA_RESOURCE" }
   val raw = stream.use { YAMLMapper().readTree(it) }
-  if (raw !is ObjectNode) {
-    throw IllegalStateException("issue-key schema must be an object")
-  }
+  check(raw is ObjectNode) { "issue-key schema must be an object" }
   raw.remove("\$schema")
   raw.remove("\$id")
   raw.remove("title")

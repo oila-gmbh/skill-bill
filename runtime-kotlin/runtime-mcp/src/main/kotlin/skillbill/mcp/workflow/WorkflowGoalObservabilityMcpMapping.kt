@@ -29,6 +29,7 @@ internal fun GoalPlanningStatusSnapshot.toMcpMap(): Map<String, Any?> = linkedMa
   "planned_subtask_count" to plannedSubtaskCount,
   "total_subtask_count" to totalSubtaskCount,
   "current_planning_subtask" to currentPlanningSubtaskId,
+  "planning_wave_subtasks" to planningWaveSubtaskIds,
   "reason" to reason,
 )
 

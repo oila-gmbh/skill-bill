@@ -146,6 +146,45 @@ class IdeStatusSchemaValidatorTest {
   }
 
   @Test
+  fun `planning wave subtask ids accept a bounded set and reject every out-of-contract shape`() {
+    IdeStatusSchemaValidator.validate(
+      goalSnapshotWithPlanning(
+        linkedMapOf(
+          "state" to "partially_planned",
+          "shared_preplan_prepared" to true,
+          "planned_subtask_count" to 2,
+          "total_subtask_count" to 8,
+          "current_planning_subtask_id" to "3",
+          "planning_wave_subtask_ids" to listOf("3", "4", "5", "6", "7"),
+        ),
+      ),
+      "test-planning-wave-valid",
+    )
+    val rejected = mapOf(
+      "not-an-array" to "3",
+      "empty" to emptyList<String>(),
+      "duplicate" to listOf("3", "3"),
+      "over-cap" to (1..GOAL_PLANNING_WAVE_CAP + 1).map(Int::toString),
+    )
+    rejected.forEach { (label, wave) ->
+      assertFailsWith<InvalidIdeStatusSchemaError>("planning_wave_subtask_ids accepted $label") {
+        IdeStatusSchemaValidator.validate(
+          goalSnapshotWithPlanning(
+            linkedMapOf(
+              "state" to "partially_planned",
+              "shared_preplan_prepared" to true,
+              "planned_subtask_count" to 2,
+              "total_subtask_count" to 8,
+              "planning_wave_subtask_ids" to wave,
+            ),
+          ),
+          "test-planning-wave-$label",
+        )
+      }
+    }
+  }
+
+  @Test
   fun `goal snapshot with only required planning properties passes`() {
     IdeStatusSchemaValidator.validate(
       goalSnapshotWithPlanning(

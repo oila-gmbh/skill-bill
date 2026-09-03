@@ -1,9 +1,7 @@
 package skillbill.db.workflow
 
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.goalrunner.model.GoalPlanningStatusReasons
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
-import skillbill.goalrunner.model.GoalPlanningStatusState
 import java.sql.Connection
 
 internal class GoalPlanningStatusProjectionSql(
@@ -114,39 +112,5 @@ internal class GoalPlanningStatusProjectionSql(
         "stored plan checkpoints must match the governed ordering",
       )
     }
-  }
-
-  private fun planningStatusSnapshot(
-    orderedSubtaskIds: List<Int>,
-    plannedIds: List<Int>,
-    shared: Boolean,
-    blockedSubtaskId: Int?,
-    blockedReason: String?,
-  ): GoalPlanningStatusSnapshot {
-    val firstMissing = orderedSubtaskIds.firstOrNull { it !in plannedIds }
-    val state = when {
-      blockedReason != null -> GoalPlanningStatusState.BLOCKED
-      !shared -> GoalPlanningStatusState.NOT_STARTED
-      firstMissing == null -> GoalPlanningStatusState.PREPARED
-      plannedIds.isEmpty() -> GoalPlanningStatusState.PREPLANNED
-      else -> GoalPlanningStatusState.PARTIALLY_PLANNED
-    }
-    val reason = when (state) {
-      GoalPlanningStatusState.NOT_STARTED -> GoalPlanningStatusReasons.NOT_STARTED
-      GoalPlanningStatusState.PREPLANNED ->
-        GoalPlanningStatusReasons.preplannedResume(requireNotNull(firstMissing))
-      GoalPlanningStatusState.PARTIALLY_PLANNED ->
-        GoalPlanningStatusReasons.partiallyPlannedResume(requireNotNull(firstMissing))
-      GoalPlanningStatusState.BLOCKED -> blockedReason
-      GoalPlanningStatusState.PREPARED -> null
-    }
-    return GoalPlanningStatusSnapshot(
-      state,
-      shared,
-      plannedIds.size,
-      orderedSubtaskIds.size,
-      blockedSubtaskId ?: firstMissing,
-      reason,
-    )
   }
 }

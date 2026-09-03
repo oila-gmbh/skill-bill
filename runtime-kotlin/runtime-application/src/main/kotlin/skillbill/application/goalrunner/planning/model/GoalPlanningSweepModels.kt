@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner.planning.model
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.contracts.workflow.GOAL_PLANNING_WAVE_CAP
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
@@ -169,7 +170,7 @@ data class GoalPlanningBurstSchedule(
   }
 
   companion object {
-    const val DEFAULT_PLAN_FAN_OUT_CAP: Int = 5
+    const val DEFAULT_PLAN_FAN_OUT_CAP: Int = GOAL_PLANNING_WAVE_CAP
     val DEFAULT_EMPTY_TURN_BACKOFF_BASE: Duration = 30.seconds
     const val DEFAULT_EMPTY_TURN_BACKOFF_FACTOR: Int = 2
     val DEFAULT_WAIT_SLICE: Duration = 1.seconds
