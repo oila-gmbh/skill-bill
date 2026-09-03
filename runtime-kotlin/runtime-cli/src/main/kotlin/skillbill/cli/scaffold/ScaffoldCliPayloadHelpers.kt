@@ -3,6 +3,7 @@ package skillbill.cli.scaffold
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.scaffold.ScaffoldService
 import skillbill.cli.core.CliOutput
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
@@ -15,7 +16,7 @@ import java.nio.file.Path
 internal fun runNativeScaffoldPayload(args: NativeScaffoldPayloadPathArgs): CliExecutionResult {
   val payload =
     try {
-      args.transform(readScaffoldPayload(args.payloadPath, args.run.state))
+      args.transform(readScaffoldPayload(args.payloadPath, args.run.inputs))
     } catch (error: SkillBillRuntimeException) {
       return errorResult(error.message.orEmpty(), args.run.format)
     } catch (error: IllegalArgumentException) {
@@ -27,12 +28,12 @@ internal fun runNativeScaffoldPayload(args: NativeScaffoldPayloadPathArgs): CliE
 internal fun runNativeScaffoldPayload(payload: Map<String, *>, run: NativeScaffoldRunArgs): CliExecutionResult {
   val dryRun = run.dryRun
   val format = run.format
-  val state = run.state
+  val inputs = run.inputs
   val scaffoldService = run.scaffoldService
   val externalAddonOverlayService = run.externalAddonOverlayService
-  val sessionId = generateScaffoldSessionId()
+  val sessionId = generateScaffoldSessionId(run.clock)
   val payloadWithRepoRoot = if ((payload["repo_root"] as? String).isNullOrBlank()) {
-    payload + ("repo_root" to findRepoRoot().toString())
+    payload + ("repo_root" to findRepoRoot(inputs.repositoryRoot).toString())
   } else {
     payload
   }
@@ -41,7 +42,7 @@ internal fun runNativeScaffoldPayload(payload: Map<String, *>, run: NativeScaffo
     try {
       val request = parseScaffoldCommandRequest(typedPayload)
       val scaffoldResult = scaffoldService.scaffold(request, dryRun = dryRun)
-      registerExternalAddonSourceAfterSuccess(request, dryRun, state, externalAddonOverlayService)
+      registerExternalAddonSourceAfterSuccess(request, dryRun, inputs, externalAddonOverlayService)
       scaffoldResult
     } catch (error: SkillBillRuntimeException) {
       return errorResult(error.message.orEmpty(), format)
@@ -90,10 +91,12 @@ internal fun createAndFillResult(args: CreateAndFillArgs): CliExecutionResult {
           dryRun = args.dryRun,
           format = format,
           state = args.state,
+          inputs = args.inputs,
+          clock = args.clock,
           scaffoldService = args.scaffoldService,
         ),
         transform = { scaffoldPayload ->
-          createAndFillScaffoldPayload(scaffoldPayload, content.body, content.bodyFile, args.state)
+          createAndFillScaffoldPayload(scaffoldPayload, content.body, content.bodyFile, args.inputs)
         },
       ),
     )
@@ -105,7 +108,7 @@ internal const val SCAFFOLD_SESSION_SUFFIX_LENGTH = 4
 internal fun registerExternalAddonSourceAfterSuccess(
   request: ScaffoldCommandRequest,
   dryRun: Boolean,
-  state: CliRunState,
+  inputs: CliRunInputs,
   externalAddonOverlayService: ExternalAddonOverlayService?,
 ) {
   if (externalAddonOverlayService == null) return
@@ -113,9 +116,9 @@ internal fun registerExternalAddonSourceAfterSuccess(
   val addOn = request as? ScaffoldCommandRequest.AddOn ?: return
   val sourcePath = addOn.addonLocationPath?.takeIf(String::isNotBlank) ?: return
   externalAddonOverlayService.registerSource(
-    home = state.userHome,
+    home = inputs.userHome,
     source = ExternalAddonSource(Path.of(sourcePath), addOn.platform),
-    environment = state.environment,
+    environment = inputs.environment,
   )
 }
 

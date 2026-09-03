@@ -1,5 +1,6 @@
 package skillbill.cli.install
 
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.ports.install.model.NativeAgentLinkOutcome
 import java.nio.file.Path
@@ -7,8 +8,11 @@ import java.nio.file.Path
 private const val GOAL_CONTINUATION_ENV = "SKILL_BILL_GOAL_CONTINUATION"
 private const val GOAL_CONTINUATION_INSTALL_REFUSAL_EXIT_CODE = 64
 
-internal fun CliRunState.refuseInstallMutationDuringGoalContinuation(commandName: String): Boolean {
-  if (environment[GOAL_CONTINUATION_ENV] != "1") {
+internal fun CliRunState.refuseInstallMutationDuringGoalContinuation(
+  inputs: CliRunInputs,
+  commandName: String,
+): Boolean {
+  if (inputs.environment[GOAL_CONTINUATION_ENV] != "1") {
     return false
   }
   val message =

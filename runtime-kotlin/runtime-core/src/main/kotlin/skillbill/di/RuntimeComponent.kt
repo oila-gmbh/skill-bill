@@ -90,6 +90,8 @@ abstract class RuntimeComponent(
   fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
     RuntimeComponentBindingsA1.databaseSessionFactory(context)
 
+  abstract val resolvedEnvironmentContext: EnvironmentContext
+
   abstract val featureTaskContinuationLookupService: FeatureTaskContinuationLookupService
   abstract val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService
 

@@ -17,6 +17,7 @@ import skillbill.application.review.model.UsageValidationException
 import skillbill.application.review.toBoundedPayload
 import skillbill.application.reviewevidence.model.DiffResolutionException
 import skillbill.application.reviewevidence.model.ParallelReviewScope
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.invokingAgentResolutionHelp
@@ -34,6 +35,7 @@ open class CodeReviewDriverCommand(
   help: String,
   private val runner: ParallelCodeReviewRunner,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(name, help) {
   protected open val commitTarget: String? = null
   private val agent1 by option(
@@ -123,7 +125,7 @@ open class CodeReviewDriverCommand(
     )
   }
 
-  private fun resolveAgent1(): String = requireInvokingAgentId(agent1, state.environment, "--agent1")
+  private fun resolveAgent1(): String = requireInvokingAgentId(agent1, inputs.environment, "--agent1")
 
   private fun validateCommitTarget() {
     if (commitTarget.isNullOrBlank()) return

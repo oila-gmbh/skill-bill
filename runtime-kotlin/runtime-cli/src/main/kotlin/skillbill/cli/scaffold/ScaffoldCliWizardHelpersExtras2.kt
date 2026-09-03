@@ -1,5 +1,6 @@
 package skillbill.cli.scaffold
 
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 
 internal fun MutableMap<String, AssistedPlatformProfile>.putProfile(
@@ -36,14 +37,14 @@ internal fun displayNameFromInput(input: String, slug: String): String =
     part.replaceFirstChar { character -> character.uppercase() }
   }
 
-internal fun promptRequired(state: CliRunState, label: String): String {
-  val value = promptOptional(state, label)
+internal fun promptRequired(state: CliRunState, inputs: CliRunInputs, label: String): String {
+  val value = promptOptional(state, inputs, label)
   require(value.isNotBlank()) { "Missing required scaffold wizard value: $label." }
   return value
 }
 
-internal fun promptOptional(state: CliRunState, label: String): String {
-  state.liveStdout("$label: ")
+internal fun promptOptional(state: CliRunState, inputs: CliRunInputs, label: String): String {
+  inputs.liveStdout("$label: ")
   return state.readInputLine()?.trim().orEmpty()
 }
 

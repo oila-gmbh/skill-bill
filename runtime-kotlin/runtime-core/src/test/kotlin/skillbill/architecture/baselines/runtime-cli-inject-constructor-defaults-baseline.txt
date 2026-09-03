@@ -1,8 +1,1 @@
-runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/core/CliRunState.kt::CliRunState::dbOverride
-runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/core/CliRunState.kt::CliRunState::environment
-runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/core/CliRunState.kt::CliRunState::externalCommandRunner
-runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/core/CliRunState.kt::CliRunState::liveStderr
-runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/core/CliRunState.kt::CliRunState::liveStdout
-runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/core/CliRunState.kt::CliRunState::result
-runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/core/CliRunState.kt::CliRunState::stdinText
-runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/core/CliRunState.kt::CliRunState::userHome
+

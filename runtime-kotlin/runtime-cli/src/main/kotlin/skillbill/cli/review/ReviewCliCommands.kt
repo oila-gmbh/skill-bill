@@ -12,6 +12,7 @@ import skillbill.application.review.ReviewService
 import skillbill.application.review.ReviewSnapshotPruneService
 import skillbill.application.review.model.ReviewSnapshotPruneResult
 import skillbill.cli.core.CliOutput
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
@@ -58,12 +59,13 @@ class ReviewTopLevelCommands(
 class ImportReviewCommand(
   private val service: ReviewService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("import-review", "Import a review output file or stdin into the local SQLite store.") {
   private val input by argument(help = "Path to review text, or '-' for stdin.").default("-")
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.importReview(input, state.dbOverride).toCliMap(), format)
+    state.complete(service.importReview(input, inputs.dbPathOverride).toCliMap(), format)
   }
 }
 
@@ -71,6 +73,7 @@ class ImportReviewCommand(
 class RecordFeedbackCommand(
   private val service: ReviewService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("record-feedback", "Record explicit feedback events for findings in an imported review run.") {
   private val runId by option("--run-id", help = "Imported review run id.").required()
   private val event by option("--event", help = "Canonical finding outcome to record.").required()
@@ -81,7 +84,7 @@ class RecordFeedbackCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.recordFeedback(runId, event, findings, note, state.dbOverride).toCliMap(), format)
+    state.complete(service.recordFeedback(runId, event, findings, note, inputs.dbPathOverride).toCliMap(), format)
   }
 }
 
@@ -89,6 +92,7 @@ class RecordFeedbackCommand(
 class TriageCommand(
   private val service: ReviewService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "triage",
   "Show numbered findings for a review run and record triage decisions by number.",
@@ -103,7 +107,7 @@ class TriageCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = service.triage(runId, decisions, listOnly, state.dbOverride)
+    val result = service.triage(runId, decisions, listOnly, inputs.dbPathOverride)
     val payload = result.toCliMap()
     when {
       format == CliFormat.JSON -> state.complete(payload, format)
@@ -120,6 +124,7 @@ class TriageCommand(
 class ReviewStatsCommand(
   private val service: ReviewService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "stats",
   "Show aggregate or per-run review acceptance metrics, including per-stage verdict distribution and refutation rate.",
@@ -128,7 +133,7 @@ class ReviewStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.reviewStats(runId, state.dbOverride).toCliMap(), format)
+    state.complete(service.reviewStats(runId, inputs.dbPathOverride).toCliMap(), format)
   }
 }
 
@@ -136,6 +141,7 @@ class ReviewStatsCommand(
 class PruneReviewSnapshotsCommand(
   private val service: ReviewSnapshotPruneService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "prune-snapshots",
   "List and optionally delete ~/.skill-bill/review-metrics.<label>.db snapshots. " +
@@ -152,7 +158,7 @@ class PruneReviewSnapshotsCommand(
   private val format by formatOption()
 
   override fun run() {
-    val result = service.prune(confirm, state.dbOverride)
+    val result = service.prune(confirm, inputs.dbPathOverride)
     val payload = result.toCliMap()
     if (format == CliFormat.JSON) {
       state.complete(payload, format)
@@ -166,11 +172,12 @@ class PruneReviewSnapshotsCommand(
 class FeatureVerifyStatsCommand(
   private val service: ReviewService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("verify-stats", "Show aggregate bill-feature-verify metrics.") {
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.featureVerifyStats(state.dbOverride).toCliMap(), format)
+    state.complete(service.featureVerifyStats(inputs.dbPathOverride).toCliMap(), format)
   }
 }
 
@@ -178,11 +185,12 @@ class FeatureVerifyStatsCommand(
 class FeatureTaskStatsCommand(
   private val service: ReviewService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("feature-task-stats", "Show aggregate feature-task metrics.") {
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.featureTaskRuntimeStats(state.dbOverride).toCliMap(), format)
+    state.complete(service.featureTaskRuntimeStats(inputs.dbPathOverride).toCliMap(), format)
   }
 }
 
@@ -190,6 +198,7 @@ class FeatureTaskStatsCommand(
 class FeatureTaskRuntimeStatsCommand(
   private val service: ReviewService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "runtime-stats",
   "Deprecated alias for feature-task-stats. Use feature-task-stats; behavior is unchanged.",
@@ -199,11 +208,11 @@ class FeatureTaskRuntimeStatsCommand(
   private val format by formatOption()
 
   override fun run() {
-    state.liveStderr(
+    inputs.liveStderr(
       "runtime-stats is a deprecated alias for feature-task-stats. " +
         "Use feature-task-stats; behavior is unchanged.\n",
     )
-    state.complete(service.featureTaskRuntimeStats(state.dbOverride).toCliMap(), format)
+    state.complete(service.featureTaskRuntimeStats(inputs.dbPathOverride).toCliMap(), format)
   }
 }
 
@@ -211,11 +220,12 @@ class FeatureTaskRuntimeStatsCommand(
 class GoalStatsCommand(
   private val service: ReviewService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("goal-stats", "Show aggregate decomposed-goal run metrics.") {
   private val format by formatOption()
 
   override fun run() {
-    state.complete(service.goalStats(state.dbOverride).toCliMap(), format)
+    state.complete(service.goalStats(inputs.dbPathOverride).toCliMap(), format)
   }
 }
 

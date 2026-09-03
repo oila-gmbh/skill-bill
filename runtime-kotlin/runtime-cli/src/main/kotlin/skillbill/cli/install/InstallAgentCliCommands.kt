@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.scaffold.InstallAgentService
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import java.nio.file.Path
@@ -13,6 +14,7 @@ import java.nio.file.Path
 @Inject
 class InstallCleanupAgentTargetCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("cleanup-agent-target", "Remove Skill Bill symlinks and managed dirs from one agent path.") {
   private val targetDir by option("--target-dir", help = "Agent install directory.").required()
@@ -21,7 +23,7 @@ class InstallCleanupAgentTargetCommand(
   private val marker by option("--marker", help = "Managed install marker file.").default(".skill-bill-install")
 
   override fun run() {
-    if (state.refuseInstallMutationDuringGoalContinuation("cleanup-agent-target")) {
+    if (state.refuseInstallMutationDuringGoalContinuation(inputs, "cleanup-agent-target")) {
       return
     }
     val cleanup = installAgentService.cleanupAgentTarget(
@@ -29,7 +31,7 @@ class InstallCleanupAgentTargetCommand(
       skillNames = skillNames,
       legacyNames = legacyNames,
       managedInstallMarker = marker,
-      home = state.userHome,
+      home = inputs.userHome,
     )
     state.completeText(
       (
@@ -44,10 +46,11 @@ class InstallCleanupAgentTargetCommand(
 @Inject
 class InstallClaudeRootsCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("claude-roots", "Print every resolved Claude config root, one per line.") {
   override fun run() {
-    val roots = installAgentService.claudeRoots(state.userHome, state.environment)
+    val roots = installAgentService.claudeRoots(inputs.userHome, inputs.environment)
     state.completeText(
       roots.joinToString("\n") { root -> root.toString() },
       mapOf("roots" to roots.map(Path::toString)),
@@ -58,10 +61,11 @@ class InstallClaudeRootsCommand(
 @Inject
 class InstallCodexRootsCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("codex-roots", "Print every resolved Codex config root, one per line.") {
   override fun run() {
-    val roots = installAgentService.codexRoots(state.userHome, state.environment)
+    val roots = installAgentService.codexRoots(inputs.userHome, inputs.environment)
     state.completeText(
       roots.joinToString("\n") { root -> root.toString() },
       mapOf("roots" to roots.map(Path::toString)),
@@ -72,39 +76,43 @@ class InstallCodexRootsCommand(
 @Inject
 class InstallCodexAgentsPathCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("codex-agents-path", "Print the Codex native subagent TOML directory.") {
   override fun run() {
-    state.completeText(installAgentService.codexAgentsPath(state.userHome, state.environment).toString(), emptyMap())
+    state.completeText(installAgentService.codexAgentsPath(inputs.userHome, inputs.environment).toString(), emptyMap())
   }
 }
 
 @Inject
 class InstallClaudeAgentsPathCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("claude-agents-path", "Print the Claude native subagent markdown directory.") {
   override fun run() {
-    state.completeText(installAgentService.claudeAgentsPath(state.userHome).toString(), emptyMap())
+    state.completeText(installAgentService.claudeAgentsPath(inputs.userHome).toString(), emptyMap())
   }
 }
 
 @Inject
 class InstallJunieAgentsPathCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("junie-agents-path", "Print the Junie native subagent markdown directory.") {
   override fun run() {
-    state.completeText(installAgentService.junieAgentsPath(state.userHome).toString(), emptyMap())
+    state.completeText(installAgentService.junieAgentsPath(inputs.userHome).toString(), emptyMap())
   }
 }
 
 @Inject
 class InstallCursorAgentsPathCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("cursor-agents-path", "Print the Cursor native subagent markdown directory.") {
   override fun run() {
-    state.completeText(installAgentService.cursorAgentsPath(state.userHome).toString(), emptyMap())
+    state.completeText(installAgentService.cursorAgentsPath(inputs.userHome).toString(), emptyMap())
   }
 }

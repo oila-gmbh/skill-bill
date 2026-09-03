@@ -22,8 +22,8 @@ import java.nio.file.Path
 internal fun FeatureTaskRuntimePhaseAgentCommand.prepareRuntimeRun(
   deps: FeatureTaskRuntimeRunDependencies,
 ): PreparedRuntimeRun {
-  val environment = deps.state.environment
-  val repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize()
+  val environment = deps.inputs.environment
+  val repoRoot = repoRoot?.let(Path::of) ?: deps.inputs.repositoryRoot
   val invokedAgentId = resolveInvokedRuntimeAgentId(agent, environment)
   val phaseAgentMap = parsePhaseAgents(phaseAgents).toMutableMap()
   val agentAssignment = FeatureTaskRuntimeAgentAssignment(
@@ -72,6 +72,7 @@ internal fun FeatureTaskRuntimePhaseAgentCommand.prepareRuntimeRun(
 
 internal fun FeatureTaskRuntimePhaseAgentCommand.parseGoalContinuationContext(
   requestedReviewMode: CodeReviewExecutionMode?,
+  environment: Map<String, String>,
 ): FeatureTaskRuntimeGoalContinuationContext? {
   val supplied = listOf(goalParentIssueKey, goalSubtaskId, goalBranch).count { it != null } +
     if (suppressPr) 1 else 0
@@ -91,7 +92,7 @@ internal fun FeatureTaskRuntimePhaseAgentCommand.parseGoalContinuationContext(
     lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
     codeReviewMode = requestedReviewMode,
     validationDepth = ValidationDepth.FULL,
-    qualityGateSelection = requestedQualityGateSelection(),
+    qualityGateSelection = requestedQualityGateSelection(environment),
     reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) {
       "--goal-review-base-sha is required with goal-continuation options."
     }.let { base ->
@@ -100,9 +101,10 @@ internal fun FeatureTaskRuntimePhaseAgentCommand.parseGoalContinuationContext(
   )
 }
 
-internal fun FeatureTaskRuntimePhaseAgentCommand.requestedQualityGateSelection():
-  FeatureTaskRuntimeQualityGateSelection {
-  val fromEnv = System.getenv("SKILL_BILL_QUALITY_GATE_SELECTION")
+internal fun FeatureTaskRuntimePhaseAgentCommand.requestedQualityGateSelection(
+  environment: Map<String, String>,
+): FeatureTaskRuntimeQualityGateSelection {
+  val fromEnv = environment["SKILL_BILL_QUALITY_GATE_SELECTION"]
     ?.takeIf(String::isNotBlank)
     ?.let(FeatureTaskRuntimeQualityGateSelection::fromWire)
   val fromCli = when (qualityGateSelections.size) {

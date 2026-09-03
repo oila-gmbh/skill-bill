@@ -25,8 +25,8 @@ internal fun executeRemoveCommand(request: RemoveCommandExecutionRequest): CliEx
   val removalRequest = SkillRemovalRequest(
     target = parsed,
     repoRootAbsolutePath = absoluteRepoRoot,
-    userHomeAbsolutePath = request.state.userHome.toAbsolutePath().normalize().toString(),
-    environment = request.state.environment,
+    userHomeAbsolutePath = request.inputs.userHome.toAbsolutePath().normalize().toString(),
+    environment = request.inputs.environment,
   )
   val outcome = try {
     if (request.dryRun) {

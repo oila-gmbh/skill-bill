@@ -9,6 +9,7 @@ import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.workflow.WorkflowService
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
@@ -51,7 +52,7 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
   }
 
   override fun run() {
-    deps.state.liveStderr(FEATURE_TASK_RUNTIME_DEPRECATION_NOTE)
+    deps.inputs.liveStderr(FEATURE_TASK_RUNTIME_DEPRECATION_NOTE)
     if (currentContext.invokedSubcommand != null) {
       return
     }
@@ -63,7 +64,7 @@ class FeatureTaskRuntimeDeprecatedRunCommand(
       specPath = runSpecPath,
       workflowId = {
         workflowService.openRuntimeWorkflowId(
-          deps.state,
+          deps.inputs,
           runIssueKey,
           runSpecPath,
           repoRoot ?: ".",
@@ -93,7 +94,7 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
       specPath = runSpecPath,
       workflowId = {
         workflowService.openRuntimeWorkflowId(
-          deps.state,
+          deps.inputs,
           issueKey,
           runSpecPath,
           repoRoot ?: ".",
@@ -108,12 +109,13 @@ class FeatureTaskRuntimeDeprecatedExplicitRunCommand(
 class FeatureTaskRuntimeDeprecatedStatusCommand(
   private val statusService: FeatureTaskRuntimeStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("status", "Show read-only feature-task phase status.") {
   private val workflowId by argument(help = "Runtime workflow id whose phase status to show.")
 
   override fun run() {
     val projection = statusService.status(
-      FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = state.dbOverride),
+      FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = inputs.dbPathOverride),
     )
     val payload = projection.toRuntimeStatusCliMap(workflowId)
     state.completeText(runtimeStatusText(payload), payload, exitCode = payload.runtimeStatusExitCode())
@@ -141,7 +143,7 @@ class FeatureTaskRuntimeDeprecatedResumeCommand(
         verifyRuntimeResume(
           VerifyRuntimeResumeArgs(
             lookupService = lookupService,
-            state = deps.state,
+            inputs = deps.inputs,
             workflowId = workflowId,
             issueKey = issueKey,
             specPath = specPath,

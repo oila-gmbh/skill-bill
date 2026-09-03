@@ -4,6 +4,7 @@ import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
+import skillbill.ports.system.HostPlatformPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.time.RuntimeTimingPort
@@ -37,6 +38,7 @@ data class OptionalCallbacks(
   val executableLookup: ExecutableLookup? = null,
   val reviewNativeAgentPreflight: ReviewNativeAgentPreflightPort? = null,
   val runtimeTimingPort: RuntimeTimingPort? = null,
+  val hostPlatformPort: HostPlatformPort? = null,
 )
 
 data class RuntimeContext(
@@ -58,6 +60,7 @@ data class RuntimeContext(
     executableLookup: ExecutableLookup? = null,
     reviewNativeAgentPreflight: ReviewNativeAgentPreflightPort? = null,
     runtimeTimingPort: RuntimeTimingPort? = null,
+    hostPlatformPort: HostPlatformPort? = null,
   ) : this(
     EnvironmentContext(dbPathOverride, stdinText, environment, userHome, repositoryRoot),
     TransportContext(requester),
@@ -68,6 +71,7 @@ data class RuntimeContext(
       executableLookup,
       reviewNativeAgentPreflight,
       runtimeTimingPort,
+      hostPlatformPort,
     ),
   )
 

@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.InstallService
 import skillbill.application.scaffold.InstallAgentService
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.install.refuseInstallMutationDuringGoalContinuation
@@ -16,12 +17,13 @@ import java.nio.file.Path
 @Inject
 class InstallAgentPathCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("agent-path", "Print the canonical install directory for a given agent.") {
   private val agent by argument(help = "Agent name.")
 
   override fun run() {
-    val path = installAgentService.agentPath(agent, state.userHome, state.environment)
+    val path = installAgentService.agentPath(agent, inputs.userHome, inputs.environment)
     state.result = CliExecutionResult(exitCode = 0, stdout = "$path\n")
   }
 }
@@ -29,11 +31,12 @@ class InstallAgentPathCommand(
 @Inject
 class InstallDetectAgentsCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("detect-agents", "List detected agents as 'name\\tpath' lines.") {
   override fun run() {
     val output =
-      installAgentService.detectAgentTargets(state.userHome, state.environment)
+      installAgentService.detectAgentTargets(inputs.userHome, inputs.environment)
         .joinToString(separator = "") { target -> "${target.name}\t${target.path}\n" }
     state.result = CliExecutionResult(exitCode = 0, stdout = output)
   }
@@ -42,6 +45,7 @@ class InstallDetectAgentsCommand(
 @Inject
 class InstallLinkSkillCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val installService: InstallService,
 ) : DocumentedCliCommand(
   "link-skill",
@@ -56,7 +60,7 @@ class InstallLinkSkillCommand(
   )
 
   override fun run() {
-    if (state.refuseInstallMutationDuringGoalContinuation("link-skill")) {
+    if (state.refuseInstallMutationDuringGoalContinuation(inputs, "link-skill")) {
       return
     }
     installService.linkSkill(
@@ -64,7 +68,7 @@ class InstallLinkSkillCommand(
       targetDir = Path.of(targetDir),
       agent = agent,
       repoRoot = repoRoot?.let(Path::of),
-      home = state.userHome,
+      home = inputs.userHome,
     )
     state.result = CliExecutionResult(exitCode = 0, stdout = "")
   }

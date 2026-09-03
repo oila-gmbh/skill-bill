@@ -7,18 +7,27 @@ import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.McpRegistrationService
 import skillbill.application.scaffold.NativeAgentInstallService
 import skillbill.application.system.UninstallFileSystemService
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
+import skillbill.ports.system.HostPlatformPort
 import java.nio.file.Path
+
+@Inject
+data class UninstallDependencies(
+  val installAgentService: InstallAgentService,
+  val nativeAgentInstallService: NativeAgentInstallService,
+  val mcpRegistrationService: McpRegistrationService,
+  val uninstallFileSystem: UninstallFileSystemService,
+  val hostPlatform: HostPlatformPort,
+)
 
 @Inject
 class UninstallCommand(
   private val state: CliRunState,
-  private val installAgentService: InstallAgentService,
-  private val nativeAgentInstallService: NativeAgentInstallService,
-  private val mcpRegistrationService: McpRegistrationService,
-  private val uninstallFileSystem: UninstallFileSystemService,
+  private val inputs: CliRunInputs,
+  private val deps: UninstallDependencies,
 ) : DocumentedCliCommand("uninstall", "Uninstall Skill Bill from local agents and runtime state.") {
   private val yes by option("--yes", "-y", help = "Skip the interactive confirmation prompt.")
     .flag(default = false)
@@ -28,7 +37,7 @@ class UninstallCommand(
   private val format by formatOption()
 
   override fun run() {
-    if (state.environment[GOAL_CONTINUATION_ENV] == "1") {
+    if (inputs.environment[GOAL_CONTINUATION_ENV] == "1") {
       val message =
         "Refusing to run skill-bill uninstall during skill-bill goal-continuation.\n" +
           "Goal workers must preserve the active workflow store; uninstall after the goal completes."
@@ -62,14 +71,15 @@ class UninstallCommand(
   }
 
   private fun uninstallPlan(): UninstallPlan {
-    val home = state.userHome
+    val home = inputs.userHome
     val stateRoot = home.resolve(".skill-bill")
-    val skillNames = installedSkillNames(uninstallFileSystem, stateRoot.resolve("installed-skills"))
+    val skillNames = installedSkillNames(deps.uninstallFileSystem, stateRoot.resolve("installed-skills"))
     val legacyNames = legacySkillNames(skillNames)
-    val claudeTargets = installAgentService.claudeRoots(home, state.environment).flatMap { root ->
+    val claudeTargets = deps.installAgentService.claudeRoots(home, inputs.environment).flatMap { root ->
       listOf(root.resolve("skills"), root.resolve("commands"))
     }
-    val codexTargets = installAgentService.codexRoots(home, state.environment).map { root -> root.resolve("skills") }
+    val codexTargets = deps.installAgentService.codexRoots(home, inputs.environment)
+      .map { root -> root.resolve("skills") }
     val agentTargets = listOf(
       home.resolve(".copilot/skills"),
       home.resolve(".agents/skills"),
@@ -77,7 +87,7 @@ class UninstallCommand(
       home.resolve(".cursor/skills"),
     ) + claudeTargets + codexTargets
     val stateRuntimeRoot = stateRoot.resolve("runtime")
-    val binDir = state.environment["SKILL_BILL_BIN_DIR"]?.let(Path::of) ?: home.resolve(".local/bin")
+    val binDir = inputs.environment["SKILL_BILL_BIN_DIR"]?.let(Path::of) ?: home.resolve(".local/bin")
     return UninstallPlan(
       home = home,
       stateRoot = stateRoot,
@@ -94,7 +104,8 @@ class UninstallCommand(
         home = home,
         binDir = binDir,
         desktopAppDir = desktopAppDir,
-        environment = state.environment,
+        environment = inputs.environment,
+        os = currentOs(deps.hostPlatform.osName),
       ),
     )
   }
@@ -104,15 +115,15 @@ class UninstallCommand(
     val skipped = mutableListOf<String>()
     val warnings = mutableListOf<String>()
 
-    cleanupAgentInstallTargets(plan, installAgentService, removed, skipped, warnings)
-    cleanupNativeAgentInstallLinks(plan, nativeAgentInstallService, uninstallFileSystem, removed, warnings)
-    cleanupMcpRegistrations(plan, mcpRegistrationService, removed, warnings)
+    cleanupAgentInstallTargets(plan, deps.installAgentService, removed, skipped, warnings)
+    cleanupNativeAgentInstallLinks(plan, deps.nativeAgentInstallService, deps.uninstallFileSystem, removed, warnings)
+    cleanupMcpRegistrations(plan, deps.mcpRegistrationService, removed, warnings)
 
     plan.launchers.forEach { launcher ->
-      removeLauncher(uninstallFileSystem, launcher, removed, skipped, warnings)
+      removeLauncher(deps.uninstallFileSystem, launcher, removed, skipped, warnings)
     }
-    removeDesktop(uninstallFileSystem, plan.desktop, removed, skipped, warnings)
-    removeRecursively(uninstallFileSystem, plan.stateRoot, removed, warnings)
+    removeDesktop(deps.uninstallFileSystem, plan.desktop, removed, skipped, warnings)
+    removeRecursively(deps.uninstallFileSystem, plan.stateRoot, removed, warnings)
 
     return UninstallResult(
       status = if (warnings.isEmpty()) "completed" else "completed_with_warnings",
@@ -123,7 +134,7 @@ class UninstallCommand(
   }
 
   private fun confirmed(plan: UninstallPlan): Boolean {
-    state.liveStdout(plan.confirmationText())
+    inputs.liveStdout(plan.confirmationText())
     val answer = state.readInputLine()?.trim().orEmpty()
     return answer.equals("y", ignoreCase = true) || answer.equals("yes", ignoreCase = true)
   }
@@ -233,8 +244,8 @@ private fun desktopPlan(
   binDir: Path,
   desktopAppDir: String?,
   environment: Map<String, String>,
+  os: DesktopOs,
 ): DesktopRemoval {
-  val os = currentOs()
   val appDir = desktopAppDir?.let(Path::of) ?: defaultDesktopAppDir(home, environment, os)
   val executable = when (os) {
     DesktopOs.WINDOWS -> appDir.resolve("SkillBill.exe")
@@ -274,8 +285,8 @@ private fun defaultDesktopAppDir(home: Path, environment: Map<String, String>, o
     .resolve("skillbill/desktop/SkillBill")
 }
 
-private fun currentOs(): DesktopOs {
-  val osName = System.getProperty("os.name").lowercase()
+private fun currentOs(rawOsName: String): DesktopOs {
+  val osName = rawOsName.lowercase()
   return when {
     "mac" in osName || "darwin" in osName -> DesktopOs.MAC
     "win" in osName -> DesktopOs.WINDOWS

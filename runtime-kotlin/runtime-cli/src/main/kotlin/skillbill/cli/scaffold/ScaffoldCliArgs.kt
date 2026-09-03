@@ -5,13 +5,17 @@ import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.scaffold.ScaffoldService
 import skillbill.application.scaffold.UnsupportedScaffoldService
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.model.CliFormat
+import java.time.Clock
 
 internal data class NativeScaffoldRunArgs(
   val dryRun: Boolean,
   val format: CliFormat,
   val state: CliRunState,
+  val inputs: CliRunInputs,
+  val clock: Clock,
   val scaffoldService: ScaffoldService,
   val externalAddonOverlayService: ExternalAddonOverlayService? = null,
 )
@@ -46,6 +50,8 @@ internal data class CreateAndFillArgs(
   val dryRun: Boolean,
   val format: CliFormat,
   val state: CliRunState,
+  val inputs: CliRunInputs,
+  val clock: Clock,
   val scaffoldService: ScaffoldService,
   val unsupportedScaffoldService: UnsupportedScaffoldService,
 )
@@ -57,19 +63,5 @@ internal data class NewAddonPayloadArgs(
   val bodyFile: String?,
   val addonLocationPath: String?,
   val consumerSkillDirs: List<String>,
-  val state: CliRunState,
-)
-
-internal fun nativeScaffoldRunArgs(
-  dryRun: Boolean,
-  format: CliFormat,
-  state: CliRunState,
-  scaffoldService: ScaffoldService,
-  externalAddonOverlayService: ExternalAddonOverlayService? = null,
-) = NativeScaffoldRunArgs(
-  dryRun = dryRun,
-  format = format,
-  state = state,
-  scaffoldService = scaffoldService,
-  externalAddonOverlayService = externalAddonOverlayService,
+  val inputs: CliRunInputs,
 )

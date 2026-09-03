@@ -9,7 +9,7 @@ import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 
 internal fun validateGoalRunInputs(args: GoalRunInputValidationArgs) {
-  val invokedAgentId = resolveInvokedAgentId(args.agent, args.state.environment)
+  val invokedAgentId = resolveInvokedAgentId(args.agent, args.inputs.environment)
   requireSupportedOptionalAgentId(args.agentOverride, "--agent-override")
   refuseUnavailableAgentLaunchers(listOf(invokedAgentId, args.agentOverride), args.executableLookup)
   val usageError = when {
@@ -32,7 +32,7 @@ internal fun hydrateGoalRunAgentAddonSelection(args: GoalRunAgentAddonHydrationA
       consumer = AgentAddonConsumer.BILL_FEATURE,
       receivingAgentIds = args.receivingAgents,
       externalSourceRoots = args.externalAgentAddonSourceConfigPort.readExternalAgentAddonSources(
-        ExternalAgentAddonSourceConfigRequest(args.state.userHome, args.state.environment),
+        ExternalAgentAddonSourceConfigRequest(args.inputs.userHome, args.inputs.environment),
       ).sources.map { it.path },
     )
   } else if (persistedSelection.entries.isEmpty()) {

@@ -8,6 +8,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.DocumentedNoOpCliCommand
@@ -34,6 +35,7 @@ class AgentAddonResolveSelectionCommand(
   private val resolver: AgentAddonSelectionPort,
   private val externalSourceConfig: ExternalAgentAddonSourceConfigPort,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("resolve-selection", "Resolve ordered agent-addon:<slug> tokens without side effects.") {
   private val tokens by option("--token", help = "Ordered agent-addon:<slug> token.").multiple()
   private val receivingAgents by option("--receiving-agent", help = "Agent that will receive the selection.").multiple()
@@ -54,7 +56,7 @@ class AgentAddonResolveSelectionCommand(
         AgentAddonConsumer.BILL_FEATURE,
         receivingAgents,
         externalSourceConfig.readExternalAgentAddonSources(
-          ExternalAgentAddonSourceConfigRequest(state.userHome, state.environment),
+          ExternalAgentAddonSourceConfigRequest(inputs.userHome, inputs.environment),
         ).sources.map { it.path },
       )
       linkedMapOf(

@@ -10,6 +10,7 @@ import com.github.ajalt.clikt.parameters.types.choice
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.scaffold.ScaffoldService
 import skillbill.application.scaffold.UnsupportedScaffoldService
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
@@ -166,6 +167,7 @@ open class WrapperRegenerationCommand(
 @Inject
 class EditSkillCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val scaffoldService: ScaffoldService,
   private val unsupportedScaffoldService: UnsupportedScaffoldService,
 ) : DocumentedCliCommand("edit", "Edit a content-managed skill's authored content.md and validate render output.") {
@@ -180,7 +182,7 @@ class EditSkillCommand(
   override fun run() {
     state.result = editSkillResult(
       EditSkillRunArgs(
-        state = state,
+        inputs = inputs,
         scaffoldService = scaffoldService,
         unsupportedScaffoldService = unsupportedScaffoldService,
         skillName = skillName,
@@ -197,6 +199,7 @@ class EditSkillCommand(
 @Inject
 class FillSkillCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val scaffoldService: ScaffoldService,
 ) : DocumentedCliCommand("fill", "Write authored content into content.md and validate render output.") {
   private val skillName by argument(help = "Governed skill name to fill.")
@@ -210,7 +213,7 @@ class FillSkillCommand(
   override fun run() {
     state.result = fillSkillResult(
       FillSkillRunArgs(
-        state = state,
+        inputs = inputs,
         scaffoldService = scaffoldService,
         skillName = skillName,
         repoRoot = repoRoot,

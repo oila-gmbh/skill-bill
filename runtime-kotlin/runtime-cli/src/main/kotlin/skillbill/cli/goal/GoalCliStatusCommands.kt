@@ -10,6 +10,7 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.error.DatabaseAccessError
@@ -22,6 +23,7 @@ import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_LINES
 class GoalStatusCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("status", "Show read-only decomposed goal status.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val monitorOnly by option(
@@ -72,7 +74,7 @@ class GoalStatusCommand(
       throw UsageError("Monitor accepts only one bounded status snapshot; omit diff options.")
     }
     val projection = try {
-      goalRunnerStatusService.status(state.goalStatusRequest(options))
+      goalRunnerStatusService.status(inputs.goalStatusRequest(options))
     } catch (error: DatabaseAccessError) {
       if (!options.monitorOnly) throw error
       val payload = databaseUnavailableGoalStatusCliMap(issueKey, error)
@@ -108,6 +110,7 @@ class GoalStatusCommand(
 class GoalWatchCommand(
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand("watch", "Refresh decomposed goal status without starting child runs.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val agent by option(
@@ -171,7 +174,7 @@ class GoalWatchCommand(
     while (true) {
       refreshCount += 1
       val projection = goalRunnerStatusService.statusRefresh(
-        state.goalStatusRequest(statusCliRequestOptions()),
+        inputs.goalStatusRequest(statusCliRequestOptions()),
       )
       val refresh = projection.toGoalStatusCliMap(issueKey).withWatchRefresh(refreshCount)
       latestRefresh = refresh
@@ -193,7 +196,7 @@ class GoalWatchCommand(
       val refreshChanged = lastPrintedRefresh == null || normalizedRefresh != lastPrintedRefresh
       val shouldPrintRefresh = endsLoop || showUnchanged || !suppressUnchanged || refreshChanged
       if (shouldPrintRefresh) {
-        state.liveStdout(renderedRefresh)
+        inputs.liveStdout(renderedRefresh)
         lastPrintedRefresh = normalizedRefresh
       }
       if (endsLoop) {

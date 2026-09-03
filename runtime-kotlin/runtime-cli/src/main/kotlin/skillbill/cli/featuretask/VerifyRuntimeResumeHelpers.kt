@@ -9,9 +9,9 @@ internal fun verifyRuntimeResume(args: VerifyRuntimeResumeArgs) {
   val effectiveRoot = resumeRepositoryRoot(args.repoRoot, Path.of(args.specPath))
   val identity = repositoryIdentity(effectiveRoot)
   val result = if (args.goalChild) {
-    args.lookupService.lookupGoalChild(args.issueKey, identity, args.workflowId, args.state.dbOverride)
+    args.lookupService.lookupGoalChild(args.issueKey, identity, args.workflowId, args.inputs.dbPathOverride)
   } else {
-    args.lookupService.lookup(args.issueKey, identity, args.workflowId, args.state.dbOverride)
+    args.lookupService.lookup(args.issueKey, identity, args.workflowId, args.inputs.dbPathOverride)
   }
   val candidate = resumableRuntimeCandidate(args.workflowId, result)
   requireRuntimeMode(args.workflowId, candidate.mode)

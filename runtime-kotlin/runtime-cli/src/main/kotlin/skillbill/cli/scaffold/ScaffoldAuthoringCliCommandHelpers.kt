@@ -3,13 +3,13 @@ package skillbill.cli.scaffold
 import com.github.ajalt.clikt.core.UsageError
 import skillbill.application.scaffold.ScaffoldService
 import skillbill.application.scaffold.UnsupportedScaffoldService
-import skillbill.cli.core.CliRunState
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
 import java.nio.file.Path
 
 internal data class EditSkillRunArgs(
-  val state: CliRunState,
+  val inputs: CliRunInputs,
   val scaffoldService: ScaffoldService,
   val unsupportedScaffoldService: UnsupportedScaffoldService,
   val skillName: String,
@@ -21,7 +21,7 @@ internal data class EditSkillRunArgs(
 )
 
 internal data class FillSkillRunArgs(
-  val state: CliRunState,
+  val inputs: CliRunInputs,
   val scaffoldService: ScaffoldService,
   val skillName: String,
   val repoRoot: String,
@@ -54,7 +54,7 @@ internal fun editSkillResult(args: EditSkillRunArgs): CliExecutionResult = when 
       args.scaffoldService.editWithBodyFile(
         Path.of(args.repoRoot),
         args.skillName,
-        readCliTextFile(args.bodyFile, args.state),
+        readCliTextFile(args.bodyFile, args.inputs),
         args.section,
       ).toCliMap()
     }
@@ -78,7 +78,7 @@ internal fun fillSkillResult(args: FillSkillRunArgs): CliExecutionResult = when 
       args.scaffoldService.fill(
         Path.of(args.repoRoot),
         args.skillName,
-        args.body ?: readCliTextFile(args.bodyFile.orEmpty(), args.state),
+        args.body ?: readCliTextFile(args.bodyFile.orEmpty(), args.inputs),
         args.section,
       ).toCliMap()
     }

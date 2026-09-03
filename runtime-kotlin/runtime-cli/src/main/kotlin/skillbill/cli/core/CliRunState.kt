@@ -1,19 +1,9 @@
 package skillbill.cli.core
 
-import me.tatarka.inject.annotations.Inject
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
-import java.nio.file.Path
 
-@Inject
-class CliRunState {
-  var dbOverride: String? = null
-  var stdinText: String? = null
-  var environment: Map<String, String> = System.getenv()
-  var externalCommandRunner: ExternalCommandRunner = ProcessExternalCommandRunner
-  var userHome: Path = Path.of(System.getProperty("user.home"))
-  var liveStdout: (String) -> Unit = {}
-  var liveStderr: (String) -> Unit = {}
+class CliRunState(private val stdinText: String?) {
   var result: CliExecutionResult? = null
   private var stdinLineIterator: Iterator<String>? = null
 

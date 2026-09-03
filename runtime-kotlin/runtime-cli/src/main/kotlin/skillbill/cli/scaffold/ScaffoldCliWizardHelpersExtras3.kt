@@ -1,35 +1,38 @@
 package skillbill.cli.scaffold
 
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.install.model.InstallAgent
 
-internal fun agentAddonWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+internal fun agentAddonWizardPayload(state: CliRunState, inputs: CliRunInputs): Map<String, Any?> = buildMap {
   putScaffoldBase("agent-addon")
-  put("slug", promptRequired(state, "Agent add-on slug"))
-  put("description", promptRequired(state, "Description"))
-  state.liveStdout("Supported agents: ${InstallAgent.supportedIds.joinToString(", ")}\n")
-  put("agent_ids", requiredCommaSeparated(state, "Agent IDs (comma-separated)"))
-  put("consumers", requiredCommaSeparated(state, "Consumers (comma-separated, supported: bill-feature)"))
+  put("slug", promptRequired(state, inputs, "Agent add-on slug"))
+  put("description", promptRequired(state, inputs, "Description"))
+  inputs.liveStdout("Supported agents: ${InstallAgent.supportedIds.joinToString(", ")}\n")
+  put("agent_ids", requiredCommaSeparated(state, inputs, "Agent IDs (comma-separated)"))
+  put("consumers", requiredCommaSeparated(state, inputs, "Consumers (comma-separated, supported: bill-feature)"))
 }
 
 internal fun platformPackWizardPayload(
   state: CliRunState,
+  inputs: CliRunInputs,
   platformPackPresets: Map<String, String>,
 ): Map<String, Any?> = buildMap {
   putScaffoldBase("platform-pack")
-  val platform = promptRequired(state, "Platform slug")
+  val platform = promptRequired(state, inputs, "Platform slug")
   put("platform", platform)
-  promptOptional(state, "Display name").ifNotBlank { displayName -> put("display_name", displayName) }
-  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
-  promptRoutingSignals(state, platform, platform in platformPackPresets)
+  promptOptional(state, inputs, "Display name").ifNotBlank { displayName -> put("display_name", displayName) }
+  promptOptional(state, inputs, "Description").ifNotBlank { description -> put("description", description) }
+  promptRoutingSignals(state, inputs, platform, platform in platformPackPresets)
     .ifNotEmpty { signals -> put("routing_signals", mapOf("strong" to signals)) }
 }
 
 internal fun assistedPlatformPackWizardPayload(
   state: CliRunState,
+  inputs: CliRunInputs,
   platformPackPresets: Map<String, String>,
 ): Map<String, Any?> {
-  val platformInput = promptRequired(state, "Language or platform")
+  val platformInput = promptRequired(state, inputs, "Language or platform")
   return assistedPlatformPackPayload(platformInput, platformPackPresets)
 }
 

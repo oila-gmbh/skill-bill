@@ -1,18 +1,19 @@
 package skillbill.cli.scaffold
 
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.scaffold.model.command.isRetiredPartialScaffoldCommandKindAlias
 import skillbill.scaffold.model.command.rejectRetiredPartialScaffoldCommandKind
 
-internal fun addOnWizardPayload(state: CliRunState): Map<String, Any?> = buildMap {
+internal fun addOnWizardPayload(state: CliRunState, inputs: CliRunInputs): Map<String, Any?> = buildMap {
   putScaffoldBase("add-on")
-  put("platform", promptRequired(state, "Platform slug"))
-  put("name", promptRequired(state, "Add-on name"))
-  when (normalizeAddOnLocationMode(promptDefault(state, "Add-on source (native/external)", "native"))) {
+  put("platform", promptRequired(state, inputs, "Platform slug"))
+  put("name", promptRequired(state, inputs, "Add-on name"))
+  when (normalizeAddOnLocationMode(promptDefault(state, inputs, "Add-on source (native/external)", "native"))) {
     "native" -> Unit
-    "external" -> put("addon_location_path", promptRequired(state, "External add-on source path"))
+    "external" -> put("addon_location_path", promptRequired(state, inputs, "External add-on source path"))
   }
-  promptOptional(state, "Description").ifNotBlank { description -> put("description", description) }
+  promptOptional(state, inputs, "Description").ifNotBlank { description -> put("description", description) }
 }
 
 internal fun MutableMap<String, Any?>.putScaffoldBase(kind: String) {
@@ -32,8 +33,8 @@ internal fun normalizeWizardKind(value: String): String = when (value.trim().low
   }
 }
 
-internal fun requiredCommaSeparated(state: CliRunState, label: String): List<String> =
-  parseCommaSeparated(promptRequired(state, label)).also { values ->
+internal fun requiredCommaSeparated(state: CliRunState, inputs: CliRunInputs, label: String): List<String> =
+  parseCommaSeparated(promptRequired(state, inputs, label)).also { values ->
     require(values.isNotEmpty()) { "Missing required scaffold wizard value: $label." }
   }
 
@@ -43,44 +44,49 @@ internal fun normalizeAddOnLocationMode(value: String): String = when (value.tri
   else -> throw IllegalArgumentException("Unsupported add-on source '$value'. Use native or external.")
 }
 
-internal fun promptDefault(state: CliRunState, label: String, default: String): String {
-  val value = promptOptional(state, label)
+internal fun promptDefault(state: CliRunState, inputs: CliRunInputs, label: String, default: String): String {
+  val value = promptOptional(state, inputs, label)
   return value.ifBlank { default }
 }
 
-internal fun promptRoutingSignals(state: CliRunState, platform: String, hasPreset: Boolean): List<String> {
+internal fun promptRoutingSignals(
+  state: CliRunState,
+  inputs: CliRunInputs,
+  platform: String,
+  hasPreset: Boolean,
+): List<String> {
   if (hasPreset) {
-    state.liveStdout(
+    inputs.liveStdout(
       "Built-in routing preset found for '$platform'. Press Enter to use it, or enter comma-separated " +
         "replacement signals such as file extensions, filenames, or directory markers.\n",
     )
-    return parseCommaSeparated(promptOptional(state, "Routing signal override (optional, comma-separated)"))
+    return parseCommaSeparated(promptOptional(state, inputs, "Routing signal override (optional, comma-separated)"))
   }
-  state.liveStdout(
+  inputs.liveStdout(
     "Routing signals tell Skill Bill when to use this platform pack. Enter comma-separated text " +
       "markers that strongly identify the stack in changed files, repo markers, or dependency manifests.\n" +
       "Use file extensions (.kt, .go), filenames (go.mod, package.json), directories (src/main/java), " +
       "dependency coordinates, or language markers.\n",
   )
-  val signals = parseCommaSeparated(promptRequired(state, "Strong routing signals (comma-separated)"))
+  val signals = parseCommaSeparated(promptRequired(state, inputs, "Strong routing signals (comma-separated)"))
   require(signals.isNotEmpty()) {
     "Missing required scaffold wizard value: Strong routing signals (comma-separated)."
   }
   return signals
 }
 
-internal fun promptAssistedAgent(state: CliRunState, detectedAgents: List<String>): String {
+internal fun promptAssistedAgent(state: CliRunState, inputs: CliRunInputs, detectedAgents: List<String>): String {
   val agents = detectedAgents.distinct().sorted()
   if (agents.isEmpty()) {
-    state.liveStdout("No installed agents detected; using local deterministic assistance.\n")
+    inputs.liveStdout("No installed agents detected; using local deterministic assistance.\n")
     return "local"
   }
-  state.liveStdout(
+  inputs.liveStdout(
     "Available agents:\n" +
       agents.mapIndexed { index, agent -> "  ${index + 1}. $agent" }.joinToString(separator = "\n") +
       "\n",
   )
-  val selected = promptDefault(state, "Agent [1]", "1")
+  val selected = promptDefault(state, inputs, "Agent [1]", "1")
   val byNumber = selected.toIntOrNull()?.let { number -> agents.getOrNull(number - 1) }
   val byName = agents.firstOrNull { agent -> agent.equals(selected, ignoreCase = true) }
   return byNumber ?: byName ?: throw IllegalArgumentException(

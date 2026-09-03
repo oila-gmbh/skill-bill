@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.scaffold.RepoValidationService
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
@@ -17,11 +18,12 @@ import java.nio.file.Path
 @Inject
 class RepoValidationCliCommands(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val repoValidationService: RepoValidationService,
 ) {
   val commands = listOf(
     ValidateAgentConfigsCommand(state, repoValidationService),
-    ValidateReleaseRefCommand(state, repoValidationService),
+    ValidateReleaseRefCommand(state, inputs, repoValidationService),
   )
 }
 
@@ -64,6 +66,7 @@ class ValidateAgentConfigsCommand(
 
 class ValidateReleaseRefCommand(
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
   private val repoValidationService: RepoValidationService,
 ) : DocumentedCliCommand(
   "validate-release-ref",
@@ -83,8 +86,8 @@ class ValidateReleaseRefCommand(
 
   override fun run() {
     val rawRef = ref
-      ?: state.environment["GITHUB_REF_NAME"]
-      ?: state.environment["GITHUB_REF"]
+      ?: inputs.environment["GITHUB_REF_NAME"]
+      ?: inputs.environment["GITHUB_REF"]
     if (rawRef == null) {
       state.completeText(
         "No release ref supplied. Pass a tag or set GITHUB_REF_NAME.\n",

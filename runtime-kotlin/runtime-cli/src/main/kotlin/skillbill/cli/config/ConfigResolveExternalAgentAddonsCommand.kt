@@ -1,6 +1,7 @@
 package skillbill.cli.config
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.cli.core.CliRunInputs
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.error.ShellContentContractException
@@ -11,6 +12,7 @@ import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 class ConfigResolveExternalAgentAddonsCommand(
   private val config: ExternalAgentAddonSourceConfigPort,
   private val state: CliRunState,
+  private val inputs: CliRunInputs,
 ) : DocumentedCliCommand(
   "resolve-external-agent-addons",
   "Resolve external agent add-on sources from the machine-global config.json.",
@@ -18,7 +20,7 @@ class ConfigResolveExternalAgentAddonsCommand(
   override fun run() {
     val sources = try {
       config.readExternalAgentAddonSources(
-        ExternalAgentAddonSourceConfigRequest(state.userHome, state.environment),
+        ExternalAgentAddonSourceConfigRequest(inputs.userHome, inputs.environment),
       ).sources
     } catch (error: ShellContentContractException) {
       state.completeText(
