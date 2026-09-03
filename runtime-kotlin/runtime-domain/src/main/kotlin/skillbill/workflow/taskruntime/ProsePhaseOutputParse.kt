@@ -11,6 +11,11 @@ internal object ProsePhaseOutputParse {
   )
 
   private val STATUS_TOKENS: Set<String> = setOf("completed", "blocked", "failed")
+  private val STATUS_ALIASES: Map<String, String> = mapOf(
+    "complete" to "completed",
+    "block" to "blocked",
+    "fail" to "failed",
+  )
   private val AUDIT_VERDICTS: Set<String> = setOf("satisfied", "gaps_found")
   private val FENCED_JSON: Regex =
     Regex("```[ \\t]*[A-Za-z0-9_-]*\\r?\\n(.*?)```", RegexOption.DOT_MATCHES_ALL)
@@ -34,14 +39,17 @@ internal object ProsePhaseOutputParse {
     val parsedPhase = parsed["phase_id"]?.toString()
     if (parsedPhase != null && parsedPhase != phaseId) return false
     val parsedStatus = parsed["status"]?.toString()?.trim()?.lowercase()
-    return parsedStatus == null || parsedStatus in STATUS_TOKENS
+    return parsedStatus == null || canonicalStatus(parsedStatus) != null
   }
 
   fun recoverStatus(parsed: Map<String, Any?>): String? {
     val raw = parsed["status"]?.toString()?.trim()?.lowercase().orEmpty()
     if (raw.isEmpty()) return "completed"
-    return raw.takeIf { it in STATUS_TOKENS }
+    return canonicalStatus(raw)
   }
+
+  private fun canonicalStatus(lowercased: String): String? =
+    lowercased.takeIf { it in STATUS_TOKENS } ?: STATUS_ALIASES[lowercased]
 
   fun directValue(parsed: Map<String, Any?>): String? {
     val produced = JsonSupport.anyToStringAnyMap(parsed["produced_outputs"]) ?: return null
@@ -56,7 +64,18 @@ internal object ProsePhaseOutputParse {
         if (stuffed != null) return stuffed
       }
     }
+    listValue(parsed["produced_outputs"])?.let { return it }
     return LEGACY_VALUE_KEYS.firstNotNullOfOrNull { key -> stuffSibling(parsed[key]) }
+  }
+
+  private fun listValue(producedOutputs: Any?): String? {
+    val entries = (producedOutputs as? List<*>)?.takeIf { it.isNotEmpty() } ?: return null
+    val singleValue = entries.singleOrNull()
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get("value")
+      ?.toString()
+      ?.takeIf { it.any { ch -> !ch.isWhitespace() } }
+    return singleValue ?: stuffSibling(entries)
   }
 
   fun recoverPrompt(parsed: Map<String, Any?>?): String? {

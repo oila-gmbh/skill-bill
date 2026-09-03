@@ -105,6 +105,27 @@ class ProsePhaseOutputSynthesizerTest {
   }
 
   @Test
+  fun `produced_outputs as a name-value list under a near-miss status recovers instead of blocking`() {
+    val raw =
+      """
+      {
+        "contract_version": "0.6",
+        "phase_id": "implement",
+        "status": "complete",
+        "summary": "Applied every plan task.",
+        "tests_executed": [],
+        "produced_outputs": [ { "name": "implementation_receipt", "value": "implementation prose" } ]
+      }
+      """.trimIndent()
+
+    val envelope = assertNotNull(ProsePhaseOutputSynthesizer.trySynthesize(raw, "implement"))
+    val produced = assertNotNull(JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]))
+    assertEquals("implementation prose", produced["value"])
+    assertEquals("completed", envelope["status"])
+    assertNull(envelope["tests_executed"])
+  }
+
+  @Test
   fun `audit with verdict field synthesizes`() {
     val raw =
       """
