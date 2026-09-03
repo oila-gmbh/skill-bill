@@ -40,11 +40,11 @@ object ProsePhaseOutputSynthesizer {
       phaseId = phaseId,
       status = status,
       value = valueAndVerdict.first,
-      summary = ProsePhaseOutputParse.recoverSummary(parsed, valueAndVerdict.first),
-      prompt = ProsePhaseOutputParse.recoverPrompt(parsed),
+      summary = ProsePhaseOutputRecover.recoverSummary(parsed, valueAndVerdict.first),
+      prompt = ProsePhaseOutputRecover.recoverPrompt(parsed),
       verdict = valueAndVerdict.second,
       failureDisposition = if (status == "blocked" || status == "failed") {
-        ProsePhaseOutputParse.recoverFailureDisposition(parsed)
+        ProsePhaseOutputRecover.recoverFailureDisposition(parsed)
       } else {
         null
       },
@@ -56,11 +56,11 @@ object ProsePhaseOutputSynthesizer {
     phaseOutputText: String,
     phaseId: String,
   ): Pair<String, String?>? {
-    val existingValue = ProsePhaseOutputParse.directValue(parsed)
-    val value = existingValue ?: ProsePhaseOutputParse.recoverLegacyValue(parsed) ?: return null
+    val existingValue = ProsePhaseOutputRecover.directValue(parsed)
+    val value = existingValue ?: ProsePhaseOutputRecover.recoverLegacyValue(parsed) ?: return null
     if (existingValue != null && phaseId != PHASE_AUDIT) return null
     val verdict = if (phaseId == PHASE_AUDIT) {
-      ProsePhaseOutputParse.recoverAuditVerdict(parsed, phaseOutputText) ?: return null
+      ProsePhaseOutputRecover.recoverAuditVerdict(parsed, phaseOutputText) ?: return null
     } else {
       null
     }
