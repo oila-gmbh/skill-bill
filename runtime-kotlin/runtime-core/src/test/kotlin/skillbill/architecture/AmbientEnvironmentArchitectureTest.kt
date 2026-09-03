@@ -20,6 +20,51 @@ class AmbientEnvironmentArchitectureTest {
   }
 
   @Test
+  fun `runtime-application ambient environment sites equal the recorded census`() {
+    assertAmbientEnvironmentMatchesBaseline("runtime-application")
+  }
+
+  @Test
+  fun `runtime-contracts ambient environment sites equal the recorded census`() {
+    assertAmbientEnvironmentMatchesBaseline("runtime-contracts")
+  }
+
+  @Test
+  fun `runtime-core ambient environment sites equal the recorded census`() {
+    assertAmbientEnvironmentMatchesBaseline("runtime-core")
+  }
+
+  @Test
+  fun `runtime-domain ambient environment sites equal the recorded census`() {
+    assertAmbientEnvironmentMatchesBaseline("runtime-domain")
+  }
+
+  @Test
+  fun `runtime-infra-fs ambient environment sites equal the recorded census`() {
+    assertAmbientEnvironmentMatchesBaseline("runtime-infra-fs")
+  }
+
+  @Test
+  fun `runtime-infra-http ambient environment sites equal the recorded census`() {
+    assertAmbientEnvironmentMatchesBaseline("runtime-infra-http")
+  }
+
+  @Test
+  fun `runtime-infra-sqlite ambient environment sites equal the recorded census`() {
+    assertAmbientEnvironmentMatchesBaseline("runtime-infra-sqlite")
+  }
+
+  @Test
+  fun `runtime-mcp ambient environment sites equal the recorded census`() {
+    assertAmbientEnvironmentMatchesBaseline("runtime-mcp")
+  }
+
+  @Test
+  fun `runtime-ports ambient environment sites equal the recorded census`() {
+    assertAmbientEnvironmentMatchesBaseline("runtime-ports")
+  }
+
+  @Test
   fun `ambient environment scanner fires on every unlisted banned form`() {
     val source = """
       package skillbill.example
@@ -45,6 +90,22 @@ class AmbientEnvironmentArchitectureTest {
         "$EXAMPLE_PATH:9:Paths.get(\"\") is not listed in the ambient-environment baseline.",
       ),
       violations,
+    )
+  }
+
+  private fun assertAmbientEnvironmentMatchesBaseline(moduleName: String) {
+    val scanCase = PrincipleEnforcementInventory.moduleArchitectureScanCases
+      .single { scanCase -> scanCase.moduleName == moduleName }
+    val baseline = ArchitectureScanSupport.parseStringSetBaseline(
+      ArchitectureBaselineSupport.readBaseline(scanCase.ambientEnvironmentBaseline),
+    )
+    val current = ArchitectureScanSupport.ambientEnvironmentCallSites(scanCase.mainScanRoot)
+      .map { site -> ArchitectureScanSupport.encodeAmbientSite(site) }
+      .toSet()
+    assertEquals(
+      baseline,
+      current,
+      "Re-record ${scanCase.ambientEnvironmentBaseline} with RECORD_ARCHITECTURE_BASELINES=1.",
     )
   }
 

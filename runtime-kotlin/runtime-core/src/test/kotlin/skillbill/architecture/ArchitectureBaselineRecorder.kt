@@ -13,6 +13,15 @@ class ArchitectureBaselineRecorder {
     )
     Files.createDirectories(baselineDir)
 
+    recordLogicalTypeLineCeilingBaseline(baselineDir)
+    recordPackageCycleBaselines(baselineDir)
+    recordAmbientClockBaselines(baselineDir)
+    recordAmbientEnvironmentBaselines(baselineDir)
+    recordInjectDefaultBaselines(baselineDir)
+    recordSpilloverFileNameBaseline(baselineDir)
+  }
+
+  private fun recordLogicalTypeLineCeilingBaseline(baselineDir: Path) {
     val logicalCounts = ArchitectureScanSupport.logicalTypeLineCounts(
       productionRoots = listOf("runtime-kotlin", "intellij-plugin"),
     ).filter { (_, count) -> count > PrincipleEnforcementInventory.PRODUCTION_LINE_CEILING }
@@ -20,34 +29,61 @@ class ArchitectureBaselineRecorder {
       baselineDir.resolve("logical-type-line-ceiling-baseline.txt"),
       logicalCounts.entries.sortedBy { it.key }.joinToString("\n") { (fqn, count) -> "$fqn $count" } + "\n",
     )
+  }
 
-    writePackageCycleBaseline(
-      baselineDir.resolve("application-package-cycle-baseline.txt"),
-      PrincipleEnforcementInventory.RUNTIME_APPLICATION_MAIN,
-      PrincipleEnforcementInventory.APPLICATION_PACKAGE_PREFIX,
-    )
-    writePackageCycleBaseline(
-      baselineDir.resolve("runtime-cli-package-cycle-baseline.txt"),
-      PrincipleEnforcementInventory.RUNTIME_CLI_MAIN,
-      PrincipleEnforcementInventory.CLI_PACKAGE_PREFIX,
-    )
+  private fun recordPackageCycleBaselines(baselineDir: Path) {
+    PrincipleEnforcementInventory.moduleArchitectureScanCases.forEach { scanCase ->
+      writePackageCycleBaseline(
+        baselineDir.resolve(scanCase.packageCycleBaseline),
+        scanCase.mainScanRoot,
+        scanCase.packagePrefix,
+      )
+    }
+  }
 
-    writeAmbientBaseline(
-      baselineDir.resolve("runtime-application-ambient-clock-baseline.txt"),
-      ArchitectureScanSupport.ambientClockCallSites(PrincipleEnforcementInventory.RUNTIME_APPLICATION_MAIN),
-    )
-    writeAmbientBaseline(
-      baselineDir.resolve("runtime-cli-ambient-clock-baseline.txt"),
-      ArchitectureScanSupport.ambientClockCallSites(PrincipleEnforcementInventory.RUNTIME_CLI_MAIN),
-    )
-    writeAmbientBaseline(
-      baselineDir.resolve("runtime-cli-ambient-environment-baseline.txt"),
-      ArchitectureScanSupport.ambientEnvironmentCallSites(PrincipleEnforcementInventory.RUNTIME_CLI_MAIN),
-    )
+  private fun recordAmbientClockBaselines(baselineDir: Path) {
+    PrincipleEnforcementInventory.moduleArchitectureScanCases.forEach { scanCase ->
+      writeAmbientBaseline(
+        baselineDir.resolve(scanCase.ambientClockBaseline),
+        ArchitectureScanSupport.ambientClockCallSites(scanCase.mainScanRoot),
+      )
+    }
+  }
 
-    writeInjectDefaultBaseline(
-      baselineDir.resolve("runtime-cli-inject-constructor-defaults-baseline.txt"),
-      PrincipleEnforcementInventory.RUNTIME_CLI_MAIN,
+  private fun recordAmbientEnvironmentBaselines(baselineDir: Path) {
+    PrincipleEnforcementInventory.moduleArchitectureScanCases.forEach { scanCase ->
+      writeAmbientBaseline(
+        baselineDir.resolve(scanCase.ambientEnvironmentBaseline),
+        ArchitectureScanSupport.ambientEnvironmentCallSites(scanCase.mainScanRoot),
+      )
+    }
+  }
+
+  private fun recordInjectDefaultBaselines(baselineDir: Path) {
+    PrincipleEnforcementInventory.moduleArchitectureScanCases
+      .mapNotNull { scanCase ->
+        scanCase.injectDefaultsBaseline?.let { baselineName -> scanCase to baselineName }
+      }
+      .filterNot { (scanCase, _) -> scanCase.moduleName == "runtime-application" }
+      .forEach { (scanCase, baselineName) ->
+        writeInjectDefaultBaseline(
+          baselineDir.resolve(baselineName),
+          scanCase.mainScanRoot,
+        )
+      }
+  }
+
+  private fun recordSpilloverFileNameBaseline(baselineDir: Path) {
+    val scanRoots = PrincipleEnforcementInventory.moduleArchitectureScanCases.map { scanCase ->
+      scanCase.moduleSourceRoot
+    }
+    val paths = ArchitectureScanSupport.spilloverFileNamePaths(
+      scanRoots = scanRoots,
+      exemptPaths = PrincipleEnforcementInventory.spilloverFileNameExemptions,
+    )
+    Files.writeString(
+      baselineDir.resolve(PrincipleEnforcementInventory.SPILLOVER_FILE_NAME_BASELINE),
+      paths.sorted().joinToString("\n") + "\n",
     )
   }
 

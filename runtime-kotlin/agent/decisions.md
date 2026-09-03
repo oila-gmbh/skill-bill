@@ -12,6 +12,20 @@ Reason: Shrink-only measurement did its job; an empty floor is the enforceable t
 Alternatives considered: Keep a non-empty shrink-only residual (rejected: would allow the debt to persist indefinitely). Raise the ceiling or add exemptions (rejected: defeats the guard). Permit Helpers/Extras splits when a type is near 500 lines (rejected: that is how the prior evasion landed).
 Revisit when: a measured logical type legitimately cannot be split without harming a boundary, and the alternative is an explicit named exemption with rationale — not a suffix file.
 
+## [2026-09-03] Shrink-only infra ambient-environment baselines
+Context: SKILL-231 subtask 1 records ambient-environment baselines for every module. The three `runtime-infra-*` modules legitimately read host environment variables and working-directory paths inside filesystem, HTTP, and SQLite adapters.
+Decision: `runtime-infra-fs`, `runtime-infra-http`, and `runtime-infra-sqlite` ambient-environment baselines are shrink-only ceilings, not targets that must reach zero. Reading the host environment is what an adapter does; the boundary is that a policy decision may not depend on an ambient read.
+Reason: Empty-by-rule baselines from the 2026-09-02 permanent-floor decision bind only the eight baselines that were already empty on main. Module baselines recorded in SKILL-231 are shrink-only ceilings that may only shrink.
+Alternatives considered: Force infra baselines to zero in this subtask (rejected: would require rewriting every adapter before measurement lands). Treat infra reads as permanent baseline entries with no shrink path (rejected: adapter refactors should still be able to narrow ambient coupling over time).
+Revisit when: a refactor removes the last ambient read from an infra module and the recorder empties that module's baseline.
+
+## [2026-09-03] Single runtime-core composition ambient seam
+Context: SKILL-231 widens ambient-environment measurement to every module. `runtime-core` composition reads ambient input at `RuntimeComponentBindingsA1.runtimeContext`.
+Decision: That seam is the single named composition entry point for ambient input. It is documented here rather than treated as a permanent baseline entry to shrink away.
+Reason: Empty-by-rule baselines from the 2026-09-02 permanent-floor decision bind only the eight baselines that were already empty on main. Module baselines recorded in SKILL-231 are shrink-only ceilings; the composition seam is an intentional boundary, not debt to baseline away.
+Alternatives considered: Add the seam to the ambient-environment baseline permanently (rejected: would block the one legitimate composition read). Exempt `runtime-core` from ambient-environment scanning (rejected: would leave the module unmeasured).
+Revisit when: composition can receive ambient input only through an injected port with no direct `System.getenv` / `Path.of("")` call sites outside tests.
+
 ## [2026-08-31] RuntimeSingleton lives in skillbill.application.runtime
 Context: SKILL-227 subtask 1 needed a kotlin-inject scope for services that hold caches, connections, or leases. Placing `@RuntimeSingleton` under `skillbill.di` failed `ImplementationOwnershipArchitectureTest`.
 Decision: Define `@RuntimeSingleton` in `skillbill.application.runtime` and apply `@Provides @RuntimeSingleton` on composition-root bindings unchanged.

@@ -1,0 +1,9 @@
+agentaddon|install
+infrastructure|install
+infrastructure|launcher
+infrastructure|nativeagent
+infrastructure|scaffold
+install|launcher
+install|nativeagent
+install|scaffold
+nativeagent|scaffold

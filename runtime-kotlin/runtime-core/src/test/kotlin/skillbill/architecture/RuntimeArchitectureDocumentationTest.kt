@@ -55,7 +55,7 @@ class RuntimeArchitectureDocumentationTest {
     assertContains(architecture, "UninstallMutationRecorder")
     assertContains(architecture, DRAIN_ABANDONMENT_POLICY)
     assertContains(architecture, "RuntimeCliAreaIsolationArchitectureTest")
-    assertContains(architecture, "RuntimeCliSpilloverFileNameArchitectureTest")
+    assertContains(architecture, "RuntimeSpilloverFileNameArchitectureTest")
     assertContains(architecture, AREA_ISOLATION_GUARDRAIL)
     assertContains(architecture, SPILLOVER_FILENAME_GUARDRAIL)
     assertFalse(architecture.contains("Temporary SKILL-52 blocker"))
@@ -177,8 +177,9 @@ class RuntimeArchitectureDocumentationTest {
         "area and never the composition root `skillbill.cli.core`."
 
     const val SPILLOVER_FILENAME_GUARDRAIL =
-      "- No `runtime-cli` file carries the `*Extras`, `*Extras2`, or `*Extras3`\n  " +
-        "filename signature outside a named exemption."
+      "- No runtime module source file carries the spillover filename signature\n  " +
+        "(`*Extras`, `*Continued`, `*Helpers<N>`, `*Fns<N>`, `*Support<N>`, letter-plus-digit,\n  " +
+        "or bare trailing-digit siblings) outside a named exemption."
 
     const val CONTRACTS_NO_LONGER_OWNS_VALIDATORS =
       "It no longer owns the JSON-Schema\n  validators or their schema-resource copy tasks; " +

@@ -1371,8 +1371,9 @@ The architecture tests enforce the following rules:
 - Every `runtime-cli` command area's transitive `skillbill.cli` import closure
   contains only the shared `kernel` and `model` leaves, never a sibling command
   area and never the composition root `skillbill.cli.core`.
-- No `runtime-cli` file carries the `*Extras`, `*Extras2`, or `*Extras3`
-  filename signature outside a named exemption.
+- No runtime module source file carries the spillover filename signature
+  (`*Extras`, `*Continued`, `*Helpers<N>`, `*Fns<N>`, `*Support<N>`, letter-plus-digit,
+  or bare trailing-digit siblings) outside a named exemption.
 - A failed `uninstall` mutation is a recorded degradation with a non-zero exit
   code, shared by launcher removal, desktop removal, recursive tree removal,
   agent-target cleanup, native-agent unlinking, and MCP unregistration.
@@ -1425,9 +1426,9 @@ second copy of a scanner scoped to another module is not an acceptable
 substitute.
 
 `AmbientEnvironmentArchitectureTest` bans `System.getenv`, `System.getProperty`,
-`Path.of("")`, and `Paths.get("")` in `runtime-cli` main source. Its scope is
-the scan root plus a recorded baseline, with no per-pattern carve-outs; test
-infrastructure stays outside the scanned root.
+`Path.of("")`, and `Paths.get("")` under a parameterized scan root. Its scope is
+the scan root plus a recorded baseline per module, with no per-pattern carve-outs;
+test infrastructure stays outside the scanned root.
 
 The four `runtime-cli` baselines started as a census — 16 mutual-import pairs, 2
 ambient-clock sites, 22 ambient-environment sites, and `CliRunState`'s 8
@@ -1455,12 +1456,44 @@ command area. `install` therefore owns its own command tree and top-level
 group, and the units two command areas share — the completion telemetry drain
 and the `WorkflowUpdateResult` payload mapper — live in `skillbill.cli.kernel`.
 
-`RuntimeCliSpilloverFileNameArchitectureTest` bans the `*Extras`, `*Extras2`,
-and `*Extras3` filename signature across all `runtime-cli` source. Exemptions
-are a named list on `PrincipleEnforcementInventory`, empty by rule, never an
-ad-hoc regex carve-out. The 500-line per-file ceiling is not relaxed to absorb
-re-merged spillover units: passing this guard by concatenating files back
-together fails the logical-type ceiling instead.
+`RuntimeSpilloverFileNameArchitectureTest` bans the spillover filename signature
+across every module source root. Exemptions are a named list on
+`PrincipleEnforcementInventory`, empty by rule, never an ad-hoc regex carve-out.
+The 500-line per-file ceiling is not relaxed to absorb re-merged spillover
+units: passing this guard by concatenating files back together fails the
+logical-type ceiling instead.
+
+### SKILL-231 inward-layer guardrails
+
+The package-acyclicity, ambient-clock, ambient-environment, and
+`@Inject`-defaults scanners are instantiated once per Gradle module through
+`PrincipleEnforcementInventory.moduleArchitectureScanCases`, driven by
+`RuntimeModuleCatalog.declaredGradleModules`. Each case supplies its own main
+scan root and package prefix (or scan root alone for ambient-environment and
+inject-defaults) rather than forking a second scanner class.
+
+`AmbientEnvironmentArchitectureTest` takes its scan root as a parameter; every
+module main source root has a recorded baseline. The `runtime-cli` baseline
+remains empty by rule.
+
+`RuntimeSpilloverFileNameArchitectureTest` scans every module's `src` tree
+(main and test), matching `*Extras`, `*Continued`, `*Helpers<N>`, `*Fns<N>`,
+`*Support<N>`, letter-plus-digit suffixes, and bare trailing-digit names when a
+de-digited or differently digitized sibling exists in the same package directory.
+Violations are keyed on repository-relative paths in
+`baselines/spillover-file-name-baseline.txt`.
+
+`RuntimeCoreCompositionOnlyTest` pins every module's `api(project(...))` and
+`implementation(project(...))` sets to today's edges, alongside the retained
+infrastructure-and-entrypoint `api` ban on `runtime-core`. The three
+`runtime-infra-*` modules' `api(:runtime-ports)` and `api(:runtime-domain)` edges
+are recorded unnarrowed pending subtask 4.
+
+Baselines that were empty on main (`runtime-application` and `runtime-cli`
+package-cycle, ambient-clock, ambient-environment, and inject-defaults baselines,
+plus the runtime-application inject-defaults floor) stay empty by rule. Module
+baselines recorded here are shrink-only ceilings: they may only shrink, never
+grow without an explicit baseline update through the recorder.
 
 ### Destructive command failure policy
 

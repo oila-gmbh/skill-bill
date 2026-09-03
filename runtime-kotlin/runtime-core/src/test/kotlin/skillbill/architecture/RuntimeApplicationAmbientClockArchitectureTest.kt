@@ -26,6 +26,46 @@ class RuntimeApplicationAmbientClockArchitectureTest {
   }
 
   @Test
+  fun `runtime-contracts ambient clock sites equal the recorded census`() {
+    assertAmbientClockMatchesBaseline("runtime-contracts")
+  }
+
+  @Test
+  fun `runtime-core ambient clock sites equal the recorded census`() {
+    assertAmbientClockMatchesBaseline("runtime-core")
+  }
+
+  @Test
+  fun `runtime-domain ambient clock sites equal the recorded census`() {
+    assertAmbientClockMatchesBaseline("runtime-domain")
+  }
+
+  @Test
+  fun `runtime-infra-fs ambient clock sites equal the recorded census`() {
+    assertAmbientClockMatchesBaseline("runtime-infra-fs")
+  }
+
+  @Test
+  fun `runtime-infra-http ambient clock sites equal the recorded census`() {
+    assertAmbientClockMatchesBaseline("runtime-infra-http")
+  }
+
+  @Test
+  fun `runtime-infra-sqlite ambient clock sites equal the recorded census`() {
+    assertAmbientClockMatchesBaseline("runtime-infra-sqlite")
+  }
+
+  @Test
+  fun `runtime-mcp ambient clock sites equal the recorded census`() {
+    assertAmbientClockMatchesBaseline("runtime-mcp")
+  }
+
+  @Test
+  fun `runtime-ports ambient clock sites equal the recorded census`() {
+    assertAmbientClockMatchesBaseline("runtime-ports")
+  }
+
+  @Test
   fun `ambient clock scanner fires on unlisted Instant now site`() {
     val source = """
       package skillbill.example
@@ -62,6 +102,19 @@ class RuntimeApplicationAmbientClockArchitectureTest {
     assertEquals(
       listOf("$EXAMPLE_PATH:5:LocalDate.now() is not listed in the ambient-clock baseline."),
       violations,
+    )
+  }
+
+  private fun assertAmbientClockMatchesBaseline(moduleName: String) {
+    val scanCase = PrincipleEnforcementInventory.moduleArchitectureScanCases
+      .single { scanCase -> scanCase.moduleName == moduleName }
+    val current = ArchitectureScanSupport.ambientClockCallSites(scanCase.mainScanRoot)
+      .map { site -> ArchitectureScanSupport.encodeAmbientSite(site) }
+      .toSet()
+    assertEquals(
+      baseline(scanCase.ambientClockBaseline),
+      current,
+      "Re-record ${scanCase.ambientClockBaseline} with RECORD_ARCHITECTURE_BASELINES=1.",
     )
   }
 
