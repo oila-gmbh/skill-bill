@@ -1,7 +1,7 @@
 
 package skillbill.cli.skillremove
 
-import skillbill.cli.core.CliOutput
+import skillbill.cli.kernel.CliOutput
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
 import skillbill.domain.skillremove.SkillRemovalRefusedException

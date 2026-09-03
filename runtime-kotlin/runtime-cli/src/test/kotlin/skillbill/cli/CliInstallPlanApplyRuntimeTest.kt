@@ -1,9 +1,9 @@
 package skillbill.cli
 
-import skillbill.cli.core.CliOutput
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.install.installApplyPayload
 import skillbill.cli.install.installPlanPayload
+import skillbill.cli.kernel.CliOutput
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport

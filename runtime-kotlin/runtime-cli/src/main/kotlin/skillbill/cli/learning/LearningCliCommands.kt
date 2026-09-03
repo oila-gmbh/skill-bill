@@ -10,14 +10,15 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.learning.LearningService
 import skillbill.application.learning.model.AddLearningInput
 import skillbill.application.learning.model.EditLearningInput
-import skillbill.cli.core.CliOutput
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.DocumentedNoOpCliCommand
-import skillbill.cli.core.formatOption
-import skillbill.cli.core.toCliPresentation
+import skillbill.cli.kernel.CliOutput
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.DocumentedNoOpCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.kernel.toCliPresentation
+import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliFormat
+import skillbill.cli.model.CliRunInputs
 import skillbill.learnings.model.LearningScope
 
 @Inject

@@ -5,9 +5,9 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.scaffold.McpRegistrationService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.install.model.ClaudeMcpProfileFailure
 import skillbill.install.model.McpMutationResult
 import skillbill.install.model.McpProfileOutcome

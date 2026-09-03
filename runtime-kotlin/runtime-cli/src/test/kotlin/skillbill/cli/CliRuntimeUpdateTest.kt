@@ -2,8 +2,8 @@ package skillbill.cli
 
 import org.junit.jupiter.api.Assumptions
 import skillbill.cli.core.CliRuntime
-import skillbill.cli.core.ExternalCommandResult
 import skillbill.cli.model.CliRuntimeContext
+import skillbill.cli.model.ExternalCommandResult
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.model.HttpResponse
 import java.nio.file.Files

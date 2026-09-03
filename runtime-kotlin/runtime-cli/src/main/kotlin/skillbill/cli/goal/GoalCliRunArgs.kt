@@ -1,6 +1,6 @@
 package skillbill.cli.goal
 
-import skillbill.cli.core.CliRunInputs
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentrun.ExecutableLookup

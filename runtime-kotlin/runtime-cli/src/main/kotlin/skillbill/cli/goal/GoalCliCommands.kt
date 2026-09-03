@@ -12,9 +12,10 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.goalrunner.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.invokingAgentResolutionHelp
-import skillbill.cli.telemetry.drainTelemetryOnCompletion
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.drainTelemetryOnCompletion
+import skillbill.cli.kernel.invokingAgentResolutionHelp
+import skillbill.cli.model.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -187,7 +188,7 @@ class GoalRunCommand(
     )
     val payload = report.toGoalRunCliMap()
     deps.state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
-    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride)
+    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride, deps.diagnostics)
   }
 
   private fun runRequest(

@@ -14,11 +14,11 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.RepairFeatureTaskRuntimeIdentityArgs
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
-import skillbill.cli.workflow.toCliMap
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.kernel.toPayload
+import skillbill.cli.model.CliRunInputs
 import java.nio.file.Path
 
 @Inject
@@ -157,7 +157,7 @@ class FeatureTaskRuntimeAbandonCommand(
 
   override fun run() {
     val result = workflowService.abandonFeatureTaskRuntime(workflowId, reason, inputs.dbPathOverride)
-    state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
+    state.complete(result.toPayload(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }
 
@@ -177,7 +177,7 @@ class FeatureTaskRuntimeRetryBlockedCommand(
 
   override fun run() {
     val result = workflowService.retryBlockedFeatureTaskRuntimePhase(workflowId, phaseId, reason, inputs.dbPathOverride)
-    state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
+    state.complete(result.toPayload(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }
 
@@ -209,6 +209,6 @@ class FeatureTaskRuntimeRepairIdentityCommand(
         dbOverride = inputs.dbPathOverride,
       ),
     )
-    state.complete(result.toCliMap(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
+    state.complete(result.toPayload(), format, exitCode = if (result is WorkflowUpdateResult.Error) 1 else 0)
   }
 }

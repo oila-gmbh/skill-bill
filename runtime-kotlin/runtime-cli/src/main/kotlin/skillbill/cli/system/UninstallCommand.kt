@@ -7,10 +7,11 @@ import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.McpRegistrationService
 import skillbill.application.scaffold.NativeAgentInstallService
 import skillbill.application.system.UninstallFileSystemService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.model.CliRunInputs
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.system.HostPlatformPort
 import java.nio.file.Path
 
@@ -21,6 +22,7 @@ data class UninstallDependencies(
   val mcpRegistrationService: McpRegistrationService,
   val uninstallFileSystem: UninstallFileSystemService,
   val hostPlatform: HostPlatformPort,
+  val diagnostics: RuntimeDiagnostics,
 )
 
 @Inject
@@ -67,7 +69,7 @@ class UninstallCommand(
     }
 
     val result = applyUninstall(plan)
-    completeUninstall(result.toText(), result.toPayload(), exitCode = if (result.warnings.isEmpty()) 0 else 1)
+    completeUninstall(result.toText(), result.toPayload(), result.exitCode)
   }
 
   private fun uninstallPlan(): UninstallPlan {
@@ -113,23 +115,23 @@ class UninstallCommand(
   private fun applyUninstall(plan: UninstallPlan): UninstallResult {
     val removed = mutableListOf<String>()
     val skipped = mutableListOf<String>()
-    val warnings = mutableListOf<String>()
+    val recorder = UninstallMutationRecorder(deps.diagnostics)
 
-    cleanupAgentInstallTargets(plan, deps.installAgentService, removed, skipped, warnings)
-    cleanupNativeAgentInstallLinks(plan, deps.nativeAgentInstallService, deps.uninstallFileSystem, removed, warnings)
-    cleanupMcpRegistrations(plan, deps.mcpRegistrationService, removed, warnings)
+    cleanupAgentInstallTargets(plan, deps.installAgentService, removed, skipped, recorder)
+    cleanupNativeAgentInstallLinks(plan, deps.nativeAgentInstallService, deps.uninstallFileSystem, removed, recorder)
+    cleanupMcpRegistrations(plan, deps.mcpRegistrationService, removed, recorder)
 
     plan.launchers.forEach { launcher ->
-      removeLauncher(deps.uninstallFileSystem, launcher, removed, skipped, warnings)
+      removeLauncher(deps.uninstallFileSystem, launcher, removed, skipped, recorder)
     }
-    removeDesktop(deps.uninstallFileSystem, plan.desktop, removed, skipped, warnings)
-    removeRecursively(deps.uninstallFileSystem, plan.stateRoot, removed, warnings)
+    removeDesktop(deps.uninstallFileSystem, plan.desktop, removed, skipped, recorder)
+    removeRecursively(deps.uninstallFileSystem, plan.stateRoot, removed, recorder)
 
     return UninstallResult(
-      status = if (warnings.isEmpty()) "completed" else "completed_with_warnings",
+      failed = recorder.failed(),
       removed = removed,
       skipped = skipped,
-      warnings = warnings,
+      warnings = recorder.failureMessages(),
     )
   }
 
@@ -181,12 +183,12 @@ private fun legacySkillNames(skillNames: List<String>): List<String> {
   return names.sorted()
 }
 
-private fun removeLauncher(
+internal fun removeLauncher(
   fileSystem: UninstallFileSystemService,
   launcher: LauncherRemoval,
   removed: MutableList<String>,
   skipped: MutableList<String>,
-  warnings: MutableList<String>,
+  recorder: UninstallMutationRecorder,
 ) {
   if (!fileSystem.exists(launcher.path) && !fileSystem.isSymbolicLink(launcher.path)) {
     return
@@ -196,7 +198,7 @@ private fun removeLauncher(
     return
   }
   val target = runCatching { fileSystem.readSymbolicLink(launcher.path) }.getOrElse { error ->
-    warnings += "could not read launcher ${launcher.path}: ${error.message.orEmpty()}"
+    recorder.recordFailure("could not read launcher ${launcher.path}", error)
     return
   }
   if (target != launcher.expectedTarget) {
@@ -205,7 +207,7 @@ private fun removeLauncher(
   }
   runCatching { fileSystem.deleteIfExists(launcher.path) }
     .onSuccess { removed += launcher.path.toString() }
-    .onFailure { error -> warnings += "could not remove launcher ${launcher.path}: ${error.message.orEmpty()}" }
+    .onFailure { error -> recorder.recordFailure("could not remove launcher ${launcher.path}", error) }
 }
 
 private fun removeDesktop(
@@ -213,30 +215,30 @@ private fun removeDesktop(
   desktop: DesktopRemoval,
   removed: MutableList<String>,
   skipped: MutableList<String>,
-  warnings: MutableList<String>,
+  recorder: UninstallMutationRecorder,
 ) {
-  desktop.launcher?.let { removeLauncher(fileSystem, it, removed, skipped, warnings) }
+  desktop.launcher?.let { removeLauncher(fileSystem, it, removed, skipped, recorder) }
   desktop.files.forEach { file ->
     if (!fileSystem.exists(file)) return@forEach
     runCatching { fileSystem.deleteIfExists(file) }
       .onSuccess { removed += file.toString() }
-      .onFailure { error -> warnings += "could not remove $file: ${error.message.orEmpty()}" }
+      .onFailure { error -> recorder.recordFailure("could not remove $file", error) }
   }
-  desktop.directories.forEach { directory -> removeRecursively(fileSystem, directory, removed, warnings) }
+  desktop.directories.forEach { directory -> removeRecursively(fileSystem, directory, removed, recorder) }
 }
 
-private fun removeRecursively(
+internal fun removeRecursively(
   fileSystem: UninstallFileSystemService,
   path: Path,
   removed: MutableList<String>,
-  warnings: MutableList<String>,
+  recorder: UninstallMutationRecorder,
 ) {
   if (!fileSystem.exists(path) && !fileSystem.isSymbolicLink(path)) {
     return
   }
   runCatching { fileSystem.removeTree(path) }
     .onSuccess { entries -> entries.forEach { entry -> removed += entry.toString() } }
-    .onFailure { error -> warnings += "could not remove $path: ${error.message.orEmpty()}" }
+    .onFailure { error -> recorder.recordFailure("could not remove $path", error) }
 }
 
 private fun desktopPlan(
@@ -363,12 +365,16 @@ internal data class UninstallPlan(
   )
 }
 
-private data class UninstallResult(
-  val status: String,
+internal data class UninstallResult(
+  val failed: Boolean,
   val removed: List<String>,
   val skipped: List<String>,
   val warnings: List<String>,
 ) {
+  val status: String = if (failed) "failed_with_degradations" else "completed"
+
+  val exitCode: Int = if (failed) 1 else 0
+
   fun toText(): String = buildString {
     appendLine("uninstall_status: $status")
     appendLine("removed: ${removed.size}")

@@ -8,10 +8,10 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.scaffold.SkillRemoveService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.model.CliRunInputs
 
 @Inject
 class RemoveCliCommand(

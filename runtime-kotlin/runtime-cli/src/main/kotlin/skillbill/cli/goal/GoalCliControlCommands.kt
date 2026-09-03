@@ -14,9 +14,9 @@ import skillbill.application.goalrunner.model.GoalRunnerOperatorDecisionRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
 import skillbill.application.goalrunner.model.GoalRunnerResetRequest
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 

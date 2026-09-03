@@ -2,9 +2,9 @@ package skillbill.cli.scaffold
 
 import skillbill.application.scaffold.InstallAgentService
 import skillbill.application.scaffold.ScaffoldCatalogService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
+import skillbill.cli.kernel.CliRunState
 import skillbill.cli.model.CliExecutionResult
+import skillbill.cli.model.CliRunInputs
 import skillbill.error.SkillBillRuntimeException
 
 internal fun runNativeScaffoldWizard(args: ScaffoldWizardArgs): CliExecutionResult {

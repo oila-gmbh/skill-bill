@@ -1,9 +1,9 @@
 package skillbill.cli
 
 import com.github.ajalt.clikt.core.UsageError
-import skillbill.cli.core.SKILL_BILL_AGENT_ENV
-import skillbill.cli.core.requireInvokingAgentId
-import skillbill.cli.core.requireSupportedOptionalAgentId
+import skillbill.cli.kernel.SKILL_BILL_AGENT_ENV
+import skillbill.cli.kernel.requireInvokingAgentId
+import skillbill.cli.kernel.requireSupportedOptionalAgentId
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

@@ -1,8 +1,8 @@
 package skillbill.cli.skillremove
 
 import skillbill.application.scaffold.SkillRemoveService
-import skillbill.cli.core.CliRunInputs
 import skillbill.cli.model.CliFormat
+import skillbill.cli.model.CliRunInputs
 
 internal data class RemoveCommandExecutionRequest(
   val inputs: CliRunInputs,

@@ -16,11 +16,12 @@ import skillbill.application.workflow.model.WorkflowLatestResult.Error
 import skillbill.application.workflow.model.WorkflowLatestResult.Ok
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.DocumentedNoOpCliCommand
-import skillbill.cli.core.formatOption
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.DocumentedNoOpCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.kernel.toPayload
+import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.JsonSupport
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 
@@ -146,7 +147,7 @@ open class WorkflowUpdateCommand(
         sessionId = sessionId,
       )
     val payload =
-      service.update(kind, request, inputs.dbPathOverride).toCliMap()
+      service.update(kind, request, inputs.dbPathOverride).toPayload()
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }

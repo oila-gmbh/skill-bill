@@ -12,11 +12,11 @@ import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.application.work.model.WorkListItem
 import skillbill.application.work.model.WorkListResult
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.DocumentedNoOpCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.DocumentedNoOpCliCommand
 import skillbill.cli.model.CliFormat
+import skillbill.cli.model.CliRunInputs
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 

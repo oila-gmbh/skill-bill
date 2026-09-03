@@ -3,9 +3,9 @@ package skillbill.cli.scaffold
 import com.github.ajalt.clikt.core.UsageError
 import skillbill.application.scaffold.ScaffoldService
 import skillbill.application.scaffold.UnsupportedScaffoldService
-import skillbill.cli.core.CliRunInputs
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
+import skillbill.cli.model.CliRunInputs
 import java.nio.file.Path
 
 internal data class EditSkillRunArgs(

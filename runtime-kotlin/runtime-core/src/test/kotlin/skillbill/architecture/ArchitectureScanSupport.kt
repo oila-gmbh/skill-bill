@@ -395,6 +395,7 @@ object ArchitectureScanSupport {
       """^\s*((?:(?:public|internal|private|protected|abstract|sealed|open|final|data|enum|value|fun)\s+)*)""" +
         """(?:class|object|interface|fun)\s+([A-Za-z_][A-Za-z0-9_]*)\b""",
     )
+  private val SPILLOVER_FILE_NAME_PATTERN = Regex("""Extras[0-9]*$""")
   private val FUNCTION_PATTERN = Regex("""\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
   private val CAMEL_TOKEN_PATTERN = Regex("""[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)""")
   private val EXTENSION_FUN_PATTERN =
@@ -525,6 +526,71 @@ object ArchitectureScanSupport {
       PackageCycle(line.split('|').map(String::trim).filter(String::isNotBlank).sorted())
     }
     .toSet()
+
+  fun transitiveAreaClosure(edges: Map<String, Set<String>>, area: String): Set<String> {
+    val reached = linkedSetOf<String>()
+    val pending = ArrayDeque(listOf(area))
+    while (pending.isNotEmpty()) {
+      edges[pending.removeFirst()].orEmpty().forEach { next ->
+        if (reached.add(next)) pending.addLast(next)
+      }
+    }
+    return reached - area
+  }
+
+  fun areaIsolationViolationsForEdges(
+    edges: Map<String, Set<String>>,
+    area: String,
+    sharedAreas: Set<String>,
+  ): List<String> = transitiveAreaClosure(edges, area)
+    .filterNot { reached -> reached in sharedAreas }
+    .sorted()
+    .map { reached ->
+      "Area '$area' transitively imports '$reached'; only the shared leaves " +
+        "(${sharedAreas.sorted().joinToString(", ")}) may appear in a single area's import closure."
+    }
+
+  fun allAreaIsolationViolationsForEdges(
+    edges: Map<String, Set<String>>,
+    sharedAreas: Set<String>,
+    compositionRootArea: String,
+  ): List<String> = (edges.keys + edges.values.flatten())
+    .asSequence()
+    .filterNot { area -> area == compositionRootArea }
+    .distinct()
+    .sorted()
+    .flatMap { area -> areaIsolationViolationsForEdges(edges, area, sharedAreas).asSequence() }
+    .toList()
+
+  fun areaIsolationViolations(
+    scanRoot: String,
+    packagePrefix: String,
+    sharedAreas: Set<String>,
+    compositionRootArea: String,
+  ): List<String> = allAreaIsolationViolationsForEdges(
+    packageImportEdges(scanRoot, packagePrefix),
+    sharedAreas,
+    compositionRootArea,
+  )
+
+  fun spilloverFileNameViolationsForPaths(relativePaths: List<String>, exemptPaths: Set<String>): List<String> =
+    relativePaths
+      .filterNot { relativePath -> relativePath in exemptPaths }
+      .filter { relativePath -> SPILLOVER_FILE_NAME_PATTERN.containsMatchIn(relativePath.removeSuffix(".kt")) }
+      .sorted()
+      .map { relativePath ->
+        "$relativePath carries the spillover-filename signature; name the unit for the responsibility it holds."
+      }
+
+  fun spilloverFileNameViolations(scanRoots: List<String>, exemptPaths: Set<String>): List<String> =
+    spilloverFileNameViolationsForPaths(
+      scanRoots.flatMap { scanRoot ->
+        kotlinFilesUnder(runtimeRoot.resolve(scanRoot)).map { path ->
+          runtimeRoot.relativize(path).toString().replace('\\', '/')
+        }
+      },
+      exemptPaths,
+    )
 
   fun extensionReceiverFqns(source: String, packageName: String, imports: List<String>): List<String> {
     val importMap = imports.associateBy { imported -> imported.substringAfterLast('.') }

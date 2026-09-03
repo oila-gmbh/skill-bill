@@ -6,8 +6,8 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.diagnostics.RejectedOutputDiagnosticService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator

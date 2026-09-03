@@ -46,6 +46,7 @@ import skillbill.model.TransportContext
 import skillbill.model.WorkflowOpsContext
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
@@ -124,6 +125,7 @@ abstract class RuntimeComponent(
   abstract val repoSourceDiscoveryService: RepoSourceDiscoveryService
   abstract val reviewService: ReviewService
   abstract val reviewSnapshotPruneService: ReviewSnapshotPruneService
+  abstract val runtimeDiagnostics: RuntimeDiagnostics
   abstract val scaffoldCatalogService: ScaffoldCatalogService
   abstract val scaffoldService: ScaffoldService
   abstract val skillRemoveService: SkillRemoveService

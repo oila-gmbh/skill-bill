@@ -10,9 +10,9 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.ports.workflow.gitops.model.DEFAULT_SELECTED_DIFF_MAX_BYTES

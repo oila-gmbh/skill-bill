@@ -7,9 +7,9 @@ import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.InstallService
 import skillbill.application.scaffold.InstallAgentService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.error.SkillBillRuntimeException

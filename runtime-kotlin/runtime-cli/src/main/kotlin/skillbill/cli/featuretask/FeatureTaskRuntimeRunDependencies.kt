@@ -5,10 +5,11 @@ import skillbill.application.config.ConfigResolutionService
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.application.telemetry.TelemetryService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentrun.ExecutableLookup
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 
@@ -22,6 +23,7 @@ data class FeatureTaskRuntimeRunDependencies(
   val agentAddonSelectionPort: AgentAddonSelectionPort,
   val executableLookup: ExecutableLookup,
   val telemetryService: TelemetryService,
+  val diagnostics: RuntimeDiagnostics,
   val state: CliRunState,
   val inputs: CliRunInputs,
 )

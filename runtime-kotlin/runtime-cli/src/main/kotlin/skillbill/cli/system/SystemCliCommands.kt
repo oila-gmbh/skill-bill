@@ -11,13 +11,13 @@ import skillbill.application.system.SystemService
 import skillbill.application.updatecheck.UpdateCheckService
 import skillbill.application.updatecheck.model.UpdateCheckResult
 import skillbill.application.updatecheck.model.UpdateCheckStatus
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.ExternalCommand
-import skillbill.cli.core.formatOption
-import skillbill.cli.learning.toPayload
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliExecutionResult
+import skillbill.cli.model.CliRunInputs
+import skillbill.cli.model.ExternalCommand
 
 @Inject
 class VersionCommand(

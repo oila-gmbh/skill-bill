@@ -9,7 +9,7 @@ import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.openFeatureTask
-import skillbill.cli.core.CliRunInputs
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import java.nio.file.Path
 

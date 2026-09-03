@@ -16,7 +16,7 @@ import skillbill.application.review.toReviewFeedbackPayload
 import skillbill.application.review.toReviewPreviewContract
 import skillbill.application.review.toReviewStatsPayload
 import skillbill.application.review.toTriagePayload
-import skillbill.cli.learning.toPayload
+import skillbill.cli.kernel.toPayload
 
 internal fun ReviewPreviewResult.toCliMap(): Map<String, Any?> = toReviewPreviewContract().toPayload()
 

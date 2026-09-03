@@ -11,14 +11,14 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.ReviewService
 import skillbill.application.review.ReviewSnapshotPruneService
 import skillbill.application.review.model.ReviewSnapshotPruneResult
-import skillbill.cli.core.CliOutput
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
-import skillbill.cli.core.toCliNumberedFindingsPresentation
-import skillbill.cli.core.toCliTriagePresentation
+import skillbill.cli.kernel.CliOutput
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.kernel.toCliNumberedFindingsPresentation
+import skillbill.cli.kernel.toCliTriagePresentation
 import skillbill.cli.model.CliFormat
+import skillbill.cli.model.CliRunInputs
 
 @Inject
 class FeatureStatsCommands(

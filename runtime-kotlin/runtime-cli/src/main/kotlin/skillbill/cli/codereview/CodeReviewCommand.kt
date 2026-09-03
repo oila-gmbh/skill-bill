@@ -4,8 +4,8 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.review.ParallelCodeReviewRunner
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.model.CliRunInputs
 
 @Inject
 class CodeReviewCommand(

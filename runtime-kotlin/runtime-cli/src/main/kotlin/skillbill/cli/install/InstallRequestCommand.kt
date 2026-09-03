@@ -5,9 +5,9 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.choice
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.formatOption
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.formatOption
+import skillbill.cli.model.CliRunInputs
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentSelection
 import skillbill.install.model.InstallAgentSelectionMode

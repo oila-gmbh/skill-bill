@@ -332,7 +332,7 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `cli and mcp learning payloads use contract DTO mappers`() {
-    val cliPayloads = Files.readString(sourcePath("skillbill/cli/learning/LearningCliPayloads.kt"))
+    val cliPayloads = Files.readString(sourcePath("skillbill/cli/kernel/LearningCliPayloads.kt"))
     val mcpPayloads = Files.readString(sourcePath("skillbill/mcp/learning/McpLearningPayloads.kt"))
     val learningMappers = Files.readString(sourcePath("skillbill/application/learning/LearningContractMappers.kt"))
     val learningContracts = sourcePath("skillbill/contracts/learning/LearningContracts.kt")
@@ -515,8 +515,8 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `cli text rendering consumes typed presenter models instead of raw maps`() {
-    val cliOutput = Files.readString(sourcePath("skillbill/cli/core/CliOutput.kt"))
-    val cliPresenters = Files.readString(sourcePath("skillbill/cli/core/CliPresenters.kt"))
+    val cliOutput = Files.readString(sourcePath("skillbill/cli/kernel/CliOutput.kt"))
+    val cliPresenters = Files.readString(sourcePath("skillbill/cli/kernel/CliPresenters.kt"))
 
     assertTrue("List<Map<String, Any?>>" !in cliOutput)
     assertContains(cliOutput, "CliNumberedFindingsPresentation")

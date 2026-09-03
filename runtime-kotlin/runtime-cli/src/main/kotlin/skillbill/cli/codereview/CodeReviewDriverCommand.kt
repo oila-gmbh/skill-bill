@@ -17,12 +17,12 @@ import skillbill.application.review.model.UsageValidationException
 import skillbill.application.review.toBoundedPayload
 import skillbill.application.reviewevidence.model.DiffResolutionException
 import skillbill.application.reviewevidence.model.ParallelReviewScope
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.invokingAgentResolutionHelp
-import skillbill.cli.core.requireInvokingAgentId
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.invokingAgentResolutionHelp
+import skillbill.cli.kernel.requireInvokingAgentId
 import skillbill.cli.model.CliExecutionResult
+import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.JsonSupport
 import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.error.ShellContentContractException

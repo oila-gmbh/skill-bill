@@ -9,9 +9,9 @@ import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.workflow.WorkflowService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 
 private const val FEATURE_TASK_RUNTIME_DEPRECATION_NOTE: String =

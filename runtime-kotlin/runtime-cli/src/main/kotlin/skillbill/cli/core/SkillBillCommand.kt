@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.core.ParameterHolder
 import com.github.ajalt.clikt.core.subcommands
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
+import skillbill.cli.kernel.DocumentedCliCommand
 
 internal fun ParameterHolder.dbPathOverrideOption() = option(
   "--db",

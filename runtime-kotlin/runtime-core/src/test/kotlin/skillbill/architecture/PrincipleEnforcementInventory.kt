@@ -5,6 +5,23 @@ object PrincipleEnforcementInventory {
   const val RUNTIME_CLI_MAIN: String = "runtime-kotlin/runtime-cli/src/main/kotlin"
   const val APPLICATION_PACKAGE_PREFIX: String = "skillbill.application."
   const val CLI_PACKAGE_PREFIX: String = "skillbill.cli."
+  const val RUNTIME_CLI_SRC: String = "runtime-kotlin/runtime-cli/src"
+
+  /**
+   * Leaf packages every command area may import: the shared CLI kernel and the CLI model. Anything
+   * else in an area's transitive closure means the area cannot be built or tested on its own.
+   */
+  val cliSharedLeafAreas: Set<String> = setOf("kernel", "model")
+
+  /**
+   * The only `skillbill.cli` area allowed to import a command area. Every other area is probed for
+   * isolation, so a one-directional hub edge between siblings cannot hide behind an empty cycle
+   * baseline.
+   */
+  const val CLI_COMPOSITION_ROOT_AREA: String = "core"
+
+  /** Named exemptions from the spillover-filename ban. Empty by rule, never by census. */
+  val spilloverFileNameExemptions: Set<String> = emptySet()
 
   val enforceableRules: List<String> = listOf(
     "Package clustering: loose files in a subpackaged area must not belong to a sibling area cluster.",
@@ -23,6 +40,10 @@ object PrincipleEnforcementInventory {
       "owned by configureKotlinJvm.",
     "Ambient environment ban: System.getenv, System.getProperty, and empty-string Path.of or Paths.get " +
       "require baseline in runtime-cli main source.",
+    "Command-area isolation: every runtime-cli command area's transitive skillbill.cli import closure must " +
+      "contain only the shared kernel and model leaves, never a sibling area or the composition root.",
+    "Spillover-filename ban: no runtime-cli file may carry the *Extras, *Extras2, or *Extras3 suffix " +
+      "signature outside a named exemption.",
   )
 
   val parseBoundarySites: List<ArchitectureScanSupport.ParseBoundarySite> = listOf(

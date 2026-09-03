@@ -1,7 +1,7 @@
 package skillbill.cli.install
 
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.model.CliRunInputs
 import skillbill.ports.install.model.NativeAgentLinkOutcome
 import java.nio.file.Path
 

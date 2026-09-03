@@ -1,16 +1,1 @@
-agentaddon|core
-codereview|core
-config|core
-core|featuretask
-core|goal
-core|learning
-core|model
-core|repovalidation
-core|review
-core|scaffold
-core|skillremove
-core|system
-core|telemetry
-core|work
-core|workflow
-featuretask|goal
+

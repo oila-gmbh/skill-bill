@@ -2,11 +2,11 @@ package skillbill.cli.scaffold
 
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.scaffold.ScaffoldService
-import skillbill.cli.core.CliOutput
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
+import skillbill.cli.kernel.CliOutput
+import skillbill.cli.kernel.CliRunState
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
+import skillbill.cli.model.CliRunInputs
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.scaffold.model.ScaffoldRenderResult

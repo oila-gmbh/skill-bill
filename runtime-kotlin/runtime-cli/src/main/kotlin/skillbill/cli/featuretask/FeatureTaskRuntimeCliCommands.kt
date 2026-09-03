@@ -12,11 +12,11 @@ import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.WorkflowService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.invokingAgentResolutionHelp
-import skillbill.cli.goal.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
-import skillbill.cli.telemetry.drainTelemetryOnCompletion
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.kernel.drainTelemetryOnCompletion
+import skillbill.cli.kernel.invokingAgentResolutionHelp
+import skillbill.cli.model.CliRunInputs
+import skillbill.cli.model.DEFAULT_GOAL_MAX_WALL_CLOCK_MINUTES
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveInput
 import skillbill.ports.featurespec.model.FeatureSpecPathResolveResult
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
@@ -173,7 +173,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
     val payload = report.toRuntimeRunCliMap()
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
-    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride)
+    drainTelemetryOnCompletion(deps.telemetryService, deps.inputs.dbPathOverride, deps.diagnostics)
   }
 
   internal fun resolveSpecPath(

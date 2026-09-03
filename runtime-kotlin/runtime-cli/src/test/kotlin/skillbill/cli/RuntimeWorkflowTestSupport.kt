@@ -6,6 +6,7 @@ import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.cli.workflow.toCliMap
 import skillbill.contracts.JsonSupport
@@ -60,7 +61,7 @@ internal object RuntimeWorkflowTestSupport {
       ),
       args.dbPath.toString(),
     )
-    return assertIs<WorkflowUpdateResult.Ok>(result).toCliMap()
+    return assertIs<WorkflowUpdateResult.Ok>(result).toPayload()
   }
 
   fun get(dbPath: Path, workflowId: String, context: CliRuntimeContext): Map<String, Any?> {

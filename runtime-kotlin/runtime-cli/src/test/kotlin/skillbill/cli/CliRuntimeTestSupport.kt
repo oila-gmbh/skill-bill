@@ -3,10 +3,10 @@ package skillbill.cli
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
 import skillbill.cli.core.CliRuntime
-import skillbill.cli.core.ExternalCommand
-import skillbill.cli.core.ExternalCommandResult
-import skillbill.cli.core.ExternalCommandRunner
 import skillbill.cli.model.CliRuntimeContext
+import skillbill.cli.model.ExternalCommand
+import skillbill.cli.model.ExternalCommandResult
+import skillbill.cli.model.ExternalCommandRunner
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore

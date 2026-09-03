@@ -2,9 +2,9 @@ package skillbill.cli.config
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.ExternalAddonOverlayService
-import skillbill.cli.core.CliRunInputs
-import skillbill.cli.core.CliRunState
-import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.kernel.CliRunState
+import skillbill.cli.kernel.DocumentedCliCommand
+import skillbill.cli.model.CliRunInputs
 import skillbill.error.ShellContentContractException
 
 @Inject

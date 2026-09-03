@@ -1,7 +1,5 @@
 package skillbill.cli.model
 
-import skillbill.cli.core.ExternalCommandRunner
-import skillbill.cli.core.ProcessExternalCommandRunner
 import skillbill.model.EnvironmentContext
 import skillbill.model.RuntimeContext
 import skillbill.ports.agentrun.AgentRunLauncher

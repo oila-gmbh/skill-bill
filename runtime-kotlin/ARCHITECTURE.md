@@ -1368,6 +1368,14 @@ The architecture tests enforce the following rules:
 - typed CLI presenter models are the input to CLI text rendering.
 - `docs/architecture/gradle-module-split-evaluation.md` records the physical
   Gradle split decision and readiness rules.
+- Every `runtime-cli` command area's transitive `skillbill.cli` import closure
+  contains only the shared `kernel` and `model` leaves, never a sibling command
+  area and never the composition root `skillbill.cli.core`.
+- No `runtime-cli` file carries the `*Extras`, `*Extras2`, or `*Extras3`
+  filename signature outside a named exemption.
+- A failed `uninstall` mutation is a recorded degradation with a non-zero exit
+  code, shared by launcher removal, desktop removal, recursive tree removal,
+  agent-target cleanup, native-agent unlinking, and MCP unregistration.
 - The Raw Map Boundary Rule (rule 11) and its Open-Boundary Allow-List are
   enforced by `RuntimeArchitectureTest.runtime architecture forbids raw map
   shapes outside the open-boundary allowlist` and
@@ -1421,14 +1429,60 @@ substitute.
 the scan root plus a recorded baseline, with no per-pattern carve-outs; test
 infrastructure stays outside the scanned root.
 
-The four `runtime-cli` baselines record today's census exactly: 16 mutual-import
-pairs, 2 ambient-clock sites, 22 ambient-environment sites, and `CliRunState`'s
-8 default-valued fields. Each `runtime-cli` case asserts set equality against
-its baseline rather than absence of unlisted sites, so a scanner that ignored
-its new scan-root or package-prefix parameter cannot pass against a stale
-baseline. These four baselines are transitional; subtasks 2 and 3 empty them.
-Regenerate these baselines from the scanners with
-`RECORD_ARCHITECTURE_BASELINES=1`, never by hand.
+The four `runtime-cli` baselines started as a census — 16 mutual-import pairs, 2
+ambient-clock sites, 22 ambient-environment sites, and `CliRunState`'s 8
+default-valued fields — and subtasks 2 and 3 emptied all four. Each
+`runtime-cli` case asserts set equality against its baseline rather than absence
+of unlisted sites, so a scanner that ignored its new scan-root or
+package-prefix parameter cannot pass against a stale baseline; with the
+baselines empty that equality is a hard ban. Regenerate these baselines from
+the scanners with `RECORD_ARCHITECTURE_BASELINES=1`, never by hand.
+
+`RuntimeCliAreaIsolationArchitectureTest` proves what an empty cycle baseline
+cannot: every command area's transitive `skillbill.cli` import closure must
+contain only the shared leaves `skillbill.cli.kernel` and `skillbill.cli.model`,
+never a sibling command area and never the composition root
+`skillbill.cli.core`. A cycle baseline can be emptied by moving a single import
+even when the areas stay entangled through one-directional hub edges, so the
+closure assertion is the guard that any command area builds and tests alone.
+The scan enumerates every area it finds under `skillbill.cli` and exempts one
+name, `CLI_COMPOSITION_ROOT_AREA`; probing a single hand-picked area would let a
+one-directional edge such as `goal -> featuretask` pass both guards.
+`skillbill.cli.core` holds only the composition root — `CliComponent`,
+`CliRuntime`, `Main`, `SkillBillCommand`, `CliCommandGroups`, and
+`CliUtilityCommandGroups` — and it is the only package that may import a
+command area. `install` therefore owns its own command tree and top-level
+group, and the units two command areas share — the completion telemetry drain
+and the `WorkflowUpdateResult` payload mapper — live in `skillbill.cli.kernel`.
+
+`RuntimeCliSpilloverFileNameArchitectureTest` bans the `*Extras`, `*Extras2`,
+and `*Extras3` filename signature across all `runtime-cli` source. Exemptions
+are a named list on `PrincipleEnforcementInventory`, empty by rule, never an
+ad-hoc regex carve-out. The 500-line per-file ceiling is not relaxed to absorb
+re-merged spillover units: passing this guard by concatenating files back
+together fails the logical-type ceiling instead.
+
+### Destructive command failure policy
+
+`uninstall` is the runtime's only destructive command. A mutation it cannot
+apply is a recorded degradation with a non-zero exit code, never a warning
+string on a zero exit. Launcher removal, desktop removal, recursive tree
+removal, agent-target cleanup, native-agent unlinking, and MCP unregistration
+share that one policy through `UninstallMutationRecorder`, which owns it: each
+site hands the recorder the failed mutation, the recorder emits a
+`skillbill.ports.diagnostics.RuntimeDiagnostics` error record and contributes
+to a failed outcome, and the command reports a non-zero exit code. No mutation
+site formats its own warning or decides its own severity. A partial uninstall —
+launcher symlink removed, state tree left behind — therefore cannot report
+success.
+
+The completion telemetry drain is the one deliberate swallow that stays: it
+must not change the run's exit code and must not reach the run's stdout or
+stderr. It is not silent. Every abandonment path — the worker still alive after
+the join timeout, an interrupted join, and the worker's own failure — emits a
+`RuntimeDiagnostics` warning, which is the sanctioned channel under
+`docs/observability-policy.md` for a degradation that must stay off the run's
+output surfaces.
 
 `skillbill.application.runtime.RuntimeSingleton` scopes services and adapters that hold a cache, connection,
 or lease across accessor reads (`DatabaseSessionFactory`,

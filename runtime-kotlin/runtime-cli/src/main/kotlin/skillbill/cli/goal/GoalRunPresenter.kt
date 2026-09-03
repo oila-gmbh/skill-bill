@@ -4,7 +4,7 @@ import skillbill.application.goalrunner.model.GoalRunnerEventSink
 import skillbill.application.goalrunner.model.GoalRunnerPauseResult
 import skillbill.application.goalrunner.model.GoalRunnerResumeResult
 import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
-import skillbill.cli.core.CliRunInputs
+import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.ports.agentrun.model.AgentRunOutputSink
@@ -163,3 +163,5 @@ internal fun singleLineBounded(value: String, limit: Int = MAX_TERMINAL_FIELD_CH
 internal const val MAX_TERMINAL_FIELD_CHARS = 240
 
 internal const val GOAL_STATUS_DATABASE_UNAVAILABLE = "database_unavailable"
+
+internal fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
