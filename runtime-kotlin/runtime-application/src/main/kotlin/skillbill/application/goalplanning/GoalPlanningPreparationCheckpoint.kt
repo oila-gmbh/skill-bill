@@ -197,7 +197,7 @@ class GoalPlanningPreparationCheckpoint(
       sharedPreplanPrepared = sharedPrepared,
       preparedPlanCount = prepared.size,
       expectedPlanCount = orderedDescriptors.size,
-      firstMissingSubtaskId = orderedDescriptors.firstOrNull { it.subtaskId !in preparedIds }?.subtaskId,
+      missingSubtaskIds = orderedDescriptors.filterNot { it.subtaskId in preparedIds }.map { it.subtaskId },
     )
   }
 }

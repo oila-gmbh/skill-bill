@@ -133,31 +133,28 @@ data class GoalPlanningRejectionRecord(
 )
 
 /**
- * Fixed pacing and empty-turn backoff for the planning sweep. Injected so tests can drive waits
- * without real elapsed time; production uses these defaults.
+ * Plan fan-out bound and empty-turn backoff for the planning sweep. Injected so tests can drive
+ * waits without real elapsed time; production uses these defaults.
  *
  * Defaults and wall-clock arithmetic:
- * - [planLaunchPace] = 20s between consecutive per-subtask plan launches (never before the first
- *   or after the last of a `prepare()` call).
+ * - [planFanOutCap] = 5 plan sessions in flight at once; missing plans are dispatched in waves of
+ *   at most this many, so provider handshakes stay bounded without any inter-launch wait.
  * - [emptyTurnBackoffBase] = 30s with [emptyTurnBackoffFactor] = 2, so waits before EmptyProviderTurn
  *   attempts 2 and 3 are `base * factor^(attempt-1)` after each failed attempt: 30s then 60s
  *   (90s max empty-turn backoff per phase across both waits).
- * - A 15-subtask goal adds `14 * 20s = 280s` (4m40s) of pace wait on the happy path, which is inside
- *   [DEFAULT_GOAL_PLANNING_BUDGET] (30m) and does not require or breach the default uncapped
- *   `--max-wall-clock-minutes`.
  *
  * [waitSlice] bounds how long each `RuntimeTimingPort.wait` call may block before the sweep
  * re-checks the durable pause boundary; it is an interruptibility knob, not a rate-control input.
  */
 @Inject
 data class GoalPlanningBurstSchedule(
-  val planLaunchPace: Duration,
+  val planFanOutCap: Int,
   val emptyTurnBackoffBase: Duration,
   val emptyTurnBackoffFactor: Int,
   val waitSlice: Duration,
 ) {
   init {
-    require(planLaunchPace.isPositive()) { "planLaunchPace must be positive." }
+    require(planFanOutCap >= 1) { "planFanOutCap must be at least 1." }
     require(emptyTurnBackoffBase.isPositive()) { "emptyTurnBackoffBase must be positive." }
     require(emptyTurnBackoffFactor >= 2) { "emptyTurnBackoffFactor must be at least 2." }
     require(waitSlice.isPositive()) { "waitSlice must be positive." }
@@ -172,7 +169,7 @@ data class GoalPlanningBurstSchedule(
   }
 
   companion object {
-    val DEFAULT_PLAN_LAUNCH_PACE: Duration = 20.seconds
+    const val DEFAULT_PLAN_FAN_OUT_CAP: Int = 5
     val DEFAULT_EMPTY_TURN_BACKOFF_BASE: Duration = 30.seconds
     const val DEFAULT_EMPTY_TURN_BACKOFF_FACTOR: Int = 2
     val DEFAULT_WAIT_SLICE: Duration = 1.seconds

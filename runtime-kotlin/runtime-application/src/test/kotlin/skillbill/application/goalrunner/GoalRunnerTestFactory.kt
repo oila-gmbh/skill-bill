@@ -41,6 +41,8 @@ import skillbill.application.testHarnessClock
 import skillbill.application.testRepositoryRoot
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.model.RepositoryRoot
+import skillbill.ports.concurrency.BoundedWorkFanOutPort
+import skillbill.ports.concurrency.SequentialBoundedWorkFanOutPort
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
@@ -353,8 +355,9 @@ internal data class GoalPlanningSweepPortsParams(
   val manifestStore: GoalRunnerManifestStore = TestNoopGoalPlanningManifestStore,
   val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
   val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
+  val fanOutPort: BoundedWorkFanOutPort = SequentialBoundedWorkFanOutPort,
   val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(
-    planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+    planFanOutCap = GoalPlanningBurstSchedule.DEFAULT_PLAN_FAN_OUT_CAP,
     emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
     emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
     waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
@@ -378,6 +381,7 @@ internal fun testGoalPlanningSweepPorts(params: GoalPlanningSweepPortsParams): D
       planningAttemptRecorder = params.planningAttemptRecorder,
       planningRejectionRecorder = params.planningRejectionRecorder,
       timingPort = params.timingPort,
+      fanOutPort = params.fanOutPort,
       burstSchedule = params.burstSchedule,
       refreshLiveness = params.refreshLiveness,
     ),

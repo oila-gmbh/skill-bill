@@ -7,14 +7,8 @@ import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
-import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-
-private data class MissingSubtaskResolution(
-  val missingId: Int? = null,
-  val outcome: GoalPlanningSweepOutcome? = null,
-)
 
 internal fun DefaultGoalPlanningSweep.produceMissingPlans(args: ProduceMissingPlansArgs): GoalPlanningSweepOutcome {
   val shared = args.shared
@@ -28,97 +22,6 @@ internal fun DefaultGoalPlanningSweep.produceMissingPlans(args: ProduceMissingPl
     )
   }
   return produceMissingPlansLoop(args, descriptors)
-}
-
-private fun DefaultGoalPlanningSweep.produceMissingPlansLoop(
-  args: ProduceMissingPlansArgs,
-  descriptors: List<GovernedGoalSubtaskDescriptor>,
-): GoalPlanningSweepOutcome {
-  val subtasksById = args.activeSubtasks.associateBy(DecompositionSubtask::id)
-  val resolvedBodies = GoalPlanningResolvedBoundaryBodies()
-  var plansLaunchedThisPrepare = 0
-  while (true) {
-    val outcome = produceOneMissingPlan(
-      args,
-      descriptors,
-      subtasksById,
-      resolvedBodies,
-      plansLaunchedThisPrepare,
-    )
-    if (outcome != null) return outcome
-    plansLaunchedThisPrepare += 1
-  }
-}
-
-private fun DefaultGoalPlanningSweep.firstMissingSubtaskId(
-  args: ProduceMissingPlansArgs,
-  descriptors: List<GovernedGoalSubtaskDescriptor>,
-): MissingSubtaskResolution {
-  val shared = args.shared
-  val recovery = runCatching {
-    checkpoint.recoveryProgress(
-      args.identity,
-      descriptors,
-      args.provenance,
-      shared.dbPathOverride,
-    ).firstMissingSubtaskId
-  }
-  recovery.exceptionOrNull()?.let { error ->
-    val subtaskId = recoverySubtaskId(error)
-    val phaseId = GoalPlanningSweepConstants.PHASE_PLAN.takeIf { subtaskId != 0 }
-      ?: GoalPlanningSweepConstants.PHASE_PREPLAN
-    return MissingSubtaskResolution(
-      outcome = stopped(
-        shared,
-        subtaskId,
-        preparationStateReadReason(error, shared.issueKey, subtaskId),
-        phaseId,
-      ),
-    )
-  }
-  val missingId = recovery.getOrThrow()
-  if (missingId == null) {
-    return MissingSubtaskResolution(
-      outcome = GoalPlanningSweepOutcome.PreparedAll(args.identity, args.provenance, descriptors),
-    )
-  }
-  return MissingSubtaskResolution(missingId = missingId)
-}
-
-private fun DefaultGoalPlanningSweep.produceOneMissingPlan(
-  args: ProduceMissingPlansArgs,
-  descriptors: List<GovernedGoalSubtaskDescriptor>,
-  subtasksById: Map<Int, DecompositionSubtask>,
-  resolvedBodies: GoalPlanningResolvedBoundaryBodies,
-  plansLaunchedThisPrepare: Int,
-): GoalPlanningSweepOutcome? {
-  val shared = args.shared
-  val resolution = firstMissingSubtaskId(args, descriptors)
-  if (resolution.outcome != null) return resolution.outcome
-  val missingId = requireNotNull(resolution.missingId)
-  val subtask = subtasksById[missingId]
-    ?: return stopped(shared, missingId, noSuchSubtaskReason(missingId))
-  val descriptor = descriptors.single { it.subtaskId == missingId }
-  if (plansLaunchedThisPrepare > 0) {
-    val paced = interruptibleWait(
-      burstSchedule.planLaunchPace,
-      shared,
-      missingId,
-      GoalPlanningSweepConstants.PHASE_PLAN,
-    )
-    if (paced != null) return paced
-  }
-  return producePlan(
-    ProducePlanArgs(
-      shared = shared,
-      request = args.request,
-      subtask = subtask,
-      descriptor = descriptor,
-      provenance = args.provenance,
-      preplanPayload = args.sharedCheckpoint.preplanPayload,
-      resolvedBodies = resolvedBodies,
-    ),
-  )
 }
 
 internal fun DefaultGoalPlanningSweep.producePlan(args: ProducePlanArgs): GoalPlanningSweepOutcome.Stopped? {
@@ -143,6 +46,7 @@ internal fun DefaultGoalPlanningSweep.producePlan(args: ProducePlanArgs): GoalPl
           subtask = subtask,
           runInvariants = runInvariants,
           phaseId = GoalPlanningSweepConstants.PHASE_PLAN,
+          outputSink = args.outputSink,
         ),
         recordedOutputs = listOf(
           FeatureTaskRuntimePhaseOutput(GoalPlanningSweepConstants.PHASE_PREPLAN, 1, preplanPayload),

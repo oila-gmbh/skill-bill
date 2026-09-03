@@ -50,8 +50,10 @@ data class GoalPlanningPreparationProgress(
   val sharedPreplanPrepared: Boolean,
   val preparedPlanCount: Int,
   val expectedPlanCount: Int,
-  val firstMissingSubtaskId: Int?,
-)
+  val missingSubtaskIds: List<Int>,
+) {
+  val firstMissingSubtaskId: Int? get() = missingSubtaskIds.firstOrNull()
+}
 
 data class GovernedGoalSubtaskDescriptor(
   val subtaskId: Int,

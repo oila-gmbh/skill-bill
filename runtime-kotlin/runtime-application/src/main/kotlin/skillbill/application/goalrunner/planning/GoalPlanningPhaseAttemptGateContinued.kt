@@ -8,7 +8,6 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeniedException
-import skillbill.workflow.decomposition.model.DecompositionSubtask
 
 fun DefaultGoalPlanningSweep.projectionGateReason(payload: String, phaseId: String): String? {
   val envelope = JsonSupport.parseObjectOrNull(payload)
@@ -22,7 +21,6 @@ fun DefaultGoalPlanningSweep.projectionGateReason(payload: String, phaseId: Stri
 internal fun DefaultGoalPlanningSweep.produceAttemptAfterPauseCheck(
   args: GoalPlanningProduceAttemptArgs,
   shared: GoalPlanningSharedContext,
-  subtask: DecompositionSubtask?,
   phaseId: String,
   currentSubtaskId: Int,
 ): GoalPlanningPhaseProduction {
@@ -37,7 +35,7 @@ internal fun DefaultGoalPlanningSweep.produceAttemptAfterPauseCheck(
     )
   }
   val startedAtNanos = System.nanoTime()
-  val outcome = runCatching { launchPlanningAttempt(shared, args.phase.request, subtask, phaseId, prompt) }
+  val outcome = runCatching { launchPlanningAttempt(args.phase, prompt) }
     .getOrElse { error ->
       if (error is GoalRunnerLaunchAuthorizationDeniedException) {
         return planningPauseOutcome(shared, currentSubtaskId, phaseId, error.controlState.pauseReason)

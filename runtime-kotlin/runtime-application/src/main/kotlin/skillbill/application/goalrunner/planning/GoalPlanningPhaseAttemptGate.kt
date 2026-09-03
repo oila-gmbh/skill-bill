@@ -95,7 +95,7 @@ internal fun DefaultGoalPlanningSweep.produceAttempt(
   val phaseId = phase.phaseId
   val currentSubtaskId = subtask?.id ?: 0
   return planningPauseOutcome(shared, currentSubtaskId, phaseId)
-    ?: produceAttemptAfterPauseCheck(args, shared, subtask, phaseId, currentSubtaskId)
+    ?: produceAttemptAfterPauseCheck(args, shared, phaseId, currentSubtaskId)
 }
 
 internal fun DefaultGoalPlanningSweep.planningPauseOutcome(

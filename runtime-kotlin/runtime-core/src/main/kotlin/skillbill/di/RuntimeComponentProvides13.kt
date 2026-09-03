@@ -13,6 +13,7 @@ import skillbill.application.review.model.DefaultParallelCodeReviewRunnerLaneLau
 import skillbill.application.review.model.DefaultParallelCodeReviewRunnerPlanningPort
 import skillbill.application.review.model.ParallelCodeReviewRunnerLaneLaunchPort
 import skillbill.application.review.model.ParallelCodeReviewRunnerPlanningPort
+import skillbill.infrastructure.fs.JdkBoundedWorkFanOutPort
 
 internal interface RuntimeComponentProvides13 {
   @Provides @JvmSynthetic
@@ -41,4 +42,8 @@ internal interface RuntimeComponentProvides13 {
 
   @Provides @JvmSynthetic
   fun goalPlanningSweepLaunchPort(port: DefaultGoalPlanningSweepLaunchPort): GoalPlanningSweepLaunchPort = port
+
+  @Provides @JvmSynthetic
+  fun boundedWorkFanOutPort(adapter: JdkBoundedWorkFanOutPort) =
+    RuntimeComponentBindingsA7.boundedWorkFanOutPort(adapter)
 }

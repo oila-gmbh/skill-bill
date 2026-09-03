@@ -1,5 +1,18 @@
 # goalrunner boundary history
 
+## [2026-09-03] SKILL-230 subtask 1 — Bounded parallel plan fan-out
+Areas: runtime-application/goalrunner/planning, runtime-ports/concurrency, runtime-ports/goalrunner.model, runtime-infra-fs, runtime-core/di
+- Goal planning sweep dispatches missing subtask plans in waves of at most `GoalPlanningBurstSchedule.planFanOutCap` (default 5) through the new `BoundedWorkFanOutPort`; the 20s `planLaunchPace` inter-launch gate and per-launch `firstMissingSubtaskId` re-derivation are gone, replaced by one `recoveryProgress` read into an ordered `missingSubtaskIds` set.
+- `BoundedWorkFanOutPort` returns one `Result` per input in input order so a failing unit cannot lose sibling results; `CancellationException` rethrows on the caller thread instead of being laundered into a failed `Result`. Ships with `SequentialBoundedWorkFanOutPort` as the deterministic test default. reusable
+- `JdkBoundedWorkFanOutPort` lives in runtime-infra-fs next to `JdkRuntimeTimingPort` (daemon pool sized `min(cap, unitCount)`, shut down on every exit path) so runtime-application main stays free of threading APIs and `RuntimeLayerBoundaryArchitectureTest` holds.
+- Pattern: drain the whole wave before choosing a stop and pick the lowest input-order failure, so the reported `currentSubtaskId`/`blockedReason` do not depend on thread completion order and sibling plans stay checkpointed. reusable
+- Pattern: per-subtask output-sink decorator emits whole attributed lines under the port's mutual exclusion, keyed by `AgentRunOutputStream` because one sink is driven by both stdout and stderr drain threads. reusable
+- Pause is checked before a wave and between waves on top of the per-attempt check; the post-drain check is skipped after the final wave so a fully prepared sweep still returns `PreparedAll`, never `PAUSED`.
+- Fan-out port DI landed in `RuntimeComponentBindingsA7`/`RuntimeComponentProvides13` (not A5/Provides4) because those files already hold detekt's 10-function ceiling; Provides13 already owns `goalPlanningSweepLaunchPort`.
+- Limitation: cap is not operator-configurable, preplan stays serial, and `currentPlanningSubtaskId` still carries a single value — concurrent-planning status reporting is subtask 2.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-29] SKILL-220 subtask 5 — Oversized goal-runner decomposition
 Areas: runtime-application/goalrunner (+ planning), runtime-domain/{goalrunner.model,workflow.goal.model}, runtime-infra-sqlite/db/workflow
 - Split P-08 goal-runner monoliths (`GoalRunner`, workflow stores, planning sweep/prep store, status service, review state/reducer, child repair, domain models) into named collaborators; facades stay under 500 lines; new production files max ~396.
