@@ -7,6 +7,6 @@ fun main() {
   if (GovernedReviewEvidenceBridge.enabled(environment)) {
     GovernedReviewEvidenceBridge.run(environment)
   } else {
-    McpStdioServer.run()
+    McpStdioServer.run(McpRuntimeContext(environment = environment))
   }
 }

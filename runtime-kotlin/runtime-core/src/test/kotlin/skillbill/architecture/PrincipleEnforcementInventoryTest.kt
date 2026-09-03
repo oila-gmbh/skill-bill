@@ -11,5 +11,9 @@ class PrincipleEnforcementInventoryTest {
     assertEquals(10, PrincipleEnforcementInventory.parseBoundarySites.size)
     assertEquals(emptyMap(), PrincipleEnforcementInventory.productionLineCeilingExemptions)
     assertEquals(emptySet(), PrincipleEnforcementInventory.spilloverFileNameExemptions)
+    assertEquals(
+      setOf("runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt"),
+      PrincipleEnforcementInventory.ambientEnvironmentExemptions,
+    )
   }
 }

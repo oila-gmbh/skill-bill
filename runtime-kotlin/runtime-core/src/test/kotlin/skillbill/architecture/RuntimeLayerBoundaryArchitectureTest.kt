@@ -361,7 +361,7 @@ class RuntimeLayerBoundaryArchitectureTest {
   }
 
   @Test
-  fun `mcp adapter avoids direct filesystem http sql dependencies except scaffold root discovery`() {
+  fun `mcp adapter avoids direct filesystem http sql dependencies`() {
     val mcpFiles =
       sourceFiles()
         .filter { file -> file.relativePath.startsWith("runtime-mcp/src/main/kotlin/") }
@@ -381,10 +381,7 @@ class RuntimeLayerBoundaryArchitectureTest {
     )
 
     assertNoBannedSourceReferences(
-      files =
-      mcpFiles.filterNot { file ->
-        file.relativePath == MCP_SCAFFOLD_RUNTIME_PATH
-      },
+      files = mcpFiles,
       bannedReferences = listOf("java.nio.file.Files", "Files."),
       description = "direct filesystem dependency",
     )

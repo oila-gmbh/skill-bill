@@ -1,3 +1,14 @@
+## [2026-09-03] SKILL-231 subtask 2 — MCP entry-adapter closure
+Areas: runtime-kotlin/{runtime-mcp/{core,review,scaffold},runtime-cli/{core,model,goal},runtime-ports/repository,runtime-infra-fs,runtime-core/{di,architecture{,/baselines}},agent,ARCHITECTURE.md}
+- Closed `runtime-mcp` the way SKILL-229 closed CLI: no JVM-seeded context defaults; env/`Path.of("")` only at `Main.kt`; scaffold clock and repo-root injected, not ambient.
+- Declared `RepositoryEnclosingRootPort` in ports with the single `CanonicalRepositoryRoot` adapter in infra-fs; deleted CLI/MCP duplicate `canonicalRepositoryRoot` copies and filesystem IO from entry-adapter main. reusable
+- Bound the port through `RuntimeComponent`; both adapters resolve enclosing roots via composition, including cwd-below-repo parity covered by a new MCP test.
+- Emptied `runtime-mcp` ambient-clock, ambient-environment, and `@Inject`-defaults baselines; named `Main.kt` as the process-boundary ambient exemption in inventory rather than a baseline row.
+- Decision: keep fourteen CLI/MCP presentation pairs; eleven are format-specific dialects, three scaffold parsers are copies deferred to a later merge feature.
+- Limitation: presentation merge and shared scaffold decode stay out of scope; observable MCP tool names/keys/errors unchanged.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-09-03] SKILL-231 subtask 1 — Guardrails and recorded baselines
 Areas: runtime-kotlin/{runtime-core/src/test/kotlin/skillbill/architecture{,/baselines},agent,ARCHITECTURE.md}
 - Widened package-acyclicity, ambient-clock, ambient-environment, `@Inject`-defaults, and spillover-filename scanners across all ten `settings.gradle.kts` modules without forking scanner bodies. reusable

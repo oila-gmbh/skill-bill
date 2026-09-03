@@ -3,9 +3,10 @@ package skillbill.mcp.scaffold
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.mcp.core.McpRuntimeContext
-import java.nio.file.Files
-import java.nio.file.Path
+import skillbill.mcp.core.mcpClock
+import java.time.Clock
 import java.time.LocalDate
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
@@ -19,14 +20,12 @@ object McpScaffoldRuntime {
     orchestrated: Boolean = false,
     context: McpRuntimeContext = McpRuntimeContext(),
   ): Map<String, Any?> {
-    val sessionId = generateNewSkillSessionId()
-    val repoRoot = findRepoRoot()
+    val runtimeComponent = RuntimeComponent::class.create(context.toRuntimeContext())
+    val resolvedRoot = runtimeComponent.resolvedEnvironmentContext.repositoryRoot
+    val sessionId = generateNewSkillSessionId(mcpClock(runtimeComponent))
     val outcome = runCatching {
-      val request = parseMcpScaffoldCommandRequest(payload + ("repo_root" to repoRoot.toString()))
-      val result =
-        RuntimeComponent::class.create(context.toRuntimeContext())
-          .scaffoldService
-          .scaffold(request, dryRun)
+      val request = parseMcpScaffoldCommandRequest(payload + ("repo_root" to resolvedRoot.toString()))
+      val result = runtimeComponent.scaffoldService.scaffold(request, dryRun)
       scaffoldSuccessMap(
         sessionId = sessionId,
         payload = payload,
@@ -52,23 +51,9 @@ object McpScaffoldRuntime {
     }
   }
 
-  private fun generateNewSkillSessionId(): String {
-    val date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
+  private fun generateNewSkillSessionId(clock: Clock): String {
+    val date = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC).format(DateTimeFormatter.BASIC_ISO_DATE)
     val suffix = UUID.randomUUID().toString().take(NEW_SKILL_SESSION_ID_SUFFIX_LENGTH)
     return "nss-$date-$suffix"
-  }
-
-  private fun findRepoRoot(start: Path = Path.of("").toAbsolutePath().normalize()): Path {
-    var current = start
-    while (true) {
-      val hasSettings = Files.isRegularFile(current.resolve("runtime-kotlin/settings.gradle.kts"))
-      val hasSkills = Files.isDirectory(current.resolve("skills"))
-      if (hasSettings && hasSkills) {
-        return current
-      }
-      val parent = current.parent ?: break
-      current = parent
-    }
-    return start
   }
 }

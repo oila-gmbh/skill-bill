@@ -149,6 +149,7 @@ fun ArchitectureScanSupport.ambientClockViolationsInSource(
 
 fun ArchitectureScanSupport.ambientEnvironmentCallSites(scanRoot: String): List<AmbientSite> =
   ambientSitesUnder(scanRoot, AMBIENT_ENVIRONMENT_FORMS)
+    .filterNot { site -> site.relativePath in PrincipleEnforcementInventory.ambientEnvironmentExemptions }
 
 fun ArchitectureScanSupport.ambientEnvironmentViolationsInSource(
   relativePath: String,

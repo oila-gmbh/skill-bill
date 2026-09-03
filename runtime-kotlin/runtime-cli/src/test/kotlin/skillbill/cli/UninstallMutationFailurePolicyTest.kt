@@ -19,6 +19,7 @@ import skillbill.cli.system.UninstallPlan
 import skillbill.cli.system.cleanupMcpRegistrations
 import skillbill.cli.system.removeLauncher
 import skillbill.cli.system.removeRecursively
+import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.install.model.McpMutationResult
 import skillbill.ports.install.agent.InstallAgentTargetPort
 import skillbill.ports.install.agent.model.ClaudeConfigRootsRequest
@@ -134,6 +135,7 @@ class UninstallMutationFailurePolicyTest {
         externalCommandRunner = ExternalCommandRunner { ExternalCommandResult(exitCode = 0, output = "") },
         userHome = HOME,
         repositoryRoot = HOME,
+        repositoryEnclosingRootPort = CanonicalRepositoryRoot,
         liveStdout = {},
         liveStderr = {},
       ),

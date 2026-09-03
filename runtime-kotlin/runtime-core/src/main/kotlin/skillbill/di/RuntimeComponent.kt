@@ -50,6 +50,7 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
@@ -92,6 +93,8 @@ abstract class RuntimeComponent(
     RuntimeComponentBindingsA1.databaseSessionFactory(context)
 
   abstract val resolvedEnvironmentContext: EnvironmentContext
+
+  abstract val repositoryEnclosingRootPort: RepositoryEnclosingRootPort
 
   abstract val featureTaskContinuationLookupService: FeatureTaskContinuationLookupService
   abstract val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService

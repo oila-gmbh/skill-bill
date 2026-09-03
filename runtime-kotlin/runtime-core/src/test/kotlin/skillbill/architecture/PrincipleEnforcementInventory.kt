@@ -88,6 +88,14 @@ object PrincipleEnforcementInventory {
   /** Named exemptions from the spillover-filename ban. Empty by rule, never by census. */
   val spilloverFileNameExemptions: Set<String> = emptySet()
 
+  /**
+   * Repository-relative main-source paths exempt from ambient-environment baseline recording.
+   * Exempt sites may still read the process environment at a named process boundary.
+   */
+  val ambientEnvironmentExemptions: Set<String> = setOf(
+    "runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt",
+  )
+
   val enforceableRules: List<String> = listOf(
     "Package clustering: loose files in a subpackaged area must not belong to a sibling area cluster.",
     "Production line ceiling: no production Kotlin file may exceed 500 lines without an explicit exemption.",

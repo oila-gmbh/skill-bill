@@ -38,7 +38,7 @@ data class CliRuntimeContext(
       stdinText = stdinText,
       environment = environment,
       userHome = userHome,
-      repositoryRoot = repositoryRoot?.let(::canonicalRepositoryRoot) ?: EnvironmentContext.UnspecifiedRepositoryRoot,
+      repositoryRoot = repositoryRoot ?: EnvironmentContext.UnspecifiedRepositoryRoot,
       requester = requester,
       workflowGitOperations = workflowGitOperations,
       agentRunLauncher = agentRunLauncher,
@@ -48,13 +48,4 @@ data class CliRuntimeContext(
       runtimeTimingPort = runtimeTimingPort,
       hostPlatformPort = hostPlatformPort,
     )
-}
-
-internal fun canonicalRepositoryRoot(start: Path): Path {
-  val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
-  var candidate = resolvedStart
-  while (!candidate.resolve(".git").toFile().exists()) {
-    candidate = candidate.parent ?: return resolvedStart
-  }
-  return candidate.toRealPath()
 }

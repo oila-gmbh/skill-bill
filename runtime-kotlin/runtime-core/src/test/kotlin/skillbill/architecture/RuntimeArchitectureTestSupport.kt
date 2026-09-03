@@ -694,14 +694,7 @@ internal fun assertMcpScaffoldRuntimeOnlyUsesFilesForRepoRootDiscovery(mcpFiles:
       .filter { line -> "java.nio.file.Files" in line || "Files." in line }
       .map(String::trim)
 
-  assertEquals(
-    listOf(
-      "import java.nio.file.Files",
-      "val hasSettings = Files.isRegularFile(current.resolve(\"runtime-kotlin/settings.gradle.kts\"))",
-      "val hasSkills = Files.isDirectory(current.resolve(\"skills\"))",
-    ),
-    filesReferenceLines,
-  )
+  assertEquals(emptyList(), filesReferenceLines)
 }
 
 internal fun sourceFiles(): List<SourceFile> = runtimeArchitectureSourceRoots.flatMap { sourceRoot ->

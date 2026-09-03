@@ -26,6 +26,20 @@ Reason: Empty-by-rule baselines from the 2026-09-02 permanent-floor decision bin
 Alternatives considered: Add the seam to the ambient-environment baseline permanently (rejected: would block the one legitimate composition read). Exempt `runtime-core` from ambient-environment scanning (rejected: would leave the module unmeasured).
 Revisit when: composition can receive ambient input only through an injected port with no direct `System.getenv` / `Path.of("")` call sites outside tests.
 
+## [2026-09-03] CLI/MCP presentation-layer duplication is intentional at the boundary
+Context: SKILL-231 subtask 2. `runtime-cli` and `runtime-mcp` each carry a parallel presentation stack shaping the same application services into different operator surfaces.
+Decision: Keep fourteen mirrored pairs side by side. Format-specific pairs (two payload dialects a hexagonal boundary is expected to produce): `Component` (`CliComponent` / `McpComponent`), `Runtime` (`CliRuntime` / `McpRuntime`), `WorkflowContinueMaps` (`WorkflowContinueCliMaps` / `WorkflowContinueMcpMaps`), `WorkflowContinueBranchMapsCore`, `WorkflowContinueBranchMapsDecomposition`, `WorkflowGoalObservabilityMapping`, `WorkflowResultMappers`, `ReviewResultMappers`, `TelemetryResultMappers`, `LearningPayloads`, `Main`. Copy pairs (same shaping, no format reason — merge is a separate feature): `ScaffoldCommandRequestParser`, `ScaffoldCommandRequestParseHelpers`, `ScaffoldCommandRequestBaselineLayerParser`.
+Reason: CLI argv/stdout and MCP JSON-RPC/maps are different presentation dialects; several continuation and result mappers exist only to translate application outcomes into those dialects. The scaffold parsers duplicate the same raw-map → `ScaffoldCommandRequest` decode at both entry adapters instead of sharing a module.
+Alternatives considered: Extract a shared presentation module in this subtask (rejected: non-goal; SKILL-231 records the overlap only). Merge scaffold parsers without a shared module boundary (rejected: would blur entry-adapter ownership).
+Revisit when: a follow-up feature extracts shared scaffold parsing or a third entry adapter needs the same decode.
+
+## [2026-09-03] runtime-mcp process-boundary exemption for ambient environment reads
+Context: SKILL-231 subtask 2. `runtime-mcp` must not read `System.getenv` or `System.getProperty` outside the process entry. `Main.kt` reads the environment once to choose bridge versus stdio server and passes that map downstream.
+Decision: `runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt` is the one place the MCP process may read its own environment. The exemption is a named entry on `PrincipleEnforcementInventory.ambientEnvironmentExemptions`, not a baseline row; the `runtime-mcp` ambient-environment baseline stays empty behind it. The repository-root seam in `RuntimeComponentBindingsA1.runtimeContext` now canonicalizes explicitly supplied roots through `RepositoryEnclosingRootPort` as well as unspecified ones.
+Reason: A process boundary read is intentional; recording it in the baseline would treat legitimate entry behavior as shrinkable debt. Empty baseline equality still bans every other ambient read in `runtime-mcp` main source.
+Alternatives considered: Build `RuntimeComponent` in `Main` to resolve environment (rejected: pays component construction and filesystem walk in a worker subprocess that needs neither). Leave `GovernedReviewEvidenceBridge.run` with a `System.getenv()` default (rejected: re-reads behind the injected map).
+Revisit when: MCP launch receives environment through an injected port with no `Main.kt` read, or a second legitimate process-boundary site appears.
+
 ## [2026-08-31] RuntimeSingleton lives in skillbill.application.runtime
 Context: SKILL-227 subtask 1 needed a kotlin-inject scope for services that hold caches, connections, or leases. Placing `@RuntimeSingleton` under `skillbill.di` failed `ImplementationOwnershipArchitectureTest`.
 Decision: Define `@RuntimeSingleton` in `skillbill.application.runtime` and apply `@Provides @RuntimeSingleton` on composition-root bindings unchanged.

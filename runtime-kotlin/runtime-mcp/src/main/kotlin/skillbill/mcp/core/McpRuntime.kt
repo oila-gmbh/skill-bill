@@ -17,6 +17,7 @@ import skillbill.mcp.review.toMcpMap
 import skillbill.mcp.scaffold.McpScaffoldRuntime
 import skillbill.mcp.telemetry.toMcpMap
 import skillbill.mcp.workflow.toMcpMap
+import skillbill.model.EnvironmentContext
 import skillbill.model.RuntimeContext
 import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.telemetry.HttpRequester
@@ -27,8 +28,8 @@ import java.nio.file.Path
 
 data class McpRuntimeContext(
   val requester: HttpRequester = UnconfiguredHttpRequester,
-  val environment: Map<String, String> = System.getenv(),
-  val userHome: Path = Path.of(System.getProperty("user.home")),
+  val environment: Map<String, String> = EnvironmentContext.UnspecifiedEnvironment,
+  val userHome: Path = EnvironmentContext.UnspecifiedUserHome,
   val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   val repositoryRoot: Path? = null,
 ) {
@@ -36,7 +37,7 @@ data class McpRuntimeContext(
     stdinText = stdinText,
     environment = environment,
     userHome = userHome,
-    repositoryRoot = repositoryRoot?.let(::canonicalRepositoryRoot) ?: canonicalRepositoryRoot(Path.of("")),
+    repositoryRoot = repositoryRoot ?: EnvironmentContext.UnspecifiedRepositoryRoot,
     requester = requester,
     workflowGitOperations = workflowGitOperations,
   )
@@ -267,13 +268,4 @@ object McpWorkflowRuntime {
 internal fun services(context: McpRuntimeContext, stdinText: String? = null): McpRuntimeServices {
   val runtimeComponent = RuntimeComponent::class.create(context.toRuntimeContext(stdinText))
   return McpComponent::class.create(runtimeComponent).services
-}
-
-internal fun canonicalRepositoryRoot(start: Path): Path {
-  val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
-  var candidate = resolvedStart
-  while (!candidate.resolve(".git").toFile().exists()) {
-    candidate = candidate.parent ?: return resolvedStart
-  }
-  return candidate.toRealPath()
 }

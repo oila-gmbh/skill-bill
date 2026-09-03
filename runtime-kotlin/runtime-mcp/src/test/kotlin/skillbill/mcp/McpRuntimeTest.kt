@@ -18,13 +18,13 @@ import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
+import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpRuntimeLifecycle
 import skillbill.mcp.core.McpWorkflowOpenArgs
 import skillbill.mcp.core.McpWorkflowRuntime
-import skillbill.mcp.core.canonicalRepositoryRoot
 import skillbill.mcp.core.importReview
 import skillbill.mcp.core.newSkillScaffold
 import skillbill.mcp.core.resolveLearnings
@@ -830,7 +830,7 @@ private fun markVerifyWorkflowVerdictBlocked(workflowId: String, context: McpRun
       mapOf(
         "diff_projection" to mapOf(
           "checkpoint" to GitWorkflowGitOperations()
-            .repositoryFingerprint(canonicalRepositoryRoot(Path.of(""))).value,
+            .repositoryFingerprint(CanonicalRepositoryRoot.enclosingRepositoryRoot(Path.of(""))).value,
           "comparison_scope" to "base..head",
           "changed_files" to emptyList<String>(),
         ),
@@ -1240,7 +1240,7 @@ private fun assertVerifyWorkflowContinuation(args: AssertVerifyWorkflowContinuat
     "<UPDATED_AT>" to args.got["updated_at"].toString(),
     "<CONTINUED_AT>" to args.continued["updated_at"].toString(),
     "<CHECKPOINT>" to GitWorkflowGitOperations()
-      .repositoryFingerprint(canonicalRepositoryRoot(Path.of(""))).value,
+      .repositoryFingerprint(CanonicalRepositoryRoot.enclosingRepositoryRoot(Path.of(""))).value,
   )
   assertCompactUpdateAcknowledgementPayload(args.updated, listOf("verdict"))
   assertEquals(1, args.listed["workflow_count"])

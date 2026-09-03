@@ -1428,7 +1428,12 @@ substitute.
 `AmbientEnvironmentArchitectureTest` bans `System.getenv`, `System.getProperty`,
 `Path.of("")`, and `Paths.get("")` under a parameterized scan root. Its scope is
 the scan root plus a recorded baseline per module, with no per-pattern carve-outs;
-test infrastructure stays outside the scanned root.
+test infrastructure stays outside the scanned root. Named file-path exemptions on
+`PrincipleEnforcementInventory.ambientEnvironmentExemptions` omit a process entry
+from baseline recording only; every other main-source site must still match an
+empty baseline. Today that list names
+`runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt` as the
+MCP process boundary.
 
 The four `runtime-cli` baselines started as a census — 16 mutual-import pairs, 2
 ambient-clock sites, 22 ambient-environment sites, and `CliRunState`'s 8

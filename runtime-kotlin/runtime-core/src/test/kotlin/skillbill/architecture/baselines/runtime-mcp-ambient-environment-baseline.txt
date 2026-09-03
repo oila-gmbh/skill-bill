@@ -1,6 +1,1 @@
-runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt:6:System.getenv()
-runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/McpRuntime.kt:30:System.getenv()
-runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/McpRuntime.kt:31:System.getProperty()
-runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/McpRuntime.kt:39:Path.of("")
-runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/review/GovernedReviewEvidenceBridge.kt:28:System.getenv()
-runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/scaffold/McpScaffoldRuntime.kt:61:Path.of("")
+

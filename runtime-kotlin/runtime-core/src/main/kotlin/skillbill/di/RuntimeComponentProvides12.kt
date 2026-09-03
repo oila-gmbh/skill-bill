@@ -8,6 +8,7 @@ import skillbill.application.goalrunner.model.GoalRunnerFinalizationBoundariesPo
 import skillbill.application.goalrunner.model.GoalRunnerRunBoundariesPort
 import skillbill.application.goalrunner.model.GoalRunnerSubtaskLaunchBoundariesPort
 import skillbill.model.OptionalCallbacks
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 
 internal interface RuntimeComponentProvides12 {
   @Provides @JvmSynthetic
@@ -25,4 +26,8 @@ internal interface RuntimeComponentProvides12 {
 
   @Provides @JvmSynthetic
   fun hostPlatformPort(callbacks: OptionalCallbacks) = RuntimeComponentBindingsA6.hostPlatformPort(callbacks)
+
+  @Provides @JvmSynthetic
+  fun repositoryEnclosingRootPort(): RepositoryEnclosingRootPort =
+    RuntimeComponentBindingsA1.repositoryEnclosingRootPort()
 }

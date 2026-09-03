@@ -1,8 +1,8 @@
 package skillbill.di
 
+import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
-import skillbill.infrastructure.fs.canonicalRepositoryRoot
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
@@ -13,12 +13,16 @@ import skillbill.model.TransportContext
 import skillbill.model.WorkflowOpsContext
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import java.nio.file.Path
 
 internal object RuntimeComponentBindingsA1 {
+  fun repositoryEnclosingRootPort(): RepositoryEnclosingRootPort = CanonicalRepositoryRoot
+
   fun runtimeContext(inputRuntimeContext: RuntimeContext): RuntimeContext {
+    val repositoryEnclosingRootPort = repositoryEnclosingRootPort()
     val inputEnvironment = inputRuntimeContext.environment
     val resolvedEnvironment =
       if (inputEnvironment.userHome == EnvironmentContext.UnspecifiedUserHome) {
@@ -41,10 +45,10 @@ internal object RuntimeComponentBindingsA1 {
       }
     val resolvedRepositoryRoot =
       if (environmentWithEnv.repositoryRoot == EnvironmentContext.UnspecifiedRepositoryRoot) {
-        environmentWithEnv.copy(repositoryRoot = canonicalRepositoryRoot(Path.of("")))
+        environmentWithEnv.copy(repositoryRoot = repositoryEnclosingRootPort.enclosingRepositoryRoot(Path.of("")))
       } else {
         environmentWithEnv.copy(
-          repositoryRoot = environmentWithEnv.repositoryRoot.toAbsolutePath().normalize(),
+          repositoryRoot = repositoryEnclosingRootPort.enclosingRepositoryRoot(environmentWithEnv.repositoryRoot),
         )
       }
     return inputRuntimeContext.copy(
