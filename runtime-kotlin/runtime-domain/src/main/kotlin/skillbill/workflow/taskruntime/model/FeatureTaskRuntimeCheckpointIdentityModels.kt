@@ -134,7 +134,7 @@ data class FeatureTaskRuntimeCheckpointIdentity(
     private val SHA_PATTERN = Regex("^[0-9a-f]{40,64}$")
     private val SUBTASK_ID_PATTERN = Regex("^([0-9]+|$FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID)$")
     private val CHECKPOINT_REF_PATTERN =
-      Regex("^$CHECKPOINT_REF_PREFIX/[A-Z][A-Z0-9]*-[0-9]+/[a-z0-9-]+/[0-9]+$")
+      Regex("^$CHECKPOINT_REF_PREFIX/.+/($FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID|[0-9]+)/[0-9]+$")
     private const val CHECKPOINT_REF_MAX_LENGTH: Int = 255
 
     private val ALLOWED_FIELDS = setOf(

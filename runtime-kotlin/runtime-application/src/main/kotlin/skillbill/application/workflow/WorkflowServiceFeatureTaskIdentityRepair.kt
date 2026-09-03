@@ -1,7 +1,7 @@
 package skillbill.application.workflow
 
-import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
-import skillbill.application.normalizeIssueKey
+import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
+import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.application.workflow.model.FeatureTaskIdentityRepairArgs
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity

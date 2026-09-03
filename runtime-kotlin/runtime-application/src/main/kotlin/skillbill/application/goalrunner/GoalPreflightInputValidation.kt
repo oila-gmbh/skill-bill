@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
+import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import java.nio.file.Path
@@ -34,16 +34,8 @@ object GoalPreflightInputValidation {
     )
   }
 
-  fun normalizeIssueKey(issueKey: String): String {
-    val normalized = issueKey.trim().uppercase()
-    if (!FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.matches(normalized)) {
-      throw InvalidFeatureTaskExecutionIdentitySchemaError(
-        "preflight request",
-        "issue_key '$issueKey' is malformed",
-      )
-    }
-    return normalized
-  }
+  fun normalizeIssueKey(issueKey: String): String =
+    FeatureTaskExecutionIdentityPolicy.normalizeIssueKey(issueKey, "preflight request")
 
   fun requireManifestIssueKey(manifestIssueKey: String, requestedIssueKey: String) {
     if (manifestIssueKey != requestedIssueKey) {

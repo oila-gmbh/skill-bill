@@ -1,6 +1,6 @@
 package skillbill.application.workflow
 
-import skillbill.application.normalizeIssueKey
+import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.application.workflow.model.GoalObservabilityProgressInput
 import skillbill.application.workflow.model.GoalObservabilityWorktreeActivity
 import skillbill.application.workflow.model.PersistOpenedWorkflowArgs

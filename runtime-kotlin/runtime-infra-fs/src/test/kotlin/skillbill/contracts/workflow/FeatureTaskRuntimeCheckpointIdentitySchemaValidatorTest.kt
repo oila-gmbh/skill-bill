@@ -102,16 +102,31 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
   }
 
   @Test
-  fun `rejects a malformed issue key so an unbounded authority boundary cannot be recorded`() {
+  fun `rejects a control-bearing issue key so an unbounded authority boundary cannot be recorded`() {
     assertFailsWith<InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError> {
       FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
         mapOf(
           "contract_version" to "0.2",
-          "checkpoints" to listOf(entry() + ("issue_key" to "not an issue key")),
+          "checkpoints" to listOf(entry() + ("issue_key" to "SKILL-150\nspoofed")),
         ),
         SOURCE,
       )
     }
+  }
+
+  @Test
+  fun `accepts a digit-leading tracker key bound to a matching checkpoint ref`() {
+    FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
+      mapOf(
+        "contract_version" to "0.2",
+        "checkpoints" to listOf(
+          entry() +
+            ("issue_key" to "0AC-11") +
+            ("checkpoint_ref" to "refs/skill-bill/checkpoints/0AC-11/2/0"),
+        ),
+      ),
+      SOURCE,
+    )
   }
 
   @Test

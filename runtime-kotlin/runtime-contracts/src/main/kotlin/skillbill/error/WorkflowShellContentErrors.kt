@@ -67,6 +67,9 @@ class InvalidGoalPlanningDiscoveryExclusionsSchemaError(message: String) :
 class InvalidGoalVerificationBoundaryCapsSchemaError(message: String) :
   ShellContentContractException(message)
 
+class InvalidIssueKeySchemaError(message: String) :
+  ShellContentContractException(message)
+
 class GoalVerificationBoundaryCapExceededError(message: String) :
   ShellContentContractException(message)
 

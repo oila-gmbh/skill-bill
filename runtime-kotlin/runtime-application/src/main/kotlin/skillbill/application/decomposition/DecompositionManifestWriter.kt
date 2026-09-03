@@ -6,6 +6,7 @@ import skillbill.application.decomposition.model.DecompositionManifestWorkflowPr
 import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
 import skillbill.application.decomposition.model.DecompositionPlanManifestInput
 import skillbill.application.decomposition.model.PreparedDecompositionManifestWrite
+import skillbill.contracts.issuekey.issueAndFeature
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore

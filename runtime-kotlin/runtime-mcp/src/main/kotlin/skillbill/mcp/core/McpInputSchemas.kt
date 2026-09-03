@@ -1,6 +1,6 @@
 package skillbill.mcp.core
 
-import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
+import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 
 internal val emptyObjectSchema: Map<String, Any?> = McpToolSpec.strictObjectSchema()
 internal val freeObjectSchema: Map<String, Any?> = mapOf("type" to "object")

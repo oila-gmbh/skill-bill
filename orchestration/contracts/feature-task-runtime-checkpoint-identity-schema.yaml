@@ -48,8 +48,7 @@ $defs:
         minimum: 0
       issue_key:
         description: The authority boundary; a checkpoint may only ever carry paths this issue owns.
-        type: string
-        pattern: "^[A-Z][A-Z0-9]*-[0-9]+$"
+        $ref: "https://skill-bill.dev/contracts/issue-key-schema.yaml"
       subtask_id:
         description: >-
           The decomposed subtask that owns this checkpoint, or the reserved literal `standalone` for a
@@ -62,7 +61,7 @@ $defs:
           underlying subtask commit, so it — not the sha — is the checkpoint's identity.
         type: string
         maxLength: 255
-        pattern: "^refs/skill-bill/checkpoints/[A-Z][A-Z0-9]*-[0-9]+/[a-z0-9-]+/[0-9]+$"
+        pattern: "^refs/skill-bill/checkpoints/.+/([0-9]+|standalone)/[0-9]+$"
       branch:
         type: string
         minLength: 1

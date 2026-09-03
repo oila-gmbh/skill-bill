@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
+import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupQuery
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.workflow.goalContinuationFor

@@ -3,7 +3,7 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.issuekey.normalizeRequiredIssueKey
+import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.ports.workflow.persistence.decompositionRuntime
 import skillbill.ports.workflow.persistence.findDecomposedParentWorkflow
 import skillbill.ports.workflow.persistence.migrateLegacyGoalRunnerControls

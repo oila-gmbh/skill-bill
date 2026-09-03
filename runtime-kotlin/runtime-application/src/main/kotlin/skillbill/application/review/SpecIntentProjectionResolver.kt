@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.repoRelativePath
+import skillbill.contracts.issuekey.issueKeyFromBranch
 import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
 import skillbill.review.context.model.SpecIntentAbsenceReason
 import skillbill.review.context.model.SpecIntentDegradationRecord
@@ -179,9 +180,6 @@ class SpecIntentProjectionResolver(
     const val MANIFEST_UNREADABLE_REASON = "manifest_unreadable"
     const val PARENT_SPEC_UNAVAILABLE_SEAM = "SpecIntentProjectionResolver.parent_spec_unavailable"
     const val PARENT_SPEC_UNAVAILABLE_REASON = "parent_spec_unavailable"
-    val ISSUE_KEY_IN_BRANCH = Regex("""[A-Z][A-Z0-9]*-[0-9]+""")
-
-    fun issueKeyFromBranch(branchName: String): String? = ISSUE_KEY_IN_BRANCH.find(branchName)?.value
 
     fun prefix(specPath: String): String {
       val directory = specPath.substringBeforeLast('/', "")

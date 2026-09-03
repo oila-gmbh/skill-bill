@@ -2,7 +2,7 @@ package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestProjectionSupport
-import skillbill.application.normalizeIssueKey
+import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
 import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
 import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
