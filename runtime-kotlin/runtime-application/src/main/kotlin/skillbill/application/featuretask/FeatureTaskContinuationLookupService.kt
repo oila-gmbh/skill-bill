@@ -8,6 +8,7 @@ import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResu
 import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
+import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity

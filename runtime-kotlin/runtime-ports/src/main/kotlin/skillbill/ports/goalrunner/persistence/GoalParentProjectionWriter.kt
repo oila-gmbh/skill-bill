@@ -1,7 +1,7 @@
 package skillbill.ports.goalrunner.persistence
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.ports.db.UnitOfWork
-import skillbill.ports.issuekey.normalizeRequiredIssueKey
+import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.ports.workflow.decomposition.runtime.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.decomposition.runtime.encodeDecompositionManifestMap

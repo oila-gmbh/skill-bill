@@ -2,7 +2,7 @@ package skillbill.application.workflow
 
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.resolveDecompositionManifest
-import skillbill.application.normalizeRequiredIssueKey
+import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.application.workflow.model.AdvanceCompletedSubtasksRequest
 import skillbill.application.workflow.model.CheckoutAndValidateBranchRequest
 import skillbill.application.workflow.model.ContinueExistingWorkflowArgs

@@ -103,7 +103,7 @@ class CliBillMonitorSkillRuntimeTest {
         fixture.dbPath.toString(),
         "goal",
         "status",
-        "skill-901",
+        "skill-901\nspoofed",
         "--repo-root",
         fixture.tempDir.toString(),
         "--monitor",
@@ -112,7 +112,7 @@ class CliBillMonitorSkillRuntimeTest {
     )
 
     assertEquals(1, result.exitCode)
-    assertContains(result.stdout, "Monitor requires one supported issue key")
+    assertContains(result.stdout, "Monitor requires a non-blank issue key")
     assertTrue(launcher.childLaunches.isEmpty())
   }
 

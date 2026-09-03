@@ -67,6 +67,7 @@ object FeatureTaskRuntimeCheckpointIdentitySchemaValidator {
 private fun loadCheckpointIdentitySchemaDocument(): JsonNode = try {
   val yamlNode = YAMLMapper().readTree(readCheckpointIdentitySchemaText())
   FeatureTaskRuntimeCheckpointIdentitySchemaValidator.assertIdentity(yamlNode)
+  yamlNode.inlineIssueKeySchemaRefs()
   yamlNode
 } catch (error: InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError) {
   throw error

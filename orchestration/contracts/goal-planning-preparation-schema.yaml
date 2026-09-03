@@ -16,7 +16,7 @@ $defs:
     required: [parent_goal_workflow_id, normalized_issue_key, repository_identity]
     properties:
       parent_goal_workflow_id: { type: string, minLength: 1 }
-      normalized_issue_key: { type: string, pattern: "^[A-Z][A-Z0-9]*-[1-9][0-9]*$" }
+      normalized_issue_key: { $ref: "https://skill-bill.dev/contracts/issue-key-schema.yaml" }
       repository_identity: { type: string, minLength: 1 }
   provenance:
     type: object

@@ -1,11 +1,13 @@
 package skillbill.ports.continuation
+
+import skillbill.contracts.issuekey.isWellFormedIssueKey
+import skillbill.contracts.issuekey.malformedIssueKeyReason
 import skillbill.contracts.workflow.FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 
 object FeatureTaskExecutionIdentityPolicy {
   const val REPOSITORY_IDENTITY_PREFIX: String = "repo-root-realpath-v1:"
-  val ISSUE_KEY_PATTERN: Regex = Regex("^[A-Z][A-Z0-9]*-[0-9]+$")
 
   private const val MAX_ECHOED_VALUE_LENGTH = 120
 
@@ -14,7 +16,7 @@ object FeatureTaskExecutionIdentityPolicy {
       identity.contractVersion != FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION ->
         "contract_version must be $FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION"
       identity.workflowId.isBlank() -> "workflow_id is malformed: expected a non-blank id"
-      !ISSUE_KEY_PATTERN.matches(identity.normalizedIssueKey) ->
+      !isWellFormedIssueKey(identity.normalizedIssueKey) ->
         issueKeyFailure("normalized_issue_key", identity.normalizedIssueKey)
       !validRepositoryIdentity(identity.repositoryIdentity) ->
         repositoryIdentityFailure(identity.repositoryIdentity)
@@ -25,14 +27,18 @@ object FeatureTaskExecutionIdentityPolicy {
     failure?.let { throw InvalidFeatureTaskExecutionIdentitySchemaError(sourceLabel, it) }
   }
 
-  fun validateLookupRequest(issueKey: String, repositoryIdentity: String): String {
-    val normalizedIssueKey = issueKey.trim().uppercase()
-    if (!ISSUE_KEY_PATTERN.matches(normalizedIssueKey)) {
+  fun normalizeIssueKey(issueKey: String, sourceLabel: String): String {
+    if (!isWellFormedIssueKey(issueKey)) {
       throw InvalidFeatureTaskExecutionIdentitySchemaError(
-        "lookup request",
+        sourceLabel,
         issueKeyFailure("issue_key", issueKey),
       )
     }
+    return issueKey.trim().uppercase()
+  }
+
+  fun validateLookupRequest(issueKey: String, repositoryIdentity: String): String {
+    val normalizedIssueKey = normalizeIssueKey(issueKey, "lookup request")
     if (!validRepositoryIdentity(repositoryIdentity)) {
       throw InvalidFeatureTaskExecutionIdentitySchemaError(
         "lookup request",
@@ -43,8 +49,7 @@ object FeatureTaskExecutionIdentityPolicy {
   }
 
   private fun issueKeyFailure(field: String, value: String): String =
-    "$field is malformed: expected ${ISSUE_KEY_PATTERN.pattern} (for example SKILL-129), " +
-      "but received ${echo(value)}"
+    malformedIssueKeyReason(field, echo(value))
 
   private fun repositoryIdentityFailure(value: String): String =
     "repository_identity is malformed: expected the prefix '$REPOSITORY_IDENTITY_PREFIX' followed by the " +

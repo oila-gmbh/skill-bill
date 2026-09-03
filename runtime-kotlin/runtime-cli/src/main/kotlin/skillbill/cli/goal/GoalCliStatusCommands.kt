@@ -8,8 +8,9 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.continuation.FeatureTaskExecutionIdentityPolicy
+import skillbill.contracts.issuekey.MAX_ISSUE_KEY_LENGTH
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.contracts.issuekey.isWellFormedIssueKey
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
@@ -64,10 +65,10 @@ class GoalStatusCommand(
 
   override fun run() {
     val options = statusCliRequestOptions()
-    if (options.monitorOnly && !FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.matches(options.issueKey)) {
+    if (options.monitorOnly && !isWellFormedIssueKey(options.issueKey)) {
       throw UsageError(
-        "Monitor requires one supported issue key matching " +
-          "${FeatureTaskExecutionIdentityPolicy.ISSUE_KEY_PATTERN.pattern}.",
+        "Monitor requires a non-blank issue key of at most $MAX_ISSUE_KEY_LENGTH characters " +
+          "with no control characters.",
       )
     }
     if (options.monitorOnly && (diffStat || diffHunks.isNotEmpty())) {

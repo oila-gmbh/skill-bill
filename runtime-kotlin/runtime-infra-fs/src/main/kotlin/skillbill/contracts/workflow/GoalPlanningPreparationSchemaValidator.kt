@@ -144,6 +144,7 @@ private fun loadGoalPlanningPreparationSchema(): JsonSchema {
     val yamlText = readGoalPlanningPreparationSchemaText()
     val yamlNode = YAMLMapper().readTree(yamlText)
     GoalPlanningPreparationSchemaValidator.assertIdentity(yamlNode)
+    yamlNode.inlineIssueKeySchemaRefs()
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)

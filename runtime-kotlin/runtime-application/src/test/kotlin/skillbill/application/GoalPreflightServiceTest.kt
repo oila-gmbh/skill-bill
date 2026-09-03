@@ -114,7 +114,9 @@ class GoalPreflightServiceTest {
     )
 
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
-      service.preflight(request(Files.createTempDirectory("goal-preflight-invalid"), issueKey = "not-an-issue"))
+      service.preflight(
+        request(Files.createTempDirectory("goal-preflight-invalid"), issueKey = "SKILL-901\nspoofed"),
+      )
     }
   }
 

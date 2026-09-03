@@ -19,8 +19,7 @@ properties:
     type: string
     minLength: 1
   normalized_issue_key:
-    type: string
-    pattern: "^[A-Z][A-Z0-9]*-[0-9]+$"
+    $ref: "https://skill-bill.dev/contracts/issue-key-schema.yaml"
   repository_identity:
     type: string
     pattern: "^repo-root-realpath-v1:/[^\\r\\n]+$"

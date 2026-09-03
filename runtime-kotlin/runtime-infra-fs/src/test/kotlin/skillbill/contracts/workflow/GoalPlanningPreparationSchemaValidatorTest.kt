@@ -10,6 +10,10 @@ class GoalPlanningPreparationSchemaValidatorTest {
   fun `both normalized envelope variants validate`() {
     GoalPlanningPreparationSchemaValidator.validate(sharedEnvelope(), "goal-1")
     GoalPlanningPreparationSchemaValidator.validate(planEnvelope(), "goal-1#1")
+    GoalPlanningPreparationSchemaValidator.validate(
+      sharedEnvelope() + ("identity" to identity("0AC-11")),
+      "0AC-11",
+    )
   }
 
   @Test
@@ -76,9 +80,9 @@ class GoalPlanningPreparationSchemaValidatorTest {
     "plan_payload" to """{"phase_id":"plan"}""",
   )
 
-  private fun identity() = linkedMapOf(
+  private fun identity(normalizedIssueKey: String = "SKILL-128") = linkedMapOf(
     "parent_goal_workflow_id" to "goal-1",
-    "normalized_issue_key" to "SKILL-128",
+    "normalized_issue_key" to normalizedIssueKey,
     "repository_identity" to "repo-root-realpath-v1:/repository",
   )
 

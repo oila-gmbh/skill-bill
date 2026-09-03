@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.decomposition.defaultFeatureBranch
-import skillbill.application.decomposition.issueAndFeature
+import skillbill.contracts.issuekey.issueAndFeature
 import skillbill.ports.workflow.gitops.ProtectedBranches
 import java.nio.file.Path
 

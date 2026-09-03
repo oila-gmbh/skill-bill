@@ -25,6 +25,11 @@ val canonicalGoalVerificationBoundaryCapsPath: String =
     .resolve("orchestration/contracts/goal-verification-boundary-caps.yaml")
     .absolutePath
 
+val canonicalIssueKeySchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/issue-key-schema.yaml")
+    .absolutePath
+
 val copyGoalPlanningDiscoveryExclusions =
   tasks.register<Copy>("copyGoalPlanningDiscoveryExclusions") {
     val contractPath = canonicalGoalPlanningDiscoveryExclusionsPath
@@ -51,6 +56,19 @@ val copyGoalVerificationBoundaryCaps =
     }
   }
 
+val copyIssueKeySchema =
+  tasks.register<Copy>("copyIssueKeySchema") {
+    val contractPath = canonicalIssueKeySchemaPath
+    from(contractPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(contractPath)
+    doFirst {
+      require(File(contractPath).exists()) {
+        "issue-key schema is missing at $contractPath."
+      }
+    }
+  }
+
 sourceSets.named("main") {
   resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
 }
@@ -60,6 +78,6 @@ sourceSets.named("main") {
 // source set too and fails on a clean build without it.
 listOf("processResources", "processTestResources", "sourcesJar").forEach { consumer ->
   tasks.matching { task -> task.name == consumer }.configureEach {
-    dependsOn(copyGoalPlanningDiscoveryExclusions, copyGoalVerificationBoundaryCaps)
+    dependsOn(copyGoalPlanningDiscoveryExclusions, copyGoalVerificationBoundaryCaps, copyIssueKeySchema)
   }
 }

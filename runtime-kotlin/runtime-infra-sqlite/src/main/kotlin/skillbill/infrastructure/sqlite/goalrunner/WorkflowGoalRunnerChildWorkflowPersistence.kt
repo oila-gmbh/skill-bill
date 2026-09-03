@@ -9,7 +9,7 @@ import skillbill.ports.goalrunner.persistence.GoalChildPlanningHydratorPort
 import skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.issuekey.normalizeRequiredIssueKey
+import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.persistence.decompositionRuntime

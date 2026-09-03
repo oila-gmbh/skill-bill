@@ -17,6 +17,29 @@ import kotlin.test.assertNotEquals
 
 class FeatureTaskRuntimeCheckpointIdentityModelsTest {
   @Test
+  fun `an identity with a digit-leading tracker key round-trips through the durable artifact shape`() {
+    val identity = FeatureTaskRuntimeCheckpointIdentity(
+      sequenceNumber = 0,
+      issueKey = "0AC-11",
+      subtaskId = "2",
+      checkpointRef = featureTaskRuntimeCheckpointRefName("0AC-11", "2", 0),
+      branch = "sermilionrestless/0ac-11-be-sessions",
+      phaseId = "implement",
+      generation = 0,
+      ownedPathDigest = featureTaskRuntimeOwnedPathDigest(listOf("src/Owned.kt")),
+      ownedPathCount = 1,
+      commitSha = "a".repeat(40),
+      recordedAt = "2026-09-03T00:00:00Z",
+    )
+
+    val decoded = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+      featureTaskRuntimeCheckpointIdentitiesToArtifact(listOf(identity)),
+    )
+
+    assertEquals(listOf(identity), decoded)
+  }
+
+  @Test
   fun `an identity round-trips through the durable artifact shape`() {
     val identity = identity(sequenceNumber = 3)
 

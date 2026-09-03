@@ -16,15 +16,6 @@ fun repoRelativePath(repoRoot: Path, path: Path): String {
   return root.relativize(absolute).joinToString("/")
 }
 
-fun issueAndFeature(directoryName: String): Pair<String, String> {
-  val match = Regex("^([A-Z][A-Z0-9]+-\\d+(?:\\.\\d+)?)-(.+)$").matchEntire(directoryName)
-  if (match != null) {
-    return match.groupValues[1] to match.groupValues[2]
-  }
-  val parts = directoryName.split("-", limit = 2)
-  return parts.first() to parts.getOrElse(1) { "decomposition" }
-}
-
 fun Map<String, Any?>.optionalIntValue(key: String, sourceLabel: String): Int? = if (containsKey(key)) {
   this[key].asInt(sourceLabel, key)
 } else {

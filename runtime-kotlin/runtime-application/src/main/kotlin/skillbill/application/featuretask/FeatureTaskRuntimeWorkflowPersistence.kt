@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
-import skillbill.application.normalizeIssueKey
+import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.error.InvalidWorkflowStateSchemaError
