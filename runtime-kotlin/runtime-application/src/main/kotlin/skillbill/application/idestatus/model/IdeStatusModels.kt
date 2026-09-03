@@ -1,6 +1,7 @@
 package skillbill.application.idestatus.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.workflow.GOAL_PLANNING_WAVE_CAP
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.idestatus.model.AgentActivityLabel
@@ -149,11 +150,23 @@ data class IdeStatusPlanning(
   val totalSubtaskCount: Int,
   /** Wire-shaped subtask id; the goal projection carries it as an Int. */
   val currentPlanningSubtaskId: String? = null,
+  /** Wire-shaped ids of the subtasks the current planning wave covers, in manifest order. */
+  val planningWaveSubtaskIds: List<String> = emptyList(),
   val reason: String? = null,
 ) {
   init {
     require(plannedSubtaskCount >= 0) { "plannedSubtaskCount must be non-negative." }
     require(totalSubtaskCount >= 0) { "totalSubtaskCount must be non-negative." }
+    require(planningWaveSubtaskIds.all(String::isNotBlank)) {
+      "planningWaveSubtaskIds entries must not be blank."
+    }
+    require(planningWaveSubtaskIds.distinct().size == planningWaveSubtaskIds.size) {
+      "planningWaveSubtaskIds must not repeat a subtask id."
+    }
+    require(planningWaveSubtaskIds.size <= GOAL_PLANNING_WAVE_CAP) {
+      "planningWaveSubtaskIds must hold at most $GOAL_PLANNING_WAVE_CAP ids, was " +
+        "${planningWaveSubtaskIds.size}."
+    }
   }
 }
 
@@ -400,6 +413,8 @@ data class IdeStatusSnapshot(
     put("total_subtask_count", planning.totalSubtaskCount)
     planning.currentPlanningSubtaskId?.takeIf(String::isNotBlank)
       ?.let { put("current_planning_subtask_id", it) }
+    planning.planningWaveSubtaskIds.takeIf { it.isNotEmpty() }
+      ?.let { put("planning_wave_subtask_ids", it) }
     planning.reason?.takeIf(String::isNotBlank)?.let { put("reason", it) }
   }
 }

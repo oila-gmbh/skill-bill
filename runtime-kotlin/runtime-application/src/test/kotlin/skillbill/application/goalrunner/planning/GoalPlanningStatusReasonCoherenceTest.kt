@@ -47,6 +47,29 @@ class GoalPlanningStatusReasonCoherenceTest {
   }
 
   @Test
+  fun `non-resumable planning clears the advertised wave so status stops naming in-flight subtasks`() {
+    val snapshot = GoalPlanningStatusSnapshot(
+      state = GoalPlanningStatusState.PARTIALLY_PLANNED,
+      sharedPreplanPrepared = true,
+      plannedSubtaskCount = 1,
+      totalSubtaskCount = 8,
+      currentPlanningSubtaskId = 2,
+      planningWaveSubtaskIds = listOf(2, 3, 4, 5, 6),
+      reason = GoalPlanningStatusReasons.partiallyPlannedResume(2),
+    )
+
+    val aligned = alignPlanningStatusWithLaunchRecoverability(
+      snapshot = snapshot,
+      recoverability = GoalPlanningProvenanceRecoverability.Irrecoverable(GoalPlanningRecoveryKind.SCOPED_REPLAN),
+      issueKey = "SKILL-230",
+      remedySubtaskId = 2,
+    )
+
+    assertFalse(GoalPlanningStatusReasons.claimsResume(aligned.reason), aligned.reason)
+    assertEquals(emptyList<Int>(), aligned.planningWaveSubtaskIds)
+  }
+
+  @Test
   fun `reuse keeps the resumable planning reason`() {
     val snapshot = GoalPlanningStatusSnapshot(
       state = GoalPlanningStatusState.PREPLANNED,

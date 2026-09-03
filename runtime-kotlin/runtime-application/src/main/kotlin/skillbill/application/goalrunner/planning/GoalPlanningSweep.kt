@@ -57,6 +57,7 @@ class DefaultGoalPlanningSweep(
   val planningAttemptRecorder = launchPort.planningAttemptRecorder
   val planningRejectionRecorder = launchPort.planningRejectionRecorder
   val timingPort = launchPort.timingPort
+  val fanOutPort = launchPort.fanOutPort
   val burstSchedule = launchPort.burstSchedule
   val refreshLiveness = launchPort.refreshLiveness
 

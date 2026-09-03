@@ -37,7 +37,7 @@ internal interface RuntimeComponentProvides10 {
 
   @Provides @JvmSynthetic
   fun goalPlanningBurstSchedule(): GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(
-    planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+    planFanOutCap = GoalPlanningBurstSchedule.DEFAULT_PLAN_FAN_OUT_CAP,
     emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
     emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
     waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,

@@ -4,6 +4,7 @@ import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
 import skillbill.application.goalrunner.planning.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.planning.GoalPlanningRefreshLiveness
 import skillbill.application.goalrunner.planning.GoalPlanningRejectionRecorder
+import skillbill.ports.concurrency.BoundedWorkFanOutPort
 import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
@@ -28,6 +29,7 @@ interface GoalPlanningSweepLaunchPort {
   val planningAttemptRecorder: GoalPlanningAttemptRecorder
   val planningRejectionRecorder: GoalPlanningRejectionRecorder
   val timingPort: RuntimeTimingPort
+  val fanOutPort: BoundedWorkFanOutPort
   val burstSchedule: GoalPlanningBurstSchedule
   val refreshLiveness: GoalPlanningRefreshLiveness
 }

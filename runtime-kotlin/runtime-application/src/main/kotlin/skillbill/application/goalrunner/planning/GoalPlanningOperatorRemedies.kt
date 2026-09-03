@@ -98,6 +98,7 @@ internal fun alignPlanningStatusWithLaunchRecoverability(
   }
   if (!GoalPlanningStatusReasons.claimsResume(snapshot.reason)) return snapshot
   return snapshot.copy(
+    planningWaveSubtaskIds = emptyList(),
     reason = goalPlanningNonResumableStatusReason(issueKey, remedySubtaskId, recoverability.recoveryKind),
   )
 }

@@ -62,6 +62,17 @@ class IdeStatusSchemaContractVersionTest {
   }
 
   @Test
+  fun `planning wave maxItems mirrors GOAL_PLANNING_WAVE_CAP`() {
+    val maxItems = classpathSchema()
+      .path("properties").path("planning")
+      .path("properties").path("planning_wave_subtask_ids")
+      .path("maxItems")
+
+    assertTrue(maxItems.isInt, "planning_wave_subtask_ids.maxItems must be an integer; found: $maxItems")
+    assertEquals(GOAL_PLANNING_WAVE_CAP, maxItems.asInt())
+  }
+
+  @Test
   fun `schema id matches IdeStatusSchemaPaths EXPECTED_SCHEMA_ID`() {
     val schema = classpathSchema()
     assertEquals(IdeStatusSchemaPaths.EXPECTED_SCHEMA_ID, schema.path("\$id").asText())

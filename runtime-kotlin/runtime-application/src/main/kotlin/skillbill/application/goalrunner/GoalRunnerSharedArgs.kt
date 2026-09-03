@@ -9,6 +9,7 @@ import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
+import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
@@ -170,6 +171,7 @@ internal data class ProducePlanArgs(
   val provenance: GoalPlanningContractProvenance,
   val preplanPayload: String,
   val resolvedBodies: GoalPlanningResolvedBoundaryBodies,
+  val outputSink: AgentRunOutputSink,
 )
 
 internal data class EmptyOrStoppedArgs(

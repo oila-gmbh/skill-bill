@@ -8,6 +8,13 @@ package skillbill.contracts.workflow
 const val IDE_STATUS_CONTRACT_VERSION: String = "0.2"
 
 /**
+ * Upper bound on how many subtask plans one goal planning wave covers at once. The IDE status
+ * schema mirrors this as `properties.planning.properties.planning_wave_subtask_ids.maxItems`, and
+ * the planning sweep bounds its dispatch by it, so both sides move together.
+ */
+const val GOAL_PLANNING_WAVE_CAP: Int = 5
+
+/**
  * Single source of truth for the canonical IDE status schema path. The Gradle
  * copy task in `runtime-infra-fs/build.gradle.kts` mirrors these values because
  * Gradle's Kotlin DSL cannot import runtime constants directly.

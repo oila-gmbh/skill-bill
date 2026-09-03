@@ -120,14 +120,18 @@ class CliWorkStatusTest {
         plannedSubtaskCount = 2,
         totalSubtaskCount = 5,
         currentPlanningSubtaskId = "3",
+        planningWaveSubtaskIds = listOf("3", "4", "5"),
         reason = "Planning subtask 3.",
       ),
       updatedAt = Instant.parse("2026-08-06T10:00:00Z"),
       freshness = IdeStatusFreshness.FRESH,
-      summary = "Goal SKILL-165 is planning subtasks (2/5 planned).",
+      summary = "Goal SKILL-165 is planning subtasks (2/5 planned). 3 subtasks are being planned now.",
     )
 
-    IdeStatusSchemaValidator.validate(snapshot.toStatusWireMap(), "cli-goal-planning")
+    val wire = snapshot.toStatusWireMap()
+    IdeStatusSchemaValidator.validate(wire, "cli-goal-planning")
+    val planning = wire["planning"] as Map<*, *>
+    assertEquals(listOf("3", "4", "5"), planning["planning_wave_subtask_ids"])
   }
 
   @Test

@@ -31,6 +31,7 @@ class IdeStatusModelsTest {
         plannedSubtaskCount = 2,
         totalSubtaskCount = 5,
         currentPlanningSubtaskId = "3",
+        planningWaveSubtaskIds = listOf("3", "4", "5"),
         reason = "Planning subtask 3.",
       ),
     ).toStatusWireMap()
@@ -43,6 +44,7 @@ class IdeStatusModelsTest {
         "planned_subtask_count",
         "total_subtask_count",
         "current_planning_subtask_id",
+        "planning_wave_subtask_ids",
         "reason",
       ),
       planning.keys.map { it as String },
@@ -52,6 +54,7 @@ class IdeStatusModelsTest {
     assertEquals(2, planning["planned_subtask_count"])
     assertEquals(5, planning["total_subtask_count"])
     assertEquals("3", planning["current_planning_subtask_id"])
+    assertEquals(listOf("3", "4", "5"), planning["planning_wave_subtask_ids"])
     assertEquals("Planning subtask 3.", planning["reason"])
   }
 
@@ -72,6 +75,7 @@ class IdeStatusModelsTest {
       planning.keys.map { it as String },
     )
     assertFalse(planning.containsKey("current_planning_subtask_id"))
+    assertFalse(planning.containsKey("planning_wave_subtask_ids"))
     assertFalse(planning.containsKey("reason"))
   }
 

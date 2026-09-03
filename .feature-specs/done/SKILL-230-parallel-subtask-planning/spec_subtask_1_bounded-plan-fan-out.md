@@ -13,7 +13,7 @@ Deliver:
   instead of losing sibling results. Model it on `RuntimeTimingPort`: a small
   interface plus a sequential implementation usable as a test default.
   `CancellationException` rethrows before any broad catch, per the failure
-  contract in `docs/code-principles.md`.
+  contract in `../../../docs/code-principles.md`.
 - A JDK implementation in `runtime-infra-fs` alongside `JdkRuntimeTimingPort`,
   using daemon threads with a recognizable name prefix, sizing the pool to
   `min(cap, unitCount)`, and shutting the pool down on every exit path

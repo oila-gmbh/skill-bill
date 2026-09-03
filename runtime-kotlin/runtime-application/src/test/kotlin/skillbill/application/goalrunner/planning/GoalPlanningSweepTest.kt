@@ -35,6 +35,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
+import skillbill.ports.concurrency.BoundedWorkFanOutPort
+import skillbill.ports.concurrency.SequentialBoundedWorkFanOutPort
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.db.UnitOfWork
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
@@ -84,6 +86,9 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -1125,8 +1130,8 @@ class GoalPlanningSweepPrepareAndResumeTest {
     assertEquals(
       listOf(
         "skill-bill: goal planning - parent goal shared preplan\n",
-        "skill-bill: goal planning - subtask 1 plan\n",
-        "skill-bill: goal planning - subtask 2 plan\n",
+        "[subtask 1] skill-bill: goal planning - subtask 1 plan\n",
+        "[subtask 2] skill-bill: goal planning - subtask 2 plan\n",
       ),
       progress,
     )
@@ -1966,46 +1971,10 @@ class GoalPlanningSweepTimingTest {
   }
 
   @Test
-  fun `inter-plan pace waits only between consecutive plan launches`() {
-    val pace = 20.seconds
-    val events = mutableListOf<String>()
-    val timing = RecordingRuntimeTimingPort { events += "wait" }
-    var planOrdinal = 0
-    val harness = sweepHarness(
-      SweepHarnessConfig(
-        timingPort = timing,
-        // One wait() call per logical pace gap so ordinals stay readable.
-        burstSchedule = GoalPlanningBurstSchedule(
-          planLaunchPace = pace,
-          emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
-          emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
-          waitSlice = pace,
-        ),
-      ),
-    ) { phase, subtaskId, _ ->
-      if (phase == "plan") {
-        planOrdinal += 1
-        events += "plan-$planOrdinal:$subtaskId"
-      }
-      validPhaseOutcome(phase)
-    }
-
-    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 3)), harness.request())
-
-    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
-    assertEquals(
-      listOf("plan-1:1", "wait", "plan-2:2", "wait", "plan-3:3"),
-      events,
-      "pace applies only between plan launches — never before the first or after the last",
-    )
-    assertEquals(listOf(pace, pace), timing.waits)
-  }
-
-  @Test
   fun `empty provider turn backoff waits grow before attempts two and three`() {
     val timing = RecordingRuntimeTimingPort()
     val schedule = GoalPlanningBurstSchedule(
-      planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+      planFanOutCap = GoalPlanningBurstSchedule.DEFAULT_PLAN_FAN_OUT_CAP,
       emptyTurnBackoffBase = 30.seconds,
       emptyTurnBackoffFactor = 2,
       waitSlice = 60.seconds,
@@ -2023,46 +1992,44 @@ class GoalPlanningSweepTimingTest {
   }
 
   @Test
-  fun `a pause requested mid-wait stops the sweep without launching further`() {
+  fun `a pause requested while a wave is in flight returns PAUSED and dispatches no further wave`() {
     val pauseStore = MutablePauseGoalPlanningManifestStore()
-    val timing = RecordingRuntimeTimingPort { pauseStore.pauseRequested = true }
     val harness = sweepHarness(
       SweepHarnessConfig(
         manifestStore = pauseStore,
-        timingPort = timing,
         burstSchedule = GoalPlanningBurstSchedule(
-          planLaunchPace = 20.seconds,
+          planFanOutCap = 2,
           emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
           emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
-          waitSlice = 1.seconds,
+          waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
         ),
       ),
-    ) { phase, _, _ -> validPhaseOutcome(phase) }
+    ) { phase, subtaskId, _ ->
+      if (phase == "plan" && subtaskId == 1) pauseStore.pauseRequested = true
+      validPhaseOutcome(phase)
+    }
 
-    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 4)), harness.request())
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(GoalRunnerStopReason.PAUSED, stopped.reason)
     assertEquals(listOf("preplan", "plan"), harness.launcher.phases)
-    assertTrue(timing.waits.isNotEmpty())
+    assertNotNull(
+      harness.recordFor(1),
+      "the draining wave's valid plan must be checkpointed before PAUSED is returned",
+    )
   }
 
   @Test
   fun `an interrupt during wait stops with the launch-interrupt terminal shape`() {
     val timing = RecordingRuntimeTimingPort(result = RuntimeWaitResult.INTERRUPTED)
-    val harness = sweepHarness(
-      SweepHarnessConfig(
-        timingPort = timing,
-        burstSchedule = GoalPlanningBurstSchedule(
-          planLaunchPace = 20.seconds,
-          emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
-          emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
-          waitSlice = 20.seconds,
-        ),
-      ),
-    ) { phase, _, _ -> validPhaseOutcome(phase) }
+    var launches = 0
+    val harness = sweepHarness(SweepHarnessConfig(timingPort = timing)) { phase, _, _ ->
+      launches += 1
+      if (launches == 2) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
+    }
 
-    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(GoalRunnerStopReason.BLOCKED, stopped.reason)
@@ -2072,6 +2039,232 @@ class GoalPlanningSweepTimingTest {
       "a wait interrupt must not be laundered as unexpectedPlanningFailure",
     )
     assertEquals(listOf("preplan", "plan"), harness.launcher.phases)
+  }
+}
+
+class GoalPlanningSweepFanOutTest {
+  @Test
+  fun `a five subtask goal plans the whole wave with all five units in flight together`() {
+    val fanOut = BarrierFanOutPort()
+    val harness = sweepHarness(SweepHarnessConfig(fanOutPort = fanOut)) { phase, _, _ -> validPhaseOutcome(phase) }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 5)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(listOf(5), fanOut.waveSizes)
+    assertEquals(5, fanOut.maxObservedConcurrency, "all five plans must be in flight before any of them completes")
+    assertEquals(5, harness.preparedCount())
+  }
+
+  @Test
+  fun `twelve subtasks plan in capped waves and never exceed the fan-out cap`() {
+    val fanOut = BarrierFanOutPort()
+    val harness = sweepHarness(SweepHarnessConfig(fanOutPort = fanOut)) { phase, _, _ -> validPhaseOutcome(phase) }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 12)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(listOf(5, 5, 2), fanOut.waveSizes)
+    assertEquals(listOf(5, 5, 5), fanOut.requestedCaps)
+    assertEquals(5, fanOut.maxObservedConcurrency)
+    assertEquals(12, harness.preparedCount())
+  }
+
+  @Test
+  fun `a blocked wave member leaves its siblings checkpointed and resume replans only the gap`() {
+    val fanOut = BarrierFanOutPort()
+    var blockThird = true
+    val harness = sweepHarness(SweepHarnessConfig(fanOutPort = fanOut)) { phase, subtaskId, _ ->
+      if (phase == "plan" && subtaskId == 3 && blockThird) {
+        launchFacts(stdout = blockedPhasePayload(phase, "subtask three names no boundary to plan against"))
+      } else {
+        validPhaseOutcome(phase)
+      }
+    }
+    val state = harness.stateFor(manifest(subtaskCount = 4))
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(harness.sweep.prepare(state, harness.request()))
+
+    assertEquals(3, stopped.currentSubtaskId)
+    assertEquals(listOf(1, 2, 4), (1..4).filter { harness.recordFor(it) != null })
+
+    blockThird = false
+    harness.launcher.subtaskIds.clear()
+    val resumed = harness.sweep.prepare(state, harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(resumed)
+    assertEquals(listOf(3), harness.launcher.subtaskIds, "resume must replan only the subtask that never settled")
+    assertEquals(4, harness.preparedCount())
+  }
+
+  @Test
+  fun `two blocked units in one wave stop on the same subtask whichever finishes first`() {
+    fun harnessFor(order: FanOutBodyOrder, rejections: MutableList<GoalPlanningRejectionRecord>) = sweepHarness(
+      SweepHarnessConfig(
+        planningRejectionRecorder = { record -> synchronized(rejections) { rejections += record } },
+        fanOutPort = BarrierFanOutPort(order),
+      ),
+    ) { phase, subtaskId, _ ->
+      if (phase == "plan" && subtaskId in listOf(2, 3)) {
+        launchFacts(stdout = blockedPhasePayload(phase, "subtask $subtaskId names no boundary to plan against"))
+      } else {
+        validPhaseOutcome(phase)
+      }
+    }
+
+    val forwardRejections = mutableListOf<GoalPlanningRejectionRecord>()
+    val forwardHarness = harnessFor(FanOutBodyOrder.FORWARD, forwardRejections)
+    val forward = assertIs<GoalPlanningSweepOutcome.Stopped>(
+      forwardHarness.sweep.prepare(forwardHarness.stateFor(manifest(subtaskCount = 4)), forwardHarness.request()),
+    )
+    val reversedHarness = harnessFor(FanOutBodyOrder.REVERSED, mutableListOf())
+    val reversed = assertIs<GoalPlanningSweepOutcome.Stopped>(
+      reversedHarness.sweep.prepare(reversedHarness.stateFor(manifest(subtaskCount = 4)), reversedHarness.request()),
+    )
+
+    assertEquals(2, forward.currentSubtaskId, "the stop must come from the lowest failing subtask in input order")
+    assertEquals(forward.currentSubtaskId, reversed.currentSubtaskId)
+    assertEquals(forward.blockedReason, reversed.blockedReason)
+    assertEquals(forward.lastResumableStep, reversed.lastResumableStep)
+    assertEquals(
+      2,
+      forwardRejections.count { it.rule == "planning-unsuccessful-status" },
+      "a losing peer must still have its verdict recorded rather than being discarded",
+    )
+  }
+
+  @Test
+  fun `concurrent units forward only whole attributed lines to the shared sink`() {
+    val written = mutableListOf<String>()
+    val interleave = CountDownLatch(3)
+    val harness = sweepHarness(SweepHarnessConfig(fanOutPort = BarrierFanOutPort())) { phase, subtaskId, request ->
+      if (phase == "plan") {
+        val unitSink = request.skillRunRequest.outputSink
+        unitSink.write(AgentRunOutputStream.STDOUT, "chunk-a-$subtaskId ")
+        interleave.countDown()
+        check(interleave.await(FAN_OUT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) { "units never interleaved" }
+        unitSink.write(AgentRunOutputStream.STDOUT, "chunk-b-$subtaskId\n")
+      }
+      validPhaseOutcome(phase)
+    }
+    val sink = AgentRunOutputSink { _, text -> synchronized(written) { written += text } }
+
+    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 3)), harness.request(sink))
+
+    val chunked = written.filter { "chunk-" in it }
+    assertEquals(3, chunked.size, "each unit's split chunks must reach the sink as exactly one whole line")
+    (1..3).forEach { id -> assertContains(chunked, "[subtask $id] chunk-a-$id chunk-b-$id\n") }
+  }
+
+  @Test
+  fun `a wave unit that raises outside the attempt gate stops on its own subtask`() {
+    val harness = sweepHarness(SweepHarnessConfig(fanOutPort = BarrierFanOutPort())) { phase, subtaskId, request ->
+      if (phase == "plan" && subtaskId == 2) {
+        request.skillRunRequest.outputSink.write(AgentRunOutputStream.STDOUT, "tail chunk with no newline")
+      }
+      validPhaseOutcome(phase)
+    }
+    val sink = AgentRunOutputSink { _, text ->
+      if ("[subtask 2]" in text) error("plan output stream closed")
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 3)), harness.request(sink))
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(2, stopped.currentSubtaskId, "the raising unit must name its own subtask, not a sibling")
+    assertEquals("plan", stopped.lastResumableStep)
+    assertContains(stopped.blockedReason, "failed before its output could be checkpointed")
+    assertContains(stopped.blockedReason, "plan output stream closed")
+  }
+
+  @Test
+  fun `a prose drift refresh settles the shared preplan before dispatching a new plan wave`() {
+    val fanOut = BarrierFanOutPort()
+    var preplanLaunches = 0
+    var wavesAtLastPreplan = -1
+    val harness = sweepHarness(SweepHarnessConfig(fanOutPort = fanOut)) { phase, _, _ ->
+      if (phase == "preplan") {
+        preplanLaunches += 1
+        wavesAtLastPreplan = fanOut.waveSizes.size
+        launchFacts(stdout = preplanProsePayload(value = "Preplan prose revision $preplanLaunches."))
+      } else {
+        validPhaseOutcome(phase)
+      }
+    }
+    val state = harness.stateFor(manifest(subtaskCount = 2))
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(harness.sweep.prepare(state, harness.request()))
+    assertEquals(listOf(2), fanOut.waveSizes)
+    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited for prose drift")
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(2, preplanLaunches, "prose drift must re-produce the shared preplan")
+    assertEquals(1, wavesAtLastPreplan, "the refresh preplan must launch before any post-cascade plan wave")
+    assertEquals(2, fanOut.waveSizes.size, "the post-cascade regeneration must dispatch its own wave")
+  }
+}
+
+private const val FAN_OUT_TIMEOUT_SECONDS = 30L
+
+private enum class FanOutBodyOrder {
+  CONCURRENT,
+  FORWARD,
+  REVERSED,
+}
+
+private class BarrierFanOutPort(
+  private val bodyOrder: FanOutBodyOrder = FanOutBodyOrder.CONCURRENT,
+) : BoundedWorkFanOutPort {
+  val requestedCaps = mutableListOf<Int>()
+  val waveSizes = mutableListOf<Int>()
+  private val exclusion = Any()
+  private val inFlight = AtomicInteger()
+  private val peak = AtomicInteger()
+
+  val maxObservedConcurrency: Int get() = peak.get()
+
+  override fun <T> runBounded(maxInFlight: Int, units: List<() -> T>): List<Result<T>> {
+    runExclusively {
+      requestedCaps += maxInFlight
+      waveSizes += units.size
+    }
+    val entered = CountDownLatch(units.size)
+    val order = when (bodyOrder) {
+      FanOutBodyOrder.CONCURRENT -> null
+      FanOutBodyOrder.FORWARD -> units.indices.toList()
+      FanOutBodyOrder.REVERSED -> units.indices.reversed().toList()
+    }
+    val turnstiles = order?.associateWith { CountDownLatch(1) }
+    val successor = order?.zipWithNext()?.toMap()
+    val results = MutableList<Result<T>?>(units.size) { null }
+    val threads = units.mapIndexed { index, unit ->
+      Thread {
+        peak.accumulateAndGet(inFlight.incrementAndGet()) { a, b -> maxOf(a, b) }
+        entered.countDown()
+        awaitFanOut(entered, "wave never fully entered")
+        turnstiles?.getValue(index)?.let { awaitFanOut(it, "unit $index was never released") }
+        results[index] = runCatching { unit() }
+        successor?.get(index)?.let { turnstiles?.getValue(it)?.countDown() }
+        inFlight.decrementAndGet()
+      }
+    }
+    threads.forEach(Thread::start)
+    order?.firstOrNull()?.let { turnstiles?.getValue(it)?.countDown() }
+    threads.forEach { it.join(FAN_OUT_TIMEOUT_SECONDS * MILLIS_PER_SECOND) }
+    return results.mapIndexed { index, result ->
+      result ?: Result.failure<T>(IllegalStateException("fan-out unit $index never produced a result"))
+    }
+  }
+
+  override fun <T> runExclusively(action: () -> T): T = synchronized(exclusion) { action() }
+
+  private fun awaitFanOut(latch: CountDownLatch, failure: String) {
+    check(latch.await(FAN_OUT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) { failure }
+  }
+
+  private companion object {
+    const val MILLIS_PER_SECOND = 1_000L
   }
 }
 
@@ -2262,9 +2455,11 @@ private class SweepPlanningLauncher(
   override fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome {
     val phase = phaseOf(request)
     val subtaskId = request.skillRunRequest.subtaskId ?: 0
-    requests += request
-    phases += phase
-    subtaskIds += subtaskId
+    synchronized(this) {
+      requests += request
+      phases += phase
+      subtaskIds += subtaskId
+    }
     return behavior(phase, subtaskId, request)
   }
 
@@ -2280,6 +2475,7 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
   private var decompositionManifest = "content-decomposition-manifest.yaml"
   private val specContents = mutableMapOf<String, String>()
 
+  @Synchronized
   override fun readText(path: Path): String {
     check(path.fileName.toString() !in removedFileNames) { "missing scratch spec at ${path.fileName}" }
     readPaths += path.toString()
@@ -2694,9 +2890,14 @@ private class InMemoryPreparationDatabase(
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
   override fun databaseExists(dbOverride: String?): Boolean = true
+
+  @Synchronized
   override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
+
+  @Synchronized
   override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T = transaction(dbOverride, block)
 
+  @Synchronized
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork())
 
   private fun unitOfWork(): UnitOfWork = object : UnitOfWork {
@@ -2728,11 +2929,12 @@ private data class SweepFixtures(
     manifest = manifest,
   )
 
-  fun request(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+  fun request(outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE): GoalRunnerRunRequest = GoalRunnerRunRequest(
     issueKey = "SKILL-56",
     repoRoot = repoRoot,
     invokedAgentId = "claude",
     dbPathOverride = dbOverride,
+    outputSink = outputSink,
   )
 
   fun preparedCount(): Int = database.repository.count()
@@ -2770,7 +2972,8 @@ private class SweepHarness(
   val sweep: DefaultGoalPlanningSweep,
 ) {
   fun stateFor(manifest: DecompositionManifest): GoalRunnerManifestState = fixtures.stateFor(manifest)
-  fun request(): GoalRunnerRunRequest = fixtures.request()
+  fun request(outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE): GoalRunnerRunRequest =
+    fixtures.request(outputSink)
   fun preparedCount(): Int = fixtures.preparedCount()
   fun identity(): GoalPlanningIdentity = GoalPlanningIdentity(
     "wfl-parent",
@@ -2793,8 +2996,9 @@ private data class SweepHarnessConfig(
   val manifestStore: GoalRunnerManifestStore = NoopGoalPlanningManifestStore,
   val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
   val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
+  val fanOutPort: BoundedWorkFanOutPort = SequentialBoundedWorkFanOutPort,
   val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(
-    planLaunchPace = GoalPlanningBurstSchedule.DEFAULT_PLAN_LAUNCH_PACE,
+    planFanOutCap = GoalPlanningBurstSchedule.DEFAULT_PLAN_FAN_OUT_CAP,
     emptyTurnBackoffBase = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_BASE,
     emptyTurnBackoffFactor = GoalPlanningBurstSchedule.DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
     waitSlice = GoalPlanningBurstSchedule.DEFAULT_WAIT_SLICE,
@@ -2877,6 +3081,7 @@ private fun sweepHarness(
       manifestStore = config.manifestStore,
       planningRejectionRecorder = config.planningRejectionRecorder,
       timingPort = config.timingPort,
+      fanOutPort = config.fanOutPort,
       burstSchedule = config.burstSchedule,
       refreshLiveness = config.refreshLiveness,
     ),

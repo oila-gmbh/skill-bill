@@ -54,16 +54,16 @@ interface GoalSubtaskPlanRepository {
     blockedSubtaskId: Int? = null,
     blockedReason: String? = null,
   ): GoalPlanningStatusSnapshot = GoalPlanningStatusSnapshot(
-    if (blockedReason == null) {
+    state = if (blockedReason == null) {
       NOT_STARTED
     } else {
       BLOCKED
     },
-    false,
-    0,
-    orderedSubtaskIds.size,
-    blockedSubtaskId ?: orderedSubtaskIds.firstOrNull(),
-    blockedReason ?: "Goal planning has not started.",
+    sharedPreplanPrepared = false,
+    plannedSubtaskCount = 0,
+    totalSubtaskCount = orderedSubtaskIds.size,
+    currentPlanningSubtaskId = blockedSubtaskId ?: orderedSubtaskIds.firstOrNull(),
+    reason = blockedReason ?: "Goal planning has not started.",
   )
 
   fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): Unit =

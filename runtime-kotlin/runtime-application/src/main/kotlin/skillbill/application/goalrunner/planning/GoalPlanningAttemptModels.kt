@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner.planning
 
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
+import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
@@ -25,6 +26,7 @@ internal data class GoalPlanningPhaseContext(
   val subtask: DecompositionSubtask?,
   val runInvariants: FeatureTaskRuntimeRunInvariants,
   val phaseId: String,
+  val outputSink: AgentRunOutputSink = request.outputSink,
 )
 
 internal data class GoalPlanningProduceAttemptArgs(
