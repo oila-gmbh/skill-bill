@@ -1,12 +1,12 @@
 package skillbill.skillremove
 
-import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.domain.skillremove.model.AgentSymlinkUnlink
 import skillbill.domain.skillremove.model.AppliedCascade
 import skillbill.domain.skillremove.model.ManifestEdit
 import skillbill.domain.skillremove.model.ReadmeCatalogEdit
 import skillbill.domain.skillremove.model.SkillRemovalPreview
 import skillbill.domain.skillremove.model.SkillRemovalRequest
+import skillbill.ports.skillremove.SkillRemoveFileSystem
 import java.nio.file.Path
 
 class SkillRemoveJvmFileSystem(

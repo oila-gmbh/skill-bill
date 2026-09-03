@@ -12,12 +12,13 @@ import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.error.InvalidWorkListRowError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.idestatus.IdeStatusValidator
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
-import skillbill.workflow.idestatus.IdeStatusValidator
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import java.nio.file.Path
 import java.time.Clock
 
@@ -34,11 +35,12 @@ class IdeStatusService(
   private val ideStatusValidator: IdeStatusValidator,
   private val branchSource: CheckedOutBranchSource,
   private val clock: Clock,
+  private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 ) {
 
   fun status(request: IdeStatusRequest): IdeStatusResult {
     val observedAt = request.observedAt ?: clock.instant()
-    val identityResult = resolveRepositoryIdentity(request.repoRoot)
+    val identityResult = resolveRepositoryIdentity(request.repoRoot, repositoryEnclosingRootPort)
     if (identityResult is IdeStatusRepositoryResolution.Invalid) {
       return emit(IdeStatusProblemSnapshots.invalidRepositoryInput(observedAt, identityResult.message))
     }
@@ -179,15 +181,18 @@ class IdeStatusService(
  * Resolve canonical repository identity without direct file-IO helpers: existence and the
  * `.git` walk use `Path.toRealPath()`, matching `goalRepositoryIdentity`.
  */
-internal fun resolveRepositoryIdentity(repoRootArg: String): IdeStatusRepositoryResolution {
-  val resolvedStart = runCatching { Path.of(repoRootArg).toAbsolutePath().normalize().toRealPath() }
-    .getOrNull()
+internal fun resolveRepositoryIdentity(
+  repoRootArg: String,
+  repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
+): IdeStatusRepositoryResolution {
+  val resolvedStart = runCatching {
+    repositoryEnclosingRootPort.canonicalPath(Path.of(repoRootArg))
+  }.getOrNull()
     ?: return IdeStatusRepositoryResolution.Invalid("Repository root cannot be resolved: $repoRootArg")
-  val gitRoot = findGitRoot(resolvedStart)
+  val gitRoot = findGitRoot(resolvedStart, repositoryEnclosingRootPort)
     ?: return IdeStatusRepositoryResolution.Invalid("Path is not inside a Git repository: $repoRootArg")
-  val canonicalGitRoot = runCatching { gitRoot.toRealPath() }.getOrNull()
-    ?: return IdeStatusRepositoryResolution.Invalid("Git repository root cannot be resolved: $repoRootArg")
-  val identity = goalRepositoryIdentity(canonicalGitRoot)
+  val canonicalGitRoot = repositoryEnclosingRootPort.canonicalPath(gitRoot)
+  val identity = goalRepositoryIdentity(canonicalGitRoot, repositoryEnclosingRootPort)
   return if (identity.isBlank() || !identity.startsWith("repo-root-realpath-v1:")) {
     IdeStatusRepositoryResolution.Missing(
       "Could not form canonical repository identity for: $repoRootArg",
@@ -197,11 +202,10 @@ internal fun resolveRepositoryIdentity(repoRootArg: String): IdeStatusRepository
   }
 }
 
-private fun findGitRoot(start: Path): Path? {
+private fun findGitRoot(start: Path, repositoryEnclosingRootPort: RepositoryEnclosingRootPort): Path? {
   var candidate: Path? = start
   while (candidate != null) {
-    val gitMarker = runCatching { candidate.resolve(".git").toRealPath() }.getOrNull()
-    if (gitMarker != null) return candidate
+    if (repositoryEnclosingRootPort.optionalRealPath(candidate.resolve(".git")) != null) return candidate
     candidate = candidate.parent
   }
   return null

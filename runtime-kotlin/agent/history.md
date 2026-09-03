@@ -1,4 +1,15 @@
-## [2026-09-03] SKILL-231 subtask 2 — MCP entry-adapter closure
+## [2026-09-04] SKILL-231 subtask 3 — Port contracts and surface collapse
+Areas: runtime-kotlin/{runtime-ports,runtime-domain,runtime-application,runtime-infra-{fs,sqlite,http},runtime-core/{di,architecture},agent,ARCHITECTURE.md}
+- Classified every `Unavailable`/`Noop`/`Empty`/`Unconfigured` port object; guarded by `PortNullObjectClassificationGuardTest` and swallow-recording test. reusable
+- Removed silent `UnitOfWork.goalRunnerControls` default; `UnavailableUnaddressedFindingsRepository.issueExists` now refuses uniformly.
+- Deleted pass-through `McpRegistrationService`, `NativeAgentInstallService`, `RepoValidationService`, scaffold wrappers, and unused `RepoSourceDiscoveryGateway`; `runtime-ports` interfaces 176→174 after collapsing public `GoalRunnerManifest*Ops` into sqlite-internal ops plus composite `GoalRunnerManifestStore` (`WorkflowStateRepository` pattern). reusable
+- Renamed eight technology-leaking ports to capability names; collapsed decomposition-manifest and goal-runner control composites.
+- Routed `runtime-application` `toRealPath` probes through `RepositoryEnclosingRootPort`; moved `IdeStatusValidator` and `SkillRemoveFileSystem` to ports.
+- Emptied `runtime-ports` package-cycle baseline by relocating crossing types; decisions record thin-port retention, wire-open `else`s, and `*GitOperations` rename exclusion.
+Feature flag: N/A
+Acceptance criteria: 14/14 implemented
+
+## [2026-09-03] SKILL-231 subtask 2 — Close MCP entry adapter
 Areas: runtime-kotlin/{runtime-mcp/{core,review,scaffold},runtime-cli/{core,model,goal},runtime-ports/repository,runtime-infra-fs,runtime-core/{di,architecture{,/baselines}},agent,ARCHITECTURE.md}
 - Closed `runtime-mcp` the way SKILL-229 closed CLI: no JVM-seeded context defaults; env/`Path.of("")` only at `Main.kt`; scaffold clock and repo-root injected, not ambient.
 - Declared `RepositoryEnclosingRootPort` in ports with the single `CanonicalRepositoryRoot` adapter in infra-fs; deleted CLI/MCP duplicate `canonicalRepositoryRoot` copies and filesystem IO from entry-adapter main. reusable
@@ -1934,7 +1945,7 @@ Acceptance criteria: 7/7 implemented
 
 ## [2026-05-29] SKILL-52.3 subtask-4 application-wire-seam-and-open-boundary-reconciliation
 Areas: runtime-kotlin/runtime-application, runtime-kotlin/runtime-ports (workflow), runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-cli, runtime-kotlin/runtime-mcp, runtime-kotlin/runtime-core architecture tests, runtime-kotlin/ARCHITECTURE.md
-- Removed the last direct Jackson edge from `runtime-application`: decomposition-manifest YAML serialization moved out of `DecompositionManifestFileWrites` behind a new `DecompositionManifestFileStore.encodeManifestYaml(wireMap)` port method, implemented in infra-fs `FileSystemDecompositionManifestFileStore` (owns `YAMLMapper`). Mirrors the subtask-1 decode port (`DecompositionManifestValidator`) — encode+decode now both cross the same port seam. reusable
+- Removed the last direct Jackson edge from `runtime-application`: decomposition-manifest YAML serialization moved out of `DecompositionManifestFileWrites` behind a new `DecompositionManifestStore.encodeManifestYaml(wireMap)` port method, implemented in infra-fs `FileSystemDecompositionManifestFileStore` (owns `YAMLMapper`). Mirrors the subtask-1 decode port (`DecompositionManifestValidator`) — encode+decode now both cross the same port seam. reusable
 - Ordering invariant to preserve: build validated wireMap via `encodeDecompositionManifestMap` (validate) -> `fileStore.encodeManifestYaml` (serialize) -> `validator.validateYamlText` (revalidate). Keep `encodeDecompositionManifestMap` in runtime-application — `DecompositionManifestArchitectureTest` asserts the application seam owns it and NO LONGER names `YAMLMapper`, while the infra-store seam does. reusable
 - The new port method takes `Map<String,Any?>`, so it tripped the raw-map scanner (which walks runtime-ports, NOT infra-fs); resolved by `@OpenBoundaryMap` + a documented allow-list row, accepted as the symmetric mirror of the decode port rather than a typed `writeManifest(model)`. reusable
 - Reconciliation: typed `SystemService.doctor`/`version` to return `DoctorContract`/`VersionContract` (.toPayload() pushed into CLI+MCP adapters, byte-equivalent); relabeled 5 lifecycle payload helpers + 7 `LifecycleTelemetryService` methods as `@OpenBoundaryMap` accepted permanent open boundaries. Deleted all four future-tense "Subtask N will remove" allow-list literals. reusable
@@ -2073,7 +2084,7 @@ Acceptance criteria: 9/9 implemented
 ## [2026-05-24] SKILL-52.1 path-policy-and-core-shrink
 Areas: runtime-kotlin/ARCHITECTURE.md, runtime-kotlin/runtime-core, runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-infra-http, runtime-kotlin/runtime-infra-sqlite, runtime-kotlin/runtime-desktop/core/data
 - Path policy is now explicit: application/domain/ports may carry `java.nio.file.Path` only as inert data; Files IO, home expansion, `System.getenv`, and `System.getProperty` belong at adapter/composition seams. reusable
-- `RuntimeContext` defaults are pure sentinels; `RuntimeComponent` and public concrete adapters resolve process defaults locally, with `HttpTelemetryClient` also resolving `UnconfiguredHttpRequester` to `JdkHttpRequester`. reusable
+- `RuntimeContext` defaults are pure sentinels; `RuntimeComponent` and public concrete adapters resolve process defaults locally, with `HttpTelemetryClient` also resolving `UnconfiguredRemoteTransportPort` to `JdkHttpRequester`. reusable
 - Review and telemetry `~/...` expansion moved out of domain helpers into fs adapters, with adapter tests for context-bound review home and telemetry env-path expansion.
 - `runtime-core` now publishes only generated Kotlin-Inject ABI edges (`runtime-application`, `runtime-ports` direct; documented transitive closure through domain/contracts) and architecture tests reject closure growth into infra/entrypoint modules. reusable
 - Boundary tests now ban broader JDBC/HTTP/Clikt/framework APIs, process/home lookup, direct file IO, runtime-core implementation packages, and adapter imports of low-level implementation packages.
@@ -2799,7 +2810,7 @@ Acceptance criteria: deeper physical split implemented
 Areas: skillbill.contracts, skillbill.application, skillbill.infrastructure.http, skillbill.infrastructure.sqlite.review, skillbill.telemetry, RuntimeContext, architecture tests
 - Moved application/domain/port-to-contract mapping out of `skillbill.contracts`; contracts now stay DTO/serializer-only for future `runtime-contracts` extraction.
 - Moved telemetry proxy batch mapping beside the HTTP adapter, leaving contract DTOs in `contracts.telemetry`.
-- Removed the HTTP infrastructure default from `RuntimeContext`; CLI/MCP contexts own the JDK requester while core defaults to `UnconfiguredHttpRequester`.
+- Removed the HTTP infrastructure default from `RuntimeContext`; CLI/MCP contexts own the JDK requester while core defaults to `UnconfiguredRemoteTransportPort`.
 - Moved SQL-backed review persistence, stats, feedback, and review telemetry helpers into `skillbill.infrastructure.sqlite.review`; `skillbill.review` is now persistence-free.
 - Made telemetry compatibility facades port-backed so they no longer construct filesystem, SQLite, or HTTP adapters.
 - Reusable guardrail: architecture tests now ban upward runtime imports from `skillbill.contracts`, infrastructure imports from `RuntimeContext` and telemetry facades, and persistence imports from `skillbill.review`.

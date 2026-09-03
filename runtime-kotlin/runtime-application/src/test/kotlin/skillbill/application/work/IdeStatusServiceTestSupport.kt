@@ -1,5 +1,6 @@
 package skillbill.application.work
 
+import skillbill.application.TestRepositoryEnclosingRoot
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
@@ -23,12 +24,8 @@ import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
@@ -41,7 +38,10 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequ
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.idestatus.IdeStatusValidator
+import skillbill.ports.idestatus.NoopIdeStatusValidator
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
@@ -52,6 +52,9 @@ import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
@@ -59,8 +62,8 @@ import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.idestatus.IdeStatusValidator
-import skillbill.workflow.idestatus.NoopIdeStatusValidator
+import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
+import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -228,6 +231,7 @@ internal fun service(
     ideStatusValidator = EmitShapeValidator,
     branchSource = CheckedOutBranchSource(::fixtureCheckedOutBranch),
     clock = ideStatusClock,
+    repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
   )
 }
 
@@ -652,4 +656,17 @@ internal object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     reason: String,
     dbPathOverride: String?,
   ): Boolean = false
+
+  override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? = null
+
+  override fun unemittedGoalReviewPasses(
+    workflowId: String,
+    dbPathOverride: String?,
+  ): List<GoalSubtaskReviewPassResult> = emptyList()
+
+  override fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String?): Boolean = false
+
+  override fun progressEvents(workflowId: String, dbPathOverride: String?): List<Map<String, Any?>> = emptyList()
+
+  override fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String?): Map<String, Int> = emptyMap()
 }

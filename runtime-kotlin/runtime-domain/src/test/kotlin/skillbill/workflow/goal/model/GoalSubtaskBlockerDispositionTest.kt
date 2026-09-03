@@ -1,6 +1,6 @@
 package skillbill.workflow.goal.model
-
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals

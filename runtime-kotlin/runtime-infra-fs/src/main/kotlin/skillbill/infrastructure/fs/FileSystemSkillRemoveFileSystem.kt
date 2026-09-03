@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.model.EnvironmentContext
+import skillbill.ports.skillremove.SkillRemoveFileSystem
 import skillbill.skillremove.SkillRemoveJvmFileSystem
 
 @Inject

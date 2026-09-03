@@ -4,7 +4,7 @@ import skillbill.contracts.issuekey.isWellFormedIssueKey
 import skillbill.contracts.issuekey.malformedIssueKeyReason
 import skillbill.contracts.workflow.FEATURE_TASK_EXECUTION_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 
 object FeatureTaskExecutionIdentityPolicy {
   const val REPOSITORY_IDENTITY_PREFIX: String = "repo-root-realpath-v1:"
@@ -48,8 +48,7 @@ object FeatureTaskExecutionIdentityPolicy {
     return normalizedIssueKey
   }
 
-  private fun issueKeyFailure(field: String, value: String): String =
-    malformedIssueKeyReason(field, echo(value))
+  private fun issueKeyFailure(field: String, value: String): String = malformedIssueKeyReason(field, echo(value))
 
   private fun repositoryIdentityFailure(value: String): String =
     "repository_identity is malformed: expected the prefix '$REPOSITORY_IDENTITY_PREFIX' followed by the " +

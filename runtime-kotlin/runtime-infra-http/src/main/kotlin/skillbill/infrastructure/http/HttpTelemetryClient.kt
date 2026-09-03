@@ -6,10 +6,10 @@ import skillbill.contracts.telemetry.RemoteStatsQueryPayload
 import skillbill.contracts.telemetry.defaultProxyCapabilities
 import skillbill.model.EnvironmentContext
 import skillbill.model.TransportContext
-import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.TelemetryClient
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.TELEMETRY_PROXY_CONTRACT_VERSION
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
@@ -28,15 +28,20 @@ import java.nio.file.Path
 import java.time.LocalDate
 import java.time.ZoneOffset
 
-object JdkHttpRequester : HttpRequester {
-  override fun execute(method: String, url: String, bodyJson: String?, headers: Map<String, String>): HttpResponse {
+object JdkHttpRequester : RemoteTransportPort {
+  override fun execute(
+    method: String,
+    url: String,
+    bodyJson: String?,
+    headers: Map<String, String>,
+  ): RemoteTransportResponse {
     val requestBuilder =
       HttpRequest
         .newBuilder(URI.create(url))
         .method(method, bodyPublisher(bodyJson))
     headers.forEach(requestBuilder::header)
     val response = HttpClient.newHttpClient().send(requestBuilder.build(), BodyHandlers.ofString())
-    return HttpResponse(statusCode = response.statusCode(), body = response.body().orEmpty())
+    return RemoteTransportResponse(statusCode = response.statusCode(), body = response.body().orEmpty())
   }
 }
 
@@ -47,19 +52,19 @@ class HttpTelemetryClient(
 ) : TelemetryClient {
   private val resolvedEnvironment = environmentContext.withProcessDefaults()
   private val resolvedTransport =
-    if (transportContext.requester === UnconfiguredHttpRequester) {
+    if (transportContext.requester === UnconfiguredRemoteTransportPort) {
       transportContext.copy(requester = JdkHttpRequester)
     } else {
       transportContext
     }
 
   constructor(
-    requester: HttpRequester,
+    requester: RemoteTransportPort,
     environment: Map<String, String> = System.getenv(),
   ) : this(requester, environment, Path.of(System.getProperty("user.home")))
 
   constructor(
-    requester: HttpRequester,
+    requester: RemoteTransportPort,
     environment: Map<String, String>,
     userHome: Path,
   ) : this(EnvironmentContext(environment = environment, userHome = userHome), TransportContext(requester = requester))
@@ -162,7 +167,7 @@ private fun requestJson(
   payload: Map<String, Any?>,
   errorContext: String,
   headers: Map<String, String>,
-  requester: HttpRequester,
+  requester: RemoteTransportPort,
 ): Map<String, Any?> {
   val response =
     requester.execute(
@@ -179,7 +184,7 @@ private fun requestJsonGet(
   url: String,
   errorContext: String,
   headers: Map<String, String>,
-  requester: HttpRequester,
+  requester: RemoteTransportPort,
 ): Map<String, Any?> {
   val response =
     requester.execute(
@@ -192,7 +197,7 @@ private fun requestJsonGet(
   return decodeJsonObject(response.body, errorContext)
 }
 
-private fun postJson(url: String, payload: Map<String, Any?>, errorContext: String, requester: HttpRequester) {
+private fun postJson(url: String, payload: Map<String, Any?>, errorContext: String, requester: RemoteTransportPort) {
   val response =
     requester.execute(
       "POST",
@@ -203,7 +208,7 @@ private fun postJson(url: String, payload: Map<String, Any?>, errorContext: Stri
   ensureSuccessfulResponse(response, errorContext)
 }
 
-private fun ensureSuccessfulResponse(response: HttpResponse, errorContext: String) {
+private fun ensureSuccessfulResponse(response: RemoteTransportResponse, errorContext: String) {
   if (response.statusCode !in HTTP_OK_MIN..HTTP_OK_MAX) {
     throw HttpFailureException(
       response.statusCode,
@@ -225,11 +230,12 @@ private fun decodeJsonObject(body: String, errorContext: String): Map<String, An
     )
 }
 
-private fun httpFailureMessage(response: HttpResponse, errorContext: String): String = if (response.body.isBlank()) {
-  "$errorContext failed with HTTP ${response.statusCode}."
-} else {
-  "$errorContext failed with HTTP ${response.statusCode}. ${response.body.trim()}"
-}
+private fun httpFailureMessage(response: RemoteTransportResponse, errorContext: String): String =
+  if (response.body.isBlank()) {
+    "$errorContext failed with HTTP ${response.statusCode}."
+  } else {
+    "$errorContext failed with HTTP ${response.statusCode}. ${response.body.trim()}"
+  }
 
 private fun proxyAuthHeaders(environment: Map<String, String>): Map<String, String> =
   environment[TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY]

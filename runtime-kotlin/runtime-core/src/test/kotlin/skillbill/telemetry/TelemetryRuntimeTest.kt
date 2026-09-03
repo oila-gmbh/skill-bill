@@ -4,9 +4,9 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.http.HttpTelemetryClient
-import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.TelemetryClient
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.RemoteStatsRequest
 import skillbill.telemetry.model.TelemetryProxyCapabilities
@@ -52,7 +52,7 @@ class TelemetryRuntimeTest {
 
   @Test
   fun `fetchProxyCapabilities falls back to default contract on 404`() {
-    val requester = HttpRequester { _, _, _, _ -> HttpResponse(statusCode = 404, body = "") }
+    val requester = RemoteTransportPort { _, _, _, _ -> RemoteTransportResponse(statusCode = 404, body = "") }
     val settings = telemetrySettings(Files.createTempFile("telemetry-capabilities", ".json"), customProxyUrl = null)
 
     val payload = HttpTelemetryClient(requester).fetchProxyCapabilities(settings)
@@ -64,7 +64,7 @@ class TelemetryRuntimeTest {
   @Test
   fun `fetchRemoteStats preserves explicit null stats capabilities`() {
     val requester =
-      HttpRequester { _, url, _, _ ->
+      RemoteTransportPort { _, url, _, _ ->
         if (url.endsWith("/capabilities")) {
           capabilitiesResponse()
         } else {
@@ -203,8 +203,8 @@ private class RecordingTelemetryClient(
     error("Unexpected fetchRemoteStats")
 }
 
-private fun remoteStatsRequester(requests: MutableList<Triple<String, String, String?>>): HttpRequester =
-  HttpRequester { method, url, bodyJson, _ ->
+private fun remoteStatsRequester(requests: MutableList<Triple<String, String, String?>>): RemoteTransportPort =
+  RemoteTransportPort { method, url, bodyJson, _ ->
     requests += Triple(method, url, bodyJson)
     if (url.endsWith("/capabilities")) {
       capabilitiesResponse()
@@ -213,7 +213,7 @@ private fun remoteStatsRequester(requests: MutableList<Triple<String, String, St
     }
   }
 
-private fun capabilitiesResponse(): HttpResponse = HttpResponse(
+private fun capabilitiesResponse(): RemoteTransportResponse = RemoteTransportResponse(
   statusCode = 200,
   body =
   """
@@ -226,7 +226,7 @@ private fun capabilitiesResponse(): HttpResponse = HttpResponse(
   """.trimIndent(),
 )
 
-private fun remoteStatsResponse(): HttpResponse = HttpResponse(
+private fun remoteStatsResponse(): RemoteTransportResponse = RemoteTransportResponse(
   statusCode = 200,
   body =
   """
@@ -241,7 +241,7 @@ private fun remoteStatsResponse(): HttpResponse = HttpResponse(
   """.trimIndent(),
 )
 
-private fun remoteStatsResponseWithNullCapabilities(): HttpResponse = HttpResponse(
+private fun remoteStatsResponseWithNullCapabilities(): RemoteTransportResponse = RemoteTransportResponse(
   statusCode = 200,
   body =
   """

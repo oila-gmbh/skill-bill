@@ -4,22 +4,22 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.scaffold.InstallAgentService
-import skillbill.application.scaffold.McpRegistrationService
-import skillbill.application.scaffold.NativeAgentInstallService
 import skillbill.application.system.UninstallFileSystemService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.model.CliRunInputs
 import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.install.mcp.InstallMcpRegistrationPort
+import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
 import skillbill.ports.system.HostPlatformPort
 import java.nio.file.Path
 
 @Inject
 data class UninstallDependencies(
   val installAgentService: InstallAgentService,
-  val nativeAgentInstallService: NativeAgentInstallService,
-  val mcpRegistrationService: McpRegistrationService,
+  val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
+  val installMcpRegistrationPort: InstallMcpRegistrationPort,
   val uninstallFileSystem: UninstallFileSystemService,
   val hostPlatform: HostPlatformPort,
   val diagnostics: RuntimeDiagnostics,
@@ -118,8 +118,8 @@ class UninstallCommand(
     val recorder = UninstallMutationRecorder(deps.diagnostics)
 
     cleanupAgentInstallTargets(plan, deps.installAgentService, removed, skipped, recorder)
-    cleanupNativeAgentInstallLinks(plan, deps.nativeAgentInstallService, deps.uninstallFileSystem, removed, recorder)
-    cleanupMcpRegistrations(plan, deps.mcpRegistrationService, removed, recorder)
+    cleanupNativeAgentInstallLinks(plan, deps.installNativeAgentLinkPort, deps.uninstallFileSystem, removed, recorder)
+    cleanupMcpRegistrations(plan, deps.installMcpRegistrationPort, removed, recorder)
 
     plan.launchers.forEach { launcher ->
       removeLauncher(deps.uninstallFileSystem, launcher, removed, skipped, recorder)

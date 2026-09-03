@@ -2,11 +2,11 @@ package skillbill.infrastructure.fs.featuretask
 
 import skillbill.contracts.JsonSupport
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -14,6 +14,8 @@ import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.work.WorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
@@ -78,6 +80,8 @@ internal class FeatureTaskGitIntegrationWorkflowRepository : WorkflowStateReposi
 
   override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? =
     listFeatureTaskRuntimeWorkflows(1).firstOrNull()
+
+  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String) = null
 }
 
 internal class FeatureTaskGitIntegrationDatabase(
@@ -108,6 +112,7 @@ internal class FeatureTaskGitIntegrationDatabase(
     override val workList: WorkListRepository = noopPort(WorkListRepository::class.java)
     override val goalPlanningPreparations: GoalPlanningPreparationRepository =
       noopPort(GoalPlanningPreparationRepository::class.java)
+    override val goalRunnerControls: GoalRunnerControlRepository = EmptyGoalRunnerControlRepository
   }
 }
 

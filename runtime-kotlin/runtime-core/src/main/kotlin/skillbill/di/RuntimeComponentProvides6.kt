@@ -3,7 +3,6 @@ package skillbill.di
 import me.tatarka.inject.annotations.Provides
 import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSharedEvidenceStore
-import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemReviewSnapshotGateway
@@ -28,10 +27,6 @@ internal interface RuntimeComponentProvides6 {
     RuntimeComponentBindingsB2.sharedEvidenceLocatorReadPort(adapter)
 
   @Provides @JvmSynthetic
-  fun repoSourceDiscoveryGateway(gateway: FileSystemRepoSourceDiscoveryGateway) =
-    RuntimeComponentBindingsB2.repoSourceDiscoveryGateway(gateway)
-
-  @Provides @JvmSynthetic
   fun repoValidationGateway(gateway: FileSystemRepoValidationGateway) =
     RuntimeComponentBindingsB2.repoValidationGateway(gateway)
 
@@ -40,8 +35,8 @@ internal interface RuntimeComponentProvides6 {
     RuntimeComponentBindingsB2.validationGateRunner(runner)
 
   @Provides @JvmSynthetic
-  fun uninstallFileSystemGateway(gateway: FileSystemUninstallFileSystemGateway) =
-    RuntimeComponentBindingsB2.uninstallFileSystemGateway(gateway)
+  fun uninstallPathsPort(gateway: FileSystemUninstallFileSystemGateway) =
+    RuntimeComponentBindingsB2.uninstallPathsPort(gateway)
 
   @Provides @JvmSynthetic
   fun reviewSnapshotGateway(gateway: FileSystemReviewSnapshotGateway) =

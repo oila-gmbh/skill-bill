@@ -623,7 +623,7 @@ runtime-ports
     - `skillbill.ports.subtaskreview.structuredFindings`
     - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
     - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
-    - `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
+    - `skillbill.ports.workflow.decomposition.DecompositionManifestPersistencePort.encodeManifestYaml`
     - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.manifestFromWorkflowUpdate`
     - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
@@ -642,13 +642,13 @@ runtime-ports
     - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
     - `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
     - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
-    - `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForProgressEvent`
-    - `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForRuntimeEvent`
-    - `skillbill.ports.workflow.persistence.model.GoalObservabilityProgressInput.artifacts`
-    - `skillbill.ports.workflow.persistence.model.GoalObservabilityRuntimeEventInput.artifacts`
+    - `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForProgressEvent`
+    - `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForRuntimeEvent`
+    - `skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressInput.artifacts`
+    - `skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput.artifacts`
     - `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
-    - `skillbill.ports.workflow.persistence.outOfBandAcceptancesFromLegacyArtifacts`
-    - `skillbill.ports.workflow.persistence.reviewPolicyFromLegacyArtifacts`
+    - `skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts`
+    - `skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts`
     - `skillbill.ports.workflow.persistence.toPayload`
     - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
     - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
@@ -702,7 +702,7 @@ runtime-ports
     - `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
     - `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
     - `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
-    - `skillbill.workflow.idestatus.IdeStatusValidator.validate`
+    - `skillbill.ports.idestatus.IdeStatusValidator.validate`
     - `skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
     - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
     - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
@@ -946,7 +946,7 @@ skillbill.workflow.verify
   artifacts are persisted or returned. Repo-local manifest text persistence is
   owned by
   `skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore`
-  behind `skillbill.ports.workflow.decomposition.DecompositionManifestFileStore`.
+  behind `skillbill.ports.workflow.decomposition.DecompositionManifestStore`.
 - Platform-pack manifest schema validation is owned by
   `skillbill.scaffold.PlatformPackSchemaValidator` in `runtime-infra-fs`. The
   owning parse seam is `skillbill.scaffold.ShellContentLoader.buildPack`.
@@ -1500,6 +1500,56 @@ plus the runtime-application inject-defaults floor) stay empty by rule. Module
 baselines recorded here are shrink-only ceilings: they may only shrink, never
 grow without an explicit baseline update through the recorder.
 
+### Port null-object classification
+
+`PortNullObjectClassificationGuardTest` requires every `Unavailable`, `Noop`,
+`Empty`, or `Unconfigured` object under `runtime-ports`, `runtime-domain`, and
+`runtime-application` main source to appear in
+`PortNullObjectClassification.classifiedObjects`. `RecordingNullObjectDiagnosticsTest`
+exercises every `RECORDING_NULL_OBJECT` entry and asserts each swallow method
+emits through `RecordingNullObjectDiagnostics` when bound. Objects classified as
+`DELEGATION_COMPOSITE` delegate every swallow to other classified recording null
+objects and are excluded from that census. Runtime wiring binds
+that sink in `RuntimeComponentBindingsA5.runtimeDiagnostics`.
+
+| Object | Classification |
+| --- | --- |
+| `UnavailableUnaddressedFindingsRepository` | total refusal |
+| `UnavailableGoalRunnerControlRepository` | total refusal |
+| `UnavailableSpecScratchStore` | total refusal |
+| `UnavailableDecompositionManifestStore` | total refusal |
+| `UnavailableFeatureTaskRuntimeAuditGenerationRepository` | total refusal |
+| `UnavailableReviewRunLaneCompletenessRepository` | total refusal |
+| `UnavailableReviewRunStageCompletenessRepository` | total refusal |
+| `UnavailableReviewRunCompletenessRepository` | total refusal |
+| `UnconfiguredRemoteTransportPort` | total refusal |
+| `UnavailableCheckpointHistoryGitOperations` | total refusal |
+| `UnavailableScopedStagingGitOperations` | total refusal |
+| `UnavailableGoalSubtaskReviewGitOperations` | total refusal |
+| `EmptyGoalRunnerControlRepository` | recording null object |
+| `EmptyAgentActivityStampRepository` | recording null object |
+| `NoopGoalRunnerAttemptLedgerStore` | recording null object |
+| `NoopGoalRunnerChildRepairStore` | recording null object |
+| `NoopIdeStatusValidator` | recording null object |
+| `NoopGoalProgressEventValidator` | recording null object |
+| `NoopGoalObservabilityEventValidator` | recording null object |
+| `NoopFeatureTaskRuntimeQuarantineValidator` | recording null object |
+| `NoopFeatureTaskRuntimePlanningProjectionValidator` | recording null object |
+| `NoopFeatureTaskRuntimeImplementationAttemptValidator` | recording null object |
+| `NoopFeatureTaskRuntimeBuildReceiptValidator` | recording null object |
+| `NoopRuntimePhaseFileManifestGitOperations` | recording null object |
+| `NoopWorkflowGitWorktreeOperations` | recording null object |
+| `NoopWorkflowGitRemoteOperations` | recording null object |
+| `NoopWorkflowGitCommitHistoryOperations` | recording null object |
+| `NoopWorkflowGitBranchOperations` | recording null object |
+| `NoopRepositoryFingerprintGitOperations` | recording null object |
+| `NoopGoalSubtaskReviewGitOperations` | recording null object |
+| `NoopWorkflowGitOperations` | delegation composite |
+| `NoopRuntimeTimingPort` | recording null object |
+| `NoopFeatureTaskRuntimeHeartbeat` | recording null object |
+| `NoopFeatureTaskRuntimeWorkerSupervisor` | recording null object |
+| `NoopRuntimeDiagnostics` | diagnostic sink |
+
 ### Destructive command failure policy
 
 `uninstall` is the runtime's only destructive command. A mutation it cannot
@@ -1821,7 +1871,7 @@ Categories:
 - `skillbill.ports.subtaskreview.structuredFindings`
 - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
 - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
-- `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
+- `skillbill.ports.workflow.decomposition.DecompositionManifestPersistencePort.encodeManifestYaml`
 - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.manifestFromWorkflowUpdate`
 - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
 - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
@@ -1838,13 +1888,13 @@ Categories:
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
 - `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
 - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
-- `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForProgressEvent`
-- `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForRuntimeEvent`
-- `skillbill.ports.workflow.persistence.model.GoalObservabilityProgressInput.artifacts`
-- `skillbill.ports.workflow.persistence.model.GoalObservabilityRuntimeEventInput.artifacts`
+- `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForProgressEvent`
+- `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForRuntimeEvent`
+- `skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressInput.artifacts`
+- `skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput.artifacts`
 - `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
-- `skillbill.ports.workflow.persistence.outOfBandAcceptancesFromLegacyArtifacts`
-- `skillbill.ports.workflow.persistence.reviewPolicyFromLegacyArtifacts`
+- `skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts`
+- `skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts`
 - `skillbill.ports.workflow.persistence.toPayload`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
@@ -1895,7 +1945,7 @@ Categories:
 - `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
 - `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
 - `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
-- `skillbill.workflow.idestatus.IdeStatusValidator.validate`
+- `skillbill.ports.idestatus.IdeStatusValidator.validate`
 - `skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
 - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
 - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`

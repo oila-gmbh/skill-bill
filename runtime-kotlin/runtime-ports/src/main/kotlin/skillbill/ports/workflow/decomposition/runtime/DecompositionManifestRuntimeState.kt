@@ -2,7 +2,7 @@ package skillbill.ports.workflow.decomposition.runtime
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestFileCandidate
 import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -28,7 +28,7 @@ fun decodeArtifacts(existingArtifactsJson: String): Map<String, Any?> =
 fun loadManifestOrNull(
   path: Path,
   validator: DecompositionManifestValidator,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
 ): DecompositionManifest? = try {
   loadDecompositionManifest(path, fileStore, validator)
 } catch (_: NoSuchFileException) {
@@ -38,7 +38,7 @@ fun loadManifestOrNull(
 fun findMatchingDecompositionManifests(
   repoRoot: Path,
   issueKey: String,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
   validator: DecompositionManifestValidator,
   recoverPending: Boolean = true,
 ): List<DecompositionManifestFileCandidate> {
@@ -86,7 +86,7 @@ fun findMatchingDecompositionManifests(
 fun resolveDecompositionManifest(
   repoRoot: Path,
   issueKey: String,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
   validator: DecompositionManifestValidator,
   recoverPending: Boolean = true,
 ): DecompositionManifest? {

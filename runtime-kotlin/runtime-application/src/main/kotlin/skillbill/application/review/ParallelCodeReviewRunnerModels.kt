@@ -9,6 +9,7 @@ import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
@@ -53,6 +54,7 @@ internal data class ParallelCodeReviewRunnerPlanningDeps(
   val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary,
   val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning,
   val clock: Clock,
+  val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 )
 
 internal data class ParallelCodeReviewRunnerLaneLaunchDeps(

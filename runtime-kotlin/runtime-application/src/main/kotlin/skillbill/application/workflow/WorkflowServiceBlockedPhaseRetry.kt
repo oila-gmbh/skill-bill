@@ -5,8 +5,8 @@ import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
@@ -25,7 +25,7 @@ import java.time.ZoneOffset
 class WorkflowServiceBlockedPhaseRetry(
   private val engine: WorkflowEngine,
   private val decompositionManifestValidator: DecompositionManifestValidator,
-  private val decompositionManifestFileStore: DecompositionManifestFileStore,
+  private val decompositionManifestStore: DecompositionManifestStore,
   private val decompositionManifestWriter: DecompositionManifestWriter,
   private val repositoryRoot: RepositoryRoot,
 ) {
@@ -65,7 +65,7 @@ class WorkflowServiceBlockedPhaseRetry(
           repositoryRoot.path,
           artifactsJson,
           decompositionManifestValidator,
-          decompositionManifestFileStore,
+          decompositionManifestStore,
         ),
         "Blocked-phase retry reopened the durable goal child but could not write " +
           "its decomposition manifest projection.",

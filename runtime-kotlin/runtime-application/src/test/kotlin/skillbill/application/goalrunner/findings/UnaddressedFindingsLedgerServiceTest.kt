@@ -5,11 +5,12 @@ import skillbill.error.UnaddressedFindingsLedgerAbsentError
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.UnaddressedFindingsRepository
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -177,5 +178,6 @@ private class LedgerOnlySessionFactory(
       get() = error("WorkListRepository is not exercised by the ledger retrieval surface.")
     override val goalPlanningPreparations: GoalPlanningPreparationRepository
       get() = error("GoalPlanningPreparationRepository is not exercised by the ledger retrieval surface.")
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }

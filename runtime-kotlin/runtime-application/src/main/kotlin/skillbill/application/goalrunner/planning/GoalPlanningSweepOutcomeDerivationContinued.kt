@@ -6,6 +6,7 @@ import skillbill.application.goalrunner.planning.model.GoalPlanningPhaseProducti
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 import kotlin.time.Duration
@@ -13,15 +14,23 @@ import kotlin.time.Duration
 fun persistenceReason(subtask: DecompositionSubtask, error: Throwable): String =
   "Goal planning subtask '${subtask.id}' plan could not be checkpointed: ${error.message.orEmpty()}"
 
-fun resolvedGovernedPath(canonicalRepository: Path, governingPath: String): Path {
+fun resolvedGovernedPath(
+  canonicalRepository: Path,
+  governingPath: String,
+  repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
+): Path {
   val lexical = lexicalPath(canonicalRepository, governingPath)
-  return runCatching { lexical.toRealPath() }.getOrElse { lexical }
+  return repositoryEnclosingRootPort.optionalRealPath(lexical) ?: lexical
 }
 
-fun resolvedSubSpecPath(canonicalRepository: Path, specPath: String): Path? {
+fun resolvedSubSpecPath(
+  canonicalRepository: Path,
+  specPath: String,
+  repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
+): Path? {
   if (specPath.isBlank()) return null
   val lexical = lexicalPath(canonicalRepository, specPath)
-  val resolved = runCatching { lexical.toRealPath() }.getOrElse { lexical }
+  val resolved = repositoryEnclosingRootPort.optionalRealPath(lexical) ?: lexical
   return resolved.takeIf { it.startsWith(canonicalRepository) }
 }
 

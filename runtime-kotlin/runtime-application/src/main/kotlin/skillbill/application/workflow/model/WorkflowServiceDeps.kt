@@ -4,7 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
@@ -17,7 +17,7 @@ import java.nio.file.Path
 data class WorkflowServiceDeps(
   val database: DatabaseSessionFactory,
   val gitOperations: WorkflowGitOperations,
-  val decompositionManifestFileStore: DecompositionManifestFileStore,
+  val decompositionManifestStore: DecompositionManifestStore,
   val workflowSnapshotValidator: WorkflowSnapshotValidator,
   val decompositionManifestValidator: DecompositionManifestValidator,
   val decompositionManifestWriter: DecompositionManifestWriter,
@@ -27,7 +27,7 @@ data class WorkflowServiceDeps(
 
 data class ContinueExistingWorkflowArgs(
   val validator: DecompositionManifestValidator? = null,
-  val fileStore: DecompositionManifestFileStore,
+  val fileStore: DecompositionManifestStore,
   val repoRoot: Path? = null,
   val manifestWriter: DecompositionManifestWriter? = null,
 )
@@ -37,7 +37,7 @@ data class DecompositionRuntimeWriteArgs(
   val input: WorkflowUpdateInput,
   val workflowId: String,
   val validator: DecompositionManifestValidator,
-  val fileStore: DecompositionManifestFileStore,
+  val fileStore: DecompositionManifestStore,
   val repoRoot: Path,
   val manifestWriter: DecompositionManifestWriter,
 )

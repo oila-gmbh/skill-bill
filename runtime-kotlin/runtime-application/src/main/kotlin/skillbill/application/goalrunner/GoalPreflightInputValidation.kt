@@ -1,8 +1,9 @@
 package skillbill.application.goalrunner
 
-import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
+import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import java.nio.file.Path
 
 object GoalPreflightInputValidation {
@@ -24,15 +25,16 @@ object GoalPreflightInputValidation {
     }
   }
 
-  fun resolveRepositoryRoot(repoRoot: Path): Path = runCatching {
-    repoRoot.toAbsolutePath().normalize().toRealPath()
-  }.getOrElse {
-    throw InvalidFeatureTaskExecutionIdentitySchemaError(
-      "preflight request",
-      "repository root '$repoRoot' cannot be resolved",
-      it,
-    )
-  }
+  fun resolveRepositoryRoot(repoRoot: Path, repositoryEnclosingRootPort: RepositoryEnclosingRootPort): Path =
+    runCatching {
+      repositoryEnclosingRootPort.canonicalPath(repoRoot.toAbsolutePath().normalize())
+    }.getOrElse {
+      throw InvalidFeatureTaskExecutionIdentitySchemaError(
+        "preflight request",
+        "repository root '$repoRoot' cannot be resolved",
+        it,
+      )
+    }
 
   fun normalizeIssueKey(issueKey: String): String =
     FeatureTaskExecutionIdentityPolicy.normalizeIssueKey(issueKey, "preflight request")

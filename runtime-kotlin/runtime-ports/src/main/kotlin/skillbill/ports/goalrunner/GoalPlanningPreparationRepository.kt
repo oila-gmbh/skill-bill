@@ -40,11 +40,11 @@ interface SharedGoalPreplanRepository {
   fun invalidateSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int =
     error("Shared goal preplan invalidation is not implemented by this repository.")
 
-  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = emptyList()
+  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int>
 
-  fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean = false
+  fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean
 
-  fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String? = null
+  fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String?
 }
 
 interface GoalSubtaskPlanRepository {

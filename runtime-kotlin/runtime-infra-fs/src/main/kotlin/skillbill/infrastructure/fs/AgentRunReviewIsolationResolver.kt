@@ -6,8 +6,8 @@ import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
-import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.review.ReviewLaunchIsolationResolver
+import skillbill.ports.review.model.ReviewLaunchIsolationStrategy
 
 @Inject
 class AgentRunReviewIsolationResolver : ReviewLaunchIsolationResolver {

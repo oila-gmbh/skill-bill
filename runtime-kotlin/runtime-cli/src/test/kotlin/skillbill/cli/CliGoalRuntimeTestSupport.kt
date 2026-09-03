@@ -22,8 +22,8 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.runner.model.GoalPullRequestResult
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.time.NoopRuntimeTimingPort
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
@@ -234,7 +234,7 @@ internal data class GoalCliFixture(
     liveStdout: (String) -> Unit = {},
     liveStderr: (String) -> Unit = {},
     workflowGitOperations: WorkflowGitOperations = GoalTestWorkflowGitOperations,
-    requester: HttpRequester = UnconfiguredHttpRequester,
+    requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
   ): CliRuntimeContext = CliRuntimeContext(
     userHome = tempDir.also { installFakeRuntimeMcpBin(it) },
     environment = isolatedCliEnvironment(tempDir),
@@ -248,7 +248,7 @@ internal data class GoalCliFixture(
     runtimeTimingPort = NoopRuntimeTimingPort,
   )
 
-  fun materializeDatabaseWithTelemetry(level: String, requester: HttpRequester) = materializeTelemetryDatabase(
+  fun materializeDatabaseWithTelemetry(level: String, requester: RemoteTransportPort) = materializeTelemetryDatabase(
     tempDir,
     dbPath,
     level,

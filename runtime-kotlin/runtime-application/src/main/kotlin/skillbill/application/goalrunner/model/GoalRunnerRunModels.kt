@@ -2,7 +2,7 @@ package skillbill.application.goalrunner.model
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.ports.agentrun.model.AgentRunOutputSink
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import java.nio.file.Path
 import kotlin.time.Duration

@@ -4,10 +4,6 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.error.MissingAgentAddonDeclarationError
-import skillbill.nativeagent.composition.NativeAgentCompositionDirective
-import skillbill.nativeagent.composition.NativeAgentCompositionKind
-import skillbill.nativeagent.composition.NativeAgentSource
-import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
@@ -15,7 +11,6 @@ import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainSkill
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
-import skillbill.ports.scaffold.model.NativeAgentSourceProjection
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.ports.scaffold.model.ScaffoldRenderBlock
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
@@ -35,13 +30,6 @@ import skillbill.scaffold.runtime.scaffold
 import java.nio.file.Files
 import java.nio.file.Path
 import skillbill.agentaddon.inspectAgentAddons as inspectFsAgentAddons
-import skillbill.nativeagent.composition.parseNativeAgentSourceFile as parseFsNativeAgentSourceFile
-import skillbill.nativeagent.composition.renderComposedNativeAgentSource as renderFsComposedNativeAgentSource
-import skillbill.nativeagent.composition.renderNativeAgentSource as renderFsNativeAgentSource
-import skillbill.nativeagent.discovery.discoverNativeAgentSourceFiles as discoverFsNativeAgentSourceFiles
-import skillbill.ports.scaffold.model.GeneratedArtifactFile as PortGeneratedArtifactFile
-import skillbill.scaffold.platformpack.discoverGovernedAddonFiles as discoverFsGovernedAddonFiles
-import skillbill.scaffold.pointer.discoverGeneratedArtifactFiles as discoverFsGeneratedArtifactFiles
 
 private const val CONTENT_PREVIEW_MAX_CHARS = 500
 
@@ -259,52 +247,6 @@ class FileSystemScaffoldCatalogGateway : ScaffoldCatalogGateway {
 
   override fun discoverBaselineReviewCatalog(packsRoot: Path) = ScaffoldCatalog.discoverBaselineReviewCatalog(packsRoot)
 }
-
-@Inject
-class FileSystemRepoSourceDiscoveryGateway : RepoSourceDiscoveryGateway {
-  override fun discoverAgentAddons(repoRoot: Path) = AgentAddonDeliveryResolver().catalogue(repoRoot)
-
-  override fun inspectAgentAddons(repoRoot: Path) = inspectFsAgentAddons(repoRoot)
-
-  override fun discoverGovernedAddonFiles(repoRoot: Path) = discoverFsGovernedAddonFiles(repoRoot)
-
-  override fun discoverGeneratedArtifactFiles(repoRoot: Path): List<PortGeneratedArtifactFile> =
-    discoverFsGeneratedArtifactFiles(repoRoot).map { artifact ->
-      PortGeneratedArtifactFile(path = artifact.path, reason = artifact.reason)
-    }
-
-  override fun discoverNativeAgentSourceFiles(platformPacksRoot: Path, skillsRoot: Path?) =
-    discoverFsNativeAgentSourceFiles(platformPacksRoot, skillsRoot)
-
-  override fun parseNativeAgentSourceFile(path: Path): List<NativeAgentSourceProjection> =
-    parseFsNativeAgentSourceFile(path).map(NativeAgentSource::toProjection)
-
-  override fun renderNativeAgentSource(source: NativeAgentSourceProjection) =
-    renderFsNativeAgentSource(source.toNativeAgentSource())
-
-  override fun renderComposedNativeAgentSource(repoRoot: Path, source: NativeAgentSourceProjection) =
-    renderFsComposedNativeAgentSource(repoRoot, source.toNativeAgentSource())
-}
-
-private fun NativeAgentSource.toProjection(): NativeAgentSourceProjection = NativeAgentSourceProjection(
-  name = name,
-  description = description,
-  body = body,
-  compositionKindWireValue = composition?.kind?.wireValue,
-  path = path,
-  bundleEntryName = bundleEntryName,
-)
-
-private fun NativeAgentSourceProjection.toNativeAgentSource(): NativeAgentSource = NativeAgentSource(
-  name = name,
-  description = description,
-  body = body,
-  composition = compositionKindWireValue
-    ?.let { wireValue -> NativeAgentCompositionKind.entries.firstOrNull { it.wireValue == wireValue } }
-    ?.let(::NativeAgentCompositionDirective),
-  path = path,
-  bundleEntryName = bundleEntryName,
-)
 
 private fun AuthoringRenderResult.toPortRenderResult(): ScaffoldRenderResult = ScaffoldRenderResult(
   repoRoot = repoRoot,

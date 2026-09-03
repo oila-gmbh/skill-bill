@@ -13,5 +13,5 @@ interface GoalRunnerWorkflowProgressStore {
   fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String? = null): Boolean
 
   @OpenBoundaryMap("Durable goal progress-event artifact maps read back at the goal-runner workflow seam")
-  fun progressEvents(workflowId: String, dbPathOverride: String? = null): List<Map<String, Any?>> = emptyList()
+  fun progressEvents(workflowId: String, dbPathOverride: String? = null): List<Map<String, Any?>>
 }

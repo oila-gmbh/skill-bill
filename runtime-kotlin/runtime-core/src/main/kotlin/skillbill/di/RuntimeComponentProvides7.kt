@@ -52,6 +52,6 @@ internal interface RuntimeComponentProvides7 {
     RuntimeComponentBindingsB4.workflowGitOperations(workflowOps, git)
 
   @Provides @JvmSynthetic
-  fun decompositionManifestFileStore(store: FileSystemDecompositionManifestFileStore) =
-    RuntimeComponentBindingsB4.decompositionManifestFileStore(store)
+  fun decompositionManifestStore(store: FileSystemDecompositionManifestFileStore) =
+    RuntimeComponentBindingsB4.decompositionManifestStore(store)
 }

@@ -1,5 +1,6 @@
 package skillbill.ports.time
 
+import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.ports.time.model.RuntimeWaitResult
 import kotlin.time.Duration
 
@@ -8,5 +9,8 @@ fun interface RuntimeTimingPort {
 }
 
 object NoopRuntimeTimingPort : RuntimeTimingPort {
-  override fun wait(duration: Duration): RuntimeWaitResult = RuntimeWaitResult.COMPLETED
+  override fun wait(duration: Duration): RuntimeWaitResult {
+    RecordingNullObjectDiagnostics.recordSwallow("NoopRuntimeTimingPort", "wait(duration=$duration)")
+    return RuntimeWaitResult.COMPLETED
+  }
 }

@@ -7,6 +7,7 @@ import skillbill.application.goalrunner.model.GoalRunnerStopVerbResult
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_STOP
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.nio.file.Path
@@ -21,11 +22,12 @@ class GoalRunnerStatusControlVerbs(
   private val manifestStore: GoalRunnerManifestStore,
   private val clock: Clock,
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
+  private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 ) {
   fun pause(issueKey: String, dbPathOverride: String?, repoRoot: Path): GoalRunnerPauseResult {
     val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
       ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
-    val repositoryIdentity = goalRepositoryIdentity(repoRoot)
+    val repositoryIdentity = goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort)
     manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, repositoryIdentity, dbPathOverride)
     val control = manifestStore.requestPause(loaded.parentWorkflowId, dbPathOverride)
       ?: return GoalRunnerPauseResult(issueKey = issueKey, status = "not_found")
@@ -52,7 +54,11 @@ class GoalRunnerStatusControlVerbs(
   fun stop(issueKey: String, dbPathOverride: String?, repoRoot: Path): GoalRunnerStopVerbResult {
     val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
       ?: return GoalRunnerStopVerbResult(issueKey = issueKey, status = GoalRunnerStopStatus.NOT_FOUND)
-    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, goalRepositoryIdentity(repoRoot), dbPathOverride)
+    manifestStore.bindRepositoryIdentity(
+      loaded.parentWorkflowId,
+      goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort),
+      dbPathOverride,
+    )
     val alreadyStopped = loaded.controlState.paused &&
       loaded.controlState.pauseReason == GOAL_PAUSE_REASON_OPERATOR_STOP
     val control = manifestStore.pauseNow(
@@ -101,7 +107,11 @@ class GoalRunnerStatusControlVerbs(
   fun resume(issueKey: String, dbPathOverride: String?, repoRoot: Path): GoalRunnerResumeResult {
     val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
       ?: return GoalRunnerResumeResult(issueKey = issueKey, status = "not_found")
-    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, goalRepositoryIdentity(repoRoot), dbPathOverride)
+    manifestStore.bindRepositoryIdentity(
+      loaded.parentWorkflowId,
+      goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort),
+      dbPathOverride,
+    )
     val before = manifestStore.controlState(loaded.parentWorkflowId, dbPathOverride)
     if (!before.paused && !before.pauseRequested) {
       return GoalRunnerResumeResult(

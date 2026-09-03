@@ -8,6 +8,7 @@ import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.PrDescriptionLifecycleTelemetryRepository
 import skillbill.ports.telemetry.QualityCheckLifecycleTelemetryRepository
 import skillbill.ports.telemetry.ReviewStageTelemetryMeasurementRepository
+import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
@@ -20,6 +21,8 @@ import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 
 private object QualityCheckLifecycleTelemetryNoop : QualityCheckLifecycleTelemetryRepository {
@@ -68,6 +71,12 @@ internal class RecordingLifecycleTelemetryRepository(
   override fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) {
     sharedEvidenceMeasurements += record
   }
+
+  override fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) = Unit
+
+  override fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) = Unit
+
+  override fun reviewStageDegradation(record: ReviewStageDegradationMeasurement) = Unit
 
   override fun featureTaskRuntimeDiagnosticDegradation(record: FeatureTaskRuntimeDiagnosticDegradationMeasurement) {
     if (throwOnDiagnosticDegradation) error("telemetry sink failed")

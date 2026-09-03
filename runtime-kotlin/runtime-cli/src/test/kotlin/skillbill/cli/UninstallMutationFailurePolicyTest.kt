@@ -2,8 +2,6 @@ package skillbill.cli
 
 import com.github.ajalt.clikt.parsers.CommandLineParser
 import skillbill.application.scaffold.InstallAgentService
-import skillbill.application.scaffold.McpRegistrationService
-import skillbill.application.scaffold.NativeAgentInstallService
 import skillbill.application.system.UninstallFileSystemService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.model.CliExecutionResult
@@ -44,7 +42,7 @@ import skillbill.ports.install.nativeagent.model.InstallNativeAgentLinkOperation
 import skillbill.ports.install.nativeagent.model.InstallNativeAgentLinkOperationResult
 import skillbill.ports.install.nativeagent.model.InstallNativeAgentUnlinkOperationResult
 import skillbill.ports.system.HostPlatformPort
-import skillbill.ports.system.UninstallFileSystemGateway
+import skillbill.ports.system.UninstallPathsPort
 import java.io.IOException
 import java.nio.file.Path
 import kotlin.test.Test
@@ -59,7 +57,7 @@ class UninstallMutationFailurePolicyTest {
     val recorder = UninstallMutationRecorder(diagnostics)
 
     removeLauncher(
-      fileSystem = UninstallFileSystemService(ThrowingUninstallFileSystemGateway(RUNTIME_BIN_PATH, "deleteIfExists")),
+      fileSystem = UninstallFileSystemService(ThrowingUninstallPathsPort(RUNTIME_BIN_PATH, "deleteIfExists")),
       launcher = LauncherRemoval(LAUNCHER_PATH, RUNTIME_BIN_PATH),
       removed = mutableListOf(),
       skipped = mutableListOf(),
@@ -78,7 +76,7 @@ class UninstallMutationFailurePolicyTest {
     val recorder = UninstallMutationRecorder(diagnostics)
 
     removeRecursively(
-      fileSystem = UninstallFileSystemService(ThrowingUninstallFileSystemGateway(RUNTIME_BIN_PATH, "removeTree")),
+      fileSystem = UninstallFileSystemService(ThrowingUninstallPathsPort(RUNTIME_BIN_PATH, "removeTree")),
       path = STATE_ROOT,
       removed = mutableListOf(),
       recorder = recorder,
@@ -96,7 +94,7 @@ class UninstallMutationFailurePolicyTest {
 
     cleanupMcpRegistrations(
       plan = uninstallPlan(),
-      mcpRegistrationService = McpRegistrationService(ThrowingMcpRegistrationPort),
+      installMcpRegistrationPort = ThrowingMcpRegistrationPort,
       removed = mutableListOf(),
       recorder = recorder,
     )
@@ -141,9 +139,9 @@ class UninstallMutationFailurePolicyTest {
       ),
       deps = UninstallDependencies(
         installAgentService = InstallAgentService(StubInstallAgentTargetPort),
-        nativeAgentInstallService = NativeAgentInstallService(StubInstallNativeAgentLinkPort),
-        mcpRegistrationService = McpRegistrationService(mcpRegistrationPort),
-        uninstallFileSystem = UninstallFileSystemService(AbsentUninstallFileSystemGateway),
+        installNativeAgentLinkPort = StubInstallNativeAgentLinkPort,
+        installMcpRegistrationPort = mcpRegistrationPort,
+        uninstallFileSystem = UninstallFileSystemService(AbsentUninstallPathsPort),
         hostPlatform = StubUninstallHostPlatformPort,
         diagnostics = RecordingRuntimeDiagnostics(),
       ),
@@ -172,10 +170,10 @@ class UninstallMutationFailurePolicyTest {
   }
 }
 
-private class ThrowingUninstallFileSystemGateway(
+private class ThrowingUninstallPathsPort(
   private val symlinkTarget: Path,
   private val failingOperation: String,
-) : UninstallFileSystemGateway {
+) : UninstallPathsPort {
   override fun listImmediateDirectoryNames(root: Path): List<String> = emptyList()
 
   override fun exists(path: Path): Boolean = true
@@ -201,7 +199,7 @@ private object ThrowingMcpRegistrationPort : InstallMcpRegistrationPort {
 
 private val ABSENT_PATH: Path = Path.of("/tmp/skillbill-uninstall-policy/absent")
 
-private object AbsentUninstallFileSystemGateway : UninstallFileSystemGateway {
+private object AbsentUninstallPathsPort : UninstallPathsPort {
   override fun listImmediateDirectoryNames(root: Path): List<String> = emptyList()
 
   override fun exists(path: Path): Boolean = false

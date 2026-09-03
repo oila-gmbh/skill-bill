@@ -1,8 +1,8 @@
 package skillbill.application.review
 
 import skillbill.review.context.ReviewExecutionModePolicy
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.toCodeReviewExecutionMode
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 
 object RuntimeOwnedReviewMode {
   private val allowed: List<CodeReviewExecutionMode> = listOf(

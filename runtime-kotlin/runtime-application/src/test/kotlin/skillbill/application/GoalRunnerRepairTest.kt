@@ -40,7 +40,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
@@ -52,12 +52,12 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
@@ -68,6 +68,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Path
+import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -1071,12 +1072,12 @@ internal abstract class GoalRunnerRepairFixtures {
       testWorkflowSnapshotValidator,
       gitOperations = git,
     ).copy(
-      decompositionManifestFileStore = InMemoryRepairManifestFileStore(),
+      decompositionManifestStore = InMemoryRepairManifestFileStore(),
     ),
   )
 
   protected class InMemoryRepairManifestFileStore :
-    DecompositionManifestFileStore by TestDecompositionManifestFileStore {
+    DecompositionManifestStore by TestDecompositionManifestStore {
     private val files = linkedMapOf<Path, String>()
 
     override fun writeTextAtomically(target: Path, content: String) {
@@ -1325,6 +1326,8 @@ internal abstract class GoalRunnerRepairFixtures {
       FeatureTaskRuntimeProcessIdentity("host", "boot", 1, "birth")
 
     override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.ExactLive
+
+    override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
 
     override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
 

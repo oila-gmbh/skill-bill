@@ -9,7 +9,8 @@ import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.repository.RepositoryEnclosingRootPort
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import java.nio.file.Path
 
 /**
@@ -27,7 +28,8 @@ fun interface GoalPlanningStatusReasonCoherence {
 @Inject
 class LaunchAlignedGoalPlanningStatusReasonCoherence(
   private val checkpoint: GoalPlanningPreparationCheckpoint,
-  private val manifestFileStore: DecompositionManifestFileStore,
+  private val manifestFileStore: DecompositionManifestStore,
+  private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 ) : GoalPlanningStatusReasonCoherence {
   override fun align(request: GoalPlanningStatusAlignRequest): GoalPlanningStatusSnapshot {
     if (!request.snapshot.sharedPreplanPrepared) return request.snapshot
@@ -46,8 +48,7 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
   }
 
   private fun classifyForStatus(request: GoalPlanningStatusAlignRequest): GoalPlanningProvenanceRecoverability {
-    val canonicalRepository = runCatching { request.repoRoot.toRealPath() }
-      .getOrElse { request.repoRoot.toAbsolutePath().normalize() }
+    val canonicalRepository = repositoryEnclosingRootPort.canonicalPath(request.repoRoot)
     val identity = GoalPlanningIdentity(
       request.parentWorkflowId,
       request.issueKey.trim().uppercase(),

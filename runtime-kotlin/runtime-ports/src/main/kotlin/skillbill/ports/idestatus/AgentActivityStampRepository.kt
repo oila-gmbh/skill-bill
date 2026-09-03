@@ -1,5 +1,6 @@
 package skillbill.ports.idestatus
 
+import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.idestatus.model.AgentActivityStamp
 
 interface AgentActivityStampRepository {
@@ -9,7 +10,14 @@ interface AgentActivityStampRepository {
 }
 
 object EmptyAgentActivityStampRepository : AgentActivityStampRepository {
-  override fun record(workflowId: String, stamp: AgentActivityStamp) = Unit
+  private const val NAME = "EmptyAgentActivityStampRepository"
 
-  override fun read(workflowId: String): AgentActivityStamp? = null
+  override fun record(workflowId: String, stamp: AgentActivityStamp) {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "record(workflowId=$workflowId)")
+  }
+
+  override fun read(workflowId: String): AgentActivityStamp? {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "read(workflowId=$workflowId)")
+    return null
+  }
 }

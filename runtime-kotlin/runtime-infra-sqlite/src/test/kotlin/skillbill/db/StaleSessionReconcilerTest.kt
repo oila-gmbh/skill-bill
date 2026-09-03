@@ -84,7 +84,13 @@ class StaleSessionReconcilerTest {
     val dbPath = Files.createTempDirectory("forced-reconciliation").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       seedStaleLifecycleSessions(connection)
-      val request = TelemetryReconciliationRequest(level = "full", cadenceSeconds = 0, maximumBatchSize = 2)
+      val now = Instant.parse("2030-01-02T00:00:00Z")
+      val request = TelemetryReconciliationRequest(
+        level = "full",
+        cadenceSeconds = 0,
+        maximumBatchSize = 2,
+        now = now,
+      )
 
       val first = reconcileStaleTelemetrySessions(connection, request)
       assertEquals(2, first.processedCandidates)

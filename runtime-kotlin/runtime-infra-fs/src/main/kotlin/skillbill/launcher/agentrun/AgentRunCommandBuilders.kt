@@ -7,9 +7,9 @@ import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
 import skillbill.launcher.mcp.McpRegistrationOperations
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
+import skillbill.ports.review.model.ReviewLaunchIsolationStrategy
 import java.nio.file.Path
 import kotlin.time.Duration
 

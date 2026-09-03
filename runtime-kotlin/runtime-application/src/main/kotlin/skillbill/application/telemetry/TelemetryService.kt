@@ -16,6 +16,7 @@ import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.sync.TelemetrySyncRuntime
 import skillbill.telemetry.sync.syncResult
+import java.time.Clock
 
 @Inject
 class TelemetryService(
@@ -23,6 +24,7 @@ class TelemetryService(
   private val settingsProvider: TelemetrySettingsProvider,
   private val configStore: TelemetryConfigStore,
   private val telemetryClient: TelemetryClient,
+  private val clock: Clock,
 ) {
   fun isEnabled(): Boolean = telemetrySettingsOrNull(settingsProvider)?.enabled ?: false
 
@@ -49,7 +51,10 @@ class TelemetryService(
       if (!settings.enabled) {
         TelemetrySyncRuntime.disabledSync(settings)
       } else {
-        reconcileBeforeSync(TelemetryReconciliationRequest(level = settings.level, cadenceSeconds = 0L), dbOverride)
+        reconcileBeforeSync(
+          TelemetryReconciliationRequest(level = settings.level, cadenceSeconds = 0L, now = clock.instant()),
+          dbOverride,
+        )
         TelemetrySyncRuntime.syncTelemetry(
           settings,
           sessionTelemetryOutboxRepository(database, dbOverride),
@@ -65,7 +70,7 @@ class TelemetryService(
   fun autoSync(dbOverride: String? = null) {
     val settings = telemetrySettingsOrNull(settingsProvider)
     if (settings == null || !settings.enabled || !database.databaseExists(dbOverride)) return
-    reconcileBeforeSync(TelemetryReconciliationRequest(level = settings.level), dbOverride)
+    reconcileBeforeSync(TelemetryReconciliationRequest(level = settings.level, now = clock.instant()), dbOverride)
     TelemetrySyncRuntime.autoSyncTelemetry(
       settings,
       sessionTelemetryOutboxRepository(database, dbOverride),

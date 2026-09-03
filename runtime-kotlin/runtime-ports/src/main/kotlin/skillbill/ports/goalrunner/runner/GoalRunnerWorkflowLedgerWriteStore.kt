@@ -15,5 +15,5 @@ interface GoalRunnerWorkflowLedgerWriteStore {
 
   fun ledgerSequenceWatermarks(issueKey: String, dbPathOverride: String? = null): GoalRunnerLedgerSequenceWatermarks
 
-  fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String? = null): Map<String, Int> = emptyMap()
+  fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String? = null): Map<String, Int>
 }

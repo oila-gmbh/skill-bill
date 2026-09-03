@@ -2,7 +2,6 @@ package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestControlOps
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestPauseOps
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorization
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState

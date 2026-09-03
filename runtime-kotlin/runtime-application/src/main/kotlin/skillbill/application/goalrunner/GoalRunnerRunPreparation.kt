@@ -9,15 +9,17 @@ import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 
 @Inject
 public class GoalRunnerRunPreparation(
   private val manifestStore: GoalRunnerManifestStore,
+  private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 ) {
   fun prepareRun(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalRunPreparation {
     val persistedControl = manifestStore.bindRepositoryIdentity(
       state.parentWorkflowId,
-      goalRepositoryIdentity(request.repoRoot),
+      goalRepositoryIdentity(request.repoRoot, repositoryEnclosingRootPort),
       request.dbPathOverride,
     )
     stopAfterPolicyMismatch(state, request, persistedControl)?.let { return it }

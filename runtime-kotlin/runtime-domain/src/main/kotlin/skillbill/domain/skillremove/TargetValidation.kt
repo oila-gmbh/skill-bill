@@ -6,7 +6,7 @@ import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalTarget
 import java.nio.file.Paths
 
-internal object TargetValidation {
+object TargetValidation {
   private val NAME_REGEX: Regex = Regex("^[A-Za-z0-9._-]+$")
 
   fun validateOrRefuse(request: SkillRemovalRequest) {

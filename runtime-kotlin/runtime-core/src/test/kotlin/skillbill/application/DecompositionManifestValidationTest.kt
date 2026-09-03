@@ -6,7 +6,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionDependency
@@ -67,8 +67,8 @@ class DecompositionManifestValidationTest {
   }
 
   private class RecordingEncodeFileStore(
-    private val delegate: DecompositionManifestFileStore,
-  ) : DecompositionManifestFileStore by delegate {
+    private val delegate: DecompositionManifestStore,
+  ) : DecompositionManifestStore by delegate {
     var encodeCalls: Int = 0
       private set
 

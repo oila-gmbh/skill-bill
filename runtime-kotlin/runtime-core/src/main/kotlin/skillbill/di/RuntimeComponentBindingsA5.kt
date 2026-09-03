@@ -4,6 +4,7 @@ import skillbill.application.goalrunner.planning.DurableGoalPlanningRejectionRec
 import skillbill.application.goalrunner.planning.GoalPlanningRejectionRecorder
 import skillbill.application.telemetry.GoalLifecycleTelemetryEmitter
 import skillbill.application.telemetry.LifecycleTelemetryService
+import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
@@ -52,7 +53,10 @@ internal object RuntimeComponentBindingsA5 {
   internal fun runtimeTimingPort(callbacks: OptionalCallbacks, adapter: JdkRuntimeTimingPort): RuntimeTimingPort =
     callbacks.runtimeTimingPort ?: adapter
 
-  internal fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics): RuntimeDiagnostics = adapter
+  internal fun runtimeDiagnostics(adapter: JdkRuntimeDiagnostics): RuntimeDiagnostics {
+    RecordingNullObjectDiagnostics.bind { message, error -> adapter.warning(message, error) }
+    return adapter
+  }
 
   internal fun shutdownHookPort(adapter: JdkShutdownHookPort): ShutdownHookPort = adapter
 

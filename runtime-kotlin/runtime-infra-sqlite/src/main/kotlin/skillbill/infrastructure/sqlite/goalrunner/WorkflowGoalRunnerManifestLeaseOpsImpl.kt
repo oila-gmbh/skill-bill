@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestLeaseOps
 
 internal class WorkflowGoalRunnerManifestLeaseOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,

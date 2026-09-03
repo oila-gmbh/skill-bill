@@ -1,12 +1,12 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.goalrunner.persistence.blockedStepId
 import skillbill.ports.goalrunner.persistence.decodeWorkflowSteps
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerBlockWrite
 import skillbill.ports.goalrunner.persistence.toArtifactsMap
 import skillbill.ports.goalrunner.persistence.workflowFamilyFor
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.phaseartifacts.asPendingForOperatorResume
 import skillbill.ports.phaseartifacts.phaseLedgerFrom
 import skillbill.ports.phaseartifacts.phaseRecordsFrom

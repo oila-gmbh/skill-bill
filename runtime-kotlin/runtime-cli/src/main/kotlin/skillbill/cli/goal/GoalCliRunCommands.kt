@@ -25,7 +25,6 @@ import skillbill.cli.kernel.invokingAgentResolutionHelp
 import skillbill.cli.kernel.requireSupportedOptionalAgentId
 import skillbill.cli.model.CliRunInputs
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry
@@ -83,7 +82,7 @@ class GoalPreflightCommand(
   }
 }
 
-internal fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.let { value ->
+internal fun parseCodeReviewMode(raw: String?) = raw?.let { value ->
   try {
     RuntimeOwnedReviewMode.parse(value)
   } catch (error: IllegalArgumentException) {

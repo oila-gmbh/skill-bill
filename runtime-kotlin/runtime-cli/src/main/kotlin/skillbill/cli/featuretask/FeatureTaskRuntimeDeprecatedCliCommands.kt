@@ -12,7 +12,7 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 
 private const val FEATURE_TASK_RUNTIME_DEPRECATION_NOTE: String =
   "feature-task-runtime is a deprecated alias for feature-task. Use feature-task; behavior is unchanged.\n"

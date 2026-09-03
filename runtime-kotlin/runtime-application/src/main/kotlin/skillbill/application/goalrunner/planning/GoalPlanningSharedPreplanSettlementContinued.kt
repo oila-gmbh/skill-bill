@@ -13,6 +13,7 @@ internal fun DefaultGoalPlanningSweep.freshPlanningPacket(
     resolvedGovernedPath(
       shared.repoRoot,
       state.manifest.parentSpecPath.substringBeforeLast("/") + "/" + DECOMPOSITION_MANIFEST_FILENAME,
+      repositoryEnclosingRootPort,
     ),
   )
   val packet = linkedMapOf<String, Any?>(

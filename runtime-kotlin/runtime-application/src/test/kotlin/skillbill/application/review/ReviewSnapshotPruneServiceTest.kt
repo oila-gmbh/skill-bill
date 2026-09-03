@@ -1,8 +1,8 @@
 package skillbill.application.review
 
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.review.model.ReviewSnapshot
 import java.nio.file.Path

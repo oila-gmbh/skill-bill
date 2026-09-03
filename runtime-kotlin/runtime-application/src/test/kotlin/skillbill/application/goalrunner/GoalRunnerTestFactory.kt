@@ -2,6 +2,7 @@ package skillbill.application.goalrunner
 
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
+import skillbill.application.TestRepositoryEnclosingRoot
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
@@ -44,10 +45,10 @@ import skillbill.model.RepositoryRoot
 import skillbill.ports.concurrency.BoundedWorkFanOutPort
 import skillbill.ports.concurrency.SequentialBoundedWorkFanOutPort
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
@@ -56,6 +57,7 @@ import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.NoopGoalRunnerAttemptLedgerStore
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
@@ -66,8 +68,8 @@ import skillbill.ports.time.NoopRuntimeTimingPort
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.specscratch.SpecScratchStore
@@ -213,8 +215,8 @@ internal fun testGoalRunner(wiring: GoalRunnerTestWiring): GoalRunner {
       ),
       progressReader = progressReader,
       pauseBoundary = GoalRunnerPauseBoundary(wiring.runBoundaries.manifestStore),
-      runPreparation = GoalRunnerRunPreparation(wiring.runBoundaries.manifestStore),
-      launchPrepare = GoalRunnerSubtaskLaunchPrepare(wiring.launchBoundaries),
+      runPreparation = GoalRunnerRunPreparation(wiring.runBoundaries.manifestStore, TestRepositoryEnclosingRoot),
+      launchPrepare = GoalRunnerSubtaskLaunchPrepare(wiring.launchBoundaries, TestRepositoryEnclosingRoot),
       finalization = finalization,
     ),
   )
@@ -263,6 +265,7 @@ private object TestGoalActivityStampDatabase : DatabaseSessionFactory {
     override val workflowStates: WorkflowStateRepository get() = error("unused by goal activity stamp wiring")
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 
@@ -296,7 +299,7 @@ internal fun workflowGoalRunnerManifestStoreDeps(
   database = database,
   workflowSnapshotValidator = testWorkflowSnapshotValidator,
   decompositionManifestValidator = testDecompositionManifestValidator,
-  decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+  decompositionManifestStore = UnavailableDecompositionManifestStore,
   phaseOutputValidator = realFeatureTaskRuntimePhaseOutputValidator,
   planningProjectionValidator = realPlanningProjectionValidator,
   clock = testHarnessClock,
@@ -317,7 +320,7 @@ internal fun workflowGoalRunnerOutcomeStoreDeps(
   phaseOutputValidator = realFeatureTaskRuntimePhaseOutputValidator,
   workerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
   decompositionManifestValidator = testDecompositionManifestValidator,
-  decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+  decompositionManifestStore = UnavailableDecompositionManifestStore,
   clock = testHarnessClock,
   decompositionManifestWriter = testDecompositionManifestWriter,
   childRepairExecutor = testGoalRunnerChildRepairExecutor(gitOperations),
@@ -341,14 +344,14 @@ internal fun outcomeStoreDeps(
 internal fun testDefaultGoalPlanningSweep(
   checkpointPort: GoalPlanningSweepCheckpointPort,
   launchPort: GoalPlanningSweepLaunchPort,
-): DefaultGoalPlanningSweep = DefaultGoalPlanningSweep(checkpointPort, launchPort)
+): DefaultGoalPlanningSweep = DefaultGoalPlanningSweep(checkpointPort, launchPort, TestRepositoryEnclosingRoot)
 
 internal data class GoalPlanningSweepPortsParams(
   val checkpoint: GoalPlanningPreparationCheckpoint,
   val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   val subtaskLauncher: GoalRunnerSubtaskLauncher,
   val invariantsSource: FeatureTaskRuntimeRunInvariantsSource,
-  val manifestFileStore: DecompositionManifestFileStore,
+  val manifestFileStore: DecompositionManifestStore,
   val contextDiscovery: GoalPlanningContextDiscovery,
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator = realPlanningProjectionValidator,
   val planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
@@ -429,6 +432,7 @@ internal fun goalRunnerStatusServiceDeps(
   diagnostics = NoopRuntimeDiagnostics,
   runtimeStatusService = null,
   repositoryRoot = testRepositoryRoot,
+  repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
 )
 
 internal fun testGoalPlanningContextDiscovery(

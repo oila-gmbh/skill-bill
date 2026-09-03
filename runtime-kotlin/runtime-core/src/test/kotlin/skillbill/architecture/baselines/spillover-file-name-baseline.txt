@@ -107,6 +107,3 @@ runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/skillremove/SkillRemov
 runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/skillremove/SkillRemoveJvmFileSystemPlanningCollectExtras.kt
 runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/skillremove/SkillRemoveJvmFileSystemPlanningExtras.kt
 runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/goalrunner/GoalRunnerControlCoordinatorContinued.kt
-runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/goalrunner/persistence/GoalContinuationArtifactCodecContinued.kt
-runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/goalrunner/persistence/GoalTerminalOutcomeDerivationContinued.kt
-runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/phaseartifacts/FeatureTaskRuntimePhaseArtifactDecodersContinued.kt

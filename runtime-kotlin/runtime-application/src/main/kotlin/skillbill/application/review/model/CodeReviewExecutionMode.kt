@@ -1,0 +1,5 @@
+package skillbill.application.review.model
+
+import skillbill.review.context.model.CodeReviewExecutionMode as DomainCodeReviewExecutionMode
+
+typealias CodeReviewExecutionMode = DomainCodeReviewExecutionMode

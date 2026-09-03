@@ -677,14 +677,11 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.workflow.goal.GoalObservabilityEventValidator",
       "skillbill.workflow.goal.GoalPlanningPreparationEnvelopeValidator",
       "skillbill.workflow.goal.GoalProgressEventValidator",
-      "skillbill.workflow.idestatus.IdeStatusValidator",
+      "skillbill.ports.idestatus.IdeStatusValidator",
       "skillbill.workflow.engine.WorkflowSnapshotValidator",
     )
 
-    val scaffoldApplicationServiceFileNames: Set<String> = setOf(
-      "ScaffoldService.kt",
-      "ScaffoldCatalogService.kt",
-    )
+    val scaffoldApplicationServiceFileNames: Set<String> = emptySet()
 
     /**
      * SKILL-52.1 subtask 3 (F-005): modifier-agnostic regex that catches any redeclaration

@@ -5,7 +5,7 @@ import skillbill.application.decomposition.repoRelativePath
 import skillbill.application.decomposition.resolvedParentSpecPath
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.error.UnreadableSpecIntentProjectionError
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.SpecIntentProjection
@@ -19,7 +19,7 @@ import java.security.MessageDigest
 @Inject
 class SpecIntentProjectionExtractor(
   private val envelopeValidator: ReviewContextEnvelopeValidator,
-  private val fileStore: DecompositionManifestFileStore,
+  private val fileStore: DecompositionManifestStore,
 ) {
   fun extract(
     repoRoot: Path,

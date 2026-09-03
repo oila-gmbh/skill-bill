@@ -4,7 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.decomposition.resolvedParentSpecPath
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.specsource.SpecSourceSpecReader
@@ -20,7 +20,7 @@ import java.nio.file.Path
  */
 @Inject
 class SpecSourceResolver(
-  private val fileStore: DecompositionManifestFileStore,
+  private val fileStore: DecompositionManifestStore,
   private val validator: DecompositionManifestValidator,
 ) {
   fun resolve(repoRoot: Path, specReference: String, isGoalContinuation: Boolean): SpecSource {

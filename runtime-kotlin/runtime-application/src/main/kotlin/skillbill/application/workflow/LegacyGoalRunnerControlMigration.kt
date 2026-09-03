@@ -5,16 +5,16 @@ import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 
 const val GOAL_REVIEW_POLICY_ARTIFACT_KEY = "goal_review_policy"
 const val GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY = "goal_out_of_band_acceptances"
 
-fun migrateLegacyGoalRunnerControls(unitOfWork: UnitOfWork, existing: WorkflowStateSnapshot) {
+fun migrateLegacyGoalRunnerControls(unitOfWork: GoalRunnerPersistenceSession, existing: WorkflowStateSnapshot) {
   val artifacts = decodeArtifacts(existing.artifactsJson)
   if (unitOfWork.goalRunnerControls.reviewPolicy(existing.workflowId) == null) {
     reviewPolicyFromLegacyArtifacts(artifacts)?.let {

@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyResult
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosisRequest
@@ -9,8 +10,11 @@ import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore as Goal
 typealias GoalRunnerChildRepairStore = GoalRunnerChildRepairStorePort
 
 object NoopGoalRunnerChildRepairStore : GoalRunnerChildRepairStore {
-  override fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis =
-    GoalRunnerChildWedgeDiagnosis(
+  private const val NAME = "NoopGoalRunnerChildRepairStore"
+
+  override fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "diagnoseChildWedges(workflowId=${request.workflowId})")
+    return GoalRunnerChildWedgeDiagnosis(
       subtaskId = request.subtaskId,
       workflowId = request.workflowId,
       passedChecks = listOf(
@@ -22,7 +26,10 @@ object NoopGoalRunnerChildRepairStore : GoalRunnerChildRepairStore {
         "upstream_output_present",
       ),
     )
+  }
 
-  override fun applyChildWedgeRepairs(request: GoalRunnerChildWedgeRepairRequest): GoalRunnerChildRepairApplyResult =
-    GoalRunnerChildRepairApplyResult()
+  override fun applyChildWedgeRepairs(request: GoalRunnerChildWedgeRepairRequest): GoalRunnerChildRepairApplyResult {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "applyChildWedgeRepairs(workflowId=${request.workflowId})")
+    return GoalRunnerChildRepairApplyResult()
+  }
 }

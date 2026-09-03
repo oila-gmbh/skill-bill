@@ -1,6 +1,5 @@
 package skillbill.di
 
-import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
@@ -11,7 +10,8 @@ import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.model.WorkflowOpsContext
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.skillremove.SkillRemoveFileSystem
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.specscratch.SpecScratchStore
@@ -28,9 +28,9 @@ internal object RuntimeComponentBindingsB4 {
   ): WorkflowGitOperations =
     if (workflowOps.workflowGitOperations === NoopWorkflowGitOperations) git else workflowOps.workflowGitOperations
 
-  internal fun decompositionManifestFileStore(
+  internal fun decompositionManifestStore(
     store: FileSystemDecompositionManifestFileStore,
-  ): DecompositionManifestFileStore = store
+  ): DecompositionManifestStore = store
 
   internal fun specScratchStore(store: FileSystemSpecScratchStore): SpecScratchStore = store
 

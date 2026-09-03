@@ -12,8 +12,8 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
@@ -46,7 +46,7 @@ internal data class FeatureTaskRuntimeCliContextOptions(
   var liveStdout: (String) -> Unit = {},
   var liveStderr: (String) -> Unit = {},
   var workflowGitOperations: WorkflowGitOperations = FakeRuntimeGitOperations(),
-  var requester: HttpRequester = UnconfiguredHttpRequester,
+  var requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
 )
 
 internal data class FeatureTaskRuntimeCliFixture(
@@ -72,7 +72,7 @@ internal data class FeatureTaskRuntimeCliFixture(
       reviewNativeAgentPreflight = ReviewNativeAgentPreflightPort.NONE,
     )
 
-  fun materializeDatabaseWithTelemetry(level: String, requester: HttpRequester) = materializeTelemetryDatabase(
+  fun materializeDatabaseWithTelemetry(level: String, requester: RemoteTransportPort) = materializeTelemetryDatabase(
     tempDir,
     dbPath,
     level,

@@ -1,5 +1,6 @@
 package skillbill.ports.taskruntime
 
+import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
@@ -10,7 +11,8 @@ import java.time.Duration
 interface FeatureTaskRuntimeWorkerSupervisor {
   fun currentProcess(): FeatureTaskRuntimeProcessIdentity
 
-  fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeProcessInspection
+  fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeProcessInspection =
+    FeatureTaskRuntimeProcessInspection.Unsupported("supervisor does not implement process inspection")
 
   /**
    * Block until [ownership] is no longer [FeatureTaskRuntimeProcessInspection.ExactLive], or until
@@ -18,7 +20,7 @@ interface FeatureTaskRuntimeWorkerSupervisor {
    * On timeout the peer may still be live — the caller re-inspects and fails closed. A no-op default
    * keeps tests and artifact-only seams from waiting. Must not wait on the current process.
    */
-  fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
+  fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration)
 
   fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean
 
@@ -45,9 +47,16 @@ interface FeatureTaskRuntimeHeartbeat {
 }
 
 object NoopFeatureTaskRuntimeHeartbeat : FeatureTaskRuntimeHeartbeat {
-  override fun stop() = Unit
+  private const val NAME = "NoopFeatureTaskRuntimeHeartbeat"
 
-  override fun fencingLostReason(): String? = null
+  override fun stop() {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "stop()")
+  }
+
+  override fun fencingLostReason(): String? {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "fencingLostReason()")
+    return null
+  }
 }
 
 /**
@@ -56,20 +65,44 @@ object NoopFeatureTaskRuntimeHeartbeat : FeatureTaskRuntimeHeartbeat {
  * never confirmed dead — so a seam wired with this default never reconciles.
  */
 object NoopFeatureTaskRuntimeWorkerSupervisor : FeatureTaskRuntimeWorkerSupervisor {
-  override fun currentProcess(): FeatureTaskRuntimeProcessIdentity =
-    FeatureTaskRuntimeProcessIdentity("noop-host", "noop-boot", 1, "noop-birth")
+  private const val NAME = "NoopFeatureTaskRuntimeWorkerSupervisor"
 
-  override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeProcessInspection =
-    FeatureTaskRuntimeProcessInspection.Unsupported("no-op supervisor performs no liveness inspection")
+  override fun currentProcess(): FeatureTaskRuntimeProcessIdentity {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "currentProcess()")
+    return FeatureTaskRuntimeProcessIdentity("noop-host", "noop-boot", 1, "noop-birth")
+  }
 
-  override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean = false
+  override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeProcessInspection {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "inspect(workflowId=${ownership.workflowId})")
+    return FeatureTaskRuntimeProcessInspection.Unsupported("no-op supervisor performs no liveness inspection")
+  }
 
-  override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean = false
+  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) {
+    RecordingNullObjectDiagnostics.recordSwallow(
+      NAME,
+      "awaitExit(workflowId=${ownership.workflowId}, timeout=$timeout)",
+    )
+  }
+
+  override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "terminateGracefully(workflowId=${ownership.workflowId})")
+    return false
+  }
+
+  override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "terminateForcibly(workflowId=${ownership.workflowId})")
+    return false
+  }
 
   override fun startHeartbeat(
     plan: FeatureTaskRuntimeHeartbeatPlan,
     heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
-  ): FeatureTaskRuntimeHeartbeat = NoopFeatureTaskRuntimeHeartbeat
+  ): FeatureTaskRuntimeHeartbeat {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "startHeartbeat(label=${plan.label})")
+    return NoopFeatureTaskRuntimeHeartbeat
+  }
 
-  override fun pause(durationMillis: Long) = Unit
+  override fun pause(durationMillis: Long) {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "pause(durationMillis=$durationMillis)")
+  }
 }

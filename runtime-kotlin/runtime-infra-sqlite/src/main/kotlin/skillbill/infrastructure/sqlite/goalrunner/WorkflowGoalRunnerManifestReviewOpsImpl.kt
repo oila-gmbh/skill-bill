@@ -1,14 +1,13 @@
 package skillbill.infrastructure.sqlite.goalrunner
 import skillbill.ports.goalrunner.persistence.featureTaskRecordForLegacyControls
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestReviewOps
+import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
+import skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts
+import skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
-import skillbill.ports.workflow.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.workflow.persistence.model.WorkflowFamily
-import skillbill.ports.workflow.persistence.outOfBandAcceptancesFromLegacyArtifacts
-import skillbill.ports.workflow.persistence.reviewPolicyFromLegacyArtifacts
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 
 internal class WorkflowGoalRunnerManifestReviewOpsImpl(
   private val ctx: WorkflowGoalRunnerManifestStoreContext,

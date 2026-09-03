@@ -1,7 +1,7 @@
 package skillbill.ports.workflow.decomposition.runtime.model
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionStackBranch
@@ -43,7 +43,7 @@ data class DecompositionPlanManifestInput(
   @OpenBoundaryMap("Workflow artifacts snapshot (caller-supplied JSON passthrough)")
   val existingArtifacts: Map<String, Any?>,
   val validator: DecompositionManifestValidator,
-  val fileStore: DecompositionManifestFileStore,
+  val fileStore: DecompositionManifestStore,
 )
 
 data class DecompositionManifestWorkflowProjectionInput(
@@ -53,7 +53,7 @@ data class DecompositionManifestWorkflowProjectionInput(
   @OpenBoundaryMap("Caller-supplied JSON patch for durable workflow artifacts")
   val artifactsPatch: Map<String, Any?>? = null,
   val runtimeUpdate: DecompositionManifestRuntimeUpdate = DecompositionManifestRuntimeUpdate(),
-  val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+  val fileStore: DecompositionManifestStore = UnavailableDecompositionManifestStore,
 )
 
 typealias DecompositionManifestWriteResult = WorkflowDecompositionManifestWriteResult

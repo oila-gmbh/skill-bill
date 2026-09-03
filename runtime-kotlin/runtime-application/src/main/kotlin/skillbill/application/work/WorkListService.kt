@@ -7,7 +7,7 @@ import skillbill.application.work.model.WorkListResult
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.error.InvalidWorkListRowError
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
 import skillbill.workflow.engine.WorkflowEngine

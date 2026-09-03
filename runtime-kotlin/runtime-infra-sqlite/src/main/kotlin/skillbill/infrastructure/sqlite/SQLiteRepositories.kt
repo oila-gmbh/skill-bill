@@ -25,7 +25,6 @@ import skillbill.learnings.model.LearningRecord
 import skillbill.learnings.model.LearningSourceValidation
 import skillbill.learnings.model.RejectedLearningSourceOutcome
 import skillbill.learnings.model.UpdateLearningRequest
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
@@ -35,6 +34,7 @@ import skillbill.ports.goalrunner.UnaddressedFindingsRepository
 import skillbill.ports.idestatus.AgentActivityStampRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.review.ReviewRunCompletenessRepository
 import skillbill.ports.review.model.ReviewAccountingRecord
@@ -112,11 +112,6 @@ class SQLiteUnaddressedFindingsRepository(connection: Connection) : UnaddressedF
 class SQLiteTelemetryReconciliationRepository(
   private val connection: Connection,
 ) : TelemetryReconciliationRepository {
-  override fun reconcileStaleSessions(level: String): TelemetryReconciliationResult {
-    persistLegacyTelemetryRewrites(connection)
-    return reconcileStaleTelemetrySessions(connection, level)
-  }
-
   override fun reconcileStaleSessions(request: TelemetryReconciliationRequest): TelemetryReconciliationResult {
     persistLegacyTelemetryRewrites(connection)
     return reconcileStaleTelemetrySessions(connection, request)

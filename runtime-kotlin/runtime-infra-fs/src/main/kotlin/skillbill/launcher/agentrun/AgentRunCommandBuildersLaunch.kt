@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.error.GovernedReviewLaunchCapabilityError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.review.model.ReviewLaunchIsolationStrategy
 
 internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(request.promptOverride) {
   "launchPrompt requires a promptOverride; goal-continuation runs spawn skill-bill directly."

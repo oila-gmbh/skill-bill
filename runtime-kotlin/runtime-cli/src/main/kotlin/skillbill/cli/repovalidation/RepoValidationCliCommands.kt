@@ -6,30 +6,29 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.scaffold.RepoValidationService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
-import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRunInputs
+import skillbill.ports.validation.RepoValidationGateway
 import java.nio.file.Path
 
 @Inject
 class RepoValidationCliCommands(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val repoValidationService: RepoValidationService,
+  private val repoValidationGateway: RepoValidationGateway,
 ) {
   val commands = listOf(
-    ValidateAgentConfigsCommand(state, repoValidationService),
-    ValidateReleaseRefCommand(state, inputs, repoValidationService),
+    ValidateAgentConfigsCommand(state, repoValidationGateway),
+    ValidateReleaseRefCommand(state, inputs, repoValidationGateway),
   )
 }
 
 class ValidateAgentConfigsCommand(
   private val state: CliRunState,
-  private val repoValidationService: RepoValidationService,
+  private val repoValidationGateway: RepoValidationGateway,
 ) : DocumentedCliCommand(
   "validate-agent-configs",
   "Validate Skill Bill governed skills, platform packs, add-ons, docs catalog, and workflow contracts.",
@@ -38,7 +37,7 @@ class ValidateAgentConfigsCommand(
   private val format by formatOption()
 
   override fun run() {
-    val report = repoValidationService.validateRepo(Path.of(repoRoot))
+    val report = repoValidationGateway.validateRepo(Path.of(repoRoot))
     val payload = report.toPayload()
     if (format == CliFormat.JSON) {
       state.complete(payload, format, exitCode = if (report.passed) 0 else 1)
@@ -67,7 +66,7 @@ class ValidateAgentConfigsCommand(
 class ValidateReleaseRefCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val repoValidationService: RepoValidationService,
+  private val repoValidationGateway: RepoValidationGateway,
 ) : DocumentedCliCommand(
   "validate-release-ref",
   "Validate a release tag and emit release metadata.",
@@ -98,7 +97,7 @@ class ValidateReleaseRefCommand(
     }
 
     val metadata = try {
-      repoValidationService.validateReleaseRef(Path.of(repoRoot), rawRef, forcePrerelease)
+      repoValidationGateway.validateReleaseRef(Path.of(repoRoot), rawRef, forcePrerelease)
     } catch (error: IllegalArgumentException) {
       val payload = mapOf("status" to "failed", "error" to error.message.orEmpty())
       if (format == CliFormat.JSON) {
@@ -110,7 +109,7 @@ class ValidateReleaseRefCommand(
     }
 
     githubOutput?.let { outputPath ->
-      repoValidationService.appendGithubOutput(Path.of(outputPath), metadata)
+      repoValidationGateway.appendGithubOutput(Path.of(outputPath), metadata)
     }
     state.complete(metadata.toPayload(), format)
   }

@@ -10,9 +10,9 @@ import skillbill.application.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingCitation
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence

@@ -12,7 +12,7 @@ import skillbill.ports.goalrunner.heartbeatExecutionLease
 import skillbill.ports.goalrunner.releaseExecutionLease
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test

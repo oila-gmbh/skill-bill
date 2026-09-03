@@ -122,7 +122,6 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
@@ -136,18 +135,18 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.UnaddressedFindingsRepository
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
@@ -196,11 +195,14 @@ import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.PROSE
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.workflow.specscratch.SpecScratchStore
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.ReviewContextBudgetExceeded
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.model.ParallelReviewMergeResult
@@ -219,7 +221,6 @@ import skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML
 import skillbill.scaffold.model.ValidationGateFindingsLocator
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
@@ -253,6 +254,7 @@ import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.nio.file.Path
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import java.lang.Double.TYPE as DoubleTYPE
@@ -729,7 +731,7 @@ internal data class RuntimeHarnessConfig(
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
-  SpecSourceResolver(TestDecompositionManifestFileStore, testDecompositionManifestValidator)
+  SpecSourceResolver(TestDecompositionManifestStore, testDecompositionManifestValidator)
 
 private data class RuntimePhaseGatesDeps(
   val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
@@ -797,11 +799,11 @@ private fun runtimePhaseGates(deps: RuntimePhaseGatesDeps): FeatureTaskRuntimePh
       diffResolver = deps.diffResolver,
       reviewDriver = deps.reviewDriver,
       specIntentProjectionResolver = SpecIntentProjectionResolver(
-        TestDecompositionManifestFileStore,
+        TestDecompositionManifestStore,
         testDecompositionManifestValidator,
         SpecIntentProjectionExtractor(
           ReviewContextEnvelopeValidator { _, _ -> },
-          TestDecompositionManifestFileStore,
+          TestDecompositionManifestStore,
         ),
       ),
       findingVerificationBoundaryMemory = FeatureTaskRuntimeFindingVerificationBoundaryMemory(
@@ -1183,7 +1185,7 @@ private fun noOpDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner =
   },
   preparationWriter = FeatureSpecPreparationWriter(
     decompositionManifestValidator = testDecompositionManifestValidator,
-    fileStore = TestDecompositionManifestFileStore,
+    fileStore = TestDecompositionManifestStore,
     decompositionManifestWriter = testDecompositionManifestWriter,
   ),
 )
@@ -1192,7 +1194,7 @@ private fun testDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner =
   preparationRuntime = FeatureSpecPreparationRuntime(prepareCore = FeatureSpecPreparationPolicy::prepare),
   preparationWriter = FeatureSpecPreparationWriter(
     decompositionManifestValidator = testDecompositionManifestValidator,
-    fileStore = TestDecompositionManifestFileStore,
+    fileStore = TestDecompositionManifestStore,
     decompositionManifestWriter = testDecompositionManifestWriter,
   ),
 )
@@ -2275,7 +2277,7 @@ private fun recordHarnessFindingVerdicts(verdicts: MutableList<ReviewFindingVerd
   }
 }
 
-private fun harnessReviewRepository(): ReviewRepository {
+internal fun harnessReviewRepository(): ReviewRepository {
   val verdicts = mutableListOf<ReviewFindingVerdict>()
   return Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
@@ -2468,6 +2470,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
     }
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 
@@ -2683,6 +2686,8 @@ internal object HarnessDeadProcessSupervisor : FeatureTaskRuntimeWorkerSuperviso
     FeatureTaskRuntimeProcessIdentity("harness-host", "harness-boot", 4321, "harness-birth-4321")
 
   override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.NotRunning
+
+  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
 
   override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
 

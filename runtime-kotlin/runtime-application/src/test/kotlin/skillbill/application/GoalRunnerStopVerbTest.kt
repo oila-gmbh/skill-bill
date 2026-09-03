@@ -23,6 +23,7 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.test.Test
@@ -385,6 +386,8 @@ private class RecordingSupervisor(
     record("inspect")
     return if (calls.contains("terminateGracefully")) inspectionAfterGraceful ?: inspection else inspection
   }
+
+  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
 
   override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean {
     record("terminateGracefully")

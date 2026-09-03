@@ -5,6 +5,33 @@ This file records architectural and implementation decisions that span the
 not the implementation detail.
 
 
+## [2026-09-03] SKILL-231 subtask 3 tasks 9–11: port placement, repository root seam, intra-module role-port bindings
+Context: SKILL-231 subtask 3 tasks 9–11 relocate misplaced port interfaces, empty ambient-clock and package-cycle baselines where reachable, route `toRealPath` through `RepositoryEnclosingRootPort`, and record binding policy.
+Decision: `IdeStatusValidator` and `SkillRemoveFileSystem` live in `runtime-ports` (`skillbill.ports.idestatus`, `skillbill.ports.skillremove`). `SkillRemove` orchestration moved to `runtime-application` so `runtime-domain` does not depend on `runtime-ports`. `RepositoryEnclosingRootPort` owns `canonicalPath`, `optionalRealPath`, and `repositoryIdentity`; `CanonicalRepositoryRoot` is the sole production adapter. Intra-module role-port binding types (`*RolePorts`, `*RolePortBindings`, `Default*Port` adapters) stay in `runtime-application` — they are composition helpers, not cross-module ports.
+Reason: Domain must not import ports; filesystem canonicalization belongs behind one repository-root seam; application-local injectable groupings are not misplaced port surfaces.
+Alternatives considered: Keep `SkillRemoveFileSystem` in domain (rejected: domain→ports edge). Call `Path.toRealPath()` from application services (rejected: task 11). Move role-port bindings to `runtime-ports` (rejected: no second consumer; would blur application composition).
+Revisit when: a second module needs the same role-port grouping, or repository-root policy splits across multiple adapters.
+
+Context: SKILL-231 subtask 3 tasks 6–8 collapse composite ports, rename technology-leaking port names to capability names, and record genuinely open wire decoders.
+Decision: Rename `UninstallFileSystemGateway` → `UninstallPathsPort`, `HttpRequester` → `RemoteTransportPort`, `HttpResponse` → `RemoteTransportResponse`, and the decomposition-manifest ports to `DecompositionManifestStore`, `DecompositionManifestPersistencePort`, and `DecompositionManifestDiscoveryPort`. Adapter class names (`FileSystemUninstallFileSystemGateway`, `FileSystemDecompositionManifestFileStore`, `JdkHttpRequester`) stay unchanged. The `*GitOperations` family is explicitly excluded from this rename set — git is the workflow capability, not an implementation leak.
+Reason: Port names describe what the inside needs; adapter names describe how the outside provides it. Git operations are domain vocabulary for workflow finalisation, not HTTP/SQLite-style adapter leakage.
+Alternatives considered: Rename `*GitOperations` for symmetry (rejected: spec non-goal; git is the capability). Rename adapters with ports (rejected: spec criterion 8 leaves adapter names alone).
+Revisit when: a second transport implementation needs a distinct capability port, or git operations split across non-git adapters.
+
+## [2026-09-03] Wire-string decoder fallbacks stay open
+Context: SKILL-231 subtask 3 task 8. Several decoders accept legacy or unknown wire values from durable artifacts and operator-produced output.
+Decision: Keep open `else` fallbacks in `GoalSubtaskReviewSummarySanitize.CompactFindingSeverity.from` (unknown severity → `OTHER`), `FeatureTaskRuntimeQualityGateSelection.fromWire` (unknown/null → `VALIDATE`), `classifyDurableChild` (unknown workflow status → `INCOMPATIBLE_TERMINAL`), and `goalContinuationTerminalStatus` (unknown status → `null`). These sets are genuinely open at the wire boundary.
+Reason: Durable artifacts and agent output can carry values written before a schema bump or outside the closed enum; failing closed would wedge recovery and status reconciliation on historical rows.
+Alternatives considered: Exhaustive decoders with typed errors (rejected: would block operator repair and self-heal paths on legacy wire values). Silent swallow without a recorded decision (rejected: SKILL-231 requires naming open sets).
+Revisit when: a schema migration retires the legacy wire values and the decoders can fail loudly on unknown input.
+
+## [2026-09-03] Load-bearing thin ports retained across SKILL-231 subtask 3 collapse
+Context: SKILL-231 subtask 3 tasks 4–5 delete pass-through application services and collapse nine thin ports whose only caller was a CLI/MCP adapter. Four of the nine cross a module boundary the DI graph needs and have more than one consumer or a non-trivial composition role.
+Decision: Keep `ExternalAddonOverlayPort`, `ExternalAddonSourceConfigPort`, `CheckedOutBranchSource`, and `GoalPlanningBoundaryBodyResolver` as named ports. Collapse the other five by deleting `RepoSourceDiscoveryGateway` (unused) and removing `ScaffoldService`, `ScaffoldCatalogService`, `UnsupportedScaffoldService`, `McpRegistrationService`, `NativeAgentInstallService`, and `RepoValidationService` so CLI/MCP resolve `ScaffoldGateway`, `ScaffoldCatalogGateway`, `UnsupportedScaffoldGateway`, `InstallMcpRegistrationPort`, `InstallNativeAgentLinkPort`, and `RepoValidationGateway` through `RuntimeComponent`.
+Reason: A port whose sole justification was a one-line application wrapper is not a boundary; ports that separate install overlay config from overlay IO, inject git branch discovery for IDE status, or isolate goal-planning body resolution across application and infra-fs remain load-bearing.
+Alternatives considered: Collapse all nine in one pass (rejected: would inline infra-fs adapters into application services or blur install/planning boundaries). Keep every gateway as an application service wrapper (rejected: the wrappers renamed nothing and added no policy).
+Revisit when: a second consumer needs the retained ports through a different composition path, or overlay/branch/body resolution moves behind a broader capability port with multiple implementations.
+
 ## [2026-09-02] Empty architecture baselines are the permanent floor
 Context: SKILL-227 subtask 3 emptied the logical-type line-ceiling and application-package-cycle baselines after god-object decomposition and cycle breaks. Subtask 1 had baselined seven cycle pairs as shrink-only.
 Decision: Keep both baselines empty. Any new ceiling offender or application-package cycle fails the guard. Do not reintroduce *Helpers*/*Extras*/*Support* files solely to stay under the per-file line ceiling — fold into the owning type or a named domain collaborator instead.
@@ -1324,7 +1351,7 @@ artifact without access to `../orchestration/contracts/`.
 
 **Encode-seam relocation rationale.** YAML serialization for the decomposition
 manifest moved out of `runtime-application` (`DecompositionManifestFileWrites`)
-behind a new `DecompositionManifestFileStore.encodeManifestYaml(wireMap)` port
+behind a new `DecompositionManifestStore.encodeManifestYaml(wireMap)` port
 method, implemented by the infra-fs `FileSystemDecompositionManifestFileStore`
 with the same `YAMLMapper()` construction (byte-identical output). This mirrors
 the subtask-1 decode seam (`DecompositionManifestValidator`): the application

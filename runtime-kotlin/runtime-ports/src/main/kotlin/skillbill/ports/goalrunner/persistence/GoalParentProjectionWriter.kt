@@ -1,7 +1,7 @@
 package skillbill.ports.goalrunner.persistence
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.ports.db.UnitOfWork
 import skillbill.contracts.issuekey.normalizeRequiredIssueKey
+import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.ports.workflow.decomposition.runtime.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.decomposition.runtime.encodeDecompositionManifestMap
@@ -34,7 +34,7 @@ class GoalParentProjectionWriter(
       )
     }
 
-  fun rewrite(unitOfWork: UnitOfWork, existing: WorkflowStateSnapshot) {
+  fun rewrite(unitOfWork: GoalRunnerPersistenceSession, existing: WorkflowStateSnapshot) {
     val manifest = existing.decompositionRuntime(validator)
       ?: error("Goal parent workflow '${existing.workflowId}' has no decomposition manifest.")
     val updated = engine.updateRecord(

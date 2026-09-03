@@ -35,11 +35,11 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
@@ -63,6 +63,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewParseResult
@@ -71,6 +72,7 @@ import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
+import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
@@ -87,7 +89,10 @@ import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import java.io.IOException
 import java.lang.reflect.Proxy
 import java.nio.file.Files
@@ -1423,13 +1428,13 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
     sharedEvidenceResolver = FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
     sharedEvidenceLocatorReader = sharedEvidenceLocatorReader,
     specIntentProjectionResolver = SpecIntentProjectionResolver(
-      TestDecompositionManifestFileStore,
+      TestDecompositionManifestStore,
       testDecompositionManifestValidator,
       SpecIntentProjectionExtractor(
         object : ReviewContextEnvelopeValidator {
           override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
         },
-        TestDecompositionManifestFileStore,
+        TestDecompositionManifestStore,
       ),
     ),
     parentReviewLauncher = launcher,
@@ -1437,6 +1442,7 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
     registerParse = config.registerParse,
     diagnostics = NoopRuntimeDiagnostics,
     clock = testHarnessClock,
+    repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
   )
   val laneLaunchPort = DefaultParallelCodeReviewRunnerLaneLaunchPort(
     parentReviewLauncher = launcher,
@@ -1539,6 +1545,17 @@ internal class RecordingReviewDatabase : DatabaseSessionFactory {
 }
 
 private object NoopReviewLifecycleTelemetry : LifecycleTelemetryRepository {
+  override fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) = Unit
+
+  override fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) = Unit
+
+  override fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) = Unit
+
+  override fun featureTaskRuntimeDiagnosticDegradation(record: FeatureTaskRuntimeDiagnosticDegradationMeasurement) =
+    Unit
+
+  override fun reviewStageDegradation(record: ReviewStageDegradationMeasurement) = Unit
+
   override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) = Unit
 
   override fun featureTaskRuntimeFinished(record: FeatureTaskRuntimeFinishedRecord, level: String) = Unit

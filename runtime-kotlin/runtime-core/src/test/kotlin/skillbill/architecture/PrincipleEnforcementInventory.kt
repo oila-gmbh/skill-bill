@@ -120,6 +120,10 @@ object PrincipleEnforcementInventory {
       "outside a named exemption.",
     "Gradle module edges: every module api(project(...)) and implementation(project(...)) set is pinned " +
       "to today's edges.",
+    "Port null-object classification: every Unavailable, Noop, Empty, or Unconfigured object under " +
+      "runtime-ports, runtime-domain, and runtime-application main source must appear in " +
+      "PortNullObjectClassification; recording null objects must emit through " +
+      "RecordingNullObjectDiagnostics when bound.",
   )
 
   val parseBoundarySites: List<ArchitectureScanSupport.ParseBoundarySite> = listOf(

@@ -35,18 +35,19 @@ import skillbill.learnings.model.UpdateLearningRequest
 import skillbill.model.EnvironmentContext
 import skillbill.model.RepositoryRoot
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.review.ReviewRunCompletenessRepository
 import skillbill.ports.review.UnavailableReviewRunCompletenessRepository
+import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.ports.review.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryClient
@@ -69,8 +70,11 @@ import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
@@ -91,7 +95,6 @@ import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
@@ -223,6 +226,7 @@ internal class FakeDatabaseSessionFactory(
     override val workflowStates: WorkflowStateRepository = this@FakeDatabaseSessionFactory.workflows
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 
@@ -360,6 +364,10 @@ internal class FakeGoalStatsReviewRepository(
 
   override fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot = error("Unexpected reviewStats")
 
+  override fun saveAccounting(record: ReviewAccountingRecord) = Unit
+
+  override fun loadAccounting(reviewId: String): ReviewAccountingRecord? = null
+
   override fun featureVerifyStats(): FeatureVerifyWorkflowStats = error("Unexpected featureVerifyStats")
 
   override fun featureTaskRuntimeStats(): FeatureTaskRuntimeWorkflowStats = error("Unexpected featureTaskRuntimeStats")
@@ -467,6 +475,10 @@ internal class FakeReviewRepository(
     rejectedLearningSourceOutcome
 
   override fun reviewStats(runId: String?): ReviewRepositoryStatsSnapshot = error("Unexpected reviewStats")
+
+  override fun saveAccounting(record: ReviewAccountingRecord) = Unit
+
+  override fun loadAccounting(reviewId: String): ReviewAccountingRecord? = null
 
   override fun featureVerifyStats(): FeatureVerifyWorkflowStats = error("Unexpected featureVerifyStats")
 
@@ -653,6 +665,8 @@ internal object NoopWorkflowStateRepository : WorkflowStateRepository {
   override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> = emptyList()
 
   override fun latestFeatureTaskRuntimeWorkflow(): WorkflowStateRecord? = null
+
+  override fun getFeatureTaskRuntimeWorkerOwnership(workflowId: String): FeatureTaskRuntimeWorkerOwnership? = null
 }
 
 internal fun createDecompositionWorkflow(service: WorkflowService, parentSpec: Path, subtaskSpec: Path): String =
@@ -965,7 +979,7 @@ internal fun testWorkflowService(
   WorkflowServiceDeps(
     database = database,
     gitOperations = gitOperations,
-    decompositionManifestFileStore = FileSystemDecompositionManifestFileStore(),
+    decompositionManifestStore = FileSystemDecompositionManifestFileStore(),
     workflowSnapshotValidator = WorkflowSnapshotValidatorInfraAdapter(),
     decompositionManifestValidator = DecompositionManifestValidatorAdapter(),
     decompositionManifestWriter = DecompositionManifestWriter(),
@@ -1200,4 +1214,5 @@ internal fun telemetrySyncService(reconciliation: RecordingTelemetryReconciliati
     settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
     configStore = FakeTelemetryConfigStore,
     telemetryClient = FakeTelemetryClient(),
+    clock = Clock.systemUTC(),
   )

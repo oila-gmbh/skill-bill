@@ -1,8 +1,8 @@
 package skillbill.application.review
 
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

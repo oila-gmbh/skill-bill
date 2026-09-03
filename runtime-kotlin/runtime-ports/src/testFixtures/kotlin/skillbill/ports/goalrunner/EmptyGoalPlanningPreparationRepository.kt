@@ -39,6 +39,12 @@ private object EmptyNormalizedGoalPlanningPreparationRepository : NormalizedGoal
     expectedIdentity: GoalPlanningIdentity,
     orderedDescriptors: List<GovernedGoalSubtaskDescriptor>,
   ): List<GoalSubtaskPlanCheckpoint> = emptyList()
+
+  override fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = emptyList()
+
+  override fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean = false
+
+  override fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String? = null
 }
 
 private object EmptyLegacyGoalPlanningPreparationRepository : LegacyGoalPlanningPreparationRepository {

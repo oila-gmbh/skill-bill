@@ -8,7 +8,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import kotlin.coroutines.cancellation.CancellationException
 
 internal fun decodeReviewPolicy(raw: String): GoalRunnerReviewPolicy {

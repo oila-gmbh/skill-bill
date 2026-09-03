@@ -1,7 +1,7 @@
 package skillbill.db.workflow
 
-import skillbill.ports.goalrunner.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.workflow.GoalChildWorkflowStateRepository
+import skillbill.ports.workflow.model.GoalChildWorkflowDeletionScope
 import java.sql.Connection
 
 internal class GoalChildWorkflowStore(

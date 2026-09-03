@@ -3,6 +3,7 @@ package skillbill.application.goalrunner.planning
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.goalrunner.model.GoalRunnerStopReason
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 
@@ -18,8 +19,8 @@ fun preSweepStopped(
   lastResumableStep = GoalPlanningSweepConstants.PHASE_PREPLAN,
 )
 
-fun canonicalRepository(repoRoot: Path): Path = runCatching { repoRoot.toRealPath() }
-  .getOrElse { repoRoot.toAbsolutePath().normalize() }
+fun canonicalRepository(repoRoot: Path, repositoryEnclosingRootPort: RepositoryEnclosingRootPort): Path =
+  repositoryEnclosingRootPort.canonicalPath(repoRoot)
 
 fun planningProgressMessage(phaseId: String, subtask: DecompositionSubtask?): String =
   if (phaseId == GoalPlanningSweepConstants.PHASE_PREPLAN) {

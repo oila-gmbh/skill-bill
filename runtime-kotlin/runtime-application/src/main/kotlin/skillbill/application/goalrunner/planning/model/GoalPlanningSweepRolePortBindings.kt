@@ -11,7 +11,7 @@ import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.time.RuntimeTimingPort
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePlanningProjectionValidator
 
@@ -20,7 +20,7 @@ data class DefaultGoalPlanningSweepCheckpointPort(
   override val checkpoint: GoalPlanningPreparationCheckpoint,
   override val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   override val invariantsSource: FeatureTaskRuntimeRunInvariantsSource,
-  override val manifestFileStore: DecompositionManifestFileStore,
+  override val manifestFileStore: DecompositionManifestStore,
   override val contextDiscovery: GoalPlanningContextDiscovery,
   override val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) : GoalPlanningSweepCheckpointPort

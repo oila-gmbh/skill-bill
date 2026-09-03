@@ -6,10 +6,10 @@ import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import java.time.Duration
 import java.time.Instant
 
-fun GoalRunnerControlStateRepository.executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? =
+fun GoalRunnerControlRepository.executionLease(parentWorkflowId: String): GoalRunnerExecutionLease? =
   controlState(parentWorkflowId).executionLease
 
-fun GoalRunnerControlStateRepository.acquireExecutionLease(
+fun GoalRunnerControlRepository.acquireExecutionLease(
   parentWorkflowId: String,
   lease: GoalRunnerExecutionLease,
   expectedOwnerToken: String? = null,
@@ -27,7 +27,7 @@ fun GoalRunnerControlStateRepository.acquireExecutionLease(
   return true
 }
 
-fun GoalRunnerControlStateRepository.heartbeatExecutionLease(
+fun GoalRunnerControlRepository.heartbeatExecutionLease(
   parentWorkflowId: String,
   lease: GoalRunnerExecutionLease,
 ): Boolean {
@@ -38,7 +38,7 @@ fun GoalRunnerControlStateRepository.heartbeatExecutionLease(
   return true
 }
 
-fun GoalRunnerControlStateRepository.releaseExecutionLease(
+fun GoalRunnerControlRepository.releaseExecutionLease(
   parentWorkflowId: String,
   ownerToken: String,
   generation: Long,

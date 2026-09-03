@@ -16,9 +16,9 @@ import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.LegacyProseWorkflowError
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
@@ -321,7 +321,7 @@ class FeatureTaskContinuationLookupServiceTest {
       WorkflowServiceDeps(
         database = database,
         gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+        decompositionManifestStore = UnavailableDecompositionManifestStore,
         workflowSnapshotValidator = testWorkflowSnapshotValidator,
         decompositionManifestValidator = testDecompositionManifestValidator,
         decompositionManifestWriter = testDecompositionManifestWriter,

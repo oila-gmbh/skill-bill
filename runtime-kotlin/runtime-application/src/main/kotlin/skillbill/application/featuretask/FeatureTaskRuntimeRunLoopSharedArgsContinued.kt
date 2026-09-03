@@ -7,8 +7,8 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleRes
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.ports.diagnostics.model.ProducerOutputEvidence
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition

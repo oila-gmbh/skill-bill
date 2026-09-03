@@ -12,7 +12,7 @@ import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.openFeatureTask
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import kotlin.test.Test
@@ -29,7 +29,7 @@ class WorkflowIssueKeyPersistenceTest {
       WorkflowServiceDeps(
         database = FakeDatabaseSessionFactory(workflows),
         gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+        decompositionManifestStore = UnavailableDecompositionManifestStore,
         workflowSnapshotValidator = testWorkflowSnapshotValidator,
         decompositionManifestValidator = testDecompositionManifestValidator,
         decompositionManifestWriter = testDecompositionManifestWriter,
@@ -74,7 +74,7 @@ class WorkflowIssueKeyPersistenceTest {
       WorkflowServiceDeps(
         database = FakeDatabaseSessionFactory(workflows),
         gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+        decompositionManifestStore = UnavailableDecompositionManifestStore,
         workflowSnapshotValidator = testWorkflowSnapshotValidator,
         decompositionManifestValidator = testDecompositionManifestValidator,
         decompositionManifestWriter = testDecompositionManifestWriter,

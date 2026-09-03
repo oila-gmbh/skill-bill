@@ -5,10 +5,10 @@ import skillbill.application.updatecheck.model.RECOMMENDED_INSTALL_COMMAND
 import skillbill.application.updatecheck.model.UpdateCheckStatus
 import skillbill.model.TransportContext
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
 import java.nio.file.Path
@@ -76,7 +76,7 @@ class UpdateCheckServiceTest {
         versionValue = "0.0.0-SNAPSHOT",
       ),
       transportContext = TransportContext(
-        requester = HttpRequester { _, _, _, _ -> error("release list must not be consulted") },
+        requester = RemoteTransportPort { _, _, _, _ -> error("release list must not be consulted") },
       ),
     ).check(includePrereleases = false)
 
@@ -100,11 +100,11 @@ class UpdateCheckServiceTest {
       versionValue = installedVersion,
     ),
     transportContext = TransportContext(
-      requester = HttpRequester { method, url, _, headers ->
+      requester = RemoteTransportPort { method, url, _, headers ->
         assertEquals("GET", method)
         assertEquals("https://api.github.com/repos/oila-gmbh/skill-bill/releases", url)
         assertEquals("skill-bill-update-check", headers["User-Agent"])
-        HttpResponse(statusCode = statusCode, body = responseBody)
+        RemoteTransportResponse(statusCode = statusCode, body = responseBody)
       },
     ),
   )

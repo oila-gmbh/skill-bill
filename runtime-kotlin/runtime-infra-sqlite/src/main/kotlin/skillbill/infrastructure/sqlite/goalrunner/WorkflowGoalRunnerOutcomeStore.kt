@@ -25,7 +25,7 @@ class WorkflowGoalRunnerOutcomeStore private constructor(
         phaseOutputValidator = deps.phaseOutputValidator,
         workerSupervisor = deps.workerSupervisor,
         decompositionManifestValidator = deps.decompositionManifestValidator,
-        decompositionManifestFileStore = deps.decompositionManifestFileStore,
+        decompositionManifestStore = deps.decompositionManifestStore,
         clock = deps.clock,
         decompositionManifestWriter = deps.decompositionManifestWriter,
         childRepairExecutor = deps.childRepairExecutor,

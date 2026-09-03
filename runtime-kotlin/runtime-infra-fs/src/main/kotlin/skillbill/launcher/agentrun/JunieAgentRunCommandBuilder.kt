@@ -2,8 +2,8 @@ package skillbill.launcher.agentrun
 
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.mcp.McpRegistrationOperations
-import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.review.model.ReviewLaunchIsolationStrategy
 import kotlin.time.DurationUnit
 
 class JunieAgentRunCommandBuilder(

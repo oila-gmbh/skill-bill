@@ -10,7 +10,7 @@ import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
@@ -98,16 +98,6 @@ interface AgentRunSpawnAuthorization {
 
 enum class ConversationIsolation(val forkTurns: String) {
   NONE("none"),
-}
-
-/**
- * Named per-agent isolation strategy for governed review launches, resolved from the agent's own
- * command builder. The process runner never reads agent identity; it reads the strategy.
- */
-enum class ReviewLaunchIsolationStrategy(val forkTurns: String?, val supported: Boolean) {
-  CODEX_NATIVE_FORK_TURNS_NONE(ConversationIsolation.NONE.forkTurns, true),
-  FRESH_PROCESS(null, true),
-  UNSUPPORTED(null, false),
 }
 
 data class SkillRunGoalContinuationContext(

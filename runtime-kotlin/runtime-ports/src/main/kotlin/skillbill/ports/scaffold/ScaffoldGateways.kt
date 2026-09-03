@@ -1,12 +1,8 @@
 package skillbill.ports.scaffold
 
-import skillbill.agentaddon.model.AgentAddonCatalogueEntry
-import skillbill.agentaddon.model.AgentAddonCatalogueInspection
 import skillbill.ports.scaffold.catalog.model.ScaffoldExplainResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldListResult
 import skillbill.ports.scaffold.catalog.model.ScaffoldShowResult
-import skillbill.ports.scaffold.model.GeneratedArtifactFile
-import skillbill.ports.scaffold.model.NativeAgentSourceProjection
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
 import skillbill.ports.scaffold.repo.model.ScaffoldUpgradeResult
@@ -15,7 +11,6 @@ import skillbill.ports.scaffold.source.model.ScaffoldEditWithBodyFileResult
 import skillbill.ports.scaffold.source.model.ScaffoldFillResult
 import skillbill.ports.scaffold.source.model.ScaffoldSaveExactContentResult
 import skillbill.scaffold.model.BaselineReviewCatalog
-import skillbill.scaffold.model.GovernedAddonFile
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ScaffoldResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
@@ -43,11 +38,6 @@ interface ScaffoldGateway {
     sectionName: String?,
   ): ScaffoldEditWithBodyFileResult
 
-  /**
-   * SKILL-52.2 subtask 2: typed scaffold entry point. Adapters (CLI/MCP/Desktop) parse their
-   * wire payloads into a [ScaffoldCommandRequest] at the adapter boundary and call this method
-   * directly — the public port surface no longer accepts a raw `Map<String, Any?>`.
-   */
   fun scaffold(request: ScaffoldCommandRequest, dryRun: Boolean): ScaffoldResult
 
   fun render(repoRoot: Path, skillName: String): ScaffoldRenderResult
@@ -69,24 +59,6 @@ interface ScaffoldCatalogGateway {
   fun discoverPlatformManifests(packsRoot: Path): List<PlatformManifest>
 
   fun discoverBaselineReviewCatalog(packsRoot: Path): BaselineReviewCatalog
-}
-
-interface RepoSourceDiscoveryGateway {
-  fun discoverAgentAddons(repoRoot: Path): List<AgentAddonCatalogueEntry>
-
-  fun inspectAgentAddons(repoRoot: Path): AgentAddonCatalogueInspection
-
-  fun discoverGovernedAddonFiles(repoRoot: Path): List<GovernedAddonFile>
-
-  fun discoverGeneratedArtifactFiles(repoRoot: Path): List<GeneratedArtifactFile>
-
-  fun discoverNativeAgentSourceFiles(platformPacksRoot: Path, skillsRoot: Path?): List<Path>
-
-  fun parseNativeAgentSourceFile(path: Path): List<NativeAgentSourceProjection>
-
-  fun renderNativeAgentSource(source: NativeAgentSourceProjection): String
-
-  fun renderComposedNativeAgentSource(repoRoot: Path, source: NativeAgentSourceProjection): String
 }
 
 interface UnsupportedScaffoldGateway {

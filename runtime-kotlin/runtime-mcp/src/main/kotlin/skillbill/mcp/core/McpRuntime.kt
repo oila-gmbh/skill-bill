@@ -19,15 +19,15 @@ import skillbill.mcp.telemetry.toMcpMap
 import skillbill.mcp.workflow.toMcpMap
 import skillbill.model.EnvironmentContext
 import skillbill.model.RuntimeContext
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import java.nio.file.Path
 
 data class McpRuntimeContext(
-  val requester: HttpRequester = UnconfiguredHttpRequester,
+  val requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
   val environment: Map<String, String> = EnvironmentContext.UnspecifiedEnvironment,
   val userHome: Path = EnvironmentContext.UnspecifiedUserHome,
   val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,

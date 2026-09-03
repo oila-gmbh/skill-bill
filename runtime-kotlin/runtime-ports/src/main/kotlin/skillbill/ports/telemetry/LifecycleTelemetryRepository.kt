@@ -7,17 +7,17 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasureme
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 
 interface FeatureTaskRuntimeTelemetryMeasurementRepository {
-  fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) = Unit
+  fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement)
 
-  fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) = Unit
+  fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement)
 
-  fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) = Unit
+  fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement)
 
-  fun featureTaskRuntimeDiagnosticDegradation(record: FeatureTaskRuntimeDiagnosticDegradationMeasurement) = Unit
+  fun featureTaskRuntimeDiagnosticDegradation(record: FeatureTaskRuntimeDiagnosticDegradationMeasurement)
 }
 
 interface ReviewStageTelemetryMeasurementRepository {
-  fun reviewStageDegradation(record: ReviewStageDegradationMeasurement) = Unit
+  fun reviewStageDegradation(record: ReviewStageDegradationMeasurement)
 }
 
 interface LifecycleTelemetryRepository :

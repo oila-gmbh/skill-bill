@@ -4,10 +4,10 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.ports.goalrunner.persistence.model.GoalContinuation
+import skillbill.ports.subtaskreview.GoalSubtaskReviewStructuredFindingsParse
 import skillbill.ports.subtaskreview.GoalSubtaskReviewSummaryReducer
-import skillbill.ports.subtaskreview.recordedVerdicts
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.ports.workflow.persistence.toSnapshot
@@ -44,12 +44,12 @@ fun goalReviewArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReviewArtifact
 fun validatedGoalReviewPasses(
   review: GoalSubtaskReviewArtifacts,
   phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
-  unitOfWork: UnitOfWork,
+  unitOfWork: GoalRunnerPersistenceSession,
 ): List<GoalSubtaskReviewPassResult> {
   review.state.passResults.forEach { pass ->
     val rawResult = review.rawResults.getValue(pass.passNumber.toString())
     val output = goalReviewEmissionEnvelope(rawResult, phaseOutputValidator)
-    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
+    val recordedVerdicts = GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts(unitOfWork.reviews, output)
     val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
     if (

@@ -3,7 +3,7 @@ package skillbill.application.review
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.repoRelativePath
 import skillbill.contracts.issuekey.issueKeyFromBranch
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.review.context.model.SpecIntentAbsenceReason
 import skillbill.review.context.model.SpecIntentDegradationRecord
 import skillbill.review.context.model.SpecIntentProjectionResolveRequest
@@ -18,7 +18,7 @@ import java.nio.file.Path
 
 @Inject
 class SpecIntentProjectionResolver(
-  private val fileStore: DecompositionManifestFileStore,
+  private val fileStore: DecompositionManifestStore,
   private val validator: DecompositionManifestValidator,
   private val extractor: SpecIntentProjectionExtractor,
 ) {

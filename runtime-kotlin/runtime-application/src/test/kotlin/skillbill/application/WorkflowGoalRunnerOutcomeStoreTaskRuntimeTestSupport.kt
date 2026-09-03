@@ -15,9 +15,9 @@ import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalProgressEvent
@@ -28,6 +28,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import java.nio.file.Path
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -326,6 +327,8 @@ internal fun expiredLeaseOwnership(workflowId: String, expiresAt: String = "2000
 internal object DeadProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
   override fun currentProcess() = FeatureTaskRuntimeProcessIdentity("host", "boot", 9, "birth-9")
   override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.NotRunning
+
+  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
   override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
   override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
   override fun startHeartbeat(
@@ -338,6 +341,7 @@ internal object DeadProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
 internal object LiveProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
   override fun currentProcess() = FeatureTaskRuntimeProcessIdentity("host", "boot", 9, "birth-9")
   override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.ExactLive
+  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
   override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
   override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
   override fun startHeartbeat(

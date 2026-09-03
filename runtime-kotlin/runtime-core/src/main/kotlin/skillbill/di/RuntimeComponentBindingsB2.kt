@@ -1,7 +1,6 @@
 package skillbill.di
 
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSharedEvidenceStore
-import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemReviewSnapshotGateway
@@ -9,8 +8,7 @@ import skillbill.infrastructure.fs.FileSystemUninstallFileSystemGateway
 import skillbill.infrastructure.fs.validation.FileSystemValidationGateRunner
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewSnapshotGateway
-import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
-import skillbill.ports.system.UninstallFileSystemGateway
+import skillbill.ports.system.UninstallPathsPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.validation.RepoValidationGateway
@@ -25,15 +23,11 @@ internal object RuntimeComponentBindingsB2 {
     adapter: FileSystemFeatureTaskRuntimeSharedEvidenceStore,
   ): FeatureTaskRuntimeSharedEvidenceLocatorReadPort = adapter
 
-  internal fun repoSourceDiscoveryGateway(gateway: FileSystemRepoSourceDiscoveryGateway): RepoSourceDiscoveryGateway =
-    gateway
-
   internal fun repoValidationGateway(gateway: FileSystemRepoValidationGateway): RepoValidationGateway = gateway
 
   internal fun validationGateRunner(runner: FileSystemValidationGateRunner): ValidationGateRunner = runner
 
-  internal fun uninstallFileSystemGateway(gateway: FileSystemUninstallFileSystemGateway): UninstallFileSystemGateway =
-    gateway
+  internal fun uninstallPathsPort(gateway: FileSystemUninstallFileSystemGateway): UninstallPathsPort = gateway
 
   internal fun reviewSnapshotGateway(gateway: FileSystemReviewSnapshotGateway): ReviewSnapshotGateway = gateway
 

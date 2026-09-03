@@ -2,15 +2,15 @@ package skillbill.infrastructure.fs
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileDiscoveryStore
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestDiscoveryPort
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import java.nio.file.Files
 import java.nio.file.Path
 
 @Inject
 class FileSystemDecompositionManifestFileStore :
-  DecompositionManifestFileStore,
-  DecompositionManifestFileDiscoveryStore by FileSystemDecompositionManifestFileStoreDiscoveryHolder.discovery {
+  DecompositionManifestStore,
+  DecompositionManifestDiscoveryPort by FileSystemDecompositionManifestFileStoreDiscoveryHolder.discovery {
   private val bundleJournal = FileSystemDecompositionManifestFileStoreDiscoveryHolder.bundleJournal
   private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
 

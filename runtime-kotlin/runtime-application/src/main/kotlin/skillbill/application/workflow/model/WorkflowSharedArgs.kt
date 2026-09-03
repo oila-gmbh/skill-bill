@@ -1,7 +1,7 @@
 package skillbill.application.workflow.model
 
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 
 data class BuildFeatureTaskExecutionIdentityArgs(
   val kind: WorkflowFamilyKind,

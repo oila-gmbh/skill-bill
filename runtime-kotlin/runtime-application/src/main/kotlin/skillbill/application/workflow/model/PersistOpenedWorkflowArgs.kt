@@ -1,7 +1,7 @@
 package skillbill.application.workflow.model
 
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
 import skillbill.workflow.engine.WorkflowEngine
 
 data class PersistOpenedWorkflowArgs(

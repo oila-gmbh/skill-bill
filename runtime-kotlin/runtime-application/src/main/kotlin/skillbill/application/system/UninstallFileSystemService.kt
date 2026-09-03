@@ -1,12 +1,12 @@
 package skillbill.application.system
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.system.UninstallFileSystemGateway
+import skillbill.ports.system.UninstallPathsPort
 import java.nio.file.Path
 
 @Inject
 class UninstallFileSystemService(
-  private val gateway: UninstallFileSystemGateway,
+  private val gateway: UninstallPathsPort,
 ) {
   fun listImmediateDirectoryNames(root: Path): List<String> = gateway.listImmediateDirectoryNames(root)
 

@@ -1,15 +1,15 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
-import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupQuery
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.workflow.goalContinuationFor
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.continuation.FeatureTaskExecutionIdentityPolicy
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 
 fun executeFeatureTaskContinuationLookup(

@@ -1,0 +1,14 @@
+package skillbill.infrastructure.sqlite.goalrunner
+
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestControlCommands
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestExecutionLease
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestPersistenceCommands
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestReviewCommands
+
+internal interface GoalRunnerManifestLeaseOps : GoalRunnerManifestExecutionLease
+
+internal interface GoalRunnerManifestControlOps : GoalRunnerManifestControlCommands
+
+internal interface GoalRunnerManifestWriteOps : GoalRunnerManifestPersistenceCommands
+
+internal interface GoalRunnerManifestReviewOps : GoalRunnerManifestReviewCommands

@@ -15,7 +15,7 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
 import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.telemetry.TelemetryConfigStore
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import java.nio.file.Path
 
 internal object RuntimeComponentBindingsA1 {
@@ -38,7 +38,7 @@ internal object RuntimeComponentBindingsA1 {
       }
     val inputTransport = inputRuntimeContext.transport
     val resolvedTransport =
-      if (inputTransport.requester === UnconfiguredHttpRequester) {
+      if (inputTransport.requester === UnconfiguredRemoteTransportPort) {
         inputTransport.copy(requester = JdkHttpRequester)
       } else {
         inputTransport

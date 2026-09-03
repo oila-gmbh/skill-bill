@@ -3,8 +3,8 @@ package skillbill.cli
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
@@ -97,8 +97,8 @@ class CliTelemetryStatsWorkflowTest {
   }
 }
 
-private fun runtimeStatsRequester(capturedRequests: MutableList<Map<String, Any?>>): HttpRequester =
-  HttpRequester { method, url, bodyJson, headers ->
+private fun runtimeStatsRequester(capturedRequests: MutableList<Map<String, Any?>>): RemoteTransportPort =
+  RemoteTransportPort { method, url, bodyJson, headers ->
     capturedRequests +=
       linkedMapOf(
         "method" to method,
@@ -108,7 +108,7 @@ private fun runtimeStatsRequester(capturedRequests: MutableList<Map<String, Any?
       )
     when {
       url.endsWith("/capabilities") ->
-        HttpResponse(
+        RemoteTransportResponse(
           statusCode = 200,
           body =
           """
@@ -123,7 +123,7 @@ private fun runtimeStatsRequester(capturedRequests: MutableList<Map<String, Any?
           """.trimIndent(),
         )
       url.endsWith("/stats") ->
-        HttpResponse(
+        RemoteTransportResponse(
           statusCode = 200,
           body =
           """

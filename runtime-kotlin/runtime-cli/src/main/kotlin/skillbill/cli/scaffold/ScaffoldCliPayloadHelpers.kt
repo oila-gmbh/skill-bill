@@ -1,7 +1,6 @@
 package skillbill.cli.scaffold
 
 import skillbill.application.install.ExternalAddonOverlayService
-import skillbill.application.scaffold.ScaffoldService
 import skillbill.cli.kernel.CliOutput
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.model.CliExecutionResult
@@ -9,6 +8,7 @@ import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRunInputs
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.ExternalAddonSource
+import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import java.nio.file.Path
@@ -29,7 +29,7 @@ internal fun runNativeScaffoldPayload(payload: Map<String, *>, run: NativeScaffo
   val dryRun = run.dryRun
   val format = run.format
   val inputs = run.inputs
-  val scaffoldService = run.scaffoldService
+  val scaffoldGateway = run.scaffoldGateway
   val externalAddonOverlayService = run.externalAddonOverlayService
   val sessionId = generateScaffoldSessionId(run.clock)
   val payloadWithRepoRoot = if ((payload["repo_root"] as? String).isNullOrBlank()) {
@@ -41,7 +41,7 @@ internal fun runNativeScaffoldPayload(payload: Map<String, *>, run: NativeScaffo
   val result =
     try {
       val request = parseScaffoldCommandRequest(typedPayload)
-      val scaffoldResult = scaffoldService.scaffold(request, dryRun = dryRun)
+      val scaffoldResult = scaffoldGateway.scaffold(request, dryRun = dryRun)
       registerExternalAddonSourceAfterSuccess(request, dryRun, inputs, externalAddonOverlayService)
       scaffoldResult
     } catch (error: SkillBillRuntimeException) {
@@ -71,7 +71,7 @@ internal fun createAndFillResult(args: CreateAndFillArgs): CliExecutionResult {
   val format = args.format
   return when {
     content.interactive || content.payload == null -> unsupportedNativeScaffoldResult(
-      args.unsupportedScaffoldService.retiredUnsupportedMessage(
+      args.unsupportedScaffoldGateway.retiredUnsupportedMessage(
         "create-and-fill",
         "skill-bill create-and-fill --payload <file> --body-file <file>",
         editor = false,
@@ -93,7 +93,7 @@ internal fun createAndFillResult(args: CreateAndFillArgs): CliExecutionResult {
           state = args.state,
           inputs = args.inputs,
           clock = args.clock,
-          scaffoldService = args.scaffoldService,
+          scaffoldGateway = args.scaffoldGateway,
         ),
         transform = { scaffoldPayload ->
           createAndFillScaffoldPayload(scaffoldPayload, content.body, content.bodyFile, args.inputs)
@@ -157,9 +157,9 @@ internal fun completeRenderText(
   repoRoot: Path,
   skillName: String,
   dryRun: Boolean,
-  scaffoldService: ScaffoldService,
+  scaffoldGateway: ScaffoldGateway,
 ) = try {
-  val rendered = scaffoldService.render(repoRoot, skillName)
+  val rendered = scaffoldGateway.render(repoRoot, skillName)
   state.completeText(rendered.stdout, rendered.toCliPayload(dryRun))
 } catch (error: SkillBillRuntimeException) {
   state.result = errorResult(error.message.orEmpty(), CliFormat.TEXT)

@@ -25,7 +25,7 @@ object McpScaffoldRuntime {
     val sessionId = generateNewSkillSessionId(mcpClock(runtimeComponent))
     val outcome = runCatching {
       val request = parseMcpScaffoldCommandRequest(payload + ("repo_root" to resolvedRoot.toString()))
-      val result = runtimeComponent.scaffoldService.scaffold(request, dryRun)
+      val result = runtimeComponent.scaffoldGateway.scaffold(request, dryRun)
       scaffoldSuccessMap(
         sessionId = sessionId,
         payload = payload,

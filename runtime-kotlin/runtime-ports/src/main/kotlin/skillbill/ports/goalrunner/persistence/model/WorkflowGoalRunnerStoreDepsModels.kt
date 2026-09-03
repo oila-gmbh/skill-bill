@@ -7,7 +7,7 @@ import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
 import skillbill.ports.goalrunner.persistence.GoalChildPlanningHydratorPort
 import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairRunnerPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
@@ -22,7 +22,7 @@ data class WorkflowGoalRunnerManifestStoreDeps(
   val database: DatabaseSessionFactory,
   val workflowSnapshotValidator: WorkflowSnapshotValidator,
   val decompositionManifestValidator: DecompositionManifestValidator,
-  val decompositionManifestFileStore: DecompositionManifestFileStore,
+  val decompositionManifestStore: DecompositionManifestStore,
   val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
   val clock: Clock,
@@ -41,7 +41,7 @@ data class WorkflowGoalRunnerOutcomeStoreDeps(
   val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
   val decompositionManifestValidator: DecompositionManifestValidator,
-  val decompositionManifestFileStore: DecompositionManifestFileStore,
+  val decompositionManifestStore: DecompositionManifestStore,
   val clock: Clock,
   val decompositionManifestWriter: DecompositionManifestProjectionWriter,
   val childRepairExecutor: GoalRunnerChildRepairRunnerPort,

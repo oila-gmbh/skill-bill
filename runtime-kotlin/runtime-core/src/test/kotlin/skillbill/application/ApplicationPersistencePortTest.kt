@@ -12,6 +12,7 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.review.EmptyReviewAttributionPort
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
 import java.nio.file.Files
+import java.time.Clock
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -239,6 +240,7 @@ class ApplicationPersistencePortTest {
         settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
         configStore = FakeTelemetryConfigStore,
         telemetryClient = client,
+        clock = Clock.systemUTC(),
       )
 
     val result = service.sync(dbOverride = null)
@@ -277,6 +279,7 @@ class ApplicationPersistencePortTest {
         settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
         configStore = FakeTelemetryConfigStore,
         telemetryClient = client,
+        clock = Clock.systemUTC(),
       )
 
     service.autoSync(dbOverride = null)
@@ -312,6 +315,7 @@ class ApplicationPersistencePortTest {
         settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
         configStore = FakeTelemetryConfigStore,
         telemetryClient = client,
+        clock = Clock.systemUTC(),
       )
 
     service.autoSync(dbOverride = null)

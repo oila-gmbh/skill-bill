@@ -4,8 +4,8 @@ import skillbill.application.continuation.model.GoalContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 
 data class GoalPreflightLookupInput(

@@ -13,17 +13,19 @@ import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionSubtask
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 
 @Inject
 public class GoalRunnerSubtaskLaunchPrepare(
   private val launchBoundaries: GoalRunnerSubtaskLaunchBoundariesPort,
+  private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 ) {
   private val manifestStore get() = launchBoundaries.manifestStore
   private val outcomeStore get() = launchBoundaries.outcomeStore
@@ -168,12 +170,11 @@ public class GoalRunnerSubtaskLaunchPrepare(
     val rawSpecPath = requireNotNull(
       subtask.specPath.takeIf(String::isNotBlank),
     ) { "Goal subtask '$subtaskId' has no governed spec path." }
-    val canonicalRepository = runCatching { request.repoRoot.toRealPath() }
-      .getOrElse { request.repoRoot.toAbsolutePath().normalize() }
+    val canonicalRepository = repositoryEnclosingRootPort.canonicalPath(request.repoRoot)
     val lexicalSpecPath = Path.of(rawSpecPath).let { path ->
       (if (path.isAbsolute) path else canonicalRepository.resolve(path)).toAbsolutePath().normalize()
     }
-    val resolvedSpecPath = runCatching { lexicalSpecPath.toRealPath() }.getOrElse { lexicalSpecPath }
+    val resolvedSpecPath = repositoryEnclosingRootPort.optionalRealPath(lexicalSpecPath) ?: lexicalSpecPath
     check(resolvedSpecPath.startsWith(canonicalRepository)) {
       "Goal subtask '$subtaskId' governed spec path escapes repository '$canonicalRepository'."
     }
@@ -191,7 +192,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
           workflowId = assignedWorkflowId,
           goalBranch = branch,
           normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
-          repositoryIdentity = "repo-root-realpath-v1:$canonicalRepository",
+          repositoryIdentity = repositoryEnclosingRootPort.repositoryIdentity(canonicalRepository),
           governedSpecPath = governedSpecPath,
           reviewBaseline = reviewBaseline,
           reviewPolicy = GoalRunnerReviewPolicy(

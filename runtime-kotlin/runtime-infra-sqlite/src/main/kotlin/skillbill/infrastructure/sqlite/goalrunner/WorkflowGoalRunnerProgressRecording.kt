@@ -19,6 +19,8 @@ import skillbill.ports.goalrunner.persistence.summary
 import skillbill.ports.goalrunner.persistence.toArtifactMap
 import skillbill.ports.goalrunner.persistence.toProgressEvent
 import skillbill.ports.goalrunner.persistence.workflowFamilyFor
+import skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts
+import skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerSummary
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
@@ -28,8 +30,6 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.phaseartifacts.phaseRecordsFrom
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifactKeys
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
-import skillbill.ports.workflow.persistence.GoalObservabilityArtifacts
-import skillbill.ports.workflow.persistence.model.GoalObservabilityRuntimeEventInput
 import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput

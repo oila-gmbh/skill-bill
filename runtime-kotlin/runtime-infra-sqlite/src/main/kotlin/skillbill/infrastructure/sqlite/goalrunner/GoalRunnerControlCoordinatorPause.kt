@@ -2,11 +2,11 @@ package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
 import skillbill.goalrunner.model.GoalRunnerControlState
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.goalrunner.persistence.goalRepositoryIdentity
+import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.goalrunner.runner.model.GoalRunnerPausePersistenceResult
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.persistence.findDecomposedParentWorkflow
-import skillbill.ports.workflow.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.ports.workflow.persistence.toSnapshot
 import java.nio.file.Path

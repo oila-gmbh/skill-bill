@@ -1,6 +1,6 @@
 package skillbill.skillremove
 
-import skillbill.domain.skillremove.SkillRemove
+import skillbill.application.scaffold.SkillRemove
 import skillbill.domain.skillremove.model.ManifestEditKind
 import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalTarget
