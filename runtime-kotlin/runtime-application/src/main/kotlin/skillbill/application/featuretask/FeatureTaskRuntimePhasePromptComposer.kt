@@ -21,6 +21,4 @@ object FeatureTaskRuntimePhasePromptComposer {
   fun compose(inputs: FeatureTaskRuntimePhasePromptComposeInputs): String = composePhasePrompt(inputs)
 
   fun budgetedAddonsFor(selection: HydratedAgentAddonSelection): HydratedAgentAddonSelection = selection
-
-  internal const val ADDON_CONTENT_PROJECTION_NAME: String = "agent_addon_content"
 }

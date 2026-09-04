@@ -1,7 +1,6 @@
 package skillbill.install.nativeagent
 
 import skillbill.nativeagent.discovery.discoverNativeAgentFilesByDir
-import skillbill.nativeagent.discovery.nativeAgentSourceDiscoveryRoots
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Path
 
@@ -29,9 +28,3 @@ internal fun uninstallCodexAgentTomls(
     NativeAgentProvider.Codex.homeAgentDirs(resolvedHome),
   )
 }
-
-internal fun nativeAgentDiscoveryRoots(
-  platformPacksRoot: Path,
-  skillsRoot: Path?,
-  selectedPlatforms: List<String>?,
-): List<Path> = nativeAgentSourceDiscoveryRoots(platformPacksRoot, skillsRoot, selectedPlatforms)

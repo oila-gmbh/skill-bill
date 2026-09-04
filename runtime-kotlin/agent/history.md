@@ -1,3 +1,15 @@
+## [2026-09-04] SKILL-232 subtask 1 — Unused private/internal deletion pass
+Areas: runtime-kotlin/{runtime-application/{featuretask,goalrunner,work},runtime-domain/review/context/model,runtime-infra-fs/{infrastructure/fs,install/nativeagent,launcher/mcp,scaffold/platformpack},runtime-infra-sqlite/{db/workflow,infrastructure/sqlite/goalrunner},runtime-core/architecture/baselines}
+- Deleted 15 confirmed-unused `internal` declarations plus the eight-symbol cascade inside `GoalSubtaskReviewDeletionElision.kt`; 6 insertions, 243 deletions, no observable behavior change.
+- Method: receiver-aware `internal`/`private` declaration census joined against a repo-wide token count; exact-once names are the candidate set, and re-running the census after the sweep returning zero proves no batch orphaned a further symbol. reusable
+- `GoalSubtaskReviewDeletionElision.kt` went whole rather than trimmed: `withinReviewInputBound` was its sole entry point, and SKILL-224 (be9b56edb) replaced the materialized tracked delta with a scope fingerprint, so the byte-bound elision path can no longer fire. See decisions.md.
+- Private half was a verified no-op — 3383 unique private names, zero genuine exact-once hits — because detekt `UnusedPrivateMember`/`UnusedPrivateProperty`/`UnusedPrivateClass` already run unsuppressed at `maxIssues 0`. Only `internal` needs a manual sweep.
+- Cascade cleanup matters more than the primary deletion: removing `GoalRunnerFinalizationDeps` orphaned eight imports in `GoalRunnerSharedArgs.kt`, while a predicted orphan in `WorkflowGoalRunnerSharedArgs.kt` did not materialize because sibling args classes still use every type.
+- Line-numbered architecture baselines shift under deletions: `runtime-infra-fs-ambient-environment-baseline.txt` line 41 was corrected `:26:`→`:25:` after an orphaned import moved the recorded `System.getProperty` site, with census membership unchanged.
+- Limitation: the count-2 `internal` bucket (1115 names) stays deferred — a count of 2 cannot separate declaration-plus-unused-import from declaration-plus-one-real-caller. Package-public orphans and single-implementation interface collapse remain spec non-goals.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-09-04] SKILL-231 subtask 4 — Composition and structure
 Areas: runtime-kotlin/{runtime-application/featuretask+goalrunner,runtime-core/{di,architecture{,/baselines}},runtime-infra-{fs,http,sqlite},runtime-mcp,runtime-ports,agent,ARCHITECTURE.md}
 - Renamed all 112 spillover-named files for the responsibility each part holds; emptied every module's spillover baseline; DI root sliced by subsystem (no ordinal `BindingsA1`/`ProvidesN` names).

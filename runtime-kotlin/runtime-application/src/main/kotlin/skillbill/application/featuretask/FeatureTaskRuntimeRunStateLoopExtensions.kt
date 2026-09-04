@@ -15,7 +15,5 @@ fun FeatureTaskRuntimeRunState.discardStaleReentry(loopId: String) {
   liveClaimedLoops.remove(loopId)
 }
 
-internal fun FeatureTaskRuntimeRunState.inFlightReentry(loopId: String): InFlightReentry? = inFlightReentries[loopId]
-
 internal fun FeatureTaskRuntimeRunState.latestInFlightReentry(): Pair<String, InFlightReentry>? =
   inFlightReentries.maxByOrNull { (_, reentry) -> reentry.edgeSequenceNumber }?.toPair()
