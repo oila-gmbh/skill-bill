@@ -4,6 +4,7 @@ import skillbill.application.learning.LearningService
 import skillbill.application.learning.model.AddLearningInput
 import skillbill.application.review.ReviewService
 import skillbill.application.telemetry.RUNTIME_EXCEPTION_EVENT
+import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.learnings.model.LearningScope
 import skillbill.learnings.model.RejectedLearningSourceOutcome
@@ -234,13 +235,18 @@ class ApplicationPersistencePortTest {
       telemetryReconciliation = reconciliationRepository,
     )
     val client = FakeTelemetryClient()
+    val settingsProvider = FakeTelemetrySettingsProvider(enabled = true)
     val service =
       TelemetryService(
         database = database,
-        settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
-        configStore = FakeTelemetryConfigStore,
+        settingsProvider = settingsProvider,
         telemetryClient = client,
         clock = Clock.systemUTC(),
+        levelMutationService = TelemetryLevelMutationService(
+          database = database,
+          settingsProvider = settingsProvider,
+          configStore = FakeTelemetryConfigStore,
+        ),
       )
 
     val result = service.sync(dbOverride = null)
@@ -273,13 +279,18 @@ class ApplicationPersistencePortTest {
       telemetryReconciliation = reconciliationRepository,
     )
     val client = FakeTelemetryClient()
+    val settingsProvider = FakeTelemetrySettingsProvider(enabled = true)
     val service =
       TelemetryService(
         database = database,
-        settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
-        configStore = FakeTelemetryConfigStore,
+        settingsProvider = settingsProvider,
         telemetryClient = client,
         clock = Clock.systemUTC(),
+        levelMutationService = TelemetryLevelMutationService(
+          database = database,
+          settingsProvider = settingsProvider,
+          configStore = FakeTelemetryConfigStore,
+        ),
       )
 
     service.autoSync(dbOverride = null)
@@ -309,13 +320,18 @@ class ApplicationPersistencePortTest {
       telemetryReconciliation = ThrowingTelemetryReconciliationRepository,
     )
     val client = FakeTelemetryClient()
+    val settingsProvider = FakeTelemetrySettingsProvider(enabled = true)
     val service =
       TelemetryService(
         database = database,
-        settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
-        configStore = FakeTelemetryConfigStore,
+        settingsProvider = settingsProvider,
         telemetryClient = client,
         clock = Clock.systemUTC(),
+        levelMutationService = TelemetryLevelMutationService(
+          database = database,
+          settingsProvider = settingsProvider,
+          configStore = FakeTelemetryConfigStore,
+        ),
       )
 
     service.autoSync(dbOverride = null)

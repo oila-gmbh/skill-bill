@@ -6,7 +6,6 @@ import skillbill.application.telemetry.model.TelemetryStatusResult
 import skillbill.application.telemetry.model.TelemetrySyncPayload
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetryClient
-import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
@@ -22,9 +21,9 @@ import java.time.Clock
 class TelemetryService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
-  private val configStore: TelemetryConfigStore,
   private val telemetryClient: TelemetryClient,
   private val clock: Clock,
+  private val levelMutationService: TelemetryLevelMutationService,
 ) {
   fun isEnabled(): Boolean = telemetrySettingsOrNull(settingsProvider)?.enabled ?: false
 
@@ -79,7 +78,7 @@ class TelemetryService(
   }
 
   fun setLevel(level: String, dbOverride: String?): TelemetryMutationResult {
-    val result = TelemetryLevelMutationService(database, settingsProvider, configStore).setLevel(level, dbOverride)
+    val result = levelMutationService.setLevel(level, dbOverride)
     val settings = result.settings
     val clearedEvents = result.clearedEvents
     return telemetryMutationResult(settings, clearedEvents)

@@ -12,6 +12,7 @@ import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
 import skillbill.application.goalrunner.GoalRunnerLedgerContext
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
+import skillbill.application.goalrunner.GoalRunnerProgressReader
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
 import skillbill.application.goalrunner.TestNoopGoalRunnerSubtaskLauncher
@@ -3762,6 +3763,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = outcomes,
+      progressReader = GoalRunnerProgressReader(outcomes),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
       diagnostics = NoopRuntimeDiagnostics,
@@ -3817,6 +3819,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = outcomes,
+      progressReader = GoalRunnerProgressReader(outcomes),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
       diagnostics = NoopRuntimeDiagnostics,
@@ -3855,6 +3858,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = outcomes,
+      progressReader = GoalRunnerProgressReader(outcomes),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
       diagnostics = NoopRuntimeDiagnostics,

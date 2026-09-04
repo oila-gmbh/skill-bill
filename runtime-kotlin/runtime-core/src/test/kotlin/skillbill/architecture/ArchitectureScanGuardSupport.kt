@@ -327,3 +327,81 @@ private val TABLE_ROW_PATTERN =
     """^\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|""",
     RegexOption.MULTILINE,
   )
+
+private val DI_BINDING_PARAMETER_TYPE_PATTERN = Regex(
+  """\b(?:adapter|gateway|store|service|client|provider|runner|resolver|factory|recorder|sweep|""" +
+    """coordinator|fileSystem|source|validator|adapter|port|mutator|emitter|binder|supervisor|writer|""" +
+    """loader|operations|adapter)\s*:\s*([A-Z][A-Za-z0-9_]*)""",
+)
+
+private val DI_EXPLICIT_CONSTRUCTION_PATTERN =
+  Regex("""=\s*([A-Z][A-Za-z0-9_]*)\s*\(""")
+
+private val CLASS_DECLARATION_CONSTRUCTION_PATTERN =
+  Regex("""\b(?:class|object|data\s+class|enum\s+class)\s+[A-Za-z_][A-Za-z0-9_]*\s*\(""")
+
+private fun isClassDeclarationConstruction(source: String, matchStart: Int): Boolean {
+  val lineStart = source.lastIndexOf('\n', matchStart - 1) + 1
+  val lineEnd = source.indexOf('\n', matchStart).let { index -> if (index < 0) source.length else index }
+  return CLASS_DECLARATION_CONSTRUCTION_PATTERN.containsMatchIn(source.substring(lineStart, lineEnd))
+}
+
+private fun constructionViolationsForPattern(pattern: Regex, relativePath: String, source: String): List<String> =
+  pattern.findAll(source).mapNotNull { match ->
+    if (isClassDeclarationConstruction(source, match.range.first)) return@mapNotNull null
+    "$relativePath constructs ${match.groupValues[1]} outside skillbill.di"
+  }.toList()
+
+fun ArchitectureScanSupport.boundComponentConcreteClassNames(diScanRoot: String): Set<String> {
+  val names = linkedSetOf<String>()
+  kotlinFilesUnder(runtimeRoot.resolve(diScanRoot)).forEach { sourceFile ->
+    val source = sourceFile.readText()
+    DI_BINDING_PARAMETER_TYPE_PATTERN.findAll(source).forEach { match ->
+      names += match.groupValues[1]
+    }
+    DI_EXPLICIT_CONSTRUCTION_PATTERN.findAll(source).forEach { match ->
+      names += match.groupValues[1]
+    }
+  }
+  return names
+}
+
+fun ArchitectureScanSupport.directComponentConstructionViolations(
+  boundClassNames: Set<String>,
+  scanRoots: List<String>,
+  compositionDiRoot: String,
+  sanctionedEntrypoints: Set<String> = emptySet(),
+): List<String> {
+  if (boundClassNames.isEmpty()) return emptyList()
+  val pattern = Regex(
+    boundClassNames.sortedDescending().joinToString(separator = "|") { Regex.escape(it) }
+      .let { """\b($it)\s*\(""" },
+  )
+  val violations = mutableListOf<String>()
+  scanRoots.forEach { scanRoot ->
+    kotlinFilesUnder(runtimeRoot.resolve(scanRoot)).forEach { sourceFile ->
+      val relativePath = runtimeRoot.relativize(sourceFile).toString().replace('\\', '/')
+      if (relativePath.startsWith(compositionDiRoot)) return@forEach
+      if (relativePath in sanctionedEntrypoints) return@forEach
+      violations += constructionViolationsForPattern(
+        pattern,
+        relativePath,
+        sourceFile.readText(),
+      )
+    }
+  }
+  return violations.sorted()
+}
+
+fun ArchitectureScanSupport.directComponentConstructionViolationsForSource(
+  boundClassNames: Set<String>,
+  relativePath: String,
+  source: String,
+): List<String> {
+  if (boundClassNames.isEmpty()) return emptyList()
+  val pattern = Regex(
+    boundClassNames.sortedDescending().joinToString(separator = "|") { Regex.escape(it) }
+      .let { """\b($it)\s*\(""" },
+  )
+  return constructionViolationsForPattern(pattern, relativePath, source)
+}

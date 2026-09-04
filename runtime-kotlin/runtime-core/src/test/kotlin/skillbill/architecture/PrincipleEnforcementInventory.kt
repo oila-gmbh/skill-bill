@@ -88,12 +88,17 @@ object PrincipleEnforcementInventory {
   /** Named exemptions from the spillover-filename ban. Empty by rule, never by census. */
   val spilloverFileNameExemptions: Set<String> = emptySet()
 
+  val sanctionedCompositionEntrypoints: Set<String> = setOf(
+    "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/runtime/ScaffoldStandaloneEntrypoint.kt",
+  )
+
   /**
    * Repository-relative main-source paths exempt from ambient-environment baseline recording.
    * Exempt sites may still read the process environment at a named process boundary.
    */
   val ambientEnvironmentExemptions: Set<String> = setOf(
     "runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt",
+    "runtime-kotlin/runtime-core/src/main/kotlin/skillbill/di/RuntimeBootstrapBindings.kt",
   )
 
   val enforceableRules: List<String> = listOf(
@@ -124,6 +129,8 @@ object PrincipleEnforcementInventory {
       "runtime-ports, runtime-domain, and runtime-application main source must appear in " +
       "PortNullObjectClassification; recording null objects must emit through " +
       "RecordingNullObjectDiagnostics when bound.",
+    "Composition-only construction: no main-source site outside skillbill.di may construct a " +
+      "concrete class the RuntimeComponent binds; sanctioned second entrypoints are named explicitly.",
   )
 
   val parseBoundarySites: List<ArchitectureScanSupport.ParseBoundarySite> = listOf(

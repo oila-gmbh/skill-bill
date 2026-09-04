@@ -1,6 +1,5 @@
 package skillbill.install.plan
 
-import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentDefaultTarget
 import skillbill.install.model.InstallAgentTarget
@@ -8,6 +7,7 @@ import skillbill.install.model.InstallAgentTargetSource
 import skillbill.install.model.InstallPlan
 import skillbill.install.model.InstallPlanRequest
 import skillbill.install.model.InstallPlanSkill
+import skillbill.install.model.InstallPlanWireValidator
 import skillbill.install.model.InstallPlatformPackSnapshot
 import skillbill.install.model.InstallPlatformSkillMaterializationRequest
 import skillbill.install.model.InstallPolicyInput
@@ -20,7 +20,7 @@ import skillbill.review.plan.ReviewFallbackResolver
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
-internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
+internal fun buildInstallPlan(request: InstallPlanRequest, wireValidator: InstallPlanWireValidator): InstallPlan {
   requireSupportedAgentContract()
   val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
   val policyInput = buildInstallPolicyInput(request, platformManifests, enforceContractVersion = true)
@@ -34,7 +34,7 @@ internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
   // unknown agent id slipping through a future builder change)
   // loud-fails with `InvalidInstallPlanSchemaError` before the plan is
   // handed to the apply pipeline.
-  validateInstallPlanWireSnapshot(plan, InstallPlanWireValidatorAdapter())
+  validateInstallPlanWireSnapshot(plan, wireValidator)
   return plan
 }
 

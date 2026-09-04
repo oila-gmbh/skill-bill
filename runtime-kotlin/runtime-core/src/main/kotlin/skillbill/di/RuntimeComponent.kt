@@ -59,37 +59,37 @@ import skillbill.ports.validation.RepoValidationGateway
 abstract class RuntimeComponent(
   private val inputRuntimeContext: RuntimeContext,
 ) :
-  RuntimeComponentProvides1,
-  RuntimeComponentProvides2,
-  RuntimeComponentProvides3,
-  RuntimeComponentProvides4,
-  RuntimeComponentProvides5,
-  RuntimeComponentProvides6,
-  RuntimeComponentProvides7,
-  RuntimeComponentProvides8,
-  RuntimeComponentProvides9,
-  RuntimeComponentProvides10,
-  RuntimeComponentProvides11,
-  RuntimeComponentProvides12,
-  RuntimeComponentProvides13 {
+  RuntimeTelemetryInstallProvides,
+  RuntimeInstallLauncherProvides,
+  RuntimeGoalRunnerPlanningProvides,
+  RuntimeDiagnosticsReviewProvides,
+  RuntimeGoalRunnerScaffoldProvides,
+  RuntimeScaffoldWorkflowProvides,
+  RuntimeReviewWorkflowProvides,
+  RuntimeWorkflowValidatorProvides,
+  RuntimeFeatureTaskGoalValidatorProvides,
+  RuntimeCompositionMiscProvides,
+  RuntimeGoalRunnerWorkflowProvides,
+  RuntimeGoalRunnerBoundaryProvides,
+  RuntimeReviewFeatureTaskGateProvides {
   @Provides @JvmSynthetic
-  fun runtimeContext(): RuntimeContext = RuntimeComponentBindingsA1.runtimeContext(inputRuntimeContext)
+  fun runtimeContext(): RuntimeContext = RuntimeBootstrapBindings.runtimeContext(inputRuntimeContext)
 
   @Provides @JvmSynthetic
-  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = RuntimeComponentBindingsA1.environmentContext(ctx)
+  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = RuntimeBootstrapBindings.environmentContext(ctx)
 
   @Provides @JvmSynthetic
-  fun transportContext(ctx: RuntimeContext): TransportContext = RuntimeComponentBindingsA1.transportContext(ctx)
+  fun transportContext(ctx: RuntimeContext): TransportContext = RuntimeBootstrapBindings.transportContext(ctx)
 
   @Provides @JvmSynthetic
-  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = RuntimeComponentBindingsA1.workflowOpsContext(ctx)
+  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = RuntimeBootstrapBindings.workflowOpsContext(ctx)
 
   @Provides @JvmSynthetic
-  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = RuntimeComponentBindingsA1.optionalCallbacks(ctx)
+  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = RuntimeBootstrapBindings.optionalCallbacks(ctx)
 
   @Provides @RuntimeSingleton @JvmSynthetic
   fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
-    RuntimeComponentBindingsA1.databaseSessionFactory(context)
+    RuntimeBootstrapBindings.databaseSessionFactory(context)
 
   abstract val resolvedEnvironmentContext: EnvironmentContext
 

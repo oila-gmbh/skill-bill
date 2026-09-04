@@ -4,7 +4,6 @@ import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.workflow.gitops.ProtectedBranches
 import skillbill.workflow.decomposition.model.DecompositionSubtask
@@ -50,7 +49,7 @@ internal data class GoalRunnerProgressState(
 
 class GoalRunnerTickProgressReader(
   private val manifestStore: GoalRunnerManifestStore,
-  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  private val progressReader: GoalRunnerProgressReader,
   private val issueKey: String,
   private val subtaskId: Int,
   private val request: GoalRunnerRunRequest,
@@ -84,7 +83,7 @@ class GoalRunnerTickProgressReader(
   }
 
   private fun readChildProgress(workflowId: String): GoalRunnerWorkflowProgress? =
-    when (val read = GoalRunnerProgressReader(outcomeStore).read(workflowId, request)) {
+    when (val read = progressReader.read(workflowId, request)) {
       is GoalRunnerChildProgressRead.Present -> read.progress
       is GoalRunnerChildProgressRead.Absent -> null
       is GoalRunnerChildProgressRead.Failed -> null

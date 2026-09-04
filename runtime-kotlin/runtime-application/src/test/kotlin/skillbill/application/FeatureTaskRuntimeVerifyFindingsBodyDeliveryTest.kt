@@ -3,6 +3,7 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimeContinuationKind
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
+import skillbill.ports.time.JvmSystemClock
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import java.nio.file.Files
 import java.time.LocalDate
@@ -25,7 +26,7 @@ class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
       agent.resolve("history.md"),
       "# Boundary History\n\n## [${LocalDate.now(ZoneOffset.UTC)}] selected-title\n\nselected body sentence\n",
     )
-    val headingId = FileSystemGoalPlanningContextDiscovery()
+    val headingId = FileSystemGoalPlanningContextDiscovery(JvmSystemClock)
       .discoverForFindingPaths(repoRoot, listOf(findingPath), loudFailOnCapExceeded = true)
       .boundaryCatalog
       .single()

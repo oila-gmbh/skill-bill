@@ -172,8 +172,8 @@ class ImplementationOwnershipArchitectureTest {
         .filter { path ->
           val name = path.fileName.toString()
           name == "RuntimeComponent.kt" ||
-            name.startsWith("RuntimeComponentBindings") ||
-            name.startsWith("RuntimeComponentProvides")
+            name.endsWith("Bindings.kt") ||
+            name.endsWith("Provides.kt")
         }
         .toList()
         .toSet()
@@ -318,16 +318,16 @@ class ImplementationOwnershipArchitectureTest {
   fun `runtime core binds install capability adapters directly`() {
     val compositionSources = listOf(
       "RuntimeComponent.kt",
-      "RuntimeComponentProvides1.kt",
-      "RuntimeComponentProvides2.kt",
-      "RuntimeComponentProvides3.kt",
-      "RuntimeComponentProvides4.kt",
-      "RuntimeComponentProvides5.kt",
-      "RuntimeComponentProvides6.kt",
-      "RuntimeComponentProvides7.kt",
-      "RuntimeComponentProvides8.kt",
-      "RuntimeComponentProvides9.kt",
-      "RuntimeComponentProvides10.kt",
+      "RuntimeTelemetryInstallProvides.kt",
+      "RuntimeInstallLauncherProvides.kt",
+      "RuntimeGoalRunnerPlanningProvides.kt",
+      "RuntimeDiagnosticsReviewProvides.kt",
+      "RuntimeGoalRunnerScaffoldProvides.kt",
+      "RuntimeScaffoldWorkflowProvides.kt",
+      "RuntimeReviewWorkflowProvides.kt",
+      "RuntimeWorkflowValidatorProvides.kt",
+      "RuntimeFeatureTaskGoalValidatorProvides.kt",
+      "RuntimeCompositionMiscProvides.kt",
     ).joinToString("\n") { fileName ->
       runtimeRoot.resolve("runtime-core/src/main/kotlin/skillbill/di/$fileName").readText()
     }
@@ -399,7 +399,8 @@ class ImplementationOwnershipArchitectureTest {
       .filter(Files::isDirectory)
 
     val forbiddenImportPattern = Regex(
-      "^import\\s+(skillbill\\.infrastructure\\.fs(?:\\..*)?|skillbill\\.scaffold\\.(ScaffoldService|FileSystem.*))$",
+      "^import\\s+(skillbill\\.infrastructure\\.fs(?:\\..*)?|" +
+        "skillbill\\.scaffold\\.(?:adapters\\..*|ScaffoldService|FileSystem.*))$",
     )
 
     val violations = policySourceRoots
@@ -432,10 +433,10 @@ class ImplementationOwnershipArchitectureTest {
     // (subtask-1 pitfall) by binding each validator to the absolute file path of its
     // owning adapter.
     val repoValidationAdapter = runtimeRoot.resolve(
-      "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemScaffoldRepoValidation.kt",
+      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/adapters/FileSystemScaffoldRepoValidation.kt",
     )
     val sourceLoaderAdapter = runtimeRoot.resolve(
-      "runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemScaffoldSourceLoader.kt",
+      "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/adapters/FileSystemScaffoldSourceLoader.kt",
     )
     val legacyScaffoldService = runtimeRoot.resolve(
       "runtime-infra-fs/src/main/kotlin/skillbill/scaffold/runtime/ScaffoldService.kt",
@@ -618,7 +619,8 @@ class ImplementationOwnershipArchitectureTest {
     // same `forbiddenImportPattern.matches(...)` predicate the production scan uses against a
     // synthetic set of import lines so a regression in the pattern itself loud-fails.
     val forbiddenImportPattern = Regex(
-      "^import\\s+(skillbill\\.infrastructure\\.fs(?:\\..*)?|skillbill\\.scaffold\\.(ScaffoldService|FileSystem.*))$",
+      "^import\\s+(skillbill\\.infrastructure\\.fs(?:\\..*)?|" +
+        "skillbill\\.scaffold\\.(?:adapters\\..*|ScaffoldService|FileSystem.*))$",
     )
 
     val mustBeDetectedAsForbidden = listOf(
@@ -626,7 +628,7 @@ class ImplementationOwnershipArchitectureTest {
       "import skillbill.infrastructure.fs.bar.Baz",
       "import skillbill.scaffold.ScaffoldService",
       "import skillbill.scaffold.FileSystemAnything",
-      "import skillbill.scaffold.FileSystemScaffoldSourceLoader",
+      "import skillbill.scaffold.adapters.FileSystemScaffoldSourceLoader",
     )
     val mustNotBeDetectedAsForbidden = listOf(
       "import skillbill.scaffold.policy.scaffold.X",
@@ -679,6 +681,9 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.workflow.goal.GoalProgressEventValidator",
       "skillbill.ports.idestatus.IdeStatusValidator",
       "skillbill.workflow.engine.WorkflowSnapshotValidator",
+      "skillbill.scaffold.adapters.FileSystemScaffoldRepoValidation",
+      "skillbill.scaffold.adapters.FileSystemScaffoldSourceLoader",
+      "skillbill.skillremove.FileSystemSkillRemoveFileSystem",
     )
 
     val scaffoldApplicationServiceFileNames: Set<String> = emptySet()

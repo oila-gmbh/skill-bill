@@ -13,7 +13,6 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.install.runtime.InstallOperations
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -54,7 +53,7 @@ class InstallPlanBuilderPolicyBoundaryTest {
       ),
     )
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         platformPackSelection = PlatformPackSelection(
           mode = PlatformPackSelectionMode.SELECTED,

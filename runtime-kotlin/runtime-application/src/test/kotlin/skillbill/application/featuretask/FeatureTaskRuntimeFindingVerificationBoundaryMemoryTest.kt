@@ -4,6 +4,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundary
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
+import skillbill.ports.time.JvmSystemClock
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDispositionVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
@@ -19,7 +20,7 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
 
   private val memory = FeatureTaskRuntimeFindingVerificationBoundaryMemory(
-    FileSystemGoalPlanningContextDiscovery(),
+    FileSystemGoalPlanningContextDiscovery(JvmSystemClock),
     FileSystemGoalPlanningBoundaryBodyResolver(),
   )
 

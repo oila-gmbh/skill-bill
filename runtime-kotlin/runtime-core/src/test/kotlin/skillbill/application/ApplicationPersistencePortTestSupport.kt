@@ -8,6 +8,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBrie
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.review.ReviewService
+import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.telemetry.model.GoalFinishedRequest
 import skillbill.application.telemetry.model.GoalStartedRequest
@@ -1205,14 +1206,21 @@ internal fun corruptDurableEnvelope(
   )
 }
 
-internal fun telemetrySyncService(reconciliation: RecordingTelemetryReconciliationRepository): TelemetryService =
-  TelemetryService(
-    database = FakeDatabaseSessionFactory(
-      telemetryOutbox = InMemoryTelemetryOutboxRepository(),
-      telemetryReconciliation = reconciliation,
-    ),
-    settingsProvider = FakeTelemetrySettingsProvider(enabled = true),
-    configStore = FakeTelemetryConfigStore,
+internal fun telemetrySyncService(reconciliation: RecordingTelemetryReconciliationRepository): TelemetryService {
+  val database = FakeDatabaseSessionFactory(
+    telemetryOutbox = InMemoryTelemetryOutboxRepository(),
+    telemetryReconciliation = reconciliation,
+  )
+  val settingsProvider = FakeTelemetrySettingsProvider(enabled = true)
+  return TelemetryService(
+    database = database,
+    settingsProvider = settingsProvider,
     telemetryClient = FakeTelemetryClient(),
     clock = Clock.systemUTC(),
+    levelMutationService = TelemetryLevelMutationService(
+      database = database,
+      settingsProvider = settingsProvider,
+      configStore = FakeTelemetryConfigStore,
+    ),
   )
+}

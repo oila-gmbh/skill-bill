@@ -1,11 +1,16 @@
 package skillbill.scaffold
 
+import skillbill.install.scaffold.performScaffoldInstall
+import skillbill.install.scaffold.rollbackScaffoldInstallTargets
+import skillbill.scaffold.adapters.FileSystemScaffoldRepoValidation
+import skillbill.scaffold.adapters.FileSystemScaffoldSourceLoader
 import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestRenderRequest
 import skillbill.scaffold.policy.platformpack.renderPlatformPackManifest
 import skillbill.scaffold.rendering.inferSkillDescription
 import skillbill.scaffold.rendering.renderContentBody
+import skillbill.scaffold.runtime.ScaffoldAdapterSeams
 import skillbill.scaffold.runtime.TemplateContext
-import skillbill.scaffold.runtime.scaffold
+import skillbill.scaffold.runtime.scaffoldWithAdapters
 import skillbill.scaffold.runtime.supportingFileTargets
 import skillbill.testsupport.SkillClassFixtures
 import java.nio.file.Files
@@ -22,7 +27,7 @@ class ScaffoldPlatformPackInstallTest {
     val home = Path.of(System.getProperty("user.home"))
     Files.createDirectories(home.resolve(".codex"))
 
-    scaffold(payload(repo, "platform-pack", "platform" to "java"))
+    scaffoldWithInstall(payload(repo, "platform-pack", "platform" to "java"))
 
     val codexSkills = home.resolve(".codex/skills")
     assertFalse(
@@ -44,6 +49,22 @@ class ScaffoldPlatformPackInstallTest {
       "platform review specialists must install as sidecars of bill-code-review",
     )
   }
+}
+
+private fun scaffoldWithInstall(payload: Map<String, Any?>) {
+  val repoValidation = FileSystemScaffoldRepoValidation()
+  val sourceLoader = FileSystemScaffoldSourceLoader()
+  scaffoldWithAdapters(
+    payload,
+    dryRun = false,
+    ScaffoldAdapterSeams(
+      validateScaffold = { plan, repoRoot -> repoValidation.validateScaffold(plan, repoRoot) },
+      optionalBaselineLayers = { p, r, np -> repoValidation.optionalBaselineLayers(p, r, np) },
+      resolveAddonConsumerSkillDirs = { p, pr, pk -> sourceLoader.resolveAddonConsumerSkillDirs(p, pr, pk) },
+      performInstall = { txn, plan, repoRoot -> performScaffoldInstall(txn, plan, repoRoot) },
+      rollbackInstallTargets = { txn, errors -> rollbackScaffoldInstallTargets(txn, errors) },
+    ),
+  )
 }
 
 private fun payload(repo: Path, kind: String, vararg pairs: Pair<String, Any?>): Map<String, Any?> =

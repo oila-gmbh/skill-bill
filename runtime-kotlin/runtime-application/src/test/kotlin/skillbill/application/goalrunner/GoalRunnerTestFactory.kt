@@ -209,6 +209,7 @@ internal fun testGoalRunner(wiring: GoalRunnerTestWiring): GoalRunner {
       reconciler = GoalRunnerLaunchReconciler(
         wiring.runBoundaries.manifestStore,
         wiring.runBoundaries.outcomeStore,
+        progressReader,
         testActivityStampWriter(),
         wiring.runBoundaries.clock,
         wiring.runBoundaries.diagnostics,

@@ -47,7 +47,7 @@ Alternatives considered: Force infra baselines to zero in this subtask (rejected
 Revisit when: a refactor removes the last ambient read from an infra module and the recorder empties that module's baseline.
 
 ## [2026-09-03] Single runtime-core composition ambient seam
-Context: SKILL-231 widens ambient-environment measurement to every module. `runtime-core` composition reads ambient input at `RuntimeComponentBindingsA1.runtimeContext`.
+Context: SKILL-231 widens ambient-environment measurement to every module. `runtime-core` composition reads ambient input at `RuntimeBootstrapBindings.runtimeContext`.
 Decision: That seam is the single named composition entry point for ambient input. It is documented here rather than treated as a permanent baseline entry to shrink away.
 Reason: Empty-by-rule baselines from the 2026-09-02 permanent-floor decision bind only the eight baselines that were already empty on main. Module baselines recorded in SKILL-231 are shrink-only ceilings; the composition seam is an intentional boundary, not debt to baseline away.
 Alternatives considered: Add the seam to the ambient-environment baseline permanently (rejected: would block the one legitimate composition read). Exempt `runtime-core` from ambient-environment scanning (rejected: would leave the module unmeasured).
@@ -62,7 +62,7 @@ Revisit when: a follow-up feature extracts shared scaffold parsing or a third en
 
 ## [2026-09-03] runtime-mcp process-boundary exemption for ambient environment reads
 Context: SKILL-231 subtask 2. `runtime-mcp` must not read `System.getenv` or `System.getProperty` outside the process entry. `Main.kt` reads the environment once to choose bridge versus stdio server and passes that map downstream.
-Decision: `runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt` is the one place the MCP process may read its own environment. The exemption is a named entry on `PrincipleEnforcementInventory.ambientEnvironmentExemptions`, not a baseline row; the `runtime-mcp` ambient-environment baseline stays empty behind it. The repository-root seam in `RuntimeComponentBindingsA1.runtimeContext` now canonicalizes explicitly supplied roots through `RepositoryEnclosingRootPort` as well as unspecified ones.
+Decision: `runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt` is the one place the MCP process may read its own environment. The exemption is a named entry on `PrincipleEnforcementInventory.ambientEnvironmentExemptions`, not a baseline row; the `runtime-mcp` ambient-environment baseline stays empty behind it. The repository-root seam in `RuntimeBootstrapBindings.runtimeContext` now canonicalizes explicitly supplied roots through `RepositoryEnclosingRootPort` as well as unspecified ones.
 Reason: A process boundary read is intentional; recording it in the baseline would treat legitimate entry behavior as shrinkable debt. Empty baseline equality still bans every other ambient read in `runtime-mcp` main source.
 Alternatives considered: Build `RuntimeComponent` in `Main` to resolve environment (rejected: pays component construction and filesystem walk in a worker subprocess that needs neither). Leave `GovernedReviewEvidenceBridge.run` with a `System.getenv()` default (rejected: re-reads behind the injected map).
 Revisit when: MCP launch receives environment through an injected port with no `Main.kt` read, or a second legitimate process-boundary site appears.

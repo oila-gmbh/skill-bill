@@ -1,6 +1,5 @@
 package skillbill.agentaddon.model
 
-import skillbill.install.model.InstallAgent
 import java.nio.file.Path
 
 enum class AgentAddonConsumer(val id: String) {
@@ -19,7 +18,7 @@ data class AgentAddonDeclaration(
   val contractVersion: String,
   val slug: String,
   val description: String,
-  val agents: List<InstallAgent>,
+  val agents: List<String>,
   val consumers: List<AgentAddonConsumer>,
   val addonRoot: Path,
   val manifestPath: Path,
