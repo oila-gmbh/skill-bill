@@ -2,7 +2,6 @@ package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DecompositionManifestProjectionSupport
-import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
 import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
 import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
@@ -20,6 +19,7 @@ import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
+import skillbill.contracts.issuekey.normalizeIssueKey
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.workflow.engine.WorkflowEngine
@@ -28,7 +28,7 @@ import skillbill.workflow.engine.WorkflowEngine
 class WorkflowService(deps: WorkflowServiceDeps) {
   private val database = deps.database
   private val gitOperations = deps.gitOperations
-  private val decompositionManifestFileStore = deps.decompositionManifestFileStore
+  private val decompositionManifestStore = deps.decompositionManifestStore
   private val workflowSnapshotValidator = deps.workflowSnapshotValidator
   private val decompositionManifestValidator = deps.decompositionManifestValidator
   private val decompositionManifestWriter = deps.decompositionManifestWriter
@@ -44,7 +44,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
   private val blockedPhaseRetry = WorkflowServiceBlockedPhaseRetry(
     engine,
     decompositionManifestValidator,
-    decompositionManifestFileStore,
+    decompositionManifestStore,
     decompositionManifestWriter,
     repositoryRoot,
   )
@@ -114,7 +114,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
           input = input,
           workflowId = request.workflowId,
           validator = decompositionManifestValidator,
-          fileStore = decompositionManifestFileStore,
+          fileStore = decompositionManifestStore,
           repoRoot = repositoryRoot.path,
           manifestWriter = decompositionManifestWriter,
         ),
@@ -147,7 +147,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
           repositoryRoot.path,
           artifactsJson,
           decompositionManifestValidator,
-          decompositionManifestFileStore,
+          decompositionManifestStore,
         ),
         "Workflow update committed durable state but could not write its decomposition manifest projection.",
       )
@@ -289,7 +289,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
             engine,
             gitOperations,
             decompositionManifestValidator,
-            decompositionManifestFileStore,
+            decompositionManifestStore,
             repositoryRoot.path,
             decompositionManifestWriter,
           ).continueDecomposedParentByIssueKey(workflowId, unitOfWork, subtaskId)
@@ -306,7 +306,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
         unitOfWork,
         ContinueExistingWorkflowArgs(
           validator = decompositionManifestValidator,
-          fileStore = decompositionManifestFileStore,
+          fileStore = decompositionManifestStore,
           repoRoot = repositoryRoot.path,
           manifestWriter = decompositionManifestWriter,
         ),
@@ -320,7 +320,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
           repositoryRoot.path,
           artifactsJson,
           decompositionManifestValidator,
-          decompositionManifestFileStore,
+          decompositionManifestStore,
         ),
         "Workflow continue committed durable state but could not write its decomposition manifest projection.",
       )

@@ -1,8 +1,8 @@
 package skillbill.scaffold
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
+import skillbill.nativeagent.testComposeNativeAgentSource
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.platformpack.loadPlatformPack
@@ -62,7 +62,7 @@ class ComposedReviewLaunchPlanTest {
       null,
       listOf(HARBOR_PACK_SLUG),
     ).single { entry -> entry.name == HARBOR_ARCHITECTURE_WORKER }
-    val body = composeNativeAgentSource(pack.repoRoot, source).body
+    val body = testComposeNativeAgentSource(pack.repoRoot, source).body
     val headings = Regex("""### Add-On: ([^ (\n]+)""").findAll(body).map { match -> match.groupValues[1] }.toSet()
     assertEquals(setOf(HARBOR_ADDON_SLUG), reported)
     assertEquals(reported, headings)

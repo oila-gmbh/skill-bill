@@ -1,7 +1,7 @@
 package skillbill.application.featurespec
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.application.TestDecompositionManifestFileStore
+import skillbill.application.TestDecompositionManifestStore
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.testDecompositionManifestValidator
@@ -13,7 +13,7 @@ import skillbill.featurespec.model.FeatureSpecPreparationDecision
 import skillbill.featurespec.model.FeatureSpecPreparationMode
 import skillbill.featurespec.model.FeatureSpecSubtaskPreparation
 import skillbill.featurespec.model.FeatureSpecWriteRequest
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestCodec
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
@@ -34,7 +34,7 @@ import kotlin.test.assertTrue
 class FeatureSpecPreparationWriterTest {
   private val writer = FeatureSpecPreparationWriter(
     decompositionManifestValidator = testDecompositionManifestValidator,
-    fileStore = TestDecompositionManifestFileStore,
+    fileStore = TestDecompositionManifestStore,
     decompositionManifestWriter = testDecompositionManifestWriter,
   )
 
@@ -260,7 +260,7 @@ class FeatureSpecPreparationWriterTest {
     assertFailsWith<InvalidDecompositionManifestSchemaError> {
       FeatureSpecPreparationWriter(
         readbackRejectingValidator,
-        TestDecompositionManifestFileStore,
+        TestDecompositionManifestStore,
         testDecompositionManifestWriter,
       ).write(
         repoRoot,
@@ -308,7 +308,7 @@ class FeatureSpecPreparationWriterTest {
     assertFailsWith<InvalidDecompositionManifestSchemaError> {
       FeatureSpecPreparationWriter(
         readbackRejectingValidator,
-        TestDecompositionManifestFileStore,
+        TestDecompositionManifestStore,
         testDecompositionManifestWriter,
       ).write(
         repoRoot,
@@ -360,7 +360,7 @@ class FeatureSpecPreparationWriterTest {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-evidence")
     val result = FeatureSpecPreparationWriter(
       repairingValidator,
-      TestDecompositionManifestFileStore,
+      TestDecompositionManifestStore,
       testDecompositionManifestWriter,
     ).write(
       repoRoot,
@@ -418,7 +418,7 @@ class FeatureSpecPreparationWriterTest {
     val repoRoot = Files.createTempDirectory("skillbill-feature-spec-readback-evidence")
     val result = FeatureSpecPreparationWriter(
       repairingValidator,
-      TestDecompositionManifestFileStore,
+      TestDecompositionManifestStore,
       testDecompositionManifestWriter,
     ).write(
       repoRoot,
@@ -456,12 +456,12 @@ class FeatureSpecPreparationWriterTest {
         subtask.copy(status = "blocked", blockedReason = "operator action required")
       },
     )
-    TestDecompositionManifestFileStore.writeTextAtomically(
+    TestDecompositionManifestStore.writeTextAtomically(
       manifestPath,
       encodeDecompositionManifestYaml(
         blocked,
         testDecompositionManifestValidator,
-        TestDecompositionManifestFileStore,
+        TestDecompositionManifestStore,
       ),
     )
 
@@ -474,7 +474,7 @@ class FeatureSpecPreparationWriterTest {
 
   private fun loadTestManifest(path: Path) = loadDecompositionManifest(
     path,
-    TestDecompositionManifestFileStore,
+    TestDecompositionManifestStore,
     testDecompositionManifestValidator,
   )
 
@@ -509,11 +509,11 @@ class FeatureSpecPreparationWriterTest {
 }
 
 private class PreparationCountingManifestFileStore :
-  DecompositionManifestFileStore by TestDecompositionManifestFileStore {
+  DecompositionManifestStore by TestDecompositionManifestStore {
   var writeCount: Int = 0
 
   override fun writeTextAtomically(target: Path, content: String) {
     writeCount += 1
-    TestDecompositionManifestFileStore.writeTextAtomically(target, content)
+    TestDecompositionManifestStore.writeTextAtomically(target, content)
   }
 }

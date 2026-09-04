@@ -1,6 +1,7 @@
 package skillbill.application
 
 import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
+import skillbill.application.goalrunner.GoalRunnerProgressReader
 import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.testActivityStampWriter
@@ -17,9 +18,11 @@ class GoalRunnerDirectRuntimeContinuationTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).withWorkflowId(subtaskId = 1, workflowId = "wfl-child-runtime"),
     )
+    val outcomeStore = RecordingOutcomeStore()
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
+      outcomeStore = outcomeStore,
+      progressReader = GoalRunnerProgressReader(outcomeStore),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
       diagnostics = NoopRuntimeDiagnostics,
@@ -51,9 +54,11 @@ class GoalRunnerDirectRuntimeContinuationTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).withWorkflowId(subtaskId = 1, workflowId = "wfl-stale-blocked"),
     )
+    val outcomeStore = RecordingOutcomeStore()
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
+      outcomeStore = outcomeStore,
+      progressReader = GoalRunnerProgressReader(outcomeStore),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
       diagnostics = NoopRuntimeDiagnostics,

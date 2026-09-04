@@ -10,7 +10,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY

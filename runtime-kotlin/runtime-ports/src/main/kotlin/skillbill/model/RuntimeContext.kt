@@ -5,8 +5,8 @@ import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.system.HostPlatformPort
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -23,12 +23,12 @@ data class EnvironmentContext(
     val UnspecifiedEnvironment: Map<String, String> = object : AbstractMap<String, String>() {
       override val entries: Set<Map.Entry<String, String>> = emptySet()
     }
-    val UnspecifiedUserHome: Path = Path.of("")
-    val UnspecifiedRepositoryRoot: Path = Path.of("")
+    val UnspecifiedUserHome: Path = Path.of(".skillbill-unspecified-user-home")
+    val UnspecifiedRepositoryRoot: Path = Path.of(".skillbill-unspecified-repository-root")
   }
 }
 
-data class TransportContext(val requester: HttpRequester = UnconfiguredHttpRequester)
+data class TransportContext(val requester: RemoteTransportPort = UnconfiguredRemoteTransportPort)
 
 data class WorkflowOpsContext(val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations)
 
@@ -53,7 +53,7 @@ data class RuntimeContext(
     environment: Map<String, String> = EnvironmentContext.UnspecifiedEnvironment,
     userHome: Path = EnvironmentContext.UnspecifiedUserHome,
     repositoryRoot: Path = EnvironmentContext.UnspecifiedRepositoryRoot,
-    requester: HttpRequester = UnconfiguredHttpRequester,
+    requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
     workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
     agentRunLauncher: AgentRunLauncher? = null,
     goalPullRequestPort: GoalPullRequestPort? = null,

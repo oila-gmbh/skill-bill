@@ -1,7 +1,6 @@
 package skillbill.review.context.model
 
 import skillbill.review.context.ReviewExecutionModePolicy
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

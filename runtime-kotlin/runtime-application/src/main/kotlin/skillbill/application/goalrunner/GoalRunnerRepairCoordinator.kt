@@ -11,6 +11,7 @@ import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
 import skillbill.application.goalrunner.planning.goalPlanningHardResetRemedy
 import skillbill.model.RepositoryRoot
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.nio.file.Path
@@ -21,6 +22,7 @@ class GoalRunnerRepairCoordinator(
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
   private val childRepairStore: GoalRunnerChildRepairStore,
   private val repositoryRoot: RepositoryRoot,
+  private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 ) {
   fun repair(request: GoalRunnerRepairRequest): GoalRunnerRepairResult {
     val repoRoot = request.repoRoot ?: repositoryRoot.path
@@ -28,7 +30,7 @@ class GoalRunnerRepairCoordinator(
       ?: return notFound(request.issueKey)
     manifestStore.bindRepositoryIdentity(
       loaded.parentWorkflowId,
-      goalRepositoryIdentity(repoRoot),
+      goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort),
       request.dbPathOverride,
     )
     val children = loaded.manifest.subtasks

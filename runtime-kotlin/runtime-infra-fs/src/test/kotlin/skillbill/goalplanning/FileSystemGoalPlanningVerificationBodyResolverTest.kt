@@ -4,6 +4,7 @@ import skillbill.error.GoalVerificationBoundaryCapExceededError
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryBodyResolutionCaps
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.verification.model.GoalVerificationContext
+import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
@@ -21,7 +22,7 @@ class FileSystemGoalPlanningVerificationBodyResolverTest {
       "## [${LocalDate.now(ZoneOffset.UTC).minusDays((index % 28).toLong())}] entry-$index\n\nbody $index"
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$headings\n")
-    val catalog = FileSystemGoalPlanningContextDiscovery().discoverForFindingPaths(
+    val catalog = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discoverForFindingPaths(
       repo,
       listOf("modules/a/src/Main.kt"),
     ).boundaryCatalog
@@ -66,7 +67,7 @@ class FileSystemGoalPlanningVerificationBodyResolverTest {
   }
 
   private fun catalogOf(repo: Path): List<GoalPlanningBoundaryHeading> =
-    FileSystemGoalPlanningContextDiscovery().discoverForFindingPaths(
+    FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discoverForFindingPaths(
       repo,
       listOf("modules/a/src/Main.kt"),
     ).boundaryCatalog

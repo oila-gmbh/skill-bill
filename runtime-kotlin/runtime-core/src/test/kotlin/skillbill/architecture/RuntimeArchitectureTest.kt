@@ -224,12 +224,12 @@ class RuntimeArchitectureTest {
 
     assertContains(architecture, "Decomposition-manifest schema validation is owned by")
     assertContains(architecture, "skillbill.application.decomposition.DecompositionManifestFileWrites")
-    assertContains(architecture, "skillbill.ports.workflow.decomposition.DecompositionManifestFileStore")
+    assertContains(architecture, "skillbill.ports.workflow.decomposition.DecompositionManifestStore")
     assertContains(architecture, "FileSystemDecompositionManifestFileStore")
     assertContains(projectionIo, "Decomposition manifest parse/emission seam")
     assertContains(projectionIo, "validator.validateYamlText")
     assertContains(projectionIo, "DecompositionManifestValidator")
-    assertContains(projectionIo, "DecompositionManifestFileStore")
+    assertContains(projectionIo, "DecompositionManifestStore")
   }
 
   @Test
@@ -354,8 +354,8 @@ class RuntimeArchitectureTest {
       bannedImports = listOf("skillbill.infrastructure"),
     )
     assertContains(
-      Files.readString(sourcePath("skillbill/ports/telemetry/HttpRequester.kt")),
-      "object UnconfiguredHttpRequester",
+      Files.readString(sourcePath("skillbill/ports/telemetry/RemoteTransportPort.kt")),
+      "object UnconfiguredRemoteTransportPort",
     )
   }
 

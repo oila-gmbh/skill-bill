@@ -38,7 +38,7 @@ import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.concurrency.BoundedWorkFanOutPort
 import skillbill.ports.concurrency.SequentialBoundedWorkFanOutPort
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
@@ -57,6 +57,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
@@ -67,7 +68,7 @@ import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
@@ -2469,7 +2470,7 @@ private class SweepPlanningLauncher(
   }
 }
 
-private class CountingManifestFileStore : DecompositionManifestFileStore {
+private class CountingManifestFileStore : DecompositionManifestStore {
   private val readPaths = mutableListOf<String>()
   private val removedFileNames = mutableSetOf<String>()
   private var decompositionManifest = "content-decomposition-manifest.yaml"
@@ -2489,6 +2490,8 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
   override fun isRegularFile(path: Path): Boolean = path.fileName.toString() !in removedFileNames
 
   override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> = emptyList()
+
+  override fun listDirectChildDirectories(directory: Path): List<Path> = emptyList()
 
   override fun deleteIfExists(target: Path): Unit =
     error("CountingManifestFileStore is read-only in goal planning sweep tests.")
@@ -2514,12 +2517,14 @@ private class CountingManifestFileStore : DecompositionManifestFileStore {
   }
 }
 
-private class ThrowingManifestFileStore : DecompositionManifestFileStore {
+private class ThrowingManifestFileStore : DecompositionManifestStore {
   override fun readText(path: Path): String = error("simulated unreadable governed spec at ${path.fileName}")
 
   override fun isRegularFile(path: Path): Boolean = true
 
   override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> = emptyList()
+
+  override fun listDirectChildDirectories(directory: Path): List<Path> = emptyList()
 
   override fun deleteIfExists(target: Path): Unit =
     error("ThrowingManifestFileStore is read-only in goal planning sweep tests.")
@@ -2701,6 +2706,10 @@ private class InMemoryPreparationRepository(
   }
 
   override fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = plans.keys.toList()
+
+  override fun hasPreparedSharedPreplan(parentGoalWorkflowId: String): Boolean = sharedPreplan != null
+
+  override fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String? = sharedPreplan?.payloadSha256
 
   override fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
     plans[checkpoint.subtaskId] = checkpoint
@@ -2911,6 +2920,7 @@ private class InMemoryPreparationDatabase(
     override val workflowStates: WorkflowStateRepository get() = error("unused by goal planning sweep tests")
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations: GoalPlanningPreparationRepository = repository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 

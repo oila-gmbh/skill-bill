@@ -7,7 +7,7 @@ import skillbill.application.planningprojection.requireValidPlanningProjection
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.goalrunner.runner.model.GoalChildPlanningHydrationRequest
@@ -42,7 +42,7 @@ class GoalChildPlanningHydrator(
   private val importMatcher = GoalChildPlanningImportMatcher(payloadValidator)
 
   fun hydrate(
-    unitOfWork: UnitOfWork,
+    unitOfWork: GoalRunnerPersistenceSession,
     setup: GoalRunnerChildWorkflowSetup,
     request: GoalChildPlanningHydrationRequest,
   ): GoalChildPlanningHydration {
@@ -64,7 +64,7 @@ class GoalChildPlanningHydrator(
   }
 
   fun requireMatchingImport(
-    unitOfWork: UnitOfWork,
+    unitOfWork: GoalRunnerPersistenceSession,
     existing: WorkflowStateSnapshot,
     setup: GoalRunnerChildWorkflowSetup,
   ) {
@@ -81,7 +81,7 @@ class GoalChildPlanningHydrator(
   }
 
   private fun loadRequiredPreparation(
-    unitOfWork: UnitOfWork,
+    unitOfWork: GoalRunnerPersistenceSession,
     setup: GoalRunnerChildWorkflowSetup,
     request: GoalChildPlanningHydrationRequest,
   ): PreparedGoalPlanning {
@@ -268,7 +268,7 @@ private class GoalChildPlanningImportMatcher(
   // part of that identity: a planning projection that fails its consumer gate re-enters the phase's
   // own bounded fix loop, which legitimately rewrites attempt counts, resolved agent, and output.
   fun firstDivergence(
-    unitOfWork: UnitOfWork,
+    unitOfWork: GoalRunnerPersistenceSession,
     existing: WorkflowStateSnapshot,
     setup: GoalRunnerChildWorkflowSetup,
     request: GoalChildPlanningHydrationRequest,

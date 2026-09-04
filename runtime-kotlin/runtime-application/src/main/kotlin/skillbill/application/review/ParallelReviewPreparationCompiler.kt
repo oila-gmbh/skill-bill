@@ -7,6 +7,7 @@ import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.application.reviewevidence.ResolvedCommitSequence
 import skillbill.application.reviewevidence.ReviewDiffEvidence
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
 import skillbill.ports.review.ReviewLaneSelectionPort
@@ -162,7 +163,7 @@ object ParallelReviewPreparationCompiler {
   ): ReviewFactPorts {
     val decisions = selection.decisions
     val scope = ReviewScopeFacts(
-      "repo-root-realpath-v1:${input.repoRoot.toRealPath()}",
+      input.repositoryEnclosingRootPort.repositoryIdentity(input.repoRoot),
       input.baseRevision,
       input.headRevision,
       "authoritative supplied parallel-review diff",
@@ -318,6 +319,7 @@ internal data class ParallelReviewPreparationInput(
   val commitSequence: ResolvedCommitSequence,
   val stack: String?,
   val agents: List<String>,
+  val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
   val repoRoot: Path,
   val routedPacks: List<String>,
   val lanes: List<PlannedReviewRubric>,

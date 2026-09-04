@@ -1,17 +1,17 @@
 package skillbill.cli.scaffold
 
 import skillbill.application.scaffold.InstallAgentService
-import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRunInputs
 import skillbill.error.SkillBillRuntimeException
+import skillbill.ports.scaffold.ScaffoldCatalogGateway
 
 internal fun runNativeScaffoldWizard(args: ScaffoldWizardArgs): CliExecutionResult {
   val run = args.run
   val payload =
     try {
-      collectScaffoldWizardPayload(run.state, run.inputs, args.scaffoldCatalogService)
+      collectScaffoldWizardPayload(run.state, run.inputs, args.scaffoldCatalogGateway)
     } catch (error: SkillBillRuntimeException) {
       return errorResult(error.message.orEmpty(), run.format)
     } catch (error: IllegalArgumentException) {
@@ -24,7 +24,7 @@ internal fun runNativeAssistedScaffoldWizard(args: AssistedScaffoldWizardArgs): 
   val run = args.run
   val payload =
     try {
-      collectAssistedScaffoldWizardPayload(run.state, run.inputs, args.scaffoldCatalogService, args.installAgentService)
+      collectAssistedScaffoldWizardPayload(run.state, run.inputs, args.scaffoldCatalogGateway, args.installAgentService)
     } catch (error: SkillBillRuntimeException) {
       return errorResult(error.message.orEmpty(), run.format)
     } catch (error: IllegalArgumentException) {
@@ -36,7 +36,7 @@ internal fun runNativeAssistedScaffoldWizard(args: AssistedScaffoldWizardArgs): 
 internal fun collectAssistedScaffoldWizardPayload(
   state: CliRunState,
   inputs: CliRunInputs,
-  scaffoldCatalogService: ScaffoldCatalogService,
+  scaffoldCatalogGateway: ScaffoldCatalogGateway,
   installAgentService: InstallAgentService,
 ): Map<String, Any?> {
   inputs.liveStdout(
@@ -55,7 +55,7 @@ internal fun collectAssistedScaffoldWizardPayload(
       "agent-backed generation needs a structured scaffold output contract.\n",
   )
   return when (kind) {
-    "platform-pack" -> assistedPlatformPackWizardPayload(state, inputs, scaffoldCatalogService.platformPackPresets())
+    "platform-pack" -> assistedPlatformPackWizardPayload(state, inputs, scaffoldCatalogGateway.platformPackPresets())
     else -> throw IllegalArgumentException(
       "Assisted mode currently supports platform-pack scaffolds. Use the normal wizard for kind '$kind'.",
     )
@@ -65,7 +65,7 @@ internal fun collectAssistedScaffoldWizardPayload(
 internal fun collectScaffoldWizardPayload(
   state: CliRunState,
   inputs: CliRunInputs,
-  scaffoldCatalogService: ScaffoldCatalogService,
+  scaffoldCatalogGateway: ScaffoldCatalogGateway,
 ): Map<String, Any?> {
   inputs.liveStdout(
     "Skill Bill scaffold wizard\n" +
@@ -73,7 +73,7 @@ internal fun collectScaffoldWizardPayload(
   )
   return when (val kind = normalizeWizardKind(promptRequired(state, inputs, "Kind"))) {
     "horizontal" -> horizontalWizardPayload(state, inputs)
-    "platform-pack" -> platformPackWizardPayload(state, inputs, scaffoldCatalogService.platformPackPresets())
+    "platform-pack" -> platformPackWizardPayload(state, inputs, scaffoldCatalogGateway.platformPackPresets())
     "add-on" -> addOnWizardPayload(state, inputs)
     "agent-addon" -> agentAddonWizardPayload(state, inputs)
     else -> throw IllegalArgumentException("Unsupported scaffold wizard kind '$kind'.")

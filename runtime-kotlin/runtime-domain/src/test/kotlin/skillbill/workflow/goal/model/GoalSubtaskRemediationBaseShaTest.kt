@@ -1,5 +1,5 @@
 package skillbill.workflow.goal.model
-
+import skillbill.review.context.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith

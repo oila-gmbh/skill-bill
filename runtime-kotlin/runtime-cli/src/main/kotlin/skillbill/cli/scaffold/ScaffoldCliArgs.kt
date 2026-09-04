@@ -2,12 +2,12 @@ package skillbill.cli.scaffold
 
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.scaffold.InstallAgentService
-import skillbill.application.scaffold.ScaffoldCatalogService
-import skillbill.application.scaffold.ScaffoldService
-import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRunInputs
+import skillbill.ports.scaffold.ScaffoldCatalogGateway
+import skillbill.ports.scaffold.ScaffoldGateway
+import skillbill.ports.scaffold.UnsupportedScaffoldGateway
 import java.time.Clock
 
 internal data class NativeScaffoldRunArgs(
@@ -16,19 +16,19 @@ internal data class NativeScaffoldRunArgs(
   val state: CliRunState,
   val inputs: CliRunInputs,
   val clock: Clock,
-  val scaffoldService: ScaffoldService,
+  val scaffoldGateway: ScaffoldGateway,
   val externalAddonOverlayService: ExternalAddonOverlayService? = null,
 )
 
 internal data class AssistedScaffoldWizardArgs(
   val run: NativeScaffoldRunArgs,
-  val scaffoldCatalogService: ScaffoldCatalogService,
+  val scaffoldCatalogGateway: ScaffoldCatalogGateway,
   val installAgentService: InstallAgentService,
 )
 
 internal data class ScaffoldWizardArgs(
   val run: NativeScaffoldRunArgs,
-  val scaffoldCatalogService: ScaffoldCatalogService,
+  val scaffoldCatalogGateway: ScaffoldCatalogGateway,
 )
 
 internal data class NativeScaffoldPayloadPathArgs(
@@ -52,8 +52,8 @@ internal data class CreateAndFillArgs(
   val state: CliRunState,
   val inputs: CliRunInputs,
   val clock: Clock,
-  val scaffoldService: ScaffoldService,
-  val unsupportedScaffoldService: UnsupportedScaffoldService,
+  val scaffoldGateway: ScaffoldGateway,
+  val unsupportedScaffoldGateway: UnsupportedScaffoldGateway,
 )
 
 internal data class NewAddonPayloadArgs(

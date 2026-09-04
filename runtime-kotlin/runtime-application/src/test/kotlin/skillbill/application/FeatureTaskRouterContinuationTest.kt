@@ -11,7 +11,7 @@ import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.openFeatureTask
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
@@ -34,7 +34,7 @@ class FeatureTaskRouterContinuationTest {
       WorkflowServiceDeps(
         database = database,
         gitOperations = NoopWorkflowGitOperations,
-        decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+        decompositionManifestStore = UnavailableDecompositionManifestStore,
         workflowSnapshotValidator = testWorkflowSnapshotValidator,
         decompositionManifestValidator = testDecompositionManifestValidator,
         decompositionManifestWriter = testDecompositionManifestWriter,

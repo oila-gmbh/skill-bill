@@ -18,23 +18,23 @@ import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
+import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.mcp.core.McpRuntime
-import skillbill.mcp.core.McpRuntimeContext
-import skillbill.mcp.core.McpRuntimeLifecycle
-import skillbill.mcp.core.McpWorkflowOpenArgs
-import skillbill.mcp.core.McpWorkflowRuntime
-import skillbill.mcp.core.canonicalRepositoryRoot
 import skillbill.mcp.core.importReview
 import skillbill.mcp.core.newSkillScaffold
 import skillbill.mcp.core.resolveLearnings
-import skillbill.mcp.core.services
 import skillbill.mcp.core.triageFindings
 import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
 import skillbill.mcp.lifecycle.qualityCheckStarted
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.shared.McpRuntimeLifecycle
+import skillbill.mcp.shared.services
+import skillbill.mcp.workflow.McpWorkflowOpenArgs
+import skillbill.mcp.workflow.McpWorkflowRuntime
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.Files
@@ -830,7 +830,7 @@ private fun markVerifyWorkflowVerdictBlocked(workflowId: String, context: McpRun
       mapOf(
         "diff_projection" to mapOf(
           "checkpoint" to GitWorkflowGitOperations()
-            .repositoryFingerprint(canonicalRepositoryRoot(Path.of(""))).value,
+            .repositoryFingerprint(CanonicalRepositoryRoot.enclosingRepositoryRoot(Path.of(""))).value,
           "comparison_scope" to "base..head",
           "changed_files" to emptyList<String>(),
         ),
@@ -1240,7 +1240,7 @@ private fun assertVerifyWorkflowContinuation(args: AssertVerifyWorkflowContinuat
     "<UPDATED_AT>" to args.got["updated_at"].toString(),
     "<CONTINUED_AT>" to args.continued["updated_at"].toString(),
     "<CHECKPOINT>" to GitWorkflowGitOperations()
-      .repositoryFingerprint(canonicalRepositoryRoot(Path.of(""))).value,
+      .repositoryFingerprint(CanonicalRepositoryRoot.enclosingRepositoryRoot(Path.of(""))).value,
   )
   assertCompactUpdateAcknowledgementPayload(args.updated, listOf("verdict"))
   assertEquals(1, args.listed["workflow_count"])

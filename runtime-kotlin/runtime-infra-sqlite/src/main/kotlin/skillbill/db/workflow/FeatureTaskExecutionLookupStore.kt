@@ -2,9 +2,9 @@ package skillbill.db.workflow
 
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.FeatureTaskExecutionLookupRepository
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import java.sql.Connection
 
 internal class FeatureTaskExecutionLookupStore(

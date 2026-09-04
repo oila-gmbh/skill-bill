@@ -1,6 +1,6 @@
 package skillbill.application.workflow.model
 
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection

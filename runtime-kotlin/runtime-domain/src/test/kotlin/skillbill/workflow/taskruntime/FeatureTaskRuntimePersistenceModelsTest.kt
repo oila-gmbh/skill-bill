@@ -5,7 +5,7 @@ import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT

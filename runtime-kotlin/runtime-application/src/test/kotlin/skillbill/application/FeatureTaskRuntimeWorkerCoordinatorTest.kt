@@ -2,9 +2,9 @@ package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
@@ -13,6 +13,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import java.time.Duration
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -197,6 +198,8 @@ private class FakeWorkerSupervisor(
   override fun currentProcess() = FeatureTaskRuntimeProcessIdentity("host", "boot", 200, "birth-200")
 
   override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = inspection
+
+  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
 
   override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership): Boolean {
     gracefulTerminationRequested = true

@@ -3,12 +3,12 @@ package skillbill.application.goalrunner
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
-import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.application.workflow.decompositionRuntime
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.ports.db.UnitOfWork
+import skillbill.contracts.issuekey.normalizeRequiredIssueKey
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.engine.WorkflowEngine

@@ -19,13 +19,12 @@ import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.EmptyFeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -33,6 +32,8 @@ import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
@@ -1260,6 +1261,7 @@ private class StatusFakeDatabaseSessionFactory(
     override val workflowStates: WorkflowStateRepository = repository
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
     override val featureTaskRuntimeAuditGenerations =
       EmptyFeatureTaskRuntimeAuditGenerationRepository
   }

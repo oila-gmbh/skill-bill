@@ -10,7 +10,7 @@ import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.openFeatureTask
 import skillbill.cli.model.CliRunInputs
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import java.nio.file.Path
 
 internal fun WorkflowService.openRuntimeWorkflowId(

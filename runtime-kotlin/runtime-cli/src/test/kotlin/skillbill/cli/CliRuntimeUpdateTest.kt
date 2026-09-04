@@ -4,8 +4,8 @@ import org.junit.jupiter.api.Assumptions
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.cli.model.ExternalCommandResult
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -186,7 +186,7 @@ class CliRuntimeUpdateTest {
 
     val unknown = CliRuntime.run(
       listOf("update-check"),
-      CliRuntimeContext(requester = HttpRequester { _, _, _, _ -> HttpResponse(429, "") }),
+      CliRuntimeContext(requester = RemoteTransportPort { _, _, _, _ -> RemoteTransportResponse(429, "") }),
     )
 
     assertEquals(0, unknown.exitCode, unknown.stdout)

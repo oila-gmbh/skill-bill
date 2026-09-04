@@ -9,23 +9,24 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.goalrunner.model.GoalRunnerControlState
+import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
 import skillbill.model.RuntimeContext
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
+import skillbill.ports.idestatus.NoopIdeStatusValidator
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.ports.work.WorkListRepository
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.idestatus.NoopIdeStatusValidator
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
@@ -196,6 +197,7 @@ private class SnapshotFixture(
       ideStatusValidator = NoopIdeStatusValidator,
       branchSource = CheckedOutBranchSource { "feat/SKILL-999-snapshot" },
       clock = Clock.fixed(observedAt, ZoneOffset.UTC),
+      repositoryEnclosingRootPort = CanonicalRepositoryRoot,
     )
   }
 }

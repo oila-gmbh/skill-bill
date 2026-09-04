@@ -29,7 +29,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequ
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.persistence.model.WorkflowFamily
@@ -81,7 +81,7 @@ internal fun createWorkflowGoalRunnerOutcomeStoreBridges(
       gitOperations = args.gitOperations,
       phaseOutputValidator = args.phaseOutputValidator,
       decompositionManifestValidator = args.decompositionManifestValidator,
-      decompositionManifestFileStore = args.decompositionManifestFileStore,
+      decompositionManifestStore = args.decompositionManifestStore,
       outcomeReconcile = outcomeReconcile,
       blockWrites = blockWrites,
       terminalPersistence = terminalPersistence,
@@ -115,7 +115,7 @@ private fun workflowGoalRunnerOutcomeStoreBridges(
     args.database,
     args.childRepair,
     args.decompositionManifestValidator,
-    args.decompositionManifestFileStore,
+    args.decompositionManifestStore,
     args.decompositionManifestWriter,
   )
   return WorkflowGoalRunnerOutcomeStoreBridges(
@@ -129,7 +129,7 @@ internal class WorkflowGoalRunnerChildRepairBridge(
   private val database: DatabaseSessionFactory,
   private val childRepair: GoalRunnerChildRepairRunnerPort,
   private val decompositionManifestValidator: DecompositionManifestValidator?,
-  private val decompositionManifestFileStore: DecompositionManifestFileStore,
+  private val decompositionManifestStore: DecompositionManifestStore,
   private val decompositionManifestWriter: DecompositionManifestProjectionWriter,
 ) : GoalRunnerChildRepairStore {
   override fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis =
@@ -163,7 +163,7 @@ internal class WorkflowGoalRunnerChildRepairBridge(
           repoRoot = request.repoRoot,
           artifactsJson = artifactsJson,
           validator = validator,
-          fileStore = decompositionManifestFileStore,
+          fileStore = decompositionManifestStore,
         ),
       ) {
         "Goal repair reopened the durable goal child but could not write its decomposition manifest projection."

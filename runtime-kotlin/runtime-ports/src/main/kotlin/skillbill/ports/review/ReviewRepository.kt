@@ -14,9 +14,9 @@ interface ReviewRepository :
   WorkflowStatsRepository,
   ReviewRunCompletenessRepository {
   /** Stores only the schema-bounded accounting projection; content-bearing review objects cannot cross this seam. */
-  fun saveAccounting(record: ReviewAccountingRecord) = Unit
+  fun saveAccounting(record: ReviewAccountingRecord)
 
-  fun loadAccounting(reviewId: String): ReviewAccountingRecord? = null
+  fun loadAccounting(reviewId: String): ReviewAccountingRecord?
 
   fun saveImportedReview(review: ImportedReview, sourcePath: String?)
 

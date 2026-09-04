@@ -8,6 +8,7 @@ import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairResult
 import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
 import skillbill.application.goalrunner.model.GoalRunnerReplanResult
+import skillbill.application.goalrunner.model.GoalRunnerResetReplanCoordinatorDeps
 import skillbill.application.goalrunner.model.GoalRunnerResetRequest
 import skillbill.application.goalrunner.model.GoalRunnerResetResult
 import skillbill.application.goalrunner.model.GoalRunnerResumeResult
@@ -34,6 +35,7 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
   private val diagnostics = deps.diagnostics
   private val runtimeStatusService = deps.runtimeStatusService
   private val repositoryRoot = deps.repositoryRoot
+  private val repositoryEnclosingRootPort = deps.repositoryEnclosingRootPort
   private val projectionAssembler = GoalRunnerStatusProjectionAssembler(
     GoalRunnerStatusProjectionAssemblerDeps(
       manifestStore = manifestStore,
@@ -54,15 +56,19 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
     manifestStore = manifestStore,
     clock = clock,
     workerSupervisor = workerSupervisor,
+    repositoryEnclosingRootPort = repositoryEnclosingRootPort,
   )
 
   private val resetReplanCoordinator = GoalRunnerResetReplanCoordinator(
-    manifestStore = manifestStore,
-    outcomeStore = outcomeStore,
-    gitOperations = gitOperations,
-    diagnostics = diagnostics,
-    projectionAssembler = projectionAssembler,
-    repositoryRoot = repositoryRoot,
+    GoalRunnerResetReplanCoordinatorDeps(
+      manifestStore = manifestStore,
+      outcomeStore = outcomeStore,
+      gitOperations = gitOperations,
+      diagnostics = diagnostics,
+      projectionAssembler = projectionAssembler,
+      repositoryRoot = repositoryRoot,
+      repositoryEnclosingRootPort = repositoryEnclosingRootPort,
+    ),
   )
 
   private val repairCoordinator = GoalRunnerRepairCoordinator(
@@ -71,6 +77,7 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
     workerSupervisor = workerSupervisor,
     childRepairStore = childRepairStore,
     repositoryRoot = repositoryRoot,
+    repositoryEnclosingRootPort = repositoryEnclosingRootPort,
   )
 
   private val acceptanceCoordinator = GoalRunnerAcceptanceCoordinator(

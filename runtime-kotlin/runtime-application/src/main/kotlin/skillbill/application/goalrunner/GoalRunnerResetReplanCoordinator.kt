@@ -5,33 +5,29 @@ import skillbill.application.goalrunner.model.GoalRunnerChildRecoveryDiagnostic
 import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
 import skillbill.application.goalrunner.model.GoalRunnerReplanResult
 import skillbill.application.goalrunner.model.GoalRunnerReplanSnapshot
+import skillbill.application.goalrunner.model.GoalRunnerResetReplanCoordinatorDeps
 import skillbill.application.goalrunner.model.GoalRunnerResetRequest
 import skillbill.application.goalrunner.model.GoalRunnerResetResult
 import skillbill.application.goalrunner.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
-import skillbill.model.RepositoryRoot
-import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 
-class GoalRunnerResetReplanCoordinator(
-  private val manifestStore: GoalRunnerManifestStore,
-  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
-  private val gitOperations: WorkflowGitOperations,
-  private val diagnostics: RuntimeDiagnostics,
-  private val projectionAssembler: GoalRunnerStatusProjectionAssembler,
-  private val repositoryRoot: RepositoryRoot,
-) {
+class GoalRunnerResetReplanCoordinator(deps: GoalRunnerResetReplanCoordinatorDeps) {
+  private val manifestStore = deps.manifestStore
+  private val outcomeStore = deps.outcomeStore
+  private val gitOperations = deps.gitOperations
+  private val diagnostics = deps.diagnostics
+  private val projectionAssembler = deps.projectionAssembler
+  private val repositoryRoot = deps.repositoryRoot
+  private val repositoryEnclosingRootPort = deps.repositoryEnclosingRootPort
   fun reset(request: GoalRunnerResetRequest): GoalRunnerResetResult? {
     val loaded = if (request.deleteChildWorkflow) {
       manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)?.copy(repoRoot = request.repoRoot)
@@ -99,6 +95,7 @@ class GoalRunnerResetReplanCoordinator(
         normalizedIssueKey = loaded.manifest.issueKey.trim().uppercase(),
         repositoryIdentity = goalRepositoryIdentity(
           request.repoRoot ?: repositoryRoot.path,
+          repositoryEnclosingRootPort,
         ),
       )
     } else {
@@ -133,7 +130,7 @@ class GoalRunnerResetReplanCoordinator(
     }
     manifestStore.bindRepositoryIdentity(
       latest.parentWorkflowId,
-      goalRepositoryIdentity(repoRoot),
+      goalRepositoryIdentity(repoRoot, repositoryEnclosingRootPort),
       dbPathOverride,
     )
     return repoRoot

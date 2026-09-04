@@ -1,7 +1,7 @@
 package skillbill.cli
 
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 
 /**
  * Records every request instead of touching the network, so a completion drain in a CLI test can
@@ -10,12 +10,17 @@ import skillbill.ports.telemetry.model.HttpResponse
  */
 internal class RecordingTelemetryRequester(
   private val failure: (() -> Nothing)? = null,
-) : HttpRequester {
+) : RemoteTransportPort {
   val requests: MutableList<String> = mutableListOf()
 
-  override fun execute(method: String, url: String, bodyJson: String?, headers: Map<String, String>): HttpResponse {
+  override fun execute(
+    method: String,
+    url: String,
+    bodyJson: String?,
+    headers: Map<String, String>,
+  ): RemoteTransportResponse {
     requests += url
     failure?.invoke()
-    return HttpResponse(statusCode = 200, body = "{}")
+    return RemoteTransportResponse(statusCode = 200, body = "{}")
   }
 }

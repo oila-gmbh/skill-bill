@@ -12,6 +12,7 @@ import skillbill.application.goalrunner.GoalRunnerLaunchReconciler
 import skillbill.application.goalrunner.GoalRunnerLedgerContext
 import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
+import skillbill.application.goalrunner.GoalRunnerProgressReader
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
 import skillbill.application.goalrunner.TestNoopGoalRunnerSubtaskLauncher
@@ -58,13 +59,11 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.ACTIVE
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
@@ -90,6 +89,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -111,8 +111,11 @@ import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
@@ -120,7 +123,6 @@ import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.decomposition.model.SpecSource
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalObservabilityDiffStat
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
@@ -3761,6 +3763,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = outcomes,
+      progressReader = GoalRunnerProgressReader(outcomes),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
       diagnostics = NoopRuntimeDiagnostics,
@@ -3816,6 +3819,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = outcomes,
+      progressReader = GoalRunnerProgressReader(outcomes),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
       diagnostics = NoopRuntimeDiagnostics,
@@ -3854,6 +3858,7 @@ class GoalRunnerLaunchReconcilerWiringTest {
     val reconciler = GoalRunnerLaunchReconciler(
       manifestStore = store,
       outcomeStore = outcomes,
+      progressReader = GoalRunnerProgressReader(outcomes),
       activityStampWriter = testActivityStampWriter(),
       clock = testHarnessClock,
       diagnostics = NoopRuntimeDiagnostics,
@@ -4025,6 +4030,8 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     return progresses[workflowId]
   }
 
+  override fun progressEvents(workflowId: String, dbPathOverride: String?): List<Map<String, Any?>> = emptyList()
+
   override fun recordObservabilityEvent(
     request: GoalRunnerObservabilityRecordRequest,
     dbPathOverride: String?,
@@ -4077,6 +4084,8 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     issueKey: String,
     dbPathOverride: String?,
   ): GoalRunnerLedgerSequenceWatermarks = ledgerSequenceWatermarks
+
+  override fun childWorkflowLoopIterations(workflowId: String, dbPathOverride: String?): Map<String, Int> = emptyMap()
 }
 
 internal data class BlockedWorkflow(
@@ -4622,6 +4631,7 @@ private class GoalStatusSeedableDatabase(
     override val workflowStates: WorkflowStateRepository = repository
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 
@@ -4709,6 +4719,7 @@ private object GoalTestEmptyDatabase : DatabaseSessionFactory {
     override val workflowStates: WorkflowStateRepository = GoalTestEmptyWorkflowStateRepository
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 
@@ -4751,6 +4762,7 @@ private class GoalTestPlanningDatabase : DatabaseSessionFactory {
     }
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = planningRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 

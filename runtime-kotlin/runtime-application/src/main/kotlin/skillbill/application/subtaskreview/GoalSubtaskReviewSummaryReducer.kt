@@ -5,7 +5,7 @@ import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
@@ -170,7 +170,7 @@ fun GoalSubtaskReviewSummaryReducer.reviewRunIdOf(output: Map<String, Any?>): St
 fun GoalSubtaskReviewSummaryReducer.recordedVerdicts(
   unitOfWork: UnitOfWork,
   output: Map<String, Any?>,
-): List<ReviewFindingVerdict> = GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts(unitOfWork, output)
+): List<ReviewFindingVerdict> = GoalSubtaskReviewStructuredFindingsParse.recordedVerdicts(unitOfWork.reviews, output)
 
 internal fun GoalSubtaskReviewSummaryReducer.verificationBoundaryFindingPaths(
   finding: StructuredGoalReviewFinding,

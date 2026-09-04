@@ -1,5 +1,5 @@
 package skillbill.ports.goalrunner.persistence.model
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 
@@ -79,7 +79,7 @@ data class GoalRunnerChildWedgeRepairRequest(
 )
 
 data class GoalRunnerChildRepairApplyRequest(
-  val unitOfWork: UnitOfWork,
+  val unitOfWork: GoalRunnerPersistenceSession,
   val workflowId: String,
   val issueKey: String,
   val subtaskId: Int,

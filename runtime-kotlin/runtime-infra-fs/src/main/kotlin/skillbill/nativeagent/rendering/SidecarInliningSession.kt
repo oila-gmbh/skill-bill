@@ -4,8 +4,7 @@ import skillbill.nativeagent.composition.NativeAgentCompositionTarget
 import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
 import skillbill.nativeagent.composition.displayPath
 import skillbill.nativeagent.composition.platformPackRoot
-import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
-import skillbill.scaffold.model.PointerSpec
+import skillbill.nativeagent.platformpack.NativeAgentPointerSpec
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -71,7 +70,7 @@ private fun platformPointerSidecarResolver(
   val skillRelativeDir = packRoot.relativize(contentPath.parent).toString().replace('\\', '/')
   val declared = pack.pointers
     .filter { pointer -> pointer.skillRelativeDir == skillRelativeDir }
-    .associateBy(PointerSpec::name)
+    .associateBy(NativeAgentPointerSpec::name)
   return MarkdownSidecarResolver(root) { rawTarget, ownerPath ->
     val linkPath = linkPathWithoutFragment(rawTarget)
     if ('/' !in linkPath && '\\' !in linkPath) {

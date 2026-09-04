@@ -23,7 +23,7 @@ import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.JsonSupport
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 
 @Inject
 class WorkflowTopLevelCommands(

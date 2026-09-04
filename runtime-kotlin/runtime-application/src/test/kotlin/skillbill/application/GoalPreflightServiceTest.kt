@@ -9,6 +9,7 @@ import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.model.GoalPreflightRequest
+import skillbill.application.goalrunner.model.GoalPreflightServiceDeps
 import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
@@ -21,13 +22,13 @@ import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigResult
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionDependency
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -145,7 +146,7 @@ class GoalPreflightServiceTest {
       encodeDecompositionManifestYaml(
         manifest().copy(issueKey = "SKILL-902"),
         testDecompositionManifestValidator,
-        TestDecompositionManifestFileStore,
+        TestDecompositionManifestStore,
       ),
     )
 
@@ -170,7 +171,7 @@ class GoalPreflightServiceTest {
         encodeDecompositionManifestYaml(
           manifest(),
           testDecompositionManifestValidator,
-          TestDecompositionManifestFileStore,
+          TestDecompositionManifestStore,
         ),
       )
     }
@@ -260,18 +261,21 @@ class GoalPreflightServiceTest {
       EmptyExternalAgentAddonSourceConfigPort,
     persistedReviewPolicy: GoalRunnerReviewPolicy? = null,
   ): GoalPreflightService {
-    val fileStore: DecompositionManifestFileStore = TestDecompositionManifestFileStore
+    val fileStore: DecompositionManifestStore = TestDecompositionManifestStore
     return GoalPreflightService(
-      continuationLookup = FeatureTaskContinuationLookupService(
-        database,
-        testWorkflowSnapshotValidator,
-        testDecompositionManifestValidator,
+      GoalPreflightServiceDeps(
+        continuationLookup = FeatureTaskContinuationLookupService(
+          database,
+          testWorkflowSnapshotValidator,
+          testDecompositionManifestValidator,
+        ),
+        manifestStore = TestManifestStore(manifestState, persistedReviewPolicy),
+        agentAddonSelectionPort = TestAgentAddonSelectionPort,
+        externalAgentAddonSourceConfigPort = externalAgentAddonSourceConfigPort,
+        manifestFileStore = fileStore,
+        manifestValidator = testDecompositionManifestValidator,
+        repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
       ),
-      manifestStore = TestManifestStore(manifestState, persistedReviewPolicy),
-      agentAddonSelectionPort = TestAgentAddonSelectionPort,
-      externalAgentAddonSourceConfigPort = externalAgentAddonSourceConfigPort,
-      manifestFileStore = fileStore,
-      manifestValidator = testDecompositionManifestValidator,
     )
   }
 

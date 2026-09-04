@@ -13,7 +13,7 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
 import skillbill.ports.goalrunner.runner.model.GoalRunnerAttemptLedgerRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import java.nio.file.Path

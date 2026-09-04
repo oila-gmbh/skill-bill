@@ -1,10 +1,10 @@
 package skillbill.db.telemetry
 
 import skillbill.contracts.JsonSupport
-import skillbill.infrastructure.sqlite.review.PARAM_FOUR
-import skillbill.infrastructure.sqlite.review.PARAM_ONE
-import skillbill.infrastructure.sqlite.review.PARAM_THREE
-import skillbill.infrastructure.sqlite.review.PARAM_TWO
+import skillbill.db.PARAM_FOUR
+import skillbill.db.PARAM_ONE
+import skillbill.db.PARAM_THREE
+import skillbill.db.PARAM_TWO
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
 import skillbill.review.model.ReviewStageDegradationMeasurement
 import java.sql.Connection

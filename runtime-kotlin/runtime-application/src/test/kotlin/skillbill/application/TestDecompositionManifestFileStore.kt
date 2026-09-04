@@ -11,7 +11,7 @@ import skillbill.application.decomposition.model.DecompositionManifestWriteResul
 import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.model.RepositoryRoot
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
 import java.nio.file.AtomicMoveNotSupportedException
@@ -27,7 +27,7 @@ internal val testRepositoryRoot: RepositoryRoot = RepositoryRoot(Path.of("").toA
 internal fun seedHarnessSpecIntentProjection(repoRoot: Path, specReference: String) {
   val specPath = repoRoot.resolve(specReference)
   if (Files.isRegularFile(specPath)) return
-  TestDecompositionManifestFileStore.writeTextAtomically(
+  TestDecompositionManifestStore.writeTextAtomically(
     specPath,
     """
     # Harness spec intent
@@ -43,7 +43,7 @@ internal fun seedHarnessSpecIntentProjection(repoRoot: Path, specReference: Stri
   )
 }
 
-internal object TestDecompositionManifestFileStore : DecompositionManifestFileStore {
+internal object TestDecompositionManifestStore : DecompositionManifestStore {
   override fun readText(path: Path): String = Files.readString(path)
 
   override fun isRegularFile(path: Path): Boolean = Files.isRegularFile(path)
@@ -119,13 +119,13 @@ internal val testInstallPlanWireValidator: InstallPlanWireValidator =
 internal val testDecompositionManifestWriter = DecompositionManifestWriter()
 
 internal fun loadDecompositionManifest(path: Path) =
-  loadDecompositionManifest(path, TestDecompositionManifestFileStore, testDecompositionManifestValidator)
+  loadDecompositionManifest(path, TestDecompositionManifestStore, testDecompositionManifestValidator)
 
 internal fun writeIfDecomposed(request: DecompositionManifestWriteRequest): DecompositionManifestWriteResult? =
   testDecompositionManifestWriter.writeIfDecomposed(
     request,
     testDecompositionManifestValidator,
-    TestDecompositionManifestFileStore,
+    TestDecompositionManifestStore,
   )
 
 internal fun writeFromWorkflowUpdate(
@@ -140,7 +140,7 @@ internal fun writeFromWorkflowUpdate(
     validator = testDecompositionManifestValidator,
     artifactsPatch = artifactsPatch,
     runtimeUpdate = runtimeUpdate ?: DecompositionManifestRuntimeUpdate(),
-    fileStore = TestDecompositionManifestFileStore,
+    fileStore = TestDecompositionManifestStore,
   ),
 )
 
@@ -151,5 +151,5 @@ internal fun writeProjectionFromWorkflowState(
   repoRoot = repoRoot,
   artifactsJson = artifactsJson,
   validator = testDecompositionManifestValidator,
-  fileStore = TestDecompositionManifestFileStore,
+  fileStore = TestDecompositionManifestStore,
 )

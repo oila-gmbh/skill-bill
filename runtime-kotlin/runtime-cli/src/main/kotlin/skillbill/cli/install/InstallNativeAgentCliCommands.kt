@@ -4,19 +4,20 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.scaffold.NativeAgentInstallService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
 import skillbill.ports.install.model.NativeAgentLinkProvider
 import skillbill.ports.install.model.NativeAgentLinkRequest
+import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
+import skillbill.ports.install.nativeagent.model.InstallNativeAgentLinkOperationRequest
 import java.nio.file.Path
 
 @Inject
 class InstallLinkClaudeAgentsCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val nativeAgentInstallService: NativeAgentInstallService,
+  private val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
 ) : DocumentedCliCommand("link-claude-agents", "Render and link Claude native subagent markdown from source agents.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -28,7 +29,12 @@ class InstallLinkClaudeAgentsCommand(
     }
     completeNativeAgentLinkOutcome(
       state,
-      nativeAgentInstallService.linkNativeAgents(NativeAgentLinkProvider.CLAUDE, nativeAgentLinkRequest()),
+      installNativeAgentLinkPort.linkNativeAgents(
+        InstallNativeAgentLinkOperationRequest(
+          provider = NativeAgentLinkProvider.CLAUDE,
+          linkRequest = nativeAgentLinkRequest(),
+        ),
+      ).outcome,
     )
   }
 
@@ -44,7 +50,7 @@ class InstallLinkClaudeAgentsCommand(
 class InstallUnlinkClaudeAgentsCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val nativeAgentInstallService: NativeAgentInstallService,
+  private val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
 ) : DocumentedCliCommand("unlink-claude-agents", "Remove Claude native subagent markdown symlinks.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -55,15 +61,17 @@ class InstallUnlinkClaudeAgentsCommand(
       return
     }
     val removed =
-      nativeAgentInstallService.unlinkNativeAgents(
-        NativeAgentLinkProvider.CLAUDE,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = inputs.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
+      installNativeAgentLinkPort.unlinkNativeAgents(
+        InstallNativeAgentLinkOperationRequest(
+          provider = NativeAgentLinkProvider.CLAUDE,
+          linkRequest = NativeAgentLinkRequest(
+            platformPacksRoot = Path.of(platformPacks),
+            skillsRoot = skills?.let(Path::of),
+            home = inputs.userHome,
+            selectedPlatforms = platforms.ifEmpty { null },
+          ),
         ),
-      )
+      ).unlinked
     state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
   }
 }
@@ -72,7 +80,7 @@ class InstallUnlinkClaudeAgentsCommand(
 class InstallLinkCodexAgentsCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val nativeAgentInstallService: NativeAgentInstallService,
+  private val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
 ) : DocumentedCliCommand("link-codex-agents", "Render and link Codex native subagent TOMLs from source agents.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -84,15 +92,17 @@ class InstallLinkCodexAgentsCommand(
     }
     completeNativeAgentLinkOutcome(
       state,
-      nativeAgentInstallService.linkNativeAgents(
-        NativeAgentLinkProvider.CODEX,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = inputs.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
+      installNativeAgentLinkPort.linkNativeAgents(
+        InstallNativeAgentLinkOperationRequest(
+          provider = NativeAgentLinkProvider.CODEX,
+          linkRequest = NativeAgentLinkRequest(
+            platformPacksRoot = Path.of(platformPacks),
+            skillsRoot = skills?.let(Path::of),
+            home = inputs.userHome,
+            selectedPlatforms = platforms.ifEmpty { null },
+          ),
         ),
-      ),
+      ).outcome,
     )
   }
 }
@@ -101,7 +111,7 @@ class InstallLinkCodexAgentsCommand(
 class InstallUnlinkCodexAgentsCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val nativeAgentInstallService: NativeAgentInstallService,
+  private val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
 ) : DocumentedCliCommand("unlink-codex-agents", "Remove Codex native subagent TOML symlinks from candidate dirs.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -112,15 +122,17 @@ class InstallUnlinkCodexAgentsCommand(
       return
     }
     val removed =
-      nativeAgentInstallService.unlinkNativeAgents(
-        NativeAgentLinkProvider.CODEX,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = inputs.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
+      installNativeAgentLinkPort.unlinkNativeAgents(
+        InstallNativeAgentLinkOperationRequest(
+          provider = NativeAgentLinkProvider.CODEX,
+          linkRequest = NativeAgentLinkRequest(
+            platformPacksRoot = Path.of(platformPacks),
+            skillsRoot = skills?.let(Path::of),
+            home = inputs.userHome,
+            selectedPlatforms = platforms.ifEmpty { null },
+          ),
         ),
-      )
+      ).unlinked
     state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
   }
 }
@@ -129,7 +141,7 @@ class InstallUnlinkCodexAgentsCommand(
 class InstallLinkJunieAgentsCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val nativeAgentInstallService: NativeAgentInstallService,
+  private val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
 ) : DocumentedCliCommand("link-junie-agents", "Render and link Junie native subagent markdown from source agents.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -141,15 +153,17 @@ class InstallLinkJunieAgentsCommand(
     }
     completeNativeAgentLinkOutcome(
       state,
-      nativeAgentInstallService.linkNativeAgents(
-        NativeAgentLinkProvider.JUNIE,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = inputs.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
+      installNativeAgentLinkPort.linkNativeAgents(
+        InstallNativeAgentLinkOperationRequest(
+          provider = NativeAgentLinkProvider.JUNIE,
+          linkRequest = NativeAgentLinkRequest(
+            platformPacksRoot = Path.of(platformPacks),
+            skillsRoot = skills?.let(Path::of),
+            home = inputs.userHome,
+            selectedPlatforms = platforms.ifEmpty { null },
+          ),
         ),
-      ),
+      ).outcome,
     )
   }
 }
@@ -158,7 +172,7 @@ class InstallLinkJunieAgentsCommand(
 class InstallUnlinkJunieAgentsCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val nativeAgentInstallService: NativeAgentInstallService,
+  private val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
 ) : DocumentedCliCommand("unlink-junie-agents", "Remove Junie native subagent markdown symlinks.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -169,15 +183,17 @@ class InstallUnlinkJunieAgentsCommand(
       return
     }
     val removed =
-      nativeAgentInstallService.unlinkNativeAgents(
-        NativeAgentLinkProvider.JUNIE,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = inputs.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
+      installNativeAgentLinkPort.unlinkNativeAgents(
+        InstallNativeAgentLinkOperationRequest(
+          provider = NativeAgentLinkProvider.JUNIE,
+          linkRequest = NativeAgentLinkRequest(
+            platformPacksRoot = Path.of(platformPacks),
+            skillsRoot = skills?.let(Path::of),
+            home = inputs.userHome,
+            selectedPlatforms = platforms.ifEmpty { null },
+          ),
         ),
-      )
+      ).unlinked
     state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
   }
 }
@@ -186,7 +202,7 @@ class InstallUnlinkJunieAgentsCommand(
 class InstallLinkCursorAgentsCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val nativeAgentInstallService: NativeAgentInstallService,
+  private val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
 ) : DocumentedCliCommand("link-cursor-agents", "Render and link Cursor native subagent markdown from source agents.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -198,15 +214,17 @@ class InstallLinkCursorAgentsCommand(
     }
     completeNativeAgentLinkOutcome(
       state,
-      nativeAgentInstallService.linkNativeAgents(
-        NativeAgentLinkProvider.CURSOR,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = inputs.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
+      installNativeAgentLinkPort.linkNativeAgents(
+        InstallNativeAgentLinkOperationRequest(
+          provider = NativeAgentLinkProvider.CURSOR,
+          linkRequest = NativeAgentLinkRequest(
+            platformPacksRoot = Path.of(platformPacks),
+            skillsRoot = skills?.let(Path::of),
+            home = inputs.userHome,
+            selectedPlatforms = platforms.ifEmpty { null },
+          ),
         ),
-      ),
+      ).outcome,
     )
   }
 }
@@ -215,7 +233,7 @@ class InstallLinkCursorAgentsCommand(
 class InstallUnlinkCursorAgentsCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val nativeAgentInstallService: NativeAgentInstallService,
+  private val installNativeAgentLinkPort: InstallNativeAgentLinkPort,
 ) : DocumentedCliCommand("unlink-cursor-agents", "Remove Cursor native subagent markdown symlinks.") {
   private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
   private val skills by option("--skills", help = "skills root.")
@@ -226,15 +244,17 @@ class InstallUnlinkCursorAgentsCommand(
       return
     }
     val removed =
-      nativeAgentInstallService.unlinkNativeAgents(
-        NativeAgentLinkProvider.CURSOR,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = inputs.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
+      installNativeAgentLinkPort.unlinkNativeAgents(
+        InstallNativeAgentLinkOperationRequest(
+          provider = NativeAgentLinkProvider.CURSOR,
+          linkRequest = NativeAgentLinkRequest(
+            platformPacksRoot = Path.of(platformPacks),
+            skillsRoot = skills?.let(Path::of),
+            home = inputs.userHome,
+            selectedPlatforms = platforms.ifEmpty { null },
+          ),
         ),
-      )
+      ).unlinked
     state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
   }
 }

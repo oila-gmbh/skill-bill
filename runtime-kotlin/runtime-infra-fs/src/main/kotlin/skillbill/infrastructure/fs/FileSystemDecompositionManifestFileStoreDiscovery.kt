@@ -1,12 +1,12 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileDiscoveryStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestDiscoveryPort
 import java.nio.file.Files
 import java.nio.file.Path
 
 internal class FileSystemDecompositionManifestFileStoreDiscovery(
   private val bundleJournal: DecompositionManifestBundleJournal,
-) : DecompositionManifestFileDiscoveryStore {
+) : DecompositionManifestDiscoveryPort {
   override fun listDirectChildDirectories(directory: Path): List<Path> {
     if (!Files.isDirectory(directory)) return emptyList()
     return Files.list(directory).use { paths ->

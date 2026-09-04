@@ -1,6 +1,7 @@
 package skillbill.ports.goalrunner.runner
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
@@ -20,7 +21,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import java.nio.file.Path
@@ -48,7 +49,29 @@ interface GoalRunnerManifestLookup {
     loadByIssueKey(issueKey, dbPathOverride, null)
 }
 
-interface GoalRunnerManifestLeaseOps {
+interface GoalRunnerManifestPauseOps {
+  fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState? = null
+
+  fun pauseNow(
+    parentWorkflowId: String,
+    reason: String,
+    pausedAt: String,
+    overwriteExistingReason: Boolean = false,
+    dbPathOverride: String? = null,
+  ): GoalRunnerControlState? = null
+
+  fun requestPauseByIssueKey(
+    issueKey: String,
+    dbPathOverride: String? = null,
+    repoRoot: Path? = null,
+  ): GoalRunnerPausePersistenceResult? = null
+
+  fun resume(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerManifestState? = null
+
+  fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState = state
+}
+
+interface GoalRunnerManifestExecutionLease {
   fun executionLease(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerExecutionLease? = null
 
   fun acquireExecutionLease(
@@ -72,29 +95,7 @@ interface GoalRunnerManifestLeaseOps {
   ): Boolean
 }
 
-interface GoalRunnerManifestPauseOps {
-  fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState? = null
-
-  fun pauseNow(
-    parentWorkflowId: String,
-    reason: String,
-    pausedAt: String,
-    overwriteExistingReason: Boolean = false,
-    dbPathOverride: String? = null,
-  ): GoalRunnerControlState? = null
-
-  fun requestPauseByIssueKey(
-    issueKey: String,
-    dbPathOverride: String? = null,
-    repoRoot: Path? = null,
-  ): GoalRunnerPausePersistenceResult? = null
-
-  fun resume(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerManifestState? = null
-
-  fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState = state
-}
-
-interface GoalRunnerManifestControlOps {
+interface GoalRunnerManifestControlCommands {
   fun controlState(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState =
     GoalRunnerControlState()
 
@@ -136,7 +137,7 @@ interface GoalRunnerManifestControlOps {
   ): GoalRunnerControlState = state
 }
 
-interface GoalRunnerManifestWriteOps {
+interface GoalRunnerManifestPersistenceCommands {
   fun planningStatus(
     parentWorkflowId: String,
     orderedSubtaskIds: List<Int>,
@@ -190,7 +191,7 @@ interface GoalRunnerManifestWriteOps {
   ): GoalRunnerManifestState = error("Goal runner manifest store must atomically persist new child workflow state.")
 }
 
-interface GoalRunnerManifestReviewOps {
+interface GoalRunnerManifestReviewCommands {
   fun reviewMode(parentWorkflowId: String, dbPathOverride: String? = null): CodeReviewExecutionMode? = null
 
   fun persistReviewMode(
@@ -226,19 +227,13 @@ interface GoalRunnerManifestReviewOps {
 
 interface GoalRunnerManifestStore :
   GoalRunnerManifestLookup,
-  GoalRunnerManifestLeaseOps,
   GoalRunnerManifestPauseOps,
-  GoalRunnerManifestControlOps,
-  GoalRunnerManifestWriteOps,
-  GoalRunnerManifestReviewOps
+  GoalRunnerManifestExecutionLease,
+  GoalRunnerManifestControlCommands,
+  GoalRunnerManifestPersistenceCommands,
+  GoalRunnerManifestReviewCommands
 
-// Terminal-outcome resolution split into a strictly read-only query and an explicit
-// recover-and-persist command (CQS): the query never measures git or mutates state, so
-// status/reconciliation read paths stay side-effect-free; the command is the self-heal path.
 interface GoalRunnerTerminalOutcomeStore {
-  // Strictly read-only terminal-outcome query: resolves the outcome from durable
-  // artifacts only and never measures git or mutates state. Use this from status /
-  // reconciliation read paths.
   fun terminalOutcome(
     workflowId: String,
     issueKey: String,
@@ -246,11 +241,6 @@ interface GoalRunnerTerminalOutcomeStore {
     dbPathOverride: String? = null,
   ): GoalRunnerStoredOutcome?
 
-  // Command variant of the terminal-outcome resolution: when an agent completed
-  // commit_push under suppress_pr but dropped the commit SHA, this recovers it from
-  // measured HEAD at [repoRoot] and durably backfills the measured completion so
-  // status, reconciliation, and the subtask handoff all agree afterward. Self-heal
-  // path only; pure readers must use [terminalOutcome] instead.
   fun recoverAndPersistTerminalOutcome(
     workflowId: String,
     issueKey: String,
@@ -270,12 +260,11 @@ interface GoalRunnerTerminalOutcomeStore {
 }
 
 interface GoalRunnerReviewOutcomeStore {
-  fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String? = null): GoalSubtaskReviewState? = null
+  fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String? = null): GoalSubtaskReviewState?
 
-  fun unemittedGoalReviewPasses(workflowId: String, dbPathOverride: String? = null): List<GoalSubtaskReviewPassResult> =
-    emptyList()
+  fun unemittedGoalReviewPasses(workflowId: String, dbPathOverride: String? = null): List<GoalSubtaskReviewPassResult>
 
-  fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String? = null): Boolean = false
+  fun acknowledgeGoalReviewPass(workflowId: String, passNumber: Int, dbPathOverride: String? = null): Boolean
 }
 
 interface GoalRunnerWorkflowOutcomeStore :
@@ -285,15 +274,19 @@ interface GoalRunnerWorkflowOutcomeStore :
   GoalRunnerWorkflowLedgerWriteStore,
   GoalRunnerWorkflowOutcomeMutationStore
 
-// SKILL-142 (AC-011): narrow read-only port for aggregated operator metrics from the attempt ledger.
-// Kept separate from [GoalRunnerWorkflowOutcomeStore] to stay within the interface function-count
-// budget. Default no-op so test fakes and non-FS adapters opt in only when needed.
 interface GoalRunnerAttemptLedgerStore {
-  fun readAttemptLedgerSummary(issueKey: String, dbPathOverride: String? = null): GoalRunnerAttemptLedgerSummary =
-    GoalRunnerAttemptLedgerSummary()
+  fun readAttemptLedgerSummary(issueKey: String, dbPathOverride: String? = null): GoalRunnerAttemptLedgerSummary
 }
 
-object NoopGoalRunnerAttemptLedgerStore : GoalRunnerAttemptLedgerStore
+object NoopGoalRunnerAttemptLedgerStore : GoalRunnerAttemptLedgerStore {
+  override fun readAttemptLedgerSummary(issueKey: String, dbPathOverride: String?): GoalRunnerAttemptLedgerSummary {
+    RecordingNullObjectDiagnostics.recordSwallow(
+      "NoopGoalRunnerAttemptLedgerStore",
+      "readAttemptLedgerSummary(issueKey=$issueKey)",
+    )
+    return GoalRunnerAttemptLedgerSummary()
+  }
+}
 
 fun interface GoalRunnerSubtaskLauncher {
   fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome

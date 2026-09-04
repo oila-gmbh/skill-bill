@@ -31,6 +31,31 @@ class InjectConstructorDefaultsArchitectureTest {
   }
 
   @Test
+  fun `runtime-ports inject defaults equal the recorded census`() {
+    assertInjectDefaultsMatchBaseline("runtime-ports")
+  }
+
+  @Test
+  fun `runtime-infra-fs inject defaults equal the recorded census`() {
+    assertInjectDefaultsMatchBaseline("runtime-infra-fs")
+  }
+
+  @Test
+  fun `runtime-infra-http inject defaults equal the recorded census`() {
+    assertInjectDefaultsMatchBaseline("runtime-infra-http")
+  }
+
+  @Test
+  fun `runtime-infra-sqlite inject defaults equal the recorded census`() {
+    assertInjectDefaultsMatchBaseline("runtime-infra-sqlite")
+  }
+
+  @Test
+  fun `runtime-mcp inject defaults equal the recorded census`() {
+    assertInjectDefaultsMatchBaseline("runtime-mcp")
+  }
+
+  @Test
   fun `inject constructor default scanner fires on synthetic default argument`() {
     val source = """
       package skillbill.example
@@ -147,6 +172,21 @@ class InjectConstructorDefaultsArchitectureTest {
       source = source,
     ).map { site -> site.parameter }
     assertEquals(listOf("openBrace", "closingParen", "stdinText"), parameters)
+  }
+
+  private fun assertInjectDefaultsMatchBaseline(moduleName: String) {
+    val scanCase = PrincipleEnforcementInventory.moduleArchitectureScanCases
+      .single { scanCase -> scanCase.moduleName == moduleName }
+    val baselineName = scanCase.injectDefaultsBaseline
+      ?: error("Module $moduleName has no inject-defaults baseline.")
+    val current = ArchitectureScanSupport.injectConstructorDefaultSites(scanCase.mainScanRoot)
+      .map { site -> "${site.relativePath}::${site.symbol}::${site.parameter}" }
+      .toSet()
+    assertEquals(
+      baseline(baselineName),
+      current,
+      "Re-record $baselineName with RECORD_ARCHITECTURE_BASELINES=1.",
+    )
   }
 
   private fun baseline(name: String): Set<String> =

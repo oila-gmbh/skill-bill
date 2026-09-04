@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState

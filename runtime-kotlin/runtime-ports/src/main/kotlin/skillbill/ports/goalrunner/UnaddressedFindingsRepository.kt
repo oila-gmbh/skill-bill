@@ -54,5 +54,5 @@ object UnavailableUnaddressedFindingsRepository : UnaddressedFindingsRepository 
   override fun workflowIdsForIssue(issueKey: String): List<String> =
     error("Unaddressed-findings persistence is unavailable.")
 
-  override fun issueExists(issueKey: String): Boolean = false
+  override fun issueExists(issueKey: String): Boolean = error("Unaddressed-findings persistence is unavailable.")
 }

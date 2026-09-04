@@ -47,7 +47,7 @@ class DecompositionManifestArchitectureTest {
     assertContains(applicationSeam, "DecompositionManifestCodec.decodeMap")
     assertContains(applicationSeam, "fun encodeDecompositionManifestMap")
     // SKILL-52.3 subtask 4: YAML serialization moved behind the
-    // `DecompositionManifestFileStore.encodeManifestYaml` infra/codec seam;
+    // `DecompositionManifestStore.encodeManifestYaml` infra/codec seam;
     // the application seam must no longer name `YAMLMapper` and instead
     // delegate serialization to the injected file-store port.
     assertFalse(

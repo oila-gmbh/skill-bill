@@ -9,11 +9,11 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeModelAssignment
 import skillbill.application.review.RuntimeOwnedReviewMode
+import skillbill.application.review.model.CodeReviewExecutionMode
 import skillbill.cli.kernel.parseAgentAddonSelection
 import skillbill.cli.kernel.refuseUnavailableAgentLaunchers
 import skillbill.cli.kernel.refuseUnsupportedModelDirectives
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -140,9 +140,9 @@ internal fun FeatureTaskRuntimePhaseAgentCommand.requestedOperatorDecision(): Go
   }
 }
 
-internal fun FeatureTaskRuntimePhaseAgentCommand.requestedCodeReviewMode(): CodeReviewExecutionMode? {
+internal fun FeatureTaskRuntimePhaseAgentCommand.requestedCodeReviewMode() = run {
   val modes = codeReviewModes.map(::parseRequestedCodeReviewMode)
-  return when (modes.size) {
+  when (modes.size) {
     0 -> null
     1 -> modes.single()
     else -> {
@@ -159,14 +159,13 @@ internal fun FeatureTaskRuntimePhaseAgentCommand.requestedCodeReviewMode(): Code
   }
 }
 
-internal fun FeatureTaskRuntimePhaseAgentCommand.parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode =
-  try {
-    RuntimeOwnedReviewMode.parse(raw)
-  } catch (error: IllegalArgumentException) {
-    throw UsageError(error.message ?: "Unknown code-review execution mode.").also { usage ->
-      runCatching { usage.initCause(error) }
-    }
+internal fun FeatureTaskRuntimePhaseAgentCommand.parseRequestedCodeReviewMode(raw: String) = try {
+  RuntimeOwnedReviewMode.parse(raw)
+} catch (error: IllegalArgumentException) {
+  throw UsageError(error.message ?: "Unknown code-review execution mode.").also { usage ->
+    runCatching { usage.initCause(error) }
   }
+}
 
 internal fun FeatureTaskRuntimePhaseAgentCommand.goalContinuationMissingFields(): List<String> = buildList {
   if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")

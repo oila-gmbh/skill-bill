@@ -38,6 +38,7 @@ class ParallelCodeReviewRunner(
   private val registerParse = planningPort.registerParse
   private val diagnostics = planningPort.diagnostics
   private val clock = planningPort.clock
+  private val repositoryEnclosingRootPort = planningPort.repositoryEnclosingRootPort
   private val runtimeOwnedPersistence = RuntimeOwnedPersistenceBoundary(database, diagnostics)
   private val failureHelpers = ParallelCodeReviewRunnerFailureAdmission(registerParse)
   private val rubricPlanning = ParallelCodeReviewRunnerRubricPlanning(reviewRubricResolver, installedPackCatalog)
@@ -54,6 +55,7 @@ class ParallelCodeReviewRunner(
       runtimeOwnedPersistence = runtimeOwnedPersistence,
       rubricPlanning = rubricPlanning,
       clock = clock,
+      repositoryEnclosingRootPort = repositoryEnclosingRootPort,
     ),
   )
   private val laneLaunch = ParallelCodeReviewRunnerLaneLaunch(

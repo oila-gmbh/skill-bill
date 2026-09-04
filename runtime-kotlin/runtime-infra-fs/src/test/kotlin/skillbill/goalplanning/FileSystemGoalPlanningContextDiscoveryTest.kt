@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Assumptions.assumeTrue
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
+import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -21,7 +22,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     writeEntries(moduleAgent.resolve("decisions.md"), "module-decision", "distinctive decision body sentence")
     Files.writeString(repo.resolve("AGENTS.md"), "repo conventions for planning")
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertEquals(
       listOf(
@@ -52,7 +53,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     val moduleAgent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     writeEntries(moduleAgent.resolve("history.md"), "module-history", "module body")
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertEquals(1, context.boundaryCatalog.size)
     assertTrue(
@@ -80,7 +81,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     val moduleAgent = Files.createDirectories(repo.resolve("tooling/agent"))
     writeEntries(moduleAgent.resolve("history.md"), "tooling-history", "tooling body")
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertEquals(listOf("tooling/agent/history.md"), context.boundaryCatalog.map { it.sourcePath })
     assertFalse(context.boundaryCatalog.any { entry -> "excluded-history" in entry.heading })
@@ -105,7 +106,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     }.isSuccess
     assumeTrue(linkable, "filesystem cannot create symbolic links")
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertEquals(listOf("modules/safe/agent/history.md"), context.boundaryCatalog.map { it.sourcePath })
     assertFalse(context.boundaryCatalog.any { entry -> "pack-history" in entry.heading })
@@ -124,7 +125,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
       writeEntries(agent.resolve("decisions.md"), "decisions-$index", "body")
     }
 
-    val discovery = FileSystemGoalPlanningContextDiscovery()
+    val discovery = FileSystemGoalPlanningContextDiscovery(JvmSystemClock)
     val context = discovery.discover(repo)
 
     assertTrue(context.boundaryCatalogTruncated)
@@ -153,7 +154,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$entries\n")
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertEquals(GoalPlanningContext.MAX_HEADINGS_PER_FILE, context.boundaryCatalog.size)
     assertTrue(context.boundaryCatalogTruncated)
@@ -173,7 +174,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
       Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$entries\n")
     }
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertEquals(GoalPlanningContext.MAX_CATALOG_HEADINGS, context.boundaryCatalog.size)
     assertTrue(context.boundaryCatalogTruncated)
@@ -197,7 +198,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     writeEntries(repo.resolve("modules/a/agent/history.md"), "history", "body")
     Files.writeString(repo.resolve("AGENTS.md"), "g".repeat(GoalPlanningContext.MAX_VALIDATION_GUIDANCE_BYTES * 3))
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertEquals(GoalPlanningContext.MAX_VALIDATION_GUIDANCE_BYTES, context.validationGuidance.length)
   }
@@ -209,7 +210,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     val longTitle = "t".repeat(GoalPlanningContext.MAX_HEADING_TEXT_CHARS * 2)
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n## [2026-08-01] $longTitle\n\nbody\n")
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertEquals(GoalPlanningContext.MAX_HEADING_TEXT_CHARS, context.boundaryCatalog.single().heading.length)
   }
@@ -228,7 +229,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     }.getOrDefault(false)
     assumeTrue(denied, "filesystem cannot make a file unreadable for this user")
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertEquals(
       listOf("modules/readable/agent/history.md"),
@@ -247,7 +248,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$entries\n")
 
-    val catalog = FileSystemGoalPlanningContextDiscovery().discover(repo).boundaryCatalog
+    val catalog = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo).boundaryCatalog
     val ids = catalog.map(GoalPlanningBoundaryHeading::headingId)
     val resolved = FileSystemGoalPlanningBoundaryBodyResolver().resolve(repo, ids.take(5), ids.toSet())
 
@@ -271,7 +272,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
       "fixture must exceed the per-file read cap",
     )
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val context = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discover(repo)
 
     assertTrue(context.boundaryCatalog.isNotEmpty(), "the readable prefix still contributes headings")
     assertTrue(context.boundaryCatalogTruncated, "a cut file must not read as a complete catalog")

@@ -16,18 +16,18 @@ import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.decomposition.model.SpecSource.LINEAR
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 
 class GoalPreflightGateBlockBuilder(
   private val manifestStore: GoalRunnerManifestStore,
   private val agentAddonSelectionPort: AgentAddonSelectionPort,
   private val externalAgentAddonSourceConfigPort: ExternalAgentAddonSourceConfigPort,
-  private val manifestFileStore: DecompositionManifestFileStore,
+  private val manifestFileStore: DecompositionManifestStore,
 ) {
   fun resolveSelection(
     request: GoalPreflightRequest,

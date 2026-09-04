@@ -8,7 +8,7 @@ import skillbill.application.updatecheck.model.UpdateCheckResult
 import skillbill.application.updatecheck.model.UpdateCheckStatus
 import skillbill.contracts.JsonSupport
 import skillbill.model.TransportContext
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 import java.io.IOException
 
 @Inject
@@ -89,7 +89,7 @@ class UpdateCheckService(
     return response?.let(::parseReleasesResponse)
   }
 
-  private fun parseReleasesResponse(response: HttpResponse): List<Any?>? {
+  private fun parseReleasesResponse(response: RemoteTransportResponse): List<Any?>? {
     val parsed = JsonSupport.parseArrayOrEmpty(response.body)
     val errorReason = when {
       response.statusCode == HTTP_FORBIDDEN || response.statusCode == HTTP_TOO_MANY_REQUESTS ->

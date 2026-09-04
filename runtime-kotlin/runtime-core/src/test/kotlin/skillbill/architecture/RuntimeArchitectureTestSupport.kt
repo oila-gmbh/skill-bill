@@ -694,14 +694,7 @@ internal fun assertMcpScaffoldRuntimeOnlyUsesFilesForRepoRootDiscovery(mcpFiles:
       .filter { line -> "java.nio.file.Files" in line || "Files." in line }
       .map(String::trim)
 
-  assertEquals(
-    listOf(
-      "import java.nio.file.Files",
-      "val hasSettings = Files.isRegularFile(current.resolve(\"runtime-kotlin/settings.gradle.kts\"))",
-      "val hasSkills = Files.isDirectory(current.resolve(\"skills\"))",
-    ),
-    filesReferenceLines,
-  )
+  assertEquals(emptyList(), filesReferenceLines)
 }
 
 internal fun sourceFiles(): List<SourceFile> = runtimeArchitectureSourceRoots.flatMap { sourceRoot ->
@@ -808,36 +801,36 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.application.featuretask.FeatureTaskRuntimePhaseReviewGenerationApi.recordedFindingVerdicts",
     "skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput",
     "skillbill.application.featuretask.FeatureTaskRuntimeReviewEnvelope.envelopeMap",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch." +
       "settleValidatedOutputBoundary",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued3.rejectValidatedOutput",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued1." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize.rejectValidatedOutput",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish." +
       "completedImplementFixProducedOutputs",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued1.completeReservedGoalReviewPass",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinued3.outputEnvelopeOf",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDrivePhaseSelection.completeReservedGoalReviewPass",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchProcessWait.outputEnvelopeOf",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence.persistRejectedVerificationFindings",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.firstValidatedOutputRejection",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued1.auditGapProgressPause",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate.auditGapProgressPause",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
       "findingVerificationBoundaryBodyDeliveryDecision",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
       "findingVerificationBoundaryDispositionGate",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
       "findingVerificationBoundaryDispositionGateImpl",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
       "outputVerificationGateReason",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge." +
       "verifyFindingsBoundaryContext",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge." +
       "verifyFindingsDispositionGateContext",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.payloadFreeSemanticGateConstraint",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.scrubResponseDerivedGateDetail",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.implementFixRepairReceiptSettlement",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.repairReceiptShapeSettlement",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit.revalidated",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand." +
       "gateTriageCapturedProducedOutputs",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.looseOutputEnvelope",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand.looseOutputEnvelope",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunState.parsedOutputsByPayload",
     "skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.readHandoff",
     "skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.withCommitSha",
@@ -1036,7 +1029,7 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.ports.subtaskreview.structuredFindings",
     "skillbill.ports.validation.model.ReleaseRefMetadata.toPayload",
     "skillbill.ports.validation.model.RepoValidationReport.toPayload",
-    "skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml",
+    "skillbill.ports.workflow.decomposition.DecompositionManifestPersistencePort.encodeManifestYaml",
     "skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.manifestFromWorkflowUpdate",
     "skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate",
     "skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate",
@@ -1055,13 +1048,13 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan",
     "skillbill.ports.workflow.decomposition.runtime.parentSpecPath",
     "skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap",
-    "skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForProgressEvent",
-    "skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForRuntimeEvent",
-    "skillbill.ports.workflow.persistence.model.GoalObservabilityProgressInput.artifacts",
-    "skillbill.ports.workflow.persistence.model.GoalObservabilityRuntimeEventInput.artifacts",
+    "skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForProgressEvent",
+    "skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForRuntimeEvent",
+    "skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressInput.artifacts",
+    "skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput.artifacts",
     "skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary",
-    "skillbill.ports.workflow.persistence.outOfBandAcceptancesFromLegacyArtifacts",
-    "skillbill.ports.workflow.persistence.reviewPolicyFromLegacyArtifacts",
+    "skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts",
+    "skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts",
     "skillbill.ports.workflow.persistence.toPayload",
     "skillbill.review.context.ReviewContextEnvelopeValidator.validate",
     "skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection",
@@ -1115,7 +1108,7 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.workflow.goal.model.appendBoundedHistoryBySequence",
     "skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts",
     "skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts",
-    "skillbill.workflow.idestatus.IdeStatusValidator.validate",
+    "skillbill.ports.idestatus.IdeStatusValidator.validate",
     "skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt",
     "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope",
     "skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration",

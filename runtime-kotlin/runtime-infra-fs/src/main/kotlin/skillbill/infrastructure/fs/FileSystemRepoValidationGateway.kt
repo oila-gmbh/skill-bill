@@ -1,7 +1,11 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.nativeagent.composition.NativeAgentCompositionContext
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.validation.RepoValidationGateway
+import skillbill.scaffold.authoring.renderAuthoredContentBody
 import skillbill.scaffold.runtime.ReleaseRefMetadata
 import skillbill.scaffold.runtime.RepoValidationIssue
 import skillbill.scaffold.runtime.RepoValidationIssueSeverity
@@ -14,9 +18,26 @@ import skillbill.ports.validation.model.RepoValidationIssueSeverity as PortRepoV
 import skillbill.ports.validation.model.RepoValidationReport as PortRepoValidationReport
 
 @Inject
-class FileSystemRepoValidationGateway : RepoValidationGateway {
-  override fun validateRepo(repoRoot: Path): PortRepoValidationReport =
-    RepoValidationRuntime.validateRepo(repoRoot).toPortReport()
+class FileSystemRepoValidationGateway(
+  private val repoLocalConfig: RepoLocalConfigPort,
+) : RepoValidationGateway {
+  override fun validateRepo(repoRoot: Path): PortRepoValidationReport {
+    val normalizedRoot = repoRoot.toAbsolutePath().normalize()
+    val compositionContext = NativeAgentCompositionContext(
+      reviewContextBudgetBytes = repoLocalConfig
+        .readRepoLocalConfig(ReadRepoLocalConfigRequest(normalizedRoot))
+        .config
+        .reviewContextBudget
+        .maxLaneLaunchBytes,
+      renderGovernedBody = ::renderAuthoredContentBody,
+      packLoader = FileSystemNativeAgentPlatformPackLoader,
+    )
+    return RepoValidationRuntime.validateRepo(
+      normalizedRoot,
+      compositionContext,
+      ::validatePlannedNativeAgentWorkers,
+    ).toPortReport()
+  }
 
   override fun validateReleaseRef(repoRoot: Path, rawRef: String, forcePrerelease: Boolean): PortReleaseRefMetadata =
     RepoValidationRuntime.validateReleaseRef(repoRoot, rawRef, forcePrerelease).toPortMetadata()

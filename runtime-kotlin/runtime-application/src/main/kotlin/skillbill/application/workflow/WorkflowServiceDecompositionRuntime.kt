@@ -5,7 +5,7 @@ import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.decomposition.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot

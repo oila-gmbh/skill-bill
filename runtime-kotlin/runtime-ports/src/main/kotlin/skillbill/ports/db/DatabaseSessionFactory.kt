@@ -1,23 +1,6 @@
 package skillbill.ports.db
 
-import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
-import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
-import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.featuretask.UnavailableFeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
-import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
-import skillbill.ports.goalrunner.GoalRunnerControlRepository
-import skillbill.ports.goalrunner.UnaddressedFindingsRepository
-import skillbill.ports.goalrunner.UnavailableUnaddressedFindingsRepository
-import skillbill.ports.idestatus.AgentActivityStampRepository
-import skillbill.ports.idestatus.EmptyAgentActivityStampRepository
-import skillbill.ports.learning.LearningRepository
-import skillbill.ports.review.ReviewRepository
-import skillbill.ports.telemetry.LifecycleTelemetryRepository
-import skillbill.ports.telemetry.TelemetryOutboxRepository
-import skillbill.ports.telemetry.TelemetryReconciliationRepository
-import skillbill.ports.work.WorkListRepository
-import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.persistence.UnitOfWork
 import java.nio.file.Path
 
 interface DatabaseSessionFactory {
@@ -32,35 +15,5 @@ interface DatabaseSessionFactory {
 
   fun <T> transaction(dbOverride: String? = null, block: (UnitOfWork) -> T): T
 
-  /**
-   * A write-capable session with no outer transaction, for repository methods that own their own
-   * transaction boundary and so cannot be nested inside [transaction]. Distinct from [read], which
-   * hands out a connection without write capability. No default: an implementation that inherited
-   * [read] here would silently hand a read-only session to a write seam.
-   */
   fun <T> selfManagedWrite(dbOverride: String? = null, block: (UnitOfWork) -> T): T
-}
-
-interface UnitOfWork {
-  val dbPath: Path
-  val reviews: ReviewRepository
-  val learnings: LearningRepository
-  val lifecycleTelemetry: LifecycleTelemetryRepository
-  val telemetryReconciliation: TelemetryReconciliationRepository
-  val telemetryOutbox: TelemetryOutboxRepository
-  val workflowStates: WorkflowStateRepository
-  val workList: WorkListRepository
-  val goalPlanningPreparations: GoalPlanningPreparationRepository
-  val goalRunnerControls: GoalRunnerControlRepository
-    get() = EmptyGoalRunnerControlRepository
-  val unaddressedFindings: UnaddressedFindingsRepository
-    get() = UnavailableUnaddressedFindingsRepository
-  val featureTaskRuntimeAuditGenerations: FeatureTaskRuntimeAuditGenerationRepository
-    get() = UnavailableFeatureTaskRuntimeAuditGenerationRepository
-  val agentActivityStamps: AgentActivityStampRepository
-    get() = EmptyAgentActivityStampRepository
-  val rejectedOutputDiagnostics: RejectedOutputDiagnosticRepository?
-    get() = null
-  val rejectedOutputDiagnosticPermissions: RejectedOutputDiagnosticPermissions?
-    get() = null
 }

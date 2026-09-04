@@ -3,6 +3,7 @@ package skillbill.application.review.model
 import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.ReviewAccountingSummary
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBudgetOutcome
@@ -10,7 +11,6 @@ import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ReviewCoverageReport
 import skillbill.review.model.ReviewStageResumeReport
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration
 

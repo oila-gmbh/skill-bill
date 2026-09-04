@@ -6,7 +6,7 @@ import skillbill.application.featuretask.validation.model.ValidationFindingSetPr
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import kotlin.test.Test

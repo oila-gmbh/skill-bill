@@ -1,9 +1,5 @@
 package skillbill.infrastructure.sqlite.review
 
-const val PARAM_ONE: Int = 1
-const val PARAM_TWO: Int = 2
-const val PARAM_THREE: Int = 3
-const val PARAM_FOUR: Int = 4
 const val PARAM_FIVE: Int = 5
 const val PARAM_SIX: Int = 6
 const val PARAM_SEVEN: Int = 7

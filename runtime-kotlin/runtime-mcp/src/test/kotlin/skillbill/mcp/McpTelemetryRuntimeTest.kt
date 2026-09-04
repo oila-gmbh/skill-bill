@@ -1,12 +1,12 @@
 package skillbill.mcp
 
-import skillbill.mcp.core.McpRuntimeContext
-import skillbill.mcp.core.McpRuntimeLifecycle
 import skillbill.mcp.core.McpToolDispatcher
 import skillbill.mcp.core.telemetryRemoteStats
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.shared.McpRuntimeLifecycle
 import skillbill.mcp.telemetry.toMcpMap
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
@@ -117,8 +117,8 @@ private fun writeMcpTelemetryConfig(tempDir: Path, level: String): Path {
   return configPath
 }
 
-private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?>>): HttpRequester =
-  HttpRequester { method, url, bodyJson, headers ->
+private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?>>): RemoteTransportPort =
+  RemoteTransportPort { method, url, bodyJson, headers ->
     capturedRequests +=
       linkedMapOf(
         "method" to method,
@@ -128,7 +128,7 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
       )
     when {
       url.endsWith("/capabilities") ->
-        HttpResponse(
+        RemoteTransportResponse(
           200,
           """
           {
@@ -141,7 +141,7 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
         )
 
       else ->
-        HttpResponse(
+        RemoteTransportResponse(
           200,
           """
           {

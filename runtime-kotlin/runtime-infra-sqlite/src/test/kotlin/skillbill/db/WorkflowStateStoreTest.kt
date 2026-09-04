@@ -8,7 +8,7 @@ import skillbill.db.workflow.WorkflowStateStore
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.ProseFeatureTaskWorkflowWriteRefusedError
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import java.nio.file.Files
 import java.sql.DriverManager

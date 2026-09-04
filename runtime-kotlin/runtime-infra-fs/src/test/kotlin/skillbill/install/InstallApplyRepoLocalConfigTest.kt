@@ -2,7 +2,6 @@ package skillbill.install
 
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyStatus
-import skillbill.install.runtime.InstallOperations
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -15,9 +14,9 @@ class InstallApplyRepoLocalConfigTest : InstallApplyTestSupport() {
   fun `apply scaffolds default repo-local config and anchored gitignore entry`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))
-    val plan = InstallOperations.planInstall(fixture.request(agents = setOf(InstallAgent.CODEX)))
+    val plan = planInstallForTest(fixture.request(agents = setOf(InstallAgent.CODEX)))
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     val configPath = fixture.repoRoot.resolve(".skill-bill/config.yaml")
@@ -34,13 +33,13 @@ class InstallApplyRepoLocalConfigTest : InstallApplyTestSupport() {
   fun `reapply is idempotent and preserves a user-edited config`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))
-    val plan = InstallOperations.planInstall(fixture.request(agents = setOf(InstallAgent.CODEX)))
-    InstallOperations.applyInstall(plan)
+    val plan = planInstallForTest(fixture.request(agents = setOf(InstallAgent.CODEX)))
+    applyInstallForTest(plan)
     val configPath = fixture.repoRoot.resolve(".skill-bill/config.yaml")
     val userEdited = "spec_type: linear\ncode_review_parallel_agent: claude\n"
     Files.writeString(configPath, userEdited)
 
-    val second = InstallOperations.applyInstall(plan)
+    val second = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, second.status)
     assertEquals(userEdited, Files.readString(configPath), "re-install must not clobber a user-edited config")
@@ -63,9 +62,9 @@ class InstallApplyRepoLocalConfigTest : InstallApplyTestSupport() {
     Files.createDirectories(fixture.home.resolve(".codex"))
     val gitignorePath = fixture.repoRoot.resolve(".gitignore")
     Files.writeString(gitignorePath, "build/\n*.log\n")
-    val plan = InstallOperations.planInstall(fixture.request(agents = setOf(InstallAgent.CODEX)))
+    val plan = planInstallForTest(fixture.request(agents = setOf(InstallAgent.CODEX)))
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     val gitignoreContent = Files.readString(gitignorePath)

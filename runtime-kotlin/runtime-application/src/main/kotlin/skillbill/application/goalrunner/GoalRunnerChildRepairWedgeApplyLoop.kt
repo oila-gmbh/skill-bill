@@ -174,7 +174,12 @@ fun unreachableReviewFailedSha(wedgeClass: GoalRunnerWedgeClass, review: GoalSub
   when (wedgeClass) {
     GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE -> review.reviewBaseSha
     GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE -> review.remediationBaseSha
-    else -> null
+    GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE,
+    GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
+    GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION,
+    GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME,
+    GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
+    -> null
   }
 
 internal data class UnreachableReviewRepairLookup(
@@ -222,7 +227,12 @@ internal fun healedUnreachableReviewState(
     baselineUntrackedPaths = context.baselineUntrackedPaths,
   )
   GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE -> context.review.copy(remediationBaseSha = context.replacement)
-  else -> null
+  GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE,
+  GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
+  GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION,
+  GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME,
+  GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
+  -> null
 }
 
 internal fun applyUnreachableReviewRepairToState(

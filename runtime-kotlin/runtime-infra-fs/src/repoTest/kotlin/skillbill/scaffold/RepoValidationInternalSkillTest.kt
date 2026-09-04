@@ -1,5 +1,5 @@
 package skillbill.scaffold
-
+import skillbill.nativeagent.testNativeAgentCompositionContext
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import java.nio.file.Files
 import kotlin.test.Test
@@ -12,7 +12,7 @@ class RepoValidationInternalSkillTest {
     createRepoValidationSkillFixture(repoRoot)
     seedInternalSkill(repoRoot, "bill-feature-helper", "bill-featur")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any { it.contains("not a discovered skill") && it.contains("bill-feature-helper") },
@@ -26,7 +26,7 @@ class RepoValidationInternalSkillTest {
     createRepoValidationSkillFixture(repoRoot)
     seedInternalSkill(repoRoot, "bill-feature-helper", "bill-feature-helper")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any { it.contains("skill itself") && it.contains("bill-feature-helper") },
@@ -42,7 +42,7 @@ class RepoValidationInternalSkillTest {
     seedInternalSkill(repoRoot, "bill-feature", "bill-other")
     seedInternalSkill(repoRoot, "bill-feature-helper", "bill-feature")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any { it.contains("chained internal-for") && it.contains("bill-feature") },
@@ -61,7 +61,7 @@ class RepoValidationInternalSkillTest {
       "authored collision\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any { it.contains("collides") && it.contains("bill-feature-helper.md") },
@@ -86,7 +86,7 @@ class RepoValidationInternalSkillTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     val readmeCatalogIssues = report.issues.filter { it.contains("README.md catalog is missing skills") }
     val detail = readmeCatalogIssues.joinToString("\n")

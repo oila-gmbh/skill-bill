@@ -1,5 +1,6 @@
 package skillbill.scaffold.runtime
 
+import skillbill.nativeagent.composition.NativeAgentCompositionContext
 import skillbill.nativeagent.rendering.discoverRepoNativeAgentSourceEntries
 import skillbill.nativeagent.validation.validateRepoNativeAgents
 import skillbill.scaffold.pointer.validateGeneratedArtifactGuard
@@ -15,7 +16,11 @@ internal data class RepoValidationCollected(
   val nativeAgentCount: Int,
 )
 
-internal fun collectRepoValidationIssues(root: Path): RepoValidationCollected {
+internal fun collectRepoValidationIssues(
+  root: Path,
+  nativeAgentCompositionContext: NativeAgentCompositionContext,
+  plannedNativeAgentWorkerIssues: (Path) -> List<String> = { _ -> emptyList() },
+): RepoValidationCollected {
   val issues = mutableListOf<String>()
   val skillFiles = discoverSkillFiles(root, issues)
   val platformSkillFiles = discoverPlatformPackSkillFiles(root, issues)
@@ -48,7 +53,8 @@ internal fun collectRepoValidationIssues(root: Path): RepoValidationCollected {
   validateNoInlineTelemetryContractDrift(root, issues)
   validateSpecialistContractParity(root, issues)
   validatePluginManifest(root.resolve(".claude-plugin/plugin.json"), issues)
-  issues += validateRepoNativeAgents(root).issues
+  issues += validateRepoNativeAgents(root, nativeAgentCompositionContext).issues
+  issues += plannedNativeAgentWorkerIssues(root)
   issues += validatePointerTargetParityIssues(root)
   issues += validateGovernedSkillDrift(root).issues
   issues += validateGeneratedArtifactGuard(root).issues

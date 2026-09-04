@@ -32,7 +32,7 @@ internal fun DefaultGoalPlanningSweep.producePlan(args: ProducePlanArgs): GoalPl
   val provenance = args.provenance
   val preplanPayload = args.preplanPayload
   val resolvedBodies = args.resolvedBodies
-  val resolvedSpecPath = resolvedSubSpecPath(shared.repoRoot, subtask.specPath)
+  val resolvedSpecPath = resolvedSubSpecPath(shared.repoRoot, subtask.specPath, repositoryEnclosingRootPort)
     ?: return stopped(shared, subtask.id, unresolvedSpecReason(subtask), GoalPlanningSweepConstants.PHASE_PLAN)
   val runInvariants = runCatching { invariantsSource.read(resolvedSpecPath) }.getOrElse { error ->
     return stopped(shared, subtask.id, invariantReadReason(subtask, error), GoalPlanningSweepConstants.PHASE_PLAN)
@@ -87,7 +87,8 @@ internal fun DefaultGoalPlanningSweep.descriptor(
   subtask: DecompositionSubtask,
   order: Int,
 ): GovernedGoalSubtaskDescriptor {
-  val path = resolvedSubSpecPath(shared.repoRoot, subtask.specPath) ?: error(unresolvedSpecReason(subtask))
+  val path = resolvedSubSpecPath(shared.repoRoot, subtask.specPath, repositoryEnclosingRootPort)
+    ?: error(unresolvedSpecReason(subtask))
   val governedPath = shared.repoRoot.relativize(path).joinToString("/")
   val identity = GoalPlanningIdentity(shared.parentWorkflowId, shared.normalizedIssueKey, shared.repositoryIdentity)
   val recovered = checkpoint.findStoredSubtaskPlan(

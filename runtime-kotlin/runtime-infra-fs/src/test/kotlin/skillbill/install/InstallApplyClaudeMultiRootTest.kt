@@ -83,8 +83,8 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     val defaultRoot = fixture.home.resolve(".claude").also { Files.createDirectories(it) }
     val workRoot = markClaudeProfile(fixture.home, ".claude-work")
 
-    val plan = InstallOperations.planInstall(claudeMultiRootRequest(fixture))
-    val result = InstallOperations.applyInstall(plan)
+    val plan = planInstallForTest(claudeMultiRootRequest(fixture))
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(result.failures.isEmpty(), "unexpected failures: ${result.failures}")
@@ -154,8 +154,8 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     val defaultRoot = fixture.home.resolve(".claude").also { Files.createDirectories(it) }
     val workRoot = markClaudeProfile(fixture.home, ".claude-work")
 
-    val plan = InstallOperations.planInstall(claudeMultiRootRequest(fixture))
-    val result = InstallOperations.applyInstall(plan)
+    val plan = planInstallForTest(claudeMultiRootRequest(fixture))
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(result.failures.isEmpty(), "unexpected failures: ${result.failures}")
@@ -190,7 +190,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     val fixture = setupApplyFixture()
     val defaultRoot = fixture.home.resolve(".claude").also { Files.createDirectories(it) }
 
-    val firstResult = InstallOperations.applyInstall(InstallOperations.planInstall(claudeMultiRootRequest(fixture)))
+    val firstResult = applyInstallForTest(planInstallForTest(claudeMultiRootRequest(fixture)))
     assertEquals(InstallApplyStatus.SUCCESS, firstResult.status)
 
     val defaultSkills = defaultRoot.resolve("skills")
@@ -200,7 +200,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     val workRoot = markClaudeProfile(fixture.home, ".claude-work")
     val workSkills = workRoot.resolve("skills")
 
-    val secondResult = InstallOperations.applyInstall(InstallOperations.planInstall(claudeMultiRootRequest(fixture)))
+    val secondResult = applyInstallForTest(planInstallForTest(claudeMultiRootRequest(fixture)))
     assertEquals(InstallApplyStatus.SUCCESS, secondResult.status)
     assertTrue(secondResult.failures.isEmpty(), "unexpected failures: ${secondResult.failures}")
 
@@ -229,7 +229,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     Files.createDirectories(fixture.home.resolve(".claude"))
     val workRoot = markClaudeProfile(fixture.home, ".claude-work")
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       claudeMultiRootRequest(fixture).copy(
         platformPackSelection = PlatformPackSelection(
           mode = SELECTED,
@@ -237,7 +237,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
         ),
       ),
     )
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     val linkedClaudeAgentDirs = result.nativeAgents

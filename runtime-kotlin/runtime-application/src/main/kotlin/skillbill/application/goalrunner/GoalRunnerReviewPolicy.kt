@@ -4,14 +4,12 @@ import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.ports.repository.RepositoryEnclosingRootPort
+import skillbill.review.context.model.CodeReviewExecutionMode
 import java.nio.file.Path
 
-fun goalRepositoryIdentity(repoRoot: Path): String {
-  val canonical = runCatching { repoRoot.toRealPath() }
-    .getOrElse { repoRoot.toAbsolutePath().normalize() }
-  return "repo-root-realpath-v1:$canonical"
-}
+fun goalRepositoryIdentity(repoRoot: Path, repositoryEnclosingRootPort: RepositoryEnclosingRootPort): String =
+  repositoryEnclosingRootPort.repositoryIdentity(repoRoot)
 
 fun GoalRunnerManifestStore.effectiveAgentAddonSelection(
   parentWorkflowId: String,

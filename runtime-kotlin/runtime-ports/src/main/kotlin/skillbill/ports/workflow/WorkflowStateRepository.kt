@@ -1,13 +1,13 @@
 package skillbill.ports.workflow
 
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
-import skillbill.ports.goalrunner.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
+import skillbill.ports.workflow.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.workflow.model.WorkflowStateRecord
 
 /**

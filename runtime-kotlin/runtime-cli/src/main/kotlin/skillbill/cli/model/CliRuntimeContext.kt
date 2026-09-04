@@ -7,8 +7,8 @@ import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.system.HostPlatformPort
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -20,7 +20,7 @@ data class CliRuntimeContext(
   val environment: Map<String, String> = EnvironmentContext.UnspecifiedEnvironment,
   val externalCommandRunner: ExternalCommandRunner = ProcessExternalCommandRunner,
   val userHome: Path = EnvironmentContext.UnspecifiedUserHome,
-  val requester: HttpRequester = UnconfiguredHttpRequester,
+  val requester: RemoteTransportPort = UnconfiguredRemoteTransportPort,
   val workflowGitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   val agentRunLauncher: AgentRunLauncher? = null,
   val goalPullRequestPort: GoalPullRequestPort? = null,
@@ -38,7 +38,7 @@ data class CliRuntimeContext(
       stdinText = stdinText,
       environment = environment,
       userHome = userHome,
-      repositoryRoot = repositoryRoot?.let(::canonicalRepositoryRoot) ?: EnvironmentContext.UnspecifiedRepositoryRoot,
+      repositoryRoot = repositoryRoot ?: EnvironmentContext.UnspecifiedRepositoryRoot,
       requester = requester,
       workflowGitOperations = workflowGitOperations,
       agentRunLauncher = agentRunLauncher,
@@ -48,13 +48,4 @@ data class CliRuntimeContext(
       runtimeTimingPort = runtimeTimingPort,
       hostPlatformPort = hostPlatformPort,
     )
-}
-
-internal fun canonicalRepositoryRoot(start: Path): Path {
-  val resolvedStart = start.toAbsolutePath().normalize().toRealPath()
-  var candidate = resolvedStart
-  while (!candidate.resolve(".git").toFile().exists()) {
-    candidate = candidate.parent ?: return resolvedStart
-  }
-  return candidate.toRealPath()
 }

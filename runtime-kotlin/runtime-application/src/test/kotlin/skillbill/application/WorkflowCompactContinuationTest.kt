@@ -9,7 +9,7 @@ import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
@@ -189,7 +189,7 @@ private fun newService(): WorkflowService = WorkflowService(
   WorkflowServiceDeps(
     database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
     gitOperations = NoopWorkflowGitOperations,
-    decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+    decompositionManifestStore = UnavailableDecompositionManifestStore,
     workflowSnapshotValidator = testWorkflowSnapshotValidator,
     decompositionManifestValidator = testDecompositionManifestValidator,
     decompositionManifestWriter = testDecompositionManifestWriter,

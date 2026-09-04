@@ -4,8 +4,8 @@ import skillbill.cli.kernel.drainTelemetryOnCompletion
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
@@ -50,7 +50,7 @@ class CliTelemetryDrainAbandonmentTest {
   private fun drainContext(
     home: Path,
     dbPath: Path,
-    requester: HttpRequester,
+    requester: RemoteTransportPort,
     stdout: StringBuilder,
     stderr: StringBuilder,
   ): CliRuntimeContext = CliRuntimeContext(
@@ -62,12 +62,17 @@ class CliTelemetryDrainAbandonmentTest {
   )
 }
 
-private class BlockingTelemetryRequester : HttpRequester {
+private class BlockingTelemetryRequester : RemoteTransportPort {
   private val gate = CountDownLatch(1)
 
-  override fun execute(method: String, url: String, bodyJson: String?, headers: Map<String, String>): HttpResponse {
+  override fun execute(
+    method: String,
+    url: String,
+    bodyJson: String?,
+    headers: Map<String, String>,
+  ): RemoteTransportResponse {
     gate.await(BLOCK_CEILING_SECONDS, TimeUnit.SECONDS)
-    return HttpResponse(statusCode = 200, body = "{}")
+    return RemoteTransportResponse(statusCode = 200, body = "{}")
   }
 
   fun release() = gate.countDown()

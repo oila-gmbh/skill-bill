@@ -7,20 +7,20 @@ import com.github.ajalt.clikt.parameters.options.option
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.scaffold.InstallAgentService
-import skillbill.application.scaffold.ScaffoldCatalogService
-import skillbill.application.scaffold.ScaffoldService
-import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.model.CliRunInputs
+import skillbill.ports.scaffold.ScaffoldCatalogGateway
+import skillbill.ports.scaffold.ScaffoldGateway
+import skillbill.ports.scaffold.UnsupportedScaffoldGateway
 import java.time.Clock
 
 @Inject
 data class ScaffoldNewDependencies(
   val clock: Clock,
-  val scaffoldService: ScaffoldService,
-  val scaffoldCatalogService: ScaffoldCatalogService,
+  val scaffoldGateway: ScaffoldGateway,
+  val scaffoldCatalogGateway: ScaffoldCatalogGateway,
   val installAgentService: InstallAgentService,
   val externalAddonOverlayService: ExternalAddonOverlayService,
 )
@@ -54,7 +54,7 @@ class NewSkillCommand(
         state = state,
         inputs = inputs,
         clock = deps.clock,
-        scaffoldService = deps.scaffoldService,
+        scaffoldGateway = deps.scaffoldGateway,
         externalAddonOverlayService = deps.externalAddonOverlayService,
       )
     state.result =
@@ -64,7 +64,7 @@ class NewSkillCommand(
         runNativeAssistedScaffoldWizard(
           AssistedScaffoldWizardArgs(
             run = runArgs,
-            scaffoldCatalogService = deps.scaffoldCatalogService,
+            scaffoldCatalogGateway = deps.scaffoldCatalogGateway,
             installAgentService = deps.installAgentService,
           ),
         )
@@ -72,7 +72,7 @@ class NewSkillCommand(
         runNativeScaffoldWizard(
           ScaffoldWizardArgs(
             run = runArgs,
-            scaffoldCatalogService = deps.scaffoldCatalogService,
+            scaffoldCatalogGateway = deps.scaffoldCatalogGateway,
           ),
         )
       } else {
@@ -112,7 +112,7 @@ class NewCommand(
         state = state,
         inputs = inputs,
         clock = deps.clock,
-        scaffoldService = deps.scaffoldService,
+        scaffoldGateway = deps.scaffoldGateway,
         externalAddonOverlayService = deps.externalAddonOverlayService,
       )
     state.result =
@@ -122,7 +122,7 @@ class NewCommand(
         runNativeAssistedScaffoldWizard(
           AssistedScaffoldWizardArgs(
             run = runArgs,
-            scaffoldCatalogService = deps.scaffoldCatalogService,
+            scaffoldCatalogGateway = deps.scaffoldCatalogGateway,
             installAgentService = deps.installAgentService,
           ),
         )
@@ -130,7 +130,7 @@ class NewCommand(
         runNativeScaffoldWizard(
           ScaffoldWizardArgs(
             run = runArgs,
-            scaffoldCatalogService = deps.scaffoldCatalogService,
+            scaffoldCatalogGateway = deps.scaffoldCatalogGateway,
           ),
         )
       } else {
@@ -146,8 +146,8 @@ class CreateAndFillCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
   private val clock: Clock,
-  private val scaffoldService: ScaffoldService,
-  private val unsupportedScaffoldService: UnsupportedScaffoldService,
+  private val scaffoldGateway: ScaffoldGateway,
+  private val unsupportedScaffoldGateway: UnsupportedScaffoldGateway,
 ) : DocumentedCliCommand(
   "create-and-fill",
   "Scaffold one governed skill, then immediately author content.md and validate it.",
@@ -185,8 +185,8 @@ class CreateAndFillCommand(
           state = state,
           inputs = inputs,
           clock = clock,
-          scaffoldService = scaffoldService,
-          unsupportedScaffoldService = unsupportedScaffoldService,
+          scaffoldGateway = scaffoldGateway,
+          unsupportedScaffoldGateway = unsupportedScaffoldGateway,
         ),
       )
   }
@@ -197,8 +197,8 @@ class NewAddonCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
   private val clock: Clock,
-  private val scaffoldService: ScaffoldService,
-  private val unsupportedScaffoldService: UnsupportedScaffoldService,
+  private val scaffoldGateway: ScaffoldGateway,
+  private val unsupportedScaffoldGateway: UnsupportedScaffoldGateway,
   private val externalAddonOverlayService: ExternalAddonOverlayService,
 ) : DocumentedCliCommand(
   "new-addon",
@@ -233,7 +233,7 @@ class NewAddonCommand(
     state.result =
       if (interactive) {
         unsupportedNativeScaffoldResult(
-          unsupportedScaffoldService.retiredUnsupportedMessage(
+          unsupportedScaffoldGateway.retiredUnsupportedMessage(
             "new-addon --interactive",
             "skill-bill new-addon --platform <platform> --name <name>",
             editor = false,
@@ -261,7 +261,7 @@ class NewAddonCommand(
             state = state,
             inputs = inputs,
             clock = clock,
-            scaffoldService = scaffoldService,
+            scaffoldGateway = scaffoldGateway,
             externalAddonOverlayService = externalAddonOverlayService,
           ),
         )

@@ -6,9 +6,10 @@ import skillbill.application.telemetry.model.FeatureTaskRuntimeStartedRequest
 import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.model.EnvironmentContext
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryConfigStore
@@ -299,6 +300,7 @@ private class FakeTelemetryDatabaseSessionFactory(
       get() = error("Unexpected workflowStates")
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 

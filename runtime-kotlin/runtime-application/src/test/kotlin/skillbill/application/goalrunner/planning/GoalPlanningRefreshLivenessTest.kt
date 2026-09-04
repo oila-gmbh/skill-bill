@@ -8,15 +8,14 @@ import skillbill.application.manifest
 import skillbill.application.testHarnessClock
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -24,6 +23,8 @@ import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
@@ -195,6 +196,7 @@ private class SeedableRefreshLivenessDatabase(
     override val workflowStates: WorkflowStateRepository = repository
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 

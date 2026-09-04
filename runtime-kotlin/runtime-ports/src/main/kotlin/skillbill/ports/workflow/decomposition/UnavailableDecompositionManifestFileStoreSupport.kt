@@ -1,5 +1,5 @@
 package skillbill.ports.workflow.decomposition
 
-internal fun unavailableDecompositionManifestFileStore(): Nothing {
+internal fun unavailableDecompositionManifestStore(): Nothing {
   error("Decomposition manifest file store is not configured for this runtime.")
 }

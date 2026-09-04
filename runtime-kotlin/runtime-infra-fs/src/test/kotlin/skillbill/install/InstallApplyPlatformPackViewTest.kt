@@ -2,7 +2,6 @@ package skillbill.install
 
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyStatus
-import skillbill.install.runtime.InstallOperations
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -16,14 +15,14 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
   fun `apply materializes selected platform pack manifests under each agent skill root`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         selectedPlatforms = setOf("kotlin"),
         agents = setOf(InstallAgent.CODEX),
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     val agentRoot = fixture.home.resolve("agent-skill-targets/codex")
@@ -48,14 +47,14 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
     Files.writeString(qualityCheckDir.resolve("notes.txt"), "private implementation notes")
     Files.createDirectories(fixture.home.resolve(".codex"))
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         selectedPlatforms = setOf("kotlin"),
         agents = setOf(InstallAgent.CODEX),
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     val packQualityCheck = fixture.home
@@ -82,14 +81,14 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
     }
     Files.createDirectories(fixture.home.resolve(".codex"))
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         selectedPlatforms = setOf("ios", "python"),
         agents = setOf(InstallAgent.CODEX),
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     listOf("ios", "python").forEach { slug ->
@@ -106,14 +105,14 @@ class InstallApplyPlatformPackViewTest : InstallApplyTestSupport() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         selectedPlatforms = setOf("kotlin"),
         agents = setOf(InstallAgent.CODEX),
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     val agentRoot = fixture.home.resolve("agent-skill-targets/codex")

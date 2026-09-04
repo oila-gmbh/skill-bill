@@ -2,7 +2,6 @@ package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.goalrunner.persistence.STALENESS_EVIDENCE_WINDOW
 import skillbill.ports.goalrunner.persistence.authoritativeOutcomesBySubtask
 import skillbill.ports.goalrunner.persistence.declaredProgressEventFrom
@@ -14,6 +13,7 @@ import skillbill.ports.goalrunner.persistence.parseInstantOrNull
 import skillbill.ports.goalrunner.persistence.staleRunningReason
 import skillbill.ports.goalrunner.persistence.terminalOutcomeFor
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations

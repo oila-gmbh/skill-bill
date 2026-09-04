@@ -2,7 +2,6 @@ package skillbill.install
 
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyStatus
-import skillbill.install.runtime.InstallOperations
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.test.Test
@@ -21,19 +20,19 @@ class InternalSkillCompanionInstallApplyTest : InstallApplyTestSupport() {
         "\nWhen the baseline is insufficient, read [review-guidelines.md](review-guidelines.md).\n",
     )
     Files.writeString(internalSkillDir.resolve("review-guidelines.md"), "governed review rubric\n")
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         selectedPlatforms = setOf("kotlin"),
         agents = setOf(InstallAgent.CODEX),
       ),
     )
-    val first = InstallOperations.applyInstall(plan)
+    val first = applyInstallForTest(plan)
     val parentStaging = first.skills.single { skill -> skill.skillName == "bill-code-review" }.staging.stagingDir
     val companion = assertNotNull(parentStaging).resolve("review-guidelines.md")
     assertTrue(Files.isRegularFile(companion, LinkOption.NOFOLLOW_LINKS))
     Files.delete(companion)
 
-    val second = InstallOperations.applyInstall(plan)
+    val second = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, second.status)
     assertTrue(Files.isRegularFile(companion, LinkOption.NOFOLLOW_LINKS))
@@ -50,13 +49,13 @@ class InternalSkillCompanionInstallApplyTest : InstallApplyTestSupport() {
         "\nWhen the baseline is insufficient, read [review-guidelines.md](review-guidelines.md).\n",
     )
     Files.writeString(internalSkillDir.resolve("review-guidelines.md"), "governed review rubric\n")
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
     )
-    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(plan).status)
+    assertEquals(InstallApplyStatus.SUCCESS, applyInstallForTest(plan).status)
     Files.writeString(fixture.repoRoot.resolve("skills/bill-code-review/review-guidelines.md"), "parent content\n")
 
-    val second = InstallOperations.applyInstall(plan)
+    val second = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.FAILURE, second.status)
     assertEquals(

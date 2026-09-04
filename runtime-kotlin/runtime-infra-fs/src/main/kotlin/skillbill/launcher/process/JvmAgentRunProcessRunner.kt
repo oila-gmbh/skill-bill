@@ -7,11 +7,14 @@ import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.workflow.goal.model.GoalProgressOutcome
 import java.io.IOException
 import java.io.InputStream
+import java.time.Clock
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 @Inject
-class JvmAgentRunProcessRunner : AgentRunProcessRunner {
+class JvmAgentRunProcessRunner(
+  private val clock: Clock,
+) : AgentRunProcessRunner {
   override fun run(request: AgentRunProcessRequest): AgentRunProcessResult {
     request.reviewEvidenceEndpoint?.let(liveEndpoints::add)
     return try {
@@ -229,7 +232,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     request: AgentRunProcessRequest,
     outputTracker: OutputObservationTracker,
     lifecycleEmitter: ProcessLifecycleEmitter,
-  ): ProcessWait = ProcessWaitLoop(process, request, outputTracker, lifecycleEmitter).wait()
+  ): ProcessWait = ProcessWaitLoop(process, request, outputTracker, lifecycleEmitter, clock).wait()
 
   private fun spawnFailure(error: Exception): AgentRunProcessResult = AgentRunProcessResult(
     exitStatus = null,

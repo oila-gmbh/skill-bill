@@ -13,6 +13,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME
 import skillbill.ports.workflow.model.WorkflowStateRecord
+import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -110,6 +111,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
       override fun currentProcess() = FeatureTaskRuntimeProcessIdentity("h", "b", 1, "birth")
       override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership): FeatureTaskRuntimeProcessInspection =
         error("probe blew up")
+      override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
       override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
       override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
       override fun startHeartbeat(
@@ -173,6 +175,7 @@ class FeatureTaskRuntimeCrashReconcilerTest {
   ): FeatureTaskRuntimeWorkerSupervisor = object : FeatureTaskRuntimeWorkerSupervisor {
     override fun currentProcess() = FeatureTaskRuntimeProcessIdentity("h", "b", 1, "birth")
     override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = inspection
+    override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
     override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
     override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
     override fun startHeartbeat(

@@ -5,12 +5,67 @@ This file records architectural and implementation decisions that span the
 not the implementation detail.
 
 
+## [2026-09-03] SKILL-231 subtask 3 tasks 9–11: port placement, repository root seam, intra-module role-port bindings
+Context: SKILL-231 subtask 3 tasks 9–11 relocate misplaced port interfaces, empty ambient-clock and package-cycle baselines where reachable, route `toRealPath` through `RepositoryEnclosingRootPort`, and record binding policy.
+Decision: `IdeStatusValidator` and `SkillRemoveFileSystem` live in `runtime-ports` (`skillbill.ports.idestatus`, `skillbill.ports.skillremove`). `SkillRemove` orchestration moved to `runtime-application` so `runtime-domain` does not depend on `runtime-ports`. `RepositoryEnclosingRootPort` owns `canonicalPath`, `optionalRealPath`, and `repositoryIdentity`; `CanonicalRepositoryRoot` is the sole production adapter. Intra-module role-port binding types (`*RolePorts`, `*RolePortBindings`, `Default*Port` adapters) stay in `runtime-application` — they are composition helpers, not cross-module ports.
+Reason: Domain must not import ports; filesystem canonicalization belongs behind one repository-root seam; application-local injectable groupings are not misplaced port surfaces.
+Alternatives considered: Keep `SkillRemoveFileSystem` in domain (rejected: domain→ports edge). Call `Path.toRealPath()` from application services (rejected: task 11). Move role-port bindings to `runtime-ports` (rejected: no second consumer; would blur application composition).
+Revisit when: a second module needs the same role-port grouping, or repository-root policy splits across multiple adapters.
+
+Context: SKILL-231 subtask 3 tasks 6–8 collapse composite ports, rename technology-leaking port names to capability names, and record genuinely open wire decoders.
+Decision: Rename `UninstallFileSystemGateway` → `UninstallPathsPort`, `HttpRequester` → `RemoteTransportPort`, `HttpResponse` → `RemoteTransportResponse`, and the decomposition-manifest ports to `DecompositionManifestStore`, `DecompositionManifestPersistencePort`, and `DecompositionManifestDiscoveryPort`. Adapter class names (`FileSystemUninstallFileSystemGateway`, `FileSystemDecompositionManifestFileStore`, `JdkHttpRequester`) stay unchanged. The `*GitOperations` family is explicitly excluded from this rename set — git is the workflow capability, not an implementation leak.
+Reason: Port names describe what the inside needs; adapter names describe how the outside provides it. Git operations are domain vocabulary for workflow finalisation, not HTTP/SQLite-style adapter leakage.
+Alternatives considered: Rename `*GitOperations` for symmetry (rejected: spec non-goal; git is the capability). Rename adapters with ports (rejected: spec criterion 8 leaves adapter names alone).
+Revisit when: a second transport implementation needs a distinct capability port, or git operations split across non-git adapters.
+
+## [2026-09-03] Wire-string decoder fallbacks stay open
+Context: SKILL-231 subtask 3 task 8. Several decoders accept legacy or unknown wire values from durable artifacts and operator-produced output.
+Decision: Keep open `else` fallbacks in `GoalSubtaskReviewSummarySanitize.CompactFindingSeverity.from` (unknown severity → `OTHER`), `FeatureTaskRuntimeQualityGateSelection.fromWire` (unknown/null → `VALIDATE`), `classifyDurableChild` (unknown workflow status → `INCOMPATIBLE_TERMINAL`), and `goalContinuationTerminalStatus` (unknown status → `null`). These sets are genuinely open at the wire boundary.
+Reason: Durable artifacts and agent output can carry values written before a schema bump or outside the closed enum; failing closed would wedge recovery and status reconciliation on historical rows.
+Alternatives considered: Exhaustive decoders with typed errors (rejected: would block operator repair and self-heal paths on legacy wire values). Silent swallow without a recorded decision (rejected: SKILL-231 requires naming open sets).
+Revisit when: a schema migration retires the legacy wire values and the decoders can fail loudly on unknown input.
+
+## [2026-09-03] Load-bearing thin ports retained across SKILL-231 subtask 3 collapse
+Context: SKILL-231 subtask 3 tasks 4–5 delete pass-through application services and collapse nine thin ports whose only caller was a CLI/MCP adapter. Four of the nine cross a module boundary the DI graph needs and have more than one consumer or a non-trivial composition role.
+Decision: Keep `ExternalAddonOverlayPort`, `ExternalAddonSourceConfigPort`, `CheckedOutBranchSource`, and `GoalPlanningBoundaryBodyResolver` as named ports. Collapse the other five by deleting `RepoSourceDiscoveryGateway` (unused) and removing `ScaffoldService`, `ScaffoldCatalogService`, `UnsupportedScaffoldService`, `McpRegistrationService`, `NativeAgentInstallService`, and `RepoValidationService` so CLI/MCP resolve `ScaffoldGateway`, `ScaffoldCatalogGateway`, `UnsupportedScaffoldGateway`, `InstallMcpRegistrationPort`, `InstallNativeAgentLinkPort`, and `RepoValidationGateway` through `RuntimeComponent`.
+Reason: A port whose sole justification was a one-line application wrapper is not a boundary; ports that separate install overlay config from overlay IO, inject git branch discovery for IDE status, or isolate goal-planning body resolution across application and infra-fs remain load-bearing.
+Alternatives considered: Collapse all nine in one pass (rejected: would inline infra-fs adapters into application services or blur install/planning boundaries). Keep every gateway as an application service wrapper (rejected: the wrappers renamed nothing and added no policy).
+Revisit when: a second consumer needs the retained ports through a different composition path, or overlay/branch/body resolution moves behind a broader capability port with multiple implementations.
+
 ## [2026-09-02] Empty architecture baselines are the permanent floor
 Context: SKILL-227 subtask 3 emptied the logical-type line-ceiling and application-package-cycle baselines after god-object decomposition and cycle breaks. Subtask 1 had baselined seven cycle pairs as shrink-only.
 Decision: Keep both baselines empty. Any new ceiling offender or application-package cycle fails the guard. Do not reintroduce *Helpers*/*Extras*/*Support* files solely to stay under the per-file line ceiling — fold into the owning type or a named domain collaborator instead.
 Reason: Shrink-only measurement did its job; an empty floor is the enforceable target. Filename-suffix splits hide god objects from the logical-type ceiling without reducing complexity.
 Alternatives considered: Keep a non-empty shrink-only residual (rejected: would allow the debt to persist indefinitely). Raise the ceiling or add exemptions (rejected: defeats the guard). Permit Helpers/Extras splits when a type is near 500 lines (rejected: that is how the prior evasion landed).
 Revisit when: a measured logical type legitimately cannot be split without harming a boundary, and the alternative is an explicit named exemption with rationale — not a suffix file.
+
+## [2026-09-03] Shrink-only infra ambient-environment baselines
+Context: SKILL-231 subtask 1 records ambient-environment baselines for every module. The three `runtime-infra-*` modules legitimately read host environment variables and working-directory paths inside filesystem, HTTP, and SQLite adapters.
+Decision: `runtime-infra-fs`, `runtime-infra-http`, and `runtime-infra-sqlite` ambient-environment baselines are shrink-only ceilings, not targets that must reach zero. Reading the host environment is what an adapter does; the boundary is that a policy decision may not depend on an ambient read.
+Reason: Empty-by-rule baselines from the 2026-09-02 permanent-floor decision bind only the eight baselines that were already empty on main. Module baselines recorded in SKILL-231 are shrink-only ceilings that may only shrink.
+Alternatives considered: Force infra baselines to zero in this subtask (rejected: would require rewriting every adapter before measurement lands). Treat infra reads as permanent baseline entries with no shrink path (rejected: adapter refactors should still be able to narrow ambient coupling over time).
+Revisit when: a refactor removes the last ambient read from an infra module and the recorder empties that module's baseline.
+
+## [2026-09-03] Single runtime-core composition ambient seam
+Context: SKILL-231 widens ambient-environment measurement to every module. `runtime-core` composition reads ambient input at `RuntimeBootstrapBindings.runtimeContext`.
+Decision: That seam is the single named composition entry point for ambient input. It is documented here rather than treated as a permanent baseline entry to shrink away.
+Reason: Empty-by-rule baselines from the 2026-09-02 permanent-floor decision bind only the eight baselines that were already empty on main. Module baselines recorded in SKILL-231 are shrink-only ceilings; the composition seam is an intentional boundary, not debt to baseline away.
+Alternatives considered: Add the seam to the ambient-environment baseline permanently (rejected: would block the one legitimate composition read). Exempt `runtime-core` from ambient-environment scanning (rejected: would leave the module unmeasured).
+Revisit when: composition can receive ambient input only through an injected port with no direct `System.getenv` / `Path.of("")` call sites outside tests.
+
+## [2026-09-03] CLI/MCP presentation-layer duplication is intentional at the boundary
+Context: SKILL-231 subtask 2. `runtime-cli` and `runtime-mcp` each carry a parallel presentation stack shaping the same application services into different operator surfaces.
+Decision: Keep fourteen mirrored pairs side by side. Format-specific pairs (two payload dialects a hexagonal boundary is expected to produce): `Component` (`CliComponent` / `McpComponent`), `Runtime` (`CliRuntime` / `McpRuntime`), `WorkflowContinueMaps` (`WorkflowContinueCliMaps` / `WorkflowContinueMcpMaps`), `WorkflowContinueBranchMapsCore`, `WorkflowContinueBranchMapsDecomposition`, `WorkflowGoalObservabilityMapping`, `WorkflowResultMappers`, `ReviewResultMappers`, `TelemetryResultMappers`, `LearningPayloads`, `Main`. Copy pairs (same shaping, no format reason — merge is a separate feature): `ScaffoldCommandRequestParser`, `ScaffoldCommandRequestParseHelpers`, `ScaffoldCommandRequestBaselineLayerParser`.
+Reason: CLI argv/stdout and MCP JSON-RPC/maps are different presentation dialects; several continuation and result mappers exist only to translate application outcomes into those dialects. The scaffold parsers duplicate the same raw-map → `ScaffoldCommandRequest` decode at both entry adapters instead of sharing a module.
+Alternatives considered: Extract a shared presentation module in this subtask (rejected: non-goal; SKILL-231 records the overlap only). Merge scaffold parsers without a shared module boundary (rejected: would blur entry-adapter ownership).
+Revisit when: a follow-up feature extracts shared scaffold parsing or a third entry adapter needs the same decode.
+
+## [2026-09-03] runtime-mcp process-boundary exemption for ambient environment reads
+Context: SKILL-231 subtask 2. `runtime-mcp` must not read `System.getenv` or `System.getProperty` outside the process entry. `Main.kt` reads the environment once to choose bridge versus stdio server and passes that map downstream.
+Decision: `runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt` is the one place the MCP process may read its own environment. The exemption is a named entry on `PrincipleEnforcementInventory.ambientEnvironmentExemptions`, not a baseline row; the `runtime-mcp` ambient-environment baseline stays empty behind it. The repository-root seam in `RuntimeBootstrapBindings.runtimeContext` now canonicalizes explicitly supplied roots through `RepositoryEnclosingRootPort` as well as unspecified ones.
+Reason: A process boundary read is intentional; recording it in the baseline would treat legitimate entry behavior as shrinkable debt. Empty baseline equality still bans every other ambient read in `runtime-mcp` main source.
+Alternatives considered: Build `RuntimeComponent` in `Main` to resolve environment (rejected: pays component construction and filesystem walk in a worker subprocess that needs neither). Leave `GovernedReviewEvidenceBridge.run` with a `System.getenv()` default (rejected: re-reads behind the injected map).
+Revisit when: MCP launch receives environment through an injected port with no `Main.kt` read, or a second legitimate process-boundary site appears.
 
 ## [2026-08-31] RuntimeSingleton lives in skillbill.application.runtime
 Context: SKILL-227 subtask 1 needed a kotlin-inject scope for services that hold caches, connections, or leases. Placing `@RuntimeSingleton` under `skillbill.di` failed `ImplementationOwnershipArchitectureTest`.
@@ -1296,7 +1351,7 @@ artifact without access to `../orchestration/contracts/`.
 
 **Encode-seam relocation rationale.** YAML serialization for the decomposition
 manifest moved out of `runtime-application` (`DecompositionManifestFileWrites`)
-behind a new `DecompositionManifestFileStore.encodeManifestYaml(wireMap)` port
+behind a new `DecompositionManifestStore.encodeManifestYaml(wireMap)` port
 method, implemented by the infra-fs `FileSystemDecompositionManifestFileStore`
 with the same `YAMLMapper()` construction (byte-identical output). This mirrors
 the subtask-1 decode seam (`DecompositionManifestValidator`): the application

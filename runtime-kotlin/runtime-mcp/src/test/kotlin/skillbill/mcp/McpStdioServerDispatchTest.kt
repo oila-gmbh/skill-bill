@@ -3,8 +3,8 @@ package skillbill.mcp
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
 import skillbill.contracts.JsonSupport
-import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpStdioServer
+import skillbill.mcp.shared.McpRuntimeContext
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains

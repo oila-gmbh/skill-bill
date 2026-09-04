@@ -13,9 +13,9 @@ import skillbill.contracts.JsonSupport
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX

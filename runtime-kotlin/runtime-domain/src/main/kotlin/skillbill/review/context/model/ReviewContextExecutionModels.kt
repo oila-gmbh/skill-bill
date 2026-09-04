@@ -1,8 +1,7 @@
 package skillbill.review.context.model
 
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
-import skillbill.workflow.goal.model.CodeReviewExecutionMode.DELEGATED
-import skillbill.workflow.goal.model.CodeReviewExecutionMode.INLINE
+import skillbill.review.context.model.CodeReviewExecutionMode.DELEGATED
+import skillbill.review.context.model.CodeReviewExecutionMode.INLINE
 
 enum class ResolvedReviewExecutionMode { INLINE, DELEGATED }
 

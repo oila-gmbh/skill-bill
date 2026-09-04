@@ -2,7 +2,7 @@ package skillbill.application.workflow
 
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.JsonSupport
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowStateSnapshot

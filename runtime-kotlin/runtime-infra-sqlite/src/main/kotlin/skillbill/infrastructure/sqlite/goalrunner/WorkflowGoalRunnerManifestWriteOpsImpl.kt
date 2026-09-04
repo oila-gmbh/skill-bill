@@ -1,6 +1,5 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestWriteOps
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerCompletionPersistenceResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState

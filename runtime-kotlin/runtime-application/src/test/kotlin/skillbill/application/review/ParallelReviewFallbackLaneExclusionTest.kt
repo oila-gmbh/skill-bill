@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.plan.ReviewCrossRootLaneReconciliation
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
@@ -7,7 +8,6 @@ import skillbill.review.plan.model.ReviewRootLanes
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

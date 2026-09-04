@@ -3,6 +3,7 @@ package skillbill.goalplanning
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.verification.model.GoalVerificationContext
+import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -43,7 +44,7 @@ class FileSystemGoalPlanningVerificationDiscoveryCapTest {
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$headings\n")
 
-    val discovery = FileSystemGoalPlanningContextDiscovery().discoverForFindingPaths(
+    val discovery = FileSystemGoalPlanningContextDiscovery(JvmSystemClock).discoverForFindingPaths(
       repo,
       listOf("modules/a/src/Main.kt"),
     )

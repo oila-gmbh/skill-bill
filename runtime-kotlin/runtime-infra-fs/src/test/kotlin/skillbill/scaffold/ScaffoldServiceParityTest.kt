@@ -7,6 +7,7 @@ import skillbill.error.RetiredScaffoldKindError
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.nativeagent.testNativeAgentCompositionContext
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.authoring.renderAuthoringTarget
 import skillbill.scaffold.authoring.renderWrapper
@@ -876,6 +877,7 @@ private fun assertDistinctProviderAgents(repo: Path) {
       selectedPlatforms = listOf("java"),
       provider = NativeAgentProvider.Codex,
       home = Path.of(System.getProperty("user.home")),
+      compositionContext = testNativeAgentCompositionContext(repo),
     ),
   )
   val generatedArchitecture = Files.readString(

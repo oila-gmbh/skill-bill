@@ -34,7 +34,7 @@ internal fun executeScaffold(
       else -> stageSingleScaffold(txn, plan, repoRoot)
     }
   adapters.validateScaffold(plan, repoRoot)
-  val (installTargets, installNotes) = performInstall(txn, plan, repoRoot)
+  val (installTargets, installNotes) = performInstall(txn, plan, repoRoot, adapters)
   return execution.copy(
     installTargets = installTargets,
     notes = execution.notes + installNotes + subagentEmissionNotes(plan),

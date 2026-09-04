@@ -1,6 +1,6 @@
 package skillbill.application.specsource
 
-import skillbill.application.TestDecompositionManifestFileStore
+import skillbill.application.TestDecompositionManifestStore
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.writeDecompositionManifestText
@@ -16,7 +16,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class SpecSourceResolverTest {
-  private val resolver = SpecSourceResolver(TestDecompositionManifestFileStore, testDecompositionManifestValidator)
+  private val resolver = SpecSourceResolver(TestDecompositionManifestStore, testDecompositionManifestValidator)
 
   @Test
   fun `reads spec_source from the decomposition manifest for decomposed runs`() {
@@ -109,12 +109,12 @@ class SpecSourceResolverTest {
     val yaml = encodeDecompositionManifestYaml(
       manifest,
       testDecompositionManifestValidator,
-      TestDecompositionManifestFileStore,
+      TestDecompositionManifestStore,
     )
     writeDecompositionManifestText(
       repoRoot.resolve(".feature-specs/SKILL-71/decomposition-manifest.yaml"),
       yaml,
-      TestDecompositionManifestFileStore,
+      TestDecompositionManifestStore,
     )
   }
 }

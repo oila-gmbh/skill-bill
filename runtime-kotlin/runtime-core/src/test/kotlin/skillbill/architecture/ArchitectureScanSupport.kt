@@ -395,7 +395,8 @@ object ArchitectureScanSupport {
       """^\s*((?:(?:public|internal|private|protected|abstract|sealed|open|final|data|enum|value|fun)\s+)*)""" +
         """(?:class|object|interface|fun)\s+([A-Za-z_][A-Za-z0-9_]*)\b""",
     )
-  private val SPILLOVER_FILE_NAME_PATTERN = Regex("""Extras[0-9]*$""")
+  private val SPILLOVER_EXPLICIT_SUFFIX_PATTERN =
+    Regex("""(?:Extras\d*|Continued\d*|Helpers\d+|Fns\d+|Support\d+|[A-Z]\d+)$""")
   private val FUNCTION_PATTERN = Regex("""\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
   private val CAMEL_TOKEN_PATTERN = Regex("""[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)""")
   private val EXTENSION_FUN_PATTERN =
@@ -573,14 +574,55 @@ object ArchitectureScanSupport {
     compositionRootArea,
   )
 
-  fun spilloverFileNameViolationsForPaths(relativePaths: List<String>, exemptPaths: Set<String>): List<String> =
-    relativePaths
+  fun projectEdgesForConfiguration(source: String, configuration: String): Set<String> {
+    val edges = mutableSetOf<String>()
+    val pattern = Regex(
+      """^\s*${Regex.escape(configuration)}\(project\(":([A-Za-z0-9:-]+)"\)\)""",
+      RegexOption.MULTILINE,
+    )
+    pattern.findAll(source).forEach { match -> edges += match.groupValues[1] }
+    return edges
+  }
+
+  fun spilloverFileNameViolationsForPaths(relativePaths: List<String>, exemptPaths: Set<String>): List<String> {
+    val pathsByPackage = relativePaths.groupBy { relativePath ->
+      relativePath.replace('\\', '/').substringBeforeLast('/', missingDelimiterValue = "")
+    }
+    return relativePaths
       .filterNot { relativePath -> relativePath in exemptPaths }
-      .filter { relativePath -> SPILLOVER_FILE_NAME_PATTERN.containsMatchIn(relativePath.removeSuffix(".kt")) }
+      .filter { relativePath ->
+        val normalized = relativePath.replace('\\', '/')
+        val packageDir = normalized.substringBeforeLast('/', missingDelimiterValue = "")
+        val baseName = normalized.substringAfterLast('/').removeSuffix(".kt")
+        val siblings = pathsByPackage.getOrDefault(packageDir, emptyList())
+          .map { path -> path.replace('\\', '/').substringAfterLast('/').removeSuffix(".kt") }
+          .toSet()
+        isSpilloverBaseName(baseName, siblings)
+      }
       .sorted()
       .map { relativePath ->
         "$relativePath carries the spillover-filename signature; name the unit for the responsibility it holds."
       }
+  }
+
+  private fun isSpilloverBaseName(baseName: String, siblings: Set<String>): Boolean = when {
+    SPILLOVER_EXPLICIT_SUFFIX_PATTERN.containsMatchIn(baseName) -> true
+    else -> {
+      val prefix = Regex("""^(.+?)(\d+)$""").find(baseName)?.groupValues?.get(1).orEmpty()
+      prefix.isNotEmpty() && (
+        prefix in siblings ||
+          siblings.any { sibling ->
+            sibling != baseName &&
+              Regex("""^${Regex.escape(prefix)}\d+$""").matches(sibling)
+          }
+        )
+    }
+  }
+
+  fun spilloverFileNamePaths(scanRoots: List<String>, exemptPaths: Set<String>): Set<String> =
+    spilloverFileNameViolations(scanRoots, exemptPaths)
+      .map { violation -> violation.substringBefore(' ') }
+      .toSet()
 
   fun spilloverFileNameViolations(scanRoots: List<String>, exemptPaths: Set<String>): List<String> =
     spilloverFileNameViolationsForPaths(

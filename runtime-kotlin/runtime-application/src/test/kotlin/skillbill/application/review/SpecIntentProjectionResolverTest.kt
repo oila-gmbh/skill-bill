@@ -1,5 +1,6 @@
 package skillbill.application.review
-import skillbill.application.TestDecompositionManifestFileStore
+import skillbill.application.TestDecompositionManifestStore
+import skillbill.application.TestRepositoryEnclosingRoot
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.reviewevidence.ResolvedCommitSequence
@@ -361,12 +362,12 @@ private fun extractor() = SpecIntentProjectionExtractor(
   object : ReviewContextEnvelopeValidator {
     override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
   },
-  TestDecompositionManifestFileStore,
+  TestDecompositionManifestStore,
 )
 
 private fun resolver(validator: DecompositionManifestValidator = testDecompositionManifestValidator) =
   SpecIntentProjectionResolver(
-    TestDecompositionManifestFileStore,
+    TestDecompositionManifestStore,
     validator,
     extractor(),
   )
@@ -424,6 +425,7 @@ private fun compileCriteria(resolution: SpecIntentResolution): List<ReviewSpecia
       ),
       stack = "kotlin",
       agents = listOf("claude"),
+      repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
       repoRoot = repo,
       routedPacks = listOf("kotlin"),
       lanes = listOf(PlannedReviewRubric(lane, ReviewRubricProjection(lane.skillName, "rubric body", "security"))),

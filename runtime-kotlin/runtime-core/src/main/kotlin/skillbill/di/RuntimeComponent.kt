@@ -24,14 +24,7 @@ import skillbill.application.review.ReviewService
 import skillbill.application.review.ReviewSnapshotPruneService
 import skillbill.application.runtime.RuntimeSingleton
 import skillbill.application.scaffold.InstallAgentService
-import skillbill.application.scaffold.McpRegistrationService
-import skillbill.application.scaffold.NativeAgentInstallService
-import skillbill.application.scaffold.RepoSourceDiscoveryService
-import skillbill.application.scaffold.RepoValidationService
-import skillbill.application.scaffold.ScaffoldCatalogService
-import skillbill.application.scaffold.ScaffoldService
 import skillbill.application.scaffold.SkillRemoveService
-import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.application.system.SystemService
 import skillbill.application.system.UninstallFileSystemService
 import skillbill.application.telemetry.LifecycleTelemetryService
@@ -49,49 +42,58 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
+import skillbill.ports.install.mcp.InstallMcpRegistrationPort
+import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
+import skillbill.ports.repository.RepositoryEnclosingRootPort
+import skillbill.ports.scaffold.ScaffoldCatalogGateway
+import skillbill.ports.scaffold.ScaffoldGateway
+import skillbill.ports.scaffold.UnsupportedScaffoldGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
+import skillbill.ports.validation.RepoValidationGateway
 
 @RuntimeSingleton
 @Component
 abstract class RuntimeComponent(
   private val inputRuntimeContext: RuntimeContext,
 ) :
-  RuntimeComponentProvides1,
-  RuntimeComponentProvides2,
-  RuntimeComponentProvides3,
-  RuntimeComponentProvides4,
-  RuntimeComponentProvides5,
-  RuntimeComponentProvides6,
-  RuntimeComponentProvides7,
-  RuntimeComponentProvides8,
-  RuntimeComponentProvides9,
-  RuntimeComponentProvides10,
-  RuntimeComponentProvides11,
-  RuntimeComponentProvides12,
-  RuntimeComponentProvides13 {
+  RuntimeTelemetryInstallProvides,
+  RuntimeInstallLauncherProvides,
+  RuntimeGoalRunnerPlanningProvides,
+  RuntimeDiagnosticsReviewProvides,
+  RuntimeGoalRunnerScaffoldProvides,
+  RuntimeScaffoldWorkflowProvides,
+  RuntimeReviewWorkflowProvides,
+  RuntimeWorkflowValidatorProvides,
+  RuntimeFeatureTaskGoalValidatorProvides,
+  RuntimeCompositionMiscProvides,
+  RuntimeGoalRunnerWorkflowProvides,
+  RuntimeGoalRunnerBoundaryProvides,
+  RuntimeReviewFeatureTaskGateProvides {
   @Provides @JvmSynthetic
-  fun runtimeContext(): RuntimeContext = RuntimeComponentBindingsA1.runtimeContext(inputRuntimeContext)
+  fun runtimeContext(): RuntimeContext = RuntimeBootstrapBindings.runtimeContext(inputRuntimeContext)
 
   @Provides @JvmSynthetic
-  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = RuntimeComponentBindingsA1.environmentContext(ctx)
+  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = RuntimeBootstrapBindings.environmentContext(ctx)
 
   @Provides @JvmSynthetic
-  fun transportContext(ctx: RuntimeContext): TransportContext = RuntimeComponentBindingsA1.transportContext(ctx)
+  fun transportContext(ctx: RuntimeContext): TransportContext = RuntimeBootstrapBindings.transportContext(ctx)
 
   @Provides @JvmSynthetic
-  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = RuntimeComponentBindingsA1.workflowOpsContext(ctx)
+  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = RuntimeBootstrapBindings.workflowOpsContext(ctx)
 
   @Provides @JvmSynthetic
-  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = RuntimeComponentBindingsA1.optionalCallbacks(ctx)
+  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = RuntimeBootstrapBindings.optionalCallbacks(ctx)
 
   @Provides @RuntimeSingleton @JvmSynthetic
   fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
-    RuntimeComponentBindingsA1.databaseSessionFactory(context)
+    RuntimeBootstrapBindings.databaseSessionFactory(context)
 
   abstract val resolvedEnvironmentContext: EnvironmentContext
+
+  abstract val repositoryEnclosingRootPort: RepositoryEnclosingRootPort
 
   abstract val featureTaskContinuationLookupService: FeatureTaskContinuationLookupService
   abstract val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService
@@ -115,26 +117,25 @@ abstract class RuntimeComponent(
   abstract val goalPlanningLogService: GoalPlanningLogService
   abstract val goalOperatorDecisionService: GoalOperatorDecisionService
   abstract val installAgentService: InstallAgentService
+  abstract val installMcpRegistrationPort: InstallMcpRegistrationPort
+  abstract val installNativeAgentLinkPort: InstallNativeAgentLinkPort
   abstract val installSelectionPersistencePort: InstallSelectionPersistencePort
   abstract val installedWorkspaceBaselineStatusPort: InstalledWorkspaceBaselineStatusPort
   abstract val learningService: LearningService
   abstract val lifecycleTelemetryService: LifecycleTelemetryService
-  abstract val mcpRegistrationService: McpRegistrationService
-  abstract val nativeAgentInstallService: NativeAgentInstallService
-  abstract val repoValidationService: RepoValidationService
-  abstract val repoSourceDiscoveryService: RepoSourceDiscoveryService
+  abstract val repoValidationGateway: RepoValidationGateway
   abstract val reviewService: ReviewService
   abstract val reviewSnapshotPruneService: ReviewSnapshotPruneService
   abstract val runtimeDiagnostics: RuntimeDiagnostics
-  abstract val scaffoldCatalogService: ScaffoldCatalogService
-  abstract val scaffoldService: ScaffoldService
+  abstract val scaffoldCatalogGateway: ScaffoldCatalogGateway
+  abstract val scaffoldGateway: ScaffoldGateway
   abstract val skillRemoveService: SkillRemoveService
   abstract val systemService: SystemService
   abstract val telemetryConfigStorePort: TelemetryConfigStore
   abstract val telemetryLevelMutator: TelemetryLevelMutator
   abstract val telemetryService: TelemetryService
   abstract val uninstallFileSystemService: UninstallFileSystemService
-  abstract val unsupportedScaffoldService: UnsupportedScaffoldService
+  abstract val unsupportedScaffoldGateway: UnsupportedScaffoldGateway
   abstract val workflowService: WorkflowService
   abstract val workListService: WorkListService
   abstract val ideStatusService: IdeStatusService

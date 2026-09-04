@@ -7,6 +7,7 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
@@ -37,6 +38,7 @@ data class DefaultParallelCodeReviewRunnerPlanningPort(
   override val registerParse: (String) -> ParallelReviewParseResult,
   override val diagnostics: RuntimeDiagnostics,
   override val clock: Clock,
+  override val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 ) : ParallelCodeReviewRunnerPlanningPort
 
 @Inject

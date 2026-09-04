@@ -25,7 +25,7 @@ object GovernedReviewEvidenceBridge {
   fun enabled(environment: Map<String, String>): Boolean =
     !environment[GovernedReviewEvidenceCodec.SOCKET_ENV].isNullOrBlank()
 
-  fun run(environment: Map<String, String> = System.getenv()) {
+  fun run(environment: Map<String, String>) {
     val socketPath = environment[GovernedReviewEvidenceCodec.SOCKET_ENV].orEmpty()
     val token = environment[GovernedReviewEvidenceCodec.TOKEN_ENV].orEmpty()
     connect(Path.of(socketPath), token).use { connection ->

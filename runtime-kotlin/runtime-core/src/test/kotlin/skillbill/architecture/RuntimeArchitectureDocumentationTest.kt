@@ -55,10 +55,13 @@ class RuntimeArchitectureDocumentationTest {
     assertContains(architecture, "UninstallMutationRecorder")
     assertContains(architecture, DRAIN_ABANDONMENT_POLICY)
     assertContains(architecture, "RuntimeCliAreaIsolationArchitectureTest")
-    assertContains(architecture, "RuntimeCliSpilloverFileNameArchitectureTest")
+    assertContains(architecture, "Port null-object classification")
+    assertContains(architecture, "PortNullObjectClassificationGuardTest")
     assertContains(architecture, AREA_ISOLATION_GUARDRAIL)
     assertContains(architecture, SPILLOVER_FILENAME_GUARDRAIL)
-    assertFalse(architecture.contains("Temporary SKILL-52 blocker"))
+    assertContains(architecture, COMPOSITION_GUARD_GUARDRAIL)
+    assertContains(architecture, SCAFFOLD_STANDALONE_ENTRYPOINT_GUARDRAIL)
+    assertContains(architecture, "RuntimeCompositionGuardArchitectureTest")
     assertFalse(architecture.contains("compatibility umbrella"))
     assertFalse(architecture.contains("while the"))
     assertFalse(architecture.contains("should converge"))
@@ -79,12 +82,48 @@ class RuntimeArchitectureDocumentationTest {
     assertContains(architecture, INSTALL_PLAN_WIRE_VALIDATOR_PORT)
     assertContains(architecture, "Decomposition-manifest schema validation is owned by")
     assertContains(architecture, DECOMPOSITION_MANIFEST_VALIDATOR_PORT)
-    assertContains(architecture, "skillbill.ports.workflow.decomposition.DecompositionManifestFileStore")
+    assertContains(architecture, "skillbill.ports.workflow.decomposition.DecompositionManifestStore")
     assertContains(architecture, "FileSystemDecompositionManifestFileStore")
     assertContains(architecture, "Platform-pack manifest schema validation is owned by")
     assertContains(architecture, "Native-agent composition schema validation is owned by")
     assertContains(architecture, "Telemetry-event schema validation is owned by")
   }
+
+  @Test
+  fun `package ownership matches runtime module catalog in both directions`() {
+    val architecture = Files.readString(runtimeRoot.resolve("ARCHITECTURE.md"))
+    val section = architecture.substringAfter("## Package Ownership").substringBefore("\n## ")
+    val catalog = RuntimeModuleCatalog.declaredSubsystemPackages.toSet()
+    val missingFromDoc = catalog.filter { pkg -> !ownershipSectionNamesPackage(section, pkg) }.toSet()
+    val documentedRoots = catalog.filter { pkg -> ownershipSectionNamesPackage(section, pkg) }
+    val extraDocRoots = section.lineSequence()
+      .map { it.trim() }
+      .filter { line -> line.startsWith("- `skillbill.") }
+      .mapNotNull { line -> Regex("""`(skillbill(?:\.[a-z][a-z0-9]+)*)`""").find(line)?.groupValues?.get(1) }
+      .map { pkg -> if (pkg.endsWith(".model")) pkg.removeSuffix(".model") else pkg }
+      .filter { pkg ->
+        catalog.none { catalogPkg ->
+          pkg == catalogPkg ||
+            pkg.startsWith("$catalogPkg.") ||
+            catalogPkg.startsWith("$pkg.")
+        }
+      }
+      .toSet()
+    assertEquals(
+      emptySet<String>(),
+      missingFromDoc,
+      "Packages in RuntimeModuleCatalog without Package Ownership entries: $missingFromDoc",
+    )
+    assertEquals(
+      emptySet<String>(),
+      extraDocRoots,
+      "Package Ownership entries absent from RuntimeModuleCatalog: $extraDocRoots",
+    )
+    assertEquals(catalog, documentedRoots.toSet())
+  }
+
+  private fun ownershipSectionNamesPackage(section: String, pkg: String): Boolean =
+    section.contains("- `$pkg`") || section.contains("- `$pkg.") || section.contains("- `$pkg and")
 
   @Test
   fun `runtime module declares final package boundaries`() {
@@ -177,8 +216,19 @@ class RuntimeArchitectureDocumentationTest {
         "area and never the composition root `skillbill.cli.core`."
 
     const val SPILLOVER_FILENAME_GUARDRAIL =
-      "- No `runtime-cli` file carries the `*Extras`, `*Extras2`, or `*Extras3`\n  " +
-        "filename signature outside a named exemption."
+      "- No runtime module source file carries the spillover filename signature\n  " +
+        "(`*Extras`, `*Continued`, `*Helpers<N>`, `*Fns<N>`, `*Support<N>`, letter-plus-digit,\n  " +
+        "or bare trailing-digit siblings) outside a named exemption."
+
+    const val COMPOSITION_GUARD_GUARDRAIL =
+      "- No main-source site outside `skillbill.di` constructs a concrete class\n  " +
+        "`RuntimeComponent` binds; `RuntimeCompositionGuardArchitectureTest` enforces\n  " +
+        "the census and names sanctioned second entrypoints explicitly."
+
+    const val SCAFFOLD_STANDALONE_ENTRYPOINT_GUARDRAIL =
+      "- `skillbill.scaffold.runtime.ScaffoldStandaloneEntrypoint` is the sanctioned\n  " +
+        "second scaffold entrypoint for in-tree parity and rollback tests that cannot\n  " +
+        "reach `RuntimeComponent`; production paths use `FileSystemScaffoldOrchestrator`."
 
     const val CONTRACTS_NO_LONGER_OWNS_VALIDATORS =
       "It no longer owns the JSON-Schema\n  validators or their schema-resource copy tasks; " +

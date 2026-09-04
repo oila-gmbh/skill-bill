@@ -1,0 +1,4 @@
+runtime-kotlin/runtime-infra-http/src/main/kotlin/skillbill/infrastructure/http/HttpTelemetryClient.kt:66:System.getenv()
+runtime-kotlin/runtime-infra-http/src/main/kotlin/skillbill/infrastructure/http/HttpTelemetryClient.kt:67:System.getProperty()
+runtime-kotlin/runtime-infra-http/src/main/kotlin/skillbill/infrastructure/http/HttpTelemetryClient.kt:273:System.getProperty()
+runtime-kotlin/runtime-infra-http/src/main/kotlin/skillbill/infrastructure/http/HttpTelemetryClient.kt:278:System.getenv()

@@ -1,13 +1,13 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.system.UninstallFileSystemGateway
+import skillbill.ports.system.UninstallPathsPort
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.Comparator
 
 @Inject
-class FileSystemUninstallFileSystemGateway : UninstallFileSystemGateway {
+class FileSystemUninstallFileSystemGateway : UninstallPathsPort {
   override fun listImmediateDirectoryNames(root: Path): List<String> {
     if (!Files.isDirectory(root)) {
       return emptyList()

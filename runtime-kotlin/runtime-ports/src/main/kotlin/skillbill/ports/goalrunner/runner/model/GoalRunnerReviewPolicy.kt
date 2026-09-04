@@ -5,7 +5,7 @@ import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 
 data class GoalRunnerReviewPolicy(
   val codeReviewMode: CodeReviewExecutionMode,

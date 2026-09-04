@@ -1,7 +1,5 @@
 package skillbill.install.apply
 
-import skillbill.infrastructure.fs.FileTelemetryConfigStore
-import skillbill.infrastructure.fs.resolveTelemetryConfigPath
 import skillbill.install.model.ClaudeMcpProfileFailure
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyIssue
@@ -13,8 +11,11 @@ import skillbill.install.model.McpMutationResult
 import skillbill.install.model.McpProfileOutcome
 import skillbill.install.model.McpRegistrationApplyOutcome
 import skillbill.install.model.McpRegistrationApplyStatus
-import skillbill.launcher.mcp.McpRegistrationOperations
+import skillbill.install.support.resolveTelemetryConfigPath
 import skillbill.model.EnvironmentContext
+import skillbill.ports.install.mcp.InstallMcpRegistrationPort
+import skillbill.ports.install.mcp.model.InstallMcpRegistrationRequest
+import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.ports.telemetry.writeTelemetryLevel
 import skillbill.telemetry.DEFAULT_TELEMETRY_BATCH_SIZE
@@ -28,6 +29,7 @@ internal fun applyTelemetryIntent(
   plan: InstallPlan,
   warnings: MutableList<InstallApplyIssue>,
   telemetryLevelMutator: TelemetryLevelMutator? = null,
+  telemetryConfigStore: TelemetryConfigStore? = null,
 ): InstallTelemetryApplyOutcome {
   val environmentContext = EnvironmentContext(
     environment = plan.request.environment.ifEmpty { System.getenv() },
@@ -36,8 +38,12 @@ internal fun applyTelemetryIntent(
   val configPath = resolveTelemetryConfigPath(environmentContext.environment, environmentContext.userHome)
   val existedBefore = Files.exists(configPath)
   return runCatching {
-    val clearedEvents =
-      applyInstallTelemetryLevel(environmentContext, plan.telemetryLevel.id, telemetryLevelMutator)
+    val clearedEvents = applyInstallTelemetryLevel(
+      environmentContext,
+      plan.telemetryLevel.id,
+      telemetryLevelMutator,
+      telemetryConfigStore,
+    )
     val status =
       if (plan.telemetryLevel.id == "off" && !existedBefore && clearedEvents == 0) {
         InstallTelemetryApplyStatus.SKIPPED
@@ -72,6 +78,7 @@ private fun applyInstallTelemetryLevel(
   context: EnvironmentContext,
   level: String,
   telemetryLevelMutator: TelemetryLevelMutator?,
+  telemetryConfigStore: TelemetryConfigStore?,
 ): Int {
   telemetryLevelMutator?.let { mutator ->
     return mutator.setLevel(level, context.dbPathOverride).clearedEvents
@@ -79,14 +86,16 @@ private fun applyInstallTelemetryLevel(
   require(level in telemetryLevels) {
     "Telemetry level must be one of: ${telemetryLevels.joinToString(", ")}."
   }
-  val configStore = FileTelemetryConfigStore(context)
+  val configStore = requireNotNull(telemetryConfigStore) {
+    "TelemetryConfigStore must be supplied through RuntimeComponent."
+  }
   if (configStore.writeTelemetryLevel(level)) {
     validateInstallTelemetryConfig(configStore)
   }
   return 0
 }
 
-private fun validateInstallTelemetryConfig(configStore: FileTelemetryConfigStore) {
+private fun validateInstallTelemetryConfig(configStore: TelemetryConfigStore) {
   val payload = configStore.read()?.payload
     ?: throw IllegalArgumentException("Telemetry config at '${configStore.configPath()}' is missing.")
   val telemetry =
@@ -114,6 +123,7 @@ private fun validateInstallTelemetryConfig(configStore: FileTelemetryConfigStore
 internal fun applyMcpRegistrationIntent(
   plan: InstallPlan,
   warnings: MutableList<InstallApplyIssue>,
+  mcpRegistrationPort: InstallMcpRegistrationPort,
 ): List<McpRegistrationApplyOutcome> {
   val intent = plan.mcpRegistrationIntent
   val runtimeMcpBin = intent.runtimeMcpBin
@@ -127,7 +137,7 @@ internal fun applyMcpRegistrationIntent(
       )
     }
     else -> intent.agents.map { agent ->
-      registerMcpAgent(agent, runtimeMcpBin, plan, warnings)
+      registerMcpAgent(agent, runtimeMcpBin, plan, warnings, mcpRegistrationPort)
     }
   }
 }
@@ -160,13 +170,15 @@ private fun registerMcpAgent(
   runtimeMcpBin: Path,
   plan: InstallPlan,
   warnings: MutableList<InstallApplyIssue>,
+  mcpRegistrationPort: InstallMcpRegistrationPort,
 ): McpRegistrationApplyOutcome = runCatching {
-  val result = McpRegistrationOperations.register(
-    agent.id,
-    runtimeMcpBin,
-    plan.request.home,
-    plan.request.environment.ifEmpty { System.getenv() },
-  )
+  val result = mcpRegistrationPort.registerMcp(
+    InstallMcpRegistrationRequest(
+      agent = agent.id,
+      runtimeMcpBin = runtimeMcpBin,
+      home = plan.request.home,
+    ),
+  ).mutation
   McpRegistrationApplyOutcome(
     agent = agent,
     status = McpRegistrationApplyStatus.SUCCESS,

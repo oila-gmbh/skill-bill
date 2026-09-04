@@ -6,7 +6,7 @@ import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.workflow.model.GoalContinuationOutcome
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.contracts.JsonSupport
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionContinuationSelection
 import skillbill.workflow.decomposition.model.DecompositionManifest

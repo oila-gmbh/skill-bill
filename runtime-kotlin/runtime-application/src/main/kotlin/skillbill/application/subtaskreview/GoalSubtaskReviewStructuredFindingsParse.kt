@@ -1,7 +1,7 @@
 package skillbill.application.subtaskreview
 
 import skillbill.contracts.JsonSupport
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.review.ReviewRepository
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.context.model.requireRepositoryRelativePath
@@ -82,9 +82,9 @@ object GoalSubtaskReviewStructuredFindingsParse {
       ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
     )?.trim()?.takeIf(String::isNotBlank)
 
-  fun recordedVerdicts(unitOfWork: UnitOfWork, output: Map<String, Any?>): List<ReviewFindingVerdict> {
+  fun recordedVerdicts(reviews: ReviewRepository, output: Map<String, Any?>): List<ReviewFindingVerdict> {
     val reviewRunId = reviewRunIdOf(output) ?: return emptyList()
-    return unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
+    return reviews.fetchFindingVerdicts(reviewRunId)
   }
 
   internal fun verificationBoundaryFindingPaths(finding: StructuredGoalReviewFinding): List<String> {

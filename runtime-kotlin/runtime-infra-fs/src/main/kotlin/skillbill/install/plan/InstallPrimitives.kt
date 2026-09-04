@@ -10,7 +10,6 @@ import skillbill.install.staging.resolveStagedSymlinkTarget
 import skillbill.install.support.claudeConfigRoot
 import skillbill.install.support.claudeConfigRoots
 import skillbill.install.support.claudeSkillTargets
-import skillbill.install.support.codexAgentsTargets
 import skillbill.install.support.codexConfigRoot
 import skillbill.install.support.codexConfigRoots
 import skillbill.install.support.codexSkillTargets
@@ -19,6 +18,7 @@ import skillbill.scaffold.model.PlatformManifest
 import java.io.FileNotFoundException
 import java.nio.file.Files
 import java.nio.file.Path
+import skillbill.nativeagent.support.detectCodexAgentsTargets as nativeDetectCodexAgentsTargets
 
 internal val SUPPORTED_AGENTS: List<String> = InstallAgent.supportedIds
 internal const val CODEX_AGENTS_KIND: String = "codex-agents"
@@ -75,7 +75,8 @@ internal fun detectCodexAgentsTargets(
   if (!agentIsPresent(resolvedHome, "codex", agentPaths(resolvedHome, environment).getValue("codex"), environment)) {
     return emptyList()
   }
-  return codexAgentsTargets(resolvedHome, environment).map { path -> AgentTarget(CODEX_AGENTS_KIND, path) }
+  return nativeDetectCodexAgentsTargets(resolvedHome, environment)
+    .map { target -> AgentTarget(target.name, target.path) }
 }
 
 /**

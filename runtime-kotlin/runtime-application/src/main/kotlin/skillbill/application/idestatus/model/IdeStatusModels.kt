@@ -5,7 +5,7 @@ import skillbill.contracts.workflow.GOAL_PLANNING_WAVE_CAP
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.idestatus.model.AgentActivityLabel
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import java.nio.file.Path
 import java.time.Instant
 

@@ -1,16 +1,16 @@
 package skillbill.nativeagent.composition
 
+import skillbill.nativeagent.platformpack.NativeAgentPlatformPack
+import skillbill.nativeagent.platformpack.NativeAgentPlatformPackLoader
 import skillbill.nativeagent.rendering.composeGovernedAgentBody
 import skillbill.nativeagent.rendering.enforceAddonProjectionParity
 import skillbill.nativeagent.rendering.enforceComposedAgentBudget
-import skillbill.scaffold.authoring.renderAuthoredContentBody
-import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
 data class NativeAgentCompositionTarget(
   val contentPath: Path,
   val source: NativeAgentCompositionTargetSource,
-  val manifest: PlatformManifest? = null,
+  val manifest: NativeAgentPlatformPack? = null,
 )
 
 enum class NativeAgentCompositionTargetSource {
@@ -30,7 +30,11 @@ internal fun parseCompositionDirective(rawValue: String?, label: String): Native
     NativeAgentCompositionDirective(kind)
   }
 
-fun resolveNativeAgentCompositionTarget(repoRoot: Path, source: NativeAgentSource): NativeAgentCompositionTarget? {
+fun resolveNativeAgentCompositionTarget(
+  repoRoot: Path,
+  source: NativeAgentSource,
+  packLoader: NativeAgentPlatformPackLoader,
+): NativeAgentCompositionTarget? {
   if (source.composition == null) {
     return null
   }
@@ -43,7 +47,7 @@ fun resolveNativeAgentCompositionTarget(repoRoot: Path, source: NativeAgentSourc
   val root = repoRoot.toAbsolutePath().normalize()
   val packRoot = platformPackRoot(root, sourcePath)
   return if (packRoot != null) {
-    resolvePlatformManifestContentTarget(root, packRoot, sourcePath, source)
+    resolvePlatformManifestContentTarget(root, packRoot, sourcePath, source, packLoader)
   } else {
     resolveSiblingContentTarget(sourcePath, source)
   } ?: throw IllegalArgumentException(
@@ -64,9 +68,15 @@ internal fun nativeAgentCompositionRepoRoot(platformPacksRoot: Path, skillsRoot:
   }
 }
 
-internal fun composeNativeAgentSource(repoRoot: Path, source: NativeAgentSource): NativeAgentSource {
-  val target = resolveNativeAgentCompositionTarget(repoRoot, source) ?: return source
-  val governedBody = renderAuthoredContentBody(target.contentPath, source.name).trimEnd()
+fun composeNativeAgentSource(
+  repoRoot: Path,
+  source: NativeAgentSource,
+  reviewContextBudgetBytes: Long,
+  renderGovernedBody: (Path, String) -> String,
+  packLoader: NativeAgentPlatformPackLoader,
+): NativeAgentSource {
+  val target = resolveNativeAgentCompositionTarget(repoRoot, source, packLoader) ?: return source
+  val governedBody = renderGovernedBody(target.contentPath, source.name).trimEnd()
   val localFraming = source.body.trim()
   val composedBody = buildString {
     if (localFraming.isNotBlank()) {
@@ -88,10 +98,23 @@ internal fun composeNativeAgentSource(repoRoot: Path, source: NativeAgentSource)
     repoRoot.toAbsolutePath().normalize(),
     target,
     renderNativeAgentSource(composed),
-    composedAgentBudgetBytes(repoRoot),
+    reviewContextBudgetBytes,
   )
   return composed
 }
 
-fun renderComposedNativeAgentSource(repoRoot: Path, source: NativeAgentSource): String =
-  renderNativeAgentSource(composeNativeAgentSource(repoRoot, source))
+fun renderComposedNativeAgentSource(
+  repoRoot: Path,
+  source: NativeAgentSource,
+  reviewContextBudgetBytes: Long,
+  renderGovernedBody: (Path, String) -> String,
+  packLoader: NativeAgentPlatformPackLoader,
+): String = renderNativeAgentSource(
+  composeNativeAgentSource(
+    repoRoot,
+    source,
+    reviewContextBudgetBytes,
+    renderGovernedBody,
+    packLoader,
+  ),
+)

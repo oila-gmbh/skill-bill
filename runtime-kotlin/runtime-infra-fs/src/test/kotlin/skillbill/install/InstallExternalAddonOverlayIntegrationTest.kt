@@ -7,7 +7,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyResult
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.InstallPlanRequest
-import skillbill.install.runtime.InstallOperations
+import skillbill.install.nativeagent.installNativeAgentCompositionContext
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
@@ -27,8 +27,8 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     val external = seedExternalSource(fixture, "acme", listOf("acme-review.md"))
     runOverlay(fixture, listOf(external))
 
-    val plan = InstallOperations.planInstall(fixture.request(selectedPlatforms = setOf("ios")))
-    val result = InstallOperations.applyInstall(plan)
+    val plan = planInstallForTest(fixture.request(selectedPlatforms = setOf("ios")))
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status, "apply failures: ${result.failures}")
     val staging = result.skills.first { it.skillName == "bill-code-review" }.staging
@@ -73,22 +73,22 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     runOverlay(fixture, listOf(external))
     assertTrue(Files.isRegularFile(addonsDir.resolve("acme-review.md")), "overlay must reconstitute wiped addon files")
 
-    val plan = InstallOperations.planInstall(fixture.request(selectedPlatforms = setOf("ios")))
-    val result = InstallOperations.applyInstall(plan)
+    val plan = planInstallForTest(fixture.request(selectedPlatforms = setOf("ios")))
+    val result = applyInstallForTest(plan)
     assertEquals(InstallApplyStatus.SUCCESS, result.status, "apply failures: ${result.failures}")
   }
 
   @Test
   fun `zero config parity omits overlay and stages identically to baseline`() {
     val baseline = setupIosFixture()
-    val baselinePlan = InstallOperations.planInstall(baseline.request(selectedPlatforms = setOf("ios")))
-    val baselineResult = InstallOperations.applyInstall(baselinePlan)
+    val baselinePlan = planInstallForTest(baseline.request(selectedPlatforms = setOf("ios")))
+    val baselineResult = applyInstallForTest(baselinePlan)
     assertEquals(InstallApplyStatus.SUCCESS, baselineResult.status)
 
     val overlayed = setupIosFixture()
     runOverlay(overlayed, emptyList())
-    val overlayPlan = InstallOperations.planInstall(overlayed.request(selectedPlatforms = setOf("ios")))
-    val overlayResult = InstallOperations.applyInstall(overlayPlan)
+    val overlayPlan = planInstallForTest(overlayed.request(selectedPlatforms = setOf("ios")))
+    val overlayResult = applyInstallForTest(overlayPlan)
     assertEquals(InstallApplyStatus.SUCCESS, overlayResult.status)
 
     val baselineContent = stagedSkillBody(baselineResult, "bill-ios-code-review")
@@ -121,6 +121,7 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
           selectedPlatforms = listOf("ios"),
           provider = provider,
           home = fixture.home,
+          compositionContext = installNativeAgentCompositionContext(),
         ),
       )
       val rendered = Files.readString(

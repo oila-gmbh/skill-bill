@@ -6,6 +6,7 @@ import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
@@ -35,6 +36,7 @@ interface ParallelCodeReviewRunnerPlanningPort {
   val registerParse: (String) -> ParallelReviewParseResult
   val nativeAgentPreflight: ReviewNativeAgentPreflightPort
   val clock: Clock
+  val repositoryEnclosingRootPort: RepositoryEnclosingRootPort
 }
 
 interface ParallelCodeReviewRunnerLaneLaunchPort {

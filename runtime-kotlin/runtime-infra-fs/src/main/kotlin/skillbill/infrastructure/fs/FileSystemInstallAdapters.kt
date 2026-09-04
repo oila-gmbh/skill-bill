@@ -63,6 +63,7 @@ import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
 import skillbill.ports.install.reconcile.model.InstallReconcileApplyResult
 import skillbill.ports.install.reconcile.model.InstallReconcileRequest
 import skillbill.ports.install.reconcile.model.InstallReconcileResult
+import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.install.nativeagent.NativeAgentLinkOverrides as FsNativeAgentLinkOverrides
 import skillbill.install.nativeagent.NativeAgentLinkRequest as FsNativeAgentLinkRequest
 
@@ -159,10 +160,18 @@ class FileSystemInstallReconcileApply(
 }
 
 @Inject
-class FileSystemInstallApplyExecution : InstallApplyExecutionPort {
+class FileSystemInstallApplyExecution(
+  private val telemetryConfigStore: TelemetryConfigStore,
+  private val installMcpRegistrationPort: InstallMcpRegistrationPort,
+) : InstallApplyExecutionPort {
   override fun applyInstall(request: InstallApplyExecutionRequest): InstallApplyExecutionResult =
     InstallApplyExecutionResult(
-      result = InstallOperations.applyInstall(request.plan, request.telemetryLevelMutator),
+      result = InstallOperations.applyInstall(
+        request.plan,
+        request.telemetryLevelMutator,
+        telemetryConfigStore,
+        installMcpRegistrationPort,
+      ),
     )
 }
 

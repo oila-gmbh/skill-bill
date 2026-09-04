@@ -3,7 +3,7 @@ package skillbill.application.decomposition
 import skillbill.application.decomposition.model.LoadedDecompositionManifest
 import skillbill.application.decomposition.model.ValidatedDecompositionManifestYaml
 import skillbill.error.InvalidDecompositionManifestSchemaError
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.workflow.decomposition.DecompositionManifestCodec
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -21,7 +21,7 @@ import java.nio.file.Path
  */
 fun loadDecompositionManifest(
   path: Path,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
   validator: DecompositionManifestValidator,
   recoverPending: Boolean = true,
 ): DecompositionManifest {
@@ -30,7 +30,7 @@ fun loadDecompositionManifest(
 
 fun loadValidatedDecompositionManifest(
   path: Path,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
   validator: DecompositionManifestValidator,
   recoverPending: Boolean = true,
 ): LoadedDecompositionManifest {
@@ -48,7 +48,7 @@ fun loadValidatedDecompositionManifest(
  */
 fun loadValidatedDecompositionManifestPersistingRepair(
   path: Path,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
   validator: DecompositionManifestValidator,
 ): LoadedDecompositionManifest {
   val loaded = loadValidatedDecompositionManifest(path, fileStore, validator)
@@ -68,7 +68,7 @@ fun loadValidatedDecompositionManifestPersistingRepair(
 
 fun loadValidatedDecompositionManifestOrNull(
   path: Path,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
   validator: DecompositionManifestValidator,
 ): LoadedDecompositionManifest? = try {
   loadValidatedDecompositionManifest(path, fileStore, validator)
@@ -78,7 +78,7 @@ fun loadValidatedDecompositionManifestOrNull(
 
 fun validateDecompositionManifestYaml(
   path: Path,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
   validator: DecompositionManifestValidator,
   recoverPending: Boolean = true,
 ): ValidatedDecompositionManifestYaml {
@@ -123,7 +123,7 @@ fun encodeDecompositionManifestMap(
 fun encodeDecompositionManifestYaml(
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
   sourceLabel: String = "<in-memory>",
 ): String {
   return encodeValidatedDecompositionManifestYaml(manifest, validator, fileStore, sourceLabel).yamlText
@@ -132,7 +132,7 @@ fun encodeDecompositionManifestYaml(
 fun encodeValidatedDecompositionManifestYaml(
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
   sourceLabel: String = "<in-memory>",
 ): ValidatedDecompositionManifestYaml {
   val wireMap = encodeDecompositionManifestMap(manifest, validator, sourceLabel)
@@ -155,6 +155,6 @@ fun encodeValidatedDecompositionManifestYaml(
   }
 }
 
-fun writeDecompositionManifestText(target: Path, content: String, fileStore: DecompositionManifestFileStore) {
+fun writeDecompositionManifestText(target: Path, content: String, fileStore: DecompositionManifestStore) {
   fileStore.writeTextAtomically(target, content)
 }

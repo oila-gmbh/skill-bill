@@ -4,6 +4,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt

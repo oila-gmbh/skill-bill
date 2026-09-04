@@ -17,7 +17,6 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.model.buildInstallPlanWireMap
-import skillbill.install.runtime.InstallOperations
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -59,7 +58,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
   fun `all platforms selected plan validates against the canonical schema`() {
     val fixture = setupFixture()
     seedPlatformPack(fixture.repoRoot, "python", areaNames = listOf("security"))
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(platformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.ALL)),
     )
     InstallPlanSchemaValidator.validate(buildInstallPlanWireMap(plan))
@@ -75,7 +74,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
         source = InstallAgentTargetSource.MANUAL,
       )
     }
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agentSelection = InstallAgentSelection(
           mode = InstallAgentSelectionMode.MANUAL,
@@ -94,7 +93,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
     Files.createDirectories(fixture.home.resolve(".codex"))
     Files.createDirectories(fixture.home.resolve(".junie"))
     Files.createDirectories(fixture.home.resolve(".cursor"))
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(agentSelection = InstallAgentSelection(mode = InstallAgentSelectionMode.DETECTED)),
     )
     InstallPlanSchemaValidator.validate(buildInstallPlanWireMap(plan))
@@ -104,7 +103,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
   fun `every telemetry level plan validates against the canonical schema`() {
     InstallTelemetryLevel.entries.forEach { level ->
       val fixture = setupFixture()
-      val plan = InstallOperations.planInstall(fixture.request(telemetryLevel = level))
+      val plan = planInstallForTest(fixture.request(telemetryLevel = level))
       InstallPlanSchemaValidator.validate(buildInstallPlanWireMap(plan))
     }
   }
@@ -113,7 +112,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
   fun `every windows symlink preflight plan validates against the canonical schema`() {
     windowsSymlinkPreflightCases().forEach { preflight ->
       val fixture = setupFixture()
-      val plan = InstallOperations.planInstall(fixture.request(windowsSymlinkPreflight = preflight))
+      val plan = planInstallForTest(fixture.request(windowsSymlinkPreflight = preflight))
       InstallPlanSchemaValidator.validate(buildInstallPlanWireMap(plan))
     }
   }

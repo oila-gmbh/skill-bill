@@ -1,6 +1,10 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.install.scaffold.performScaffoldInstall
+import skillbill.install.scaffold.rollbackScaffoldInstallTargets
+import skillbill.scaffold.adapters.FileSystemScaffoldRepoValidation
+import skillbill.scaffold.adapters.FileSystemScaffoldSourceLoader
 import skillbill.scaffold.model.ScaffoldResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
 import skillbill.scaffold.payload.toRawScaffoldPayload
@@ -48,5 +52,7 @@ class FileSystemScaffoldOrchestrator(
     resolveAddonConsumerSkillDirs = { payload, packRoot, pack ->
       sourceLoader.resolveAddonConsumerSkillDirs(payload, packRoot, pack)
     },
+    performInstall = { txn, plan, repoRoot -> performScaffoldInstall(txn, plan, repoRoot) },
+    rollbackInstallTargets = { txn, errors -> rollbackScaffoldInstallTargets(txn, errors) },
   )
 }

@@ -9,11 +9,11 @@ import skillbill.application.diagnostics.RejectedOutputDiagnosticService
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnostic
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticError
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
+import skillbill.ports.persistence.UnitOfWork
 import java.io.OutputStream
 import java.time.Clock
 

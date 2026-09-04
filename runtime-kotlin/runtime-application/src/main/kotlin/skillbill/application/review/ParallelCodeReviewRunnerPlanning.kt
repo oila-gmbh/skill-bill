@@ -49,6 +49,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
   val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary = deps.runtimeOwnedPersistence
   private val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning = deps.rubricPlanning
   private val clock = deps.clock
+  private val repositoryEnclosingRootPort = deps.repositoryEnclosingRootPort
 
   internal fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewInitialRun {
     val agent1 = resolveAgent(originalRequest.agent1Id, "--agent1")
@@ -179,6 +180,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
         commitSequence = commitSequence,
         stack = args.routedManifests.joinToString("+") { it.slug }.ifBlank { null },
         agents = args.agentIds,
+        repositoryEnclosingRootPort = repositoryEnclosingRootPort,
         repoRoot = args.request.repoRoot,
         routedPacks = args.routedManifests.map { it.slug },
         lanes = plannedRubrics,

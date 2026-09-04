@@ -1,3 +1,6 @@
+import org.gradle.api.plugins.JavaPluginExtension
+import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 import java.io.File
 
 plugins {
@@ -6,8 +9,8 @@ plugins {
 }
 
 dependencies {
-  api(project(":runtime-ports"))
-  api(project(":runtime-domain"))
+  implementation(project(":runtime-ports"))
+  implementation(project(":runtime-domain"))
   implementation(project(":runtime-contracts"))
   implementation(libs.kotlin.inject.runtime)
   implementation(libs.snakeyaml)
@@ -661,4 +664,85 @@ tasks.register<JavaExec>("platformPackSubstanceReport") {
     ).orElse(rootProject.projectDir.parentFile.absolutePath).get()}",
     "--format=${providers.gradleProperty("reportFormat").orElse("text").get()}",
   )
+}
+
+val infraFsAreaLayerOrder =
+  listOf(
+    "Contracts",
+    "AgentAddon",
+    "NativeAgent",
+    "Scaffold",
+    "Install",
+    "Launcher",
+    "Infrastructure",
+    "GoalPlanning",
+    "SkillRemove",
+  )
+
+val infraFsAreaSourceDirs =
+  mapOf(
+    "Infrastructure" to "skillbill/infrastructure",
+    "Install" to "skillbill/install",
+    "Launcher" to "skillbill/launcher",
+    "NativeAgent" to "skillbill/nativeagent",
+    "Scaffold" to "skillbill/scaffold",
+    "AgentAddon" to "skillbill/agentaddon",
+    "Contracts" to "skillbill/contracts",
+    "GoalPlanning" to "skillbill/goalplanning",
+    "SkillRemove" to "skillbill/skillremove",
+  )
+
+val javaPlugin = extensions.getByType(JavaPluginExtension::class.java)
+val kotlinPlugin = extensions.getByType(KotlinJvmProjectExtension::class.java)
+val mainSourceSet = javaPlugin.sourceSets.getByName("main")
+val infraFsAreaSourceSets =
+  infraFsAreaLayerOrder.associateWith { areaName ->
+    val sourceSetName = "infraFs${areaName}Area"
+    val areaSourceSet = javaPlugin.sourceSets.create(sourceSetName)
+    areaSourceSet.java.srcDir(
+      layout.projectDirectory.dir("src/main/kotlin/${infraFsAreaSourceDirs.getValue(areaName)}"),
+    )
+    configurations.getByName(areaSourceSet.implementationConfigurationName).extendsFrom(
+      configurations.getByName(mainSourceSet.implementationConfigurationName),
+    )
+    configurations.getByName(areaSourceSet.compileOnlyConfigurationName).extendsFrom(
+      configurations.getByName(mainSourceSet.compileOnlyConfigurationName),
+    )
+    areaSourceSet
+  }
+
+infraFsAreaLayerOrder.forEachIndexed { areaIndex, areaName ->
+  val areaSourceSet = infraFsAreaSourceSets.getValue(areaName)
+  infraFsAreaLayerOrder.take(areaIndex).forEach { lowerAreaName ->
+    val lowerSourceSet = infraFsAreaSourceSets.getValue(lowerAreaName)
+    dependencies.add(areaSourceSet.implementationConfigurationName, lowerSourceSet.output)
+  }
+  val compileTaskName = "compileInfraFs${areaName}AreaKotlin"
+  tasks.named<KotlinJvmCompile>(compileTaskName) {
+    infraFsAreaLayerOrder.take(areaIndex).forEach { lowerAreaName ->
+      val lowerSourceSet = infraFsAreaSourceSets.getValue(lowerAreaName)
+      friendPaths.from(lowerSourceSet.output.classesDirs)
+    }
+  }
+}
+
+val verifyInfraFsAreaCompileTasks =
+  infraFsAreaLayerOrder.mapIndexed { areaIndex, areaName ->
+    val compileTaskName = "compileInfraFs${areaName}AreaKotlin"
+    tasks.named(compileTaskName) {
+      infraFsAreaLayerOrder.take(areaIndex).forEach { lowerAreaName ->
+        dependsOn("compileInfraFs${lowerAreaName}AreaKotlin")
+      }
+      dependsOn("processResources")
+    }
+  }
+
+tasks.register("verifyInfraFsAreaCompile") {
+  group = "verification"
+  description = "Compile each runtime-infra-fs area without sibling areas on the classpath."
+  verifyInfraFsAreaCompileTasks.forEach { dependsOn(it) }
+}
+
+tasks.named("check") {
+  dependsOn("verifyInfraFsAreaCompile")
 }

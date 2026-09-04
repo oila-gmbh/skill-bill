@@ -19,50 +19,50 @@ import skillbill.application.featuretask.FeatureTaskRuntimePlanningStopper
 import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlement
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued1
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued2
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued3
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementPhaseOutcome
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopBackwardEdge
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpoint
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointBlocking
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinuationCollaborators
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued1
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued2
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued3
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued4
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued5
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued6
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointRemediationRollback
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointRemediationStage
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointRollbackIdentity
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCollaborators
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopControlCollaborators
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCoreContinuationCollaborators
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDrive
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveAttemptLaunch
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinuationCollaborators
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued1
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued2
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued3
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued4
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDrivePhaseSelection
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveSettlementGate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveTerminalOutcome
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopGateContinuationCollaborators
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunch
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchAgentSession
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContentIdentityParse
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinuationCollaborators
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinued1
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinued2
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinued3
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchProcessWait
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerification
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinuationCollaborators
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued1
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued3
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued5
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationReceiptAssembly
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationStructuralRepair
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttempts
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttemptsContinued1
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttemptsContinued2
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttemptsContinued3
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttemptsAttemptBudget
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttemptsBackoffGate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseAttemptsRetrySchedule
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseContinuationCollaborators
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunner
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunnerContinued1
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunnerContinued2
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunnerContinued3
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunnerMutatingPhase
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPhaseRunnerVerifyingPhase
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPlanningBranch
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopPrimaryCollaborators
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection
@@ -73,11 +73,11 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSupportCollaborators
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopTransitions
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateAgnixValidate
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateBuildCommand
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand
 import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinuationCollaborators
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued2
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued3
-import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued4
+import skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateSkillBillValidate
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
 import skillbill.application.featuretask.InMemoryFeatureTaskPhaseSettlementRepository
@@ -122,7 +122,6 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticPermissions
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticRepository
@@ -136,18 +135,18 @@ import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticRecord
 import skillbill.ports.diagnostics.model.RejectedOutputDiagnosticSelector
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.featuretask.FeatureTaskRuntimeAuditGenerationRepository
-import skillbill.ports.featuretask.model.FeatureTaskExecutionIdentity
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeAuditGenerationRow
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeCrashReconciliationCandidate
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState.TAKEOVER_RESERVED
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
-import skillbill.ports.featuretask.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
+import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.UnaddressedFindingsRepository
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.learning.LearningRepository
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
@@ -162,6 +161,7 @@ import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.ports.time.JvmSystemClock
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -196,11 +196,14 @@ import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.gitops.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.gitops.model.WorkflowWorktreeActivityResult
 import skillbill.ports.workflow.model.FeatureImplementSessionSummary
+import skillbill.ports.workflow.model.FeatureTaskExecutionIdentity
+import skillbill.ports.workflow.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.PROSE
 import skillbill.ports.workflow.model.FeatureVerifySessionSummary
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.ports.workflow.specscratch.SpecScratchStore
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.ReviewContextBudgetExceeded
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.model.ParallelReviewMergeResult
@@ -219,7 +222,6 @@ import skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML
 import skillbill.scaffold.model.ValidationGateFindingsLocator
 import skillbill.telemetry.model.TelemetrySettings
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalObservabilityChangedFileSummary
@@ -253,6 +255,7 @@ import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.nio.file.Path
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
 import java.lang.Double.TYPE as DoubleTYPE
@@ -316,53 +319,53 @@ internal fun testRunLoopSupportCollaborators(): FeatureTaskRuntimeRunLoopSupport
 internal fun testRunLoopCoreContinuationCollaborators(): FeatureTaskRuntimeRunLoopCoreContinuationCollaborators =
   FeatureTaskRuntimeRunLoopCoreContinuationCollaborators(
     settlement = FeatureTaskRuntimeRunLoopSettlementContinuationCollaborators(
-      attemptSettlementContinued1 = FeatureTaskRuntimeRunLoopAttemptSettlementContinued1(),
-      attemptSettlementContinued2 = FeatureTaskRuntimeRunLoopAttemptSettlementContinued2(),
-      attemptSettlementContinued3 = FeatureTaskRuntimeRunLoopAttemptSettlementContinued3(),
+      attemptSettlementContinued1 = FeatureTaskRuntimeRunLoopAttemptSettlementPhaseOutcome(),
+      attemptSettlementContinued2 = FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch(),
+      attemptSettlementContinued3 = FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize(),
     ),
     checkpoint = FeatureTaskRuntimeRunLoopCheckpointContinuationCollaborators(
-      checkpointContinued1 = FeatureTaskRuntimeRunLoopCheckpointContinued1(),
-      checkpointContinued2 = FeatureTaskRuntimeRunLoopCheckpointContinued2(),
-      checkpointContinued3 = FeatureTaskRuntimeRunLoopCheckpointContinued3(),
-      checkpointContinued4 = FeatureTaskRuntimeRunLoopCheckpointContinued4(),
-      checkpointContinued5 = FeatureTaskRuntimeRunLoopCheckpointContinued5(),
-      checkpointContinued6 = FeatureTaskRuntimeRunLoopCheckpointContinued6(),
+      checkpointContinued1 = FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish(),
+      checkpointContinued2 = FeatureTaskRuntimeRunLoopCheckpointRemediationRollback(),
+      checkpointContinued3 = FeatureTaskRuntimeRunLoopCheckpointRemediationStage(),
+      checkpointContinued4 = FeatureTaskRuntimeRunLoopCheckpointRollbackIdentity(),
+      checkpointContinued5 = FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger(),
+      checkpointContinued6 = FeatureTaskRuntimeRunLoopCheckpointBlocking(),
     ),
     drive = FeatureTaskRuntimeRunLoopDriveContinuationCollaborators(
-      driveContinued1 = FeatureTaskRuntimeRunLoopDriveContinued1(),
-      driveContinued2 = FeatureTaskRuntimeRunLoopDriveContinued2(),
-      driveContinued3 = FeatureTaskRuntimeRunLoopDriveContinued3(),
-      driveContinued4 = FeatureTaskRuntimeRunLoopDriveContinued4(),
+      driveContinued1 = FeatureTaskRuntimeRunLoopDrivePhaseSelection(),
+      driveContinued2 = FeatureTaskRuntimeRunLoopDriveAttemptLaunch(),
+      driveContinued3 = FeatureTaskRuntimeRunLoopDriveSettlementGate(),
+      driveContinued4 = FeatureTaskRuntimeRunLoopDriveTerminalOutcome(),
     ),
     launch = FeatureTaskRuntimeRunLoopLaunchContinuationCollaborators(
-      launchContinued1 = FeatureTaskRuntimeRunLoopLaunchContinued1(),
-      launchContinued2 = FeatureTaskRuntimeRunLoopLaunchContinued2(),
-      launchContinued3 = FeatureTaskRuntimeRunLoopLaunchContinued3(),
+      launchContinued1 = FeatureTaskRuntimeRunLoopLaunchContentIdentityParse(),
+      launchContinued2 = FeatureTaskRuntimeRunLoopLaunchAgentSession(),
+      launchContinued3 = FeatureTaskRuntimeRunLoopLaunchProcessWait(),
     ),
   )
 
 internal fun testRunLoopGateContinuationCollaborators(): FeatureTaskRuntimeRunLoopGateContinuationCollaborators =
   FeatureTaskRuntimeRunLoopGateContinuationCollaborators(
     outputVerification = FeatureTaskRuntimeRunLoopOutputVerificationContinuationCollaborators(
-      outputVerificationContinued1 = FeatureTaskRuntimeRunLoopOutputVerificationContinued1(),
-      outputVerificationContinued2 = FeatureTaskRuntimeRunLoopOutputVerificationContinued2(),
-      outputVerificationContinued3 = FeatureTaskRuntimeRunLoopOutputVerificationContinued3(),
-      outputVerificationContinued4 = FeatureTaskRuntimeRunLoopOutputVerificationContinued4(),
-      outputVerificationContinued5 = FeatureTaskRuntimeRunLoopOutputVerificationContinued5(),
+      outputVerificationContinued1 = FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate(),
+      outputVerificationContinued2 = FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk(),
+      outputVerificationContinued3 = FeatureTaskRuntimeRunLoopOutputVerificationStructuralRepair(),
+      outputVerificationContinued4 = FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge(),
+      outputVerificationContinued5 = FeatureTaskRuntimeRunLoopOutputVerificationReceiptAssembly(),
     ),
     phase = FeatureTaskRuntimeRunLoopPhaseContinuationCollaborators(
-      phaseAttemptsContinued1 = FeatureTaskRuntimeRunLoopPhaseAttemptsContinued1(),
-      phaseAttemptsContinued2 = FeatureTaskRuntimeRunLoopPhaseAttemptsContinued2(),
-      phaseAttemptsContinued3 = FeatureTaskRuntimeRunLoopPhaseAttemptsContinued3(),
-      phaseRunnerContinued1 = FeatureTaskRuntimeRunLoopPhaseRunnerContinued1(),
-      phaseRunnerContinued2 = FeatureTaskRuntimeRunLoopPhaseRunnerContinued2(),
-      phaseRunnerContinued3 = FeatureTaskRuntimeRunLoopPhaseRunnerContinued3(),
+      phaseAttemptsContinued1 = FeatureTaskRuntimeRunLoopPhaseAttemptsAttemptBudget(),
+      phaseAttemptsContinued2 = FeatureTaskRuntimeRunLoopPhaseAttemptsRetrySchedule(),
+      phaseAttemptsContinued3 = FeatureTaskRuntimeRunLoopPhaseAttemptsBackoffGate(),
+      phaseRunnerContinued1 = FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch(),
+      phaseRunnerContinued2 = FeatureTaskRuntimeRunLoopPhaseRunnerMutatingPhase(),
+      phaseRunnerContinued3 = FeatureTaskRuntimeRunLoopPhaseRunnerVerifyingPhase(),
     ),
     validationGate = FeatureTaskRuntimeRunLoopValidationGateContinuationCollaborators(
-      validationGateContinued1 = FeatureTaskRuntimeRunLoopValidationGateContinued1(),
-      validationGateContinued2 = FeatureTaskRuntimeRunLoopValidationGateContinued2(),
-      validationGateContinued3 = FeatureTaskRuntimeRunLoopValidationGateContinued3(),
-      validationGateContinued4 = FeatureTaskRuntimeRunLoopValidationGateContinued4(),
+      validationGateContinued1 = FeatureTaskRuntimeRunLoopValidationGateCollectCommand(),
+      validationGateContinued2 = FeatureTaskRuntimeRunLoopValidationGateBuildCommand(),
+      validationGateContinued3 = FeatureTaskRuntimeRunLoopValidationGateSkillBillValidate(),
+      validationGateContinued4 = FeatureTaskRuntimeRunLoopValidationGateAgnixValidate(),
     ),
   )
 
@@ -729,7 +732,7 @@ internal data class RuntimeHarnessConfig(
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
-  SpecSourceResolver(TestDecompositionManifestFileStore, testDecompositionManifestValidator)
+  SpecSourceResolver(TestDecompositionManifestStore, testDecompositionManifestValidator)
 
 private data class RuntimePhaseGatesDeps(
   val branchSetupRunner: FeatureTaskRuntimeBranchSetupRunner,
@@ -797,15 +800,15 @@ private fun runtimePhaseGates(deps: RuntimePhaseGatesDeps): FeatureTaskRuntimePh
       diffResolver = deps.diffResolver,
       reviewDriver = deps.reviewDriver,
       specIntentProjectionResolver = SpecIntentProjectionResolver(
-        TestDecompositionManifestFileStore,
+        TestDecompositionManifestStore,
         testDecompositionManifestValidator,
         SpecIntentProjectionExtractor(
           ReviewContextEnvelopeValidator { _, _ -> },
-          TestDecompositionManifestFileStore,
+          TestDecompositionManifestStore,
         ),
       ),
       findingVerificationBoundaryMemory = FeatureTaskRuntimeFindingVerificationBoundaryMemory(
-        FileSystemGoalPlanningContextDiscovery(),
+        FileSystemGoalPlanningContextDiscovery(JvmSystemClock),
         FileSystemGoalPlanningBoundaryBodyResolver(),
       ),
     ),
@@ -1183,7 +1186,7 @@ private fun noOpDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner =
   },
   preparationWriter = FeatureSpecPreparationWriter(
     decompositionManifestValidator = testDecompositionManifestValidator,
-    fileStore = TestDecompositionManifestFileStore,
+    fileStore = TestDecompositionManifestStore,
     decompositionManifestWriter = testDecompositionManifestWriter,
   ),
 )
@@ -1192,7 +1195,7 @@ private fun testDecompositionPlanner(): FeatureTaskRuntimeDecompositionPlanner =
   preparationRuntime = FeatureSpecPreparationRuntime(prepareCore = FeatureSpecPreparationPolicy::prepare),
   preparationWriter = FeatureSpecPreparationWriter(
     decompositionManifestValidator = testDecompositionManifestValidator,
-    fileStore = TestDecompositionManifestFileStore,
+    fileStore = TestDecompositionManifestStore,
     decompositionManifestWriter = testDecompositionManifestWriter,
   ),
 )
@@ -2275,7 +2278,7 @@ private fun recordHarnessFindingVerdicts(verdicts: MutableList<ReviewFindingVerd
   }
 }
 
-private fun harnessReviewRepository(): ReviewRepository {
+internal fun harnessReviewRepository(): ReviewRepository {
   val verdicts = mutableListOf<ReviewFindingVerdict>()
   return Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
@@ -2468,6 +2471,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
     }
     override val workList = EmptyWorkListRepository
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
+    override val goalRunnerControls = EmptyGoalRunnerControlRepository
   }
 }
 
@@ -2683,6 +2687,8 @@ internal object HarnessDeadProcessSupervisor : FeatureTaskRuntimeWorkerSuperviso
     FeatureTaskRuntimeProcessIdentity("harness-host", "harness-boot", 4321, "harness-birth-4321")
 
   override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.NotRunning
+
+  override fun awaitExit(ownership: FeatureTaskRuntimeWorkerOwnership, timeout: Duration) = Unit
 
   override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
 

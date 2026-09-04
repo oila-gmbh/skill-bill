@@ -8,7 +8,7 @@ import skillbill.workflow.engine.WorkflowEngine
 internal class WorkflowGoalRunnerManifestStoreContext(deps: WorkflowGoalRunnerManifestStoreContextDeps) {
   val database = deps.database
   val decompositionManifestValidator = deps.decompositionManifestValidator
-  val decompositionManifestFileStore = deps.decompositionManifestFileStore
+  val decompositionManifestStore = deps.decompositionManifestStore
   private val phaseOutputValidator = deps.phaseOutputValidator
   private val planningProjectionValidator = deps.planningProjectionValidator
   private val workflowSnapshotValidator = deps.workflowSnapshotValidator
@@ -21,7 +21,7 @@ internal class WorkflowGoalRunnerManifestStoreContext(deps: WorkflowGoalRunnerMa
   val manifestLoader = WorkflowGoalRunnerManifestLoader(
     database,
     decompositionManifestValidator,
-    decompositionManifestFileStore,
+    decompositionManifestStore,
     engine,
     parentProjection,
   )
@@ -51,7 +51,7 @@ internal class WorkflowGoalRunnerManifestStoreContext(deps: WorkflowGoalRunnerMa
       state.repoRoot ?: repositoryRoot.path,
       projectionArtifactsJson,
       decompositionManifestValidator,
-      decompositionManifestFileStore,
+      decompositionManifestStore,
     )
   }
 }

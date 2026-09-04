@@ -2,14 +2,14 @@ package skillbill.application.workflow
 
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.resolveDecompositionManifest
-import skillbill.contracts.issuekey.normalizeRequiredIssueKey
 import skillbill.application.workflow.model.AdvanceCompletedSubtasksRequest
 import skillbill.application.workflow.model.CheckoutAndValidateBranchRequest
 import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
 import skillbill.application.workflow.model.WorkflowContinueResult
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.contracts.issuekey.normalizeRequiredIssueKey
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.decomposition.DecompositionContinuationSelector
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -24,7 +24,7 @@ class DecompositionWorkflowContinuation(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
   private val validator: DecompositionManifestValidator,
-  private val fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+  private val fileStore: DecompositionManifestStore = UnavailableDecompositionManifestStore,
   private val repoRoot: Path,
   private val manifestWriter: DecompositionManifestWriter,
 ) {
@@ -60,7 +60,7 @@ class DecompositionWorkflowContinuation(
   }
 
   private fun findProjectedManifestByIssueKey(issueKey: String): DecompositionManifest? {
-    if (fileStore === UnavailableDecompositionManifestFileStore) return null
+    if (fileStore === UnavailableDecompositionManifestStore) return null
     return resolveDecompositionManifest(
       repoRoot = repoRoot,
       issueKey = issueKey,

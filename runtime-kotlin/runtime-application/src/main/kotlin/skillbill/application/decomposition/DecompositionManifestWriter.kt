@@ -9,8 +9,8 @@ import skillbill.application.decomposition.model.PreparedDecompositionManifestWr
 import skillbill.contracts.issuekey.issueAndFeature
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestFileStore
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWriteResult
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
@@ -60,7 +60,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
     repoRoot: Path,
     artifactsJson: String,
     validator: DecompositionManifestValidator,
-    fileStore: DecompositionManifestFileStore,
+    fileStore: DecompositionManifestStore,
   ): DecompositionManifestWriteResult? {
     val artifacts = decodeArtifacts(artifactsJson)
     val runtime = artifacts[DECOMPOSITION_RUNTIME_ARTIFACT_KEY].asStringAnyMapOrNull()
@@ -76,7 +76,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
   fun writeIfDecomposed(
     request: DecompositionManifestWriteRequest,
     validator: DecompositionManifestValidator,
-    fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+    fileStore: DecompositionManifestStore = UnavailableDecompositionManifestStore,
   ): DecompositionManifestWriteResult? {
     if (request.planningResult["mode"]?.toString().orEmpty() != DECOMPOSITION_MODE) {
       return null
@@ -88,7 +88,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
     request: DecompositionManifestWriteRequest,
     validator: DecompositionManifestValidator,
     runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
-    fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+    fileStore: DecompositionManifestStore = UnavailableDecompositionManifestStore,
   ): DecompositionManifestWriteResult {
     val prepared = prepare(request, validator, runtimeUpdate, fileStore)
     writeDecompositionManifestText(prepared.manifestPath, prepared.yaml, fileStore)
@@ -104,7 +104,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
     request: DecompositionManifestWriteRequest,
     validator: DecompositionManifestValidator,
     runtimeUpdate: DecompositionManifestRuntimeUpdate? = null,
-    fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+    fileStore: DecompositionManifestStore = UnavailableDecompositionManifestStore,
   ): PreparedDecompositionManifestWrite {
     assertParentSpecIsNotDecomposedSubtask(request.repoRoot, request.parentSpecPath, validator, fileStore)
     val manifestPath = request.manifestPath()
@@ -158,7 +158,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
     repoRoot: Path,
     runtimeUpdate: DecompositionManifestRuntimeUpdate,
     validator: DecompositionManifestValidator,
-    fileStore: DecompositionManifestFileStore,
+    fileStore: DecompositionManifestStore,
   ): DecompositionManifest? {
     val artifacts = LinkedHashMap(runtimeUpdate.existingArtifacts).apply {
       runtimeUpdate.artifactsPatch?.let(::putAll)
@@ -221,7 +221,7 @@ private fun assertParentSpecIsNotDecomposedSubtask(
   repoRoot: Path,
   parentSpecPath: Path,
   validator: DecompositionManifestValidator,
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
 ) {
   val normalizedParentSpec = resolvedParentSpecPath(repoRoot, parentSpecPath).normalize()
   val parentSpecLabel = repoRelativePath(repoRoot, parentSpecPath)
@@ -288,7 +288,7 @@ private fun writeProjection(
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
   manifestPath: Path = manifest.manifestPath(repoRoot),
-  fileStore: DecompositionManifestFileStore,
+  fileStore: DecompositionManifestStore,
 ): DecompositionManifestWriteResult? = try {
   val encoded = encodeValidatedDecompositionManifestYaml(manifest.gitTrackedProjection(), validator, fileStore)
   writeDecompositionManifestText(manifestPath, encoded.yamlText, fileStore)

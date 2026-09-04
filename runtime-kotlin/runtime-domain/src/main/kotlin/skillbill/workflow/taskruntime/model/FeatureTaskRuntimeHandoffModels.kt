@@ -3,8 +3,8 @@ package skillbill.workflow.taskruntime.model
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ReviewFindingVerdict
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.ValidationDepth
 
 /**

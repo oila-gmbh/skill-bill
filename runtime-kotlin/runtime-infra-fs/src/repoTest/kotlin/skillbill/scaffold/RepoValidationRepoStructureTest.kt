@@ -1,7 +1,7 @@
 package skillbill.scaffold
-
 import skillbill.nativeagent.composition.NativeAgentSource
 import skillbill.nativeagent.composition.renderNativeAgentSource
+import skillbill.nativeagent.testNativeAgentCompositionContext
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import skillbill.testing.seedConformingPlatformPack
 import java.nio.file.Files
@@ -14,7 +14,7 @@ class RepoValidationRepoStructureTest {
   fun `repo validation reports missing governed directories`() {
     val repoRoot = Files.createTempDirectory("skillbill-empty-repo")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(report.issues.any { it.contains("skills/ directory is missing") })
@@ -47,7 +47,7 @@ class RepoValidationRepoStructureTest {
       """.trimMargin(),
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(report.issues.any { it.contains("specialist H2 sequence") }, report.issues.joinToString("\n"))
   }
@@ -65,7 +65,7 @@ class RepoValidationRepoStructureTest {
       "agents: [\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any { issue ->
@@ -82,7 +82,7 @@ class RepoValidationRepoStructureTest {
     Files.createDirectories(addonFile.parent)
     Files.writeString(addonFile, "# Bad add-on\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -115,7 +115,7 @@ class RepoValidationRepoStructureTest {
       """.trimIndent(),
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -133,7 +133,7 @@ class RepoValidationRepoStructureTest {
     val repoRoot = Files.createTempDirectory("skillbill-missing-sidecar")
     createRepoValidationSkillFixture(repoRoot)
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(
       report.issues.any { it.contains("required supporting sidecar") || it.contains("supporting sidecar") },
@@ -147,7 +147,7 @@ class RepoValidationRepoStructureTest {
     createRepoValidationSkillFixture(repoRoot)
     Files.writeString(repoRoot.resolve("skills/bill-code-review/patterns.md"), "extra organization file\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -171,7 +171,7 @@ class RepoValidationRepoStructureTest {
       writeSidecars = true,
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any {
@@ -187,7 +187,7 @@ class RepoValidationRepoStructureTest {
     val repoRoot = Files.createTempDirectory("skillbill-placeholder-sidecar")
     createRepoValidationSkillFixture(repoRoot, sidecarMode = SidecarMode.GitPlaceholder, writeSidecars = true)
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any {
@@ -205,7 +205,7 @@ class RepoValidationRepoStructureTest {
     val sidecar = repoRoot.resolve("skills/bill-code-review/shell-ceremony.md")
     Files.writeString(sidecar, "copied markdown\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any {
@@ -233,7 +233,7 @@ class RepoValidationRepoStructureTest {
       ),
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(
       report.issues.any { it.contains("references unknown skill 'bill-code-review-worker'") },
@@ -249,7 +249,7 @@ class RepoValidationRepoStructureTest {
     Files.createDirectories(ledger.parent)
     Files.writeString(ledger, "Areas: skills/legacy-feature-prose, skills/legacy-feature-runner\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(
       report.issues.any { it.contains("references unknown skill 'legacy-feature-prose'") },

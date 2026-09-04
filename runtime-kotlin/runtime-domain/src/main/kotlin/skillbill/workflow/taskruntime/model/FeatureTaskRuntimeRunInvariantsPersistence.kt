@@ -6,7 +6,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 
 /**
  * Durable run-scoped invariants resolved at run creation. Resume reads this artifact instead of

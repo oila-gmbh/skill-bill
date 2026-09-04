@@ -136,7 +136,8 @@ runtime-ports
   mappers. Public inputs and results live in area-owned `skillbill.application.<area>.model` packages.
 - area-owned `skillbill.application.<area>.model` packages: public application input/result models.
 - `skillbill.model`: shared runtime model types that are not owned by a
-  narrower area, currently `RuntimeContext`.
+  narrower area: `RuntimeContext`, `EnvironmentContext`, `TransportContext`,
+  `WorkflowOpsContext`, `OptionalCallbacks`, and `RepositoryRoot`.
 - `skillbill.config.*`: repo-local configuration domain models and resolution
   policy owned by `runtime-domain`.
 - `skillbill.boundary`: cross-area marker types that do not fit a single
@@ -155,12 +156,20 @@ runtime-ports
 - `skillbill.contracts.*`: contract DTOs, JSON helpers, runtime surface
   contracts, `*SchemaPaths` constants, and `*_CONTRACT_VERSION` constants.
   Mapping from application/domain/port models into contract DTOs belongs in
-  application or adapter-owned packages. This package now spans two modules: the
+  application or adapter-owned packages. This package spans two modules: the
   DTOs, helpers, and constants compile in `runtime-contracts`, and the schema
-  validator classes under `skillbill.contracts.install` and
-  `skillbill.contracts.workflow` compile into `runtime-infra-fs`. The package
-  name is retained on the moved validators to preserve their classpath resource
-  paths and import compatibility (recorded in `agent/decisions.md` 2026-06-12).
+  validator classes compile into `runtime-infra-fs` under four subpackages:
+  `skillbill.contracts` (`SchemaValidatorLocale`), `skillbill.contracts.install`
+  (`InstallPlanSchemaValidator`), `skillbill.contracts.review`
+  (`ReviewContextSchemaValidator` and `ReviewContextSchemaLocator`), and
+  `skillbill.contracts.workflow` (workflow, feature-task, goal, and
+  decomposition schema validators plus validator-only helpers such as
+  `IssueKeySchemaRefInlining`). Phase-output structural repair and strict
+  parsing live in `skillbill.infrastructure.fs.phaseoutput`, not under
+  `skillbill.contracts`, because they are adapter-owned parse/repair engines
+  rather than schema validators. Validator package names are retained to
+  preserve classpath resource paths and import compatibility (recorded in
+  `agent/decisions.md` 2026-06-12).
 - `skillbill.error`: runtime exception taxonomy.
 - `skillbill.agent.model`: phase handoff string envelopes for agent phase input and output owned by `runtime-domain`.
 - `skillbill.agentaddon` and `skillbill.agentaddon.model`: governed agent-add-on
@@ -188,6 +197,8 @@ runtime-ports
 - `skillbill.goalrunner` and `skillbill.goalrunner.model`: pure goal-runner
   liveness policy, worker-subtask parsing, status projection, accounting, and
   attempt-ledger models owned by `runtime-domain`.
+- `skillbill.idestatus` and `skillbill.idestatus.model`: agent activity label
+  and stamp types for IDE status presentation owned by `runtime-domain`.
 - `skillbill.goalplanning`: filesystem discovery of shared repository and
   validation context owned by `runtime-infra-fs`, plus headings-first boundary
   memory: a programmatic parse of governed `## [<date>] <title>` entries into a
@@ -220,12 +231,21 @@ runtime-ports
   ports.
 - `skillbill.infrastructure.http`: HTTP telemetry client and telemetry proxy
   payload mapping.
-- `skillbill.infrastructure.sqlite` and `skillbill.db`: SQLite session factory,
-  schema, migrations, repositories, review stores, stats, and telemetry outbox
-  persistence.
-- `skillbill.install`, `skillbill.scaffold`, `skillbill.nativeagent`,
-  `skillbill.launcher`, and `skillbill.skillremove`: filesystem/process
-  implementation packages owned by `runtime-infra-fs`.
+- `skillbill.infrastructure.sqlite`: SQLite session factory, schema, migrations,
+  repositories, review stores, stats, and telemetry outbox persistence owned by
+  `runtime-infra-sqlite`.
+- `skillbill.db`: database access layer and SQL statement bindings owned by
+  `runtime-infra-sqlite`.
+- `skillbill.install`: install-plan execution, apply side effects, and native-agent
+  link operations owned by `runtime-infra-fs`.
+- `skillbill.scaffold`: scaffold authoring, repo validation, support-pointer
+  generation, and rollback owned by `runtime-infra-fs`.
+- `skillbill.nativeagent`: native-agent composition, rendering, and platform-pack
+  loading owned by `runtime-infra-fs`.
+- `skillbill.launcher`: agent-run launch, MCP registration, and review stream
+  adapters owned by `runtime-infra-fs`.
+- `skillbill.skillremove`: skill-remove planning and apply owned by
+  `runtime-infra-fs`.
 - `skillbill.cli`: CLI adapter code. It validates CLI input, formats terminal
   output, maps typed results to contract payloads, and delegates behavior to
   application services or ports.
@@ -404,27 +424,27 @@ runtime-ports
     - `skillbill.application.featuretask.FeatureTaskRuntimePhaseReviewGenerationApi.recordedFindingVerdicts`
     - `skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput`
     - `skillbill.application.featuretask.FeatureTaskRuntimeReviewEnvelope.envelopeMap`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued2.settleValidatedOutputBoundary`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued3.rejectValidatedOutput`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued1.completedImplementFixProducedOutputs`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued1.completeReservedGoalReviewPass`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinued3.outputEnvelopeOf`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch.settleValidatedOutputBoundary`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize.rejectValidatedOutput`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish.completedImplementFixProducedOutputs`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDrivePhaseSelection.completeReservedGoalReviewPass`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchProcessWait.outputEnvelopeOf`
     - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence.persistRejectedVerificationFindings`
     - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.firstValidatedOutputRejection`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued1.auditGapProgressPause`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryBodyDeliveryDecision`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryDispositionGate`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryDispositionGateImpl`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.outputVerificationGateReason`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4.verifyFindingsBoundaryContext`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4.verifyFindingsDispositionGateContext`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate.auditGapProgressPause`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk.findingVerificationBoundaryBodyDeliveryDecision`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk.findingVerificationBoundaryDispositionGate`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk.findingVerificationBoundaryDispositionGateImpl`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk.outputVerificationGateReason`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge.verifyFindingsBoundaryContext`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge.verifyFindingsDispositionGateContext`
     - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.payloadFreeSemanticGateConstraint`
     - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.scrubResponseDerivedGateDetail`
     - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.implementFixRepairReceiptSettlement`
     - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.repairReceiptShapeSettlement`
     - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit.revalidated`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.gateTriageCapturedProducedOutputs`
-    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.looseOutputEnvelope`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand.gateTriageCapturedProducedOutputs`
+    - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand.looseOutputEnvelope`
     - `skillbill.application.featuretask.FeatureTaskRuntimeRunState.parsedOutputsByPayload`
     - `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.readHandoff`
     - `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.withCommitSha`
@@ -623,7 +643,7 @@ runtime-ports
     - `skillbill.ports.subtaskreview.structuredFindings`
     - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
     - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
-    - `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
+    - `skillbill.ports.workflow.decomposition.DecompositionManifestPersistencePort.encodeManifestYaml`
     - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.manifestFromWorkflowUpdate`
     - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
     - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
@@ -642,13 +662,13 @@ runtime-ports
     - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
     - `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
     - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
-    - `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForProgressEvent`
-    - `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForRuntimeEvent`
-    - `skillbill.ports.workflow.persistence.model.GoalObservabilityProgressInput.artifacts`
-    - `skillbill.ports.workflow.persistence.model.GoalObservabilityRuntimeEventInput.artifacts`
+    - `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForProgressEvent`
+    - `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForRuntimeEvent`
+    - `skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressInput.artifacts`
+    - `skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput.artifacts`
     - `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
-    - `skillbill.ports.workflow.persistence.outOfBandAcceptancesFromLegacyArtifacts`
-    - `skillbill.ports.workflow.persistence.reviewPolicyFromLegacyArtifacts`
+    - `skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts`
+    - `skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts`
     - `skillbill.ports.workflow.persistence.toPayload`
     - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
     - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
@@ -702,7 +722,7 @@ runtime-ports
     - `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
     - `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
     - `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
-    - `skillbill.workflow.idestatus.IdeStatusValidator.validate`
+    - `skillbill.ports.idestatus.IdeStatusValidator.validate`
     - `skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
     - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
     - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
@@ -946,7 +966,7 @@ skillbill.workflow.verify
   artifacts are persisted or returned. Repo-local manifest text persistence is
   owned by
   `skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore`
-  behind `skillbill.ports.workflow.decomposition.DecompositionManifestFileStore`.
+  behind `skillbill.ports.workflow.decomposition.DecompositionManifestStore`.
 - Platform-pack manifest schema validation is owned by
   `skillbill.scaffold.PlatformPackSchemaValidator` in `runtime-infra-fs`. The
   owning parse seam is `skillbill.scaffold.ShellContentLoader.buildPack`.
@@ -1371,8 +1391,15 @@ The architecture tests enforce the following rules:
 - Every `runtime-cli` command area's transitive `skillbill.cli` import closure
   contains only the shared `kernel` and `model` leaves, never a sibling command
   area and never the composition root `skillbill.cli.core`.
-- No `runtime-cli` file carries the `*Extras`, `*Extras2`, or `*Extras3`
-  filename signature outside a named exemption.
+- No runtime module source file carries the spillover filename signature
+  (`*Extras`, `*Continued`, `*Helpers<N>`, `*Fns<N>`, `*Support<N>`, letter-plus-digit,
+  or bare trailing-digit siblings) outside a named exemption.
+- No main-source site outside `skillbill.di` constructs a concrete class
+  `RuntimeComponent` binds; `RuntimeCompositionGuardArchitectureTest` enforces
+  the census and names sanctioned second entrypoints explicitly.
+- `skillbill.scaffold.runtime.ScaffoldStandaloneEntrypoint` is the sanctioned
+  second scaffold entrypoint for in-tree parity and rollback tests that cannot
+  reach `RuntimeComponent`; production paths use `FileSystemScaffoldOrchestrator`.
 - A failed `uninstall` mutation is a recorded degradation with a non-zero exit
   code, shared by launcher removal, desktop removal, recursive tree removal,
   agent-target cleanup, native-agent unlinking, and MCP unregistration.
@@ -1425,9 +1452,14 @@ second copy of a scanner scoped to another module is not an acceptable
 substitute.
 
 `AmbientEnvironmentArchitectureTest` bans `System.getenv`, `System.getProperty`,
-`Path.of("")`, and `Paths.get("")` in `runtime-cli` main source. Its scope is
-the scan root plus a recorded baseline, with no per-pattern carve-outs; test
-infrastructure stays outside the scanned root.
+`Path.of("")`, and `Paths.get("")` under a parameterized scan root. Its scope is
+the scan root plus a recorded baseline per module, with no per-pattern carve-outs;
+test infrastructure stays outside the scanned root. Named file-path exemptions on
+`PrincipleEnforcementInventory.ambientEnvironmentExemptions` omit a process entry
+from baseline recording only; every other main-source site must still match an
+empty baseline. Today that list names
+`runtime-kotlin/runtime-mcp/src/main/kotlin/skillbill/mcp/core/Main.kt` as the
+MCP process boundary.
 
 The four `runtime-cli` baselines started as a census — 16 mutual-import pairs, 2
 ambient-clock sites, 22 ambient-environment sites, and `CliRunState`'s 8
@@ -1455,12 +1487,96 @@ command area. `install` therefore owns its own command tree and top-level
 group, and the units two command areas share — the completion telemetry drain
 and the `WorkflowUpdateResult` payload mapper — live in `skillbill.cli.kernel`.
 
-`RuntimeCliSpilloverFileNameArchitectureTest` bans the `*Extras`, `*Extras2`,
-and `*Extras3` filename signature across all `runtime-cli` source. Exemptions
-are a named list on `PrincipleEnforcementInventory`, empty by rule, never an
-ad-hoc regex carve-out. The 500-line per-file ceiling is not relaxed to absorb
-re-merged spillover units: passing this guard by concatenating files back
-together fails the logical-type ceiling instead.
+`RuntimeSpilloverFileNameArchitectureTest` bans the spillover filename signature
+across every module source root. Exemptions are a named list on
+`PrincipleEnforcementInventory`, empty by rule, never an ad-hoc regex carve-out.
+The 500-line per-file ceiling is not relaxed to absorb re-merged spillover
+units: passing this guard by concatenating files back together fails the
+logical-type ceiling instead.
+
+### SKILL-231 inward-layer guardrails
+
+The package-acyclicity, ambient-clock, ambient-environment, and
+`@Inject`-defaults scanners are instantiated once per Gradle module through
+`PrincipleEnforcementInventory.moduleArchitectureScanCases`, driven by
+`RuntimeModuleCatalog.declaredGradleModules`. Each case supplies its own main
+scan root and package prefix (or scan root alone for ambient-environment and
+inject-defaults) rather than forking a second scanner class.
+
+`AmbientEnvironmentArchitectureTest` takes its scan root as a parameter; every
+module main source root has a recorded baseline. The `runtime-cli` baseline
+remains empty by rule.
+
+`RuntimeSpilloverFileNameArchitectureTest` scans every module's `src` tree
+(main and test), matching `*Extras`, `*Continued`, `*Helpers<N>`, `*Fns<N>`,
+`*Support<N>`, letter-plus-digit suffixes, and bare trailing-digit names when a
+de-digited or differently digitized sibling exists in the same package directory.
+Violations are keyed on repository-relative paths in
+`baselines/spillover-file-name-baseline.txt`.
+
+`RuntimeCoreCompositionOnlyTest` pins every module's `api(project(...))` and
+`implementation(project(...))` sets to today's edges, alongside the retained
+infrastructure-and-entrypoint `api` ban on `runtime-core`. `runtime-core` keeps
+`api(:runtime-application)` and `api(:runtime-ports)` as the kotlin-inject ABI
+edges. `runtime-infra-fs`, `runtime-infra-http`, and `runtime-infra-sqlite`
+narrow `api(:runtime-ports)` and `api(:runtime-domain)` to `implementation`.
+`runtime-cli` carries no `api` project edges.
+
+Baselines that were empty on main (`runtime-application` and `runtime-cli`
+package-cycle, ambient-clock, ambient-environment, and inject-defaults baselines,
+plus the runtime-application inject-defaults floor) stay empty by rule. Module
+baselines recorded here are shrink-only ceilings: they may only shrink, never
+grow without an explicit baseline update through the recorder.
+
+### Port null-object classification
+
+`PortNullObjectClassificationGuardTest` requires every `Unavailable`, `Noop`,
+`Empty`, or `Unconfigured` object under `runtime-ports`, `runtime-domain`, and
+`runtime-application` main source to appear in
+`PortNullObjectClassification.classifiedObjects`. `RecordingNullObjectDiagnosticsTest`
+exercises every `RECORDING_NULL_OBJECT` entry and asserts each swallow method
+emits through `RecordingNullObjectDiagnostics` when bound. Objects classified as
+`DELEGATION_COMPOSITE` delegate every swallow to other classified recording null
+objects and are excluded from that census. Runtime wiring binds
+that sink in `RuntimeGoalRunnerDiagnosticsBindings.runtimeDiagnostics`.
+
+| Object | Classification |
+| --- | --- |
+| `UnavailableUnaddressedFindingsRepository` | total refusal |
+| `UnavailableGoalRunnerControlRepository` | total refusal |
+| `UnavailableSpecScratchStore` | total refusal |
+| `UnavailableDecompositionManifestStore` | total refusal |
+| `UnavailableFeatureTaskRuntimeAuditGenerationRepository` | total refusal |
+| `UnavailableReviewRunLaneCompletenessRepository` | total refusal |
+| `UnavailableReviewRunStageCompletenessRepository` | total refusal |
+| `UnavailableReviewRunCompletenessRepository` | total refusal |
+| `UnconfiguredRemoteTransportPort` | total refusal |
+| `UnavailableCheckpointHistoryGitOperations` | total refusal |
+| `UnavailableScopedStagingGitOperations` | total refusal |
+| `UnavailableGoalSubtaskReviewGitOperations` | total refusal |
+| `EmptyGoalRunnerControlRepository` | recording null object |
+| `EmptyAgentActivityStampRepository` | recording null object |
+| `NoopGoalRunnerAttemptLedgerStore` | recording null object |
+| `NoopGoalRunnerChildRepairStore` | recording null object |
+| `NoopIdeStatusValidator` | recording null object |
+| `NoopGoalProgressEventValidator` | recording null object |
+| `NoopGoalObservabilityEventValidator` | recording null object |
+| `NoopFeatureTaskRuntimeQuarantineValidator` | recording null object |
+| `NoopFeatureTaskRuntimePlanningProjectionValidator` | recording null object |
+| `NoopFeatureTaskRuntimeImplementationAttemptValidator` | recording null object |
+| `NoopFeatureTaskRuntimeBuildReceiptValidator` | recording null object |
+| `NoopRuntimePhaseFileManifestGitOperations` | recording null object |
+| `NoopWorkflowGitWorktreeOperations` | recording null object |
+| `NoopWorkflowGitRemoteOperations` | recording null object |
+| `NoopWorkflowGitCommitHistoryOperations` | recording null object |
+| `NoopWorkflowGitBranchOperations` | recording null object |
+| `NoopRepositoryFingerprintGitOperations` | recording null object |
+| `NoopGoalSubtaskReviewGitOperations` | recording null object |
+| `NoopWorkflowGitOperations` | delegation composite |
+| `NoopRuntimeTimingPort` | recording null object |
+| `NoopFeatureTaskRuntimeHeartbeat` | recording null object |
+| `NoopFeatureTaskRuntimeWorkerSupervisor` | recording null object |
+| `NoopRuntimeDiagnostics` | diagnostic sink |
 
 ### Destructive command failure policy
 
@@ -1570,27 +1686,27 @@ Categories:
 - `skillbill.application.featuretask.FeatureTaskRuntimePhaseReviewGenerationApi.recordedFindingVerdicts`
 - `skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput`
 - `skillbill.application.featuretask.FeatureTaskRuntimeReviewEnvelope.envelopeMap`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued2.settleValidatedOutputBoundary`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued3.rejectValidatedOutput`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued1.completedImplementFixProducedOutputs`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued1.completeReservedGoalReviewPass`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinued3.outputEnvelopeOf`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch.settleValidatedOutputBoundary`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize.rejectValidatedOutput`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish.completedImplementFixProducedOutputs`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDrivePhaseSelection.completeReservedGoalReviewPass`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchProcessWait.outputEnvelopeOf`
 - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence.persistRejectedVerificationFindings`
 - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.firstValidatedOutputRejection`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued1.auditGapProgressPause`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryBodyDeliveryDecision`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryDispositionGate`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.findingVerificationBoundaryDispositionGateImpl`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2.outputVerificationGateReason`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4.verifyFindingsBoundaryContext`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4.verifyFindingsDispositionGateContext`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate.auditGapProgressPause`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk.findingVerificationBoundaryBodyDeliveryDecision`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk.findingVerificationBoundaryDispositionGate`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk.findingVerificationBoundaryDispositionGateImpl`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk.outputVerificationGateReason`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge.verifyFindingsBoundaryContext`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge.verifyFindingsDispositionGateContext`
 - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.payloadFreeSemanticGateConstraint`
 - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.scrubResponseDerivedGateDetail`
 - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.implementFixRepairReceiptSettlement`
 - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.repairReceiptShapeSettlement`
 - `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit.revalidated`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.gateTriageCapturedProducedOutputs`
-- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.looseOutputEnvelope`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand.gateTriageCapturedProducedOutputs`
+- `skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand.looseOutputEnvelope`
 - `skillbill.application.featuretask.FeatureTaskRuntimeRunState.parsedOutputsByPayload`
 - `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.readHandoff`
 - `skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.withCommitSha`
@@ -1783,7 +1899,7 @@ Categories:
 - `skillbill.ports.subtaskreview.structuredFindings`
 - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
 - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
-- `skillbill.ports.workflow.decomposition.DecompositionManifestFileEncodeStore.encodeManifestYaml`
+- `skillbill.ports.workflow.decomposition.DecompositionManifestPersistencePort.encodeManifestYaml`
 - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.manifestFromWorkflowUpdate`
 - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
 - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
@@ -1800,13 +1916,13 @@ Categories:
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
 - `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
 - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
-- `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForProgressEvent`
-- `skillbill.ports.workflow.persistence.GoalObservabilityArtifacts.patchForRuntimeEvent`
-- `skillbill.ports.workflow.persistence.model.GoalObservabilityProgressInput.artifacts`
-- `skillbill.ports.workflow.persistence.model.GoalObservabilityRuntimeEventInput.artifacts`
+- `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForProgressEvent`
+- `skillbill.ports.goalrunner.runner.GoalObservabilityArtifacts.patchForRuntimeEvent`
+- `skillbill.ports.goalrunner.runner.model.GoalObservabilityProgressInput.artifacts`
+- `skillbill.ports.goalrunner.runner.model.GoalObservabilityRuntimeEventInput.artifacts`
 - `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
-- `skillbill.ports.workflow.persistence.outOfBandAcceptancesFromLegacyArtifacts`
-- `skillbill.ports.workflow.persistence.reviewPolicyFromLegacyArtifacts`
+- `skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts`
+- `skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts`
 - `skillbill.ports.workflow.persistence.toPayload`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
@@ -1857,7 +1973,7 @@ Categories:
 - `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
 - `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
 - `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
-- `skillbill.workflow.idestatus.IdeStatusValidator.validate`
+- `skillbill.ports.idestatus.IdeStatusValidator.validate`
 - `skillbill.workflow.taskruntime.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
 - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator.validateEnvelope`
 - `skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`

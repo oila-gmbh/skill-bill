@@ -5,7 +5,4 @@ import skillbill.ports.telemetry.model.TelemetryReconciliationResult
 
 interface TelemetryReconciliationRepository {
   fun reconcileStaleSessions(request: TelemetryReconciliationRequest): TelemetryReconciliationResult
-
-  fun reconcileStaleSessions(level: String): TelemetryReconciliationResult =
-    reconcileStaleSessions(TelemetryReconciliationRequest(level = level))
 }

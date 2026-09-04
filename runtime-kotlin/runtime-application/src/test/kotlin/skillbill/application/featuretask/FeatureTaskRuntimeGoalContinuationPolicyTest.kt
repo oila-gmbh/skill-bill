@@ -3,7 +3,7 @@ package skillbill.application.featuretask
 import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact

@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite.review
-
 import skillbill.contracts.JsonSupport
+import skillbill.db.PARAM_ONE
+import skillbill.db.PARAM_TWO
 import skillbill.db.telemetry.enqueueTelemetry
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.model.REVIEW_FINISHED_LEGACY_CONTRACT_VERSION

@@ -1,6 +1,7 @@
 package skillbill.nativeagent.validation
 
 import skillbill.nativeagent.composition.NATIVE_AGENT_SOURCE_DIR
+import skillbill.nativeagent.composition.NativeAgentCompositionContext
 import skillbill.nativeagent.composition.NativeAgentSource
 import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.composition.displayPath
@@ -12,8 +13,6 @@ import skillbill.nativeagent.discovery.discoverNativeAgentSourceFilesInRoots
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.rendering.discoverRepoNativeAgentSourceFiles
 import skillbill.nativeagent.rendering.enforceAddonProjectionParity
-import skillbill.review.plan.ReviewLaunchPlanPolicy
-import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -23,13 +22,15 @@ data class NativeAgentValidationReport(
   val passed: Boolean = issues.isEmpty()
 }
 
-fun validateRepoNativeAgents(repoRoot: Path): NativeAgentValidationReport {
+fun validateRepoNativeAgents(
+  repoRoot: Path,
+  compositionContext: NativeAgentCompositionContext,
+): NativeAgentValidationReport {
   val root = repoRoot.toAbsolutePath().normalize()
   val issues = mutableListOf<String>()
   val sourceFiles = discoverRepoNativeAgentSourceFiles(root)
   val sources = parseNativeAgentSourcesForValidation(root, sourceFiles, issues)
-  validateNativeAgentSources(root, sources, issues)
-  validatePlannedWorkerDeclarations(root, sources, issues)
+  validateNativeAgentSources(root, sources, issues, compositionContext)
   validateNoCheckedInGeneratedArtifacts(root, issues)
   return NativeAgentValidationReport(issues.sorted())
 }
@@ -38,26 +39,36 @@ internal fun validateNativeAgentArtifactsForInstall(
   platformPacksRoot: Path,
   skillsRoot: Path?,
   selectedPlatforms: List<String>?,
+  compositionContext: NativeAgentCompositionContext,
 ) {
   val sourceFiles = discoverNativeAgentSourceFiles(platformPacksRoot, skillsRoot, selectedPlatforms)
   validateNativeAgentSourceFilesForInstall(
     sourceFiles = sourceFiles,
     root = nativeAgentCompositionRepoRoot(platformPacksRoot, skillsRoot),
+    compositionContext = compositionContext,
   )
 }
 
-internal fun validateNativeAgentArtifactsForInstall(sourceRoots: List<Path>, root: Path) {
+internal fun validateNativeAgentArtifactsForInstall(
+  sourceRoots: List<Path>,
+  root: Path,
+  compositionContext: NativeAgentCompositionContext,
+) {
   val sourceFiles = discoverNativeAgentSourceFilesInRoots(sourceRoots)
-  validateNativeAgentSourceFilesForInstall(sourceFiles, root)
+  validateNativeAgentSourceFilesForInstall(sourceFiles, root, compositionContext)
 }
 
-private fun validateNativeAgentSourceFilesForInstall(sourceFiles: List<Path>, root: Path) {
+private fun validateNativeAgentSourceFilesForInstall(
+  sourceFiles: List<Path>,
+  root: Path,
+  compositionContext: NativeAgentCompositionContext,
+) {
   if (sourceFiles.isEmpty()) {
     return
   }
   val issues = mutableListOf<String>()
   val sources = parseNativeAgentSourcesForValidation(root, sourceFiles, issues)
-  validateNativeAgentSources(root, sources, issues)
+  validateNativeAgentSources(root, sources, issues, compositionContext)
   require(issues.isEmpty()) {
     "Native agent sources are invalid:\n${issues.sorted().joinToString("\n")}"
   }
@@ -75,7 +86,12 @@ private fun parseNativeAgentSourcesForValidation(
     }
 }
 
-private fun validateNativeAgentSources(root: Path, sources: List<NativeAgentSource>, issues: MutableList<String>) {
+private fun validateNativeAgentSources(
+  root: Path,
+  sources: List<NativeAgentSource>,
+  issues: MutableList<String>,
+  compositionContext: NativeAgentCompositionContext,
+) {
   val seenNames = mutableMapOf<String, NativeAgentSource>()
   sources.forEach { source ->
     requireNotNull(source.path) { "validated native agent source requires a path" }
@@ -88,17 +104,24 @@ private fun validateNativeAgentSources(root: Path, sources: List<NativeAgentSour
       issues += "${nativeAgentSourceDisplay(root, source)}: " +
         "native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     }
-    val composed = runCatching { composeNativeAgentSource(root, source) }
-      .getOrElse { error ->
-        issues += "${nativeAgentSourceDisplay(root, source)}: ${error.message.orEmpty()}"
-        return@forEach
-      }
+    val composed = runCatching {
+      composeNativeAgentSource(
+        root,
+        source,
+        compositionContext.reviewContextBudgetBytes,
+        compositionContext.renderGovernedBody,
+        compositionContext.packLoader,
+      )
+    }.getOrElse { error ->
+      issues += "${nativeAgentSourceDisplay(root, source)}: ${error.message.orEmpty()}"
+      return@forEach
+    }
     if (composed !== source && containsNativeAgentProviderConditional(composed.body)) {
       issues += "${nativeAgentSourceDisplay(root, source)}: " +
         "composed native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     }
     runCatching {
-      val pack = resolveNativeAgentCompositionTarget(root, source)?.manifest
+      val pack = resolveNativeAgentCompositionTarget(root, source, compositionContext.packLoader)?.manifest
       if (pack != null) {
         enforceAddonProjectionParity(pack, composed.name, composed.composedAddonSlugs)
       }
@@ -110,32 +133,6 @@ private fun validateNativeAgentSources(root: Path, sources: List<NativeAgentSour
         issues += "${nativeAgentSourceDisplay(root, source)}: cannot render ${provider.directoryName}: " +
           error.message.orEmpty()
       }
-    }
-  }
-}
-
-private fun validatePlannedWorkerDeclarations(
-  root: Path,
-  sources: List<NativeAgentSource>,
-  issues: MutableList<String>,
-) {
-  val packsRoot = root.resolve("platform-packs")
-  if (!Files.isDirectory(packsRoot) || !Files.isDirectory(root.resolve("orchestration/contracts"))) return
-  val manifests = runCatching { discoverPlatformPackManifests(packsRoot) }
-    .getOrElse { error ->
-      issues += "platform-packs: cannot derive native-agent worker set: ${error.message.orEmpty()}"
-      return
-    }
-  val plannedNames = manifests.flatMap { manifest ->
-    val selectedAreas = ReviewLaunchPlanPolicy.composedAreas(manifest.slug, manifests)
-    ReviewLaunchPlanPolicy.flatten(manifest.slug, manifests, selectedAreas).lanes.map { it.skillName }
-  }.toSortedSet()
-  val declarations = sources.groupBy { it.name }
-  plannedNames.forEach { worker ->
-    when (declarations[worker].orEmpty().size) {
-      0 -> issues += "platform-packs: planned review worker '$worker' has no native-agent source declaration"
-      1 -> Unit
-      else -> issues += "platform-packs: planned review worker '$worker' has ambiguous native-agent declarations"
     }
   }
 }

@@ -19,6 +19,8 @@ import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.plan.discoverPlatformManifests
 import skillbill.install.support.InstallSymlinkException
 import skillbill.install.support.windowsSymlinkGuidance
+import skillbill.ports.install.mcp.InstallMcpRegistrationPort
+import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
@@ -26,6 +28,8 @@ import java.nio.file.Path
 internal fun applyInstallPlan(
   plan: InstallPlan,
   telemetryLevelMutator: TelemetryLevelMutator? = null,
+  telemetryConfigStore: TelemetryConfigStore? = null,
+  mcpRegistrationPort: InstallMcpRegistrationPort,
 ): InstallApplyResult {
   val warnings = mutableListOf<InstallApplyIssue>()
   val failures = mutableListOf<InstallApplyIssue>()
@@ -59,12 +63,12 @@ internal fun applyInstallPlan(
   }
   val finalWindowsOutcome = windowsOutcome.withSymlinkFailureState(failures)
   val telemetryOutcome = if (failures.isEmpty()) {
-    applyTelemetryIntent(plan, warnings, telemetryLevelMutator)
+    applyTelemetryIntent(plan, warnings, telemetryLevelMutator, telemetryConfigStore)
   } else {
     skippedTelemetryOutcome(plan, "Skipped because install apply failed.")
   }
   val mcpRegistrationOutcomes = if (failures.isEmpty()) {
-    applyMcpRegistrationIntent(plan, warnings)
+    applyMcpRegistrationIntent(plan, warnings, mcpRegistrationPort)
   } else {
     skippedMcpRegistrationOutcomes(plan, "Skipped because install apply failed.")
   }

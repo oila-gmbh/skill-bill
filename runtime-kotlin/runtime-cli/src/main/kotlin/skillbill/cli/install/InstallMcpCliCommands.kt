@@ -4,20 +4,22 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.scaffold.McpRegistrationService
 import skillbill.cli.kernel.CliRunState
 import skillbill.cli.kernel.DocumentedCliCommand
 import skillbill.cli.model.CliRunInputs
 import skillbill.install.model.ClaudeMcpProfileFailure
 import skillbill.install.model.McpMutationResult
 import skillbill.install.model.McpProfileOutcome
+import skillbill.ports.install.mcp.InstallMcpRegistrationPort
+import skillbill.ports.install.mcp.model.InstallMcpRegistrationRequest
+import skillbill.ports.install.mcp.model.InstallMcpUnregistrationRequest
 import java.nio.file.Path
 
 @Inject
 class InstallRegisterMcpCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val mcpRegistrationService: McpRegistrationService,
+  private val installMcpRegistrationPort: InstallMcpRegistrationPort,
 ) : DocumentedCliCommand("register-mcp", "Register Skill Bill's packaged Kotlin MCP server for one agent.") {
   private val agent by argument(help = "Agent name.")
   private val runtimeMcpBin by option("--runtime-mcp-bin", help = "Packaged runtime-mcp bin script.").required()
@@ -26,7 +28,13 @@ class InstallRegisterMcpCommand(
     if (state.refuseInstallMutationDuringGoalContinuation(inputs, "register-mcp")) {
       return
     }
-    val result = mcpRegistrationService.registerMcp(agent, Path.of(runtimeMcpBin), inputs.userHome)
+    val result = installMcpRegistrationPort.registerMcp(
+      InstallMcpRegistrationRequest(
+        agent = agent,
+        runtimeMcpBin = Path.of(runtimeMcpBin),
+        home = inputs.userHome,
+      ),
+    ).mutation
     state.completeText(mcpProfilePathsText(result), mcpProfilesMap(agent, result))
   }
 }
@@ -35,7 +43,7 @@ class InstallRegisterMcpCommand(
 class InstallUnregisterMcpCommand(
   private val state: CliRunState,
   private val inputs: CliRunInputs,
-  private val mcpRegistrationService: McpRegistrationService,
+  private val installMcpRegistrationPort: InstallMcpRegistrationPort,
 ) : DocumentedCliCommand("unregister-mcp", "Remove Skill Bill MCP registration for one agent.") {
   private val agent by argument(help = "Agent name.")
 
@@ -44,7 +52,12 @@ class InstallUnregisterMcpCommand(
       return
     }
     val result = try {
-      mcpRegistrationService.unregisterMcp(agent, inputs.userHome)
+      installMcpRegistrationPort.unregisterMcp(
+        InstallMcpUnregistrationRequest(
+          agent = agent,
+          home = inputs.userHome,
+        ),
+      ).mutation
     } catch (error: ClaudeMcpProfileFailure) {
       val removed = changedProfilePathsText(error.succeeded)
       if (removed.isNotEmpty()) {

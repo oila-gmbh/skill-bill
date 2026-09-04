@@ -1,7 +1,6 @@
 # Code Principles
 
-Adapted from skill-bill-v2 SKILL-18 for this hexagonal `skillbill.*` runtime. Each
-section states the rule, preferred shapes, anti-patterns, then reference examples
+Each section states the rule, preferred shapes, anti-patterns, then reference examples
 from this tree. `runtime-kotlin/ARCHITECTURE.md` records module boundaries and
 package ownership; this document records copyable coding patterns.
 
@@ -122,7 +121,7 @@ storage technology.
 
 - `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/model/FeatureTaskRuntimeRunModels.kt`
 - `runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/goalrunner/runner/GoalRunnerPorts.kt` (`GoalRunnerManifestStore`)
-- `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/goalrunner/WorkflowGoalRunnerManifestStore.kt`
+- `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/goalrunner/WorkflowGoalRunnerManifestStore.kt`
 - `runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/engine/WorkflowEngine.kt`
 - `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/PackageClusteringArchitectureTest.kt`
 - `runtime-kotlin/ARCHITECTURE.md` Package Ownership section
@@ -146,7 +145,7 @@ silent takeover without generation fencing.
 
 - `runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/goalrunner/model/GoalRunnerControlModels.kt`
 - `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/goalrunner/GoalRunnerStatusService.kt`
-- `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/goalrunner/WorkflowGoalRunnerOutcomeTerminalPersistence.kt`
+- `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/goalrunner/WorkflowGoalRunnerOutcomeTerminalPersistence.kt`
 - `runtime-kotlin/ARCHITECTURE.md` DB-first feature-task continuation section
 
 ## Composition And API Surface
@@ -165,9 +164,34 @@ with one implementation.
 
 **Reference examples.**
 
-- `runtime-kotlin/runtime-core/src/main/kotlin/skillbill/di/RuntimeComponentBindingsA.kt`
-- `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimeRunLoopLaunchCapture.kt`
+- `runtime-kotlin/runtime-core/src/main/kotlin/skillbill/di/RuntimeComponentBindingsA1.kt`
+- `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimeRunLoopSession.kt`
 - `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeCoreCompositionOnlyTest.kt`
+
+## Port Necessity And Deletion
+
+**Rule.** A port earns its place through a second implementation, a test
+substitute, or a module boundary the composition root has to cross. An interface
+with one implementation, one caller, and no test double is inlined, not kept.
+Deleting code outranks abstracting it. An extension point waits for its second
+case.
+
+**Preferred shapes.** Port contracts in `skillbill.ports.<concept>` implemented
+by one adapter and bound once in `skillbill.di`; test substitutes published from
+`runtime-ports` test fixtures instead of re-declared per consumer; `internal`
+visibility on collaborators extracted beside the orchestrator they serve.
+
+**Anti-patterns.** A wrapper that only forwards calls; an application service
+whose body is one port call plus a rename; a port declared in the module of its
+only implementation; a type parameter or `Any`-typed map used at exactly one
+site; a flag that is never flipped. `@OpenBoundaryMap` sites inventoried in
+`ARCHITECTURE.md` are deliberate open boundaries, not this anti-pattern.
+
+**Reference examples.**
+
+- `runtime-kotlin/runtime-ports/src/testFixtures/kotlin/skillbill/ports/work/EmptyWorkListRepository.kt`
+- `runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/goalrunner/runner/GoalRunnerPorts.kt`
+- `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimeRunLoopSession.kt`
 
 ## Build And Tooling
 
@@ -193,6 +217,31 @@ build files; `@Suppress("LargeClass")` instead of splitting; applying the
 **Amendment.** The 500-line ceiling applies to production `src/main` Kotlin only.
 Test sources may exceed 500 lines. Detekt complexity pinning and suppression
 cleanup are SKILL-221, not this program.
+
+## Guard Baselines And Exemptions
+
+**Rule.** `PrincipleEnforcementInventory` and the files under
+`skillbill/architecture/baselines/` decide which rules run and what debt they
+still tolerate. Both ratchet one direction. A new violation gets fixed; it does
+not get recorded. Regenerate a baseline only when a fix shrinks it. All eight
+baseline files, `productionLineCeilingExemptions`, and
+`spilloverFileNameExemptions` are empty today, and empty is the target state.
+
+**Preferred shapes.** `RECORD_ARCHITECTURE_BASELINES=1` run after a cleanup that
+removes entries; a new rule registered in `enforceableRules` with its scan in
+`ArchitectureScanSupport`; a rule that resists deterministic scanning registered
+in `reviewOnlyRules` with the reason.
+
+**Anti-patterns.** Running the recorder to turn a red test green; adding an
+exemption entry instead of splitting the file; `@Suppress` in place of the fix; a
+rule asserted in prose or review with no entry in `enforceableRules` or
+`reviewOnlyRules`.
+
+**Reference examples.**
+
+- `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ArchitectureBaselineRecorder.kt`
+- `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/SuppressionBanArchitectureTest.kt`
+- `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/PrincipleEnforcementInventoryTest.kt`
 
 ## Imports And Simple Names (No Inline FQN)
 

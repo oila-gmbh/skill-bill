@@ -6,71 +6,50 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * SKILL-52.2 subtask 5 — `runtime-core` composition-only no-regression guard.
- *
- * `runtime-core` is the composition module: it wires Kotlin-Inject providers and
- * publishes only the generated ABI edges its public `RuntimeComponent` requires.
- * ARCHITECTURE.md §Gradle Modules locks this contract: `runtime-core` may carry
- * `api(:runtime-application)` and `api(:runtime-ports)` (kotlin-inject needs the
- * generated service/port types to be public), but it MUST NOT grow `api(...)`
- * edges to infrastructure (`runtime-infra-*`) or entrypoint
- * (`runtime-cli`, `runtime-mcp`) modules.
- *
- * This test pins:
- *  1. The exact `api(project(...))` set on `runtime-core`.
- *  2. The exact `implementation(project(...))` set on `runtime-core` (infra is
- *     allowed as `implementation` only — it is consumed inside composition code
- *     but is not re-exported in the public ABI).
- *  3. No infrastructure or entrypoint module appears as `api(...)`.
- *
- * If kotlin-inject ever requires another generated ABI edge to be public, this
- * test must be updated in lock-step with the ARCHITECTURE.md adapter paragraph.
- */
 class RuntimeCoreCompositionOnlyTest {
-  private val runtimeRoot: Path =
-    Path.of("").toAbsolutePath().normalize().let { workingDir ->
-      if (workingDir.fileName.toString().startsWith("runtime-")) {
-        workingDir.parent
-      } else {
-        workingDir
-      }
-    }
+  private val runtimeKotlinRoot: Path =
+    ArchitectureScanSupport.runtimeRoot.resolve("runtime-kotlin")
 
   @Test
-  fun `runtime-core api edges are pinned to the SKILL-52_1 baseline`() {
-    val source = Files.readString(runtimeRoot.resolve("runtime-core/build.gradle.kts"))
-    val apiEdges = projectEdgesForConfiguration(source, "api")
+  fun `every declared module has a Gradle edge expectation`() {
+    val covered = MODULE_EDGE_EXPECTATIONS.keys
     assertEquals(
-      EXPECTED_API_EDGES,
-      apiEdges,
-      "runtime-core api(project(...)) edges drifted from the composition-only baseline. " +
-        "Expected $EXPECTED_API_EDGES but found $apiEdges. " +
-        "runtime-core may only re-export the generated kotlin-inject ABI edges that " +
-        "RuntimeComponent's public surface requires (runtime-application + runtime-ports). " +
-        "If a new edge is genuinely required, update both ARCHITECTURE.md §Gradle Modules and " +
-        "this test in the same change.",
+      RuntimeModuleCatalog.declaredGradleModules.toSet(),
+      covered,
+      "Every module in declaredGradleModules must have an edge expectation entry.",
     )
   }
 
   @Test
-  fun `runtime-core implementation edges are pinned to the SKILL-52_1 baseline`() {
-    val source = Files.readString(runtimeRoot.resolve("runtime-core/build.gradle.kts"))
-    val implementationEdges = projectEdgesForConfiguration(source, "implementation")
-    assertEquals(
-      EXPECTED_IMPLEMENTATION_EDGES,
-      implementationEdges,
-      "runtime-core implementation(project(...)) edges drifted from the composition-only " +
-        "baseline. Expected $EXPECTED_IMPLEMENTATION_EDGES but found $implementationEdges. " +
-        "Composition-internal edges are allowed but the set is pinned to keep the boundary " +
-        "inventory stable.",
-    )
+  fun `module api edges match the recorded expectation`() {
+    MODULE_EDGE_EXPECTATIONS.forEach { (moduleName, expectation) ->
+      val source = Files.readString(runtimeKotlinRoot.resolve("$moduleName/build.gradle.kts"))
+      val apiEdges = ArchitectureScanSupport.projectEdgesForConfiguration(source, "api")
+      assertEquals(
+        expectation.api,
+        apiEdges,
+        "$moduleName api(project(...)) edges drifted from the recorded expectation.",
+      )
+    }
+  }
+
+  @Test
+  fun `module implementation edges match the recorded expectation`() {
+    MODULE_EDGE_EXPECTATIONS.forEach { (moduleName, expectation) ->
+      val source = Files.readString(runtimeKotlinRoot.resolve("$moduleName/build.gradle.kts"))
+      val implementationEdges = ArchitectureScanSupport.projectEdgesForConfiguration(source, "implementation")
+      assertEquals(
+        expectation.implementation,
+        implementationEdges,
+        "$moduleName implementation(project(...)) edges drifted from the recorded expectation.",
+      )
+    }
   }
 
   @Test
   fun `runtime-core does not publish infrastructure or entrypoint modules as api`() {
-    val source = Files.readString(runtimeRoot.resolve("runtime-core/build.gradle.kts"))
-    val apiEdges = projectEdgesForConfiguration(source, "api")
+    val source = Files.readString(runtimeKotlinRoot.resolve("runtime-core/build.gradle.kts"))
+    val apiEdges = ArchitectureScanSupport.projectEdgesForConfiguration(source, "api")
     val banned =
       apiEdges.filter { edge ->
         edge.startsWith("runtime-infra-") ||
@@ -84,41 +63,133 @@ class RuntimeCoreCompositionOnlyTest {
     )
   }
 
-  private fun projectEdgesForConfiguration(source: String, configuration: String): Set<String> {
-    val edges = mutableSetOf<String>()
-    val pattern = Regex(
-      """^\s*${Regex.escape(configuration)}\(project\(":([A-Za-z0-9:-]+)"\)\)""",
-      RegexOption.MULTILINE,
+  @Test
+  fun `project edge reader fails when an edge is added`() {
+    val source = """
+    dependencies {
+      api(project(":runtime-application"))
+      api(project(":runtime-ports"))
+      implementation(project(":runtime-domain"))
+      implementation(project(":runtime-contracts"))
+      implementation(project(":runtime-infra-fs"))
+      implementation(project(":runtime-infra-http"))
+      implementation(project(":runtime-infra-sqlite"))
+      implementation(project(":runtime-extra"))
+    }
+    """.trimIndent()
+    val edges = ArchitectureScanSupport.projectEdgesForConfiguration(source, "implementation")
+    assertTrue(
+      edges != MODULE_EDGE_EXPECTATIONS.getValue("runtime-core").implementation,
+      "Added edge must change the implementation set.",
     )
-    pattern.findAll(source).forEach { match -> edges += match.groupValues[1] }
-    return edges
   }
 
-  private companion object {
-    /**
-     * `runtime-application` and `runtime-ports` are `api(...)` because the generated
-     * kotlin-inject component types (RuntimeComponent) expose application service and
-     * port types as part of their public ABI. Adding more api edges grows that public
-     * ABI and is a hard regression.
-     */
-    val EXPECTED_API_EDGES: Set<String> =
-      setOf(
-        "runtime-application",
-        "runtime-ports",
-      )
+  @Test
+  fun `project edge reader fails when an edge is removed`() {
+    val source = """
+      dependencies {
+        api(project(":runtime-application"))
+        api(project(":runtime-ports"))
+        implementation(project(":runtime-domain"))
+        implementation(project(":runtime-contracts"))
+        implementation(project(":runtime-infra-fs"))
+        implementation(project(":runtime-infra-http"))
+      }
+    """.trimIndent()
+    val edges = ArchitectureScanSupport.projectEdgesForConfiguration(source, "implementation")
+    assertTrue(
+      edges != MODULE_EDGE_EXPECTATIONS.getValue("runtime-core").implementation,
+      "Removed edge must change the implementation set.",
+    )
+  }
 
-    /**
-     * `runtime-domain`, `runtime-contracts`, and the three `runtime-infra-*` modules
-     * are `implementation(...)` — composition references them inside the kotlin-inject
-     * providers, but they are not re-exported as public ABI.
-     */
-    val EXPECTED_IMPLEMENTATION_EDGES: Set<String> =
-      setOf(
-        "runtime-domain",
-        "runtime-contracts",
-        "runtime-infra-fs",
-        "runtime-infra-http",
-        "runtime-infra-sqlite",
-      )
+  @Test
+  fun `project edge reader fails when an edge changes configuration`() {
+    val source = """
+      dependencies {
+        api(project(":runtime-application"))
+        api(project(":runtime-ports"))
+        api(project(":runtime-domain"))
+        implementation(project(":runtime-contracts"))
+        implementation(project(":runtime-infra-fs"))
+        implementation(project(":runtime-infra-http"))
+        implementation(project(":runtime-infra-sqlite"))
+      }
+    """.trimIndent()
+    val apiEdges = ArchitectureScanSupport.projectEdgesForConfiguration(source, "api")
+    val implementationEdges = ArchitectureScanSupport.projectEdgesForConfiguration(source, "implementation")
+    val expectation = MODULE_EDGE_EXPECTATIONS.getValue("runtime-core")
+    assertTrue(
+      apiEdges != expectation.api || implementationEdges != expectation.implementation,
+      "Reclassified edge must change at least one configuration set.",
+    )
+  }
+
+  private data class ModuleEdgeExpectation(
+    val api: Set<String>,
+    val implementation: Set<String>,
+  )
+
+  private companion object {
+    val MODULE_EDGE_EXPECTATIONS: Map<String, ModuleEdgeExpectation> = mapOf(
+      "runtime-application" to ModuleEdgeExpectation(
+        api = setOf("runtime-contracts", "runtime-domain", "runtime-ports"),
+        implementation = emptySet(),
+      ),
+      "runtime-contracts" to ModuleEdgeExpectation(
+        api = emptySet(),
+        implementation = emptySet(),
+      ),
+      "runtime-core" to ModuleEdgeExpectation(
+        api = setOf("runtime-application", "runtime-ports"),
+        implementation = setOf(
+          "runtime-domain",
+          "runtime-contracts",
+          "runtime-infra-fs",
+          "runtime-infra-http",
+          "runtime-infra-sqlite",
+        ),
+      ),
+      "runtime-domain" to ModuleEdgeExpectation(
+        api = emptySet(),
+        implementation = setOf("runtime-contracts"),
+      ),
+      "runtime-infra-fs" to ModuleEdgeExpectation(
+        api = emptySet(),
+        implementation = setOf("runtime-contracts", "runtime-domain", "runtime-ports"),
+      ),
+      "runtime-infra-http" to ModuleEdgeExpectation(
+        api = emptySet(),
+        implementation = setOf("runtime-contracts", "runtime-domain", "runtime-ports"),
+      ),
+      "runtime-infra-sqlite" to ModuleEdgeExpectation(
+        api = emptySet(),
+        implementation = setOf("runtime-contracts", "runtime-domain", "runtime-ports"),
+      ),
+      "runtime-cli" to ModuleEdgeExpectation(
+        api = emptySet(),
+        implementation = setOf(
+          "runtime-application",
+          "runtime-contracts",
+          "runtime-core",
+          "runtime-domain",
+          "runtime-ports",
+        ),
+      ),
+      "runtime-mcp" to ModuleEdgeExpectation(
+        api = emptySet(),
+        implementation = setOf(
+          "runtime-application",
+          "runtime-contracts",
+          "runtime-core",
+          "runtime-domain",
+          "runtime-ports",
+        ),
+      ),
+      "runtime-ports" to ModuleEdgeExpectation(
+        api = setOf("runtime-contracts", "runtime-domain"),
+        implementation = emptySet(),
+      ),
+    )
   }
 }

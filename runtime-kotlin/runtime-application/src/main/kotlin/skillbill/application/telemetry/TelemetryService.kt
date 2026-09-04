@@ -6,7 +6,6 @@ import skillbill.application.telemetry.model.TelemetryStatusResult
 import skillbill.application.telemetry.model.TelemetrySyncPayload
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.telemetry.TelemetryClient
-import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
@@ -16,13 +15,15 @@ import skillbill.telemetry.model.TelemetryProxyCapabilities
 import skillbill.telemetry.model.TelemetryRemoteStatsResult
 import skillbill.telemetry.sync.TelemetrySyncRuntime
 import skillbill.telemetry.sync.syncResult
+import java.time.Clock
 
 @Inject
 class TelemetryService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
-  private val configStore: TelemetryConfigStore,
   private val telemetryClient: TelemetryClient,
+  private val clock: Clock,
+  private val levelMutationService: TelemetryLevelMutationService,
 ) {
   fun isEnabled(): Boolean = telemetrySettingsOrNull(settingsProvider)?.enabled ?: false
 
@@ -49,7 +50,10 @@ class TelemetryService(
       if (!settings.enabled) {
         TelemetrySyncRuntime.disabledSync(settings)
       } else {
-        reconcileBeforeSync(TelemetryReconciliationRequest(level = settings.level, cadenceSeconds = 0L), dbOverride)
+        reconcileBeforeSync(
+          TelemetryReconciliationRequest(level = settings.level, cadenceSeconds = 0L, now = clock.instant()),
+          dbOverride,
+        )
         TelemetrySyncRuntime.syncTelemetry(
           settings,
           sessionTelemetryOutboxRepository(database, dbOverride),
@@ -65,7 +69,7 @@ class TelemetryService(
   fun autoSync(dbOverride: String? = null) {
     val settings = telemetrySettingsOrNull(settingsProvider)
     if (settings == null || !settings.enabled || !database.databaseExists(dbOverride)) return
-    reconcileBeforeSync(TelemetryReconciliationRequest(level = settings.level), dbOverride)
+    reconcileBeforeSync(TelemetryReconciliationRequest(level = settings.level, now = clock.instant()), dbOverride)
     TelemetrySyncRuntime.autoSyncTelemetry(
       settings,
       sessionTelemetryOutboxRepository(database, dbOverride),
@@ -74,7 +78,7 @@ class TelemetryService(
   }
 
   fun setLevel(level: String, dbOverride: String?): TelemetryMutationResult {
-    val result = TelemetryLevelMutationService(database, settingsProvider, configStore).setLevel(level, dbOverride)
+    val result = levelMutationService.setLevel(level, dbOverride)
     val settings = result.settings
     val clearedEvents = result.clearedEvents
     return telemetryMutationResult(settings, clearedEvents)

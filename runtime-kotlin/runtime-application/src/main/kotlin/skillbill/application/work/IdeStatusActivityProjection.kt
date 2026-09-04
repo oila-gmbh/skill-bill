@@ -2,7 +2,7 @@ package skillbill.application.work
 
 import skillbill.application.idestatus.model.IdeStatusSnapshot
 import skillbill.idestatus.model.AgentActivityLabel
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.persistence.UnitOfWork
 import java.time.Instant
 
 internal fun IdeStatusSnapshot.withAgentActivity(unitOfWork: UnitOfWork, workflowId: String): IdeStatusSnapshot {

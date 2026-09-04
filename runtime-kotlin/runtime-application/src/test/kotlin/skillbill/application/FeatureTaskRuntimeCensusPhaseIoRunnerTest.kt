@@ -6,10 +6,10 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuatio
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains

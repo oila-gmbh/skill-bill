@@ -3,11 +3,11 @@ package skillbill.mcp.featuretask
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementAuditRequest
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
-import skillbill.mcp.core.McpRuntimeContext
-import skillbill.mcp.core.optionalInt
-import skillbill.mcp.core.optionalString
-import skillbill.mcp.core.services
-import skillbill.mcp.core.string
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.shared.optionalInt
+import skillbill.mcp.shared.optionalString
+import skillbill.mcp.shared.services
+import skillbill.mcp.shared.string
 
 internal fun featureTaskPhaseComplete(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
   services(context).featureTaskPhaseSettlementService.complete(

@@ -5,10 +5,10 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.install.nativeagent.NativeAgentLinkInventoryEntry
-import skillbill.install.plan.detectCodexAgentsTargets
-import skillbill.install.support.claudeConfigRoots
 import skillbill.model.EnvironmentContext
 import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.nativeagent.support.claudeConfigRoots
+import skillbill.nativeagent.support.detectCodexAgentsTargets
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import java.nio.file.Files

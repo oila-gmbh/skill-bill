@@ -44,11 +44,11 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity.MAJOR
 import skillbill.workflow.decomposition.model.SpecSource
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition

@@ -5,13 +5,13 @@ import skillbill.application.telemetry.model.FeatureVerifyStartedRequest
 import skillbill.application.telemetry.model.PrDescriptionGeneratedRequest
 import skillbill.application.telemetry.model.QualityCheckFinishedRequest
 import skillbill.application.telemetry.model.QualityCheckStartedRequest
-import skillbill.mcp.core.McpRuntimeContext
-import skillbill.mcp.core.McpRuntimeLifecycle
-import skillbill.mcp.core.boolean
-import skillbill.mcp.core.int
-import skillbill.mcp.core.optionalString
-import skillbill.mcp.core.string
-import skillbill.mcp.core.stringList
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.shared.McpRuntimeLifecycle
+import skillbill.mcp.shared.boolean
+import skillbill.mcp.shared.int
+import skillbill.mcp.shared.optionalString
+import skillbill.mcp.shared.string
+import skillbill.mcp.shared.stringList
 
 internal fun qualityCheckStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
   return McpRuntimeLifecycle.qualityCheckStarted(

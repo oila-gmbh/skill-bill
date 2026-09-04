@@ -1,7 +1,7 @@
 package skillbill.application.work
 
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.work.model.WorkItem
 import skillbill.ports.work.model.WorkItemKind
 

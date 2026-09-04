@@ -1,10 +1,9 @@
 package skillbill.application.scaffold
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.domain.skillremove.SkillRemove
-import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalResult
+import skillbill.ports.skillremove.SkillRemoveFileSystem
 
 @Inject
 class SkillRemoveService(

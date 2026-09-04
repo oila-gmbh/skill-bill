@@ -8,7 +8,7 @@ data class TelemetryReconciliationRequest(
   val maximumBatchSize: Int = 100,
   val sessionThresholdSeconds: Long = 28_800L,
   val goalIssueAbandonmentDays: Long = 14L,
-  val now: Instant = Instant.now(),
+  val now: Instant,
 ) {
   init {
     require(cadenceSeconds >= 0L)

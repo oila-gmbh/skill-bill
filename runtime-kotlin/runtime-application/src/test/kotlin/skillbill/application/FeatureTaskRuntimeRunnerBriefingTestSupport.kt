@@ -10,7 +10,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.goal.model.GoalSubtaskReviewState

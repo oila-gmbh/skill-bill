@@ -11,8 +11,8 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
+import skillbill.ports.telemetry.RemoteTransportPort
+import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
@@ -197,7 +197,7 @@ internal fun seedGoalStatsDb(dbPath: Path) {
 internal fun telemetryStatusContext(userHome: Path): CliRuntimeContext = CliRuntimeContext(
   environment = emptyMap(),
   userHome = userHome,
-  requester = HttpRequester { _, _, _, _ -> fail("telemetry status must perform no network call") },
+  requester = RemoteTransportPort { _, _, _, _ -> fail("telemetry status must perform no network call") },
 )
 
 internal fun telemetryStatusState(level: String, pendingEvents: Int, priorSync: Boolean): Map<String, Any?> =
@@ -243,8 +243,8 @@ internal fun writeTelemetryConfig(tempDir: Path, level: String): Path {
   return configPath
 }
 
-internal fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): HttpRequester =
-  HttpRequester { method, url, bodyJson, headers ->
+internal fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): RemoteTransportPort =
+  RemoteTransportPort { method, url, bodyJson, headers ->
     capturedRequests +=
       linkedMapOf(
         "method" to method,
@@ -254,7 +254,7 @@ internal fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): H
       )
     when {
       url.endsWith("/capabilities") ->
-        HttpResponse(
+        RemoteTransportResponse(
           200,
           """
           {
@@ -269,7 +269,7 @@ internal fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): H
         )
 
       else ->
-        HttpResponse(
+        RemoteTransportResponse(
           200,
           """
           {
@@ -313,9 +313,9 @@ internal val OLDER_RELEASE_TAG: String = run {
 internal fun updateCheckRequester(
   capturedRequests: MutableList<Map<String, Any?>>,
   latest: String = NEWER_RELEASE_TAG,
-): HttpRequester = HttpRequester { method, url, _, headers ->
+): RemoteTransportPort = RemoteTransportPort { method, url, _, headers ->
   capturedRequests += mapOf("method" to method, "url" to url, "headers" to headers)
-  HttpResponse(
+  RemoteTransportResponse(
     statusCode = 200,
     body = """
         [{

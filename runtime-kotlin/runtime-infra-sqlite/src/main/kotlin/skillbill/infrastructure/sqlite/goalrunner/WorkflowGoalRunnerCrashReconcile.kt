@@ -2,8 +2,8 @@ package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
-import skillbill.ports.featuretask.persistence.FeatureTaskRuntimeCrashLiveness
 import skillbill.ports.goalrunner.persistence.model.CrashReconcileExpiredWorkerRequest
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeCrashLiveness
 import java.time.Clock
 import java.time.Instant
 

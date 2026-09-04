@@ -9,6 +9,7 @@ import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunDeclaredProgressSnapshot
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
+import skillbill.ports.time.JvmSystemClock
 import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
@@ -29,7 +30,7 @@ class AgentRunLauncherActivityTest {
   @Test
   fun `declared live long operation survives past former idle window and is classified working`() {
     var sequence = 0
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 0.8"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -64,7 +65,7 @@ class AgentRunLauncherActivityTest {
     val withheldPolls = WITHHELD_POLLS
     var probeCalls = 0
     var sequence = 0
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 2"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -108,7 +109,7 @@ class AgentRunLauncherActivityTest {
 
   @Test
   fun `declared dead process produces a deterministic unresponsive kill`() {
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 5"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -141,7 +142,7 @@ class AgentRunLauncherActivityTest {
   @Test
   fun `process lifecycle drives declared operation events without phase agent self-report`() {
     val emissions = mutableListOf<AgentRunProgressEmission>()
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 0.35"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -174,7 +175,7 @@ class AgentRunLauncherActivityTest {
   @Test
   fun `process lifecycle emits timed-out completion when wall clock cap elapses`() {
     val emissions = mutableListOf<AgentRunProgressEmission>()
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 5"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -194,7 +195,7 @@ class AgentRunLauncherActivityTest {
   @Test
   fun `process lifecycle emits cancelled completion when parent thread is interrupted`() {
     val emissions = Collections.synchronizedList(mutableListOf<AgentRunProgressEmission>())
-    val runner = JvmAgentRunProcessRunner()
+    val runner = JvmAgentRunProcessRunner(JvmSystemClock)
     val worker = thread(start = true) {
       runner.run(
         testAgentRunProcessRequest(
@@ -219,7 +220,7 @@ class AgentRunLauncherActivityTest {
 
   @Test
   fun `a faulty emitter never fails the run`() {
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "printf done"),
         Path.of(".").toAbsolutePath().normalize(),

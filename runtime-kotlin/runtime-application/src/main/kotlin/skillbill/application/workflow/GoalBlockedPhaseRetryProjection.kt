@@ -5,7 +5,7 @@ import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.decomposition.withRetriedSubtask
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.engine.model.WorkflowUpdateInput
@@ -13,7 +13,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 
 fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
-  unitOfWork: UnitOfWork,
+  unitOfWork: GoalRunnerPersistenceSession,
   childWorkflowId: String,
   childArtifacts: Map<String, Any?>,
   phaseId: String,

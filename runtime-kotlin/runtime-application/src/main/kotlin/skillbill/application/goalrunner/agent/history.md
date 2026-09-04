@@ -21,7 +21,7 @@ Areas: runtime-application/goalrunner/planning, runtime-ports/concurrency, runti
 - Pattern: drain the whole wave before choosing a stop and pick the lowest input-order failure, so the reported `currentSubtaskId`/`blockedReason` do not depend on thread completion order and sibling plans stay checkpointed. reusable
 - Pattern: per-subtask output-sink decorator emits whole attributed lines under the port's mutual exclusion, keyed by `AgentRunOutputStream` because one sink is driven by both stdout and stderr drain threads. reusable
 - Pause is checked before a wave and between waves on top of the per-attempt check; the post-drain check is skipped after the final wave so a fully prepared sweep still returns `PreparedAll`, never `PAUSED`.
-- Fan-out port DI landed in `RuntimeComponentBindingsA7`/`RuntimeComponentProvides13` (not A5/Provides4) because those files already hold detekt's 10-function ceiling; Provides13 already owns `goalPlanningSweepLaunchPort`.
+- Fan-out port DI landed in `RuntimeInstallScaffoldBindings`/`RuntimeTelemetryInstallProvides3` (not A5/Provides4) because those files already hold detekt's 10-function ceiling; Provides13 already owns `goalPlanningSweepLaunchPort`.
 - Limitation: cap is not operator-configurable, preplan stays serial, and `currentPlanningSubtaskId` still carries a single value — concurrent-planning status reporting is subtask 2.
 Feature flag: N/A
 Acceptance criteria: 9/9 implemented

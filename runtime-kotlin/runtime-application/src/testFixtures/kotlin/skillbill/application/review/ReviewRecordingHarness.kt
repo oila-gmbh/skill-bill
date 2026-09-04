@@ -7,6 +7,7 @@ import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.reviewevidence.model.ParallelReviewScope
 import skillbill.config.model.RepoLocalConfig
+import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
@@ -20,11 +21,11 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
@@ -48,6 +49,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.model.ParallelReviewMergedFinding
@@ -77,7 +79,10 @@ import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 import java.nio.file.Path
@@ -188,6 +193,8 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
   val sharedEvidenceLocatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE
   val planningPort = DefaultParallelCodeReviewRunnerPlanningPort(
     diffResolver = object : DiffResolverPort {
+      override fun readDiff(path: Path, maxBytes: Long): String? = null
+
       override fun runProcess(args: List<String>, workDir: Path): String? {
         recorder.diffCommands += args
         return when (args.getOrNull(1)) {
@@ -230,6 +237,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
     registerParse = ParallelReviewFindingParser::parse,
     diagnostics = NoopRuntimeDiagnostics,
     clock = Clock.systemUTC(),
+    repositoryEnclosingRootPort = CanonicalRepositoryRoot,
   )
   val laneLaunchPort = DefaultParallelCodeReviewRunnerLaneLaunchPort(
     parentReviewLauncher = launcher,
@@ -361,6 +369,15 @@ private fun recordingLifecycleTelemetry(recorder: ReviewRecorder): LifecycleTele
     override fun reviewStageDegradation(record: ReviewStageDegradationMeasurement) {
       recorder.stageDegradations += record
     }
+
+    override fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) = Unit
+
+    override fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) = Unit
+
+    override fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) = Unit
+
+    override fun featureTaskRuntimeDiagnosticDegradation(record: FeatureTaskRuntimeDiagnosticDegradationMeasurement) =
+      Unit
 
     override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) = Unit
 

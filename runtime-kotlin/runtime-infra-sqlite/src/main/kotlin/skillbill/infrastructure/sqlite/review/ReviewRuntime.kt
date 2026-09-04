@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.review
-
+import skillbill.db.PARAM_ONE
+import skillbill.db.PARAM_TWO
 import skillbill.review.ReviewParser
 import skillbill.review.model.FindingMetadata
 import skillbill.review.model.ImportedFinding

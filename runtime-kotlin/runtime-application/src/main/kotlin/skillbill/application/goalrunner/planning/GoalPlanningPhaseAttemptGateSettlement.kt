@@ -42,7 +42,11 @@ internal fun DefaultGoalPlanningSweep.advancePlanningProduceAttempt(
         ?.let { PlanningProduceStep.Done(it) }
         ?: PlanningProduceStep.RetryDecline(args.retryableDeclines)
     }
-    else -> when (val settlement = settlePlanningProductionAttempt(args.scope, production)) {
+    is GoalPlanningPhaseProduction.Captured,
+    is GoalPlanningPhaseProduction.Stopped,
+    is GoalPlanningPhaseProduction.SchemaRejected,
+    is GoalPlanningPhaseProduction.UnsuccessfulStatus,
+    -> when (val settlement = settlePlanningProductionAttempt(args.scope, production)) {
       is GoalPlanningPhaseProductionSettlement.Settled ->
         PlanningProduceStep.Done(settlement.production)
       is GoalPlanningPhaseProductionSettlement.Retry ->

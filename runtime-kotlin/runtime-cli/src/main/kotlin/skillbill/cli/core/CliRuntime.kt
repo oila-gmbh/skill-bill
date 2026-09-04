@@ -34,6 +34,7 @@ object CliRuntime {
       externalCommandRunner = context.externalCommandRunner,
       userHome = resolved.userHome,
       repositoryRoot = resolved.repositoryRoot,
+      repositoryEnclosingRootPort = runtimeComponent.repositoryEnclosingRootPort,
       liveStdout = context.liveStdout,
       liveStderr = context.liveStderr,
     )

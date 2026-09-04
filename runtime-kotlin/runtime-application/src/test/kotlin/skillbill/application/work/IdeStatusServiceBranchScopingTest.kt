@@ -9,13 +9,13 @@ import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerControlState
-import skillbill.ports.featuretask.model.FeatureTaskRouteScope
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.work.model.WorkItemKind
+import skillbill.ports.workflow.model.FeatureTaskRouteScope
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import java.nio.file.Path
 import java.time.Instant

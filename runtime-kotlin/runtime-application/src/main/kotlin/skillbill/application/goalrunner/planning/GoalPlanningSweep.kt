@@ -10,6 +10,7 @@ import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.SpecSource
 import java.nio.file.Path
@@ -45,6 +46,7 @@ internal data class GoalPlanningSharedContext(
 class DefaultGoalPlanningSweep(
   checkpointPort: GoalPlanningSweepCheckpointPort,
   launchPort: GoalPlanningSweepLaunchPort,
+  val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 ) : GoalPlanningSweep {
   val checkpoint = checkpointPort.checkpoint
   val outputValidator = checkpointPort.outputValidator
@@ -65,7 +67,7 @@ class DefaultGoalPlanningSweep(
     val identity = GoalPlanningIdentity(
       state.parentWorkflowId,
       state.manifest.issueKey.trim().uppercase(),
-      "repo-root-realpath-v1:${canonicalRepository(request.repoRoot)}",
+      "repo-root-realpath-v1:${canonicalRepository(request.repoRoot, repositoryEnclosingRootPort)}",
     )
     val existingShared = runCatching { checkpoint.findSharedPreplan(identity, request.dbPathOverride) }
       .getOrElse { error ->

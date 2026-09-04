@@ -5,12 +5,11 @@ import skillbill.nativeagent.composition.NativeAgentCompositionTarget
 import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
 import skillbill.nativeagent.composition.displayPath
 import skillbill.nativeagent.composition.platformPackRoot
-import skillbill.review.plan.ReviewAddonSelectionPolicy
-import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
-import skillbill.scaffold.model.GovernedAddonActivation
-import skillbill.scaffold.model.GovernedAddonSelection
-import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.model.PointerSpec
+import skillbill.nativeagent.platformpack.NativeAgentAddonSelectionPolicy
+import skillbill.nativeagent.platformpack.NativeAgentGovernedAddonActivation
+import skillbill.nativeagent.platformpack.NativeAgentGovernedAddonSelection
+import skillbill.nativeagent.platformpack.NativeAgentPlatformPack
+import skillbill.nativeagent.platformpack.NativeAgentPointerSpec
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -22,7 +21,7 @@ internal data class ComposedAddonTarget(
   val slug: String,
   val slot: String,
   val path: Path,
-  val activation: GovernedAddonActivation?,
+  val activation: NativeAgentGovernedAddonActivation?,
 )
 
 internal data class ResolvedAddonComposition(
@@ -36,9 +35,9 @@ internal data class GovernedAgentComposition(
 )
 
 private data class AddonPointerLookup(
-  val pack: PlatformManifest,
+  val pack: NativeAgentPlatformPack,
   val root: Path,
-  val declared: Map<String, PointerSpec>,
+  val declared: Map<String, NativeAgentPointerSpec>,
   val skillRelativeDir: String,
 )
 
@@ -52,7 +51,7 @@ internal fun resolveDeclaredAddonTargets(root: Path, target: NativeAgentComposit
     "${displayPath(root, contentPath)}: platform-pack native agent composition requires a parsed platform.yaml manifest"
   }
   val skillName = contentPath.parent.name
-  val selections = ReviewAddonSelectionPolicy.select(pack, skillName)
+  val selections = NativeAgentAddonSelectionPolicy.select(pack, skillName)
   if (selections.isEmpty()) {
     return ResolvedAddonComposition(emptyList(), emptyList())
   }
@@ -62,7 +61,7 @@ internal fun resolveDeclaredAddonTargets(root: Path, target: NativeAgentComposit
     root = root,
     declared = pack.pointers
       .filter { pointer -> pointer.skillRelativeDir == skillRelativeDir }
-      .associateBy(PointerSpec::name),
+      .associateBy(NativeAgentPointerSpec::name),
     skillRelativeDir = skillRelativeDir,
   )
   val resolved = linkedMapOf<Path, ComposedAddonTarget>()
@@ -89,13 +88,13 @@ internal fun addonFailureMessage(root: Path, addon: ComposedAddonTarget, problem
   "pack '${addon.packSlug}' add-on '${addon.slug}' slot '${addon.slot}': declared target $problem at '${addon.path}' " +
     "(repository path '${displayPath(root, addon.path)}')"
 
-private fun selectionSlots(selection: GovernedAddonSelection): List<Pair<String, String>> =
+private fun selectionSlots(selection: NativeAgentGovernedAddonSelection): List<Pair<String, String>> =
   listOf(NATIVE_AGENT_ADDON_ENTRYPOINT_SLOT to selection.entrypoint) +
     selection.companionPointers.map { pointer -> pointer to pointer }
 
 private fun resolveAddonTarget(
   lookup: AddonPointerLookup,
-  selection: GovernedAddonSelection,
+  selection: NativeAgentGovernedAddonSelection,
   slot: String,
   pointerName: String,
 ): ComposedAddonTarget {
@@ -121,7 +120,7 @@ private fun resolveAddonTarget(
 
 private fun enforceResolvedAddonProjectionParity(
   lookup: AddonPointerLookup,
-  selections: List<GovernedAddonSelection>,
+  selections: List<NativeAgentGovernedAddonSelection>,
   composedByPath: Map<Path, ComposedAddonTarget>,
 ): List<String> {
   val composedPaths = composedByPath.keys

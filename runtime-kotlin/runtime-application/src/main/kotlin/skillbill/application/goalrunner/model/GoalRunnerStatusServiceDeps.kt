@@ -10,6 +10,7 @@ import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore
 import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import java.time.Clock
@@ -28,4 +29,5 @@ data class GoalRunnerStatusServiceDeps(
   val diagnostics: RuntimeDiagnostics,
   val runtimeStatusService: FeatureTaskRuntimeStatusService?,
   val repositoryRoot: RepositoryRoot,
+  val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
 )

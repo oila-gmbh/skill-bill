@@ -81,12 +81,18 @@ internal fun gatherSharedContext(
   request: GoalRunnerRunRequest,
   recoveredPacket: Map<String, Any?>?,
 ): GoalPlanningSharedContext {
-  val canonicalRepository = canonicalRepository(request.repoRoot)
+  val canonicalRepository = canonicalRepository(request.repoRoot, sweep.repositoryEnclosingRootPort)
   val parentSpecGoverningPath = state.manifest.parentSpecPath
   val manifestGoverningPath = parentSpecGoverningPath.substringBeforeLast("/") + "/" + DECOMPOSITION_MANIFEST_FILENAME
-  val resolvedParentSpecPath = resolvedGovernedPath(canonicalRepository, parentSpecGoverningPath)
+  val resolvedParentSpecPath = resolvedGovernedPath(
+    canonicalRepository,
+    parentSpecGoverningPath,
+    sweep.repositoryEnclosingRootPort,
+  )
   val parentSpec = sweep.manifestFileStore.readText(resolvedParentSpecPath)
-  val decomposition = sweep.manifestFileStore.readText(resolvedGovernedPath(canonicalRepository, manifestGoverningPath))
+  val decomposition = sweep.manifestFileStore.readText(
+    resolvedGovernedPath(canonicalRepository, manifestGoverningPath, sweep.repositoryEnclosingRootPort),
+  )
   val parentSpecHash = sha256HexUtf8(parentSpec)
   val decompositionManifestHash = goalPlanningImmutableDecompositionHash(state.manifest)
   val repositoryIdentity = "repo-root-realpath-v1:$canonicalRepository"

@@ -13,9 +13,9 @@ import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
 import skillbill.launcher.mcp.McpConfigFormat
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
-import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
+import skillbill.ports.review.model.ReviewLaunchIsolationStrategy
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import kotlin.test.Test
 import kotlin.test.assertContains

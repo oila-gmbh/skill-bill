@@ -16,7 +16,6 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.install.runtime.InstallOperations
 import skillbill.testing.seedConformingPlatformPack
 import java.io.File
 import java.nio.file.Files
@@ -48,7 +47,7 @@ class InstallPlanContractCoverageTest {
     seedPlatformPack(fixture.repoRoot, "python", areaNames = listOf("security"))
     val before = snapshotTree(fixture.repoRoot)
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         platformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.ALL),
       ),
@@ -88,7 +87,7 @@ class InstallPlanContractCoverageTest {
       )
     }
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agentSelection = InstallAgentSelection(
           mode = InstallAgentSelectionMode.MANUAL,
@@ -118,7 +117,7 @@ class InstallPlanContractCoverageTest {
     Files.createDirectories(fixture.home.resolve(".cursor"))
     val before = snapshotTree(fixture.repoRoot)
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agentSelection = InstallAgentSelection(mode = InstallAgentSelectionMode.DETECTED),
       ),
@@ -164,7 +163,7 @@ class InstallPlanContractCoverageTest {
       val fixture = setupPlanFixture()
       val beforeHome = snapshotTree(fixture.home)
 
-      val plan = InstallOperations.planInstall(
+      val plan = planInstallForTest(
         fixture.request(telemetryLevel = level),
       )
 
@@ -182,7 +181,7 @@ class InstallPlanContractCoverageTest {
     windowsSymlinkPreflightCases().forEach { preflight ->
       val fixture = setupPlanFixture()
 
-      val plan = InstallOperations.planInstall(
+      val plan = planInstallForTest(
         fixture.request(windowsSymlinkPreflight = preflight),
       )
 

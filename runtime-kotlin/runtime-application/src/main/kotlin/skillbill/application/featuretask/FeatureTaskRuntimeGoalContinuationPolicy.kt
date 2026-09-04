@@ -4,7 +4,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuatio
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
+import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants

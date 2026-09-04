@@ -18,7 +18,6 @@ import skillbill.install.model.PlatformPackSelectionMode
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
-import skillbill.install.runtime.InstallOperations
 import skillbill.install.staging.applicablePointers
 import skillbill.install.staging.authoredFilesFor
 import skillbill.install.staging.computeInstallContentHash
@@ -40,7 +39,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
     seedPlatformPack(fixture.repoRoot, slug = "team-default", areaNames = listOf("security"))
     declareCodeReviewFallback(fixture.repoRoot, "team-default")
 
-    val plan = InstallOperations.planInstall(fixture.request())
+    val plan = planInstallForTest(fixture.request())
 
     assertEquals(listOf("team-default"), plan.selectedPlatformSlugs)
     assertTrue(plan.skills.any { it.name == "bill-team-default-code-review" })
@@ -51,7 +50,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
   fun `review capable plan retains horizontal base behavior when no fallback is declared`() {
     val fixture = setupPlanFixture()
 
-    val plan = InstallOperations.planInstall(fixture.request())
+    val plan = planInstallForTest(fixture.request())
 
     assertEquals(emptyList(), plan.selectedPlatformSlugs)
     assertTrue(plan.skills.any { it.name == "bill-code-review" && it.kind == InstallPlanSkillKind.BASE })
@@ -67,7 +66,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
     }
 
     assertFailsWith<InvalidFallbackCapabilityError> {
-      InstallOperations.planInstall(fixture.request())
+      planInstallForTest(fixture.request())
     }
   }
 
@@ -75,7 +74,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
   fun `plan includes base skills and dynamically selected platform pack skills`() {
     val fixture = setupPlanFixture()
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         platformPackSelection = PlatformPackSelection(
           mode = PlatformPackSelectionMode.SELECTED,
@@ -106,7 +105,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
     val fixture = setupPlanFixture()
     seedPlatformPack(fixture.repoRoot, slug = "python", areaNames = listOf("security"))
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         platformPackSelection = PlatformPackSelection(
           mode = PlatformPackSelectionMode.SELECTED,
@@ -154,7 +153,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
     )
 
     val error = assertFailsWith<InvalidReviewSkillStructureError> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request(
           platformPackSelection = PlatformPackSelection(
             mode = PlatformPackSelectionMode.SELECTED,
@@ -173,7 +172,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
     val claudeTarget = fixture.home.resolve("manual-claude")
     val beforeHome = snapshotTree(fixture.home)
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agentSelection = InstallAgentSelection(
           mode = InstallAgentSelectionMode.MANUAL,
@@ -205,7 +204,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
     val fixture = setupPlanFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agentSelection = InstallAgentSelection(mode = InstallAgentSelectionMode.DETECTED),
       ),
@@ -235,7 +234,7 @@ class InstallPlanBuilderTest : InstallPlanBuilderTestSupport() {
       source = InstallAgentTargetSource.MANUAL,
     )
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agentSelection = InstallAgentSelection(
           mode = InstallAgentSelectionMode.DETECTED,
@@ -256,7 +255,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
   fun `all platform selection selects every discovered pack`() {
     val fixture = setupPlanFixture()
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         platformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.ALL),
       ),
@@ -276,7 +275,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     val fixture = setupPlanFixture()
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request(
           platformPackSelection = PlatformPackSelection(
             mode = PlatformPackSelectionMode.SELECTED,
@@ -300,7 +299,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     )
 
     val versionError = assertFailsWith<ContractVersionMismatchError> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         badVersion.request(
           platformPackSelection = PlatformPackSelection(
             mode = PlatformPackSelectionMode.SELECTED,
@@ -318,7 +317,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     )
 
     val contentError = assertFailsWith<MissingContentFileError> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         missingContent.request(
           platformPackSelection = PlatformPackSelection(
             mode = PlatformPackSelectionMode.SELECTED,
@@ -346,7 +345,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     )
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request(
           platformPackSelection = PlatformPackSelection(
             mode = PlatformPackSelectionMode.SELECTED,
@@ -371,7 +370,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     )
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request(
           platformPackSelection = PlatformPackSelection(
             mode = PlatformPackSelectionMode.SELECTED,
@@ -412,7 +411,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     )
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request(
           platformPackSelection = PlatformPackSelection(
             mode = PlatformPackSelectionMode.SELECTED,
@@ -431,7 +430,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     val fixture = setupPlanFixture()
 
     val error = assertFailsWith<FileNotFoundException> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request(
           targetPaths = fixture.targetPaths().copy(skillsRoot = fixture.repoRoot.resolve("missing-skills")),
         ),
@@ -447,7 +446,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     Files.delete(fixture.repoRoot.resolve("skills/bill-code-review/content.md"))
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallOperations.planInstall(fixture.request())
+      planInstallForTest(fixture.request())
     }
 
     assertContains(error.message.orEmpty(), "without content.md")
@@ -461,7 +460,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     Files.createDirectories(emptySkillsRoot.resolve("notes"))
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request(
           targetPaths = fixture.targetPaths().copy(skillsRoot = emptySkillsRoot),
         ),
@@ -479,7 +478,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     seedSupportTarget(fixture.repoRoot, "orchestration/shell-content-contract/shell-ceremony.md")
     seedSkillClass(fixture.repoRoot, "bill-code-review", listOf("shell-ceremony"))
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         targetPaths = fixture.targetPaths().copy(skillsRoot = packagedSkillsRoot),
       ),
@@ -518,7 +517,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     )
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request(
           platformPackSelection = PlatformPackSelection(
             mode = PlatformPackSelectionMode.SELECTED,
@@ -546,7 +545,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     )
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request(
           platformPackSelection = PlatformPackSelection(
             mode = PlatformPackSelectionMode.SELECTED,
@@ -566,7 +565,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     seedSkillClass(fixture.repoRoot, "bill-code-review", listOf("shell-ceremony"))
 
     val error = assertFailsWith<IllegalArgumentException> {
-      InstallOperations.planInstall(fixture.request())
+      planInstallForTest(fixture.request())
     }
 
     assertContains(error.message.orEmpty(), "Supporting pointer 'shell-ceremony.md'")
@@ -578,7 +577,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     val fixture = setupPlanFixture()
     val before = snapshotTree(fixture.repoRoot)
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         telemetryLevel = InstallTelemetryLevel.FULL,
         windowsSymlinkPreflight = WindowsSymlinkPreflight(
@@ -608,7 +607,7 @@ class InstallPlanBuilderPlatformSelectionTest : InstallPlanBuilderTestSupport() 
     val fixture = setupPlanFixture()
 
     val error = assertFailsWith<InvalidInstallPlanSchemaError> {
-      InstallOperations.planInstall(
+      planInstallForTest(
         fixture.request().copy(
           mcpRegistrationChoice = McpRegistrationChoice(register = true, runtimeMcpBin = Path.of("")),
         ),

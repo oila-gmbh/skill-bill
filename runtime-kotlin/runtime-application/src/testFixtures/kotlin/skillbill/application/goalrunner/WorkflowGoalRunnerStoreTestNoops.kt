@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner
 
-import skillbill.ports.db.UnitOfWork
+import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
 import skillbill.ports.goalrunner.persistence.GoalChildPlanningHydratorPort
 import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairRunnerPort
 import skillbill.ports.goalrunner.persistence.model.GoalChildPlanningHydrationResult
@@ -15,7 +15,7 @@ import java.nio.file.Path
 
 object NoopGoalChildPlanningHydrator : GoalChildPlanningHydratorPort {
   override fun hydrate(
-    unitOfWork: UnitOfWork,
+    unitOfWork: GoalRunnerPersistenceSession,
     setup: GoalRunnerChildWorkflowSetup,
     request: GoalChildPlanningHydrationRequest,
   ): GoalChildPlanningHydrationResult = GoalChildPlanningHydrationResult(
@@ -25,7 +25,7 @@ object NoopGoalChildPlanningHydrator : GoalChildPlanningHydratorPort {
   )
 
   override fun requireMatchingImport(
-    unitOfWork: UnitOfWork,
+    unitOfWork: GoalRunnerPersistenceSession,
     existing: WorkflowStateSnapshot,
     setup: GoalRunnerChildWorkflowSetup,
   ) = Unit

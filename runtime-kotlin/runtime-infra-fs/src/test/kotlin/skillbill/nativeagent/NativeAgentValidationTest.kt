@@ -2,9 +2,7 @@ package skillbill.nativeagent
 
 import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
 import skillbill.nativeagent.composition.NativeAgentSource
-import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.composition.parseNativeAgentSource
-import skillbill.nativeagent.composition.resolveNativeAgentCompositionTarget
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
@@ -24,7 +22,7 @@ class NativeAgentValidationTest {
   @Test
   fun `provider-agnostic body passes validator`() {
     val repo = newRepoWithSource(body = "# Worker\n\nDo the work.")
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
     assertTrue(
       report.passed,
       "Expected report to pass, got issues:\n${report.issues.joinToString("\n")}",
@@ -63,7 +61,7 @@ class NativeAgentValidationTest {
 
   private fun assertProviderConditionalRejected(body: String) {
     val repo = newRepoWithSource(body = body)
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
     assertFalse(report.passed, "Expected validator to reject body: $body")
     val expectedTail = "native agent bodies must be provider-agnostic; conditionals belong in the renderer"
     assertTrue(
@@ -89,7 +87,7 @@ class NativeAgentValidationTest {
   @Test
   fun `passing fixture issues list is empty`() {
     val repo = newRepoWithSource(body = "# Worker\n\nDo the work.")
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
     assertEquals(emptyList(), report.issues)
   }
 
@@ -99,21 +97,21 @@ class NativeAgentValidationTest {
     val sourcePath = discoverRepoNativeAgentSources(repo).single()
     val source = parseNativeAgentSource(sourcePath)
 
-    val target = resolveNativeAgentCompositionTarget(repo, source)
+    val target = testResolveNativeAgentCompositionTarget(repo, source)
     val expectedTarget = repo.resolve(
       "platform-packs/fixture/code-review/bill-fixture-code-review-architecture/content.md",
     )
 
     assertEquals(expectedTarget, target?.contentPath)
     assertEquals(NativeAgentCompositionTargetSource.PlatformManifest, target?.source)
-    assertEquals(emptyList(), validateRepoNativeAgents(repo).issues)
+    assertEquals(emptyList(), validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo)).issues)
   }
 
   @Test
   fun `missing governed content composition target is reported as validation issue`() {
     val repo = newRepoWithComposedPlatformAgent(writeAreaContent = false)
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     val issue = report.issues.single()
@@ -128,7 +126,7 @@ class NativeAgentValidationTest {
       declaredSourceName = "bill-fixture-unregistered",
     )
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     val issue = report.issues.single()
@@ -140,7 +138,7 @@ class NativeAgentValidationTest {
   fun `malformed composition directive is reported as validation issue`() {
     val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true, composeDirective = "local-file")
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     assertTrue(
@@ -154,7 +152,7 @@ class NativeAgentValidationTest {
     val repo = newRepoWithComposedPlatformAgent(writeAreaContent = true)
     Files.delete(repo.resolve("platform-packs/fixture/platform.yaml"))
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     assertTrue(
@@ -172,7 +170,7 @@ class NativeAgentValidationTest {
       Files.readString(manifest).replace("contract_version: \"1.7\"", "contract_version: \"9.99\""),
     )
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     assertTrue(
@@ -206,7 +204,7 @@ class NativeAgentValidationTest {
     val sourcePath = discoverRepoNativeAgentSources(repo).single()
     val source = parseNativeAgentSource(sourcePath)
 
-    val composed = composeNativeAgentSource(repo, source)
+    val composed = testComposeNativeAgentSource(repo, source)
     val rendered = NativeAgentProvider.Claude.render(composed)
 
     assertContains(rendered, "Use delegated mode.")
@@ -237,7 +235,7 @@ class NativeAgentValidationTest {
     )
 
     val source = parseNativeAgentSource(nativeAgentDir.resolve("bill-sibling.md"))
-    val rendered = NativeAgentProvider.Claude.render(composeNativeAgentSource(repo, source))
+    val rendered = NativeAgentProvider.Claude.render(testComposeNativeAgentSource(repo, source))
 
     assertContains(rendered, "Read rubric.md before reviewing.")
     assertContains(rendered, "## Inlined Reference: rubric.md")
@@ -256,6 +254,7 @@ class NativeAgentValidationTest {
         selectedPlatforms = listOf("kmp"),
         provider = NativeAgentProvider.Claude,
         home = repo.resolve("home"),
+        compositionContext = testNativeAgentCompositionContext(repo),
       ),
     )
 
@@ -280,6 +279,7 @@ class NativeAgentValidationTest {
           selectedPlatforms = listOf("fixture"),
           provider = NativeAgentProvider.Claude,
           home = home,
+          compositionContext = testNativeAgentCompositionContext(repo),
         ),
       )
     }
@@ -295,7 +295,7 @@ class NativeAgentValidationTest {
   fun `unresolved local markdown links in composed content are rejected`() {
     val repo = newRepoWithKmpPointerSidecars(declareSidecarPointer = false)
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     assertTrue(
@@ -310,7 +310,7 @@ class NativeAgentValidationTest {
     val generatedDir = Files.createDirectories(repo.resolve("skills/bill-validation-fixture/claude-agents"))
     Files.writeString(generatedDir.resolve("bill-validation-fixture.md"), "generated\n")
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     assertTrue(
@@ -338,7 +338,7 @@ class NativeAgentValidationTest {
     val generatedDir = Files.createDirectories(repo.resolve("skills/bill-validation-fixture/codex-agents"))
     Files.writeString(generatedDir.resolve("bill-validation-fixture.toml"), "generated\n")
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     assertTrue(
@@ -357,10 +357,10 @@ class NativeAgentValidationTest {
     val sourcePath = discoverRepoNativeAgentSources(repo).single()
     val source = parseNativeAgentSource(sourcePath)
 
-    val rendered = NativeAgentProvider.Claude.render(composeNativeAgentSource(repo, source))
+    val rendered = NativeAgentProvider.Claude.render(testComposeNativeAgentSource(repo, source))
 
     assertContains(rendered, "Use this governed content.")
-    assertEquals(emptyList(), validateRepoNativeAgents(repo).issues)
+    assertEquals(emptyList(), validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo)).issues)
   }
 
   @Test
@@ -383,14 +383,14 @@ class NativeAgentValidationTest {
 
     val source = discoverRepoNativeAgentSourceEntries(repo)
       .single { source -> source.name == "bill-fixture-code-review-architecture" }
-    val target = resolveNativeAgentCompositionTarget(repo, source)
+    val target = testResolveNativeAgentCompositionTarget(repo, source)
 
     assertEquals(
       repo.resolve("platform-packs/fixture/code-review/bill-fixture-code-review-architecture/content.md"),
       target?.contentPath,
     )
     assertEquals(NativeAgentCompositionTargetSource.PlatformManifest, target?.source)
-    assertEquals(emptyList(), validateRepoNativeAgents(repo).issues)
+    assertEquals(emptyList(), validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo)).issues)
   }
 
   @Test
@@ -414,7 +414,7 @@ class NativeAgentValidationTest {
       """.trimIndent() + "\n",
     )
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     val issue = report.issues.single { issue -> "entry 'bill-fixture-unregistered'" in issue }
@@ -439,16 +439,16 @@ class NativeAgentValidationTest {
     )
 
     val source = discoverRepoNativeAgentSourceEntries(repo).single()
-    val rendered = NativeAgentProvider.Claude.render(composeNativeAgentSource(repo, source))
+    val rendered = NativeAgentProvider.Claude.render(testComposeNativeAgentSource(repo, source))
 
     assertContains(rendered, "Use sibling content.")
-    assertEquals(emptyList(), validateRepoNativeAgents(repo).issues)
+    assertEquals(emptyList(), validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo)).issues)
 
     Files.writeString(
       skillDir.resolve("content.md"),
       Files.readString(skillDir.resolve("content.md")).replace("name: bill-horizontal", "name: bill-other"),
     )
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
     assertFalse(report.passed)
     assertTrue(
       report.issues.any { issue -> "could not resolve a corresponding content.md" in issue },
@@ -470,7 +470,7 @@ class NativeAgentValidationTest {
       """.trimIndent() + "\n",
     )
 
-    val report = validateRepoNativeAgents(repo)
+    val report = validateRepoNativeAgents(repo, testNativeAgentCompositionContext(repo))
 
     assertFalse(report.passed)
     val issue = report.issues.single { "duplicates" in it }
@@ -525,6 +525,7 @@ class NativeAgentValidationTest {
         selectedPlatforms = listOf("fixture"),
         provider = NativeAgentProvider.Claude,
         home = repo.resolve("home"),
+        compositionContext = testNativeAgentCompositionContext(repo),
       ),
     )
 

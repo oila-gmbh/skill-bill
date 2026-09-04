@@ -29,6 +29,46 @@ class ApplicationPackageAcyclicityArchitectureTest {
   }
 
   @Test
+  fun `runtime-contracts package cycles equal the recorded census`() {
+    assertPackageCyclesMatchBaseline("runtime-contracts")
+  }
+
+  @Test
+  fun `runtime-core package cycles equal the recorded census`() {
+    assertPackageCyclesMatchBaseline("runtime-core")
+  }
+
+  @Test
+  fun `runtime-domain package cycles equal the recorded census`() {
+    assertPackageCyclesMatchBaseline("runtime-domain")
+  }
+
+  @Test
+  fun `runtime-infra-fs package cycles equal the recorded census`() {
+    assertPackageCyclesMatchBaseline("runtime-infra-fs")
+  }
+
+  @Test
+  fun `runtime-infra-http package cycles equal the recorded census`() {
+    assertPackageCyclesMatchBaseline("runtime-infra-http")
+  }
+
+  @Test
+  fun `runtime-infra-sqlite package cycles equal the recorded census`() {
+    assertPackageCyclesMatchBaseline("runtime-infra-sqlite")
+  }
+
+  @Test
+  fun `runtime-mcp package cycles equal the recorded census`() {
+    assertPackageCyclesMatchBaseline("runtime-mcp")
+  }
+
+  @Test
+  fun `runtime-ports package cycles equal the recorded census`() {
+    assertPackageCyclesMatchBaseline("runtime-ports")
+  }
+
+  @Test
   fun `package cycle scanner fires on synthetic cycle absent from baseline`() {
     val violations = ArchitectureScanSupport.packageCycleViolationsForEdges(
       edges = mapOf(
@@ -42,6 +82,17 @@ class ApplicationPackageAcyclicityArchitectureTest {
       violations,
     )
     assertTrue(violations.single().contains("alpha <-> beta"))
+  }
+
+  private fun assertPackageCyclesMatchBaseline(moduleName: String) {
+    val scanCase = PrincipleEnforcementInventory.moduleArchitectureScanCases
+      .single { scanCase -> scanCase.moduleName == moduleName }
+    val current = ArchitectureScanSupport.packageCycles(scanCase.mainScanRoot, scanCase.packagePrefix)
+    assertEquals(
+      baselineCycles(scanCase.packageCycleBaseline),
+      current,
+      "Re-record ${scanCase.packageCycleBaseline} with RECORD_ARCHITECTURE_BASELINES=1.",
+    )
   }
 
   private fun baselineCycles(name: String): Set<ArchitectureScanSupport.PackageCycle> =

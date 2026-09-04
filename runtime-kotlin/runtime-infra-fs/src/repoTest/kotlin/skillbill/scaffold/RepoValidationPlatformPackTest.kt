@@ -1,5 +1,5 @@
 package skillbill.scaffold
-
+import skillbill.nativeagent.testNativeAgentCompositionContext
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import java.nio.file.Files
 import kotlin.test.Test
@@ -30,7 +30,7 @@ class RepoValidationPlatformPackTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -59,7 +59,7 @@ class RepoValidationPlatformPackTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.issues.any { it.contains("governed SKILL.md output drifted") }, report.issues.joinToString("\n"))
   }
@@ -83,7 +83,7 @@ class RepoValidationPlatformPackTest {
     )
     Files.writeString(generatedSkillDir.resolve("SKILL.md"), "generated wrapper\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -104,7 +104,7 @@ class RepoValidationPlatformPackTest {
     Files.createDirectories(generatedCursor.parent)
     Files.writeString(generatedCursor, "checked-in cursor file\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -125,7 +125,7 @@ class RepoValidationPlatformPackTest {
     Files.createDirectories(generatedJunie.parent)
     Files.writeString(generatedJunie, "checked-in junie file\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -158,7 +158,7 @@ class RepoValidationPlatformPackTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -175,7 +175,7 @@ class RepoValidationPlatformPackTest {
     val repoRoot = Files.createTempDirectory("skillbill-no-orchestration-path-in-skill")
     createRepoValidationSkillFixture(repoRoot)
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(
       report.issues.any { it.contains("must not reference bare orchestration path") },
@@ -193,7 +193,7 @@ class RepoValidationPlatformPackTest {
       body = "Agent to spawn: security reviewer.",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any {
@@ -219,7 +219,7 @@ class RepoValidationPlatformPackTest {
       body = "sub-agent review lane.",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(
       report.issues.any {
@@ -244,7 +244,7 @@ class RepoValidationPlatformPackTest {
     seedInternalSkill(repoRoot, "bill-feature", null)
     seedInternalSkill(repoRoot, "bill-feature-helper", "bill-feature")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     val internalIssues = report.issues.filter { it.contains("internal skill") }
     assertTrue(internalIssues.isEmpty(), "expected no internal-skill issues; got: ${internalIssues.joinToString("\n")}")

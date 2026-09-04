@@ -1,17 +1,17 @@
 package skillbill.cli.scaffold
 
 import com.github.ajalt.clikt.core.UsageError
-import skillbill.application.scaffold.ScaffoldService
-import skillbill.application.scaffold.UnsupportedScaffoldService
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRunInputs
+import skillbill.ports.scaffold.ScaffoldGateway
+import skillbill.ports.scaffold.UnsupportedScaffoldGateway
 import java.nio.file.Path
 
 internal data class EditSkillRunArgs(
   val inputs: CliRunInputs,
-  val scaffoldService: ScaffoldService,
-  val unsupportedScaffoldService: UnsupportedScaffoldService,
+  val scaffoldGateway: ScaffoldGateway,
+  val unsupportedScaffoldGateway: UnsupportedScaffoldGateway,
   val skillName: String,
   val repoRoot: String,
   val bodyFile: String?,
@@ -22,7 +22,7 @@ internal data class EditSkillRunArgs(
 
 internal data class FillSkillRunArgs(
   val inputs: CliRunInputs,
-  val scaffoldService: ScaffoldService,
+  val scaffoldGateway: ScaffoldGateway,
   val skillName: String,
   val repoRoot: String,
   val body: String?,
@@ -42,7 +42,7 @@ internal fun resolveRenderSkillName(positionalSkillName: String?, optionSkillNam
 internal fun editSkillResult(args: EditSkillRunArgs): CliExecutionResult = when {
   args.editor ->
     unsupportedNativeScaffoldResult(
-      args.unsupportedScaffoldService.retiredUnsupportedMessage(
+      args.unsupportedScaffoldGateway.retiredUnsupportedMessage(
         "edit --editor",
         "skill-bill fill ${args.skillName} --body-file <file>",
         editor = true,
@@ -51,7 +51,7 @@ internal fun editSkillResult(args: EditSkillRunArgs): CliExecutionResult = when 
     )
   args.bodyFile != null ->
     authoringResult(args.format) {
-      args.scaffoldService.editWithBodyFile(
+      args.scaffoldGateway.editWithBodyFile(
         Path.of(args.repoRoot),
         args.skillName,
         readCliTextFile(args.bodyFile, args.inputs),
@@ -60,7 +60,7 @@ internal fun editSkillResult(args: EditSkillRunArgs): CliExecutionResult = when 
     }
   else ->
     unsupportedNativeScaffoldResult(
-      args.unsupportedScaffoldService.retiredUnsupportedMessage(
+      args.unsupportedScaffoldGateway.retiredUnsupportedMessage(
         "edit",
         "skill-bill fill ${args.skillName} --body-file <file>",
         editor = false,
@@ -75,7 +75,7 @@ internal fun fillSkillResult(args: FillSkillRunArgs): CliExecutionResult = when 
   args.body == null && args.bodyFile == null -> errorResult("Either --body or --body-file is required.", args.format)
   else ->
     authoringResult(args.format) {
-      args.scaffoldService.fill(
+      args.scaffoldGateway.fill(
         Path.of(args.repoRoot),
         args.skillName,
         args.body ?: readCliTextFile(args.bodyFile.orEmpty(), args.inputs),

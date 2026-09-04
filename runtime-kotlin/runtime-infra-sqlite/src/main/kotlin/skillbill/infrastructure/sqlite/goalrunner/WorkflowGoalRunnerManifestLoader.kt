@@ -1,17 +1,17 @@
 package skillbill.infrastructure.sqlite.goalrunner
-import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
-import skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter
-import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.contracts.issuekey.normalizeRequiredIssueKey
-import skillbill.ports.workflow.decomposition.DecompositionManifestFileStore
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter
+import skillbill.ports.goalrunner.persistence.migrateLegacyGoalRunnerControls
+import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.decomposition.runtime.resolveDecompositionManifest
 import skillbill.ports.workflow.decomposition.runtime.withParentStatus
 import skillbill.ports.workflow.persistence.decompositionRuntime
 import skillbill.ports.workflow.persistence.findDecomposedParentOrCorruptFallback
 import skillbill.ports.workflow.persistence.findDecomposedParentWorkflow
 import skillbill.ports.workflow.persistence.generateWorkflowId
-import skillbill.ports.workflow.persistence.migrateLegacyGoalRunnerControls
 import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.ports.workflow.persistence.requireRuntimeModeForEngineWrite
 import skillbill.ports.workflow.persistence.toRecord
@@ -25,7 +25,7 @@ import java.nio.file.Path
 internal class WorkflowGoalRunnerManifestLoader(
   private val database: DatabaseSessionFactory,
   private val decompositionManifestValidator: DecompositionManifestValidator,
-  private val decompositionManifestFileStore: DecompositionManifestFileStore,
+  private val decompositionManifestStore: DecompositionManifestStore,
   private val engine: WorkflowEngine,
   private val parentProjection: GoalParentProjectionWriter,
 ) {
@@ -33,7 +33,7 @@ internal class WorkflowGoalRunnerManifestLoader(
     resolveDecompositionManifest(
       repoRoot = repoRoot,
       issueKey = issueKey,
-      fileStore = decompositionManifestFileStore,
+      fileStore = decompositionManifestStore,
       validator = decompositionManifestValidator,
       recoverPending = recoverPending,
     )

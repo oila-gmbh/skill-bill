@@ -1,5 +1,6 @@
 package skillbill.ports.workflow.gitops
 
+import skillbill.contracts.diagnostics.RecordingNullObjectDiagnostics
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
@@ -31,12 +32,22 @@ private fun WorkflowGitOperations.runtimePhaseFileManifestOperations(): RuntimeP
     ?: NoopRuntimePhaseFileManifestGitOperations
 
 private object NoopRuntimePhaseFileManifestGitOperations : RuntimePhaseFileManifestGitOperations {
-  override fun headCommit(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "")
+  private const val NAME = "NoopRuntimePhaseFileManifestGitOperations"
+
+  override fun headCommit(repoRoot: Path): WorkflowGitOperationResult {
+    RecordingNullObjectDiagnostics.recordSwallow(NAME, "headCommit(repoRoot=$repoRoot)")
+    return WorkflowGitOperationResult(status = "ok", value = "")
+  }
 
   override fun changedPathsBetweenCommits(
     repoRoot: Path,
     beforeCommit: String,
     afterCommit: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
+  ): WorkflowGitOperationResult {
+    RecordingNullObjectDiagnostics.recordSwallow(
+      NAME,
+      "changedPathsBetweenCommits(repoRoot=$repoRoot, beforeCommit=$beforeCommit, afterCommit=$afterCommit)",
+    )
+    return WorkflowGitOperationResult(status = "ok", value = "")
+  }
 }

@@ -15,7 +15,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class FileSystemRepoLocalConfigTest {
-  private val adapter = FileSystemRepoLocalConfig()
+  private val adapter = FileSystemRepoLocalConfig(RecordingDiagnostics())
 
   @Test
   fun `reads typed values from a valid config file`() {

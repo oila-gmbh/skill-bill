@@ -6,11 +6,11 @@ import skillbill.application.manifest
 import skillbill.application.testHarnessClock
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.db.UnitOfWork
 import skillbill.ports.diagnostics.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.persistence.UnitOfWork
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals

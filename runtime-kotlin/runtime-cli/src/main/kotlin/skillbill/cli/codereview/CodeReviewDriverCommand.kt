@@ -26,7 +26,6 @@ import skillbill.cli.model.CliRunInputs
 import skillbill.contracts.JsonSupport
 import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.error.ShellContentContractException
-import skillbill.workflow.goal.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -74,7 +73,7 @@ open class CodeReviewDriverCommand(
     "--execution-mode",
     help = "Execution mode: inline (default, one review prompt), auto (resolves inline), " +
       "or delegated (parent launches specialists; parent authors the final prose result).",
-  ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
+  ).default(RequestedReviewMode.defaultWireValue)
   private val baselineUntrackedIncludes by option(
     "--baseline-untracked-include",
     help = "Baseline-untracked path to include in the packet. Repeatable.",
@@ -142,7 +141,7 @@ open class CodeReviewDriverCommand(
     }
   }
 
-  private fun parseExecutionMode(value: String): CodeReviewExecutionMode = RequestedReviewMode.parse(value)
+  private fun parseExecutionMode(value: String) = RequestedReviewMode.parse(value)
 
   private fun suppliedDiffPath(): Path? = diffFile?.let { value ->
     Path.of(value).toAbsolutePath().normalize()
