@@ -11,7 +11,7 @@ are instantiated for `runtime-application` and `runtime-cli` only. Widen them;
 do not fork them.
 
 **Extend the parameterized scanners over every module in
-`runtime-kotlin/settings.gradle.kts`.**
+`../../../runtime-kotlin/settings.gradle.kts`.**
 
 - *Package acyclicity.* `ApplicationPackageAcyclicityArchitectureTest` already
   takes scan root and package prefix. Add a case per module over its own
@@ -85,7 +85,7 @@ document it in `../../../runtime-kotlin/ARCHITECTURE.md`.
 ## Acceptance Criteria
 
 1. The package-acyclicity scanner has a case for every module in
-   `runtime-kotlin/settings.gradle.kts`, each with a recorded baseline, and the
+   `../../../runtime-kotlin/settings.gradle.kts`, each with a recorded baseline, and the
    `runtime-application` and `runtime-cli` baselines are still empty.
 2. The ambient-clock scanner has a case for every module, each with a recorded
    baseline, and the two existing baselines are still empty.

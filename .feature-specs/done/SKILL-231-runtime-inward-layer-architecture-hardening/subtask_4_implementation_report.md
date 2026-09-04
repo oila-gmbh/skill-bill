@@ -33,6 +33,6 @@
 
 - `./gradlew check`: pass
 - `npx --yes agnix --strict .`: pass (0 errors, 1 pre-existing CLAUDE.md warning)
-- `scripts/validate_agent_configs`: pass
+- `../../../scripts/validate_agent_configs`: pass
 - `skill-bill validate`: pass
 - `:runtime-infra-fs:verifyInfraFsAreaCompile`: pass (per-area source sets)

@@ -154,7 +154,7 @@ established the two guards that prove what an empty cycle baseline cannot —
 
 1. The package-acyclicity, ambient-clock, ambient-environment, and
    `@Inject`-defaults scanners each cover every module in
-   `runtime-kotlin/settings.gradle.kts`, through their existing scan-root and
+   `../../../runtime-kotlin/settings.gradle.kts`, through their existing scan-root and
    package-prefix parameters. No scanner is forked; a second copy scoped to
    another module does not satisfy this criterion. The `runtime-application` and
    `runtime-cli` baselines stay empty.
@@ -228,7 +228,7 @@ established the two guards that prove what an empty cycle baseline cannot —
     `runtime-infra-fs` declares under that root and every file in them that is
     not a schema validator.
 16. `runtime-kotlin/gradlew check` passes, `npx --yes agnix --strict .` passes,
-    `scripts/validate_agent_configs` passes, and `skill-bill validate` passes,
+    `../../../scripts/validate_agent_configs` passes, and `skill-bill validate` passes,
     with no new `@Suppress`, no new line-ceiling exemption, and no baseline
     entry recorded to make a test pass.
 
@@ -237,7 +237,7 @@ established the two guards that prove what an empty cycle baseline cannot —
 - Behavior does not change. The one intended exception is criterion 7: a
   session factory that previously discarded goal control state now fails or
   records instead. That change is named here and carries its own test.
-- The ten-module set in `runtime-kotlin/settings.gradle.kts` does not change.
+- The ten-module set in `../../../runtime-kotlin/settings.gradle.kts` does not change.
   Adding or removing a Gradle module is a plan-level decision.
 - Baselines shrink; they never grow. Regenerate them from the scanners with
   `RECORD_ARCHITECTURE_BASELINES=1`, never by hand. The eight baselines that are
@@ -265,8 +265,8 @@ established the two guards that prove what an empty cycle baseline cannot —
   and the filesystem reach). SKILL-227 owns that module.
 - Reworking `runtime-cli`'s interior. SKILL-229 owns it; this feature touches it
   only where the shared repository-root port and the widened guards reach.
-- `intellij-plugin/`, `vscode-extension/`, `skills/`, `platform-packs/`,
-  `orchestration/`, generated sources, `install.sh`, and the skill render
+- `../../../intellij-plugin`, `../../../vscode-extension`, `../../../skills`, `../../../platform-packs`,
+  `../../../orchestration`, generated sources, `../../../install.sh`, and the skill render
   pipeline.
 - Renaming the `*GitOperations` port family. Git is the capability, not a leaked
   technology.

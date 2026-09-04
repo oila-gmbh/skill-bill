@@ -2,7 +2,7 @@
 
 ## Scoping decisions recorded
 
-- `runtime-infra-*` ambient-environment baselines are shrink-only ceilings (see `runtime-kotlin/agent/decisions.md` 2026-09-03).
+- `runtime-infra-*` ambient-environment baselines are shrink-only ceilings (see `../../../runtime-kotlin/agent/decisions.md` 2026-09-03).
 - `runtime-core` composition ambient input enters at `RuntimeComponentBindingsA1.runtimeContext` as a named seam, not a permanent baseline entry.
 - Spillover baseline keys repository-relative paths; scan root is each module `src` (main and test).
 - Gradle edge pin retains the infrastructure-and-entrypoint `api` ban alongside per-module set equality.

@@ -39,7 +39,7 @@ rg -c '^fun interface ' runtime-kotlin/runtime-ports/src/main/kotlin | awk -F: '
 |------|-------------|
 | `RepoSourceDiscoveryGateway` | Deleted (no caller) |
 | `ScaffoldGateway`, `ScaffoldCatalogGateway`, `UnsupportedScaffoldGateway`, `RepoValidationGateway` | Collapsed: CLI/MCP reach port via `RuntimeComponent` |
-| `ExternalAddonOverlayPort`, `ExternalAddonSourceConfigPort`, `CheckedOutBranchSource`, `GoalPlanningBoundaryBodyResolver` | Retained; recorded in `agent/decisions.md` as load-bearing DI boundaries |
+| `ExternalAddonOverlayPort`, `ExternalAddonSourceConfigPort`, `CheckedOutBranchSource`, `GoalPlanningBoundaryBodyResolver` | Retained; recorded in `../../../agent/decisions.md` as load-bearing DI boundaries |
 
 ## Sealed-subject `else` census
 
@@ -48,7 +48,7 @@ Definition: `when` with trailing `else` whose scrutinee type is a repo-declared 
 | Source | Count |
 |--------|-------|
 | Spec table | 37 |
-| Strict census at implement time | 3 exhaustivity fixes applied (`GoalRunnerWedgeClass`, `GoalPlanningPhaseProduction`); remaining sites are wire-string decoders recorded in `agent/decisions.md` |
+| Strict census at implement time | 3 exhaustivity fixes applied (`GoalRunnerWedgeClass`, `GoalPlanningPhaseProduction`); remaining sites are wire-string decoders recorded in `../../../agent/decisions.md` |
 
 ## Filesystem census (`runtime-application` main)
 

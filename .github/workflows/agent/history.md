@@ -9,10 +9,17 @@ Areas: .github/workflows/extension-release.yml, RELEASING.md, vscode-extension/R
 Feature flag: N/A
 Acceptance criteria: 4/4 implemented (release packaging AC covered here; Stop/Pause live in vscode-extension history)
 
+## [2026-09-04] spotless-ratchet-fetch-must-not-shallow
+Areas: .github/workflows/validate-agent-configs.yml
+- `git fetch --depth=1 origin +refs/heads/main:refs/remotes/origin/main` after a `fetch-depth: 0` checkout shallows the whole clone. `git describe` then fails, Gradle falls back to `0.0.0-SNAPSHOT`, and `UpdateCheckService` treats that sentinel as unversioned — `CliRuntimeUpdateTest` fails on both matrix legs.
+- Fetch `origin/main` without `--depth=1`. Checkout already has full history; Spotless only needs the `origin/main` ref.
+Feature flag: N/A
+Acceptance criteria: N/A (CI follow-up)
+
 ## [2026-08-26] spotless-ratchet-origin-main-fetch
 Areas: .github/workflows/validate-agent-configs.yml
 - Hosted ubuntu `validate` failed at `:runtime-application:spotlessCheck` with `No such reference 'origin/main'` because Spotless `ratchetFrom("origin/main")` (Quality.kt) needs that ref at task-graph creation, and `actions/checkout@v5` default `fetch-depth: 1` never creates it. Self-hosted macmini already had a fuller clone, so only the ubuntu matrix leg failed.
-- After checkout, fetch `origin/main` at depth 1 into `refs/remotes/origin/main` before `./gradlew check`. Idempotent on the self-hosted runner. Do not skip ratchet when the ref is missing: that would format the whole tree and fail on unrelated files.
+- After checkout, fetch `origin/main` into `refs/remotes/origin/main` before `./gradlew check`. Idempotent on the self-hosted runner. Do not skip ratchet when the ref is missing: that would format the whole tree and fail on unrelated files. Do not use `--depth=1` (see 2026-09-04).
 Feature flag: N/A
 Acceptance criteria: N/A (CI follow-up)
 

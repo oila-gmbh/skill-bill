@@ -79,7 +79,7 @@ trailing `else` have a `sealed` or `enum` subject: 26 in `runtime-application`,
 (`GoalSubtaskReviewSummarySanitize.kt:67`, a private `CompactFindingSeverity`
 falling through to `OTHER`). Each becomes exhaustive or gets a line in
 `../../../runtime-kotlin/agent/decisions.md` naming why the set is genuinely
-open. The `docs/code-principles.md` amendment for pack-authored open surfaces
+open. The `../../../docs/code-principles.md` amendment for pack-authored open surfaces
 applies where it applies; it is not a blanket excuse.
 
 **Move the port-shaped interfaces that live in the wrong module.**

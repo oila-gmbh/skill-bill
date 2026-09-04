@@ -1,3 +1,14 @@
+## [2026-09-04] SKILL-231 subtask 4 — Composition and structure
+Areas: runtime-kotlin/{runtime-application/featuretask+goalrunner,runtime-core/{di,architecture{,/baselines}},runtime-infra-{fs,http,sqlite},runtime-mcp,runtime-ports,agent,ARCHITECTURE.md}
+- Renamed all 112 spillover-named files for the responsibility each part holds; emptied every module's spillover baseline; DI root sliced by subsystem (no ordinal `BindingsA1`/`ProvidesN` names).
+- Emptied `runtime-infra-fs`, `runtime-mcp`, and `runtime-infra-sqlite` package-cycle baselines via package moves; per-area compile tasks prove `runtime-infra-fs` areas build without mutual partners. reusable
+- Routed five direct-construction sites through `RuntimeComponent`; `RuntimeCompositionGuardArchitectureTest` bans main-source construction of bound types outside `skillbill.di`. reusable
+- Documented `ScaffoldStandaloneEntrypoint` as the sanctioned second scaffold entrypoint; narrowed reviewed `api(project(...))` edges to `implementation` (or pinned ABI keeps on `runtime-core`).
+- Moved non-validator phase-output repair out of `skillbill.contracts`; Package Ownership now matches the tree; docs test compares against `RuntimeModuleCatalog`. reusable
+- Emptied subtask-1 baselines except shrink-only infra ambient-environment rows and the named `RuntimeBootstrapBindings` composition seam; behavior unchanged across rename/move commits.
+Feature flag: N/A
+Acceptance criteria: 14/14 implemented
+
 ## [2026-09-04] SKILL-231 subtask 3 — Port contracts and surface collapse
 Areas: runtime-kotlin/{runtime-ports,runtime-domain,runtime-application,runtime-infra-{fs,sqlite,http},runtime-core/{di,architecture},agent,ARCHITECTURE.md}
 - Classified every `Unavailable`/`Noop`/`Empty`/`Unconfigured` port object; guarded by `PortNullObjectClassificationGuardTest` and swallow-recording test. reusable

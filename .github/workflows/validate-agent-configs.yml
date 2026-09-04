@@ -48,10 +48,13 @@ jobs:
           fetch-depth: 0
 
       # Spotless ratchetFrom("origin/main") fails task-graph creation when the
-      # shallow default checkout has no origin/main (hosted ubuntu). Self-hosted
-      # clones usually already have it; this fetch is cheap and idempotent.
+      # checkout has no origin/main (hosted ubuntu). Self-hosted clones usually
+      # already have it; this fetch is cheap and idempotent. Do not pass
+      # --depth=1: checkout already used fetch-depth: 0, and a depth-limited
+      # fetch shallows the whole clone so git describe (runtime version) falls
+      # back to 0.0.0-SNAPSHOT and update-check tests fail as unversioned.
       - name: Fetch origin/main for Spotless ratchet
-        run: git fetch --no-tags --prune --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+        run: git fetch --no-tags --prune origin +refs/heads/main:refs/remotes/origin/main
 
       - name: Set up Node.js
         uses: actions/setup-node@v5

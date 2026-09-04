@@ -138,7 +138,7 @@ so the next drift fails the build.
 13. Behavior is unchanged. Every rename and move is a separate commit from any
     logic change.
 14. `runtime-kotlin/gradlew check`, `npx --yes agnix --strict .`,
-    `scripts/validate_agent_configs`, and `skill-bill validate` pass with no new
+    `../../../scripts/validate_agent_configs`, and `skill-bill validate` pass with no new
     suppression and no new exemption.
 
 ## Non-Goals
@@ -190,7 +190,7 @@ change.
 - `runtime-kotlin/gradlew check` in a clean checkout, since the Spotless ratchet
   needs a real `.git` directory. Renames touch the ratchet's surface heavily, so
   run it before each commit rather than at the end.
-- `skill-bill validate`, `agnix --strict`, and `scripts/validate_agent_configs`
+- `skill-bill validate`, `agnix --strict`, and `../../../scripts/validate_agent_configs`
   gate the governed-artifact and agent-config surfaces that the
   `ARCHITECTURE.md` edits touch.
 
