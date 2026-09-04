@@ -29,73 +29,73 @@ class FeatureTaskRuntimeRunLoopCollaborators(
   val subtaskCommit: FeatureTaskRuntimeRunLoopSubtaskCommit get() = support.subtaskCommit
   val transitions: FeatureTaskRuntimeRunLoopTransitions get() = support.transitions
 
-  val attemptSettlementContinued1: FeatureTaskRuntimeRunLoopAttemptSettlementContinued1
+  val attemptSettlementContinued1: FeatureTaskRuntimeRunLoopAttemptSettlementPhaseOutcome
     get() = coreContinuation.settlement.attemptSettlementContinued1
-  val attemptSettlementContinued2: FeatureTaskRuntimeRunLoopAttemptSettlementContinued2
+  val attemptSettlementContinued2: FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch
     get() = coreContinuation.settlement.attemptSettlementContinued2
-  val attemptSettlementContinued3: FeatureTaskRuntimeRunLoopAttemptSettlementContinued3
+  val attemptSettlementContinued3: FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize
     get() = coreContinuation.settlement.attemptSettlementContinued3
 
-  val checkpointContinued1: FeatureTaskRuntimeRunLoopCheckpointContinued1
+  val checkpointContinued1: FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish
     get() = coreContinuation.checkpoint.checkpointContinued1
-  val checkpointContinued2: FeatureTaskRuntimeRunLoopCheckpointContinued2
+  val checkpointContinued2: FeatureTaskRuntimeRunLoopCheckpointRemediationRollback
     get() = coreContinuation.checkpoint.checkpointContinued2
-  val checkpointContinued3: FeatureTaskRuntimeRunLoopCheckpointContinued3
+  val checkpointContinued3: FeatureTaskRuntimeRunLoopCheckpointRemediationStage
     get() = coreContinuation.checkpoint.checkpointContinued3
-  val checkpointContinued4: FeatureTaskRuntimeRunLoopCheckpointContinued4
+  val checkpointContinued4: FeatureTaskRuntimeRunLoopCheckpointRollbackIdentity
     get() = coreContinuation.checkpoint.checkpointContinued4
-  val checkpointContinued5: FeatureTaskRuntimeRunLoopCheckpointContinued5
+  val checkpointContinued5: FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger
     get() = coreContinuation.checkpoint.checkpointContinued5
-  val checkpointContinued6: FeatureTaskRuntimeRunLoopCheckpointContinued6
+  val checkpointContinued6: FeatureTaskRuntimeRunLoopCheckpointBlocking
     get() = coreContinuation.checkpoint.checkpointContinued6
 
-  val driveContinued1: FeatureTaskRuntimeRunLoopDriveContinued1
+  val driveContinued1: FeatureTaskRuntimeRunLoopDrivePhaseSelection
     get() = coreContinuation.drive.driveContinued1
-  val driveContinued2: FeatureTaskRuntimeRunLoopDriveContinued2
+  val driveContinued2: FeatureTaskRuntimeRunLoopDriveAttemptLaunch
     get() = coreContinuation.drive.driveContinued2
-  val driveContinued3: FeatureTaskRuntimeRunLoopDriveContinued3
+  val driveContinued3: FeatureTaskRuntimeRunLoopDriveSettlementGate
     get() = coreContinuation.drive.driveContinued3
-  val driveContinued4: FeatureTaskRuntimeRunLoopDriveContinued4
+  val driveContinued4: FeatureTaskRuntimeRunLoopDriveTerminalOutcome
     get() = coreContinuation.drive.driveContinued4
 
-  val launchContinued1: FeatureTaskRuntimeRunLoopLaunchContinued1
+  val launchContinued1: FeatureTaskRuntimeRunLoopLaunchContentIdentityParse
     get() = coreContinuation.launch.launchContinued1
-  val launchContinued2: FeatureTaskRuntimeRunLoopLaunchContinued2
+  val launchContinued2: FeatureTaskRuntimeRunLoopLaunchAgentSession
     get() = coreContinuation.launch.launchContinued2
-  val launchContinued3: FeatureTaskRuntimeRunLoopLaunchContinued3
+  val launchContinued3: FeatureTaskRuntimeRunLoopLaunchProcessWait
     get() = coreContinuation.launch.launchContinued3
 
-  val outputVerificationContinued1: FeatureTaskRuntimeRunLoopOutputVerificationContinued1
+  val outputVerificationContinued1: FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate
     get() = gateContinuation.outputVerification.outputVerificationContinued1
-  val outputVerificationContinued2: FeatureTaskRuntimeRunLoopOutputVerificationContinued2
+  val outputVerificationContinued2: FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk
     get() = gateContinuation.outputVerification.outputVerificationContinued2
-  val outputVerificationContinued3: FeatureTaskRuntimeRunLoopOutputVerificationContinued3
+  val outputVerificationContinued3: FeatureTaskRuntimeRunLoopOutputVerificationStructuralRepair
     get() = gateContinuation.outputVerification.outputVerificationContinued3
-  val outputVerificationContinued4: FeatureTaskRuntimeRunLoopOutputVerificationContinued4
+  val outputVerificationContinued4: FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge
     get() = gateContinuation.outputVerification.outputVerificationContinued4
-  val outputVerificationContinued5: FeatureTaskRuntimeRunLoopOutputVerificationContinued5
+  val outputVerificationContinued5: FeatureTaskRuntimeRunLoopOutputVerificationReceiptAssembly
     get() = gateContinuation.outputVerification.outputVerificationContinued5
 
-  val phaseAttemptsContinued1: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued1
+  val phaseAttemptsContinued1: FeatureTaskRuntimeRunLoopPhaseAttemptsAttemptBudget
     get() = gateContinuation.phase.phaseAttemptsContinued1
-  val phaseAttemptsContinued2: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued2
+  val phaseAttemptsContinued2: FeatureTaskRuntimeRunLoopPhaseAttemptsRetrySchedule
     get() = gateContinuation.phase.phaseAttemptsContinued2
-  val phaseAttemptsContinued3: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued3
+  val phaseAttemptsContinued3: FeatureTaskRuntimeRunLoopPhaseAttemptsBackoffGate
     get() = gateContinuation.phase.phaseAttemptsContinued3
-  val phaseRunnerContinued1: FeatureTaskRuntimeRunLoopPhaseRunnerContinued1
+  val phaseRunnerContinued1: FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch
     get() = gateContinuation.phase.phaseRunnerContinued1
-  val phaseRunnerContinued2: FeatureTaskRuntimeRunLoopPhaseRunnerContinued2
+  val phaseRunnerContinued2: FeatureTaskRuntimeRunLoopPhaseRunnerMutatingPhase
     get() = gateContinuation.phase.phaseRunnerContinued2
-  val phaseRunnerContinued3: FeatureTaskRuntimeRunLoopPhaseRunnerContinued3
+  val phaseRunnerContinued3: FeatureTaskRuntimeRunLoopPhaseRunnerVerifyingPhase
     get() = gateContinuation.phase.phaseRunnerContinued3
 
-  val validationGateContinued1: FeatureTaskRuntimeRunLoopValidationGateContinued1
+  val validationGateContinued1: FeatureTaskRuntimeRunLoopValidationGateCollectCommand
     get() = gateContinuation.validationGate.validationGateContinued1
-  val validationGateContinued2: FeatureTaskRuntimeRunLoopValidationGateContinued2
+  val validationGateContinued2: FeatureTaskRuntimeRunLoopValidationGateBuildCommand
     get() = gateContinuation.validationGate.validationGateContinued2
-  val validationGateContinued3: FeatureTaskRuntimeRunLoopValidationGateContinued3
+  val validationGateContinued3: FeatureTaskRuntimeRunLoopValidationGateSkillBillValidate
     get() = gateContinuation.validationGate.validationGateContinued3
-  val validationGateContinued4: FeatureTaskRuntimeRunLoopValidationGateContinued4
+  val validationGateContinued4: FeatureTaskRuntimeRunLoopValidationGateAgnixValidate
     get() = gateContinuation.validationGate.validationGateContinued4
 }
 

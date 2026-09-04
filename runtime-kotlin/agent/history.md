@@ -27,7 +27,7 @@ Areas: runtime-kotlin/{runtime-core/src/test/kotlin/skillbill/architecture{,/bas
 - Recorded per-module baselines from the recorder census; reported divergences vs the pre-spec table (ambient clock 12 vs 13, ambient env 129 vs ~127, mcp `@Inject` defaults empty) instead of hand-editing baselines.
 - Widened spillover signature to `Continued`/`Helpers`/`Fns`/`Support`/letter-digit/bare trailing digit; renamed off the Cli-only test; fixture proves catch and non-catch cases.
 - Pattern: measure-first shrink-only ceilings for newly recorded modules; eight empty application/cli floors stay empty-by-rule. reusable
-- Scoping decisions in `agent/decisions.md`: infra ambient-environment baselines are shrink-only (not zero-target); `RuntimeComponentBindingsA1.runtimeContext` is the single named composition ambient seam.
+- Scoping decisions in `agent/decisions.md`: infra ambient-environment baselines are shrink-only (not zero-target); `RuntimeBootstrapBindings.runtimeContext` is the single named composition ambient seam.
 - Limitation: baselines only record sites — subtasks 2–4 empty them and narrow infra api edges. No production moves in this subtask.
 Feature flag: N/A
 Acceptance criteria: 11/11 implemented

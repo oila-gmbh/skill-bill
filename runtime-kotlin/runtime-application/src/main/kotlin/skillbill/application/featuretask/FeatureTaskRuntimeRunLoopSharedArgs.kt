@@ -73,7 +73,7 @@ internal data class ProducerEvidenceRecordRejectionArgs(
 internal data class QuarantineRecordRejectionArgs(
   val context: PhaseAttemptContext,
   val rejection: RecordRejection,
-  val regeneration: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued2.RecordRejectionRegenerationEdge,
+  val regeneration: FeatureTaskRuntimeRunLoopPhaseAttemptsRetrySchedule.RecordRejectionRegenerationEdge,
   val producerEvidence: ProducerOutputEvidence,
 )
 

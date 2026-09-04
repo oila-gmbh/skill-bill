@@ -148,7 +148,7 @@ class FeatureTaskRuntimeRunLoop internal constructor(
       if (collaborators.driveContinued3.resolveAuditGapPauseDriveAction(
           this,
           pause,
-        ) == FeatureTaskRuntimeRunLoopDriveContinued3.AuditGapDriveAction.Stop
+        ) == FeatureTaskRuntimeRunLoopDriveSettlementGate.AuditGapDriveAction.Stop
       ) {
         return
       }

@@ -801,36 +801,36 @@ internal object RuntimeArchitectureScanConstants {
     "skillbill.application.featuretask.FeatureTaskRuntimePhaseReviewGenerationApi.recordedFindingVerdicts",
     "skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput",
     "skillbill.application.featuretask.FeatureTaskRuntimeReviewEnvelope.envelopeMap",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch." +
       "settleValidatedOutputBoundary",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementContinued3.rejectValidatedOutput",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointContinued1." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize.rejectValidatedOutput",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish." +
       "completedImplementFixProducedOutputs",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDriveContinued1.completeReservedGoalReviewPass",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchContinued3.outputEnvelopeOf",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopDrivePhaseSelection.completeReservedGoalReviewPass",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopLaunchProcessWait.outputEnvelopeOf",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputPersistence.persistRejectedVerificationFindings",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerification.firstValidatedOutputRejection",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued1.auditGapProgressPause",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate.auditGapProgressPause",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
       "findingVerificationBoundaryBodyDeliveryDecision",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
       "findingVerificationBoundaryDispositionGate",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
       "findingVerificationBoundaryDispositionGateImpl",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued2." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk." +
       "outputVerificationGateReason",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge." +
       "verifyFindingsBoundaryContext",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationContinued4." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge." +
       "verifyFindingsDispositionGateContext",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.payloadFreeSemanticGateConstraint",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRecordRejection.scrubResponseDerivedGateDetail",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.implementFixRepairReceiptSettlement",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopRepairReceipt.repairReceiptShapeSettlement",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopSubtaskCommit.revalidated",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1." +
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand." +
       "gateTriageCapturedProducedOutputs",
-    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateContinued1.looseOutputEnvelope",
+    "skillbill.application.featuretask.FeatureTaskRuntimeRunLoopValidationGateCollectCommand.looseOutputEnvelope",
     "skillbill.application.featuretask.FeatureTaskRuntimeRunState.parsedOutputsByPayload",
     "skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.readHandoff",
     "skillbill.application.featuretask.FeatureTaskRuntimeSubtaskFinalisation.withCommitSha",

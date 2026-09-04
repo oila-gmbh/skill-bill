@@ -32,61 +32,61 @@ class FeatureTaskRuntimeRunLoopSupportCollaborators(
 
 @Inject
 class FeatureTaskRuntimeRunLoopSettlementContinuationCollaborators(
-  val attemptSettlementContinued1: FeatureTaskRuntimeRunLoopAttemptSettlementContinued1,
-  val attemptSettlementContinued2: FeatureTaskRuntimeRunLoopAttemptSettlementContinued2,
-  val attemptSettlementContinued3: FeatureTaskRuntimeRunLoopAttemptSettlementContinued3,
+  val attemptSettlementContinued1: FeatureTaskRuntimeRunLoopAttemptSettlementPhaseOutcome,
+  val attemptSettlementContinued2: FeatureTaskRuntimeRunLoopAttemptSettlementRepairDispatch,
+  val attemptSettlementContinued3: FeatureTaskRuntimeRunLoopAttemptSettlementReceiptFinalize,
 )
 
 @Inject
 class FeatureTaskRuntimeRunLoopCheckpointContinuationCollaborators(
-  val checkpointContinued1: FeatureTaskRuntimeRunLoopCheckpointContinued1,
-  val checkpointContinued2: FeatureTaskRuntimeRunLoopCheckpointContinued2,
-  val checkpointContinued3: FeatureTaskRuntimeRunLoopCheckpointContinued3,
-  val checkpointContinued4: FeatureTaskRuntimeRunLoopCheckpointContinued4,
-  val checkpointContinued5: FeatureTaskRuntimeRunLoopCheckpointContinued5,
-  val checkpointContinued6: FeatureTaskRuntimeRunLoopCheckpointContinued6,
+  val checkpointContinued1: FeatureTaskRuntimeRunLoopCheckpointOwnedPathRemediationEstablish,
+  val checkpointContinued2: FeatureTaskRuntimeRunLoopCheckpointRemediationRollback,
+  val checkpointContinued3: FeatureTaskRuntimeRunLoopCheckpointRemediationStage,
+  val checkpointContinued4: FeatureTaskRuntimeRunLoopCheckpointRollbackIdentity,
+  val checkpointContinued5: FeatureTaskRuntimeRunLoopCheckpointSubtaskCommitLedger,
+  val checkpointContinued6: FeatureTaskRuntimeRunLoopCheckpointBlocking,
 )
 
 @Inject
 class FeatureTaskRuntimeRunLoopDriveContinuationCollaborators(
-  val driveContinued1: FeatureTaskRuntimeRunLoopDriveContinued1,
-  val driveContinued2: FeatureTaskRuntimeRunLoopDriveContinued2,
-  val driveContinued3: FeatureTaskRuntimeRunLoopDriveContinued3,
-  val driveContinued4: FeatureTaskRuntimeRunLoopDriveContinued4,
+  val driveContinued1: FeatureTaskRuntimeRunLoopDrivePhaseSelection,
+  val driveContinued2: FeatureTaskRuntimeRunLoopDriveAttemptLaunch,
+  val driveContinued3: FeatureTaskRuntimeRunLoopDriveSettlementGate,
+  val driveContinued4: FeatureTaskRuntimeRunLoopDriveTerminalOutcome,
 )
 
 @Inject
 class FeatureTaskRuntimeRunLoopLaunchContinuationCollaborators(
-  val launchContinued1: FeatureTaskRuntimeRunLoopLaunchContinued1,
-  val launchContinued2: FeatureTaskRuntimeRunLoopLaunchContinued2,
-  val launchContinued3: FeatureTaskRuntimeRunLoopLaunchContinued3,
+  val launchContinued1: FeatureTaskRuntimeRunLoopLaunchContentIdentityParse,
+  val launchContinued2: FeatureTaskRuntimeRunLoopLaunchAgentSession,
+  val launchContinued3: FeatureTaskRuntimeRunLoopLaunchProcessWait,
 )
 
 @Inject
 class FeatureTaskRuntimeRunLoopOutputVerificationContinuationCollaborators(
-  val outputVerificationContinued1: FeatureTaskRuntimeRunLoopOutputVerificationContinued1,
-  val outputVerificationContinued2: FeatureTaskRuntimeRunLoopOutputVerificationContinued2,
-  val outputVerificationContinued3: FeatureTaskRuntimeRunLoopOutputVerificationContinued3,
-  val outputVerificationContinued4: FeatureTaskRuntimeRunLoopOutputVerificationContinued4,
-  val outputVerificationContinued5: FeatureTaskRuntimeRunLoopOutputVerificationContinued5,
+  val outputVerificationContinued1: FeatureTaskRuntimeRunLoopOutputVerificationSchemaGate,
+  val outputVerificationContinued2: FeatureTaskRuntimeRunLoopOutputVerificationEnvelopeWalk,
+  val outputVerificationContinued3: FeatureTaskRuntimeRunLoopOutputVerificationStructuralRepair,
+  val outputVerificationContinued4: FeatureTaskRuntimeRunLoopOutputVerificationDuplicateKeyMerge,
+  val outputVerificationContinued5: FeatureTaskRuntimeRunLoopOutputVerificationReceiptAssembly,
 )
 
 @Inject
 class FeatureTaskRuntimeRunLoopPhaseContinuationCollaborators(
-  val phaseAttemptsContinued1: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued1,
-  val phaseAttemptsContinued2: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued2,
-  val phaseAttemptsContinued3: FeatureTaskRuntimeRunLoopPhaseAttemptsContinued3,
-  val phaseRunnerContinued1: FeatureTaskRuntimeRunLoopPhaseRunnerContinued1,
-  val phaseRunnerContinued2: FeatureTaskRuntimeRunLoopPhaseRunnerContinued2,
-  val phaseRunnerContinued3: FeatureTaskRuntimeRunLoopPhaseRunnerContinued3,
+  val phaseAttemptsContinued1: FeatureTaskRuntimeRunLoopPhaseAttemptsAttemptBudget,
+  val phaseAttemptsContinued2: FeatureTaskRuntimeRunLoopPhaseAttemptsRetrySchedule,
+  val phaseAttemptsContinued3: FeatureTaskRuntimeRunLoopPhaseAttemptsBackoffGate,
+  val phaseRunnerContinued1: FeatureTaskRuntimeRunLoopPhaseRunnerPhaseDispatch,
+  val phaseRunnerContinued2: FeatureTaskRuntimeRunLoopPhaseRunnerMutatingPhase,
+  val phaseRunnerContinued3: FeatureTaskRuntimeRunLoopPhaseRunnerVerifyingPhase,
 )
 
 @Inject
 class FeatureTaskRuntimeRunLoopValidationGateContinuationCollaborators(
-  val validationGateContinued1: FeatureTaskRuntimeRunLoopValidationGateContinued1,
-  val validationGateContinued2: FeatureTaskRuntimeRunLoopValidationGateContinued2,
-  val validationGateContinued3: FeatureTaskRuntimeRunLoopValidationGateContinued3,
-  val validationGateContinued4: FeatureTaskRuntimeRunLoopValidationGateContinued4,
+  val validationGateContinued1: FeatureTaskRuntimeRunLoopValidationGateCollectCommand,
+  val validationGateContinued2: FeatureTaskRuntimeRunLoopValidationGateBuildCommand,
+  val validationGateContinued3: FeatureTaskRuntimeRunLoopValidationGateSkillBillValidate,
+  val validationGateContinued4: FeatureTaskRuntimeRunLoopValidationGateAgnixValidate,
 )
 
 @Inject
