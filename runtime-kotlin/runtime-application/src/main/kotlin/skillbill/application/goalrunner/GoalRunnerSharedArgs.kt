@@ -1,7 +1,5 @@
 package skillbill.application.goalrunner
 
-import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.planning.GoalPlanningSharedContext
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
@@ -11,34 +9,16 @@ import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
-import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.model.GoalPlanningContractProvenance
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.ports.goalrunner.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.goalrunner.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
-import skillbill.ports.goalrunner.runner.GoalPullRequestPort
-import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
-import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
-import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
-import skillbill.ports.workflow.specscratch.SpecScratchStore
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
-
-@Inject
-internal data class GoalRunnerFinalizationDeps(
-  val manifestStore: GoalRunnerManifestStore,
-  val outcomeStore: GoalRunnerWorkflowOutcomeStore,
-  val pullRequestPort: GoalPullRequestPort,
-  val specScratchStore: SpecScratchStore,
-  val gitOperations: WorkflowGitOperations,
-  val diagnostics: RuntimeDiagnostics,
-  val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService?,
-  val progressReader: GoalRunnerProgressReader,
-)
 
 internal data class DriveGoalLoopArgs(
   val initialState: GoalRunnerManifestState,

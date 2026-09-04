@@ -74,16 +74,3 @@ internal data class WorkflowGoalRunnerOutcomeStoreBridgesArgs(
   val childRepair: GoalRunnerChildRepairRunnerPort,
   val decompositionManifestWriter: DecompositionManifestProjectionWriter,
 )
-
-internal data class WorkflowGoalRunnerManifestStoreBuildPartsArgs(
-  val database: DatabaseSessionFactory,
-  val workflowSnapshotValidator: WorkflowSnapshotValidator,
-  val decompositionManifestValidator: DecompositionManifestValidator,
-  val decompositionManifestStore: DecompositionManifestStore,
-  val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
-  val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
-  val clock: Clock,
-  val decompositionManifestWriter: DecompositionManifestProjectionWriter,
-  val repositoryRoot: RepositoryRoot,
-  val planningHydrator: GoalChildPlanningHydratorPort,
-)

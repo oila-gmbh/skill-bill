@@ -81,8 +81,6 @@ data class ReviewChangedHunk(
   val contentBytes: Long = indexedContentBytes
     ?: content.replace("\r\n", "\n").toByteArray(StandardCharsets.UTF_8).size.toLong()
 
-  internal fun identityCanonical(): String = canonicalIdentity(this, content)
-
   internal fun packetCanonical(): String = canonicalFields(
     hunkId,
     oldStart,
