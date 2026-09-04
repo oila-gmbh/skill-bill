@@ -1,11 +1,1 @@
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemDeclaredReviewSpecialists.kt::FileSystemDeclaredReviewSpecialists::installedCatalog
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemRepoLocalConfig.kt::FileSystemRepoLocalConfig::diagnostics
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemReviewAttribution.kt::FileSystemReviewAttribution::installedCatalog
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/GitWorkflowGitOperations.kt::GitWorkflowGitOperations::checkpointHistoryOperations
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/GitWorkflowGitOperations.kt::GitWorkflowGitOperations::goalSubtaskReviewOperations
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/GitWorkflowGitOperations.kt::GitWorkflowGitOperations::repositoryFingerprintOperations
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/GitWorkflowGitOperations.kt::GitWorkflowGitOperations::repositoryOwnedPathsOperations
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/GitWorkflowGitOperations.kt::GitWorkflowGitOperations::runtimePhaseFileManifestOperations
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/GitWorkflowGitOperations.kt::GitWorkflowGitOperations::scopedStagingOperations
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/GitWorkflowGitOperations.kt::GitWorkflowGitOperations::suppressionEvidenceOperations
-runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/JdkFeatureTaskRuntimeWorkerSupervisor.kt::JdkFeatureTaskRuntimeWorkerSupervisor::diagnostics
+

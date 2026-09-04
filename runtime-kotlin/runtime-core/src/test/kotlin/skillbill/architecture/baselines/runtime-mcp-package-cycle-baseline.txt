@@ -1,4 +1,1 @@
-core|featuretask
-core|lifecycle
-core|scaffold
-core|workflow
+
