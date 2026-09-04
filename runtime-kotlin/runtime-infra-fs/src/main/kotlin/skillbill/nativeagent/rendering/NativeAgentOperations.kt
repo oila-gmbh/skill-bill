@@ -2,6 +2,7 @@ package skillbill.nativeagent.rendering
 
 import skillbill.nativeagent.composition.NATIVE_AGENT_BUNDLE_FILE
 import skillbill.nativeagent.composition.NATIVE_AGENT_SOURCE_DIR
+import skillbill.nativeagent.composition.NativeAgentCompositionContext
 import skillbill.nativeagent.composition.NativeAgentSource
 import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.composition.nativeAgentCompositionRepoRoot
@@ -50,19 +51,23 @@ data class NativeAgentInstallRenderRequest(
   val selectedPlatforms: List<String>?,
   val provider: NativeAgentProvider,
   val home: Path,
+  val compositionContext: NativeAgentCompositionContext,
   val overrides: NativeAgentInstallRenderOverrides = NativeAgentInstallRenderOverrides(),
 )
 
+data class NativeAgentRegenerationRequest(
+  val repoRoot: Path,
+  val compositionContext: NativeAgentCompositionContext,
+  val skillNames: List<String> = emptyList(),
+  val home: Path = Path.of(System.getProperty("user.home")),
+  val originalBytes: MutableMap<Path, ByteArray>? = null,
+  val createdPaths: MutableList<Path>? = null,
+)
+
 object NativeAgentOperations {
-  fun regenerate(
-    repoRoot: Path,
-    skillNames: List<String> = emptyList(),
-    home: Path = Path.of(System.getProperty("user.home")),
-    originalBytes: MutableMap<Path, ByteArray>? = null,
-    createdPaths: MutableList<Path>? = null,
-  ): NativeAgentRegenerationResult {
-    val root = repoRoot.toAbsolutePath().normalize()
-    val selectedSkillNames = skillNames.toSet()
+  fun regenerate(request: NativeAgentRegenerationRequest): NativeAgentRegenerationResult {
+    val root = request.repoRoot.toAbsolutePath().normalize()
+    val selectedSkillNames = request.skillNames.toSet()
     val sourceFiles = discoverRepoNativeAgentSourceFiles(root)
       .filter { sourcePath ->
         selectedSkillNames.isEmpty() || sourcePath.parent?.parent?.name in selectedSkillNames
@@ -71,9 +76,17 @@ object NativeAgentOperations {
     if (sources.isEmpty()) {
       return NativeAgentRegenerationResult(emptyList())
     }
-    val cacheRoot = installCacheRoot(home, root.resolve("platform-packs"), root.resolve("skills"))
+    val cacheRoot = installCacheRoot(request.home, root.resolve("platform-packs"), root.resolve("skills"))
     val written = mutableListOf<Path>()
-    val composedSources = sources.map { source -> composeNativeAgentSource(root, source) }
+    val composedSources = sources.map { source ->
+      composeNativeAgentSource(
+        root,
+        source,
+        request.compositionContext.reviewContextBudgetBytes,
+        request.compositionContext.renderGovernedBody,
+        request.compositionContext.packLoader,
+      )
+    }
     val byProvider = NativeAgentProvider.entries.associateWith { provider ->
       composedSources.map { composed ->
         RegenerationEntry(
@@ -91,12 +104,12 @@ object NativeAgentOperations {
         if (current != null && current.contentEquals(entry.contents)) {
           return@forEach
         }
-        if (existed && originalBytes != null && entry.target !in originalBytes) {
-          originalBytes[entry.target] = current ?: ByteArray(0)
+        if (existed && request.originalBytes != null && entry.target !in request.originalBytes) {
+          request.originalBytes[entry.target] = current ?: ByteArray(0)
         }
         Files.write(entry.target, entry.contents)
         if (!existed) {
-          createdPaths?.add(entry.target)
+          request.createdPaths?.add(entry.target)
         }
         written.add(entry.target)
       }
@@ -158,9 +171,14 @@ object NativeAgentOperations {
         request.platformPacksRoot,
         request.skillsRoot,
         request.selectedPlatforms,
+        request.compositionContext,
       )
     } else {
-      validateNativeAgentArtifactsForInstall(request.overrides.sourceRoots, repoRoot)
+      validateNativeAgentArtifactsForInstall(
+        request.overrides.sourceRoots,
+        repoRoot,
+        request.compositionContext,
+      )
     }
   }
 
@@ -169,7 +187,13 @@ object NativeAgentOperations {
       ?.let(::discoverNativeAgentSourceEntriesInRoots)
       ?: discoverNativeAgentSourceEntries(request.platformPacksRoot, request.skillsRoot, request.selectedPlatforms)
     return sources.map { source ->
-      val composed = composeNativeAgentSource(repoRoot, source)
+      val composed = composeNativeAgentSource(
+        repoRoot,
+        source,
+        request.compositionContext.reviewContextBudgetBytes,
+        request.compositionContext.renderGovernedBody,
+        request.compositionContext.packLoader,
+      )
       RenderedAgent(
         targetName = "${composed.name}.${request.provider.extension}",
         contents = request.provider.render(composed).toByteArray(Charsets.UTF_8),

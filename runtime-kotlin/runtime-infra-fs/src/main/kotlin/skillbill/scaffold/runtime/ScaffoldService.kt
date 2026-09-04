@@ -111,6 +111,8 @@ internal data class ScaffoldAdapterSeams(
     Path,
     PlatformManifest,
   ) -> List<String>,
+  val performInstall: (ScaffoldTransaction, ScaffoldPlan, Path) -> Pair<List<Path>, List<String>>,
+  val rollbackInstallTargets: (ScaffoldTransaction, MutableList<String>) -> Unit,
 )
 internal fun renderDryRunResult(plan: ScaffoldPlan, repoRoot: Path): ScaffoldResult = ScaffoldResult(
   kind = plan.kind,
@@ -142,7 +144,7 @@ internal fun runScaffold(plan: ScaffoldPlan, repoRoot: Path, adapters: ScaffoldA
     )
   } finally {
     if (!committed) {
-      rollback(txn)
+      rollback(txn, adapters)
     }
   }
 }

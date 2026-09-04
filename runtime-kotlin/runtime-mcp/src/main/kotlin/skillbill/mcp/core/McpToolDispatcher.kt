@@ -9,8 +9,15 @@ import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
 import skillbill.mcp.lifecycle.qualityCheckStarted
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.shared.McpRuntimeLifecycle
+import skillbill.mcp.shared.boolean
+import skillbill.mcp.shared.optionalString
+import skillbill.mcp.shared.string
+import skillbill.mcp.shared.stringList
 import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
 import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
+import skillbill.mcp.workflow.McpWorkflowRuntime
 import skillbill.mcp.workflow.workflowContinue
 import skillbill.mcp.workflow.workflowGet
 import skillbill.mcp.workflow.workflowList
@@ -18,6 +25,7 @@ import skillbill.mcp.workflow.workflowOpen
 import skillbill.mcp.workflow.workflowResume
 import skillbill.mcp.workflow.workflowUpdate
 import skillbill.telemetry.model.RemoteStatsRequest
+import skillbill.mcp.shared.map as argumentMap
 
 internal typealias McpToolHandler = (Map<String, Any?>, McpRuntimeContext) -> Map<String, Any?>
 
@@ -222,7 +230,7 @@ private fun mapRemoteStatsWorkflow(workflow: String): String = when (workflow) {
 
 internal fun newSkillScaffold(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
   McpRuntime.newSkillScaffold(
-    payload = arguments.map("payload"),
+    payload = arguments.argumentMap("payload"),
     dryRun = arguments.boolean("dry_run"),
     orchestrated = arguments.boolean("orchestrated"),
     context = context,

@@ -7,7 +7,6 @@ import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonDeclaration
 import skillbill.contracts.JsonSupport
 import skillbill.error.MissingAgentAddonDeclarationError
-import skillbill.install.model.InstallAgent
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
@@ -50,7 +49,7 @@ internal fun AgentAddonDeclaration.toCatalogueEntry() = AgentAddonCatalogueEntry
   identity = "agent-addon:$slug",
   slug = slug,
   description = description,
-  agentIds = agents.map { it.id },
+  agentIds = agents,
   consumers = consumers.map { it.id },
   manifestPath = manifestPath,
   contentPath = contentPath,
@@ -113,8 +112,8 @@ internal fun parseSource(sourceRoot: Path, validator: AgentAddonSchemaValidator)
     }
     val agentIds = values.stringList("agent_ids", sourceLabel)
     val agents = agentIds.map { id ->
-      runCatching { InstallAgent.fromId(id) }.getOrElse {
-        violations += "unknown agent id '$id'; supported: ${InstallAgent.supportedIds.joinToString()}"
+      runCatching { AgentAddonAgentIds.parse(id) }.getOrElse {
+        violations += "unknown agent id '$id'; supported: ${AgentAddonAgentIds.supportedIds.joinToString()}"
         null
       }
     }.filterNotNull()

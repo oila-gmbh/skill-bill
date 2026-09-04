@@ -4,7 +4,6 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.McpRegistrationApplyStatus
-import skillbill.install.runtime.InstallOperations
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -19,11 +18,11 @@ class InstallApplyMcpFanOutTest : InstallApplyTestSupport() {
     val work = fixture.home.resolve(".claude-work")
     Files.createDirectories(work)
     Files.createFile(work.resolve(".claude.json"))
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(agents = setOf(InstallAgent.CLAUDE)),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     val claudeOutcome = result.mcpRegistrationOutcomes.single { outcome -> outcome.agent == InstallAgent.CLAUDE }
@@ -47,11 +46,11 @@ class InstallApplyMcpFanOutTest : InstallApplyTestSupport() {
     val malformed = work.resolve(".claude.json")
     Files.writeString(malformed, "{ not valid json")
     val defaultConfig = fixture.home.resolve(".claude.json")
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(agents = setOf(InstallAgent.CLAUDE)),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.WARNING, result.status)
     val claudeOutcome = result.mcpRegistrationOutcomes.single { outcome -> outcome.agent == InstallAgent.CLAUDE }

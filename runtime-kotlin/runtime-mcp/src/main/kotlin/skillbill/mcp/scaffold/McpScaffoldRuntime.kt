@@ -2,8 +2,8 @@ package skillbill.mcp.scaffold
 
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
-import skillbill.mcp.core.McpRuntimeContext
-import skillbill.mcp.core.mcpClock
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.shared.mcpClock
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneOffset

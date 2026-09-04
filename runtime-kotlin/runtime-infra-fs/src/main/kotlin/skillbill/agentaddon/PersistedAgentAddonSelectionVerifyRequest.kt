@@ -2,19 +2,18 @@ package skillbill.agentaddon
 
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonSelection
-import skillbill.install.model.InstallAgent
 
 internal data class PersistedAgentAddonSelectionVerifyRequest(
   val selection: AgentAddonSelection,
   val consumer: AgentAddonConsumer,
   val receivingAgentIds: List<String>,
-  val parseAgent: (String) -> InstallAgent,
+  val parseAgent: (String) -> String,
   val validateCompatibility: (
     slug: String,
     consumers: List<AgentAddonConsumer>,
-    agents: List<InstallAgent>,
+    agents: List<String>,
     consumer: AgentAddonConsumer,
-    receivingAgents: List<InstallAgent>,
+    receivingAgents: List<String>,
   ) -> Unit,
   val stringList: (Map<*, *>, String) -> List<String>,
 )

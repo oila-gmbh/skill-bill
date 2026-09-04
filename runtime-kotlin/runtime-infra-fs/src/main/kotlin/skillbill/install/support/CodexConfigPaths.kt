@@ -69,23 +69,6 @@ internal fun codexSkillTargets(home: Path? = null, environment: Map<String, Stri
   return ordered
 }
 
-internal fun codexAgentsTargets(home: Path? = null, environment: Map<String, String> = System.getenv()): List<Path> {
-  val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-  val ordered = mutableListOf<Path>()
-  val seen = mutableSetOf<Path>()
-
-  fun add(path: Path) {
-    val normalized = path.toAbsolutePath().normalize()
-    if (seen.add(normalized)) {
-      ordered.add(normalized)
-    }
-  }
-
-  codexConfigRoots(resolvedHome, environment).forEach { root -> add(root.resolve("agents")) }
-  add(resolvedHome.resolve(".agents/agents"))
-  return ordered
-}
-
 private fun defaultCodexRoot(home: Path): Path {
   val codexRoot = home.resolve(".codex")
   return if (Files.exists(codexRoot)) codexRoot else home.resolve(".agents")

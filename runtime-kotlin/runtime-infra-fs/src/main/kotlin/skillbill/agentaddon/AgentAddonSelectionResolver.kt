@@ -7,7 +7,6 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.error.InvalidAgentAddonSelectionError
-import skillbill.install.model.InstallAgent
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import java.nio.file.Files
 import java.nio.file.Path
@@ -89,16 +88,16 @@ class AgentAddonSelectionResolver : AgentAddonSelectionPort {
     }
   }
 
-  private fun parseAgent(id: String): InstallAgent = runCatching { InstallAgent.fromId(id) }.getOrElse {
+  private fun parseAgent(id: String): String = runCatching { AgentAddonAgentIds.parse(id) }.getOrElse {
     throw InvalidAgentAddonSelectionError("Unknown receiving agent '$id'.")
   }
 
   private fun validateCompatibility(
     slug: String,
     consumers: List<AgentAddonConsumer>,
-    agents: List<InstallAgent>,
+    agents: List<String>,
     consumer: AgentAddonConsumer,
-    receivingAgents: List<InstallAgent>,
+    receivingAgents: List<String>,
   ) {
     if (consumer !in consumers) {
       throw InvalidAgentAddonSelectionError(
@@ -108,7 +107,7 @@ class AgentAddonSelectionResolver : AgentAddonSelectionPort {
     val incompatible = receivingAgents.firstOrNull { it !in agents }
     if (incompatible != null) {
       throw InvalidAgentAddonSelectionError(
-        "Agent add-on '$slug' is incompatible with receiving agent '${incompatible.id}'.",
+        "Agent add-on '$slug' is incompatible with receiving agent '$incompatible'.",
       )
     }
   }

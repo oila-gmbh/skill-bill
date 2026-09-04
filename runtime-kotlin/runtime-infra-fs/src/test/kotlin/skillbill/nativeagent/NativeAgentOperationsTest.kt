@@ -3,6 +3,7 @@ package skillbill.nativeagent
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.nativeagent.rendering.NativeAgentRegenerationRequest
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -90,9 +91,12 @@ class NativeAgentOperationsTest {
     Files.writeString(unselectedSources.resolve("agents.yaml"), "agents: [\n")
 
     val result = NativeAgentOperations.regenerate(
-      repoRoot = repoRoot,
-      skillNames = listOf("bill-selected"),
-      home = home,
+      NativeAgentRegenerationRequest(
+        repoRoot = repoRoot,
+        compositionContext = testNativeAgentCompositionContext(repoRoot),
+        skillNames = listOf("bill-selected"),
+        home = home,
+      ),
     )
 
     assertEquals(NativeAgentProvider.entries.size, result.regeneratedFiles.size)
@@ -125,6 +129,7 @@ class NativeAgentOperationsTest {
         selectedPlatforms = null,
         provider = NativeAgentProvider.Claude,
         home = home,
+        compositionContext = testNativeAgentCompositionContext(repoRoot),
       ),
     )
     val providerRoot = first.cacheRoot.resolve(NativeAgentProvider.Claude.directoryName)
@@ -139,6 +144,7 @@ class NativeAgentOperationsTest {
         selectedPlatforms = null,
         provider = NativeAgentProvider.Claude,
         home = home,
+        compositionContext = testNativeAgentCompositionContext(repoRoot),
       ),
     )
 

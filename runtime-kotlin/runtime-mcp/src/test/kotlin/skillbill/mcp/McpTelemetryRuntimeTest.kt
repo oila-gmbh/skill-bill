@@ -1,9 +1,9 @@
 package skillbill.mcp
 
-import skillbill.mcp.core.McpRuntimeContext
-import skillbill.mcp.core.McpRuntimeLifecycle
 import skillbill.mcp.core.McpToolDispatcher
 import skillbill.mcp.core.telemetryRemoteStats
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.shared.McpRuntimeLifecycle
 import skillbill.mcp.telemetry.toMcpMap
 import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.model.RemoteTransportResponse

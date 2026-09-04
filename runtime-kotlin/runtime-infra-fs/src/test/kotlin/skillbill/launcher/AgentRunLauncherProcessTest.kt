@@ -7,6 +7,7 @@ import skillbill.launcher.process.AgentRunProcessResult
 import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
+import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -47,7 +48,7 @@ class AgentRunLauncherProcessTest {
 
   @Test
   fun `unknown agent id fails before launch`() {
-    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner(), ALL_EXECUTABLES_AVAILABLE)
+    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner(JvmSystemClock), ALL_EXECUTABLES_AVAILABLE)
 
     assertFailsWith<IllegalArgumentException> {
       launcher.launch(
@@ -160,7 +161,7 @@ class AgentRunLauncherProcessTest {
   @Test
   fun `jvm process runner tees live output while preserving captured output`() {
     val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "printf stdout-line; printf stderr-line >&2"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -183,7 +184,7 @@ class AgentRunLauncherProcessTest {
 
   @Test
   fun `jvm process runner closes child stdin for non-interactive runs`() {
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "if read line; then printf got; else printf eof; fi"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -198,7 +199,7 @@ class AgentRunLauncherProcessTest {
 
   @Test
   fun `jvm process runner writes configured stdin text before closing child stdin`() {
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "cat"),
         Path.of(".").toAbsolutePath().normalize(),

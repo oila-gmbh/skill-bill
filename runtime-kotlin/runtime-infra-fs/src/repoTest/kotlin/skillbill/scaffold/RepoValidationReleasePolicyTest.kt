@@ -1,5 +1,5 @@
 package skillbill.scaffold
-
+import skillbill.nativeagent.testNativeAgentCompositionContext
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import java.nio.file.Files
 import kotlin.test.Test
@@ -17,7 +17,7 @@ class RepoValidationReleasePolicyTest {
     Files.writeString(addon.resolve("agent-addon.yaml"), "contract_version: [")
     Files.writeString(addon.resolve("content.md"), "# Fixture\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(report.issues.any { it.startsWith("agent-addons:") })
     assertEquals(0, report.skillCount)

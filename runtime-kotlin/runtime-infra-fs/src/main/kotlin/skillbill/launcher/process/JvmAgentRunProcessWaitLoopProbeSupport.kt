@@ -3,14 +3,13 @@ package skillbill.launcher.process
 import skillbill.idestatus.model.AgentActivityLabel
 import skillbill.ports.agentrun.model.AgentRunActivityStampSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
-import java.time.Instant
 
 internal fun ProcessWaitLoop.pollWorkflowProgress(nowNanos: Long) {
   val progressToken = request.progressProbe.safeProgressToken()
   if (progressToken != lastProgressToken) {
     lastProgressToken = progressToken
     lastWorkflowProgressNanos = nowNanos
-    lastProgressInstant = Instant.now()
+    lastProgressInstant = clock.instant()
     fileActivityWindowStartNanos = null
     writeProgressLabel()
     request.activityStampSink.safeStamp(AgentActivityLabel.DURABLE_PROGRESS)
@@ -30,7 +29,7 @@ internal fun ProcessWaitLoop.pollFileActivity(nowNanos: Long) {
   val activityToken = request.activityProbe.safeActivityToken()
   if (activityToken != lastActivityToken) {
     lastActivityToken = activityToken
-    lastActivityInstant = Instant.now()
+    lastActivityInstant = clock.instant()
     if (fileActivityWindowStartNanos == null) {
       fileActivityWindowStartNanos = nowNanos
     }
@@ -68,7 +67,7 @@ internal fun ProcessWaitLoop.writeProgressLabel() {
     ?.takeIf(String::isNotBlank)
     ?.let { label ->
       lastProgressLabel = label
-      lastSnapshotInstant = Instant.now()
+      lastSnapshotInstant = clock.instant()
       request.outputSink.write(AgentRunOutputStream.STDERR, "skill-bill: workflow progress: $label\n")
     }
 }

@@ -4,8 +4,8 @@ import skillbill.install.model.ClaudeMcpProfileFailure
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.McpMutationResult
 import skillbill.install.model.McpProfileOutcome
-import skillbill.install.support.claudeConfigRoots
 import skillbill.install.support.codexConfigRoots
+import skillbill.nativeagent.support.claudeConfigRoots
 import java.nio.file.Path
 
 object McpRegistrationOperations {

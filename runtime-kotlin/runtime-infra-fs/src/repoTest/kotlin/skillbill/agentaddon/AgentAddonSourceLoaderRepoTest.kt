@@ -1,6 +1,5 @@
 package skillbill.agentaddon
 
-import skillbill.install.model.InstallAgent
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -15,7 +14,7 @@ class AgentAddonSourceLoaderRepoTest {
     val content = Files.readString(declaration.contentPath)
 
     assertEquals("1.0", declaration.contractVersion)
-    assertEquals(listOf(InstallAgent.CODEX), declaration.agents)
+    assertEquals(listOf("codex"), declaration.agents)
     assertEquals(listOf("bill-feature"), declaration.consumers.map { it.id })
     assertEquals(
       listOf("agent-addon.yaml", "content.md"),

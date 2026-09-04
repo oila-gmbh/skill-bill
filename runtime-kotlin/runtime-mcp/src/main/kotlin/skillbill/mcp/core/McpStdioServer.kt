@@ -5,6 +5,8 @@ import kotlinx.serialization.json.JsonObject
 import skillbill.SkillBillVersion
 import skillbill.contracts.JsonSupport
 import skillbill.error.ShellContentContractException
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.shared.McpRuntimeLifecycle
 
 private const val JSON_RPC_PARSE_ERROR = -32700
 private const val JSON_RPC_METHOD_NOT_FOUND = -32601

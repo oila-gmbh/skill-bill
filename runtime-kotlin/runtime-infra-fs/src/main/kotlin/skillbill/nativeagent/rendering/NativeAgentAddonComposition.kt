@@ -6,9 +6,9 @@ import skillbill.nativeagent.composition.NativeAgentCompositionTarget
 import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
 import skillbill.nativeagent.composition.displayPath
 import skillbill.nativeagent.composition.platformPackRoot
-import skillbill.review.plan.ReviewAddonSelectionPolicy
-import skillbill.scaffold.model.GovernedAddonActivation
-import skillbill.scaffold.model.PlatformManifest
+import skillbill.nativeagent.platformpack.NativeAgentAddonSelectionPolicy
+import skillbill.nativeagent.platformpack.NativeAgentGovernedAddonActivation
+import skillbill.nativeagent.platformpack.NativeAgentPlatformPack
 import java.nio.file.Path
 
 internal fun composeGovernedAgentBody(
@@ -67,11 +67,11 @@ internal fun enforceComposedAgentBudget(
 }
 
 internal fun enforceAddonProjectionParity(
-  pack: PlatformManifest,
+  pack: NativeAgentPlatformPack,
   specialistSkillName: String,
   composedAddonSlugs: List<String>,
 ) {
-  val selections = ReviewAddonSelectionPolicy.select(pack, specialistSkillName)
+  val selections = NativeAgentAddonSelectionPolicy.select(pack, specialistSkillName)
   val projected = selections.map { it.slug }
   if (projected == composedAddonSlugs) {
     return
@@ -100,7 +100,7 @@ internal fun nativeAgentSkillRelativeDir(packRoot: Path?, contentPath: Path): St
   ?.replace('\\', '/')
   .orEmpty()
 
-private fun activationScope(activation: GovernedAddonActivation?): String? {
+private fun activationScope(activation: NativeAgentGovernedAddonActivation?): String? {
   if (activation == null) {
     return null
   }

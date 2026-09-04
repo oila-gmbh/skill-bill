@@ -29,7 +29,7 @@ class AgentAddonSourceLoaderTest {
     val declarations = discoverAgentAddons(repo)
 
     assertEquals(listOf("a-first", "z-last"), declarations.map { it.slug })
-    assertEquals(InstallAgent.entries.toList(), declarations.first().agents)
+    assertEquals(InstallAgent.supportedIds, declarations.first().agents)
     assertEquals("z-last", requireAgentAddon(repo, "z-last").slug)
   }
 

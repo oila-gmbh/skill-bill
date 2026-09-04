@@ -1,5 +1,6 @@
 package skillbill.scaffold.runtime
 
+import skillbill.nativeagent.composition.NativeAgentCompositionContext
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption.APPEND
@@ -89,9 +90,13 @@ object RepoValidationRuntime {
   const val PROSPECTIVE_EFFECTIVE_VERSION_MARKER = "Prospective Effective Version: v0.1.2"
   const val TRANSITIONAL_LICENSE_MARKER = "Skill Bill Use License 1.0"
 
-  fun validateRepo(repoRoot: Path): RepoValidationReport {
+  fun validateRepo(
+    repoRoot: Path,
+    nativeAgentCompositionContext: NativeAgentCompositionContext,
+    plannedNativeAgentWorkerIssues: (Path) -> List<String> = { _ -> emptyList() },
+  ): RepoValidationReport {
     val root = repoRoot.toAbsolutePath().normalize()
-    val collected = collectRepoValidationIssues(root)
+    val collected = collectRepoValidationIssues(root, nativeAgentCompositionContext, plannedNativeAgentWorkerIssues)
     return RepoValidationReport(
       issues = collected.issues.sorted(),
       skillCount = collected.skillNames.size,

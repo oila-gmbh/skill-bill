@@ -7,7 +7,6 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.error.AgentAddonSelectionDriftError
 import skillbill.error.InvalidAgentAddonSelectionError
-import skillbill.install.model.InstallAgent
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -35,13 +34,13 @@ internal fun verifyPersistedAgentAddonSelection(
 private fun hydratePersistedAgentAddonEntry(
   recorded: PersistedAgentAddonSelectionEntry,
   consumer: AgentAddonConsumer,
-  receivingAgents: List<InstallAgent>,
+  receivingAgents: List<String>,
   validateCompatibility: (
     slug: String,
     consumers: List<AgentAddonConsumer>,
-    agents: List<InstallAgent>,
+    agents: List<String>,
     consumer: AgentAddonConsumer,
-    receivingAgents: List<InstallAgent>,
+    receivingAgents: List<String>,
   ) -> Unit,
   stringList: (Map<*, *>, String) -> List<String>,
 ): HydratedAgentAddonSelectionEntry {
@@ -59,7 +58,7 @@ private fun hydratePersistedAgentAddonEntry(
     )
   }
   val consumers = stringList(values, "consumers").map(AgentAddonConsumer::fromId)
-  val agents = stringList(values, "agent_ids").map(InstallAgent::fromId)
+  val agents = stringList(values, "agent_ids").map(AgentAddonAgentIds::parse)
   validateCompatibility(recorded.slug, consumers, agents, consumer, receivingAgents)
   val contentPath = manifest.resolveSibling("content.md")
   if (!Files.isRegularFile(contentPath)) {

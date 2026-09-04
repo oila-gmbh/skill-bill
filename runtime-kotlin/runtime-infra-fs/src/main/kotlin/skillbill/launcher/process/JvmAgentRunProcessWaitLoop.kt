@@ -10,6 +10,7 @@ import skillbill.workflow.goal.model.GoalProgressEvent
 import skillbill.workflow.goal.model.GoalProgressEventKind
 import skillbill.workflow.goal.model.GoalProgressOutcome
 import java.nio.charset.StandardCharsets
+import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 import kotlin.time.DurationUnit
@@ -34,6 +35,7 @@ internal class ProcessWaitLoop(
   internal val request: AgentRunProcessRequest,
   internal val outputTracker: OutputObservationTracker,
   internal val lifecycleEmitter: ProcessLifecycleEmitter,
+  internal val clock: Clock,
 ) {
   internal val timeoutMillis = request.timeout
     ?.toLong(DurationUnit.MILLISECONDS)

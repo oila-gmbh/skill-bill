@@ -1,7 +1,9 @@
 package skillbill.scaffold.authoring
 
 import skillbill.error.SkillBillRuntimeException
+import skillbill.nativeagent.composition.NativeAgentCompositionContext
 import skillbill.nativeagent.rendering.NativeAgentOperations
+import skillbill.nativeagent.rendering.NativeAgentRegenerationRequest
 import skillbill.ports.scaffold.model.ScaffoldSkillStatus
 import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.GovernedAddonSelection
@@ -118,7 +120,12 @@ object AuthoringOperations {
     )
   }
 
-  internal fun upgrade(repoRoot: Path, skillNames: List<String>, validate: Boolean): AuthoringUpgradeResult {
+  internal fun upgrade(
+    repoRoot: Path,
+    skillNames: List<String>,
+    validate: Boolean,
+    nativeAgentCompositionContext: NativeAgentCompositionContext,
+  ): AuthoringUpgradeResult {
     val resolvedRoot = repoRoot.toAbsolutePath().normalize()
     val targets = selectedTargets(resolvedRoot, skillNames)
     val originalBytes = mutableMapOf<Path, ByteArray>()
@@ -129,10 +136,13 @@ object AuthoringOperations {
         renderAuthoringTarget(resolvedRoot, target)
       }
       val nativeRegeneration = NativeAgentOperations.regenerate(
-        resolvedRoot,
-        skillNames,
-        originalBytes = originalBytes,
-        createdPaths = createdPaths,
+        NativeAgentRegenerationRequest(
+          repoRoot = resolvedRoot,
+          compositionContext = nativeAgentCompositionContext,
+          skillNames = skillNames,
+          originalBytes = originalBytes,
+          createdPaths = createdPaths,
+        ),
       )
       regenerated += nativeRegeneration.regeneratedFiles
       if (validate) {

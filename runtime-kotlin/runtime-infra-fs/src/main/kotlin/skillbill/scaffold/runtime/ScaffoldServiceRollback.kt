@@ -2,14 +2,13 @@
 package skillbill.scaffold.runtime
 
 import skillbill.error.ScaffoldRollbackError
-import skillbill.install.plan.uninstallTargets
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
-internal fun rollback(txn: ScaffoldTransaction) {
+internal fun rollback(txn: ScaffoldTransaction, adapters: ScaffoldAdapterSeams) {
   val errors = mutableListOf<String>()
-  rollbackInstallTargets(txn, errors)
+  adapters.rollbackInstallTargets(txn, errors)
   rollbackSymlinks(txn, errors)
   rollbackManifests(txn, errors)
   rollbackFiles(txn, errors)
@@ -18,12 +17,6 @@ internal fun rollback(txn: ScaffoldTransaction) {
     throw ScaffoldRollbackError(
       "Rollback encountered errors while reverting scaffold: ${errors.joinToString("; ")}",
     )
-  }
-}
-
-internal fun rollbackInstallTargets(txn: ScaffoldTransaction, errors: MutableList<String>) {
-  recordRollbackFailure(errors, "install rollback") {
-    uninstallTargets(txn.installTargets)
   }
 }
 

@@ -9,11 +9,14 @@ import skillbill.ports.goalrunner.planning.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.verification.model.GoalVerificationBoundaryDiscovery
 import java.nio.file.Path
+import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneOffset
 
 @Inject
-class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
+class FileSystemGoalPlanningContextDiscovery(
+  private val clock: Clock,
+) : GoalPlanningContextDiscovery {
   override fun discover(repoRoot: Path): GoalPlanningContext {
     val canonicalRoot = GoalPlanningRepositoryScope.canonicalRoot(repoRoot)
     val walk = GoalPlanningRepositoryScope.agentDirectories(canonicalRoot)
@@ -90,7 +93,7 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
         if (read.cut) truncated = true
         var entries = BoundaryMemoryHeadingParser.parse(candidate.relative, read.text)
         if (caps.historyRecencyDays != null && candidate.kind == GoalPlanningContext.KIND_HISTORY) {
-          val cutoff = LocalDate.now(ZoneOffset.UTC).minusDays(caps.historyRecencyDays.toLong())
+          val cutoff = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC).minusDays(caps.historyRecencyDays.toLong())
           val beforeRecencyFilter = entries.size
           entries = entries.filter { entry ->
             BoundaryMemoryHeadingParser.entryDate(entry.heading)?.let { entryDate -> entryDate >= cutoff } == true

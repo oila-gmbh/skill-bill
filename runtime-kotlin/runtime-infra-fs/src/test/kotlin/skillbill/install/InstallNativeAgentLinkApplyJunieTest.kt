@@ -12,7 +12,6 @@ import skillbill.install.nativeagent.InstallNativeAgentResult
 import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.install.nativeagent.NativeAgentLinkOwnership
 import skillbill.install.nativeagent.installNativeAgentFile
-import skillbill.install.runtime.InstallOperations
 import skillbill.install.support.createNewSymlinkWithGuidance
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Files
@@ -57,11 +56,11 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
       ]}
       """.trimIndent(),
     )
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertFalse(Files.exists(kotlinLink, LinkOption.NOFOLLOW_LINKS))
@@ -84,11 +83,11 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
       agentDir.resolve(provider.fileName(logicalName)).also { createSymlinkOrSkip(it, target) }
     }
     Files.deleteIfExists(fixture.home.resolve(".skill-bill/native-agent-link-inventory.json"))
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     danglingLinks.forEach { link ->
@@ -107,11 +106,11 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
     )
     val link = agentDir.resolve(target.fileName)
     createSymlinkOrSkip(link, target)
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(Files.isSymbolicLink(link))
@@ -142,11 +141,11 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
           Files.createDirectories(inventory.parent)
           Files.writeString(inventory, inventoryJson(logicalName, installed, obsoleteTarget, fixture.repoRoot))
         }
-        val plan = InstallOperations.planInstall(
+        val plan = planInstallForTest(
           fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
         )
 
-        val result = InstallOperations.applyInstall(plan)
+        val result = applyInstallForTest(plan)
 
         assertEquals(InstallApplyStatus.SUCCESS, result.status)
         val currentRoot = currentNativeAgentApplyCacheRoot(
@@ -173,14 +172,14 @@ class InstallNativeAgentLinkApplyJunieTest : InstallNativeAgentLinkApplyTestSupp
     Files.createDirectories(fixture.home.resolve(".junie"))
     Files.createDirectories(fixture.home.resolve(".cursor"))
     val sourceBefore = snapshotSource(fixture.repoRoot)
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         selectedPlatforms = setOf("kotlin"),
         agents = allInstallAgents,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallAgent.entries.sortedBy(InstallAgent::id), result.mcpRegistrationIntent.agents)

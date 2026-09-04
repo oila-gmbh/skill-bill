@@ -35,7 +35,7 @@ private class RecordingDiagnostics : RuntimeDiagnostics {
 class JdkFeatureTaskRuntimeWorkerSupervisorTest {
   @Test
   fun `worker from a previous boot on this host is not running`() {
-    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor()
+    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(RecordingDiagnostics())
     val current = supervisor.currentProcess()
     val ownership = FeatureTaskRuntimeWorkerOwnership(
       workflowId = "wftr-test",
@@ -61,7 +61,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
     // accumulated CPU time, so it moved as a process ran. Rows written by it are still in durable
     // state, and treating one as a boot mismatch reported the live owner as gone: `goal stop` then
     // found no live lease and left the runner running, and a second runner could reclaim the lease.
-    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor()
+    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(RecordingDiagnostics())
     val current = supervisor.currentProcess()
 
     val ownership = ownershipFor(current, bootIdentity = "fallback-1787579295")
@@ -71,7 +71,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
 
   @Test
   fun `awaitExit returns after a live owned process exits`() {
-    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor()
+    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(RecordingDiagnostics())
     val current = supervisor.currentProcess()
     val child = ProcessBuilder("sleep", "1").start()
     val childHandle = child.toHandle()
@@ -136,7 +136,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
 
   @Test
   fun `a live worker with no known boot identity still reads live`() {
-    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor()
+    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(RecordingDiagnostics())
     val current = supervisor.currentProcess()
 
     val ownership = ownershipFor(current, bootIdentity = "boot-identity-unavailable")
@@ -147,7 +147,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
   @Test
   fun `a reused pid is still caught when the boot check abstains`() {
     // With the boot comparison abstaining, process-birth evidence is the whole reused-pid guard.
-    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor()
+    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(RecordingDiagnostics())
     val current = supervisor.currentProcess()
 
     val ownership = ownershipFor(
@@ -164,7 +164,7 @@ class JdkFeatureTaskRuntimeWorkerSupervisorTest {
 
   @Test
   fun `boot identity is a property of the machine's boot, not of the calling process`() {
-    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor()
+    val supervisor = JdkFeatureTaskRuntimeWorkerSupervisor(RecordingDiagnostics())
     val kernelBootId = Path.of("/proc/sys/kernel/random/boot_id")
     val expected = if (Files.isReadable(kernelBootId)) {
       Files.readString(kernelBootId).trim()

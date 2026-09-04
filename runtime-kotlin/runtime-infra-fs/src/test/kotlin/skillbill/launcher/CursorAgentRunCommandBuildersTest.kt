@@ -1,10 +1,10 @@
 package skillbill.launcher
 
-import skillbill.infrastructure.fs.CursorReviewStreamError
-import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
 import skillbill.launcher.process.AgentRunIdlePolicy
+import skillbill.launcher.review.CursorReviewStreamError
+import skillbill.launcher.review.CursorReviewStreamMalformedError
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

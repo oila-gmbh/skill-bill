@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.error.MissingAgentAddonDeclarationError
+import skillbill.install.nativeagent.installNativeAgentCompositionContext
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
@@ -123,7 +124,7 @@ class FileSystemScaffoldGateway(
   }
 
   override fun upgrade(repoRoot: Path, skillNames: List<String>, validate: Boolean): ScaffoldUpgradeResult {
-    val result = AuthoringOperations.upgrade(repoRoot, skillNames, validate)
+    val result = AuthoringOperations.upgrade(repoRoot, skillNames, validate, installNativeAgentCompositionContext())
     return ScaffoldUpgradeResult(
       repoRoot = result.repoRoot,
       regeneratedCount = result.regeneratedCount,

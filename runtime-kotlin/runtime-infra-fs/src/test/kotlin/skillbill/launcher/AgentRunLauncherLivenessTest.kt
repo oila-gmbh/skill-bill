@@ -8,6 +8,7 @@ import skillbill.ports.agentrun.model.AgentRunDeclaredProgressProbe
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
+import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.concurrent.thread
@@ -30,7 +31,7 @@ class AgentRunLauncherLivenessTest {
       val script = fixtureRoot.resolve(scriptName)
       Files.copy(repoRoot.resolve(scriptName), script)
 
-      val result = JvmAgentRunProcessRunner().run(
+      val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
         testAgentRunProcessRequest(
           listOf(bashExecutable().toString(), script.toString()),
           fixtureRoot,
@@ -53,7 +54,7 @@ class AgentRunLauncherLivenessTest {
 
   @Test
   fun `jvm process runner stops a live process after workflow progress stays idle without wall clock cap`() {
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 5"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -73,7 +74,7 @@ class AgentRunLauncherLivenessTest {
   fun `incremental output alone keeps a db-silent process alive past the idle window`() {
     val emitting = listOf("sh", "-c", "i=0; while [ \$i -lt 8 ]; do echo tick; sleep 0.15; i=\$((i+1)); done")
 
-    val streamed = JvmAgentRunProcessRunner().run(
+    val streamed = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         emitting,
         Path.of(".").toAbsolutePath().normalize(),
@@ -87,7 +88,7 @@ class AgentRunLauncherLivenessTest {
     assertFalse(streamed.timedOut, "output arriving inside the idle window must extend it")
     assertEquals(0, streamed.exitStatus)
 
-    val unstreamed = JvmAgentRunProcessRunner().run(
+    val unstreamed = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         emitting,
         Path.of(".").toAbsolutePath().normalize(),
@@ -103,7 +104,7 @@ class AgentRunLauncherLivenessTest {
 
   @Test
   fun `a silent process still dies at the idle deadline under output-extended liveness`() {
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 5"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -122,7 +123,7 @@ class AgentRunLauncherLivenessTest {
   fun `jvm process runner reports durable workflow progress labels`() {
     val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
     var probeCount = 0
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 0.4"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -149,7 +150,7 @@ class AgentRunLauncherLivenessTest {
   fun `jvm process runner treats file activity as idle liveness`() {
     val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
     var activityProbeCount = 0
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 0.8"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -179,7 +180,7 @@ class AgentRunLauncherLivenessTest {
   @Test
   fun `jvm process runner emits periodic status heartbeat during long active runs`() {
     val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 0.35"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -208,7 +209,7 @@ class AgentRunLauncherLivenessTest {
   @Test
   fun `process wrapper heartbeats cannot keep a delegated worker past progress idle`() {
     val providerProgress = SharedDeclaredProgressStore()
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 5"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -233,7 +234,7 @@ class AgentRunLauncherLivenessTest {
   @Test
   fun `jvm process runner stops after bounded file activity grace without durable workflow progress`() {
     var activityProbeCount = 0
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 5"),
         Path.of(".").toAbsolutePath().normalize(),
@@ -256,7 +257,7 @@ class AgentRunLauncherLivenessTest {
 
   @Test
   fun `jvm process runner kills child when parent thread is interrupted`() {
-    val runner = JvmAgentRunProcessRunner()
+    val runner = JvmAgentRunProcessRunner(JvmSystemClock)
     var result: AgentRunProcessResult? = null
     val worker = thread(start = true) {
       result = runner.run(

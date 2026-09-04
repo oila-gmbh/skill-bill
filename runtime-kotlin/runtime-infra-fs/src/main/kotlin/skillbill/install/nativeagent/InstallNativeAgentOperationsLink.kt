@@ -24,11 +24,14 @@ internal fun linkProviderAgents(
 ): NativeAgentLinkOutcome {
   val validationRoot = nativeAgentCompositionRepoRoot(request.platformPacksRoot, request.skillsRoot)
   request.overrides.sourceRoots
-    ?.let { roots -> validateNativeAgentArtifactsForInstall(roots, validationRoot) }
+    ?.let { roots ->
+      validateNativeAgentArtifactsForInstall(roots, validationRoot, installNativeAgentCompositionContext())
+    }
     ?: validateNativeAgentArtifactsForInstall(
       request.platformPacksRoot,
       request.skillsRoot,
       request.selectedPlatforms,
+      installNativeAgentCompositionContext(),
     )
   val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
   val targets = detectTargets(resolvedHome)
@@ -248,6 +251,7 @@ internal fun isEmptyDirectory(path: Path): Boolean = Files.list(path).use { !it.
 
 internal fun unlinkProviderAgents(provider: NativeAgentProvider, request: NativeAgentLinkRequest): List<Path> {
   val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
+  val compositionContext = installNativeAgentCompositionContext()
   val generated = NativeAgentOperations.renderInstallArtifacts(
     NativeAgentInstallRenderRequest(
       platformPacksRoot = request.platformPacksRoot,
@@ -255,6 +259,7 @@ internal fun unlinkProviderAgents(provider: NativeAgentProvider, request: Native
       selectedPlatforms = request.selectedPlatforms,
       provider = provider,
       home = resolvedHome,
+      compositionContext = compositionContext,
       overrides = NativeAgentInstallRenderOverrides(
         cacheRoot = request.overrides.installCacheRoot,
         sourceRoots = request.overrides.sourceRoots,
@@ -271,6 +276,7 @@ internal fun unlinkProviderAgents(provider: NativeAgentProvider, request: Native
           selectedPlatforms = request.selectedPlatforms,
           provider = provider,
           home = resolvedHome,
+          compositionContext = compositionContext,
           overrides = NativeAgentInstallRenderOverrides(
             cacheRoot = legacyRoot,
             sourceRoots = request.overrides.sourceRoots,

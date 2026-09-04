@@ -4,7 +4,6 @@ import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.error.AgentAddonPointerCollisionError
 import skillbill.error.InvalidAgentAddonDeliveryTargetError
-import skillbill.install.staging.portableFileName
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files

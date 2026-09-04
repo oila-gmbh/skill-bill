@@ -1,6 +1,7 @@
 package skillbill.contracts.workflow
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.infrastructure.fs.phaseoutput.PhaseOutputExpectedShape
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

@@ -1,6 +1,7 @@
 package skillbill.infrastructure.sqlite.review
-
 import skillbill.contracts.JsonSupport
+import skillbill.db.PARAM_ONE
+import skillbill.db.PARAM_TWO
 import skillbill.review.model.REVIEW_FINISHED_LEGACY_CONTRACT_VERSION
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION
 import java.sql.Connection

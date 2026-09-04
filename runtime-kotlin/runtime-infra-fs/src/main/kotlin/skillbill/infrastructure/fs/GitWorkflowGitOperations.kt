@@ -1,6 +1,5 @@
 package skillbill.infrastructure.fs
 
-import me.tatarka.inject.annotations.Inject
 import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperations
 import skillbill.ports.workflow.gitops.CheckpointHistoryGitOperationsProvider
 import skillbill.ports.workflow.gitops.GoalSubtaskReviewGitOperations
@@ -19,7 +18,6 @@ import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
-@Inject
 class GitWorkflowGitOperations :
   WorkflowGitOperations by GitStandardWorkflowGitOperations,
   CheckpointHistoryGitOperationsProvider,

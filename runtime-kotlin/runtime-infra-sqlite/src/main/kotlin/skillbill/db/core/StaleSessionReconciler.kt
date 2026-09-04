@@ -8,8 +8,8 @@ import skillbill.db.telemetry.emitQualityCheckFinished
 import skillbill.db.telemetry.nextGoalStateEnteredAtSql
 import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import skillbill.ports.telemetry.model.TelemetryReconciliationResult
+import skillbill.ports.time.JvmSystemClock
 import java.sql.Connection
-import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 const val STALE_SESSION_THRESHOLD_SECONDS: Long = 28_800L
@@ -71,7 +71,7 @@ fun reconcileStaleTelemetrySessions(
     maximumBatchSize = Int.MAX_VALUE,
     sessionThresholdSeconds = sessionThresholdSeconds,
     goalIssueAbandonmentDays = goalIssueAbandonmentDays,
-    now = Instant.now(),
+    now = JvmSystemClock.instant(),
   ),
 )
 

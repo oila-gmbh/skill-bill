@@ -1,7 +1,6 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
@@ -59,7 +58,7 @@ internal fun processBootIdentity(diagnostics: RuntimeDiagnostics): String {
 
 @Inject
 class JdkFeatureTaskRuntimeWorkerSupervisor(
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) : FeatureTaskRuntimeWorkerSupervisor {
   override fun currentProcess(): FeatureTaskRuntimeProcessIdentity {
     val handle = ProcessHandle.current()

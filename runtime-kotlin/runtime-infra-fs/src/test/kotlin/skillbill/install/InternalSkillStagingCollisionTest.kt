@@ -14,6 +14,7 @@ import skillbill.install.staging.StageInstalledSkillInput
 import skillbill.install.staging.promoteInstallStagingDir
 import skillbill.install.staging.stageInstalledSkill
 import skillbill.install.staging.validateInternalSidecarFileNames
+import skillbill.nativeagent.testNativeAgentCompositionContext
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import java.io.IOException
 import java.nio.file.Files
@@ -279,7 +280,10 @@ class InternalSkillStagingCollisionTest : InternalSkillStagingTestSupport() {
   fun `repo validation accepts a healthy pack internal child classification`() {
     val fixture = setupParentWithInternalPackChild()
 
-    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+    val report = RepoValidationRuntime.validateRepo(
+      fixture.repoRoot,
+      testNativeAgentCompositionContext(fixture.repoRoot),
+    )
 
     val internalIssues = report.issues.filter { issue ->
       issue.contains("internal-for") || issue.contains("internal skill") || issue.contains("platform-pack skill")
@@ -306,7 +310,10 @@ class InternalSkillStagingCollisionTest : InternalSkillStagingTestSupport() {
       """.trimIndent(),
     )
 
-    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+    val report = RepoValidationRuntime.validateRepo(
+      fixture.repoRoot,
+      testNativeAgentCompositionContext(fixture.repoRoot),
+    )
 
     assertTrue(
       report.issues.any { it.contains("not a discovered skill") && it.contains(fixture.packChildName) },

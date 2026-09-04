@@ -2,7 +2,7 @@ package skillbill.mcp
 
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
-import skillbill.mcp.core.McpRuntimeContext
+import skillbill.mcp.shared.McpRuntimeContext
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.Files
 import kotlin.test.Test

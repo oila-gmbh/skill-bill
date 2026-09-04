@@ -31,7 +31,9 @@ class FileSystemDeclaredReviewSpecialistsTest {
 
   @Test
   fun `no installed packs yields no specialists`() {
-    val specialists = FileSystemDeclaredReviewSpecialists().routedSpecialists(changed("src/Main.kt"))
+    val specialists = FileSystemDeclaredReviewSpecialists(
+      installedCatalog(Files.createTempDirectory("declared-specialists-empty")),
+    ).routedSpecialists(changed("src/Main.kt"))
     assertEquals(emptyList(), specialists)
   }
 

@@ -5,7 +5,6 @@ import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.model.InstallTelemetryApplyStatus
 import skillbill.install.model.InstallTelemetryLevel
-import skillbill.install.runtime.InstallOperations
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.ports.telemetry.model.TelemetryLevelMutationResult
 import skillbill.telemetry.model.TelemetrySettings
@@ -22,14 +21,14 @@ class InstallApplyTelemetryTest : InstallApplyTestSupport() {
   @Test
   fun `apply configures full telemetry as a structured success outcome`() {
     val fixture = setupApplyFixture()
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         telemetryLevel = InstallTelemetryLevel.FULL,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryLevel.FULL, result.telemetryOutcome.level)
@@ -48,14 +47,14 @@ class InstallApplyTelemetryTest : InstallApplyTestSupport() {
       configPath,
       """{"install_id":"existing","telemetry":{"level":"anonymous","proxy_url":"","batch_size":"bad"}}""",
     )
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         telemetryLevel = InstallTelemetryLevel.FULL,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.WARNING, result.status)
     assertEquals(InstallTelemetryApplyStatus.FAILED, result.telemetryOutcome.status)
@@ -78,14 +77,14 @@ class InstallApplyTelemetryTest : InstallApplyTestSupport() {
       |
       """.trimMargin(),
     )
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         telemetryLevel = InstallTelemetryLevel.OFF,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
@@ -103,14 +102,14 @@ class InstallApplyTelemetryTest : InstallApplyTestSupport() {
   fun `apply skips telemetry off when there is no existing telemetry state`() {
     val fixture = setupApplyFixture()
     val configPath = fixture.home.resolve(".config/skill-bill/config.json")
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         telemetryLevel = InstallTelemetryLevel.OFF,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertEquals(InstallTelemetryApplyStatus.SKIPPED, result.telemetryOutcome.status)
@@ -126,14 +125,14 @@ class InstallApplyTelemetryTest : InstallApplyTestSupport() {
     val seeded = """{"install_id":"existing","telemetry":{"level":"anonymous","proxy_url":"","batch_size":10}}"""
     Files.writeString(configPath, seeded)
     val mutator = RecordingTelemetryLevelMutator(clearedEvents = 3)
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         telemetryLevel = InstallTelemetryLevel.OFF,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan, mutator)
+    val result = applyInstallForTest(plan, mutator)
 
     assertEquals(listOf("off"), mutator.levels)
     assertEquals(InstallTelemetryApplyStatus.SUCCESS, result.telemetryOutcome.status)
@@ -148,14 +147,14 @@ class InstallApplyTelemetryTest : InstallApplyTestSupport() {
     Files.createDirectories(configPath.parent)
     Files.writeString(configPath, "{\n  \"telemetry\": \n")
     val sourceBefore = snapshotSource(fixture.repoRoot)
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         telemetryLevel = InstallTelemetryLevel.FULL,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.WARNING, result.status)
     assertEquals(InstallTelemetryApplyStatus.FAILED, result.telemetryOutcome.status)

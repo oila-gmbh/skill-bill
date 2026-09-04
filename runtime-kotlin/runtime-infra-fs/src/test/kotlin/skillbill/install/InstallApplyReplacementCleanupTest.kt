@@ -4,7 +4,6 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentLinkStatus
 import skillbill.install.model.InstallApplyIssueKind
 import skillbill.install.model.InstallApplyStatus
-import skillbill.install.runtime.InstallOperations
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -17,13 +16,13 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
   @Test
   fun `apply replacement removes previously installed unselected platform links`() {
     val fixture = setupApplyFixture()
-    val selectedPlatformPlan = InstallOperations.planInstall(
+    val selectedPlatformPlan = planInstallForTest(
       fixture.request(
         selectedPlatforms = setOf("kotlin"),
         agents = setOf(InstallAgent.CODEX),
       ),
     )
-    InstallOperations.applyInstall(selectedPlatformPlan)
+    applyInstallForTest(selectedPlatformPlan)
     val targetDir = fixture.home.resolve("agent-skill-targets/codex")
     val codeReviewStaging = readSymlinkTarget(targetDir.resolve("bill-code-review"))
     assertTrue(
@@ -34,14 +33,14 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
       Files.isRegularFile(readSymlinkTarget(targetDir.resolve("bill-code-check")).resolve("bill-kotlin-code-check.md")),
     )
 
-    val baseOnlyReplacementPlan = InstallOperations.planInstall(
+    val baseOnlyReplacementPlan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         replaceExistingSkillBillLinks = true,
       ),
     )
 
-    val result = InstallOperations.applyInstall(baseOnlyReplacementPlan)
+    val result = applyInstallForTest(baseOnlyReplacementPlan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(Files.isSymbolicLink(targetDir.resolve("bill-code-review")))
@@ -64,14 +63,14 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     Files.createDirectories(legacyManagedDir)
     Files.writeString(legacyManagedDir.resolve(".skill-bill-install"), "")
     Files.writeString(legacyManagedDir.resolve("SKILL.md"), "old managed install")
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         replaceExistingSkillBillLinks = true,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(Files.isSymbolicLink(legacySourceLink))
@@ -103,14 +102,14 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     val cloneManagedLink = targetDir.resolve("bill-code-review")
     createSymlinkOrSkip(cloneManagedLink, clone.resolve("skills/bill-code-review"))
 
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         replaceExistingSkillBillLinks = true,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     assertTrue(Files.isSymbolicLink(cloneManagedLink), "managed link must survive as a symlink")
@@ -140,14 +139,14 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     val targetDir = fixture.home.resolve("agent-skill-targets/codex")
     Files.createDirectories(targetDir)
     val legacyPaths = createLegacyRenamedLinks(fixture, targetDir)
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         replaceExistingSkillBillLinks = true,
       ),
     )
 
-    val result = InstallOperations.applyInstall(plan)
+    val result = applyInstallForTest(plan)
 
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
     legacyPaths.forEach { path ->
@@ -190,7 +189,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
     val fixture = setupApplyFixture()
     val targetDir = fixture.home.resolve("agent-skill-targets/codex")
     Files.createDirectories(targetDir)
-    val plan = InstallOperations.planInstall(
+    val plan = planInstallForTest(
       fixture.request(
         agents = setOf(InstallAgent.CODEX),
         replaceExistingSkillBillLinks = true,
@@ -203,7 +202,7 @@ class InstallApplyReplacementCleanupTest : InstallApplyTestSupport() {
       },
     )
 
-    val result = InstallOperations.applyInstall(tampered)
+    val result = applyInstallForTest(tampered)
 
     assertEquals(InstallApplyStatus.FAILURE, result.status)
     assertTrue(

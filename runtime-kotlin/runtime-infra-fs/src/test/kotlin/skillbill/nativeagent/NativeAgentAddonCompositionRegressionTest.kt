@@ -1,8 +1,8 @@
 package skillbill.nativeagent
 
+import skillbill.install.nativeagent.toNativeAgentPlatformPack
 import skillbill.nativeagent.composition.NativeAgentCompositionTarget
 import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
-import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderOverrides
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
@@ -77,7 +77,7 @@ class NativeAgentAddonCompositionRegressionTest {
       NativeAgentCompositionTarget(
         contentPath = pack.baselineContent,
         source = NativeAgentCompositionTargetSource.PlatformManifest,
-        manifest = loadPlatformPack(pack.packRoot),
+        manifest = loadPlatformPack(pack.packRoot).toNativeAgentPlatformPack(),
       ),
       renderAuthoredContentBody(pack.baselineContent, "bill-harbor-code-review"),
     ).body
@@ -89,7 +89,7 @@ class NativeAgentAddonCompositionRegressionTest {
   @Test
   fun `a file reachable as both a declared add-on and a linked sidecar appears once`() {
     val pack = seedHarborAddonPack(linkEntrypointFromArea = true)
-    val body = composeNativeAgentSource(pack.repoRoot, architectureSource(pack.repoRoot)).body
+    val body = testComposeNativeAgentSource(pack.repoRoot, architectureSource(pack.repoRoot)).body
     assertEquals(1, markerCount(body, HARBOR_ENTRYPOINT_MARKER))
     assertFalse("## Inlined Reference: $HARBOR_ENTRYPOINT_NAME" in body)
   }
@@ -125,6 +125,7 @@ class NativeAgentAddonCompositionRegressionTest {
         selectedPlatforms = listOf(HARBOR_PACK_SLUG),
         provider = provider,
         home = home,
+        compositionContext = testNativeAgentCompositionContext(repoRoot),
         overrides = NativeAgentInstallRenderOverrides(cacheRoot = cacheRoot),
       ),
     )

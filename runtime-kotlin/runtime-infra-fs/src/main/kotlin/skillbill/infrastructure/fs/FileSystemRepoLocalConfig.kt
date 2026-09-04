@@ -16,7 +16,6 @@ import skillbill.error.UnreadableRepoLocalConfigError
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
-import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import java.io.IOException
@@ -26,7 +25,7 @@ import java.nio.file.Path
 
 @Inject
 class FileSystemRepoLocalConfig(
-  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  private val diagnostics: RuntimeDiagnostics,
 ) : RepoLocalConfigPort {
   private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
 

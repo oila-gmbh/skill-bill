@@ -2,15 +2,13 @@ package skillbill.mcp.workflow
 
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowUpdateRequest
-import skillbill.mcp.core.McpRuntimeContext
-import skillbill.mcp.core.McpWorkflowOpenArgs
-import skillbill.mcp.core.McpWorkflowRuntime
-import skillbill.mcp.core.int
-import skillbill.mcp.core.optionalInt
-import skillbill.mcp.core.optionalListMap
-import skillbill.mcp.core.optionalMap
-import skillbill.mcp.core.optionalString
-import skillbill.mcp.core.string
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.shared.int
+import skillbill.mcp.shared.optionalInt
+import skillbill.mcp.shared.optionalListMap
+import skillbill.mcp.shared.optionalMap
+import skillbill.mcp.shared.optionalString
+import skillbill.mcp.shared.string
 
 internal fun workflowOpen(
   kind: WorkflowFamilyKind,

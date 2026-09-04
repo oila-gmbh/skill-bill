@@ -1,5 +1,6 @@
 package skillbill.infrastructure.fs.validation
 
+import skillbill.ports.time.JvmSystemClock
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFindingParseMode
 import skillbill.ports.validation.model.ValidationGateRunOutcome
@@ -26,7 +27,7 @@ class FileSystemValidationGateRunnerTest {
     val repo = Files.createTempDirectory("gate-collect-all")
     try {
       val script = writeGateScript(repo)
-      val runner = FileSystemValidationGateRunner()
+      val runner = FileSystemValidationGateRunner(JvmSystemClock)
       val failFast = runner.run(
         request(
           repo,
@@ -70,7 +71,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -97,7 +98,7 @@ class FileSystemValidationGateRunnerTest {
         exit 0
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -142,7 +143,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -179,7 +180,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -208,7 +209,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -238,7 +239,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -276,7 +277,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -315,7 +316,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -352,7 +353,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -384,7 +385,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -416,7 +417,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -444,7 +445,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -471,7 +472,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),
@@ -506,7 +507,7 @@ class FileSystemValidationGateRunnerTest {
         exit 1
         """.trimIndent(),
       )
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           link,
           argv = listOf("sh", script.toString()),
@@ -566,7 +567,7 @@ class FileSystemValidationGateRunnerTest {
         """.trimIndent(),
       )
 
-      val result = FileSystemValidationGateRunner().run(
+      val result = FileSystemValidationGateRunner(JvmSystemClock).run(
         request(
           repo,
           argv = listOf("sh", script.toString()),

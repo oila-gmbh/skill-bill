@@ -2,9 +2,9 @@ package skillbill.mcp
 
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowUpdateRequest
-import skillbill.mcp.core.McpRuntimeContext
-import skillbill.mcp.core.McpWorkflowOpenArgs
-import skillbill.mcp.core.McpWorkflowRuntime
+import skillbill.mcp.shared.McpRuntimeContext
+import skillbill.mcp.workflow.McpWorkflowOpenArgs
+import skillbill.mcp.workflow.McpWorkflowRuntime
 import skillbill.mcp.workflow.workflowContinue
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperations
 import skillbill.ports.workflow.gitops.RepositoryFingerprintGitOperationsProvider

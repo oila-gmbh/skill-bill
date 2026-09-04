@@ -2,8 +2,8 @@ package skillbill.mcp
 
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
-import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.McpToolDispatcher
+import skillbill.mcp.shared.McpRuntimeContext
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import skillbill.telemetry.TELEMETRY_PROXY_URL_ENVIRONMENT_KEY
 import java.nio.file.Files

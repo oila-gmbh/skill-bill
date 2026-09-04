@@ -10,7 +10,7 @@ import skillbill.review.plan.model.ReviewRoutingChangedFile
 
 @Inject
 class FileSystemDeclaredReviewSpecialists(
-  private val installedCatalog: InstalledPlatformPackCatalogPort = InstalledPlatformPackCatalogPort.NONE,
+  private val installedCatalog: InstalledPlatformPackCatalogPort,
 ) : DeclaredReviewSpecialistsPort {
   override fun routedSpecialists(changedFiles: List<ReviewRoutingChangedFile>): List<String> {
     if (changedFiles.isEmpty()) return emptyList()

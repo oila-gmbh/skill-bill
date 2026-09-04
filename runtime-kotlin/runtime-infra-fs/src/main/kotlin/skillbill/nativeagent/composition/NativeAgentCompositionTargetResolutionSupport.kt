@@ -1,9 +1,7 @@
 package skillbill.nativeagent.composition
 
-import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
-import skillbill.ports.config.model.ReadRepoLocalConfigRequest
-import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.platformpack.loadPlatformPack
+import skillbill.nativeagent.platformpack.NativeAgentPlatformPack
+import skillbill.nativeagent.platformpack.NativeAgentPlatformPackLoader
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.name
@@ -11,19 +9,14 @@ import kotlin.io.path.relativeTo
 
 private const val FRONTMATTER_OPEN_LENGTH = 4
 
-internal fun composedAgentBudgetBytes(repoRoot: Path): Long = FileSystemRepoLocalConfig()
-  .readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot.toAbsolutePath().normalize()))
-  .config
-  .reviewContextBudget
-  .maxLaneLaunchBytes
-
 internal fun resolvePlatformManifestContentTarget(
   repoRoot: Path,
   packRoot: Path,
   sourcePath: Path,
   source: NativeAgentSource,
+  packLoader: NativeAgentPlatformPackLoader,
 ): NativeAgentCompositionTarget? {
-  val pack = loadPlatformPack(packRoot)
+  val pack = packLoader.loadPlatformPack(packRoot)
   return declaredContentPaths(pack)
     .firstOrNull { path -> path.parent?.name == source.name }
     ?.also { contentPath ->
@@ -82,9 +75,10 @@ private fun canonicalize(path: Path): Path {
   return runCatching { normalized.toRealPath() }.getOrDefault(normalized)
 }
 
-private fun declaredContentPaths(pack: PlatformManifest): List<Path> = listOfNotNull(pack.declaredFiles.baseline) +
-  pack.declaredFiles.areas.values.sortedBy { it.toString() } +
-  listOfNotNull(pack.declaredQualityCheckFile)
+private fun declaredContentPaths(pack: NativeAgentPlatformPack): List<Path> =
+  listOfNotNull(pack.declaredFiles.baseline) +
+    pack.declaredFiles.areas.values.sortedBy { it.toString() } +
+    listOfNotNull(pack.declaredQualityCheckFile)
 
 private fun readContentFrontmatterName(contentPath: Path): String? {
   val text = Files.readString(contentPath).replace("\r\n", "\n")

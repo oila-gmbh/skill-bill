@@ -1,5 +1,9 @@
 package skillbill.infrastructure.sqlite.review
-
+import skillbill.db.PARAM_FOUR
+import skillbill.db.PARAM_ONE
+import skillbill.db.PARAM_THREE
+import skillbill.db.PARAM_TWO
+import skillbill.ports.time.JvmSystemClock
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingVerdict
@@ -12,7 +16,6 @@ import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageReached
 import java.sql.Connection
-import java.time.Instant
 
 fun recordFindingVerdicts(connection: Connection, reviewRunId: String, verdicts: List<ReviewFindingVerdict>) {
   reserveReviewRun(connection, reviewRunId)
@@ -117,7 +120,7 @@ fun recordReviewPassClaims(connection: Connection, reviewRunId: String, findings
   ).use { statement ->
     statement.setString(PARAM_ONE, reviewRunId)
     statement.setString(PARAM_TWO, encodePassClaims(findings))
-    statement.setString(PARAM_THREE, Instant.now().toString())
+    statement.setString(PARAM_THREE, JvmSystemClock.instant().toString())
     statement.executeUpdate()
   }
 }
@@ -207,7 +210,7 @@ fun recordSpecProjectionReference(
     statement.setString(PARAM_TWO, reference.specPath)
     statement.setString(PARAM_THREE, reference.contentDigest)
     statement.setString(PARAM_FOUR, reference.absenceReason)
-    statement.setString(PARAM_FIVE, Instant.now().toString())
+    statement.setString(PARAM_FIVE, JvmSystemClock.instant().toString())
     statement.executeUpdate()
   }
 }

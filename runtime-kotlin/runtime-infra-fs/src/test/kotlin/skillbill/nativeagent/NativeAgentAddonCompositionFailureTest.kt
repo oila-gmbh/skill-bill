@@ -3,9 +3,9 @@ package skillbill.nativeagent
 import skillbill.error.ComposedNativeAgentBudgetExceededError
 import skillbill.error.InvalidManifestSchemaError
 import skillbill.error.MissingContentFileError
+import skillbill.install.nativeagent.toNativeAgentPlatformPack
 import skillbill.nativeagent.composition.NativeAgentCompositionTarget
 import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
-import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
@@ -38,7 +38,7 @@ class NativeAgentAddonCompositionFailureTest {
     val missingPath = pack.entrypointPath.toAbsolutePath().normalize()
     Files.delete(pack.entrypointPath)
     val error = assertFailsWith<MissingContentFileError> {
-      composeNativeAgentSource(pack.repoRoot, architectureSource(pack.repoRoot))
+      testComposeNativeAgentSource(pack.repoRoot, architectureSource(pack.repoRoot))
     }
     assertContains(error.message.orEmpty(), "add-on '$HARBOR_ADDON_SLUG'")
     assertContains(error.message.orEmpty(), "slot 'entrypoint'")
@@ -57,7 +57,7 @@ class NativeAgentAddonCompositionFailureTest {
         NativeAgentCompositionTarget(
           contentPath = pack.architectureContent,
           source = NativeAgentCompositionTargetSource.PlatformManifest,
-          manifest = mutated,
+          manifest = mutated.toNativeAgentPlatformPack(),
         ),
         HARBOR_AREA_MARKER,
       )
@@ -75,7 +75,7 @@ class NativeAgentAddonCompositionFailureTest {
     Files.setPosixFilePermissions(pack.entrypointPath, emptySet())
     try {
       val error = assertFailsWith<MissingContentFileError> {
-        composeNativeAgentSource(pack.repoRoot, architectureSource(pack.repoRoot))
+        testComposeNativeAgentSource(pack.repoRoot, architectureSource(pack.repoRoot))
       }
       assertContains(error.message.orEmpty(), "add-on '$HARBOR_ADDON_SLUG'")
       assertContains(error.message.orEmpty(), "slot 'entrypoint'")
@@ -100,7 +100,7 @@ class NativeAgentAddonCompositionFailureTest {
       """.trimIndent() + "\n",
     )
     val error = assertFailsWith<ComposedNativeAgentBudgetExceededError> {
-      composeNativeAgentSource(pack.repoRoot, architectureSource(pack.repoRoot))
+      testComposeNativeAgentSource(pack.repoRoot, architectureSource(pack.repoRoot))
     }
     val message = error.message.orEmpty()
     assertContains(message, "pack '$HARBOR_PACK_SLUG'")
@@ -129,6 +129,7 @@ class NativeAgentAddonCompositionFailureTest {
             selectedPlatforms = listOf(HARBOR_PACK_SLUG),
             provider = NativeAgentProvider.Claude,
             home = home,
+            compositionContext = testNativeAgentCompositionContext(repoRoot),
           ),
         )
       }.isFailure,
@@ -189,6 +190,7 @@ class NativeAgentAddonCompositionFailureTest {
           selectedPlatforms = listOf(HARBOR_PACK_SLUG),
           provider = provider,
           home = home,
+          compositionContext = testNativeAgentCompositionContext(pack.repoRoot),
         ),
       )
     }.exceptionOrNull()

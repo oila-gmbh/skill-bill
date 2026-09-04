@@ -1,7 +1,7 @@
 package skillbill.scaffold
-
 import skillbill.nativeagent.composition.NativeAgentSource
 import skillbill.nativeagent.composition.renderNativeAgentSource
+import skillbill.nativeagent.testNativeAgentCompositionContext
 import skillbill.scaffold.runtime.RepoValidationRuntime
 import java.nio.file.Files
 import kotlin.test.Test
@@ -25,7 +25,7 @@ class RepoValidationSkillContentTest {
     )
     Files.writeString(nativeAgent, sourceText)
 
-    RepoValidationRuntime.validateRepo(repoRoot)
+    RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertTrue(Files.exists(nativeAgent), "repo validation must not delete native-agent source files")
     assertEquals(
@@ -44,7 +44,7 @@ class RepoValidationSkillContentTest {
     Files.createDirectories(generatedArtifact.parent)
     Files.writeString(generatedArtifact, "checked-in generated file\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -64,7 +64,7 @@ class RepoValidationSkillContentTest {
     Files.createDirectories(orphan.parent)
     Files.writeString(orphan, "name = \"orphan\"\n")
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -98,7 +98,7 @@ class RepoValidationSkillContentTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.issues.any { it.contains("content.md found without sibling SKILL.md") })
   }
@@ -124,7 +124,7 @@ class RepoValidationSkillContentTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -155,7 +155,7 @@ class RepoValidationSkillContentTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.issues.any { it.contains("content.md found without sibling SKILL.md") })
   }
@@ -181,7 +181,7 @@ class RepoValidationSkillContentTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -215,7 +215,7 @@ class RepoValidationSkillContentTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -247,7 +247,7 @@ class RepoValidationSkillContentTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -278,7 +278,7 @@ class RepoValidationSkillContentTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -311,7 +311,7 @@ class RepoValidationSkillContentTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -346,7 +346,7 @@ class RepoValidationSkillContentTest {
       """.trimIndent() + "\n",
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(

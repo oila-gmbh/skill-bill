@@ -13,7 +13,7 @@ import java.nio.file.Path
 
 @Inject
 class FileSystemReviewAttribution(
-  private val installedCatalog: InstalledPlatformPackCatalogPort = InstalledPlatformPackCatalogPort.NONE,
+  private val installedCatalog: InstalledPlatformPackCatalogPort,
 ) : ReviewAttributionPort {
   /**
    * Telemetry attribution only, and an absent installation legitimately yields no mappings — so an

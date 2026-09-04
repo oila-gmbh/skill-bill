@@ -2,11 +2,11 @@ package skillbill.db.workflow
 
 import skillbill.db.core.DbConstants
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.ports.time.JvmSystemClock
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.sql.Connection
 import java.sql.PreparedStatement
-import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
@@ -215,7 +215,7 @@ private fun nextStateEnteredAtSql(tableName: String): String = """
 """.trimIndent()
 
 private fun String?.orInsertionTimestamp(): String =
-  takeUnless { it.isNullOrBlank() } ?: sqliteInsertionTimestampFormatter.format(Instant.now())
+  takeUnless { it.isNullOrBlank() } ?: sqliteInsertionTimestampFormatter.format(JvmSystemClock.instant())
 
 private class SqlParameterBinder(
   private val statement: PreparedStatement,

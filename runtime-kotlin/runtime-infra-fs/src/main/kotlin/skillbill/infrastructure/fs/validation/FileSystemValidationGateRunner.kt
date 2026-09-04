@@ -7,16 +7,19 @@ import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
 
 @Inject
-class FileSystemValidationGateRunner : ValidationGateRunner {
+class FileSystemValidationGateRunner(
+  private val clock: Clock,
+) : ValidationGateRunner {
   override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
     val started = System.nanoTime()
-    val artifactFloor = Instant.now().truncatedTo(ChronoUnit.SECONDS)
+    val artifactFloor = clock.instant().truncatedTo(ChronoUnit.SECONDS)
     val outputFile = Files.createTempFile("skillbill-validation-gate", ".out")
     return try {
       val process = ProcessBuilder(request.argv)

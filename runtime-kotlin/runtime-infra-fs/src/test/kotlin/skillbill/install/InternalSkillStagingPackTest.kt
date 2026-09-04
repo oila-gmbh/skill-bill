@@ -7,6 +7,7 @@ import skillbill.install.plan.installSkill
 import skillbill.install.plan.uninstallTargets
 import skillbill.install.staging.StageInstalledSkillInput
 import skillbill.install.staging.stageInstalledSkill
+import skillbill.nativeagent.testNativeAgentCompositionContext
 import skillbill.scaffold.authoring.renderWrapper
 import skillbill.scaffold.authoring.resolveTarget
 import skillbill.scaffold.runtime.RepoValidationRuntime
@@ -87,7 +88,7 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
       """.trimIndent(),
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -113,7 +114,7 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
       """.trimIndent(),
     )
 
-    val report = RepoValidationRuntime.validateRepo(repoRoot)
+    val report = RepoValidationRuntime.validateRepo(repoRoot, testNativeAgentCompositionContext(repoRoot))
 
     assertFalse(report.passed)
     assertTrue(
@@ -126,7 +127,10 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
   fun `repo validation raises no internal-skill issue for a healthy classification`() {
     val fixture = setupParentWithInternalChild()
 
-    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+    val report = RepoValidationRuntime.validateRepo(
+      fixture.repoRoot,
+      testNativeAgentCompositionContext(fixture.repoRoot),
+    )
 
     val internalIssues = report.issues.filter { issue ->
       issue.contains("internal-for") || issue.contains("internal skill") || issue.contains("not a discovered skill")
@@ -148,7 +152,10 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
       body = "Read the file `${fixture.childName}.md` and execute it.",
     )
 
-    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+    val report = RepoValidationRuntime.validateRepo(
+      fixture.repoRoot,
+      testNativeAgentCompositionContext(fixture.repoRoot),
+    )
 
     assertTrue(
       report.issues.any { it.contains("bill-outsider") && it.contains("not co-located") },
@@ -168,7 +175,10 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
       body = "Read the file `bill-listed.md` and execute it.",
     )
 
-    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+    val report = RepoValidationRuntime.validateRepo(
+      fixture.repoRoot,
+      testNativeAgentCompositionContext(fixture.repoRoot),
+    )
 
     assertTrue(
       report.issues.any { it.contains("bill-referrer") && it.contains("renders no sidecar") },
@@ -182,7 +192,10 @@ class InternalSkillStagingPackTest : InternalSkillStagingTestSupport() {
       parentBody = "Read the file `bill-feature-helper.md` located in this skill's installed directory.",
     )
 
-    val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
+    val report = RepoValidationRuntime.validateRepo(
+      fixture.repoRoot,
+      testNativeAgentCompositionContext(fixture.repoRoot),
+    )
 
     val referenceIssues = report.issues.filter { it.contains("references sidecar") }
     assertTrue(

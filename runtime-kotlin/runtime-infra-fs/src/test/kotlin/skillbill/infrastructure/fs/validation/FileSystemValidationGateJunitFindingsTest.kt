@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs.validation
 
 import org.w3c.dom.Element
+import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -57,7 +58,7 @@ class FileSystemValidationGateJunitFindingsTest {
     val path = Files.createTempFile("junit-opaque-", ".xml")
     try {
       Files.writeString(path, xml)
-      val finding = FileSystemValidationGateRunner().parseJUnitXmlFile(path).single()
+      val finding = FileSystemValidationGateRunner(JvmSystemClock).parseJUnitXmlFile(path).single()
       assertEquals("IdeStatusServiceTestSupport.kt:231", finding.location)
       assertContains(finding.message, "Failed requirement.")
       assertContains(finding.message, "IdeStatusServiceTestSupport.kt:231")
@@ -74,7 +75,7 @@ class FileSystemValidationGateJunitFindingsTest {
     testcase.setAttribute("line", "9")
     val body =
       """
-      	at skillbill.application.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
+      at skillbill.application.work.EmitShapeValidator.validate(IdeStatusServiceTestSupport.kt:231)
       """.trimIndent()
     assertEquals("Explicit.kt:9", junitFailureLocation(testcase, body))
   }

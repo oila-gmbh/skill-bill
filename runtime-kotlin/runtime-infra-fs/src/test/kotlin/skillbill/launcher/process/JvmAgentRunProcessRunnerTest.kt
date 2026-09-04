@@ -14,6 +14,7 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewToolCall
+import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -26,7 +27,7 @@ class JvmAgentRunProcessRunnerTest {
       """awk 'BEGIN{p=sprintf("%0500d",0); """ +
         """for(i=0;i<4000;i++) printf "{\"type\":\"assistant\",\"pad\":\"%s\"}\n", p; """ +
         """printf "{\"type\":\"result\",\"result\":\"TERMINAL\"}\n"}'"""
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", flood),
         Path.of("."),
@@ -51,7 +52,7 @@ class JvmAgentRunProcessRunnerTest {
 
   @Test
   fun `foreground process result is returned once as the bounded terminal result`() {
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "printf terminal-result"),
         Path.of("."),
@@ -68,7 +69,7 @@ class JvmAgentRunProcessRunnerTest {
 
   @Test
   fun `MCP startup is counted only when an explicit launcher probe observes it`() {
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "printf terminal-result"),
         Path.of("."),
@@ -84,7 +85,7 @@ class JvmAgentRunProcessRunnerTest {
   fun `spawn authorization surrounds process creation and not terminal waiting`() {
     var authorizationEntered = false
     var authorizationExited = false
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "printf terminal-result"),
         Path.of("."),
@@ -224,7 +225,7 @@ class JvmAgentRunProcessRunnerTest {
       listOf("/bin/true"),
     )
 
-    val result = JvmAgentRunProcessRunner().run(
+    val result = JvmAgentRunProcessRunner(JvmSystemClock).run(
       testAgentRunProcessRequest(
         listOf("sh", "-c", "sleep 30"),
         Path.of("."),
