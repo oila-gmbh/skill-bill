@@ -11,6 +11,7 @@ import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import skillbill.ports.telemetry.model.TelemetryOutboxRecord
+import skillbill.ports.time.JvmSystemClock
 import skillbill.telemetry.TELEMETRY_PROXY_CONTRACT_VERSION
 import skillbill.telemetry.TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY
 import skillbill.telemetry.model.RemoteStatsRequest
@@ -25,6 +26,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse.BodyHandlers
 import java.nio.file.Path
+import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneOffset
 
@@ -49,6 +51,7 @@ object JdkHttpRequester : RemoteTransportPort {
 class HttpTelemetryClient(
   private val environmentContext: EnvironmentContext,
   private val transportContext: TransportContext,
+  private val clock: Clock,
 ) : TelemetryClient {
   private val resolvedEnvironment = environmentContext.withProcessDefaults()
   private val resolvedTransport =
@@ -67,7 +70,11 @@ class HttpTelemetryClient(
     requester: RemoteTransportPort,
     environment: Map<String, String>,
     userHome: Path,
-  ) : this(EnvironmentContext(environment = environment, userHome = userHome), TransportContext(requester = requester))
+  ) : this(
+    EnvironmentContext(environment = environment, userHome = userHome),
+    TransportContext(requester = requester),
+    JvmSystemClock,
+  )
 
   override fun sendBatch(settings: TelemetrySettings, rows: List<TelemetryOutboxRecord>) {
     require(settings.proxyUrl.isNotBlank()) { "Telemetry relay URL is not configured." }
@@ -121,7 +128,12 @@ class HttpTelemetryClient(
       "Telemetry relay URL is not configured."
     }
     val (resolvedDateFrom, resolvedDateTo) =
-      parseRemoteStatsWindow(request.since, request.dateFrom, request.dateTo, LocalDate.now(ZoneOffset.UTC))
+      parseRemoteStatsWindow(
+        request.since,
+        request.dateFrom,
+        request.dateTo,
+        LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC),
+      )
     val capabilities = fetchProxyCapabilities(settings)
     validateRemoteStatsCapabilities(
       request = request,

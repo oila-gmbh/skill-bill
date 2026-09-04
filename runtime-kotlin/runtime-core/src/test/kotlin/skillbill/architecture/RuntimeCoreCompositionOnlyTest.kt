@@ -155,16 +155,16 @@ class RuntimeCoreCompositionOnlyTest {
         implementation = setOf("runtime-contracts"),
       ),
       "runtime-infra-fs" to ModuleEdgeExpectation(
-        api = setOf("runtime-ports", "runtime-domain"),
-        implementation = setOf("runtime-contracts"),
+        api = emptySet(),
+        implementation = setOf("runtime-contracts", "runtime-domain", "runtime-ports"),
       ),
       "runtime-infra-http" to ModuleEdgeExpectation(
-        api = setOf("runtime-domain", "runtime-ports"),
-        implementation = setOf("runtime-contracts"),
+        api = emptySet(),
+        implementation = setOf("runtime-contracts", "runtime-domain", "runtime-ports"),
       ),
       "runtime-infra-sqlite" to ModuleEdgeExpectation(
-        api = setOf("runtime-domain", "runtime-ports"),
-        implementation = setOf("runtime-contracts"),
+        api = emptySet(),
+        implementation = setOf("runtime-contracts", "runtime-domain", "runtime-ports"),
       ),
       "runtime-cli" to ModuleEdgeExpectation(
         api = emptySet(),
