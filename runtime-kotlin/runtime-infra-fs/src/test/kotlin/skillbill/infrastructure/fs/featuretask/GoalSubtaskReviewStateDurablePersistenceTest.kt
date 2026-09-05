@@ -129,6 +129,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       featureTaskGitIntegrationSnapshotValidator,
       NoopRuntimeDiagnostics,
       Clock.systemUTC(),
+      { _ -> },
     )
   }
 

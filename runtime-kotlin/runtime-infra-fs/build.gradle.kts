@@ -275,6 +275,24 @@ val copyGoalSubtaskReviewStateSchema =
     }
   }
 
+val canonicalGoalPortableReviewBaselineSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/goal-portable-review-baseline-schema.yaml")
+    .absolutePath
+
+val copyGoalPortableReviewBaselineSchema =
+  tasks.register<Copy>("copyGoalPortableReviewBaselineSchema") {
+    val schemaPath = canonicalGoalPortableReviewBaselineSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-234: canonical goal portable review-baseline schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimePhaseOutputSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-phase-output-schema.yaml")
@@ -603,6 +621,7 @@ tasks.named("processResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyIdeStatusSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
+  dependsOn(copyGoalPortableReviewBaselineSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyRejectedOutputDiagnosticSchema)
   dependsOn(copyProducerOutputEvidenceSchema)
@@ -636,6 +655,7 @@ tasks.named("processTestResources") {
   dependsOn(copyGoalProgressEventSchema)
   dependsOn(copyIdeStatusSchema)
   dependsOn(copyGoalSubtaskReviewStateSchema)
+  dependsOn(copyGoalPortableReviewBaselineSchema)
   dependsOn(copyFeatureTaskRuntimePhaseOutputSchema)
   dependsOn(copyFeatureTaskRuntimeHandoffEnvelopeSchema)
   dependsOn(copyFeatureTaskRuntimePhaseLaunchBriefingSchema)

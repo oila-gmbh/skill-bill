@@ -1,5 +1,6 @@
 package skillbill.ports.goalrunner.persistence.model
 import skillbill.ports.goalrunner.GoalRunnerPersistenceSession
+import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import java.nio.file.Path
 
@@ -11,6 +12,7 @@ enum class GoalRunnerWedgeClass(val wireValue: String, val durableField: String)
   STALE_BLOCKED_CONTINUATION_OUTCOME("stale_blocked_continuation_outcome", "goal_continuation_outcome"),
   COMPLETED_UPSTREAM_MISSING_OUTPUT("completed_upstream_missing_output", "phase_output"),
   PHASE_OUTPUT_CONTRACT_INCOMPATIBLE("phase_output_contract_incompatible", "phase_output_contract_version"),
+  INVALID_PORTABLE_REVIEW_BASELINE("invalid_portable_review_baseline", "portable_review_baseline"),
   ;
 
   companion object {
@@ -19,7 +21,7 @@ enum class GoalRunnerWedgeClass(val wireValue: String, val durableField: String)
   }
 
   val operatorRequired: Boolean
-    get() = this == PHASE_OUTPUT_CONTRACT_INCOMPATIBLE
+    get() = this == PHASE_OUTPUT_CONTRACT_INCOMPATIBLE || this == INVALID_PORTABLE_REVIEW_BASELINE
 }
 
 enum class GoalRunnerRepairStatus(val wireValue: String) {
@@ -36,12 +38,14 @@ data class GoalRunnerRepairRequest(
   val issueKey: String,
   val apply: Boolean = false,
   val subtaskId: Int? = null,
+  val replaceOrphan: Boolean = false,
   val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
     require(subtaskId == null || subtaskId > 0) { "subtaskId must be positive." }
+    require(!replaceOrphan || subtaskId != null) { "replaceOrphan requires --subtask." }
   }
 }
 
@@ -60,6 +64,15 @@ data class GoalRunnerChildWedgeDiagnosis(
   val isHealthy: Boolean get() = wedges.isEmpty()
 }
 
+data class GoalRunnerChildRepairDiagnoseRequest(
+  val workflowStates: WorkflowStateRepository,
+  val workflowId: String,
+  val issueKey: String,
+  val subtaskId: Int,
+  val repoRoot: Path,
+  val portableContext: PortableReviewBaselineRepairContext? = null,
+)
+
 data class GoalRunnerChildWedgeDiagnosisRequest(
   val workflowId: String,
   val issueKey: String,
@@ -67,6 +80,7 @@ data class GoalRunnerChildWedgeDiagnosisRequest(
   val subtasks: List<DecompositionSubtask>,
   val repoRoot: Path,
   val dbPathOverride: String? = null,
+  val portableContext: PortableReviewBaselineRepairContext? = null,
 )
 
 data class GoalRunnerChildWedgeRepairRequest(
@@ -76,6 +90,7 @@ data class GoalRunnerChildWedgeRepairRequest(
   val wedgeClasses: List<GoalRunnerWedgeClass>,
   val repoRoot: Path,
   val dbPathOverride: String? = null,
+  val portableContext: PortableReviewBaselineRepairContext? = null,
 )
 
 data class GoalRunnerChildRepairApplyRequest(
@@ -85,6 +100,7 @@ data class GoalRunnerChildRepairApplyRequest(
   val subtaskId: Int,
   val wedgeClasses: List<GoalRunnerWedgeClass>,
   val repoRoot: Path,
+  val portableContext: PortableReviewBaselineRepairContext? = null,
 )
 
 data class GoalRunnerChildRepairApplyResult(

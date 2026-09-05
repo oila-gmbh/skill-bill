@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputPreparation
 import skillbill.application.featuretask.model.GoalSubtaskReviewPassReservation
+import skillbill.application.featuretask.model.PortableUnreachableReviewBaseRecovery
 import skillbill.application.featuretask.model.RemediationBaseCoherenceResult
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.RuntimeDiagnostics
@@ -28,6 +29,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val diagnostics: RuntimeDiagnostics,
   private val clock: Clock,
+  unreachableReviewBaseRecovery: PortableUnreachableReviewBaseRecovery,
 ) {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val patcher = FeatureTaskRuntimeGoalContinuationArtifactPatcher(engine)
@@ -38,6 +40,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     database,
     patcher,
     reviewPassRecorder::persistGoalReviewInput,
+    engine,
+    unreachableReviewBaseRecovery,
   )
   val remediationReconciler = FeatureTaskRuntimeRemediationBaseReconciler(database, patcher, clock)
 

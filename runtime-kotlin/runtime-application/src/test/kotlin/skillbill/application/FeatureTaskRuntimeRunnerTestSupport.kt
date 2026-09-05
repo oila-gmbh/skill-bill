@@ -907,6 +907,7 @@ private fun harnessGoalContinuationRecorder(
   NoopWorkflowSnapshotValidator,
   NoopRuntimeDiagnostics,
   Clock.systemUTC(),
+  { _ -> },
 )
 
 private fun harnessWorkflowParts(database: RuntimeFakeDatabaseSessionFactory): RunnerHarnessWorkflow =

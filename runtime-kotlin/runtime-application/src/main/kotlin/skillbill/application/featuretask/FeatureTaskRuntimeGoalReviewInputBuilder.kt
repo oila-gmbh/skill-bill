@@ -4,8 +4,11 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputPreparation
 import skillbill.application.featuretask.model.GoalSubtaskReviewInputReady
+import skillbill.application.featuretask.model.PortableUnreachableReviewBaseRecovery
+import skillbill.application.featuretask.model.PortableUnreachableReviewBaseRecoveryCommand
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
@@ -14,6 +17,7 @@ import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.gitops.recoverGoalSubtaskReviewBaseline
+import skillbill.workflow.engine.WorkflowEngine
 import skillbill.workflow.goal.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -25,6 +29,8 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
   private val database: DatabaseSessionFactory,
   private val patcher: FeatureTaskRuntimeGoalContinuationArtifactPatcher,
   private val persistGoalReviewInput: (String, GoalSubtaskReviewInput, String?) -> GoalSubtaskReviewState?,
+  private val engine: WorkflowEngine,
+  private val unreachableReviewBaseRecovery: PortableUnreachableReviewBaseRecovery,
 ) {
   fun loadGoalReviewDurable(
     workflowId: String,
@@ -168,7 +174,25 @@ class FeatureTaskRuntimeGoalReviewInputBuilder(
         GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY to priorEvidence + evidenceEntry,
       ),
     )
+    recordPortableUnreachableBaseRecovery(request, unitOfWork.workflowStates, recoveredBaseline)
     replaced
+  }
+
+  private fun recordPortableUnreachableBaseRecovery(
+    request: GoalReviewInputRecoveryRequest,
+    workflowStates: WorkflowStateRepository,
+    recoveredBaseline: GoalSubtaskReviewBaseline,
+  ) {
+    unreachableReviewBaseRecovery.record(
+      PortableUnreachableReviewBaseRecoveryCommand(
+        workflowStates = workflowStates,
+        continuation = request.continuation,
+        workflowId = request.workflowId,
+        recoveredBaseline = recoveredBaseline,
+        repoRoot = request.execution.repoRoot,
+        engine = engine,
+      ),
+    )
   }
 
   private fun replacedReviewState(

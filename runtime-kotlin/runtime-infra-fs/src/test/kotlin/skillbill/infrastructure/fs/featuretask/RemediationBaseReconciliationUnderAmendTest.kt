@@ -344,6 +344,7 @@ class RemediationBaseReconciliationUnderAmendTest {
       featureTaskGitIntegrationSnapshotValidator,
       NoopRuntimeDiagnostics,
       Clock.systemUTC(),
+      { _ -> },
     )
   }
 

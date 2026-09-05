@@ -705,6 +705,7 @@ runtime-ports
     - `skillbill.workflow.goal.model.GoalObservabilityHistory.toArtifactList`
     - `skillbill.workflow.goal.model.GoalProgressEvent.toArtifactMap`
     - `skillbill.workflow.goal.model.GoalProgressHistory.toArtifactList`
+    - `skillbill.workflow.goal.model.GoalRecoveryAuditEntry.toArtifactMap`
     - `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
     - `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.toArtifactMap`
     - `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
@@ -719,6 +720,9 @@ runtime-ports
     - `skillbill.workflow.goal.model.GoalSubtaskReviewState.boundedDispositionSummary`
     - `skillbill.workflow.goal.model.GoalSubtaskReviewState.fromArtifactMap`
     - `skillbill.workflow.goal.model.GoalSubtaskReviewState.toArtifactMap`
+    - `skillbill.workflow.goal.model.PortableReviewBaselineCodec.decode`
+    - `skillbill.workflow.goal.model.PortableReviewBaselineCodec.digest`
+    - `skillbill.workflow.goal.model.PortableReviewBaselineCodec.encode`
     - `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
     - `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
     - `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`
@@ -1956,6 +1960,7 @@ Categories:
 - `skillbill.workflow.goal.model.GoalObservabilityHistory.toArtifactList`
 - `skillbill.workflow.goal.model.GoalProgressEvent.toArtifactMap`
 - `skillbill.workflow.goal.model.GoalProgressHistory.toArtifactList`
+- `skillbill.workflow.goal.model.GoalRecoveryAuditEntry.toArtifactMap`
 - `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
 - `skillbill.workflow.goal.model.GoalSubtaskBlockerDisposition.toArtifactMap`
 - `skillbill.workflow.goal.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
@@ -1970,6 +1975,9 @@ Categories:
 - `skillbill.workflow.goal.model.GoalSubtaskReviewState.boundedDispositionSummary`
 - `skillbill.workflow.goal.model.GoalSubtaskReviewState.fromArtifactMap`
 - `skillbill.workflow.goal.model.GoalSubtaskReviewState.toArtifactMap`
+- `skillbill.workflow.goal.model.PortableReviewBaselineCodec.decode`
+- `skillbill.workflow.goal.model.PortableReviewBaselineCodec.digest`
+- `skillbill.workflow.goal.model.PortableReviewBaselineCodec.encode`
 - `skillbill.workflow.goal.model.appendBoundedHistoryBySequence`
 - `skillbill.workflow.goal.model.goalObservabilityHistoryFromArtifacts`
 - `skillbill.workflow.goal.model.goalObservabilityLatestEventFromArtifacts`

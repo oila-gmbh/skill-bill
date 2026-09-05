@@ -1,0 +1,52 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/goal-portable-review-baseline-schema.yaml"
+title: "Goal portable review baseline"
+description: >
+  Repository-portable immutable review baseline for one decomposed goal child.
+  Written before implementation starts and validated before missing local review
+  state can be rehydrated on another machine.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - workflow_id
+  - repository_identity
+  - goal_branch
+  - review_base_sha
+  - baseline_untracked_paths
+  - integrity_digest
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+  workflow_id:
+    type: string
+    minLength: 1
+  repository_identity:
+    type: string
+    minLength: 1
+  goal_branch:
+    type: string
+    minLength: 1
+  review_base_sha:
+    type: string
+    pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
+  baseline_untracked_paths:
+    type: array
+    items:
+      type: string
+      minLength: 1
+    uniqueItems: true
+  owned_pathspec:
+    type: array
+    items:
+      type: string
+      minLength: 1
+    uniqueItems: true
+  integrity_digest:
+    type: string
+    pattern: "^[0-9a-f]{64}$"
+x-coherence-checks:
+  - baseline_untracked_paths entries are repository-relative, non-blank, and must not contain parent segments.
+  - owned_pathspec entries are repository-relative, non-blank, and must not contain parent segments.
+  - integrity_digest is SHA-256 over the canonical body with integrity_digest omitted.

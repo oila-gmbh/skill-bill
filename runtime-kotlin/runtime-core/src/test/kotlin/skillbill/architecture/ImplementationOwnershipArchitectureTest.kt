@@ -325,6 +325,7 @@ class ImplementationOwnershipArchitectureTest {
       "RuntimeGoalRunnerScaffoldProvides.kt",
       "RuntimeScaffoldWorkflowProvides.kt",
       "RuntimeReviewWorkflowProvides.kt",
+      "RuntimePortableReviewBaselineProvides.kt",
       "RuntimeWorkflowValidatorProvides.kt",
       "RuntimeFeatureTaskGoalValidatorProvides.kt",
       "RuntimeCompositionMiscProvides.kt",

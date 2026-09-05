@@ -11,6 +11,7 @@ import skillbill.ports.goalrunner.persistence.authoritativeOutcomesBySubtask
 import skillbill.ports.goalrunner.persistence.goalReviewArtifacts
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyRequest
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyResult
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairDiagnoseRequest
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosisRequest
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeRepairRequest
@@ -135,11 +136,14 @@ internal class WorkflowGoalRunnerChildRepairBridge(
   override fun diagnoseChildWedges(request: GoalRunnerChildWedgeDiagnosisRequest): GoalRunnerChildWedgeDiagnosis =
     database.read(request.dbPathOverride) { unitOfWork ->
       childRepair.diagnose(
-        workflowStates = unitOfWork.workflowStates,
-        workflowId = request.workflowId,
-        issueKey = request.issueKey,
-        subtaskId = request.subtaskId,
-        repoRoot = request.repoRoot,
+        GoalRunnerChildRepairDiagnoseRequest(
+          workflowStates = unitOfWork.workflowStates,
+          workflowId = request.workflowId,
+          issueKey = request.issueKey,
+          subtaskId = request.subtaskId,
+          repoRoot = request.repoRoot,
+          portableContext = request.portableContext,
+        ),
       )
     }
 
@@ -153,6 +157,7 @@ internal class WorkflowGoalRunnerChildRepairBridge(
           subtaskId = request.subtaskId,
           wedgeClasses = request.wedgeClasses,
           repoRoot = request.repoRoot,
+          portableContext = request.portableContext,
         ),
       )
     }
@@ -178,6 +183,11 @@ internal class WorkflowGoalRunnerReviewBridge(
   private val engine: WorkflowEngine,
   private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ) : GoalRunnerReviewOutcomeStore {
+  override fun workflowExists(workflowId: String, dbPathOverride: String?): Boolean =
+    database.read(dbPathOverride) { unitOfWork ->
+      taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) != null
+    }
+
   override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
     database.read(dbPathOverride) { unitOfWork ->
       val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@read null
