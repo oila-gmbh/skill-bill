@@ -260,17 +260,26 @@ class GoalRepairCommand(
     "--apply",
     help = "Apply repairs for diagnosed wedges. Without this flag the command only reports.",
   ).flag(default = false)
+  private val replaceOrphan by option(
+    "--replace-orphan",
+    help = "Replace a create_branch orphan child: retire its workflow identity, capture a fresh baseline, " +
+      "and update the manifest. Requires --subtask and --apply.",
+  ).flag(default = false)
   private val repoRoot by option("--repo-root", help = "Repository root for reachability checks.")
 
   override fun run() {
     if (subtaskId != null && requireNotNull(subtaskId) <= 0) {
       throw UsageError("--subtask must be a positive integer.")
     }
+    if (replaceOrphan && subtaskId == null) {
+      throw UsageError("--replace-orphan requires --subtask.")
+    }
     val result = goalRunnerStatusService.repair(
       GoalRunnerRepairRequest(
         issueKey = issueKey,
         apply = apply,
         subtaskId = subtaskId,
+        replaceOrphan = replaceOrphan,
         dbPathOverride = inputs.dbPathOverride,
         repoRoot = repoRoot?.let(Path::of) ?: inputs.repositoryRoot,
       ),

@@ -7,6 +7,7 @@ import skillbill.application.goalrunner.planning.GoalPlanningStatusReasonCoheren
 import skillbill.model.RepositoryRoot
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore
+import skillbill.ports.goalrunner.persistence.PortableReviewBaselinePersistence
 import skillbill.ports.goalrunner.runner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
@@ -30,4 +31,5 @@ data class GoalRunnerStatusServiceDeps(
   val runtimeStatusService: FeatureTaskRuntimeStatusService?,
   val repositoryRoot: RepositoryRoot,
   val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
+  val portableReviewBaselinePersistence: PortableReviewBaselinePersistence,
 )

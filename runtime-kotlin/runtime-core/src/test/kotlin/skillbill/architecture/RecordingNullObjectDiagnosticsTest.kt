@@ -8,6 +8,7 @@ import skillbill.idestatus.model.AgentActivityStamp
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
+import skillbill.ports.goalrunner.persistence.NoopPortableReviewBaselinePersistence
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosisRequest
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeRepairRequest
 import skillbill.ports.goalrunner.runner.NoopGoalRunnerAttemptLedgerStore
@@ -31,6 +32,7 @@ import skillbill.ports.workflow.gitops.runtimePhaseHeadCommit
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
 import skillbill.workflow.goal.NoopGoalProgressEventValidator
+import skillbill.workflow.goal.model.PortableReviewBaseline
 import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeBuildReceiptValidator
 import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimeImplementationAttemptValidator
 import skillbill.workflow.taskruntime.NoopFeatureTaskRuntimePlanningProjectionValidator
@@ -60,6 +62,7 @@ class RecordingNullObjectDiagnosticsTest {
     exerciseGoalRunnerControlNullObjects()
     exerciseAgentActivityNullObjects()
     exerciseChildRepairNullObjects(repoRoot)
+    exercisePortableReviewBaselineNullObjects(repoRoot)
     exerciseValidatorNullObjects()
     exerciseWorkflowGitNullObjects(repoRoot)
     exerciseRuntimeTimingNullObjects()
@@ -115,6 +118,21 @@ class RecordingNullObjectDiagnosticsTest {
         subtaskId = 1,
         wedgeClasses = emptyList(),
         repoRoot = repoRoot,
+      ),
+    )
+  }
+
+  private fun exercisePortableReviewBaselineNullObjects(repoRoot: Path) {
+    NoopPortableReviewBaselinePersistence.read(repoRoot.resolve("missing.yaml"))
+    NoopPortableReviewBaselinePersistence.writeAtomically(
+      repoRoot.resolve("missing.yaml"),
+      PortableReviewBaseline(
+        workflowId = "wf-1",
+        repositoryIdentity = "repo",
+        goalBranch = "feat/demo",
+        reviewBaseSha = "a".repeat(40),
+        baselineUntrackedPaths = emptyList(),
+        integrityDigest = "0".repeat(64),
       ),
     )
   }

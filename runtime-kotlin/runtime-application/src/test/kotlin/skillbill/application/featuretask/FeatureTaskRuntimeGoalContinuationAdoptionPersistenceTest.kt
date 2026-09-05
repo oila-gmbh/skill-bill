@@ -236,6 +236,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
         testWorkflowSnapshotValidator,
         NoopRuntimeDiagnostics,
         testHarnessClock,
+        { _ -> },
       )
     val runInvariantsStore =
       FeatureTaskRuntimeRunInvariantsStore(database, testWorkflowSnapshotValidator)

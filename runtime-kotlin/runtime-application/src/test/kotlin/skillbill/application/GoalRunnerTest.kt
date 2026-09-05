@@ -80,6 +80,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorizationDeni
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLedgerSequenceWatermarks
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequest
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOrphanChildReplacementWrite
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
@@ -3557,6 +3558,11 @@ internal class InMemoryGoalManifestStore(
   ): GoalRunnerManifestState {
     newChildWorkflowSetups += setup
     return save(state, dbPathOverride)
+  }
+
+  override fun replaceOrphanChildWorkflow(write: GoalRunnerOrphanChildReplacementWrite): GoalRunnerManifestState {
+    newChildWorkflowSetups += write.setup
+    return save(write.state, write.dbPathOverride)
   }
 
   override fun outOfBandAcceptances(

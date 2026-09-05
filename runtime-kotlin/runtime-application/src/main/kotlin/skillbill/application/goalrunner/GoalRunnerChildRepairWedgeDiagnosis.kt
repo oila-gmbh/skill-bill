@@ -6,13 +6,18 @@ import skillbill.application.featuretask.featureSizeFromArtifacts
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.goalrunner.model.GoalRunnerWedgeFinding
+import skillbill.application.goalrunner.model.PortableReviewBaselineValidation
+import skillbill.application.goalrunner.model.PortableReviewBaselineValidationRequest
 import skillbill.application.phaseartifacts.phaseRecordsFrom
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.goalrunner.persistence.PortableReviewBaselinePersistence
+import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairDiagnoseRequest
+import skillbill.ports.goalrunner.persistence.model.PortableReviewBaselineRepairContext
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
+import skillbill.workflow.goal.model.PortableReviewBaselineBlockedReason
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -29,25 +34,20 @@ const val PASSED_PHASE_OUTPUT_CONTRACT: String = "phase_output_contract_compatib
 
 class GoalRunnerChildRepairWedgeDiagnosis(
   private val gitOperations: WorkflowGitOperations,
+  private val portableReviewBaselinePersistence: PortableReviewBaselinePersistence,
 ) {
-  fun diagnose(
-    workflowStates: WorkflowStateRepository,
-    workflowId: String,
-    issueKey: String,
-    subtaskId: Int,
-    repoRoot: Path,
-  ): GoalRunnerChildWedgeDiagnosis {
-    val record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId)
-      ?: return healthyDiagnosis(subtaskId, workflowId)
+  fun diagnose(request: GoalRunnerChildRepairDiagnoseRequest): GoalRunnerChildWedgeDiagnosis {
+    val record = WorkflowFamily.TASK_RUNTIME.get(request.workflowStates, request.workflowId)
+      ?: return healthyDiagnosis(request.subtaskId, request.workflowId)
     val artifacts = decodeArtifacts(record.artifactsJson)
     val wedges = mutableListOf<GoalRunnerWedgeFinding>()
     val passed = mutableListOf<String>()
 
     diagnoseValidationDepth(artifacts, wedges, passed)
     diagnoseQualityGateSelection(artifacts, wedges, passed)
-    diagnoseReviewBases(artifacts, repoRoot, wedges, passed)
+    diagnoseReviewBases(artifacts, request.repoRoot, wedges, passed, request.portableContext)
     diagnoseStaleBlockedOutcome(
-      GoalRunnerStaleBlockedOutcomeContext(record, artifacts, issueKey, subtaskId),
+      GoalRunnerStaleBlockedOutcomeContext(record, artifacts, request.issueKey, request.subtaskId),
       wedges,
       passed,
     )
@@ -55,8 +55,8 @@ class GoalRunnerChildRepairWedgeDiagnosis(
     diagnosePhaseOutputContract(artifacts, wedges, passed)
 
     return GoalRunnerChildWedgeDiagnosis(
-      subtaskId = subtaskId,
-      workflowId = workflowId,
+      subtaskId = request.subtaskId,
+      workflowId = request.workflowId,
       wedges = wedges,
       passedChecks = passed,
     )
@@ -164,11 +164,11 @@ class GoalRunnerChildRepairWedgeDiagnosis(
     repoRoot: Path,
     wedges: MutableList<GoalRunnerWedgeFinding>,
     passed: MutableList<String>,
+    portableContext: PortableReviewBaselineRepairContext?,
   ) {
-    val review = GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state
+    val review = GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly(artifacts)
     if (review == null) {
-      passed += PASSED_REVIEW_BASE
-      passed += PASSED_REMEDIATION_BASE
+      diagnosePortableReviewBaseline(artifacts, repoRoot, wedges, passed, portableContext)
       return
     }
     if (isUnreachable(repoRoot, review.reviewBaseSha)) {
@@ -189,6 +189,68 @@ class GoalRunnerChildRepairWedgeDiagnosis(
         currentValue = remediation,
       )
       else -> passed += PASSED_REMEDIATION_BASE
+    }
+  }
+
+  private fun diagnosePortableReviewBaseline(
+    artifacts: Map<String, Any?>,
+    repoRoot: Path,
+    wedges: MutableList<GoalRunnerWedgeFinding>,
+    passed: MutableList<String>,
+    portableContext: PortableReviewBaselineRepairContext?,
+  ) {
+    val continuation = continuationArtifact(artifacts)
+    if (portableContext == null || continuation == null) {
+      passed += PASSED_REVIEW_BASE
+      passed += PASSED_REMEDIATION_BASE
+      return
+    }
+    when (
+      val validation = PortableReviewBaselineValidator.validateArtifactIntegrity(
+        PortableReviewBaselineValidationRequest(
+          persistence = portableReviewBaselinePersistence,
+          repoRoot = repoRoot,
+          manifest = portableContext.manifest,
+          subtaskId = portableContext.subtaskId,
+          expectedWorkflowId = portableContext.workflowId,
+          expectedRepositoryIdentity = portableContext.repositoryIdentity,
+          expectedBranch = continuation.goalBranch,
+          gitOperations = gitOperations,
+        ),
+      )
+    ) {
+      is PortableReviewBaselineValidation.Blocked -> {
+        when (validation.reason) {
+          PortableReviewBaselineBlockedReason.UNREACHABLE_BASE -> {
+            val unreachableSha = validation.artifact?.reviewBaseSha
+            if (unreachableSha != null) {
+              wedges += GoalRunnerWedgeFinding(
+                wedgeClass = GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE,
+                field = GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE.durableField,
+                currentValue = unreachableSha,
+              )
+            } else {
+              wedges += GoalRunnerWedgeFinding(
+                wedgeClass = GoalRunnerWedgeClass.INVALID_PORTABLE_REVIEW_BASELINE,
+                field = GoalRunnerWedgeClass.INVALID_PORTABLE_REVIEW_BASELINE.durableField,
+                currentValue = validation.reason.wireValue,
+              )
+            }
+          }
+          else -> {
+            wedges += GoalRunnerWedgeFinding(
+              wedgeClass = GoalRunnerWedgeClass.INVALID_PORTABLE_REVIEW_BASELINE,
+              field = GoalRunnerWedgeClass.INVALID_PORTABLE_REVIEW_BASELINE.durableField,
+              currentValue = validation.reason.wireValue,
+            )
+          }
+        }
+        passed += PASSED_REMEDIATION_BASE
+      }
+      is PortableReviewBaselineValidation.Valid -> {
+        passed += PASSED_REVIEW_BASE
+        passed += PASSED_REMEDIATION_BASE
+      }
     }
   }
 

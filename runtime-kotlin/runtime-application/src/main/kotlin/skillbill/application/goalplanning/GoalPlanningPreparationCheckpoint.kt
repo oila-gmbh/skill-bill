@@ -260,6 +260,7 @@ class GoalPlanningPreparationProjectionGate(
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
 ) {
   fun canonicalizeSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint): SharedGoalPreplanCheckpoint {
+    requireCompatiblePhaseOutputContract(checkpoint.preplanPayload, "preplan")
     val accepted = phaseOutputValidator.validatePhaseOutput(checkpoint.preplanPayload, "preplan")
       .requireAcceptedOutput("preplan")
     val canonical = accepted.normalizedOutput.canonicalJson
@@ -277,6 +278,7 @@ class GoalPlanningPreparationProjectionGate(
   }
 
   fun canonicalizeSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): GoalSubtaskPlanCheckpoint {
+    requireCompatiblePhaseOutputContract(checkpoint.planPayload, "plan")
     val accepted = phaseOutputValidator.validatePhaseOutput(checkpoint.planPayload, "plan")
       .requireAcceptedOutput("plan")
     val canonical = accepted.normalizedOutput.canonicalJson
