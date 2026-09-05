@@ -1,6 +1,6 @@
 package skillbill.ports.goalrunner.persistence
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.persistence.model.GoalContinuationCandidate
@@ -50,7 +50,7 @@ fun missingResultPrefixTerminalOutcomeArtifact(
   issueKey: String,
   subtaskId: Int,
   workflowId: String,
-): Map<String, Any?>? = (JsonSupport.anyToStringAnyMap(output["subtask_outcome"]) ?: output)
+): Map<String, Any?>? = (JsonCodec.anyToStringAnyMap(output["subtask_outcome"]) ?: output)
   .takeIf { candidate -> candidate.matchesGoalContinuation(issueKey, subtaskId) }
   ?.let { candidate ->
     candidate["status"]?.toString()?.let(::goalContinuationTerminalStatus)?.let { status ->

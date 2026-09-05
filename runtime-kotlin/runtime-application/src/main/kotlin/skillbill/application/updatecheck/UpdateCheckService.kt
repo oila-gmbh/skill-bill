@@ -6,7 +6,7 @@ import skillbill.application.updatecheck.model.RECOMMENDED_INSTALL_COMMAND
 import skillbill.application.updatecheck.model.Semver
 import skillbill.application.updatecheck.model.UpdateCheckResult
 import skillbill.application.updatecheck.model.UpdateCheckStatus
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.model.TransportContext
 import skillbill.ports.telemetry.model.RemoteTransportResponse
 import java.io.IOException
@@ -90,7 +90,7 @@ class UpdateCheckService(
   }
 
   private fun parseReleasesResponse(response: RemoteTransportResponse): List<Any?>? {
-    val parsed = JsonSupport.parseArrayOrEmpty(response.body)
+    val parsed = JsonCodec.parseArrayOrEmpty(response.body)
     val errorReason = when {
       response.statusCode == HTTP_FORBIDDEN || response.statusCode == HTTP_TOO_MANY_REQUESTS ->
         "GitHub API rate limit or access limit"
@@ -127,7 +127,7 @@ class UpdateCheckService(
   private var releaseEntryMalformed = false
 
   private fun releaseCandidate(release: Any?, includePrereleases: Boolean): ReleaseCandidate? {
-    val entry = JsonSupport.anyToStringAnyMap(release)
+    val entry = JsonCodec.anyToStringAnyMap(release)
     releasePayloadMalformed = releasePayloadMalformed || entry == null
     return entry?.takeUnless { it["draft"] as? Boolean ?: false }
       ?.takeUnless { !includePrereleases && it["prerelease"] as? Boolean ?: false }

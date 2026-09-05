@@ -62,18 +62,15 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
     recorder.reconcileReviewGeneration(runRequest.workflowId, runRequest.dbPathOverride),
   )
   val loop = FeatureTaskRuntimeRunLoop(
-    FeatureTaskRuntimeRunLoopDependencies(
-      recorder = recorder,
-      goalContinuationRecorder = goalContinuationRecorder,
-      outputValidator = outputValidator,
-      phaseGates = phaseGates,
-      subtaskLauncher = subtaskLauncher,
-      phaseSettlementService = phaseSettlementService,
-      activityStampWriter = activityStampWriter,
-      clock = dependencies.clock,
-      collaborators = runLoopCollaborators,
-    ),
-    FeatureTaskRuntimeRunLoopContext(
+    recorder = recorder,
+    goalContinuationRecorder = goalContinuationRecorder,
+    outputValidator = outputValidator,
+    phaseGates = phaseGates,
+    subtaskLauncher = subtaskLauncher,
+    phaseSettlementService = phaseSettlementService,
+    activityStampWriter = activityStampWriter,
+    clock = clock,
+    context = FeatureTaskRuntimeRunLoopContext(
       runRequest,
       state,
       observability,
@@ -81,7 +78,7 @@ fun FeatureTaskRuntimeRunner.driveExecutePreparedRunLoop(
       transitions,
       phaseTokenAccumulator,
     ),
-    runnerDiagnostics,
+    diagnostics = diagnostics,
   )
   runRequest.operatorDecision?.let { decision ->
     loop.applyOperatorDecision(decision)?.let { rejection ->

@@ -9,7 +9,6 @@ import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.model.GoalPreflightRequest
-import skillbill.application.goalrunner.model.GoalPreflightServiceDeps
 import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
@@ -263,19 +262,17 @@ class GoalPreflightServiceTest {
   ): GoalPreflightService {
     val fileStore: DecompositionManifestStore = TestDecompositionManifestStore
     return GoalPreflightService(
-      GoalPreflightServiceDeps(
-        continuationLookup = FeatureTaskContinuationLookupService(
-          database,
-          testWorkflowSnapshotValidator,
-          testDecompositionManifestValidator,
-        ),
-        manifestStore = TestManifestStore(manifestState, persistedReviewPolicy),
-        agentAddonSelectionPort = TestAgentAddonSelectionPort,
-        externalAgentAddonSourceConfigPort = externalAgentAddonSourceConfigPort,
-        manifestFileStore = fileStore,
-        manifestValidator = testDecompositionManifestValidator,
-        repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
+      continuationLookup = FeatureTaskContinuationLookupService(
+        database,
+        testWorkflowSnapshotValidator,
+        testDecompositionManifestValidator,
       ),
+      manifestStore = TestManifestStore(manifestState, persistedReviewPolicy),
+      agentAddonSelectionPort = TestAgentAddonSelectionPort,
+      externalAgentAddonSourceConfigPort = externalAgentAddonSourceConfigPort,
+      manifestFileStore = fileStore,
+      manifestValidator = testDecompositionManifestValidator,
+      repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
     )
   }
 

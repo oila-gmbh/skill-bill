@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
@@ -55,7 +55,7 @@ internal fun repairLedgerProjectionFields(
       FeatureTaskRuntimeHandoffProjectionField(
         name = FeatureTaskRuntimePhaseWorkflowDefinition.REPAIR_LEDGER_PROJECTION_NAME,
         value = FeatureTaskRuntimeHandoffProjectionValue.Text(
-          JsonSupport.mapToJsonString(ledger.boundedProjection().toProjectionMap()),
+          JsonCodec.mapToJsonString(ledger.boundedProjection().toProjectionMap()),
         ),
       ),
     )

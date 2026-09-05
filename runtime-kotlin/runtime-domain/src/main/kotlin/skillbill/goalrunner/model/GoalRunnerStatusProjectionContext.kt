@@ -11,7 +11,7 @@ internal data class GoalRunnerStatusProjectionContext(
 
 internal fun buildGoalRunnerStatusProjectionContext(
   manifest: DecompositionManifest,
-  extras: GoalRunnerStatusProjectionExtras,
+  extras: GoalRunnerStatusProjectionRuntimeInputs,
 ): GoalRunnerStatusProjectionContext {
   val currentSubtask = manifest.subtasks.firstOrNull { it.id == manifest.currentSubtaskIntent.subtaskId }
   val statusOf: (DecompositionSubtask) -> String = { subtask ->
@@ -33,7 +33,7 @@ internal fun buildGoalRunnerStatusProjectionContext(
 internal fun assembleGoalRunnerStatusProjection(
   manifest: DecompositionManifest,
   activeAgent: String?,
-  extras: GoalRunnerStatusProjectionExtras,
+  extras: GoalRunnerStatusProjectionRuntimeInputs,
   context: GoalRunnerStatusProjectionContext,
 ): GoalRunnerStatusProjection {
   val currentSubtask = context.currentSubtask

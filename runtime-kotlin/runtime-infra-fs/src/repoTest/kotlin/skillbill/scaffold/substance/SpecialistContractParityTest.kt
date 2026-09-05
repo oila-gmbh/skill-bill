@@ -15,8 +15,8 @@ class SpecialistContractParityTest {
     val specialist = Files.readString(root.resolve("orchestration/review-orchestrator/specialist-contract.md"))
     listOf("Shared Contract For Every Specialist", "Shared Report Structure").forEach { heading ->
       assertEquals(
-        RepoValidationRuntime.extractH2(canonical, heading),
-        RepoValidationRuntime.extractH2(specialist, heading),
+        RepoValidationRuntime.extractSecondLevelHeading(canonical, heading),
+        RepoValidationRuntime.extractSecondLevelHeading(specialist, heading),
       )
     }
   }

@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.workflow.decomposition.model.DecompositionSubtask
@@ -29,12 +29,13 @@ object GoalPlanningSharedContextPacket {
 
   fun migrate(packet: Map<String, Any?>): Map<String, Any?> = when (val version = packet["packet_version"]) {
     VERSION -> withoutExcludedCatalogEntries(packet)
-    LEGACY_VERSION_0_3 -> GoalPlanningSharedContextPacketLegacy.migrateFromV03(packet)
-    LEGACY_VERSION_0_2 ->
-      GoalPlanningSharedContextPacketLegacy.migrateFromV03(GoalPlanningSharedContextPacketLegacy.migrateFromV02(packet))
-    LEGACY_VERSION_0_1 -> GoalPlanningSharedContextPacketLegacy.migrateFromV03(
-      GoalPlanningSharedContextPacketLegacy.migrateFromV02(
-        GoalPlanningSharedContextPacketLegacy.migrateFromV01(packet),
+    LEGACY_VERSION_0_3 -> GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion3(packet)
+    LEGACY_VERSION_0_2 -> GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion3(
+      GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion2(packet),
+    )
+    LEGACY_VERSION_0_1 -> GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion3(
+      GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion2(
+        GoalPlanningSharedContextPacketLegacy.migrateFromPacketVersion1(packet),
       ),
     )
     else -> error(
@@ -66,7 +67,7 @@ object GoalPlanningSharedContextPacket {
     val expectedTopology = GoalPlanningSharedContextPacketValidation.normalizedSubtasks(orderedSubtasks(subtasks))
       .map { it - "planning_disposition" }
     require(recoveredTopology == expectedTopology) { "shared context ordered subtasks are invalid" }
-    require(JsonSupport.mapToJsonString(packet).length <= MAX_PACKET_CHARS) {
+    require(JsonCodec.mapToJsonString(packet).length <= MAX_PACKET_CHARS) {
       "shared context packet exceeds the size limit"
     }
     require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {

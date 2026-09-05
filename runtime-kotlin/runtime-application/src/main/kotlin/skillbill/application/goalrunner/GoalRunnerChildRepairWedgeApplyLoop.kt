@@ -14,7 +14,7 @@ import skillbill.application.phaseartifacts.phaseLedgerFrom
 import skillbill.application.phaseartifacts.phaseRecordsFrom
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -369,7 +369,7 @@ fun childRepairWedgeEvidenceMap(repair: GoalRunnerAppliedRepair, clock: Clock): 
 )
 
 fun continuationArtifactFromMap(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
-  val raw = JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
+  val raw = JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY])
     ?: return null
   return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw)
 }

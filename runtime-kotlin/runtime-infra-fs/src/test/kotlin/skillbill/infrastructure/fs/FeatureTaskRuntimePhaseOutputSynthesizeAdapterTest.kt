@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.ProsePhaseOutputSynthesizer
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
@@ -30,7 +30,7 @@ class FeatureTaskRuntimePhaseOutputSynthesizeAdapterTest {
 
     val result = FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutput(raw, "implement")
     val accepted = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged>(result)
-    val produced = JsonSupport.anyToStringAnyMap(accepted.normalizedOutput.envelope["produced_outputs"])
+    val produced = JsonCodec.anyToStringAnyMap(accepted.normalizedOutput.envelope["produced_outputs"])
     assertTrue(produced?.get("value").toString().contains("completed_task_ids"))
   }
 
@@ -52,7 +52,7 @@ class FeatureTaskRuntimePhaseOutputSynthesizeAdapterTest {
       ),
     )
     val result = FeatureTaskRuntimePhaseOutputValidatorAdapter()
-      .validatePhaseOutput(JsonSupport.mapToJsonString(envelope), "implement")
+      .validatePhaseOutput(JsonCodec.mapToJsonString(envelope), "implement")
     assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged>(result)
   }
 

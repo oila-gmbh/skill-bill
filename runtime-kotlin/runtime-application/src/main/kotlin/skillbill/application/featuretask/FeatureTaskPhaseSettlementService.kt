@@ -5,7 +5,7 @@ import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementAuditRe
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementBlockRequest
 import skillbill.application.featuretask.model.FeatureTaskPhaseSettlementCompleteRequest
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -108,15 +108,15 @@ class FeatureTaskPhaseSettlementService(
     dbPathOverride: String? = null,
   ): Map<String, Any?>? {
     val settlement = repository.find(workflowId, phaseId, attempt, dbPathOverride) ?: return null
-    return JsonSupport.parseObjectOrNull(settlement.envelopeJson)
-      ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
+    return JsonCodec.parseObjectOrNull(settlement.envelopeJson)
+      ?.let { JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it)) }
   }
 
   fun clear(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String? = null): Boolean =
     repository.delete(workflowId, phaseId, attempt, dbPathOverride)
 
   private fun persist(request: PersistRequest): Map<String, Any?> {
-    val envelopeJson = JsonSupport.mapToJsonString(request.envelope)
+    val envelopeJson = JsonCodec.mapToJsonString(request.envelope)
     repository.upsert(
       FeatureTaskPhaseSettlement(
         workflowId = request.workflowId,

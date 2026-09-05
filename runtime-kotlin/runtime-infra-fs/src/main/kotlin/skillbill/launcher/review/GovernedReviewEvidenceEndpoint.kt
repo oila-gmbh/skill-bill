@@ -1,6 +1,6 @@
 package skillbill.launcher.review
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.error.ShellContentContractException
 import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
@@ -109,7 +109,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
     val reader = Channels.newInputStream(connection).bufferedReader()
     val writer = Channels.newOutputStream(connection).bufferedWriter()
     if (!authenticated(reader.readLine())) return
-    writer.appendLine(JsonSupport.mapToJsonString(linkedMapOf("jsonrpc" to "2.0", "result" to "ok")))
+    writer.appendLine(JsonCodec.mapToJsonString(linkedMapOf("jsonrpc" to "2.0", "result" to "ok")))
     writer.flush()
     while (!closed) {
       val line = reader.readLine() ?: return
@@ -118,8 +118,8 @@ class GovernedReviewEvidenceEndpoint private constructor(
     }
   }
   private fun authenticated(handshake: String?): Boolean {
-    val frame = handshake?.let(JsonSupport::parseObjectOrNull) ?: return false
-    val params = JsonSupport.anyToStringAnyMap(frame["params"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
+    val frame = handshake?.let(JsonCodec::parseObjectOrNull) ?: return false
+    val params = JsonCodec.anyToStringAnyMap(frame["params"]?.let(JsonCodec::jsonElementToValue)).orEmpty()
     val presented = params["token"]?.toString().orEmpty()
     return MessageDigest.isEqual(
       presented.toByteArray(Charsets.UTF_8),
@@ -127,14 +127,14 @@ class GovernedReviewEvidenceEndpoint private constructor(
     )
   }
   internal fun handleFrame(line: String): String {
-    val frame = JsonSupport.parseObjectOrNull(line)
+    val frame = JsonCodec.parseObjectOrNull(line)
       ?: return governedReviewEvidenceErrorResponse(
         null,
         GOVERNED_REVIEW_EVIDENCE_JSON_RPC_INVALID_PARAMS,
         "Malformed governed evidence frame.",
       )
-    val id = frame["id"]?.let(JsonSupport::jsonElementToValue)
-    val method = frame["method"]?.let(JsonSupport::jsonElementToValue)?.toString().orEmpty()
+    val id = frame["id"]?.let(JsonCodec::jsonElementToValue)
+    val method = frame["method"]?.let(JsonCodec::jsonElementToValue)?.toString().orEmpty()
     if (method != "tools/call") {
       return governedReviewEvidenceErrorResponse(
         id,
@@ -142,9 +142,9 @@ class GovernedReviewEvidenceEndpoint private constructor(
         "Method not found: $method",
       )
     }
-    val params = JsonSupport.anyToStringAnyMap(frame["params"]?.let(JsonSupport::jsonElementToValue)).orEmpty()
+    val params = JsonCodec.anyToStringAnyMap(frame["params"]?.let(JsonCodec::jsonElementToValue)).orEmpty()
     val name = params["name"]?.toString().orEmpty()
-    val arguments = JsonSupport.anyToStringAnyMap(params["arguments"]).orEmpty()
+    val arguments = JsonCodec.anyToStringAnyMap(params["arguments"]).orEmpty()
     return dispatch(id, name, arguments)
   }
   private fun dispatch(id: Any?, name: String, arguments: Map<String, Any?>): String = try {

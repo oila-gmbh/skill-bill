@@ -1,7 +1,7 @@
 package skillbill.application.workflow
 
 import skillbill.application.workflow.model.WorkflowUpdateResult
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import skillbill.workflow.engine.WorkflowEngine
@@ -64,7 +64,7 @@ class WorkflowServiceFeatureTaskAbandon(
     )
     val updated = existing.copy(
       workflowStatus = "abandoned",
-      artifactsJson = JsonSupport.mapToJsonString(artifacts),
+      artifactsJson = JsonCodec.mapToJsonString(artifacts),
       finishedAt = abandonedAt,
     )
     unitOfWork.workflowStates.terminalizeLegacyProseFeatureTaskWorkflow(updated)

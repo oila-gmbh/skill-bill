@@ -22,7 +22,7 @@ import skillbill.cli.kernel.DocumentedNoOpCliCommand
 import skillbill.cli.kernel.formatOption
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliRunInputs
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.model.FeatureTaskRouteScope
 
 @Inject
@@ -310,15 +310,15 @@ open class WorkflowContinueCommand(
 }
 
 private fun parseStepUpdates(rawValue: String): List<Map<String, Any?>> =
-  JsonSupport.parseArrayOrEmpty(rawValue).mapIndexed { index, value ->
-    val update = JsonSupport.anyToStringAnyMap(value)
+  JsonCodec.parseArrayOrEmpty(rawValue).mapIndexed { index, value ->
+    val update = JsonCodec.anyToStringAnyMap(value)
     require(update != null) { "step_updates[$index] must be an object." }
     update
   }
 
-private fun parseArtifactsPatch(rawValue: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(rawValue)
-  ?.let(JsonSupport::jsonElementToValue)
-  ?.let(JsonSupport::anyToStringAnyMap)
+private fun parseArtifactsPatch(rawValue: String): Map<String, Any?> = JsonCodec.parseObjectOrNull(rawValue)
+  ?.let(JsonCodec::jsonElementToValue)
+  ?.let(JsonCodec::anyToStringAnyMap)
   ?: run {
     require(false) { "artifacts_patch must be an object." }
     emptyMap()

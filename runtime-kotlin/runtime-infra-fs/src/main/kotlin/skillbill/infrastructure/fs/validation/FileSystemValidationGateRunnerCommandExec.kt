@@ -136,7 +136,7 @@ internal fun FileSystemValidationGateRunner.parseDetektXmlFile(
       val rawFileName = fileElement.getAttribute("name").trim()
       if (rawFileName.isEmpty()) continue
       val relativeFile =
-        FileSystemValidationGateGradlePathSupport.repoRelativeQualityPath(repo, rawFileName)
+        FileSystemValidationGateGradlePaths.repoRelativeQualityPath(repo, rawFileName)
       val module = relativeFile.substringBefore('/').ifBlank { "<detekt>" }
       val errors = fileElement.getElementsByTagName("error")
       for (errorIndex in 0 until errors.length) {

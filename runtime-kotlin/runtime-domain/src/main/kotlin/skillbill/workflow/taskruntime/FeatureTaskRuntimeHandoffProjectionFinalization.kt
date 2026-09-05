@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
@@ -38,10 +38,10 @@ internal object FeatureTaskRuntimeHandoffProjectionFinalization {
 
   fun genericProducedOutputs(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?> {
     val envelope = output.normalizedOutput?.envelope
-      ?: JsonSupport.parseObjectOrNull(output.payload)?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
+      ?: JsonCodec.parseObjectOrNull(output.payload)?.let(JsonCodec::jsonElementToValue)
+        ?.let(JsonCodec::anyToStringAnyMap)
       ?: return emptyMap()
-    return JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    return JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
   }
 
   private fun finalizationProjectionContext(

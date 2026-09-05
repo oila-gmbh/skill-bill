@@ -1,6 +1,6 @@
 package skillbill.application.workflow
 
-import skillbill.application.decomposition.DecompositionManifestProjectionSupport
+import skillbill.application.decomposition.DecompositionManifestWriteGuard
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.model.RepositoryRoot
@@ -60,7 +60,7 @@ class WorkflowServiceBlockedPhaseRetry(
       retryInTransaction(unitOfWork, request)
     }
     persistence.projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestProjectionSupport.requireWritten(
+      DecompositionManifestWriteGuard.requireWritten(
         decompositionManifestWriter.writeProjectionFromWorkflowState(
           repositoryRoot.path,
           artifactsJson,

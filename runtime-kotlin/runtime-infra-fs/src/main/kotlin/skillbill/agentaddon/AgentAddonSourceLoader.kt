@@ -5,7 +5,7 @@ import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.agentaddon.model.AgentAddonCatalogueInspection
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonDeclaration
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.MissingAgentAddonDeclarationError
 import java.nio.file.Files
 import java.nio.file.LinkOption
@@ -102,7 +102,7 @@ internal fun parseSource(sourceRoot: Path, validator: AgentAddonSchemaValidator)
     }
     val parsed: Any? = YAMLMapper().readValue(Files.readString(manifest), Any::class.java)
     if (parsed !is Map<*, *>) invalid(sourceLabel, "manifest must be a top-level mapping")
-    val values = requireNotNull(JsonSupport.anyToStringAnyMap(parsed))
+    val values = requireNotNull(JsonCodec.anyToStringAnyMap(parsed))
     validator.validate(values, sourceLabel)
     val slug = values.string("slug", sourceLabel)
     val description = values.string("description", sourceLabel)

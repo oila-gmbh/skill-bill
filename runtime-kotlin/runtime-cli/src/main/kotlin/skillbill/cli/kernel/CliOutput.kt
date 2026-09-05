@@ -8,7 +8,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import skillbill.application.review.model.ReviewSnapshotPruneResult
 import skillbill.cli.model.CliFormat
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 
 @OptIn(ExperimentalSerializationApi::class)
 private val cliPrettyJson =
@@ -137,5 +137,5 @@ private fun sortedJsonElement(value: Any?): JsonElement = when (value) {
   }
   is Iterable<*> -> JsonArray(value.map(::sortedJsonElement))
   is Array<*> -> JsonArray(value.map(::sortedJsonElement))
-  else -> JsonSupport.valueToJsonElement(value)
+  else -> JsonCodec.valueToJsonElement(value)
 }

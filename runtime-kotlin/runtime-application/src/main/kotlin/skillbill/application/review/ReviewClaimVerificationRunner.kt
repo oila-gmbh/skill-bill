@@ -5,7 +5,7 @@ import skillbill.agent.model.AgentPhaseOutput
 import skillbill.application.review.model.ReviewClaimVerificationOutcome
 import skillbill.application.review.model.ReviewClaimVerificationRunRequest
 import skillbill.application.review.model.ReviewDelegatedStageLaunch
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -147,7 +147,7 @@ class ReviewClaimVerificationRunner(
       budget = input.launch.budget,
     )
     val envelope = launch.toVerificationLaunchEnvelope().asWireMap()
-    val launchBytes = JsonSupport.mapToJsonString(envelope).toByteArray(Charsets.UTF_8).size.toLong()
+    val launchBytes = JsonCodec.mapToJsonString(envelope).toByteArray(Charsets.UTF_8).size.toLong()
     if (launchBytes > input.launch.budget.maxLaneLaunchBytes) {
       return ReviewFindingVerdict(
         stage = ReviewStage.VERIFICATION,
@@ -279,7 +279,7 @@ internal fun citedRegionOf(finding: ParallelReviewMergedFinding): ReviewCitedReg
 
 internal fun parseWorkerResult(stdout: String): ReviewClaimWorkerResult? {
   val payload = parseJsonObject(stdout) ?: return null
-  val finding = JsonSupport.anyToStringAnyMap(payload["finding"])
+  val finding = JsonCodec.anyToStringAnyMap(payload["finding"])
   return ReviewClaimWorkerResult(
     claimVerdict = payload["claim_verdict"] as? String,
     citations = parseCitations(payload["citations"]),
@@ -292,14 +292,14 @@ internal fun parseWorkerResult(stdout: String): ReviewClaimWorkerResult? {
 
 internal fun parseJsonObject(stdout: String): Map<String, Any?>? {
   val trimmed = stdout.trim()
-  JsonSupport.parseObjectOrNull(trimmed)?.let {
-    return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+  JsonCodec.parseObjectOrNull(trimmed)?.let {
+    return JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it))
   }
   val start = trimmed.indexOf('{')
   val end = trimmed.lastIndexOf('}')
   if (start < 0 || end <= start) return null
-  return JsonSupport.parseObjectOrNull(trimmed.substring(start, end + 1))
-    ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
+  return JsonCodec.parseObjectOrNull(trimmed.substring(start, end + 1))
+    ?.let { JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it)) }
 }
 
 internal fun parseCitations(raw: Any?): List<ReviewFindingCitation> = ReviewFindingFieldCodec.citationsOf(raw)

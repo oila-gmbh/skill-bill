@@ -4,10 +4,9 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowContinueResult
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
@@ -141,7 +140,7 @@ class WorkflowCompactContinuationTest {
       service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId),
     )
     val compactMap = WorkflowEngine.compactContinueMap(standard.view.compact)
-    val serialized = JsonSupport.mapToJsonString(compactMap)
+    val serialized = JsonCodec.mapToJsonString(compactMap)
     val byteSize = serialized.toByteArray(Charsets.UTF_8).size
 
     assertTrue(
@@ -177,7 +176,7 @@ class WorkflowCompactContinuationTest {
     // The explicit diagnostic shape is operator-only: its step_artifacts field
     // stays projected, while its resume snapshot may expose private durable state.
     val fullMap = WorkflowEngine.continueMap(standard.view)
-    val fullSerialized = JsonSupport.mapToJsonString(fullMap)
+    val fullSerialized = JsonCodec.mapToJsonString(fullMap)
 
     assertTrue(fullSerialized.contains("\"step_artifacts\""))
     assertTrue(fullSerialized.contains("x".repeat(2000)))
@@ -186,16 +185,14 @@ class WorkflowCompactContinuationTest {
 }
 
 private fun newService(): WorkflowService = WorkflowService(
-  WorkflowServiceDeps(
-    database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
-    gitOperations = NoopWorkflowGitOperations,
-    decompositionManifestStore = UnavailableDecompositionManifestStore,
-    workflowSnapshotValidator = testWorkflowSnapshotValidator,
-    decompositionManifestValidator = testDecompositionManifestValidator,
-    decompositionManifestWriter = testDecompositionManifestWriter,
-    repositoryRoot = testRepositoryRoot,
-    goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-  ),
+  database = FakeDatabaseSessionFactory(InMemoryWorkflowStates()),
+  gitOperations = NoopWorkflowGitOperations,
+  decompositionManifestStore = UnavailableDecompositionManifestStore,
+  workflowSnapshotValidator = testWorkflowSnapshotValidator,
+  decompositionManifestValidator = testDecompositionManifestValidator,
+  decompositionManifestWriter = testDecompositionManifestWriter,
+  repositoryRoot = testRepositoryRoot,
+  goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
 )
 
 /**

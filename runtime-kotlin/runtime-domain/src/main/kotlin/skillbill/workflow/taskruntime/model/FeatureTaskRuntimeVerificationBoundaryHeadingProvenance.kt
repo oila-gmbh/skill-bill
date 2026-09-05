@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
 
 data class FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
@@ -31,7 +31,7 @@ data class FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
     fun parseList(raw: Any?, path: String): List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance> {
       val entries = raw as? List<*> ?: return emptyList()
       return entries.mapIndexed { index, entry ->
-        val map = JsonSupport.anyToStringAnyMap(entry)
+        val map = JsonCodec.anyToStringAnyMap(entry)
           ?: invalid("$path[$index]", "entry")
         fromArtifactMap(map, "$path[$index]")
       }

@@ -2,7 +2,7 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.Files
 import java.nio.file.Path
@@ -63,6 +63,6 @@ class CliAgentAddonResolveSelectionRuntimeTest {
   private fun configPath(home: Path): Path = home.resolve("config.json")
 
   private fun writeConfig(home: Path, payload: Map<String, Any?>) {
-    Files.writeString(configPath(home), JsonSupport.mapToJsonString(payload) + "\n")
+    Files.writeString(configPath(home), JsonCodec.mapToJsonString(payload) + "\n")
   }
 }

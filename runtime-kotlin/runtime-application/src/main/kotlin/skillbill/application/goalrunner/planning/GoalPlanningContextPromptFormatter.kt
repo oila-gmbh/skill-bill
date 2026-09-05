@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner.planning
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.planning.model.GoalPlanningResolvedBoundaryBodies
 import skillbill.workflow.decomposition.model.DecompositionSubtask
@@ -29,7 +29,7 @@ object GoalPlanningContextPromptFormatter {
         "Use this immutable shared context for the parent goal: "
       },
     )
-    append(JsonSupport.mapToJsonString(packet))
+    append(JsonCodec.mapToJsonString(packet))
     append(
       "\nThis is child-only planning context. Do not copy its payload, implementation summary, " +
         "audit, review, diagnostic, or raw child output into the parent conversation or parent projection.",
@@ -42,7 +42,7 @@ object GoalPlanningContextPromptFormatter {
       append(currentSubtask.specPath)
       append("\nCurrent subtask dependency context: ")
       append(
-        JsonSupport.mapToJsonString(
+        JsonCodec.mapToJsonString(
           mapOf(
             "subtask_id" to currentSubtask.id,
             "dependencies" to currentSubtask.dependencies.map { dependency ->

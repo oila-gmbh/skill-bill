@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -48,9 +48,9 @@ object FeatureTaskRuntimeAuditConvergence {
       ?.takeIf { it.status == AUDIT_RECORD_STATUS_COMPLETED }
       ?.outputArtifact
       ?: return false
-    val envelope = JsonSupport.parseObjectOrNull(artifact)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val envelope = JsonCodec.parseObjectOrNull(artifact)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?: return false
     val verdict = FeatureTaskRuntimeOutputVerification.verdictFor(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,

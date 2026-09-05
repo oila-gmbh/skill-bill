@@ -73,7 +73,7 @@ internal object NativeAgentLinkInventoryDecode {
       "duplicate provider/directory/logical_name entry"
     }
     entries.forEach { entry ->
-      val provider = NativeAgentLinkInventorySupport.provider(entry.provider)
+      val provider = NativeAgentLinkInventoryPaths.provider(entry.provider)
       require(entry.sourceRoot.isAbsolute && entry.sourceRoot == entry.sourceRoot.normalize()) {
         "invalid source_root"
       }
@@ -103,7 +103,7 @@ internal object NativeAgentLinkInventoryDecode {
 
   fun isSemanticallyValid(entry: NativeAgentLinkInventoryEntry, home: Path, managedRoots: List<Path>): Boolean {
     return runCatching {
-      val provider = NativeAgentLinkInventorySupport.provider(entry.provider)
+      val provider = NativeAgentLinkInventoryPaths.provider(entry.provider)
       val raw = Files.readSymbolicLink(entry.installedPath)
       val resolved = entry.installedPath.parent.resolve(raw).toAbsolutePath().normalize()
       entry.installedPath.fileName.toString() == provider.fileName(entry.logicalName) &&
@@ -113,7 +113,7 @@ internal object NativeAgentLinkInventoryDecode {
         Files.isRegularFile(resolved) &&
         Files.isReadable(resolved) &&
         parseEmbeddedLogicalName(resolved, entry.provider) == entry.logicalName &&
-        NativeAgentLinkInventorySupport.sha256(Files.readAllBytes(resolved)) == entry.contentDigest
+        NativeAgentLinkInventoryPaths.sha256(Files.readAllBytes(resolved)) == entry.contentDigest
     }.getOrDefault(false)
   }
 
@@ -148,7 +148,7 @@ internal object NativeAgentLinkInventoryDecode {
       require(NativeAgentLinkInventoryLimits.LOGICAL_NAME.matches(entry.logicalName)) {
         "logical_name must be a single filename stem"
       }
-      val provider = NativeAgentLinkInventorySupport.provider(entry.provider)
+      val provider = NativeAgentLinkInventoryPaths.provider(entry.provider)
       val allowedDirs = provider.homeAgentDirs(home).map { it.toAbsolutePath().normalize() }
       require(entry.installedPath.parent in allowedDirs) { "installed_path is outside provider directory" }
       require(entry.installedPath.fileName.toString() == provider.fileName(entry.logicalName)) {

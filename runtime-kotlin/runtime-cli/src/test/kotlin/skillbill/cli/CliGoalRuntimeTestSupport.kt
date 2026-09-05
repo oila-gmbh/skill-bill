@@ -5,7 +5,7 @@ import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_WORKER_OWNERSHIP_CONTRACT_VERSION
 import skillbill.db.core.DatabaseRuntime
@@ -424,8 +424,8 @@ internal fun forcePendingPauseRequest(dbPath: Path) {
       }
     }
     rows.forEach { (parentWorkflowId, json) ->
-      val state = JsonSupport.anyToStringAnyMap(
-        JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(json))),
+      val state = JsonCodec.anyToStringAnyMap(
+        JsonCodec.jsonElementToValue(requireNotNull(JsonCodec.parseObjectOrNull(json))),
       ).orEmpty().toMutableMap()
       state["paused"] = false
       state["pause_requested"] = true
@@ -434,7 +434,7 @@ internal fun forcePendingPauseRequest(dbPath: Path) {
       connection.prepareStatement(
         "UPDATE goal_runner_controls SET control_state_json = ? WHERE parent_workflow_id = ?",
       ).use { statement ->
-        statement.setString(1, JsonSupport.mapToJsonString(state))
+        statement.setString(1, JsonCodec.mapToJsonString(state))
         statement.setString(2, parentWorkflowId)
         statement.executeUpdate()
       }
@@ -535,9 +535,9 @@ internal fun runtimeWorkflowUpdate(
   ),
 )
 
-internal fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
+internal fun jsonString(value: Any?): String = JsonCodec.json.encodeToString(
   JsonElement.serializer(),
-  JsonSupport.valueToJsonElement(value),
+  JsonCodec.valueToJsonElement(value),
 )
 
 internal fun phasePlanningPayload(phaseId: String): String =

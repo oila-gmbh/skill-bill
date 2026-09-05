@@ -68,9 +68,9 @@ enabling.
 |-------|-----|-----------|------|--------|
 | `workflow_id` / `parent_workflow_id` | — | hashed where the issue key is embedded | ✓ | `redactedWorkflowId` → `redactIssueKeyReferences` |
 | `issue_key` | — | hashed | ✓ | `redactIssueKey` |
-| `status`, `mode`, `resumed`, `stop_reason`, `blocked_reason` | — | ✓ | ✓ | `GoalTelemetryPayloadSupport` |
-| `started_at`, `first_started_at`, `finished_at`, `duration_seconds` | — | ✓ | ✓ | `GoalTelemetryPayloadSupport` |
-| `subtask_total`, `subtask_id`, `subtasks_complete`, `subtasks_blocked`, `subtasks_skipped`, `attempt_count`, `total_invocations`, `total_blocks`, `total_resumes` | — | ✓ | ✓ | `GoalTelemetryPayloadSupport` |
+| `status`, `mode`, `resumed`, `stop_reason`, `blocked_reason` | — | ✓ | ✓ | `GoalTelemetryPayloads` |
+| `started_at`, `first_started_at`, `finished_at`, `duration_seconds` | — | ✓ | ✓ | `GoalTelemetryPayloads` |
+| `subtask_total`, `subtask_id`, `subtasks_complete`, `subtasks_blocked`, `subtasks_skipped`, `attempt_count`, `total_invocations`, `total_blocks`, `total_resumes` | — | ✓ | ✓ | `GoalTelemetryPayloads` |
 | `feature_name` | — | — | ✓ | `goalStartedPayload` |
 | `subtask_name`, `finalizing_agent_id`, `participating_agent_ids`, `boundary_history_written`, `boundary_history_value` | — | — | ✓ | `goalSubtaskFinishedPayload` |
 

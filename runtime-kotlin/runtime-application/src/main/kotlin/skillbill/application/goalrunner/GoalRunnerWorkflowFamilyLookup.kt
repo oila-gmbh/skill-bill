@@ -3,7 +3,7 @@ package skillbill.application.goalrunner
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.LegacyProseWorkflowError
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_STOP_AFTER_SUBTASK
@@ -53,7 +53,7 @@ fun decodeGoalAgentAddonSelection(raw: Any?): AgentAddonSelection {
   val entries = values as? List<*> ?: error("Goal review policy agent_addon_selection must be a list.")
   return AgentAddonSelection(
     entries.mapIndexed { index, value ->
-      val entry = JsonSupport.anyToStringAnyMap(value)
+      val entry = JsonCodec.anyToStringAnyMap(value)
         ?: error("Goal review policy agent_addon_selection entry $index must be a map.")
       check(entry.keys == setOf("slug", "source_identity", "content_sha256")) {
         "Goal review policy agent_addon_selection entry $index has invalid fields."

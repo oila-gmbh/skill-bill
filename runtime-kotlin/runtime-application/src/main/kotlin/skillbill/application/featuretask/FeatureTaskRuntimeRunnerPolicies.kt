@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 
@@ -32,7 +32,7 @@ fun serializeTokenData(accumulator: Map<String, Pair<Int, Int>>): Pair<String?, 
     mapOf("estimated_input_tokens" to pair.first, "estimated_output_tokens" to pair.second)
   }
   val total = accumulator.values.sumOf { (input, output) -> input + output }
-  return JsonSupport.mapToJsonString(breakdown) to total
+  return JsonCodec.mapToJsonString(breakdown) to total
 }
 
 fun isFileMutating(phaseId: String): Boolean = phaseId !in NON_FILE_MUTATING_PHASES

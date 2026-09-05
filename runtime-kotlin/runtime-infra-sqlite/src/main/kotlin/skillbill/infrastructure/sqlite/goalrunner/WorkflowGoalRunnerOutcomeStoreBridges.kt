@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
+import me.tatarka.inject.annotations.Inject
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
@@ -29,18 +30,23 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerObservabilityRecordRequ
 import skillbill.ports.goalrunner.runner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
+import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.decomposition.runtime.decodeArtifacts
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.persistence.model.WorkflowFamily
 import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
 import skillbill.workflow.engine.model.WorkflowUpdateInput
+import skillbill.workflow.goal.GoalObservabilityEventValidator
+import skillbill.workflow.goal.GoalProgressEventValidator
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
 import java.nio.file.Path
+import java.time.Clock
 
 internal data class WorkflowGoalRunnerOutcomeStoreBridges(
   val workflow: GoalRunnerWorkflowOutcomeStore,
@@ -48,81 +54,65 @@ internal data class WorkflowGoalRunnerOutcomeStoreBridges(
   val childRepair: GoalRunnerChildRepairStore,
 )
 
-internal fun createWorkflowGoalRunnerOutcomeStoreBridges(
-  args: CreateWorkflowGoalRunnerOutcomeStoreBridgesArgs,
-): WorkflowGoalRunnerOutcomeStoreBridges {
-  val engine = WorkflowEngine(args.workflowSnapshotValidator)
-  val childRepair = args.childRepairExecutor
-  val blockWrites = WorkflowGoalRunnerBlockWrites(engine)
-  val terminalPersistence = WorkflowGoalRunnerOutcomeTerminalPersistence(
-    engine,
-    args.gitOperations,
-    args.workerSupervisor,
-    args.clock,
-  )
-  val outcomeReconcile = WorkflowGoalRunnerOutcomeReconcile(
-    engine,
-    args.gitOperations,
-    args.goalObservabilityEventValidator,
-    blockWrites,
-    terminalPersistence,
-    args.clock,
-  )
-  val progressRecording = WorkflowGoalRunnerProgressRecording(
-    args.database,
-    engine,
-    args.goalObservabilityEventValidator,
-    args.goalProgressEventValidator,
-  )
-  return workflowGoalRunnerOutcomeStoreBridges(
-    WorkflowGoalRunnerOutcomeStoreBridgesArgs(
-      database = args.database,
-      engine = engine,
-      gitOperations = args.gitOperations,
-      phaseOutputValidator = args.phaseOutputValidator,
-      decompositionManifestValidator = args.decompositionManifestValidator,
-      decompositionManifestStore = args.decompositionManifestStore,
-      outcomeReconcile = outcomeReconcile,
-      blockWrites = blockWrites,
-      terminalPersistence = terminalPersistence,
-      progressRecording = progressRecording,
-      childRepair = childRepair,
-      decompositionManifestWriter = args.decompositionManifestWriter,
-    ),
-  )
-}
-
-private fun workflowGoalRunnerOutcomeStoreBridges(
-  args: WorkflowGoalRunnerOutcomeStoreBridgesArgs,
-): WorkflowGoalRunnerOutcomeStoreBridges {
-  val terminalBridge = WorkflowGoalRunnerTerminalBridge(
-    args.database,
-    args.terminalPersistence,
-    args.gitOperations,
-  )
-  val reviewBridge = WorkflowGoalRunnerReviewBridge(args.database, args.engine, args.phaseOutputValidator)
-  val reconcileBridge = WorkflowGoalRunnerReconcileBridge(args.database, args.outcomeReconcile)
-  val blockBridge = WorkflowGoalRunnerBlockBridge(args.database, args.blockWrites)
-  val progressBridge = WorkflowGoalRunnerProgressBridge(args.progressRecording)
-  val workflowBridge = WorkflowGoalRunnerOutcomeWorkflowBridge(
-    terminal = terminalBridge,
-    review = reviewBridge,
-    reconcile = reconcileBridge,
-    blocks = blockBridge,
-    progress = progressBridge,
-  )
-  val childRepairBridge = WorkflowGoalRunnerChildRepairBridge(
-    args.database,
-    args.childRepair,
-    args.decompositionManifestValidator,
-    args.decompositionManifestStore,
-    args.decompositionManifestWriter,
-  )
-  return WorkflowGoalRunnerOutcomeStoreBridges(
-    workflow = workflowBridge,
-    ledger = progressBridge,
-    childRepair = childRepairBridge,
-  )
+class WorkflowGoalRunnerOutcomeStoreBridgeBuilder @Inject constructor(
+  private val database: DatabaseSessionFactory,
+  private val workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val goalObservabilityEventValidator: GoalObservabilityEventValidator,
+  private val goalProgressEventValidator: GoalProgressEventValidator,
+  private val gitOperations: WorkflowGitOperations,
+  private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor,
+  private val clock: Clock,
+) {
+  internal fun build(
+    decompositionManifestValidator: DecompositionManifestValidator?,
+    decompositionManifestStore: DecompositionManifestStore,
+    decompositionManifestWriter: DecompositionManifestProjectionWriter,
+    childRepairExecutor: GoalRunnerChildRepairRunnerPort,
+  ): WorkflowGoalRunnerOutcomeStoreBridges {
+    val engine = WorkflowEngine(workflowSnapshotValidator)
+    val blockWrites = WorkflowGoalRunnerBlockWrites(engine)
+    val terminalPersistence = WorkflowGoalRunnerOutcomeTerminalPersistence(
+      engine,
+      gitOperations,
+      workerSupervisor,
+      clock,
+    )
+    val outcomeReconcile = WorkflowGoalRunnerOutcomeReconcile(
+      engine,
+      gitOperations,
+      goalObservabilityEventValidator,
+      blockWrites,
+      terminalPersistence,
+      clock,
+    )
+    val progressRecording = WorkflowGoalRunnerProgressRecording(
+      database,
+      engine,
+      goalObservabilityEventValidator,
+      goalProgressEventValidator,
+    )
+    val progressBridge = WorkflowGoalRunnerProgressBridge(progressRecording)
+    val workflowBridge = WorkflowGoalRunnerOutcomeWorkflowBridge(
+      terminal = WorkflowGoalRunnerTerminalBridge(database, terminalPersistence, gitOperations),
+      review = WorkflowGoalRunnerReviewBridge(database, engine, phaseOutputValidator),
+      reconcile = WorkflowGoalRunnerReconcileBridge(database, outcomeReconcile),
+      blocks = WorkflowGoalRunnerBlockBridge(database, blockWrites),
+      progress = progressBridge,
+    )
+    val childRepairBridge = WorkflowGoalRunnerChildRepairBridge(
+      database,
+      childRepairExecutor,
+      decompositionManifestValidator,
+      decompositionManifestStore,
+      decompositionManifestWriter,
+    )
+    return WorkflowGoalRunnerOutcomeStoreBridges(
+      workflow = workflowBridge,
+      ledger = progressBridge,
+      childRepair = childRepairBridge,
+    )
+  }
 }
 
 internal class WorkflowGoalRunnerChildRepairBridge(

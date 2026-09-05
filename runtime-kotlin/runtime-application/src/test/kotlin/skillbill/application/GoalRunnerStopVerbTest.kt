@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
+import skillbill.application.goalrunner.GoalRunnerStatusTestPorts
 import skillbill.application.goalrunner.model.GoalRunnerStopStatus
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
@@ -161,12 +161,11 @@ class GoalRunnerStopVerbTest {
     val store = StopFakeManifestStore(lease = liveLease())
 
     val result = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
-        clock = stopClock(),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      clock = stopClock(),
+      ports = GoalRunnerStatusTestPorts(
         workerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
       ),
     ).stop("SKILL-168", null)
@@ -266,12 +265,11 @@ class GoalRunnerStopVerbTest {
 
   private fun stopService(store: StopFakeManifestStore, supervisor: FeatureTaskRuntimeWorkerSupervisor) =
     testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
-        clock = stopClock(),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      clock = stopClock(),
+      ports = GoalRunnerStatusTestPorts(
         workerSupervisor = supervisor,
       ),
     )

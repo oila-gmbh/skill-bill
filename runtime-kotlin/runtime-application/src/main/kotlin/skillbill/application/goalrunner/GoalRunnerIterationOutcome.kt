@@ -1,27 +1,31 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerStopReason
+import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
+import skillbill.ports.goalrunner.runner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerWorkflowProgress
 import skillbill.workflow.decomposition.model.DecompositionManifest
+import java.time.Clock
 
 internal class GoalRunnerIterationOutcome(
-  private val deps: GoalRunnerIterationOutcomeDeps,
-  private val pendingState: GoalRunnerIterationPendingState,
+  private val manifestStore: GoalRunnerManifestStore,
+  private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  private val finalization: GoalRunnerFinalization,
+  private val unaddressedFindingsLedgerService: UnaddressedFindingsLedgerService?,
+  private val progressReader: GoalRunnerProgressReader,
+  private val clock: Clock,
+  private val phaseRecorder: FeatureTaskRuntimePhaseRecorder?,
+  pendingState: GoalRunnerIterationPendingState,
 ) {
-  private val manifestStore get() = deps.manifestStore
-  private val outcomeStore get() = deps.outcomeStore
-  private val finalization get() = deps.finalization
-  private val unaddressedFindingsLedgerService get() = deps.unaddressedFindingsLedgerService
-  private val progressReader get() = deps.progressReader
-  private val clock get() = deps.clock
-  private val phaseRecorder get() = deps.phaseRecorder
-  private val validationQualityState get() = pendingState.validationQualityState
+  private val validationQualityState = pendingState.validationQualityState
 
   internal fun stoppedIteration(args: StoppedIterationArgs): GoalRunnerIterationResult {
     val state = args.state

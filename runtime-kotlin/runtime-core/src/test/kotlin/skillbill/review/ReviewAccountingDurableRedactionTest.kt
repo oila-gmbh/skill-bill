@@ -9,7 +9,7 @@ import skillbill.application.review.model.ReviewPrelaunchExpansion
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.reviewPack
 import skillbill.application.review.toBoundedPayload
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.contracts.review.ReviewContextSchemaValidator
 import skillbill.db.core.DatabaseRuntime
@@ -87,7 +87,7 @@ class ReviewAccountingDurableRedactionTest {
       upsertReviewAccounting(connection, ReviewAccountingRecord(REVIEW_RUN_ID, summary.packetDigest, payload))
       val loaded = assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
 
-      assertEquals(JsonSupport.mapToJsonString(payload), JsonSupport.mapToJsonString(loaded.boundedPayload))
+      assertEquals(JsonCodec.mapToJsonString(payload), JsonCodec.mapToJsonString(loaded.boundedPayload))
       assertNoSentinels(storedAccountingJson(connection))
       ReviewContextSchemaValidator.validate(loaded.boundedPayload, "durable-review-accounting")
     }
@@ -106,7 +106,7 @@ class ReviewAccountingDurableRedactionTest {
       ).use { statement ->
         statement.setString(1, REVIEW_RUN_ID)
         statement.setString(2, summary.packetDigest)
-        statement.setString(3, JsonSupport.mapToJsonString(legacy))
+        statement.setString(3, JsonCodec.mapToJsonString(legacy))
         statement.executeUpdate()
       }
 
@@ -138,7 +138,7 @@ class ReviewAccountingDurableRedactionTest {
       ).use { statement ->
         statement.setString(1, REVIEW_RUN_ID)
         statement.setString(2, summary.packetDigest)
-        statement.setString(3, JsonSupport.mapToJsonString(legacy))
+        statement.setString(3, JsonCodec.mapToJsonString(legacy))
         statement.executeUpdate()
       }
 
@@ -170,13 +170,13 @@ class ReviewAccountingDurableRedactionTest {
       ).use { statement ->
         statement.setString(1, REVIEW_RUN_ID)
         statement.setString(2, summary.packetDigest)
-        statement.setString(3, JsonSupport.mapToJsonString(legacy))
+        statement.setString(3, JsonCodec.mapToJsonString(legacy))
         statement.executeUpdate()
       }
 
       val loaded = assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
       assertEquals("2.1", loaded.boundedPayload["contract_version"])
-      assertEquals(JsonSupport.mapToJsonString(legacy), storedAccountingJson(connection))
+      assertEquals(JsonCodec.mapToJsonString(legacy), storedAccountingJson(connection))
     }
   }
 
@@ -222,7 +222,7 @@ class ReviewAccountingDurableRedactionTest {
   }
   private fun legacyEvidenceUnreviewablePayload(current: Map<String, Any?>): Map<String, Any?> {
     val digest = "a".repeat(64)
-    val lanes = requireNotNull(JsonSupport.anyToStringAnyMapList((current["lanes"]))).map { lane ->
+    val lanes = requireNotNull(JsonCodec.anyToStringAnyMapList((current["lanes"]))).map { lane ->
       if (lane["lane"] == "parent") {
         lane
       } else {
@@ -247,19 +247,19 @@ class ReviewAccountingDurableRedactionTest {
   }
   private fun legacyAccountingPayload(current: Map<String, Any?>): Map<String, Any?> {
     val usage = mapOf("input_tokens" to 1L, "ownership" to "direct")
-    val legacyNodes = requireNotNull(JsonSupport.anyToStringAnyMapList((current["lanes"]))).map { lane ->
+    val legacyNodes = requireNotNull(JsonCodec.anyToStringAnyMapList((current["lanes"]))).map { lane ->
       LinkedHashMap(lane).apply {
         put("provider_usage", usage)
         put("direct_usage", usage)
         put("inclusive_usage", usage)
       }
     }
-    val parent = LinkedHashMap(requireNotNull(JsonSupport.anyToStringAnyMap(current["parent"]))).apply {
+    val parent = LinkedHashMap(requireNotNull(JsonCodec.anyToStringAnyMap(current["parent"]))).apply {
       put("provider_usage", usage)
       put("direct_usage", usage)
       put("inclusive_usage", usage)
     }
-    val integration = JsonSupport.anyToStringAnyMap(current["integration"])?.let {
+    val integration = JsonCodec.anyToStringAnyMap(current["integration"])?.let {
       LinkedHashMap(it).apply { put("usage", emptyMap<String, Any?>()) }
     }
     return LinkedHashMap(current).apply {
@@ -274,7 +274,7 @@ class ReviewAccountingDurableRedactionTest {
   }
 
   private fun aggregate(payload: Map<String, Any?>): Map<String, Any?>? =
-    JsonSupport.anyToStringAnyMap(payload["aggregate_counters"])
+    JsonCodec.anyToStringAnyMap(payload["aggregate_counters"])
 
   private fun assertNoSentinels(serialized: String) = sentinels.forEach { sentinel ->
     assertFalse(serialized.contains(sentinel), "Review accounting leaked '$sentinel'.")

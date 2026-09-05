@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
@@ -17,7 +17,7 @@ object FeatureTaskRuntimeVerificationGateReasons {
     }
     val dispositionsKey = FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS
     val dispositionsRaw = outputMap["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get(dispositionsKey) as? List<*>
       ?: return "verify_findings reported 'completed' without produced_outputs.$dispositionsKey."
     return runCatching {

@@ -1,5 +1,5 @@
 package skillbill.infrastructure.sqlite.goalrunner
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
@@ -148,7 +148,7 @@ internal class WorkflowGoalRunnerProgressRecording(
       (decodeArtifacts(record.artifactsJson)[GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY] as? List<*>)
         .orEmpty()
         .mapNotNull { item -> item as? Map<*, *> }
-        .mapNotNull { item -> JsonSupport.anyToStringAnyMap(item) }
+        .mapNotNull { item -> JsonCodec.anyToStringAnyMap(item) }
     }
 
   fun recordWorkerSubtaskRequestOutcomes(
@@ -164,7 +164,7 @@ internal class WorkflowGoalRunnerProgressRecording(
     val existing = (artifacts[WORKER_SUBTASK_REQUEST_OUTCOMES_ARTIFACT_KEY] as? List<*>)
       .orEmpty()
       .mapNotNull { item -> item as? Map<*, *> }
-      .map { item -> JsonSupport.anyToStringAnyMap(item) }
+      .map { item -> JsonCodec.anyToStringAnyMap(item) }
     val updatedOutcomes = (existing + outcomes.map(GoalRunnerWorkerSubtaskRequestOutcome::toArtifactMap))
       .takeLast(WORKER_SUBTASK_REQUEST_OUTCOME_LIMIT)
     val updated = engine.updateRecord(
@@ -248,7 +248,7 @@ internal class WorkflowGoalRunnerProgressRecording(
       val existing = (artifacts[append.historyKey] as? List<*>)
         .orEmpty()
         .mapNotNull { item -> item as? Map<*, *> }
-        .mapNotNull { item -> JsonSupport.anyToStringAnyMap(item) }
+        .mapNotNull { item -> JsonCodec.anyToStringAnyMap(item) }
       val updatedHistory = appendBoundedHistoryBySequence(existing, append.entryMap, append.retentionLimit)
       val patch = buildMap<String, Any?> {
         put(append.historyKey, updatedHistory)

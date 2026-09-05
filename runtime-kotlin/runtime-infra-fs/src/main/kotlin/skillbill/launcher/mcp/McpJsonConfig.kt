@@ -1,6 +1,6 @@
 package skillbill.launcher.mcp
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.install.model.McpMutationResult
 import skillbill.launcher.process.atomicWriteString
 import java.nio.file.Files
@@ -17,7 +17,7 @@ internal object McpJsonConfig {
       "args" to emptyList<String>(),
     )
     settings["mcpServers"] = servers
-    val afterContent = JsonSupport.mapToJsonString(settings) + "\n"
+    val afterContent = JsonCodec.mapToJsonString(settings) + "\n"
     val changed = beforeContent != afterContent
     if (changed) {
       writeJson(path, settings)
@@ -46,14 +46,14 @@ internal fun readJsonObject(path: Path): Map<String, Any?> {
   return if (raw.isBlank()) {
     linkedMapOf()
   } else {
-    JsonSupport.anyToStringAnyMap(JsonSupport.parseObjectOrNull(raw)?.let(JsonSupport::jsonElementToValue))
+    JsonCodec.anyToStringAnyMap(JsonCodec.parseObjectOrNull(raw)?.let(JsonCodec::jsonElementToValue))
       ?: throw IllegalArgumentException("Invalid JSON config at '$path'.")
   }
 }
 
 internal fun writeJson(path: Path, settings: Map<String, Any?>) {
-  atomicWriteString(path, JsonSupport.mapToJsonString(settings) + "\n")
+  atomicWriteString(path, JsonCodec.mapToJsonString(settings) + "\n")
 }
 
 internal fun mutableStringAnyMap(value: Any?): MutableMap<String, Any?> =
-  JsonSupport.anyToStringAnyMap(value)?.toMutableMap() ?: linkedMapOf()
+  JsonCodec.anyToStringAnyMap(value)?.toMutableMap() ?: linkedMapOf()

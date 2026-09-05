@@ -1,22 +1,28 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
+import skillbill.model.RepositoryRoot
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
 import skillbill.ports.goalrunner.persistence.GoalChildPlanningHydratorPort
 import skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import java.time.Clock
 
-internal class WorkflowGoalRunnerManifestStoreContext(deps: WorkflowGoalRunnerManifestStoreContextDeps) {
-  val database = deps.database
-  val decompositionManifestValidator = deps.decompositionManifestValidator
-  val decompositionManifestStore = deps.decompositionManifestStore
-  private val phaseOutputValidator = deps.phaseOutputValidator
-  private val planningProjectionValidator = deps.planningProjectionValidator
-  private val workflowSnapshotValidator = deps.workflowSnapshotValidator
-  private val clock = deps.clock
-  private val decompositionManifestWriter = deps.decompositionManifestWriter
-  private val repositoryRoot = deps.repositoryRoot
+internal class WorkflowGoalRunnerManifestStoreContext(
+  val database: DatabaseSessionFactory,
+  val decompositionManifestValidator: DecompositionManifestValidator,
+  val decompositionManifestStore: DecompositionManifestStore,
+  workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val clock: Clock,
+  private val decompositionManifestWriter: DecompositionManifestProjectionWriter,
+  private val repositoryRoot: RepositoryRoot,
+  val planningHydrator: GoalChildPlanningHydratorPort,
+) {
   val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
-  val planningHydrator: GoalChildPlanningHydratorPort = deps.planningHydrator
   val parentProjection = GoalParentProjectionWriter(engine, decompositionManifestValidator)
   val manifestLoader = WorkflowGoalRunnerManifestLoader(
     database,

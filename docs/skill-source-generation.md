@@ -341,7 +341,7 @@ There are three pointer families:
 
 - Static runtime support pointers for canonical `skills/` entries. Their
   targets are defined by `requiredSupportingFilesForSkill` and
-  `supportingFileTargets` in `ScaffoldSupport.kt`.
+  `supportingFileTargets` in `ScaffoldContract.kt`.
 - Platform pack manifest pointers declared in each pack's `platform.yaml`.
 - Ceremony pointers declared by skill-class YAML files under
   `orchestration/skill-classes/*.yaml`.

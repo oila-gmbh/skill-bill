@@ -1,7 +1,6 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeRunState
-import skillbill.application.featuretask.parsedOutput
 import skillbill.application.goalrunner.GoalRunnerChildProgressRead
 import skillbill.application.goalrunner.GoalRunnerProgressReader
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest

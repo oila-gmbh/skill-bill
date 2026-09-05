@@ -11,7 +11,6 @@ import skillbill.cli.model.ExternalCommandRunner
 import skillbill.cli.system.DesktopRemoval
 import skillbill.cli.system.LauncherRemoval
 import skillbill.cli.system.UninstallCommand
-import skillbill.cli.system.UninstallDependencies
 import skillbill.cli.system.UninstallMutationRecorder
 import skillbill.cli.system.UninstallPlan
 import skillbill.cli.system.cleanupMcpRegistrations
@@ -137,14 +136,12 @@ class UninstallMutationFailurePolicyTest {
         liveStdout = {},
         liveStderr = {},
       ),
-      deps = UninstallDependencies(
-        installAgentService = InstallAgentService(StubInstallAgentTargetPort),
-        installNativeAgentLinkPort = StubInstallNativeAgentLinkPort,
-        installMcpRegistrationPort = mcpRegistrationPort,
-        uninstallFileSystem = UninstallFileSystemService(AbsentUninstallPathsPort),
-        hostPlatform = StubUninstallHostPlatformPort,
-        diagnostics = RecordingRuntimeDiagnostics(),
-      ),
+      installAgentService = InstallAgentService(StubInstallAgentTargetPort),
+      installNativeAgentLinkPort = StubInstallNativeAgentLinkPort,
+      installMcpRegistrationPort = mcpRegistrationPort,
+      uninstallFileSystem = UninstallFileSystemService(AbsentUninstallPathsPort),
+      hostPlatform = StubUninstallHostPlatformPort,
+      diagnostics = RecordingRuntimeDiagnostics(),
     )
     CommandLineParser.parseAndRun(command, listOf("--yes")) { parsed -> parsed.run() }
     return assertNotNull(state.result)

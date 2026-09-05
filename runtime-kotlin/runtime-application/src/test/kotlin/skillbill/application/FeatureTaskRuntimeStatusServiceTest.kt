@@ -16,7 +16,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequ
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusCurrentPhaseExecutionKind
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
@@ -1210,7 +1210,7 @@ private class StatusHarness(
     val artifacts = decodeArtifacts(row.artifactsJson).toMutableMap()
     artifacts[FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY] = raw
     repository.saveFeatureTaskRuntimeWorkflow(
-      row.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+      row.copy(artifactsJson = JsonCodec.mapToJsonString(artifacts)),
     )
   }
 

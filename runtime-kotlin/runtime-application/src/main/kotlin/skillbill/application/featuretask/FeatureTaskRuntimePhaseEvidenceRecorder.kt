@@ -4,7 +4,7 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.AppendCheckpointIdentityArgs
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
@@ -174,7 +174,7 @@ fun FeatureTaskRuntimePhaseEvidenceRecorder.quarantineEntriesFrom(
   artifacts: Map<String, Any?>,
 ): List<FeatureTaskRuntimeQuarantineEntry> {
   val raw = artifacts[FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY] ?: return emptyList()
-  val map = JsonSupport.anyToStringAnyMap(raw)
+  val map = JsonCodec.anyToStringAnyMap(raw)
     ?: throw InvalidWorkflowStateSchemaError("Feature-task-runtime quarantine record must be an object.")
   quarantineValidator.validateQuarantineRecord(map, FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY)
   return featureTaskRuntimeQuarantineEntriesFromWire(raw)

@@ -3,7 +3,7 @@ package skillbill.application
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.subtaskreview.FeatureTaskRuntimeVerificationSignalKeys
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairBudget
@@ -72,9 +72,9 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
         .substringAfter("```json")
         .substringBefore("```")
       val produced = requireNotNull(
-        JsonSupport.anyToStringAnyMap(
-          JsonSupport.jsonElementToValue(
-            requireNotNull(JsonSupport.parseObjectOrNull(exampleJson)) { "no JSON example in the $phaseId prompt" },
+        JsonCodec.anyToStringAnyMap(
+          JsonCodec.jsonElementToValue(
+            requireNotNull(JsonCodec.parseObjectOrNull(exampleJson)) { "no JSON example in the $phaseId prompt" },
           ),
         ),
       ) { "the $phaseId example is not a JSON object" }
@@ -89,9 +89,9 @@ class FeatureTaskRuntimePhasePromptComposerRepairTest {
     val innerExampleJson = prompt.substringAfter("Inner object to stuff into value:")
       .substringAfter("```json")
       .substringBefore("```")
-    val example = requireNotNull(JsonSupport.parseObjectOrNull(innerExampleJson)) {
+    val example = requireNotNull(JsonCodec.parseObjectOrNull(innerExampleJson)) {
       "no inner JSON example in the plan prompt"
-    }.let { requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))) }
+    }.let { requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it))) }
 
     assertTrue(
       (example["tasks"] as? List<*>)?.isNotEmpty() == true,

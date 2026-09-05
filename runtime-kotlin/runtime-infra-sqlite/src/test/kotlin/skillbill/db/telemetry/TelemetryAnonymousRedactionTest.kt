@@ -1,6 +1,6 @@
 package skillbill.db.telemetry
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.reconcileStaleTelemetrySessions
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
@@ -269,9 +269,9 @@ class TelemetryAnonymousRedactionTest {
       }
     }
 
-  private fun property(payloadJson: String, name: String): String? = JsonSupport.parseObjectOrNull(payloadJson)
+  private fun property(payloadJson: String, name: String): String? = JsonCodec.parseObjectOrNull(payloadJson)
     ?.get(name)
-    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonCodec::jsonElementToValue)
     ?.toString()
 
   private fun withConnection(block: (Connection) -> Unit) {

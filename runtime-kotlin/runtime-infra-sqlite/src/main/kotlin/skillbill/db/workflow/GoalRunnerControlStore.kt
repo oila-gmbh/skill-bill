@@ -1,6 +1,6 @@
 package skillbill.db.workflow
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
@@ -28,7 +28,7 @@ internal class GoalRunnerControlStore(
       """.trimIndent(),
     ).use { statement ->
       statement.setString(1, parentWorkflowId)
-      statement.setString(2, JsonSupport.mapToJsonString(state.toArtifactMap()))
+      statement.setString(2, JsonCodec.mapToJsonString(state.toArtifactMap()))
       statement.executeUpdate()
     }
     return state
@@ -76,7 +76,7 @@ internal class GoalRunnerControlStore(
       """.trimIndent(),
     ).use { statement ->
       statement.setString(1, parentWorkflowId)
-      statement.setString(2, JsonSupport.mapToJsonString(policy.toArtifactMap()))
+      statement.setString(2, JsonCodec.mapToJsonString(policy.toArtifactMap()))
       statement.executeUpdate()
     }
     return policy
@@ -104,7 +104,7 @@ internal class GoalRunnerControlStore(
       statement.setString(1, parentWorkflowId)
       statement.setString(
         2,
-        JsonSupport.valueToJsonElement(
+        JsonCodec.valueToJsonElement(
           merged.values.sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId)
             .map(GoalRunnerOutOfBandAcceptance::toArtifactMap),
         ).toString(),

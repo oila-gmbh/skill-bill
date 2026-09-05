@@ -3,7 +3,7 @@ package skillbill.application
 import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
@@ -127,6 +127,6 @@ class DecompositionManifestWriterValidationTest {
     val invalidManifest = LinkedHashMap(manifest.toWireMap()).apply {
       put("contract_version", "invalid-contract")
     }
-    return JsonSupport.mapToJsonString(mapOf("decomposition_runtime" to invalidManifest))
+    return JsonCodec.mapToJsonString(mapOf("decomposition_runtime" to invalidManifest))
   }
 }

@@ -7,7 +7,7 @@ import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpd
 import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.parseStackBranches
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.workflow.decomposition.model.DecompositionExecutionModel
 import skillbill.workflow.decomposition.model.DecompositionManifest
@@ -209,7 +209,7 @@ class DecompositionManifestWriterTest {
 
     val result = writeProjectionFromWorkflowState(
       repoRoot,
-      JsonSupport.mapToJsonString(mapOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY to reset.toWireMap())),
+      JsonCodec.mapToJsonString(mapOf(DECOMPOSITION_RUNTIME_ARTIFACT_KEY to reset.toWireMap())),
     )
 
     assertNotNull(result)
@@ -622,7 +622,7 @@ class DecompositionManifestWriterTest {
       """"branch":{"branch":"feature/SKILL-51-decomposition"}}"""
 
   private fun durableRuntimeArtifactsJson(manifest: DecompositionManifest, subtaskSpec: Path): String =
-    JsonSupport.mapToJsonString(
+    JsonCodec.mapToJsonString(
       mapOf(
         DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap(),
         "assessment" to mapOf("spec_path" to subtaskSpec.toString()),

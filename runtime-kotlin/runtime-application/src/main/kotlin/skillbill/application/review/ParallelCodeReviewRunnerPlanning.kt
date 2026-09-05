@@ -2,55 +2,42 @@ package skillbill.application.review
 import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.model.ParallelCodeReviewResult
 import skillbill.application.review.model.ParallelReviewLaneStatus
-import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.reviewevidence.ReviewCommitRange
 import skillbill.application.reviewevidence.ReviewDiffEvidence
 import skillbill.application.reviewevidence.SharedReviewEvidenceProjection
 import skillbill.application.reviewevidence.SharedReviewEvidenceQuery
 import skillbill.application.reviewevidence.SharedReviewEvidenceResolution
-import skillbill.application.runtimepersistence.RuntimeOwnedPersistenceBoundary
-import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diff.DiffResolverPort
+import skillbill.ports.repository.RepositoryEnclosingRootPort
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
-import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewMergeResult
-import skillbill.review.model.ReviewRunLane
-import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
-import skillbill.review.model.ReviewSpecProjectionReference
-import skillbill.review.model.ReviewStage
-import skillbill.review.model.ReviewStageBoundary
-import skillbill.review.model.ReviewStageReached
 import java.nio.file.Path
 
-internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPlanningDeps) {
-  val diffResolver: DiffResolverPort = deps.diffResolver
-  val repoLocalConfig: RepoLocalConfigPort = deps.repoLocalConfig
-  private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator = deps.reviewContextEnvelopeValidator
-  private val reviewSpecialistContractProvider: ReviewSpecialistContractProvider =
-    deps.reviewSpecialistContractProvider
-  val installedPackCatalog: InstalledPlatformPackCatalogPort = deps.installedPackCatalog
-  private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort = deps.sharedEvidenceResolver
-  private val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
-    deps.sharedEvidenceLocatorReader
-  private val specIntentProjectionResolver: SpecIntentProjectionResolver = deps.specIntentProjectionResolver
-  val runtimeOwnedPersistence: RuntimeOwnedPersistenceBoundary = deps.runtimeOwnedPersistence
-  private val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning = deps.rubricPlanning
-  private val clock = deps.clock
-  private val repositoryEnclosingRootPort = deps.repositoryEnclosingRootPort
-
+internal class ParallelCodeReviewRunnerPlanning(
+  val diffResolver: DiffResolverPort,
+  val repoLocalConfig: RepoLocalConfigPort,
+  private val reviewContextEnvelopeValidator: ReviewContextEnvelopeValidator,
+  private val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
+  val installedPackCatalog: InstalledPlatformPackCatalogPort,
+  private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort,
+  private val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
+  private val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  private val rubricPlanning: ParallelCodeReviewRunnerRubricPlanning,
+  private val lanePlanRecording: ParallelCodeReviewRunnerLanePlanRecording,
+  private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
+) {
   internal fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewInitialRun {
     val agent1 = resolveAgent(originalRequest.agent1Id, "--agent1")
     val revisions = resolveReviewRevisions(originalRequest)
@@ -113,7 +100,7 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
         budget = budget,
       ),
     )
-    recordSpecIntent(request.reviewRunId, specIntent)
+    lanePlanRecording.recordSpecIntent(request.reviewRunId, specIntent)
     request.reviewRunId?.let { runId ->
       if (specIntent is SpecIntentResolution.Resolved) {
         recordAdjudicationBoundary(runId)
@@ -123,34 +110,6 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
       mergeResult = ParallelReviewMergeResult(findings = emptyList(), formattedOutput = "NO_FINDINGS"),
       lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
     )
-  }
-
-  fun recordSpecIntent(reviewRunId: String?, resolution: SpecIntentResolution) {
-    if (reviewRunId == null) return
-    val reference = when (resolution) {
-      is SpecIntentResolution.Resolved -> ReviewSpecProjectionReference(
-        specPath = resolution.projection.provenance.specPath,
-        contentDigest = resolution.projection.provenance.contentDigest,
-      )
-      is SpecIntentResolution.None -> ReviewSpecProjectionReference(absenceReason = resolution.reason.wireValue)
-    }
-    runtimeOwnedPersistence.requiredWrite(
-      seam = "ParallelCodeReviewRunner.recordSpecIntent",
-      expected = "runtime-owned review spec projection reference",
-    ) { unitOfWork ->
-      unitOfWork.reviews.recordSpecProjectionReference(reviewRunId, reference)
-      if (resolution is SpecIntentResolution.None) {
-        unitOfWork.reviews.recordStageBoundary(
-          reviewRunId,
-          ReviewStageBoundary(
-            stage = ReviewStage.ADJUDICATION,
-            reached = ReviewStageReached.NOT_REACHED,
-            recordedAt = clock.instant().toString(),
-            contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
-          ),
-        )
-      }
-    }
   }
 
   private fun resolvedMode(request: ParallelCodeReviewRequest) = ReviewExecutionModePolicy.resolveWithRule(
@@ -197,78 +156,14 @@ internal class ParallelCodeReviewRunnerPlanning(deps: ParallelCodeReviewRunnerPl
       specialistContract = reviewSpecialistContractProvider.authoritativeContract(),
       hunkLocatorReader = sharedEvidenceLocatorReader,
     )
-    val selected = selectLaunchesForResume(args.request.reviewRunId, compiled)
-    recordPlannedLanes(args.request.reviewRunId, plannedRubrics, selected)
-    recordSpecIntent(args.request.reviewRunId, specIntentResolution)
+    val selected = lanePlanRecording.selectLaunchesForResume(args.request.reviewRunId, compiled)
+    lanePlanRecording.recordPlannedLanes(args.request.reviewRunId, plannedRubrics, selected)
+    lanePlanRecording.recordSpecIntent(args.request.reviewRunId, specIntentResolution)
     return ParallelCodeReviewCompiledLaunches(
       all = compiled,
       toRun = selected,
       specIntentResolution = specIntentResolution,
     )
-  }
-
-  private fun selectLaunchesForResume(
-    reviewRunId: String?,
-    launches: List<ReviewSpecialistLaunchRequest>,
-  ): List<ReviewSpecialistLaunchRequest> {
-    if (reviewRunId == null || launches.isEmpty()) return launches
-    val existing = runtimeOwnedPersistence.requiredRead(
-      seam = "ParallelCodeReviewRunner.selectLaunchesForResume",
-      expected = "runtime-owned review lane dispositions",
-    ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
-    if (existing.isEmpty()) return launches
-    val completeNames = existing
-      .filter { it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION }
-      .map { it.laneSkillName }
-      .toSet()
-    return launches.filterNot { launch ->
-      launch.assignment.laneDecision.specialistSkillName in completeNames
-    }
-  }
-
-  private fun recordPlannedLanes(
-    reviewRunId: String?,
-    plannedRubrics: List<PlannedReviewRubric>,
-    launches: List<ReviewSpecialistLaunchRequest>,
-  ) {
-    if (reviewRunId == null || launches.isEmpty()) return
-    val existing = runtimeOwnedPersistence.requiredRead(
-      seam = "ParallelCodeReviewRunner.recordPlannedLanes.read",
-      expected = "runtime-owned review lane dispositions",
-    ) { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
-    val preservedComplete = existing.filter {
-      it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION
-    }
-    val completionBySkill = launches.associate { launch ->
-      requireNotNull(launch.assignment.laneDecision.specialistSkillName) to
-        parallelCodeReviewGovernedLaunchFor(launch).completionState
-    }
-    val relaunchNames = completionBySkill.keys
-    val pending = plannedRubrics
-      .filter { it.descriptor.skillName in relaunchNames }
-      .map { planned ->
-        val completion = completionBySkill.getValue(planned.descriptor.skillName)
-        ReviewRunLane(
-          laneSkillName = planned.descriptor.skillName,
-          packSlug = planned.descriptor.packSlug,
-          area = planned.descriptor.area,
-          depth = planned.descriptor.depth,
-          required = planned.descriptor.required,
-          orderIndex = planned.descriptor.orderIndex,
-          originLayerChain = planned.descriptor.originLayerChain,
-          resolutionState = ReviewRunLaneResolver.RESOLVED,
-          reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE.wireValue,
-          bundleCompositionDigest = completion.bundleCompositionDigest,
-          segmentAccountingJson = ReviewRunLaneSegmentAccountingJson.encode(completion.segments),
-          unreviewedSegmentIds = completion.unreviewedSegmentIds,
-          budgetDimension = completion.budgetDimension,
-        )
-      }
-    val merged = preservedComplete.filter { it.laneSkillName !in relaunchNames } + pending
-    runtimeOwnedPersistence.requiredWrite(
-      seam = "ParallelCodeReviewRunner.recordPlannedLanes.write",
-      expected = "runtime-owned review lane plan",
-    ) { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, merged) }
   }
 
   private fun resolveSpecIntent(

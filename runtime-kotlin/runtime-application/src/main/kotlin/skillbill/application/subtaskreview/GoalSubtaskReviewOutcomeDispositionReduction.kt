@@ -1,6 +1,6 @@
 package skillbill.application.subtaskreview
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
@@ -43,7 +43,7 @@ object GoalSubtaskReviewOutcomeDispositionReduction {
     priorBlockerFindingIds: List<String> = emptyList(),
   ): List<GoalSubtaskBlockerDisposition> {
     val dispositions = output["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("blocker_dispositions")
       ?.let { it as? List<*> }
       ?.mapIndexed(::blockerDisposition)
@@ -90,7 +90,7 @@ object GoalSubtaskReviewOutcomeDispositionReduction {
 
 private fun blockerDisposition(index: Int, entry: Any?): GoalSubtaskBlockerDisposition {
   val path = "produced_outputs.blocker_dispositions[$index]"
-  val disposition = JsonSupport.anyToStringAnyMap(entry)
+  val disposition = JsonCodec.anyToStringAnyMap(entry)
     ?: reviewStateError(path, "must be an object.")
   val evidence = (disposition["evidence"] as? List<*>)
     ?.mapNotNull { it as? String }

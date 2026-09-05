@@ -1,7 +1,7 @@
 package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.sqlite.SQLiteReviewRunCompletenessRepository
@@ -185,8 +185,8 @@ class ReviewStageTelemetryTest {
       val unsettledReasons = TelemetryOutboxStore(it).listPending(null)
         .filter { record -> record.eventName == REVIEW_STAGE_DEGRADATION_EVENT_NAME }
         .mapNotNull { record ->
-          val payload = JsonSupport.parseObjectOrNull(record.payloadJson)
-            ?.let { node -> JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(node)) }
+          val payload = JsonCodec.parseObjectOrNull(record.payloadJson)
+            ?.let { node -> JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(node)) }
             ?: return@mapNotNull null
           if (payload["review_run_id"] != "rvw-unsettled") return@mapNotNull null
           payload["reason"] as? String
@@ -219,7 +219,7 @@ class ReviewStageTelemetryTest {
       seedMixedVerdicts(it, review.reviewRunId)
       TelemetryOutboxStore(it).enqueue(
         "skillbill_review_finished",
-        JsonSupport.mapToJsonString(
+        JsonCodec.mapToJsonString(
           mapOf(
             "event_name" to "skillbill_review_finished",
             "contract_version" to REVIEW_FINISHED_LEGACY_CONTRACT_VERSION,
@@ -238,16 +238,16 @@ class ReviewStageTelemetryTest {
       val storedAfterRead = TelemetryOutboxStore(it).listPending(null).single {
         it.eventName == "skillbill_review_finished"
       }
-      val storedAfterReadPayload = JsonSupport.parseObjectOrNull(storedAfterRead.payloadJson)
-        ?.let { node -> JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(node)) }
+      val storedAfterReadPayload = JsonCodec.parseObjectOrNull(storedAfterRead.payloadJson)
+        ?.let { node -> JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(node)) }
         ?: emptyMap()
       assertEquals(REVIEW_FINISHED_LEGACY_CONTRACT_VERSION, storedAfterReadPayload["contract_version"])
       persistLegacyTelemetryRewrites(it)
       val rewritten = TelemetryOutboxStore(it).listPending(null).single {
         it.eventName == "skillbill_review_finished"
       }
-      val payload = JsonSupport.parseObjectOrNull(rewritten.payloadJson)
-        ?.let { node -> JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(node)) }
+      val payload = JsonCodec.parseObjectOrNull(rewritten.payloadJson)
+        ?.let { node -> JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(node)) }
         ?: emptyMap()
       assertEquals(REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION, payload["contract_version"])
       assertEquals(1, payload.nestedInt("verification", "claim_verdict", "confirmed"))
@@ -255,8 +255,8 @@ class ReviewStageTelemetryTest {
       val companion = TelemetryOutboxStore(it).listPending(null).single { record ->
         record.eventName == REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME
       }
-      val companionPayload = JsonSupport.parseObjectOrNull(companion.payloadJson)
-        ?.let { node -> JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(node)) }
+      val companionPayload = JsonCodec.parseObjectOrNull(companion.payloadJson)
+        ?.let { node -> JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(node)) }
         ?: emptyMap()
       assertEquals(REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME, companionPayload["event_name"])
       assertEquals(REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION, companionPayload["contract_version"])
@@ -272,7 +272,7 @@ class ReviewStageTelemetryTest {
     connection.use {
       TelemetryOutboxStore(it).enqueue(
         "skillbill_review_finished",
-        JsonSupport.mapToJsonString(
+        JsonCodec.mapToJsonString(
           mapOf(
             "event_name" to "skillbill_review_finished",
             "contract_version" to REVIEW_FINISHED_LEGACY_CONTRACT_VERSION,
@@ -287,8 +287,8 @@ class ReviewStageTelemetryTest {
       val leftover = TelemetryOutboxStore(it).listPending(null).single { record ->
         record.eventName == "skillbill_review_finished"
       }
-      val leftoverPayload = JsonSupport.parseObjectOrNull(leftover.payloadJson)
-        ?.let { node -> JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(node)) }
+      val leftoverPayload = JsonCodec.parseObjectOrNull(leftover.payloadJson)
+        ?.let { node -> JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(node)) }
         ?: emptyMap()
       assertEquals(REVIEW_FINISHED_LEGACY_CONTRACT_VERSION, leftoverPayload["contract_version"])
       assertTrue(

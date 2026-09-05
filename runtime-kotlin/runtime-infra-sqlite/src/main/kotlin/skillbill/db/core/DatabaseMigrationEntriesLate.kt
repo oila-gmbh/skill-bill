@@ -9,12 +9,12 @@ internal val databaseMigrationsLate: List<DatabaseMigration> =
     DatabaseMigration(
       version = 10,
       name = "rebuild-goal-planning-plans-for-phase-output-0-2",
-      operation = ::rebuildGoalPlanningPlansForPhaseOutputV02,
+      operation = ::rebuildGoalPlanningPlansForPhaseOutputVersion2,
     ),
     DatabaseMigration(
       version = 11,
       name = "require-goal-planning-phase-output-0-2",
-      operation = ::requireGoalPlanningPhaseOutputV02,
+      operation = ::requireGoalPlanningPhaseOutputVersion2,
     ),
     DatabaseMigration(
       version = 12,
@@ -288,17 +288,17 @@ internal val databaseMigrationsLate: List<DatabaseMigration> =
     DatabaseMigration(
       version = 32,
       name = "allow-goal-planning-phase-output-0-4",
-      operation = ::rebuildGoalPlanningPlansForPhaseOutputV04,
+      operation = ::rebuildGoalPlanningPlansForPhaseOutputVersion4,
     ),
     DatabaseMigration(
       version = 33,
       name = "allow-goal-planning-phase-output-0-5",
-      operation = ::rebuildGoalPlanningPlansForPhaseOutputV05,
+      operation = ::rebuildGoalPlanningPlansForPhaseOutputVersion5,
     ),
     DatabaseMigration(
       version = 34,
       name = "allow-goal-planning-phase-output-0-6",
-      operation = ::rebuildGoalPlanningPlansForPhaseOutputV06,
+      operation = ::rebuildGoalPlanningPlansForPhaseOutputVersion6,
     ),
     DatabaseMigration(
       version = 35,

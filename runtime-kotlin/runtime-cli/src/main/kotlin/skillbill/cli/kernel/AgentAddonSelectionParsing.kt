@@ -3,13 +3,13 @@ package skillbill.cli.kernel
 import com.github.ajalt.clikt.core.UsageError
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 
 internal fun parseAgentAddonSelection(raw: String?): AgentAddonSelection {
   if (raw == null) return AgentAddonSelection()
-  val root = JsonSupport.parseObjectOrNull(raw)
+  val root = JsonCodec.parseObjectOrNull(raw)
     ?: invalidAgentAddonSelection("--agent-addon-selection-json must be a JSON object.")
-  val map = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(root))
+  val map = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(root))
     ?: invalidAgentAddonSelection("--agent-addon-selection-json must decode to an object.")
   if (map.keys != setOf("contract_version", "entries") || map["contract_version"] != "0.1") {
     invalidAgentAddonSelection("Agent add-on selection must contain only contract_version=0.1 and entries.")
@@ -19,7 +19,7 @@ internal fun parseAgentAddonSelection(raw: String?): AgentAddonSelection {
   return try {
     AgentAddonSelection(
       entries.mapIndexed { index, valueEntry ->
-        val entry = JsonSupport.anyToStringAnyMap(valueEntry)
+        val entry = JsonCodec.anyToStringAnyMap(valueEntry)
           ?: invalidAgentAddonSelection("Agent add-on selection entry $index must be an object.")
         val persistedKeys = setOf("slug", "source_identity", "content_sha256")
         if (!entry.keys.containsAll(persistedKeys) || entry.keys.any { it !in persistedKeys + "description" }) {

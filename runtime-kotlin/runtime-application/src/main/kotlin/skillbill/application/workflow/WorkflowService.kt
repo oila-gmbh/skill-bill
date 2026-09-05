@@ -1,7 +1,8 @@
 package skillbill.application.workflow
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.decomposition.DecompositionManifestProjectionSupport
+import skillbill.application.decomposition.DecompositionManifestWriteGuard
+import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.workflow.model.BuildFeatureTaskExecutionIdentityArgs
 import skillbill.application.workflow.model.ContinueExistingWorkflowArgs
 import skillbill.application.workflow.model.DecompositionRuntimeWriteArgs
@@ -15,25 +16,32 @@ import skillbill.application.workflow.model.WorkflowLatestResult
 import skillbill.application.workflow.model.WorkflowListResult
 import skillbill.application.workflow.model.WorkflowOpenResult
 import skillbill.application.workflow.model.WorkflowResumeResult
-import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.contracts.issuekey.normalizeIssueKey
+import skillbill.model.RepositoryRoot
+import skillbill.ports.db.DatabaseSessionFactory
+import skillbill.ports.workflow.decomposition.DecompositionManifestStore
+import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.gitops.repositoryFingerprint
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
+import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowEngine
+import skillbill.workflow.engine.WorkflowSnapshotValidator
+import skillbill.workflow.goal.GoalObservabilityEventValidator
 
 @Inject
-class WorkflowService(deps: WorkflowServiceDeps) {
-  private val database = deps.database
-  private val gitOperations = deps.gitOperations
-  private val decompositionManifestStore = deps.decompositionManifestStore
-  private val workflowSnapshotValidator = deps.workflowSnapshotValidator
-  private val decompositionManifestValidator = deps.decompositionManifestValidator
-  private val decompositionManifestWriter = deps.decompositionManifestWriter
-  private val repositoryRoot = deps.repositoryRoot
-  val goalObservabilityEventValidator = deps.goalObservabilityEventValidator
+class WorkflowService(
+  private val database: DatabaseSessionFactory,
+  private val gitOperations: WorkflowGitOperations,
+  private val decompositionManifestStore: DecompositionManifestStore,
+  workflowSnapshotValidator: WorkflowSnapshotValidator,
+  private val decompositionManifestValidator: DecompositionManifestValidator,
+  private val decompositionManifestWriter: DecompositionManifestWriter,
+  private val repositoryRoot: RepositoryRoot,
+  val goalObservabilityEventValidator: GoalObservabilityEventValidator,
+) {
 
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator) {
     val resolved = gitOperations.repositoryFingerprint(repositoryRoot.path)
@@ -142,7 +150,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
       buildUpdateOk(engine, family.definition, updated, effectiveInput, unitOfWork.dbPath.toString())
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestProjectionSupport.requireWritten(
+      DecompositionManifestWriteGuard.requireWritten(
         decompositionManifestWriter.writeProjectionFromWorkflowState(
           repositoryRoot.path,
           artifactsJson,
@@ -315,7 +323,7 @@ class WorkflowService(deps: WorkflowServiceDeps) {
       }.result
     }
     projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestProjectionSupport.requireWritten(
+      DecompositionManifestWriteGuard.requireWritten(
         decompositionManifestWriter.writeProjectionFromWorkflowState(
           repositoryRoot.path,
           artifactsJson,

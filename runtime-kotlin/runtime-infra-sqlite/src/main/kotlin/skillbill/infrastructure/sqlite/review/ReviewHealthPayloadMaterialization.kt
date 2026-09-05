@@ -1,5 +1,5 @@
 package skillbill.infrastructure.sqlite.review
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.PARAM_ONE
 import skillbill.db.PARAM_TWO
 import skillbill.db.telemetry.enqueueTelemetry
@@ -80,7 +80,7 @@ private fun rewriteOutboxPayload(connection: Connection, outboxId: Long, payload
   connection.prepareStatement(
     "UPDATE telemetry_outbox SET payload_json = ? WHERE id = ?",
   ).use { statement ->
-    statement.setString(PARAM_ONE, JsonSupport.mapToJsonString(payload))
+    statement.setString(PARAM_ONE, JsonCodec.mapToJsonString(payload))
     statement.setLong(PARAM_TWO, outboxId)
     statement.executeUpdate()
   }

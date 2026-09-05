@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerReconciledOutcome
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -84,9 +84,9 @@ fun terminalJsonObjectWithoutResultPrefix(stdout: String, stderr: String): Map<S
     ?.let(::topLevelJsonObjectCandidates)
     ?.singleOrNull()
   return candidate
-    ?.let(JsonSupport::parseObjectOrNull)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::parseObjectOrNull)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?.takeIf { it.isImplementationReturnContract() || it.isRuntimeTerminalEnvelope() }
 }
 

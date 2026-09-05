@@ -1,6 +1,6 @@
 package skillbill.db.workflow
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
 import skillbill.ports.goalrunner.model.GoalSubtaskPlanCheckpoint
@@ -9,11 +9,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairE
 import java.sql.ResultSet
 
 internal fun SharedGoalPreplanCheckpoint.repairEvidenceJson(): String? = repairEvidence?.let {
-  JsonSupport.mapToJsonString(it.toArtifactMap())
+  JsonCodec.mapToJsonString(it.toArtifactMap())
 }
 
 internal fun GoalSubtaskPlanCheckpoint.repairEvidenceJson(): String? = repairEvidence?.let {
-  JsonSupport.mapToJsonString(it.toArtifactMap())
+  JsonCodec.mapToJsonString(it.toArtifactMap())
 }
 
 internal fun incompatibleLoadedVersionReason(loaded: String): String = "loaded contract_version '$loaded' is not '0.1'."
@@ -35,9 +35,9 @@ internal fun optionalRepairEvidence(
 ): FeatureTaskRuntimePhaseOutputRepairEvidence? {
   val raw = rows.getString(column) ?: return null
   return try {
-    val decoded = JsonSupport.parseObjectOrNull(raw)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val decoded = JsonCodec.parseObjectOrNull(raw)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?: throw IllegalArgumentException("repair evidence must be a JSON object")
     FeatureTaskRuntimePhaseOutputRepairEvidence.fromArtifactMap(decoded)
   } catch (_: Exception) {

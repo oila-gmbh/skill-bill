@@ -1,6 +1,6 @@
 package skillbill.ports.review
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceResult
@@ -33,7 +33,7 @@ class GovernedReviewEvidenceCodecTest {
         expansions = emptyList(),
       ),
     )
-    val result = requireNotNull(JsonSupport.anyToStringAnyMapList((payload["results"]))).single()
+    val result = requireNotNull(JsonCodec.anyToStringAnyMapList((payload["results"]))).single()
     assertFalse(result.containsKey("content"))
     assertEquals(true, result["refused"])
     assertEquals("outside the assignment surface", result["reason"])

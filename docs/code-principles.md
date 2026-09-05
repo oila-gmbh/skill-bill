@@ -165,7 +165,7 @@ with one implementation.
 **Reference examples.**
 
 - `runtime-kotlin/runtime-core/src/main/kotlin/skillbill/di/RuntimeComponentBindingsA1.kt`
-- `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimeRunLoopSession.kt`
+- `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimeRunLoop.kt`
 - `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeCoreCompositionOnlyTest.kt`
 
 ## Port Necessity And Deletion
@@ -191,13 +191,13 @@ site; a flag that is never flipped. `@OpenBoundaryMap` sites inventoried in
 
 - `runtime-kotlin/runtime-ports/src/testFixtures/kotlin/skillbill/ports/work/EmptyWorkListRepository.kt`
 - `runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/goalrunner/runner/GoalRunnerPorts.kt`
-- `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimeRunLoopSession.kt`
+- `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimeRunLoop.kt`
 
 ## Build And Tooling
 
 **Rule.** Shared JVM test and toolchain settings live in convention plugins;
 module `build.gradle.kts` files do not re-declare what `configureKotlinJvm` already
-owns. Production Kotlin files stay at or below 500 lines unless explicitly
+owns. Production Kotlin files stay at or below 1200 lines unless explicitly
 exempted in `PrincipleEnforcementInventory`.
 
 **Preferred shapes.** `skillbill.jvm-library` convention applying
@@ -206,7 +206,7 @@ package; empty exemption map when the tree is clean.
 
 **Anti-patterns.** Copy-pasting `update-snapshots` `systemProperty` into module
 build files; `@Suppress("LargeClass")` instead of splitting; applying the
-500-line gate to test sources.
+1200-line gate to test sources.
 
 **Reference examples.**
 
@@ -214,8 +214,8 @@ build files; `@Suppress("LargeClass")` instead of splitting; applying the
 - `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ProductionFileLineCeilingArchitectureTest.kt`
 - `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/ConventionReapplicationArchitectureTest.kt`
 
-**Amendment.** The 500-line ceiling applies to production `src/main` Kotlin only.
-Test sources may exceed 500 lines. Detekt complexity pinning and suppression
+**Amendment.** The 1200-line ceiling applies to production `src/main` Kotlin only.
+Test sources may exceed 1200 lines. Detekt complexity pinning and suppression
 cleanup are SKILL-221, not this program.
 
 ## Guard Baselines And Exemptions

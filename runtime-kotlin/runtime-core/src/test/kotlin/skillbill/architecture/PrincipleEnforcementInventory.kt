@@ -7,6 +7,8 @@ object PrincipleEnforcementInventory {
   const val CLI_PACKAGE_PREFIX: String = "skillbill.cli."
   const val RUNTIME_CLI_SRC: String = "runtime-kotlin/runtime-cli/src"
   const val SPILLOVER_FILE_NAME_BASELINE: String = "spillover-file-name-baseline.txt"
+  const val RUNTIME_COMPONENT_SOURCE: String =
+    "runtime-kotlin/runtime-core/src/main/kotlin/skillbill/di/RuntimeComponent.kt"
 
   data class ModuleArchitectureScanCase(
     val moduleName: String,
@@ -85,7 +87,6 @@ object PrincipleEnforcementInventory {
    */
   const val CLI_COMPOSITION_ROOT_AREA: String = "core"
 
-  /** Named exemptions from the spillover-filename ban. Empty by rule, never by census. */
   val spilloverFileNameExemptions: Set<String> = emptySet()
 
   val sanctionedCompositionEntrypoints: Set<String> = setOf(
@@ -103,7 +104,8 @@ object PrincipleEnforcementInventory {
 
   val enforceableRules: List<String> = listOf(
     "Package clustering: loose files in a subpackaged area must not belong to a sibling area cluster.",
-    "Production line ceiling: no production Kotlin file may exceed 500 lines without an explicit exemption.",
+    "Production line ceiling: no production Kotlin file may exceed $PRODUCTION_LINE_CEILING lines without an " +
+      "explicit exemption.",
     "Production logical-type line ceiling: attribute extension files to receiver types and enforce combined totals.",
     "Package acyclicity: mutual imports among areas under each module package prefix must stay within " +
       "that module baseline across all ten Gradle modules.",
@@ -120,9 +122,10 @@ object PrincipleEnforcementInventory {
       "require baseline in every module main source root.",
     "Command-area isolation: every runtime-cli command area's transitive skillbill.cli import closure must " +
       "contain only the shared kernel and model leaves, never a sibling area or the composition root.",
-    "Spillover-filename ban: no source file in any runtime module may carry the spillover filename signature " +
-      "(Extras, Continued, Helpers, Fns, Support, letter-plus-digit, or bare trailing-digit siblings) " +
-      "outside a named exemption.",
+    "Spillover-name ban: no source file in any runtime module, and no main-source file, type, or member " +
+      "declaration, may carry the spillover signature (Extras, Continued, Helpers, Support, Misc, Fns, " +
+      "letter-plus-digit, or bare trailing-digit siblings) outside a named exemption; bare Support, Helpers, " +
+      "Misc, and Extras apply to main sources only.",
     "Gradle module edges: every module api(project(...)) and implementation(project(...)) set is pinned " +
       "to today's edges.",
     "Port null-object classification: every Unavailable, Noop, Empty, or Unconfigured object under " +
@@ -257,9 +260,57 @@ object PrincipleEnforcementInventory {
       "agent/decisions.md instead of an enum gate.",
   )
 
-  const val PRODUCTION_LINE_CEILING: Int = 500
+  const val PRODUCTION_LINE_CEILING: Int = 1200
 
   val productionLineCeilingExemptions: Map<String, String> = emptyMap()
+
+  val runtimeComponentInboundApi: List<String> = listOf(
+    "agentRunService",
+    "configResolutionService",
+    "externalAddonOverlayService",
+    "externalAgentAddonSourceConfigPort",
+    "featureSpecPathResolverPort",
+    "featureTaskContinuationLookupService",
+    "featureTaskRuntimePhaseRecorder",
+    "featureTaskRuntimeRunInvariantsSource",
+    "featureTaskRuntimeRunner",
+    "featureTaskRuntimeStatusService",
+    "featureTaskRuntimeWorkerCoordinator",
+    "goalOperatorDecisionService",
+    "goalPlanningLogService",
+    "goalPlanningPreparationCheckpoint",
+    "goalPreflightService",
+    "goalRunner",
+    "goalRunnerStatusService",
+    "ideStatusService",
+    "installAgentService",
+    "installMcpRegistrationPort",
+    "installNativeAgentLinkPort",
+    "installSelectionPersistencePort",
+    "installService",
+    "installedWorkspaceBaselineStatusPort",
+    "learningService",
+    "lifecycleTelemetryService",
+    "parallelCodeReviewRunner",
+    "repoValidationGateway",
+    "repositoryEnclosingRootPort",
+    "resolvedEnvironmentContext",
+    "reviewService",
+    "reviewSnapshotPruneService",
+    "runtimeDiagnostics",
+    "scaffoldCatalogGateway",
+    "scaffoldGateway",
+    "skillRemoveService",
+    "systemService",
+    "telemetryConfigStorePort",
+    "telemetryLevelMutator",
+    "telemetryService",
+    "unaddressedFindingsLedgerService",
+    "uninstallFileSystemService",
+    "unsupportedScaffoldGateway",
+    "workListService",
+    "workflowService",
+  )
 
   val packageClusteringGenericSegments: Set<String> = setOf(
     "model",

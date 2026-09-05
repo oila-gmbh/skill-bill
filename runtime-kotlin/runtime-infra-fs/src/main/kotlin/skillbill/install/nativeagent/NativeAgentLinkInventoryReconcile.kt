@@ -7,7 +7,7 @@ import java.nio.file.LinkOption
 import java.nio.file.Path
 
 internal fun reconcileNativeAgentLinkInventoryLocked(request: NativeAgentLinkInventoryLockedReconcileRequest) {
-  val trustedRoots = NativeAgentLinkInventorySupport.canonicalManagedCacheRoots(request.home, request.managedRoots)
+  val trustedRoots = NativeAgentLinkInventoryPaths.canonicalManagedCacheRoots(request.home, request.managedRoots)
   val previous = loadPreviousNativeAgentLinkInventory(
     request.path,
     request.home,

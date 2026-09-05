@@ -7,7 +7,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleReq
 import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
 import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.ValidationGateRepoConfig
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.ContractVersionMismatchError
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
@@ -179,7 +179,7 @@ internal fun failedWith(vararg findings: ValidationGateFinding): ValidationGateR
 )
 
 internal fun completedRepair(): ValidationGateAgentRepairResult {
-  val payload = JsonSupport.mapToJsonString(mapOf("produced_outputs" to emptyMap<String, Any?>()))
+  val payload = JsonCodec.mapToJsonString(mapOf("produced_outputs" to emptyMap<String, Any?>()))
   return ValidationGateAgentRepairResult.Completed(
     FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = payload),
   )

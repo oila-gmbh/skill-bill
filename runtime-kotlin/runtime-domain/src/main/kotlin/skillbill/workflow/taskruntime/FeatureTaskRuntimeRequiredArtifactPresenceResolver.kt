@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.RequiredArtifactPresenceResolver
 import skillbill.workflow.engine.model.ResolvedRequiredArtifact
@@ -81,7 +81,7 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
   ): FeatureTaskRuntimeQualityGateSelection? {
     val raw = snapshot.artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as? Map<*, *>
       ?: return null
-    val continuationMap = JsonSupport.anyToStringAnyMap(raw) ?: return null
+    val continuationMap = JsonCodec.anyToStringAnyMap(raw) ?: return null
     return try {
       FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(continuationMap).qualityGateSelection
     } catch (_: InvalidWorkflowStateSchemaError) {
@@ -108,7 +108,7 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
         "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY' must have string keys; " +
           "found '$key'.",
       )
-    val entryMap = JsonSupport.anyToStringAnyMap(value)
+    val entryMap = JsonCodec.anyToStringAnyMap(value)
       ?: throw InvalidWorkflowStateSchemaError(
         "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY' entry for " +
           "'$phaseId' must decode to a map.",

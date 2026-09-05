@@ -1,6 +1,6 @@
 package skillbill.scaffold
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.scaffold.platformpack.anchoredTopLevelFieldNames
 import skillbill.scaffold.platformpack.loadPlatformManifest
 import java.nio.file.Files
@@ -56,7 +56,7 @@ class PlatformPackCustomFieldsRoundTripTest {
         "Keys present: ${pack.customFields.keys}",
     )
     assertEquals("hello", pack.customFields["another_custom"])
-    val nested = requireNotNull(JsonSupport.anyToStringAnyMap(pack.customFields["custom_thing"])) {
+    val nested = requireNotNull(JsonCodec.anyToStringAnyMap(pack.customFields["custom_thing"])) {
       "Expected 'custom_thing' to deserialize to a Map but got ${pack.customFields["custom_thing"]}"
     }
     assertEquals(1, nested["a"])

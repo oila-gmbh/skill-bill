@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import org.junit.jupiter.api.io.TempDir
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.ExternalAddonConfigError
 import skillbill.install.model.ExternalAddonSource
 import skillbill.ports.install.addon.model.ExternalAddonSourceConfigRequest
@@ -82,7 +82,7 @@ class FileExternalAddonSourceConfigStoreTest {
     ).sources
 
     assertEquals(listOf(ExternalAddonSource(sourceDir.toAbsolutePath().normalize(), "ios")), sources)
-    val payload = JsonSupport.parseObjectOrNull(Files.readString(configPath(home))).toString()
+    val payload = JsonCodec.parseObjectOrNull(Files.readString(configPath(home))).toString()
     assertTrue("external_addon_sources" in payload)
     assertEquals(sourceDir, store.readExternalAddonSources(request(home, configPath(home))).sources.single().path)
   }
@@ -174,6 +174,6 @@ class FileExternalAddonSourceConfigStoreTest {
 
   private fun writeConfig(home: Path, payload: Map<String, Any?>) {
     Files.createDirectories(home.resolve(".skill-bill"))
-    Files.writeString(configPath(home), JsonSupport.mapToJsonString(payload) + "\n")
+    Files.writeString(configPath(home), JsonCodec.mapToJsonString(payload) + "\n")
   }
 }

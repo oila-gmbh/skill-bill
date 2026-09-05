@@ -1,6 +1,6 @@
 package skillbill.launcher
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.launcher.mcp.McpJsonConfig
 import skillbill.launcher.mcp.McpRegistrationOperations
 import java.nio.file.Files
@@ -14,8 +14,8 @@ import kotlin.test.assertTrue
 class McpRegistrationOperationsTest {
   private val runtimeMcpBin = Path.of("/tmp/runtime-mcp")
 
-  private fun decode(path: Path): Map<String, Any?> = JsonSupport.anyToStringAnyMap(
-    JsonSupport.parseObjectOrNull(Files.readString(path))?.let(JsonSupport::jsonElementToValue),
+  private fun decode(path: Path): Map<String, Any?> = JsonCodec.anyToStringAnyMap(
+    JsonCodec.parseObjectOrNull(Files.readString(path))?.let(JsonCodec::jsonElementToValue),
   ) ?: emptyMap()
 
   private fun skillBillServer(path: Path): Map<*, *> {

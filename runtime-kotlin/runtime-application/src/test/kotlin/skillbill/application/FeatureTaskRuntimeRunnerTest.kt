@@ -24,7 +24,7 @@ import skillbill.application.featuretask.model.GoalSubtaskReviewInputReady
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.telemetry.LifecycleTelemetryService
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -1127,7 +1127,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
 
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
     val ledger = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
     )
     val actions = ledger.map { it["action"] as String }
     assertContains(actions, "start")
@@ -1135,9 +1135,9 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
     val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
     assertEquals(sequences.sorted(), sequences)
     val records = requireNotNull(
-      JsonSupport.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMap(artifacts[FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY]),
     )
-    val planRecord = requireNotNull(JsonSupport.anyToStringAnyMap(records["plan"]))
+    val planRecord = requireNotNull(JsonCodec.anyToStringAnyMap(records["plan"]))
     assertEquals("completed", planRecord["status"])
     assertTrue((planRecord["started_at"] as String).isNotBlank())
     assertTrue((planRecord["finished_at"] as String).isNotBlank())
@@ -1153,7 +1153,7 @@ class FeatureTaskRuntimeRunnerBlockedAndLedgerTest {
 
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)
     val ledger = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMapList(artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY]),
     )
     val blockedEntry = ledger.single { it["action"] == "blocked" }
     assertEquals("write_history", blockedEntry["phase_id"])
@@ -1471,7 +1471,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     assertNotEquals(siblingTip, reconciledBase)
     assertEquals("false", git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value)
     val recoveries = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"],
       ),
     )
@@ -1934,7 +1934,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     @Suppress("UNCHECKED_CAST")
     val participants = outcome["participating_agent_ids"] as List<String>
     assertTrue(participants.isNotEmpty(), "goal-continuation outcome must carry a non-empty participating_agent_ids")
-    val installSync = requireNotNull(JsonSupport.anyToStringAnyMap(artifacts["install_sync_result"]))
+    val installSync = requireNotNull(JsonCodec.anyToStringAnyMap(artifacts["install_sync_result"]))
     assertEquals("deferred", installSync["status"])
     assertContains(installSync["reason"].toString(), "must not block subtask completion")
   }
@@ -1978,9 +1978,9 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     val state = requireNotNull(
-      JsonSupport.anyToStringAnyMap(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"]),
+      JsonCodec.anyToStringAnyMap(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_subtask_review_state"]),
     )
-    val firstPass = requireNotNull(JsonSupport.anyToStringAnyMapList((state["pass_results"]))).first()
+    val firstPass = requireNotNull(JsonCodec.anyToStringAnyMapList((state["pass_results"]))).first()
     assertEquals("changes_requested", firstPass["verdict"])
     assertEquals(1, firstPass["unresolved_finding_count"])
   }
@@ -2204,7 +2204,7 @@ class FeatureTaskRuntimeGoalContinuationReviewPrepTest {
     )
     assertEquals(1, git.goalReviewRecoverCalls)
     assertEquals(unreachableRemediation, git.goalReviewRecoverRequests.single().unreachableSha)
-    val evidence = JsonSupport.anyToStringAnyMapList(
+    val evidence = JsonCodec.anyToStringAnyMapList(
       harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"],
     ).orEmpty()
     val entry = evidence.single() as Map<*, *>
@@ -4484,7 +4484,7 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )
@@ -5199,11 +5199,11 @@ class ProviderLimitAndProcessFailureBudgetTest {
   // with its attempt count intact, alongside the operator's reason.
   private fun reopenPhaseAsOperator(harness: RunnerHarness, phaseId: String) {
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
-    val records = JsonSupport
+    val records = JsonCodec
       .anyToStringAnyMap(artifacts["feature_task_runtime_phase_records"])
       .orEmpty()
       .toMutableMap()
-    val record = requireNotNull(JsonSupport.anyToStringAnyMap(records[phaseId]))
+    val record = requireNotNull(JsonCodec.anyToStringAnyMap(records[phaseId]))
       .toMutableMap()
     record["status"] = "pending"
     record["blocked_reason"] = null
@@ -5218,7 +5218,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
     // same entry the retry-blocked command writes.
     val ledger = (artifacts["feature_task_runtime_phase_ledger"] as? List<*>).orEmpty()
     val nextSequence = ledger
-      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("sequence_number") as? Number }
+      .mapNotNull { JsonCodec.anyToStringAnyMap(it)?.get("sequence_number") as? Number }
       .maxOfOrNull { it.toInt() + 1 } ?: 0
     artifacts["feature_task_runtime_phase_ledger"] = ledger + mapOf<String, Any?>(
       "action" to "retry",

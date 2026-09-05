@@ -6,7 +6,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.telemetry.model.FeatureTaskRuntimeFindingVerificationTelemetry
 import skillbill.application.telemetry.model.FeatureTaskRuntimeRegenerationTelemetry
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.gitops.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
@@ -26,7 +26,7 @@ fun FeatureTaskRuntimeRunner.executePreparedRun(
     isGoalContinuation = isGoalContinuationRun(runRequest),
   )
   emitFeatureTaskRuntimeEventSafely(
-    diagnostics = runnerDiagnostics,
+    diagnostics = diagnostics,
     seam = "RunStarted event-sink emission",
   ) {
     runRequest.eventSink.emit(
@@ -34,7 +34,7 @@ fun FeatureTaskRuntimeRunner.executePreparedRun(
     )
   }
   val telemetrySessionId = lifecycleTelemetry.started(runRequest)
-  val observability = FeatureTaskRuntimeRunObservability(recorder, runRequest, runnerDiagnostics)
+  val observability = FeatureTaskRuntimeRunObservability(recorder, runRequest, diagnostics)
   val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
   val telemetryContext = buildExecutePreparedRunTelemetryContext(
     runRequest,
@@ -116,9 +116,9 @@ fun FeatureTaskRuntimeRunner.loadFindingVerificationTelemetry(
       reviewFixCapExhausted = loadReviewFixIterationCount(request) >= 1,
     )
   val outputMap = verifyRecord.outputArtifact
-    ?.let(JsonSupport::parseObjectOrNull)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::parseObjectOrNull)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?: return FeatureTaskRuntimeFindingVerificationTelemetry(
       reviewFixCapExhausted = loadReviewFixIterationCount(request) >= 1,
     )
@@ -174,13 +174,5 @@ fun FeatureTaskRuntimeRunner.loadRegenerationTelemetry(
 fun FeatureTaskRuntimeRunner.finalizingAgentId(request: FeatureTaskRuntimeRunRequest): String? =
   agentAttributionFromPhaseState(recorder, request.workflowId, request.dbPathOverride).finalizingAgentId
 
-val FeatureTaskRuntimeRunner.recorder get() = dependencies.recorder
-val FeatureTaskRuntimeRunner.goalContinuationRecorder get() = dependencies.goalContinuationRecorder
-val FeatureTaskRuntimeRunner.runInvariantsStore get() = dependencies.runInvariantsStore
-val FeatureTaskRuntimeRunner.outputValidator get() = dependencies.outputValidator
-val FeatureTaskRuntimeRunner.phaseGates get() = dependencies.phaseGates
-val FeatureTaskRuntimeRunner.subtaskLauncher get() = dependencies.subtaskLauncher
-val FeatureTaskRuntimeRunner.phaseSettlementService get() = dependencies.phaseSettlementService
-val FeatureTaskRuntimeRunner.runnerDiagnostics get() = dependencies.diagnostics
 val FeatureTaskRuntimeRunner.lifecycleTelemetry get() = phaseGates.lifecycleTelemetry
 val FeatureTaskRuntimeRunner.specSourceResolver get() = phaseGates.specGate.specSourceResolver

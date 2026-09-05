@@ -38,7 +38,6 @@ import skillbill.review.plan.model.ReviewRoutedLane
 import java.nio.file.Path
 import java.security.MessageDigest
 
-/** Compiles the already-resolved parallel-review facts into validated assignment-owned launches. */
 object ParallelReviewPreparationCompiler {
   internal fun compile(
     input: ParallelReviewPreparationInput,
@@ -79,21 +78,13 @@ object ParallelReviewPreparationCompiler {
         routes = routes,
         selection = selection,
         revisionId = revisionId,
-        deps = PrepareReviewCompileDeps(
-          budget = budget,
-          envelopeValidator = envelopeValidator,
-          hunkLocatorReader = hunkLocatorReader,
-        ),
+        envelopeValidator = envelopeValidator,
+        hunkLocatorReader = hunkLocatorReader,
       ),
     )
     return launchRequests(input, preparation, routes, budget, specialistContract)
   }
 
-  /**
-   * Sparse selection: a lane survives only where routing focused at least one commit, and it then
-   * owns exactly what those commits changed under its previously resolved path ownership. Required
-   * baseline lanes focus every commit, so this can only ever narrow an optional lane.
-   */
   private fun narrowToFocusedCommits(
     input: ParallelReviewPreparationInput,
     candidates: List<SpecialistRoute>,
@@ -141,8 +132,8 @@ object ParallelReviewPreparationCompiler {
 
   private fun prepareReview(compileInput: PrepareReviewCompileInput) = ReviewPreparationService(
     reviewFactPorts(compileInput.input, compileInput.hunks, compileInput.selection),
-    compileInput.deps.envelopeValidator,
-    compileInput.deps.hunkLocatorReader,
+    compileInput.envelopeValidator,
+    compileInput.hunkLocatorReader,
   ).prepare(
     ReviewPreparationRequest(
       reviewId = compileInput.input.reviewRunId ?: "code-review-${compileInput.revisionId}",
@@ -273,11 +264,6 @@ private data class PrepareReviewCompileInput(
   val routes: List<SpecialistRoute>,
   val selection: ReviewLaneSelection,
   val revisionId: String,
-  val deps: PrepareReviewCompileDeps,
-)
-
-private data class PrepareReviewCompileDeps(
-  val budget: ReviewContextBudgetPolicy,
   val envelopeValidator: ReviewContextEnvelopeValidator,
   val hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
 )

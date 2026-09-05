@@ -1,6 +1,6 @@
 package skillbill.application.subtaskreview
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_CATEGORY
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_SEVERITY
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
@@ -24,7 +24,7 @@ object GoalSubtaskReviewVerificationRejection {
     val reviewFindings = GoalSubtaskReviewStructuredFindingsParse.structuredFindings(reviewOutput, recordedVerdicts)
     val reviewById = reviewFindings.associateBy { it.findingId.orEmpty() }
     val dispositionsRaw = verifyOutput["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
       ?: return emptyList()
     return dispositionsRaw.mapIndexedNotNull { index, entry ->
@@ -43,7 +43,7 @@ object GoalSubtaskReviewVerificationRejection {
   }
 
   private fun rejectedVerificationFinding(input: RejectedVerificationFindingInput): UnaddressedFinding? {
-    val map = JsonSupport.anyToStringAnyMap(input.entry) ?: return null
+    val map = JsonCodec.anyToStringAnyMap(input.entry) ?: return null
     val disposition = (map["disposition"] as? String)?.trim()?.lowercase()
     if (disposition != UNADDRESSED_FINDING_REJECTED_DISPOSITION) return null
     val findingId = (map["finding_id"] as? String)?.takeIf(String::isNotBlank) ?: return null

@@ -1,7 +1,7 @@
 package skillbill.application.featuretask.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_LAUNCH_BRIEFING_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
@@ -126,7 +126,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
 
     private fun Map<String, Any?>.requireEnvelopeField(key: String): FeatureTaskRuntimeHandoffEnvelope {
       val rawValue = if (containsKey(key)) this[key] else schemaError(missingMessage(key, "object"))
-      val envelope = JsonSupport.anyToStringAnyMap(rawValue)
+      val envelope = JsonCodec.anyToStringAnyMap(rawValue)
         ?: schemaError("Feature-task-runtime briefing artifact field '$key' must decode to an object.")
       return try {
         FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap(envelope)
@@ -170,7 +170,7 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
       if (!containsKey(key) || this[key] == null) {
         return null
       }
-      val map = JsonSupport.anyToStringAnyMap(this[key])
+      val map = JsonCodec.anyToStringAnyMap(this[key])
         ?: schemaError("Feature-task-runtime briefing artifact field '$key' must decode to an object.")
       return try {
         FeatureTaskRuntimePriorGapMemory.fromMap(map)

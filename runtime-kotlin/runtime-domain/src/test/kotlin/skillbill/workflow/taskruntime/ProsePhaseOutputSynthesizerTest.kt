@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -27,7 +27,7 @@ class ProsePhaseOutputSynthesizerTest {
       """.trimIndent()
 
     val envelope = assertNotNull(ProsePhaseOutputSynthesizer.trySynthesize(raw, "implement"))
-    val produced = assertNotNull(JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]))
+    val produced = assertNotNull(JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]))
     val value = assertNotNull(produced["value"] as? String)
     assertTrue(value.contains("implementation_receipt") || value.contains("completed_task_ids"))
     assertEquals("completed", envelope["status"])
@@ -119,7 +119,7 @@ class ProsePhaseOutputSynthesizerTest {
       """.trimIndent()
 
     val envelope = assertNotNull(ProsePhaseOutputSynthesizer.trySynthesize(raw, "implement"))
-    val produced = assertNotNull(JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]))
+    val produced = assertNotNull(JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]))
     assertEquals("implementation prose", produced["value"])
     assertEquals("completed", envelope["status"])
     assertNull(envelope["tests_executed"])

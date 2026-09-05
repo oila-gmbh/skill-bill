@@ -100,7 +100,7 @@ data class GoalRunnerAcceptedSubtask(
   val acceptedAt: String,
 )
 
-data class GoalRunnerStatusProjectionExtras(
+data class GoalRunnerStatusProjectionRuntimeInputs(
   val executionLiveness: ExecutionLiveness = ExecutionLiveness.UNKNOWN,
   val planning: GoalPlanningStatusSnapshot? = null,
   val currentStepOverride: String? = null,
@@ -138,7 +138,7 @@ object GoalRunnerStatusProjector {
   fun project(
     manifest: DecompositionManifest,
     activeAgent: String? = null,
-    extras: GoalRunnerStatusProjectionExtras = GoalRunnerStatusProjectionExtras(),
+    extras: GoalRunnerStatusProjectionRuntimeInputs = GoalRunnerStatusProjectionRuntimeInputs(),
   ): GoalRunnerStatusProjection {
     val context = buildGoalRunnerStatusProjectionContext(manifest, extras)
     return assembleGoalRunnerStatusProjection(manifest, activeAgent, extras, context)

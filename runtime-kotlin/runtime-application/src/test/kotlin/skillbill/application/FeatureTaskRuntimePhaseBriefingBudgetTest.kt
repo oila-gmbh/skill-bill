@@ -1,7 +1,7 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
@@ -174,7 +174,7 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     )
 
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
-    val serialized = JsonSupport.mapToJsonString(briefing.toArtifactMap())
+    val serialized = JsonCodec.mapToJsonString(briefing.toArtifactMap())
 
     FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES.forEach { forbidden ->
       assertFalse(

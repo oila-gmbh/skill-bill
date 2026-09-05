@@ -1,6 +1,6 @@
 package skillbill.goalrunner
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestRejectionReason
@@ -171,8 +171,8 @@ private fun blockPayloads(text: String): List<String> = BLOCK_REGEX
   .toList()
 
 private fun parsePayloadMap(payload: String): Map<String, Any?>? = runCatching {
-  val element = JsonSupport.json.parseToJsonElement(payload)
-  JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element))
+  val element = JsonCodec.json.parseToJsonElement(payload)
+  JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(element))
 }.getOrNull()
 
 private data class WorkerOutput(

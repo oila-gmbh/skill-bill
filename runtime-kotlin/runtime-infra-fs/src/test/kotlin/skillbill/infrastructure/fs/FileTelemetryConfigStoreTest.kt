@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import org.junit.jupiter.api.io.TempDir
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.install.support.resolveTelemetryConfigPath
 import skillbill.install.support.resolveTelemetryStateDir
 import skillbill.model.EnvironmentContext
@@ -125,7 +125,7 @@ class FileTelemetryConfigStoreTest {
     val configPath = tempDir.resolve("config.json")
     Files.writeString(
       configPath,
-      JsonSupport.mapToJsonString(mapOf("install_id" to "persisted-id")) + "\n",
+      JsonCodec.mapToJsonString(mapOf("install_id" to "persisted-id")) + "\n",
     )
     val store = storeFor(tempDir, configPath, installIdEnv = "ignored-because-persisted-wins")
 

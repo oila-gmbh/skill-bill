@@ -8,7 +8,7 @@ import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpd
 import skillbill.application.decomposition.model.DecompositionManifestWorkflowProjectionInput
 import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
 import skillbill.application.decomposition.model.DecompositionManifestWriteResult
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.model.RepositoryRoot
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
@@ -97,7 +97,7 @@ internal val testDecompositionManifestValidator: DecompositionManifestValidator 
   object : DecompositionManifestValidator {
     override fun validate(manifest: Map<String, Any?>, sourceLabel: String) = Unit
     override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-      requireNotNull(JsonSupport.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
+      requireNotNull(JsonCodec.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
   }
 
 /**

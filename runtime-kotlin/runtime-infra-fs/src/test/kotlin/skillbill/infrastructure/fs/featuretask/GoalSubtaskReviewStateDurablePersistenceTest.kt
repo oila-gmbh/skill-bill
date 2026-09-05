@@ -9,7 +9,7 @@ import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -322,7 +322,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertEquals("a".repeat(40), reloaded.reviewBaseSha, "immutable review base must stay untouched")
     val artifacts = repository.taskRuntimeArtifacts(workflowId)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]),
+      JsonCodec.anyToStringAnyMapList(artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]),
     )
     val entry = evidence.single()
     assertEquals(orphaned, entry["original_sha"])
@@ -435,7 +435,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertEquals(fixture.orphanedBase, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )
@@ -481,7 +481,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertEquals(fixture.checkpointSha, healed.state?.remediationBaseSha)
     assertEquals(fixture.checkpointSha, git(fixture.repoRoot, "rev-parse", "HEAD"))
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )

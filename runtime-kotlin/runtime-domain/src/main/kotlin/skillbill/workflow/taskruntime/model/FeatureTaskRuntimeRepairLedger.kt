@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_LEDGER_CONTRACT_VERSION
 import skillbill.workflow.goal.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
@@ -176,7 +176,7 @@ data class FeatureTaskRuntimeRepairLedgerProjection(
   }
 
   internal val withinByteBudget: Boolean
-    get() = JsonSupport.mapToJsonString(toProjectionMap()).toByteArray(StandardCharsets.UTF_8).size <=
+    get() = JsonCodec.mapToJsonString(toProjectionMap()).toByteArray(StandardCharsets.UTF_8).size <=
       REPAIR_LEDGER_PROJECTION_MAX_UTF8_BYTES
 
   fun renderReferenceSection(): String {

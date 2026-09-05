@@ -9,7 +9,7 @@ import skillbill.application.workflow.model.WorkflowUpdateResult
 import skillbill.cli.kernel.toPayload
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.cli.workflow.toCliMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import java.nio.file.Files
@@ -85,14 +85,14 @@ internal object RuntimeWorkflowTestSupport {
     ).toCliMap()
   }
 
-  fun parseStepUpdates(rawJson: String): List<Map<String, Any?>> = JsonSupport.parseArrayOrEmpty(rawJson).map { value ->
-    requireNotNull(JsonSupport.anyToStringAnyMap(value))
+  fun parseStepUpdates(rawJson: String): List<Map<String, Any?>> = JsonCodec.parseArrayOrEmpty(rawJson).map { value ->
+    requireNotNull(JsonCodec.anyToStringAnyMap(value))
   }
 
   fun parseArtifactsPatch(rawJson: String): Map<String, Any?> = requireNotNull(
-    JsonSupport.parseObjectOrNull(rawJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap),
+    JsonCodec.parseObjectOrNull(rawJson)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap),
   )
 
   private fun component(context: CliRuntimeContext): RuntimeComponent =

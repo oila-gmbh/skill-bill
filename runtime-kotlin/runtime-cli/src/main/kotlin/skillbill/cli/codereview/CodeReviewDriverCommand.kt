@@ -23,7 +23,7 @@ import skillbill.cli.kernel.invokingAgentResolutionHelp
 import skillbill.cli.kernel.requireInvokingAgentId
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRunInputs
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.error.ShellContentContractException
 import java.nio.file.Path
@@ -222,7 +222,7 @@ private fun writeParallelReviewResult(state: CliRunState, result: ParallelCodeRe
     result.accountingSummary?.let { summary ->
       appendLine()
       append("# Review accounting — ")
-      append(JsonSupport.mapToJsonString(summary.toBoundedPayload()))
+      append(JsonCodec.mapToJsonString(summary.toBoundedPayload()))
     }
   }
   state.result = CliExecutionResult(exitCode = exitCode, stdout = output)

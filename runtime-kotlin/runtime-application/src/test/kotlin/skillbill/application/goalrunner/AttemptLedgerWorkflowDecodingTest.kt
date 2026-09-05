@@ -1,7 +1,7 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifactKeys
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
 import kotlin.test.Test
@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 class AttemptLedgerWorkflowDecodingTest {
   @Test
   fun `progress token fingerprints artifacts without embedding the body`() {
-    val bloatedArtifacts = JsonSupport.mapToJsonString(
+    val bloatedArtifacts = JsonCodec.mapToJsonString(
       mapOf("feature_task_runtime_delivered_projections" to "x".repeat(50_000)),
     )
     val snapshot = progressSnapshot(artifactsJson = bloatedArtifacts)
@@ -35,7 +35,7 @@ class AttemptLedgerWorkflowDecodingTest {
 
   @Test
   fun `decodeArtifactKeys materializes only requested top-level keys`() {
-    val artifactsJson = JsonSupport.mapToJsonString(
+    val artifactsJson = JsonCodec.mapToJsonString(
       mapOf(
         GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY to mapOf(
           "event_kind" to "operation_heartbeat",

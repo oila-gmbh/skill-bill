@@ -16,7 +16,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateResoluti
 import skillbill.application.featuretask.validation.model.ValidationGateTriageResult
 import skillbill.application.featuretask.validation.model.requiresUnparseableGateTriage
 import skillbill.config.model.applyValidationGateGradleWrapper
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
@@ -342,7 +342,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         "gate_run_count" to measurements.size,
         "gate_runs" to measurements.map { it.toArtifactMap() },
       )
-      val payload = JsonSupport.mapToJsonString(
+      val payload = JsonCodec.mapToJsonString(
         mapOf(
           "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
           "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,

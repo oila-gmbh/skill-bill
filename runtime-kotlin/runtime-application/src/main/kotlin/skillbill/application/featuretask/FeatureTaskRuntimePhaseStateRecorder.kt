@@ -3,7 +3,7 @@ package skillbill.application.featuretask
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeImplementationAttemptValidator
@@ -209,7 +209,7 @@ fun FeatureTaskRuntimePhaseStateRecorder.implementationAttemptPatch(
 ): Map<String, Any?> {
   if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(request.phaseId)) return emptyMap()
   val produced = request.normalizedOutput?.envelope
-    ?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]) }
+    ?.let { JsonCodec.anyToStringAnyMap(it["produced_outputs"]) }
   val value = produced?.get("value")?.toString()?.trim().orEmpty()
   if (produced == null || value.isBlank()) return emptyMap()
   val prompt = produced["prompt"]?.toString()?.trim()?.takeIf(String::isNotBlank)

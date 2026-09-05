@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 
 internal object ProsePhaseOutputParse {
   private val STATUS_TOKENS: Set<String> = setOf("completed", "blocked", "failed")
@@ -44,6 +44,6 @@ internal object ProsePhaseOutputParse {
 
 private fun parseObject(raw: String): Map<String, Any?>? {
   if (raw.isBlank()) return null
-  val obj = JsonSupport.parseObjectOrNull(raw) ?: return null
-  return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(obj))
+  val obj = JsonCodec.parseObjectOrNull(raw) ?: return null
+  return JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(obj))
 }

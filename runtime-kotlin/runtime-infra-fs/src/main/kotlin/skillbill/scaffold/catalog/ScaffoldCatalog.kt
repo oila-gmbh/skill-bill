@@ -30,7 +30,7 @@ import java.nio.file.Path
  * payload produced by a wizard is validated against the same constants when the scaffolder runs.
  *
  * F-001: Every member delegates to the matching `internal` constant declared in
- * `ScaffoldSupport.kt` (`APPROVED_CODE_REVIEW_AREAS`, `PRE_SHELL_FAMILIES`, `SHELLED_FAMILIES`,
+ * `ScaffoldContract.kt` (`APPROVED_CODE_REVIEW_AREAS`, `PRE_SHELL_FAMILIES`, `SHELLED_FAMILIES`,
  * `PLATFORM_PACK_PRESETS`, `SCAFFOLD_PAYLOAD_VERSION`) so the runtime stays the single source of
  * truth. There must be no parallel literal copies on this object.
  */

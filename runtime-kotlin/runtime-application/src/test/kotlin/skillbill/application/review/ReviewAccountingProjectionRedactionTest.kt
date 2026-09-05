@@ -1,7 +1,7 @@
 package skillbill.application.review
 
 import skillbill.application.review.model.ReviewPrelaunchExpansion
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.ports.review.model.ReviewAccountingRecord
 import skillbill.review.context.ReviewTreeAccounting
@@ -56,7 +56,7 @@ class ReviewAccountingProjectionRedactionTest {
       payload.keys,
     )
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, payload["contract_version"])
-    val parent = requireNotNull(JsonSupport.anyToStringAnyMap(payload["parent"]))
+    val parent = requireNotNull(JsonCodec.anyToStringAnyMap(payload["parent"]))
     assertEquals(
       setOf(
         "lane",
@@ -72,7 +72,7 @@ class ReviewAccountingProjectionRedactionTest {
       ),
       parent.keys,
     )
-    val counters = requireNotNull(JsonSupport.anyToStringAnyMap(payload["aggregate_counters"]))
+    val counters = requireNotNull(JsonCodec.anyToStringAnyMap(payload["aggregate_counters"]))
     assertEquals(
       setOf("launch_bytes", "evidence_bytes", "result_bytes", "expansions", "tool_calls", "model_turns"),
       counters.keys,
@@ -99,10 +99,10 @@ class ReviewAccountingProjectionRedactionTest {
         ),
       ),
     )
-    val lane = requireNotNull(JsonSupport.anyToStringAnyMapList((summary.toBoundedPayload()["lanes"]))).single()
+    val lane = requireNotNull(JsonCodec.anyToStringAnyMapList((summary.toBoundedPayload()["lanes"]))).single()
     assertEquals(digest, lane["bundle_composition_digest"])
     assertEquals(listOf("unreviewable"), lane["unreviewed_segment_ids"])
-    val segments = requireNotNull(JsonSupport.anyToStringAnyMapList(lane["segment_accounting"]))
+    val segments = requireNotNull(JsonCodec.anyToStringAnyMapList(lane["segment_accounting"]))
     assertEquals("seg-000", segments.single()["segment_id"])
     assertEquals(128L, segments.single()["measured_bytes"])
     assertEquals(2, segments.single()["entry_count"])
@@ -128,7 +128,7 @@ class ReviewAccountingProjectionRedactionTest {
         ),
       ),
     )
-    val lane = requireNotNull(JsonSupport.anyToStringAnyMapList((summary.toBoundedPayload()["lanes"]))).single()
+    val lane = requireNotNull(JsonCodec.anyToStringAnyMapList((summary.toBoundedPayload()["lanes"]))).single()
     assertEquals(listOf("seg-evidence-refused"), lane["unreviewed_segment_ids"])
     assertFalse(lane.toString().contains("evidence-unreviewable"))
   }

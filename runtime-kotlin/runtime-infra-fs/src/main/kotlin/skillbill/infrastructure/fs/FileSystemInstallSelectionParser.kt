@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallTelemetryLevel
 import skillbill.install.model.McpRegistrationChoice
@@ -10,8 +10,8 @@ import skillbill.install.model.SharedInstallSelection
 import java.nio.file.Path
 
 internal fun parseInstallSelectionPayload(path: Path, rawPayload: String): SharedInstallSelection {
-  val payload = JsonSupport.anyToStringAnyMap(
-    JsonSupport.parseObjectOrNull(rawPayload)?.let(JsonSupport::jsonElementToValue),
+  val payload = JsonCodec.anyToStringAnyMap(
+    JsonCodec.parseObjectOrNull(rawPayload)?.let(JsonCodec::jsonElementToValue),
   ) ?: throw malformedInstallSelection(path, "Root value must be a JSON object.")
   return runCatching { payload.toInstallSelection(path) }
     .getOrElse { error -> throw error.toMalformedInstallSelection(path) }

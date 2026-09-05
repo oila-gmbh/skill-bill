@@ -16,7 +16,7 @@ import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.fs.CanonicalRepositoryRoot
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
@@ -411,8 +411,8 @@ class McpRuntimeTest {
 
     val recorded = triageResult["recorded"] as List<*>
     assertEquals(2, recorded.size)
-    assertEquals("fix_applied", requireNotNull(JsonSupport.anyToStringAnyMap(recorded[0]))["outcome_type"])
-    assertEquals("fix_rejected", requireNotNull(JsonSupport.anyToStringAnyMap(recorded[1]))["outcome_type"])
+    assertEquals("fix_applied", requireNotNull(JsonCodec.anyToStringAnyMap(recorded[0]))["outcome_type"])
+    assertEquals("fix_rejected", requireNotNull(JsonCodec.anyToStringAnyMap(recorded[1]))["outcome_type"])
   }
 
   @Test
@@ -645,7 +645,7 @@ class McpTokenEstimationTest {
         lastIncompletePhase = "",
         blockedReason = "",
         resolvedBranch = "feat/SKILL-91",
-        estimatedPhaseTokenBreakdownJson = JsonSupport.mapToJsonString(
+        estimatedPhaseTokenBreakdownJson = JsonCodec.mapToJsonString(
           mapOf(
             "preplan" to mapOf("estimated_input_tokens" to 800, "estimated_output_tokens" to 400),
             "plan" to mapOf("estimated_input_tokens" to 1200, "estimated_output_tokens" to 600),
@@ -1131,9 +1131,9 @@ private fun scalarString(connection: Connection, sql: String): String = connecti
 }
 
 private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
-  val parsed = JsonSupport.parseObjectOrNull(rawJson)
+  val parsed = JsonCodec.parseObjectOrNull(rawJson)
   require(parsed != null) { "Expected JSON object but got: $rawJson" }
-  val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
+  val decoded = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
 }

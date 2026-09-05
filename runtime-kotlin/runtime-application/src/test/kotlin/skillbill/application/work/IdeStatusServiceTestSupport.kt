@@ -7,13 +7,13 @@ import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalReco
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
+import skillbill.application.goalrunner.GoalRunnerStatusTestPorts
 import skillbill.application.goalrunner.goalRepositoryIdentity
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusResult
 import skillbill.application.testHarnessClock
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
@@ -213,12 +213,11 @@ internal fun service(
   val projector = IdeStatusProjector(
     workflowSnapshotValidator = snapshotValidator,
     goalRunnerStatusService = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = manifestStore,
-        outcomeStore = outcomeStore,
-        phaseRecorder = phaseRecorder,
-      ).copy(
-        clock = ideStatusClock,
+      manifestStore = manifestStore,
+      outcomeStore = outcomeStore,
+      phaseRecorder = phaseRecorder,
+      clock = ideStatusClock,
+      ports = GoalRunnerStatusTestPorts(
         runtimeStatusService = runtimeStatusService,
       ),
     ),
@@ -330,7 +329,7 @@ internal fun blockedQualityGateChildArtifacts(
 }
 
 internal fun phaseRecordsArtifactsJson(vararg records: Pair<String, Map<String, Any?>>): String =
-  JsonSupport.mapToJsonString(
+  JsonCodec.mapToJsonString(
     mapOf(FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to records.toMap()),
   )
 

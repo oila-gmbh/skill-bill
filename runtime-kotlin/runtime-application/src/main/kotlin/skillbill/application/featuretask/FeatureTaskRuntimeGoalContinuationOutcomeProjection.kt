@@ -4,7 +4,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeGoalContinuatio
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeSubtaskOutcome
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
@@ -144,14 +144,14 @@ fun commitShaFromPhaseRecords(
     .orEmpty()[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH]
     ?.outputArtifact
   val payload = commitOutput
-    ?.let(JsonSupport::parseObjectOrNull)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let(JsonCodec::parseObjectOrNull)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
   return payload?.commitShaFromPhasePayload()
 }
 
 fun Map<String, Any?>.commitShaFromPhasePayload(): String? {
-  val producedOutputs = JsonSupport.anyToStringAnyMap(this["produced_outputs"])
+  val producedOutputs = JsonCodec.anyToStringAnyMap(this["produced_outputs"])
   return (this["commit_push_result"] as? Map<*, *>)?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
     ?: (producedOutputs?.get("commit_push_result") as? Map<*, *>)?.get("commit_sha")?.toString()
       ?.takeIf(String::isNotBlank)

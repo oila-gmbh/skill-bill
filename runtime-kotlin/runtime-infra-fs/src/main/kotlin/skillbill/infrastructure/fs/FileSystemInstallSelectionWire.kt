@@ -1,12 +1,12 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.SharedInstallSelection
 
-internal fun SharedInstallSelection.toInstallSelectionJson(): String = JsonSupport.mapToJsonString(toWireMap())
+internal fun SharedInstallSelection.toInstallSelectionJson(): String = JsonCodec.mapToJsonString(toWireMap())
 
 private fun SharedInstallSelection.toWireMap(): Map<String, Any?> = linkedMapOf(
   "contract_version" to INSTALL_SELECTION_CONTRACT_VERSION,

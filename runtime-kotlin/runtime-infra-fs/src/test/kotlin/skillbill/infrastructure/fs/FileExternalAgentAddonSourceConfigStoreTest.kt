@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.ExternalAddonConfigError
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
@@ -76,6 +76,6 @@ class FileExternalAgentAddonSourceConfigStoreTest {
   private fun configPath(home: Path): Path = home.resolve("config.json")
 
   private fun writeConfig(home: Path, payload: Map<String, Any?>) {
-    Files.writeString(configPath(home), JsonSupport.mapToJsonString(payload) + "\n")
+    Files.writeString(configPath(home), JsonCodec.mapToJsonString(payload) + "\n")
   }
 }

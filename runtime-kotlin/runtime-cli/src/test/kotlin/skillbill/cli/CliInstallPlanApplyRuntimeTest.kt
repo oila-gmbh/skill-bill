@@ -6,7 +6,7 @@ import skillbill.cli.install.installPlanPayload
 import skillbill.cli.kernel.CliOutput
 import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DbConstants
 import skillbill.db.telemetry.TelemetryOutboxStore
@@ -977,7 +977,7 @@ private data class InstallPlanApplyFixture(
 )
 
 private fun decodeInstallPlanApplyJson(rawJson: String): Map<String, Any?> =
-  JsonSupport.anyToStringAnyMap(JsonSupport.parseObjectOrNull(rawJson)?.let(JsonSupport::jsonElementToValue))
+  JsonCodec.anyToStringAnyMap(JsonCodec.parseObjectOrNull(rawJson)?.let(JsonCodec::jsonElementToValue))
     ?: emptyMap()
 
 private fun readInstallSelection(home: Path): Map<String, Any?> =

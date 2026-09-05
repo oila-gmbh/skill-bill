@@ -1,5 +1,5 @@
 package skillbill.infrastructure.sqlite.review
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.PARAM_ONE
 import skillbill.db.PARAM_TWO
 import skillbill.db.telemetry.TelemetryOutboxStore
@@ -113,7 +113,7 @@ fun enqueueTelemetryEvent(
   if (enabled) {
     TelemetryOutboxStore(connection).enqueue(
       eventName,
-      JsonSupport.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()),
+      JsonCodec.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()),
     )
   }
 }
@@ -132,7 +132,7 @@ fun updatePendingReviewFinishedEvent(
       AND json_extract(payload_json, '$.review_session_id') = ?
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(PARAM_ONE, JsonSupport.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()))
+    statement.setString(PARAM_ONE, JsonCodec.mapToJsonString(payload.toReviewFinishedTelemetryPayload().toPayload()))
     statement.setString(PARAM_TWO, reviewSessionId)
     statement.executeUpdate()
   }

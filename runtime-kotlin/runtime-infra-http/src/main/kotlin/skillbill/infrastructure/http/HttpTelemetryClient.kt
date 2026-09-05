@@ -1,7 +1,7 @@
 package skillbill.infrastructure.http
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.telemetry.RemoteStatsQueryPayload
 import skillbill.contracts.telemetry.defaultProxyCapabilities
 import skillbill.model.EnvironmentContext
@@ -185,7 +185,7 @@ private fun requestJson(
     requester.execute(
       "POST",
       url,
-      JsonSupport.mapToJsonString(payload),
+      JsonCodec.mapToJsonString(payload),
       defaultJsonHeaders() + headers,
     )
   ensureSuccessfulResponse(response, errorContext)
@@ -214,7 +214,7 @@ private fun postJson(url: String, payload: Map<String, Any?>, errorContext: Stri
     requester.execute(
       "POST",
       url,
-      JsonSupport.mapToJsonString(payload),
+      JsonCodec.mapToJsonString(payload),
       defaultJsonHeaders(),
     )
   ensureSuccessfulResponse(response, errorContext)
@@ -234,9 +234,9 @@ private fun decodeJsonObject(body: String, errorContext: String): Map<String, An
     return emptyMap()
   }
   val decoded =
-    JsonSupport.parseObjectOrNull(body)
+    JsonCodec.parseObjectOrNull(body)
       ?: throw IllegalArgumentException("$errorContext returned invalid JSON.")
-  return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(decoded))
+  return JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(decoded))
     ?: throw IllegalArgumentException(
       "$errorContext returned a non-object JSON payload.",
     )

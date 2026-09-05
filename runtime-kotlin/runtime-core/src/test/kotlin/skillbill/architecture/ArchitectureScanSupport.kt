@@ -395,9 +395,19 @@ object ArchitectureScanSupport {
       """^\s*((?:(?:public|internal|private|protected|abstract|sealed|open|final|data|enum|value|fun)\s+)*)""" +
         """(?:class|object|interface|fun)\s+([A-Za-z_][A-Za-z0-9_]*)\b""",
     )
-  private val SPILLOVER_EXPLICIT_SUFFIX_PATTERN =
-    Regex("""(?:Extras\d*|Continued\d*|Helpers\d+|Fns\d+|Support\d+|[A-Z]\d+)$""")
+  private val SPILLOVER_NUMBERED_SUFFIX_PATTERN =
+    Regex("""(?:Extras\d*|Continued\d*|Helpers\d+|Fns\d+|Support\d+|Misc\d+|(?<![A-Z])[A-Z]\d+)$""")
+  private val SPILLOVER_MAIN_SOURCE_SUFFIX_PATTERN =
+    Regex("""(?:Extras\d*|Continued\d*|Helpers\d*|Fns\d+|Support\d*|Misc\d*|(?<![A-Z])[A-Z]\d+)$""")
+  private val SPILLOVER_DECLARATION_PATTERN =
+    Regex(
+      """^\s*(?:(?:public|internal|private|protected|abstract|sealed|open|final|data|enum|value|inline|operator|""" +
+        """infix|suspend|override|lateinit|const|annotation|inner|companion|external|tailrec|expect|actual|""" +
+        """fun)\s+)*(?:class|object|interface|fun|val|var)\s+(.*)$""",
+    )
   private val FUNCTION_PATTERN = Regex("""\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
+  private val ABSTRACT_PROPERTY_PATTERN =
+    Regex("""^\s*abstract\s+val\s+([A-Za-z_][A-Za-z0-9_]*)\s*:""", RegexOption.MULTILINE)
   private val CAMEL_TOKEN_PATTERN = Regex("""[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)""")
   private val EXTENSION_FUN_PATTERN =
     Regex("""^\s*(?:(?:public|internal|private|protected)\s+)*fun\s+([A-Za-z0-9_.]+)\.""")
@@ -410,6 +420,9 @@ object ArchitectureScanSupport {
 
   fun declaredImports(source: String): List<String> =
     IMPORT_PATTERN.findAll(source).map { match -> match.groupValues[1] }.toList()
+
+  fun abstractPropertyNames(source: String): Set<String> =
+    ABSTRACT_PROPERTY_PATTERN.findAll(source).map { match -> match.groupValues[1] }.toSet()
 
   fun logicalTypeLineCounts(productionRoots: List<String>): Map<String, Int> {
     val counts = linkedMapOf<String, Int>()
@@ -597,7 +610,7 @@ object ArchitectureScanSupport {
         val siblings = pathsByPackage.getOrDefault(packageDir, emptyList())
           .map { path -> path.replace('\\', '/').substringAfterLast('/').removeSuffix(".kt") }
           .toSet()
-        isSpilloverBaseName(baseName, siblings)
+        isSpilloverBaseName(baseName, siblings, isMainSourcePath(normalized))
       }
       .sorted()
       .map { relativePath ->
@@ -605,8 +618,13 @@ object ArchitectureScanSupport {
       }
   }
 
-  private fun isSpilloverBaseName(baseName: String, siblings: Set<String>): Boolean = when {
-    SPILLOVER_EXPLICIT_SUFFIX_PATTERN.containsMatchIn(baseName) -> true
+  private fun isMainSourcePath(normalizedPath: String): Boolean = "/src/main/" in normalizedPath
+
+  private fun spilloverSuffixPattern(mainSource: Boolean): Regex =
+    if (mainSource) SPILLOVER_MAIN_SOURCE_SUFFIX_PATTERN else SPILLOVER_NUMBERED_SUFFIX_PATTERN
+
+  private fun isSpilloverBaseName(baseName: String, siblings: Set<String>, mainSource: Boolean): Boolean = when {
+    spilloverSuffixPattern(mainSource).containsMatchIn(baseName) -> true
     else -> {
       val prefix = Regex("""^(.+?)(\d+)$""").find(baseName)?.groupValues?.get(1).orEmpty()
       prefix.isNotEmpty() && (
@@ -633,6 +651,74 @@ object ArchitectureScanSupport {
       },
       exemptPaths,
     )
+
+  fun spilloverIdentifierKeysInSource(relativePath: String, source: String): List<String> {
+    val normalized = relativePath.replace('\\', '/')
+    if (!isMainSourcePath(normalized)) return emptyList()
+    return sourceWithoutStringLiterals(source).lineSequence()
+      .mapNotNull { rawLine -> spilloverDeclarationName(rawLine.withoutCommentText().text) }
+      .filter { name -> SPILLOVER_MAIN_SOURCE_SUFFIX_PATTERN.containsMatchIn(name) }
+      .map { name -> "$normalized#$name" }
+      .toList()
+  }
+
+  fun spilloverIdentifierViolationsInSource(relativePath: String, source: String): List<String> =
+    spilloverIdentifierKeysInSource(relativePath, source).map { key ->
+      "$key carries the spillover-identifier signature; name the declaration for the responsibility it holds."
+    }
+
+  fun spilloverIdentifierKeys(scanRoots: List<String>, exemptPaths: Set<String>): Set<String> =
+    scanRoots.flatMap { scanRoot ->
+      kotlinFilesUnder(runtimeRoot.resolve(scanRoot)).flatMap { path ->
+        val relativePath = runtimeRoot.relativize(path).toString().replace('\\', '/')
+        if (relativePath in exemptPaths) emptyList() else spilloverIdentifierKeysInSource(relativePath, path.readText())
+      }
+    }.toSet()
+
+  private fun spilloverDeclarationName(line: String): String? {
+    val remainder = SPILLOVER_DECLARATION_PATTERN.find(line)?.groupValues?.get(1)?.trimStart() ?: return null
+    var index = if (remainder.startsWith('<')) skipBalancedAngles(remainder, 0) else 0
+    while (true) {
+      val start = skipWhitespace(remainder, index)
+      val end = identifierEnd(remainder, start)
+      if (end == start) return null
+      index = skipTypeArgumentsAndNullability(remainder, end)
+      if (index >= remainder.length || remainder[index] != '.') return remainder.substring(start, end)
+      index++
+    }
+  }
+
+  private fun skipWhitespace(text: String, from: Int): Int {
+    var index = from
+    while (index < text.length && text[index].isWhitespace()) index++
+    return index
+  }
+
+  private fun identifierEnd(text: String, from: Int): Int {
+    var index = from
+    while (index < text.length && (text[index].isLetterOrDigit() || text[index] == '_')) index++
+    return index
+  }
+
+  private fun skipTypeArgumentsAndNullability(text: String, from: Int): Int {
+    var index = from
+    if (index < text.length && text[index] == '<') index = skipBalancedAngles(text, index)
+    if (index < text.length && text[index] == '?') index++
+    return index
+  }
+
+  private fun skipBalancedAngles(text: String, openIndex: Int): Int {
+    var depth = 0
+    var index = openIndex
+    while (index < text.length) {
+      when (text[index]) {
+        '<' -> depth++
+        '>' -> if (--depth == 0) return index + 1
+      }
+      index++
+    }
+    return index
+  }
 
   fun extensionReceiverFqns(source: String, packageName: String, imports: List<String>): List<String> {
     val importMap = imports.associateBy { imported -> imported.substringAfterLast('.') }

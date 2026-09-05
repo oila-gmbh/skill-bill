@@ -16,11 +16,10 @@ import skillbill.application.telemetry.model.GoalSubtaskFinishedRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.model.WorkflowFamilyKind
 import skillbill.application.workflow.model.WorkflowOpenResult
-import skillbill.application.workflow.model.WorkflowServiceDeps
 import skillbill.application.workflow.model.WorkflowServiceOpenFeatureTaskArgs
 import skillbill.application.workflow.model.WorkflowUpdateRequest
 import skillbill.application.workflow.openFeatureTask
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.MissingCompositionLayerError
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
@@ -889,9 +888,9 @@ internal fun statusSection(path: Path): String {
 }
 
 internal fun decodeArtifactsForTest(artifactsJson: String): Map<String, Any?> =
-  JsonSupport.parseObjectOrNull(artifactsJson)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+  JsonCodec.parseObjectOrNull(artifactsJson)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     .orEmpty()
 
 internal fun FeatureTaskRuntimePhaseRecorder.appendPlanLedger(
@@ -952,8 +951,8 @@ internal fun decodeStepsForTest(
   workflowId: String,
 ): List<Pair<String, String>> {
   val stepsJson = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(workflowId)).stepsJson
-  val element = JsonSupport.json.parseToJsonElement(stepsJson)
-  return (JsonSupport.jsonElementToValue(element) as List<*>).map { raw ->
+  val element = JsonCodec.json.parseToJsonElement(stepsJson)
+  return (JsonCodec.jsonElementToValue(element) as List<*>).map { raw ->
     val item = raw as Map<*, *>
     item["step_id"].toString() to item["status"].toString()
   }
@@ -977,16 +976,14 @@ internal fun testWorkflowService(
   database: DatabaseSessionFactory,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
 ): WorkflowService = WorkflowService(
-  WorkflowServiceDeps(
-    database = database,
-    gitOperations = gitOperations,
-    decompositionManifestStore = FileSystemDecompositionManifestFileStore(),
-    workflowSnapshotValidator = WorkflowSnapshotValidatorInfraAdapter(),
-    decompositionManifestValidator = DecompositionManifestValidatorAdapter(),
-    decompositionManifestWriter = DecompositionManifestWriter(),
-    repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-    goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-  ),
+  database = database,
+  gitOperations = gitOperations,
+  decompositionManifestStore = FileSystemDecompositionManifestFileStore(),
+  workflowSnapshotValidator = WorkflowSnapshotValidatorInfraAdapter(),
+  decompositionManifestValidator = DecompositionManifestValidatorAdapter(),
+  decompositionManifestWriter = DecompositionManifestWriter(),
+  repositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
+  goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
 )
 
 internal fun loadTestDecompositionManifest(path: Path) =
@@ -1193,16 +1190,16 @@ internal fun corruptDurableEnvelope(
   val record = requireNotNull(workflowRepository.getFeatureTaskRuntimeWorkflow(workflowId))
   val artifacts = decodeArtifactsForTest(record.artifactsJson).toMutableMap()
   val briefings = requireNotNull(
-    JsonSupport.anyToStringAnyMap((artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY])),
+    JsonCodec.anyToStringAnyMap((artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY])),
   ).toMutableMap()
-  val briefing = requireNotNull(JsonSupport.anyToStringAnyMap((briefings.getValue("implement")))).toMutableMap()
+  val briefing = requireNotNull(JsonCodec.anyToStringAnyMap((briefings.getValue("implement")))).toMutableMap()
   briefing["handoff_envelope"] = corrupt(
-    requireNotNull(JsonSupport.anyToStringAnyMap(briefing.getValue("handoff_envelope"))),
+    requireNotNull(JsonCodec.anyToStringAnyMap(briefing.getValue("handoff_envelope"))),
   )
   briefings["implement"] = briefing
   artifacts[FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY] = briefings
   workflowRepository.saveFeatureTaskRuntimeWorkflow(
-    record.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    record.copy(artifactsJson = JsonCodec.mapToJsonString(artifacts)),
   )
 }
 

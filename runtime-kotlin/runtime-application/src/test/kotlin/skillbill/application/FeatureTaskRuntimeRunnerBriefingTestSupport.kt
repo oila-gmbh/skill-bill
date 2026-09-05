@@ -5,7 +5,7 @@ import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRunReport
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInputFailureReason
@@ -194,9 +194,9 @@ internal fun assertNonScopeReviewPrepFailureSurfacesEvidenceStoreCause() {
   val harness = inlineGoalContinuationHarness(repoRoot, git, validJsonOutput("commit_push"))
   seedPreReviewPhases(harness)
   harness.repository.failSaveWhen = { row ->
-    val artifacts = JsonSupport.parseObjectOrNull(row.artifactsJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val artifacts = JsonCodec.parseObjectOrNull(row.artifactsJson)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       .orEmpty()
     val reserved = (artifacts["goal_subtask_review_state"] as? Map<*, *>)?.get("reserved_pass_number")
     if (reserved != null) {

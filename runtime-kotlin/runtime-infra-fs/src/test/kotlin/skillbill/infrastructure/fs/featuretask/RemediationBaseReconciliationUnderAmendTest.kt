@@ -5,7 +5,7 @@ import skillbill.application.featuretask.model.RemediationBaseBlocked
 import skillbill.application.featuretask.model.RemediationBaseCoherent
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
@@ -89,7 +89,7 @@ class RemediationBaseReconciliationUnderAmendTest {
     assertEquals(fixture.preRemediationSha, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     assertNotEquals(head, recorder.reviewStateRecorder.reviewState(workflowId)?.remediationBaseSha)
     val evidence = requireNotNull(
-      JsonSupport.anyToStringAnyMapList(
+      JsonCodec.anyToStringAnyMapList(
         repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       ),
     )

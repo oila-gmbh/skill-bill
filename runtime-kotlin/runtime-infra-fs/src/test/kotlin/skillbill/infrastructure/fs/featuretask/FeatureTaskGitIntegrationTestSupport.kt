@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs.featuretask
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
@@ -36,9 +36,9 @@ internal class FeatureTaskGitIntegrationWorkflowRepository : WorkflowStateReposi
 
   fun taskRuntimeArtifacts(workflowId: String): Map<String, Any?> {
     val record = requireNotNull(taskRuntimeRows[workflowId]) { "no runtime row for $workflowId" }
-    return JsonSupport.parseObjectOrNull(record.artifactsJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    return JsonCodec.parseObjectOrNull(record.artifactsJson)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       .orEmpty()
   }
 

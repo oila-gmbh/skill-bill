@@ -14,7 +14,7 @@ import skillbill.application.review.model.ParallelCodeReviewRequest
 import skillbill.application.review.reviewHarness
 import skillbill.application.review.sparseReviewPack
 import skillbill.application.reviewevidence.model.ParallelReviewScope
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewMergeResult
@@ -167,12 +167,12 @@ class FeatureTaskRuntimeReviewDelegationTest {
       ),
     )
     val envelope = FeatureTaskRuntimeReviewEnvelope.envelopeMap(output)
-    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    val produced = JsonCodec.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
 
     assertEquals("rvw-191-empty-register", produced["review_run_id"])
     val findings = produced["findings"] as List<*>
     assertEquals(1, findings.size)
-    val finding = JsonSupport.anyToStringAnyMap(findings.single()).orEmpty()
+    val finding = JsonCodec.anyToStringAnyMap(findings.single()).orEmpty()
     assertEquals("F-001", finding["finding_id"])
     assertEquals("minor", finding["severity"])
     assertEquals("changes_requested", envelope["verdict"])

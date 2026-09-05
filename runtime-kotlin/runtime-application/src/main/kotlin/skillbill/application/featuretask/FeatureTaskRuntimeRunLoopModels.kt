@@ -230,7 +230,7 @@ internal data class PhaseStateWriteArgs(
   val outputArtifact: String?,
 )
 
-internal data class PhaseStateRequestExtras(
+internal data class PhaseStateRequestAttachments(
   val fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
   val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
   val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
@@ -241,7 +241,7 @@ internal data class PhaseStateRequestExtras(
 
 internal data class PhaseStateRequestArgs(
   val write: PhaseStateWriteArgs,
-  val extras: PhaseStateRequestExtras = PhaseStateRequestExtras(),
+  val extras: PhaseStateRequestAttachments = PhaseStateRequestAttachments(),
 )
 
 internal data class PersistPhaseArgs(
@@ -332,13 +332,7 @@ internal data class PhaseRun(
   val validationGateTriagePlan: String? = null,
   val validationGateRepair: Boolean = false,
   val validationGateTriage: Boolean = false,
-  /** True only when validate falls back because the pack declares no validation_gate. */
   val agentRunValidateFallback: Boolean = false,
-  /**
-   * 1-based ordinal of the validation-gate repair turn this launch is, zero outside a repair cycle.
-   * A repair cycle deliberately re-runs an agent under one unchanged phase attempt, so this is the
-   * only thing separating one turn's retained evidence and diagnostics from the next turn's.
-   */
   val validationGateRepairTurn: Int = 0,
 )
 

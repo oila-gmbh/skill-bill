@@ -2,7 +2,7 @@ package skillbill.application.review
 
 import skillbill.application.review.model.ReviewSpecAdjudicationOutcome
 import skillbill.application.review.model.ReviewSpecAdjudicationRunRequest
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -140,7 +140,7 @@ class ReviewSpecAdjudicationRunner(
       budget = input.launch.budget,
     )
     val envelope = launch.toAdjudicationLaunchEnvelope().asWireMap()
-    val launchBytes = JsonSupport.mapToJsonString(envelope).toByteArray(Charsets.UTF_8).size.toLong()
+    val launchBytes = JsonCodec.mapToJsonString(envelope).toByteArray(Charsets.UTF_8).size.toLong()
     if (launchBytes > input.launch.budget.maxLaneLaunchBytes) {
       return PreparedAdjudicationRejected(
         ReviewFindingVerdict(
@@ -243,7 +243,7 @@ class ReviewSpecAdjudicationRunner(
     appendLine("Stage 1 verdict: ${launch.stage1Verdict.claimVerdict.wireValue}")
     appendLine("Cited region: ${launch.citedRegion.path}:${launch.citedRegion.startLine}-${launch.citedRegion.endLine}")
     appendLine("Spec intent projection:")
-    appendLine(JsonSupport.mapToJsonString(launch.specIntentProjection.toProjectionPayload()))
+    appendLine(JsonCodec.mapToJsonString(launch.specIntentProjection.toProjectionPayload()))
     appendLine(
       "Return a JSON object with exactly one scope_disposition " +
         "(in_scope|out_of_scope_preexisting|spec_deviation|spec_accepted_tradeoff), " +
@@ -297,8 +297,8 @@ private data class PreparedAdjudicationRejected(val verdict: ReviewFindingVerdic
 
 internal fun parseAdjudicationWorkerResult(stdout: String): ReviewSpecAdjudicationWorkerResult? {
   val payload = parseJsonObject(stdout) ?: return null
-  val finding = JsonSupport.anyToStringAnyMap(payload["finding"])
-  val adjustment = JsonSupport.anyToStringAnyMap(payload["severity_adjustment"])
+  val finding = JsonCodec.anyToStringAnyMap(payload["finding"])
+  val adjustment = JsonCodec.anyToStringAnyMap(payload["severity_adjustment"])
   val dispositionField = stringList(payload["scope_disposition"])
   val extraDispositions = stringList(payload["dispositions"])
   val primary = dispositionField.firstOrNull()

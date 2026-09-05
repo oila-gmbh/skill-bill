@@ -16,7 +16,7 @@ internal fun validatePlatformPackCompositions(packs: List<PlatformManifest>) {
   validateNoCompositionCycles(packs)
   packs
     .filter { it.codeReviewComposition != null }
-    .forEach(::validateCompositionModeSupport)
+    .forEach(::validateCompositionModeSupported)
   packs
     .filter { it.codeReviewComposition != null }
     .forEach { root ->
@@ -84,13 +84,13 @@ internal fun validateCompositionReferences(pack: PlatformManifest, packsBySlug: 
   }
 }
 
-internal fun validateCompositionModeSupport(pack: PlatformManifest) {
+internal fun validateCompositionModeSupported(pack: PlatformManifest) {
   pack.codeReviewComposition?.baselineLayers.orEmpty().forEachIndexed { index, layer ->
-    validateCompositionModeSupport(pack.slug, index, layer)
+    validateCompositionModeSupported(pack.slug, index, layer)
   }
 }
 
-internal fun validateCompositionModeSupport(sourceSlug: String, index: Int, layer: CodeReviewBaselineLayer) {
+internal fun validateCompositionModeSupported(sourceSlug: String, index: Int, layer: CodeReviewBaselineLayer) {
   val unsupportedReason = unsupportedCompositionModeReason(layer)
   if (unsupportedReason != null) {
     invalidManifestSchema(

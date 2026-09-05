@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner.planning
 import skillbill.application.goalplanning.sha256HexUtf8
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 
 object GoalPlanningSharedContextPacketValidation {
@@ -91,5 +91,5 @@ object GoalPlanningSharedContextPacketValidation {
   fun isStringMap(value: Any?): Boolean =
     value is Map<*, *> && value.keys.all { it is String } && value.values.all { it is String }
 
-  fun digest(packet: Map<String, Any?>): String = sha256HexUtf8(JsonSupport.mapToJsonString(packet))
+  fun digest(packet: Map<String, Any?>): String = sha256HexUtf8(JsonCodec.mapToJsonString(packet))
 }

@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FeatureTaskRuntimeBuildReceiptSchemaValidator
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaValidator
 import skillbill.error.InvalidFeatureTaskRuntimeBuildReceiptSchemaError
@@ -83,7 +83,7 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
   ): FeatureTaskRuntimePhaseOutputValidationResult? {
     val envelope = ProsePhaseOutputSynthesizer.trySynthesize(phaseOutputText, sourceLabel) ?: return null
     return try {
-      val canonical = JsonSupport.mapToJsonString(envelope)
+      val canonical = JsonCodec.mapToJsonString(envelope)
       val normalized = FeatureTaskRuntimePhaseOutputSchemaValidator.normalizePhaseOutput(canonical, sourceLabel)
       FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(normalized)
     } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
@@ -126,13 +126,13 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
 
   private fun validateNestedBuildReceipt(normalized: NormalizedFeatureTaskRuntimePhaseOutput, sourceLabel: String) {
     if (sourceLabel != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) return
-    val produced = JsonSupport.anyToStringAnyMap(normalized.envelope["produced_outputs"])
+    val produced = JsonCodec.anyToStringAnyMap(normalized.envelope["produced_outputs"])
       ?: throw InvalidFeatureTaskRuntimeBuildReceiptSchemaError(
         sourceLabel = sourceLabel,
         reason = "produced_outputs must be present for the build phase envelope.",
         payloadFreeReason = "produced_outputs must be present for the build phase envelope.",
       )
-    val buildReceipt = JsonSupport.anyToStringAnyMap(produced["build_receipt"])
+    val buildReceipt = JsonCodec.anyToStringAnyMap(produced["build_receipt"])
       ?: throw InvalidFeatureTaskRuntimeBuildReceiptSchemaError(
         sourceLabel = sourceLabel,
         reason = "produced_outputs.build_receipt is required for the build phase envelope.",

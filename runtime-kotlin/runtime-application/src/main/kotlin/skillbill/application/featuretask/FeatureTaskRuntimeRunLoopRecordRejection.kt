@@ -1,10 +1,13 @@
 package skillbill.application.featuretask
 
-import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.model.FeatureTaskRuntimeProducerOutputRead
+import skillbill.application.featuretask.model.ProducerOutputQueryArgs
+import skillbill.ports.diagnostics.model.ProducerOutputEvidence
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 
-@Inject
-class FeatureTaskRuntimeRunLoopRecordRejection {
+object FeatureTaskRuntimeRunLoopRecordRejection {
   internal fun blockUnattributableRecordRejection(
     runLoop: FeatureTaskRuntimeRunLoop,
     args: UnattributableRecordRejectionArgs,
@@ -20,7 +23,7 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
       rejectionPath(rejection.rejectionDetail),
     )
     recordUnattributableRejectedEvidence(runLoop, run, runLoop.state, rejection)
-    return runLoop.collaborators.phaseAttemptsContinued2.blockAndPersistInPhase(
+    return FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
       runLoop,
       phaseBlockArgs(
         run = run,
@@ -47,16 +50,6 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
   fun payloadFreeRejectionReason(rule: String, path: String): String =
     "Rejected output violated '$rule' at '$path'. Inspect the private diagnostic for the exact response."
 
-  /**
-   * The retry-facing counterpart of [payloadFreeRejectionReason]. A producer cannot repair an output from a
-   * rule name and a path alone, so the validator's constraint text — the violated rule, the expected shape
-   * and the offending field, all authored from the schema and never from the response — is appended for the
-   * next prompt and for the private diagnostic row. The payload-free sentence stays the prefix so both
-   * readers still learn where the raw response is kept.
-   *
-   * A null or blank [validationReason] means the producing seam had no value-free restatement to offer, so
-   * the payload-free sentence stands alone; the value-bearing variant is never substituted in its place.
-   */
   fun retryRejectionReason(payloadFreeReason: String, validationReason: String?): String =
     if (validationReason.isNullOrBlank()) {
       payloadFreeReason
@@ -64,16 +57,6 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
       "$payloadFreeReason Violated constraint: ${boundedSchemaGateDetail(validationReason)}"
     }
 
-  /**
-   * Semantic-gate detail that is safe to place outside the authorized repair section.
-   *
-   * Mutating-reconciliation is a fixed template. Producer/consumer projection and output-verification
-   * may carry schema-structure text the producer needs, but only after response-derived dumps
-   * (quoted wire verdicts, offending-value appendices, expected=/actual= receipt lists) are scrubbed.
-   * Audit ledger/repair gates stay null except for scrubbed bounded artifact_ref/check_ref
-   * constraints — those must reach the retry reason so compound or oversized refs get actionable
-   * guidance instead of a generic audit sentence alone.
-   */
   fun payloadFreeSemanticGateConstraint(
     runLoop: FeatureTaskRuntimeRunLoop,
     rule: String,
@@ -89,11 +72,6 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
     else -> scrubBoundedReferenceGateConstraint(detail)
   }
 
-  /**
-   * Extracts a payload-free bounded-reference constraint from semantic-gate detail. Returns null when
-   * the detail does not name artifact_ref or check_ref, so audit identifiers and expected=/actual=
-   * receipt lists never reach the retry reason by themselves.
-   */
   fun scrubBoundedReferenceGateConstraint(detail: String): String? {
     if (detail.isBlank()) return null
     val namesArtifactRef = detail.contains("artifact_ref")
@@ -112,15 +90,6 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
     }
   }
 
-  /**
-   * Strips known response-value dumps from semantic-gate detail before it can enter a retry prompt
-   * outside the authorized repair section. Schema-structure fragments (property names, found/expected
-   * types, maxLength caps) remain so length and shape corrections still fire.
-   *
-   * Caps at [SCHEMA_GATE_DETAIL_MAX_CHARS] before pattern work so an oversized wire verdict cannot
-   * amplify retry CPU; when the cap cuts inside a quoted verdict, [scrubOffVocabularyVerdictQuote]
-   * strips the open marker through end rather than leaving a partial response-derived quote.
-   */
   fun scrubResponseDerivedGateDetail(
     runLoop: FeatureTaskRuntimeRunLoop,
     detail: String,
@@ -141,4 +110,256 @@ class FeatureTaskRuntimeRunLoopRecordRejection {
       .forEach { value -> text = text.replace(value, "[response value omitted]") }
     return text.trim().takeUnless { it.isBlank() }
   }
+
+  fun responseStringValues(runLoop: FeatureTaskRuntimeRunLoop, value: Any?): List<String> {
+    val values = mutableListOf<String>()
+    collectResponseStringValues(runLoop, value, values)
+    return values.distinct()
+  }
+
+  fun collectResponseStringValues(runLoop: FeatureTaskRuntimeRunLoop, value: Any?, values: MutableList<String>) {
+    when (value) {
+      is String -> values += value
+      is Map<*, *> -> value.values.forEach { nested -> collectResponseStringValues(runLoop, nested, values) }
+      is Iterable<*> -> value.forEach { nested -> collectResponseStringValues(runLoop, nested, values) }
+    }
+  }
+
+  internal fun attemptOnce(runLoop: FeatureTaskRuntimeRunLoop, args: RecordRejectionAttemptArgs): AttemptResult {
+    val run = args.context.run
+    val state = args.context.state
+    val iteration = args.context.iteration
+    val observability = args.context.observability
+    val priorCorrection = args.priorCorrection
+    val phaseTokenAccumulator = args.phaseTokenAccumulator
+    FeatureTaskRuntimeRunLoopOutputPersistence.persistPhase(
+      runLoop,
+      PersistPhaseArgs(
+        write = PhaseStateWriteArgs(
+          run = run,
+          iteration = iteration,
+          status = STATUS_RUNNING,
+          finished = false,
+          outputArtifact = runLoop.state.outputFor(run.phaseId)?.payload,
+        ),
+        launched = FeatureTaskRuntimeRunLoopOutputPersistence.launchedModelDirective(run),
+      ),
+    )
+    val launch = FeatureTaskRuntimeRunLoopLaunch.launchAndCapture(
+      runLoop,
+      run,
+      runLoop.state,
+      priorCorrection,
+      runLoop.phaseTokenAccumulator,
+    )
+    return settleRecordRejectionLaunchOutcome(runLoop, args, launch)
+  }
+
+  internal fun recordUnattributableRejectedEvidence(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    rejection: RecordRejection,
+  ) {
+    val detail = payloadFreeRejectionReason(
+      "reconciliation-${rejection.rejectionClass}",
+      rejectionPath(rejection.rejectionDetail),
+    )
+    val rejectedOutput = run.declaration.projectionDeclarations
+      .asSequence()
+      .map { it.producerIteration.phaseId }
+      .distinct()
+      .mapNotNull { phaseId -> state.outputFor(phaseId) }
+      .firstOrNull()
+    val evidence = rejectedOutput?.let { output ->
+      unattributableProducerEvidence(runLoop, state, output)
+    }
+    evidence?.let { writeUnattributableRejectedEvidence(runLoop, run, rejection, detail, it) }
+  }
+
+  private fun unattributableProducerEvidence(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    state: FeatureTaskRuntimeRunState,
+    output: FeatureTaskRuntimePhaseOutput,
+  ): ProducerOutputEvidence? {
+    val agentId = state.recordFor(output.phaseId)?.resolvedAgentId ?: return null
+    return when (
+      val read = runLoop.recorder.producerOutput(
+        ProducerOutputQueryArgs(
+          workflowId = runLoop.request.workflowId,
+          phaseId = output.phaseId,
+          attempt = output.iteration.coerceAtLeast(1),
+          agentId = agentId,
+          dbOverride = runLoop.request.dbPathOverride,
+          generation = state.evidenceGeneration(output.phaseId),
+        ),
+      )
+    ) {
+      is FeatureTaskRuntimeProducerOutputRead.Found -> read.evidence
+      is FeatureTaskRuntimeProducerOutputRead.Absent,
+      is FeatureTaskRuntimeProducerOutputRead.Unreadable,
+      -> null
+    }
+  }
+
+  private fun writeUnattributableRejectedEvidence(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    run: PhaseRun,
+    rejection: RecordRejection,
+    detail: String,
+    evidence: ProducerOutputEvidence,
+  ) {
+    val payload = evidence.payload ?: byteArrayOf()
+    FeatureTaskRuntimeRunLoopAttemptSettlement.recordRejectedOutput(
+      runLoop,
+      RecordRejectedOutputArgs(
+        run = run,
+        iteration = evidence.attempt,
+        rule = "reconciliation-${rejection.rejectionClass}",
+        reason = retryRejectionReason(detail, rejection.rejectionDetail),
+        captured = CapturedPhaseOutput(
+          text = payload.decodeToString(),
+          bytes = payload,
+          truncated = evidence.payload == null,
+          byteSize = evidence.byteSize,
+          sha256 = evidence.sha256,
+        ),
+        targeting = FeatureTaskRuntimeRunLoopAttemptSettlement.rejectedOutputTargeting(
+          defaultRejectedOutputTargetingArgs(
+            run,
+            RejectedOutputTargetingOverrides(
+              phaseId = evidence.phaseId,
+              agentId = evidence.agentId,
+              model = evidence.model,
+              path = rejectionPath(rejection.rejectionDetail),
+              repairTurn = evidence.repairTurn,
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+
+  internal fun unattributableRecordRejectionReason(
+    consumerPhaseId: String,
+    rejection: RecordRejection,
+    producer: String?,
+    detail: String,
+  ): String = if (producer == null) {
+    "Feature-task-runtime phase '$consumerPhaseId' rejected an upstream durable record " +
+      "(${rejection.rejectionClass}) it cannot attribute to a producing phase, so no regeneration edge " +
+      "applies; the run blocks durably. Recover the record out of band by deleting or migrating the " +
+      "offending row. Detail: $detail"
+  } else {
+    "Feature-task-runtime phase '$consumerPhaseId' rejected the durable record produced by '$producer', but " +
+      "'$producer' is absent from this run's resolved pipeline (a goal-continuation truncation dropped it), " +
+      "so it cannot be regenerated in-band; the run blocks durably. Recover the record out of band by " +
+      "deleting or migrating the offending row. Detail: $detail"
+  }
+
+  internal fun settleRecordRejectionLaunchOutcome(
+    runLoop: FeatureTaskRuntimeRunLoop,
+    args: RecordRejectionAttemptArgs,
+    launch: LaunchResult,
+  ): AttemptResult {
+    val run = args.context.run
+    val state = args.context.state
+    val iteration = args.context.iteration
+    val observability = args.context.observability
+    launch.providerLimitReason?.let { reason ->
+      return AttemptResult.settled(
+        FeatureTaskRuntimeRunLoopPhaseAttempts.pauseAndPersistInPhase(
+          runLoop,
+          PauseAndPersistInPhaseArgs(run, iteration, reason, runLoop.observability, launch.fileManifest),
+        ),
+      )
+    }
+    launch.infraFailureReason?.let { reason ->
+      FeatureTaskRuntimeRunLoopAttemptSettlement.persistChildProcessFailureOutput(
+        runLoop,
+        run,
+        iteration,
+        reason,
+        launch.infraFailureChildOutput,
+      )
+      return AttemptResult.settled(
+        FeatureTaskRuntimeRunLoopPhaseAttempts.blockAndPersistInPhase(
+          runLoop,
+          phaseBlockArgs(
+            run,
+            iteration,
+            reason,
+            runLoop.observability,
+            payload = BlockAndPersistPayload(
+              childNeverLaunched = launch.childNeverLaunched,
+              fileManifest = launch.fileManifest,
+            ),
+          ).withDisposition(launch.failureDisposition),
+        ),
+      )
+    }
+    launch.recordRejection?.let { rejection ->
+      return AttemptResult.settled(
+        FeatureTaskRuntimeRunLoopPhaseAttempts.settleRecordRejection(
+          runLoop,
+          SettleRecordRejectionArgs(run, runLoop.state, iteration, runLoop.observability, rejection),
+        ),
+      )
+    }
+    val fileManifest = requireNotNull(launch.fileManifest)
+    return FeatureTaskRuntimeRunLoopAttemptSettlement.gateOutput(
+      runLoop,
+      GateOutputArgs(
+        run = run,
+        iteration = iteration,
+        captured = requireNotNull(launch.capturedPhaseOutput),
+        observability = runLoop.observability,
+        fileManifest = fileManifest,
+      ),
+    )
+  }
+
+  fun scrubOffVocabularyVerdictQuote(text: String): String {
+    val start = text.indexOf(OFF_VOCABULARY_VERDICT_OPEN, ignoreCase = true)
+    if (start < 0) return text
+    val afterOpenQuote = start + OFF_VOCABULARY_VERDICT_OPEN.length
+    val closeAt = text.lastIndexOf(OFF_VOCABULARY_VERDICT_CLOSE_BOUNDARY)
+    return if (closeAt >= afterOpenQuote) {
+      text.substring(0, start) + "off-vocabulary verdict" + text.substring(closeAt + 1)
+    } else {
+      text.substring(0, start) + "off-vocabulary verdict"
+    }
+  }
 }
+
+const val OFF_VOCABULARY_VERDICT_OPEN = "off-vocabulary verdict '"
+
+const val OFF_VOCABULARY_VERDICT_CLOSE_BOUNDARY = "' and no"
+
+val OFFENDING_VALUE_APPENDIX_PATTERN =
+  Regex("""(?:\s*[—-]\s*)?offending value:.*$""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+
+val EXPECTED_ACTUAL_LIST_PATTERN =
+  Regex("""\bexpected=\[[^\]]*]\s*actual=\[[^\]]*]\.?""", RegexOption.IGNORE_CASE)
+
+val BOUNDED_REF_LENGTH_CAP_PATTERN =
+  Regex("""(?:allows|must be) at most ([0-9][0-9,]*) characters""", RegexOption.IGNORE_CASE)
+
+val SCHEMA_DETAIL_TYPE_WORDS = setOf(
+  "array",
+  "boolean",
+  "integer",
+  "null",
+  "number",
+  "object",
+  "string",
+)
+
+const val MIN_RESPONSE_STRING_VALUE_LENGTH = 4
+
+val INVENTORY_EXTENDING_PHASES: Set<String> = setOf(
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+)

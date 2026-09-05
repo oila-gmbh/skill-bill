@@ -1,6 +1,6 @@
 package skillbill.workflow.taskruntime.model
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 
 internal object FeatureTaskRuntimeProjectionCanonicalizerMapOps {
   fun mapEntries(value: Any?, transform: (Int, Map<String, Any?>) -> Map<String, Any?>): Any? {
@@ -16,5 +16,5 @@ internal object FeatureTaskRuntimeProjectionCanonicalizerMapOps {
     return transform(map.stringKeyedView())
   }
 
-  fun Map<*, *>.stringKeyedView(): Map<String, Any?> = JsonSupport.anyToStringAnyMap(this) ?: LinkedHashMap()
+  fun Map<*, *>.stringKeyedView(): Map<String, Any?> = JsonCodec.anyToStringAnyMap(this) ?: LinkedHashMap()
 }

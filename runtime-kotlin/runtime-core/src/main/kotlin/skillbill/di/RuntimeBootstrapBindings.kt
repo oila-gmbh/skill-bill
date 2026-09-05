@@ -1,20 +1,13 @@
 package skillbill.di
 
 import skillbill.infrastructure.fs.CanonicalRepositoryRoot
-import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
-import skillbill.infrastructure.fs.FileTelemetryConfigStore
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.model.EnvironmentContext
-import skillbill.model.OptionalCallbacks
 import skillbill.model.RepositoryRoot
 import skillbill.model.RuntimeContext
-import skillbill.model.TransportContext
-import skillbill.model.WorkflowOpsContext
 import skillbill.ports.db.DatabaseSessionFactory
-import skillbill.ports.install.addon.ExternalAddonSourceConfigPort
 import skillbill.ports.repository.RepositoryEnclosingRootPort
-import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.UnconfiguredRemoteTransportPort
 import java.nio.file.Path
 
@@ -59,20 +52,6 @@ internal object RuntimeBootstrapBindings {
 
   fun repositoryRoot(context: EnvironmentContext): RepositoryRoot = RepositoryRoot(context.repositoryRoot)
 
-  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = ctx.environment
-
-  fun transportContext(ctx: RuntimeContext): TransportContext = ctx.transport
-
-  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = ctx.workflowOps
-
-  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = ctx.callbacks
-
   fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =
     SQLiteDatabaseSessionFactory(context)
-
-  internal fun telemetryConfigStore(store: FileTelemetryConfigStore): TelemetryConfigStore = store
-
-  internal fun externalAddonSourceConfigPort(
-    store: FileExternalAddonSourceConfigStore,
-  ): ExternalAddonSourceConfigPort = store
 }

@@ -1,7 +1,7 @@
 package skillbill.workflow.engine
 
 import kotlinx.serialization.json.JsonObject
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowInputProjection
@@ -124,9 +124,9 @@ object WorkflowInputProjectionSelector {
     if (itemCount > declaration.maxCollectionItems) {
       reject(definition, "projection for step '$stepId' exceeds its collection-item budget")
     }
-    val bytes = JsonSupport.json.encodeToString(
+    val bytes = JsonCodec.json.encodeToString(
       JsonObject.serializer(),
-      JsonSupport.mapToJsonObject(selected),
+      JsonCodec.mapToJsonObject(selected),
     ).toByteArray(Charsets.UTF_8).size
     if (bytes > declaration.maxUtf8Bytes) {
       reject(definition, "projection for step '$stepId' exceeds its UTF-8 byte budget")

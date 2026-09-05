@@ -1,6 +1,6 @@
 package skillbill.ports.phaseartifacts
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY
@@ -26,7 +26,7 @@ fun <T> decodeStrictKeyedArtifactMap(
   return rawMap.entries.associate { (key, value) ->
     val phaseId = key as? String
       ?: schemaError("Feature-task-runtime artifact '$artifactKey' must have string keys; found '$key'.")
-    val entryMap = JsonSupport.anyToStringAnyMap(value)
+    val entryMap = JsonCodec.anyToStringAnyMap(value)
       ?: schemaError("Feature-task-runtime artifact '$artifactKey' entry for '$phaseId' must decode to a map.")
     phaseId to decodeEntry(phaseId, entryMap)
   }
@@ -41,7 +41,7 @@ fun phaseRecordsFrom(artifacts: Map<String, Any?>): Map<String, FeatureTaskRunti
 @OpenBoundaryMap("Feature-task-runtime resolved branch decode from durable workflow artifacts")
 fun resolvedBranchFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeResolvedBranch? {
   val raw = artifacts[FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY] ?: return null
-  val entryMap = JsonSupport.anyToStringAnyMap(raw)
+  val entryMap = JsonCodec.anyToStringAnyMap(raw)
     ?: schemaError(
       "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY' must decode to a map.",
     )
@@ -67,7 +67,7 @@ fun reviewGenerationFrom(artifacts: Map<String, Any?>): Int {
 @OpenBoundaryMap("Feature-task-runtime operator block retry decode from durable workflow artifacts")
 fun operatorBlockRetryFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeOperatorBlockRetry? {
   val raw = artifacts[FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY] ?: return null
-  val entryMap = JsonSupport.anyToStringAnyMap(raw)
+  val entryMap = JsonCodec.anyToStringAnyMap(raw)
     ?: schemaError(
       "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY' must decode to a map.",
     )
@@ -81,7 +81,7 @@ fun operatorBlockRetryFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeOper
 @OpenBoundaryMap("Feature-task-runtime goal continuation field adoption decode from durable workflow artifacts")
 fun goalContinuationFieldAdoptionFrom(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationFieldAdoption? {
   val raw = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY] ?: return null
-  val entryMap = JsonSupport.anyToStringAnyMap(raw)
+  val entryMap = JsonCodec.anyToStringAnyMap(raw)
     ?: schemaError(
       "Feature-task-runtime artifact " +
         "'$FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY' must decode to a map.",

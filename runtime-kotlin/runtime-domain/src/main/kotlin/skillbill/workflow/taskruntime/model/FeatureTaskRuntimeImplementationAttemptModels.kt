@@ -1,7 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPT_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.goal.model.appendBoundedHistoryBySequence
@@ -140,7 +140,7 @@ fun featureTaskRuntimeImplementationAttemptsFromWire(raw: Any?): List<FeatureTas
     )
   return attempts.map { entry ->
     FeatureTaskRuntimeImplementationAttempt.fromArtifactMap(
-      JsonSupport.anyToStringAnyMap(entry)
+      JsonCodec.anyToStringAnyMap(entry)
         ?: implementationAttemptError("Feature-task-runtime implementation-attempt entry must be an object."),
     )
   }

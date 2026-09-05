@@ -59,33 +59,42 @@ import skillbill.ports.validation.RepoValidationGateway
 abstract class RuntimeComponent(
   private val inputRuntimeContext: RuntimeContext,
 ) :
-  RuntimeTelemetryInstallProvides,
-  RuntimeInstallLauncherProvides,
-  RuntimeGoalRunnerPlanningProvides,
-  RuntimeDiagnosticsReviewProvides,
-  RuntimeGoalRunnerScaffoldProvides,
-  RuntimeScaffoldWorkflowProvides,
-  RuntimeReviewWorkflowProvides,
+  RuntimeInstallTargetProvides,
+  RuntimeInstallPlanProvides,
+  RuntimeTelemetryProvides,
+  RuntimeGoalPlanningProvides,
+  RuntimeGoalPlanningSweepProvides,
+  RuntimeGoalRunnerStoreProvides,
+  RuntimeGoalRunnerLaunchProvides,
+  RuntimeReviewLaunchProvides,
+  RuntimeReviewAddonCatalogProvides,
+  RuntimeReviewEvidenceProvides,
+  RuntimeFeatureTaskProvides,
+  RuntimeFeatureSpecProvides,
+  RuntimeWorkflowProvides,
   RuntimeWorkflowValidatorProvides,
-  RuntimeFeatureTaskGoalValidatorProvides,
-  RuntimeCompositionMiscProvides,
-  RuntimeGoalRunnerWorkflowProvides,
-  RuntimeGoalRunnerBoundaryProvides,
-  RuntimeReviewFeatureTaskGateProvides {
+  RuntimeFeatureTaskValidatorProvides,
+  RuntimeScaffoldProvides,
+  RuntimeScaffoldValidationProvides,
+  RuntimeDiagnosticsProvides {
   @Provides @JvmSynthetic
   fun runtimeContext(): RuntimeContext = RuntimeBootstrapBindings.runtimeContext(inputRuntimeContext)
 
   @Provides @JvmSynthetic
-  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = RuntimeBootstrapBindings.environmentContext(ctx)
+  fun environmentContext(ctx: RuntimeContext): EnvironmentContext = ctx.environment
 
   @Provides @JvmSynthetic
-  fun transportContext(ctx: RuntimeContext): TransportContext = RuntimeBootstrapBindings.transportContext(ctx)
+  fun transportContext(ctx: RuntimeContext): TransportContext = ctx.transport
 
   @Provides @JvmSynthetic
-  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = RuntimeBootstrapBindings.workflowOpsContext(ctx)
+  fun workflowOpsContext(ctx: RuntimeContext): WorkflowOpsContext = ctx.workflowOps
 
   @Provides @JvmSynthetic
-  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = RuntimeBootstrapBindings.optionalCallbacks(ctx)
+  fun optionalCallbacks(ctx: RuntimeContext): OptionalCallbacks = ctx.callbacks
+
+  @Provides @JvmSynthetic
+  fun repositoryEnclosingRootPort(): RepositoryEnclosingRootPort =
+    RuntimeBootstrapBindings.repositoryEnclosingRootPort()
 
   @Provides @RuntimeSingleton @JvmSynthetic
   fun databaseSessionFactory(context: EnvironmentContext): DatabaseSessionFactory =

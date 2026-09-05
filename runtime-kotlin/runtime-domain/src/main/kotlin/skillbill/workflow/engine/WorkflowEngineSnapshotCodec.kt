@@ -1,7 +1,7 @@
 package skillbill.workflow.engine
 
 import kotlinx.serialization.json.JsonElement
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.WorkflowDefinition
 import skillbill.workflow.engine.model.WorkflowSnapshotView
@@ -81,7 +81,7 @@ internal fun mergeStepUpdates(
 internal fun workflowStep(stepId: String, status: String, attemptCount: Int): Map<String, Any?> =
   linkedMapOf("step_id" to stepId, "status" to status, "attempt_count" to attemptCount)
 
-internal fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
+internal fun jsonString(value: Any?): String = JsonCodec.json.encodeToString(
   JsonElement.serializer(),
-  JsonSupport.valueToJsonElement(value),
+  JsonCodec.valueToJsonElement(value),
 )

@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.model.CreateLearningRequest
 import skillbill.learnings.model.LearningRecord
@@ -311,8 +311,8 @@ private fun learningScopeOrderClause(columnName: String): String = buildString {
   append("  ELSE ${LearningScope.precedence.size}\nEND")
 }
 
-private fun decodeSessionLearnings(rawJson: String): Map<String, Any?>? = JsonSupport.parseObjectOrNull(rawJson)?.let {
-  JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+private fun decodeSessionLearnings(rawJson: String): Map<String, Any?>? = JsonCodec.parseObjectOrNull(rawJson)?.let {
+  JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(it))
 }
 
 private fun ResultSet.toLearningRecord(): LearningRecord = LearningRecord(

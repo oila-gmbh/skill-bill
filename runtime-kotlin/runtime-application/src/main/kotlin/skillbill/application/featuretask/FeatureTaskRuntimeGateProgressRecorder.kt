@@ -2,7 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder
@@ -25,7 +25,7 @@ class FeatureTaskRuntimeGateProgressRecorder(
   ): FeatureTaskRuntimeValidationGateProgress? = database.read(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
     val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_VALIDATION_GATE_PROGRESS_ARTIFACT_KEY]
-    val artifact = JsonSupport.anyToStringAnyMap(raw) ?: return@read null
+    val artifact = JsonCodec.anyToStringAnyMap(raw) ?: return@read null
     FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(artifact)
   }
 
@@ -51,7 +51,7 @@ class FeatureTaskRuntimeGateProgressRecorder(
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_GAP_PROGRESS_ARTIFACT_KEY]
-      val artifact = JsonSupport.anyToStringAnyMap(raw) ?: return@read null
+      val artifact = JsonCodec.anyToStringAnyMap(raw) ?: return@read null
       FeatureTaskRuntimeAuditGapProgress.fromArtifactMap(artifact)
     }
 
@@ -77,7 +77,7 @@ class FeatureTaskRuntimeGateProgressRecorder(
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_GAP_PAUSE_ARTIFACT_KEY]
-      val artifact = JsonSupport.anyToStringAnyMap(raw) ?: return@read null
+      val artifact = JsonCodec.anyToStringAnyMap(raw) ?: return@read null
       FeatureTaskRuntimeAuditGapPause.fromArtifactMap(artifact)
     }
 
@@ -101,7 +101,7 @@ class FeatureTaskRuntimeGateProgressRecorder(
   ): FeatureTaskRuntimeValidationGateProgress? = database.read(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
     val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_BUILD_GATE_PROGRESS_ARTIFACT_KEY]
-    val artifact = JsonSupport.anyToStringAnyMap(raw) ?: return@read null
+    val artifact = JsonCodec.anyToStringAnyMap(raw) ?: return@read null
     FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(artifact)
   }
 

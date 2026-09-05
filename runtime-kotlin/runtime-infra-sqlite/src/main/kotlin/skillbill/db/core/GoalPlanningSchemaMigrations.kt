@@ -11,7 +11,7 @@ import java.sql.Connection
  * values the rebuilt table accepts and which renamed table the rows come from, so the DDL is shared and
  * those two differences are the parameters.
  */
-internal fun rebuildGoalPlanningPlansForPhaseOutputV02(connection: Connection) {
+internal fun rebuildGoalPlanningPlansForPhaseOutputVersion2(connection: Connection) {
   connection.createStatement().use { statement ->
     statement.execute("ALTER TABLE goal_subtask_plans RENAME TO $LEGACY_PLANS")
     statement.execute("ALTER TABLE goal_shared_preplans RENAME TO $LEGACY_PREPLANS")
@@ -34,7 +34,7 @@ internal fun rebuildGoalPlanningPlansForPhaseOutputV02(connection: Connection) {
   }
 }
 
-internal fun requireGoalPlanningPhaseOutputV02(connection: Connection) {
+internal fun requireGoalPlanningPhaseOutputVersion2(connection: Connection) {
   connection.createStatement().use { statement ->
     val incompatibleTable = listOf("goal_shared_preplans", "goal_subtask_plans").firstOrNull { table ->
       statement.executeQuery(
@@ -61,7 +61,7 @@ internal fun requireGoalPlanningPhaseOutputV02(connection: Connection) {
   }
 }
 
-internal fun rebuildGoalPlanningPlansForPhaseOutputV04(connection: Connection) {
+internal fun rebuildGoalPlanningPlansForPhaseOutputVersion4(connection: Connection) {
   connection.createStatement().use { statement ->
     statement.execute("ALTER TABLE goal_subtask_plans RENAME TO $LEGACY_PLANS_PRE_0_4")
     statement.execute("ALTER TABLE goal_shared_preplans RENAME TO $LEGACY_PREPLANS_PRE_0_4")
@@ -75,7 +75,7 @@ internal fun rebuildGoalPlanningPlansForPhaseOutputV04(connection: Connection) {
   }
 }
 
-internal fun rebuildGoalPlanningPlansForPhaseOutputV05(connection: Connection) {
+internal fun rebuildGoalPlanningPlansForPhaseOutputVersion5(connection: Connection) {
   connection.createStatement().use { statement ->
     statement.execute("ALTER TABLE goal_subtask_plans RENAME TO $LEGACY_PLANS_PRE_0_5")
     statement.execute("ALTER TABLE goal_shared_preplans RENAME TO $LEGACY_PREPLANS_PRE_0_5")
@@ -89,7 +89,7 @@ internal fun rebuildGoalPlanningPlansForPhaseOutputV05(connection: Connection) {
   }
 }
 
-internal fun rebuildGoalPlanningPlansForPhaseOutputV06(connection: Connection) {
+internal fun rebuildGoalPlanningPlansForPhaseOutputVersion6(connection: Connection) {
   connection.createStatement().use { statement ->
     statement.execute("ALTER TABLE goal_subtask_plans RENAME TO $LEGACY_PLANS_PRE_0_6")
     statement.execute("ALTER TABLE goal_shared_preplans RENAME TO $LEGACY_PREPLANS_PRE_0_6")

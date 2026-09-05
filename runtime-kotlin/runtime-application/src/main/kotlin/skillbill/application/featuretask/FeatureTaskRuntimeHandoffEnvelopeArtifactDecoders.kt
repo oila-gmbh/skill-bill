@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE
@@ -24,7 +24,7 @@ fun phaseBriefingsFrom(
   }
 
 private fun handoffEnvelopeWireMap(briefingMap: Map<String, Any?>): Map<String, Any?> =
-  JsonSupport.anyToStringAnyMap(briefingMap["handoff_envelope"])
+  JsonCodec.anyToStringAnyMap(briefingMap["handoff_envelope"])
     ?: schemaError(
       "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY' entry must carry a " +
         "'handoff_envelope' object.",
@@ -58,7 +58,7 @@ fun deliveredProjectionHistoryFrom(
     }
     val delivered = FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap(recordMap)
     validateEnvelope(
-      JsonSupport.anyToStringAnyMap(recordMap["handoff_envelope"])
+      JsonCodec.anyToStringAnyMap(recordMap["handoff_envelope"])
         ?: schemaError(
           "Feature-task-runtime artifact '$FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY' entry must " +
             "carry a 'handoff_envelope' object.",

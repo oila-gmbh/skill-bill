@@ -3,7 +3,7 @@ package skillbill.cli
 import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
@@ -132,7 +132,7 @@ internal fun goalContinuationValidationDepth(dbPath: Path, workflowId: String): 
   }
 internal fun goalContinuationArtifact(dbPath: Path, workflowId: String): Map<String, Any?>? {
   val artifacts = featureTaskWorkflowArtifacts(dbPath, workflowId)
-  return JsonSupport.anyToStringAnyMap(artifacts["goal_continuation"])
+  return JsonCodec.anyToStringAnyMap(artifacts["goal_continuation"])
 }
 internal fun runInvariantsCodeReviewMode(dbPath: Path, workflowId: String): String {
   val invariants = requireNotNull(
@@ -157,8 +157,8 @@ internal fun featureTaskWorkflowArtifacts(dbPath: Path, workflowId: String): Map
     }
   }
   return requireNotNull(
-    JsonSupport.anyToStringAnyMap(
-      JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(artifactsJson))),
+    JsonCodec.anyToStringAnyMap(
+      JsonCodec.jsonElementToValue(requireNotNull(JsonCodec.parseObjectOrNull(artifactsJson))),
     ),
   ) { "artifacts_json for $workflowId is not an object map" }
 }

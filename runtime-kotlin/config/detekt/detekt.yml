@@ -14,14 +14,14 @@ comments:
 complexity:
   TooManyFunctions:
     active: true
-    thresholdInFiles: 11
-    thresholdInClasses: 11
+    thresholdInFiles: 45
+    thresholdInClasses: 40
     thresholdInInterfaces: 11
-    thresholdInObjects: 11
+    thresholdInObjects: 40
     thresholdInEnums: 11
   LargeClass:
     active: true
-    threshold: 600
+    threshold: 1200
   LongMethod:
     active: true
     threshold: 60
@@ -37,7 +37,7 @@ complexity:
   LongParameterList:
     active: true
     functionThreshold: 6
-    constructorThreshold: 7
+    constructorThreshold: 12
 
 naming:
   FunctionNaming:

@@ -2,7 +2,7 @@ package skillbill.mcp
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.error.InvalidTelemetryEventSchemaError
@@ -435,7 +435,7 @@ class TelemetryReliabilityContractTest {
           resultSet.getString("payload_json")
         }
       }
-      val parsed = requireNotNull(JsonSupport.parseObjectOrNull(payloadJson))
+      val parsed = requireNotNull(JsonCodec.parseObjectOrNull(payloadJson))
       linkedMapOf<String, Any?>().apply {
         val contractEventName = if (eventName == "skillbill_review_finished") {
           eventName
@@ -444,7 +444,7 @@ class TelemetryReliabilityContractTest {
         }
         put("event_name", contractEventName)
         put("contract_version", TELEMETRY_EVENT_CONTRACT_VERSION)
-        putAll(requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))))
+        putAll(requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))))
       }
     }
   }

@@ -18,7 +18,7 @@ import skillbill.application.launchFacts
 import skillbill.application.manifest
 import skillbill.application.realFeatureTaskRuntimePhaseOutputValidator
 import skillbill.application.realPlanningProjectionValidator
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
@@ -542,8 +542,8 @@ class GoalPlanningSweepPromptTest {
     assertEquals("SKILL-56", record.normalizedIssueKey)
     assertTrue(record.repositoryIdentity.startsWith("repo-root-realpath-v1:"))
     assertEquals(".feature-specs/SKILL-56-goal/spec_subtask_1.md", record.governedSubSpecPath)
-    assertNotNull(JsonSupport.parseObjectOrNull(record.preplanPayload), "preplan payload must be strict JSON")
-    assertNotNull(JsonSupport.parseObjectOrNull(record.planPayload), "plan payload must be strict JSON")
+    assertNotNull(JsonCodec.parseObjectOrNull(record.preplanPayload), "preplan payload must be strict JSON")
+    assertNotNull(JsonCodec.parseObjectOrNull(record.planPayload), "plan payload must be strict JSON")
   }
 
   @Test
@@ -1673,12 +1673,12 @@ class GoalPlanningSweepRejectionTest {
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     val record = harness.recordFor(1)
     assertNotNull(record, "the shared preplan and subtask plan must be persisted")
-    val preplanMap = JsonSupport.parseObjectOrNull(record.preplanPayload)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-    val planMap = JsonSupport.parseObjectOrNull(record.planPayload)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val preplanMap = JsonCodec.parseObjectOrNull(record.preplanPayload)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
+    val planMap = JsonCodec.parseObjectOrNull(record.planPayload)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
     assertNotNull(preplanMap, "preplan payload must be strict JSON, not fenced prose")
     assertNotNull(planMap, "plan payload must be strict JSON, not fenced prose")
     assertFalse(record.preplanPayload.contains("```") || record.preplanPayload.contains("Here is"))
@@ -1785,7 +1785,7 @@ class GoalPlanningSweepTimingTest {
       harness.fixtures.database.repository.markPrepared(
         prepared.withSharedPacket { packet ->
           val ordered = packet["ordered_subtasks"] as List<*>
-          val first = requireNotNull(JsonSupport.anyToStringAnyMap(ordered.first()))
+          val first = requireNotNull(JsonCodec.anyToStringAnyMap(ordered.first()))
           packet + ("ordered_subtasks" to listOf(corruptDisposition(first)))
         },
       )
@@ -2361,12 +2361,12 @@ private fun legacyV03Packet(
 }
 
 private fun normalizedPlanningOutput(payload: String): NormalizedFeatureTaskRuntimePhaseOutput {
-  val envelope = JsonSupport.parseObjectOrNull(payload)
-    ?.let(JsonSupport::jsonElementToValue)
-    ?.let(JsonSupport::anyToStringAnyMap)
+  val envelope = JsonCodec.parseObjectOrNull(payload)
+    ?.let(JsonCodec::jsonElementToValue)
+    ?.let(JsonCodec::anyToStringAnyMap)
     ?: error("fixture phase output is not an object")
   return NormalizedFeatureTaskRuntimePhaseOutput(
-    canonicalJson = JsonSupport.mapToJsonString(envelope),
+    canonicalJson = JsonCodec.mapToJsonString(envelope),
     envelope = envelope,
   )
 }
@@ -2375,14 +2375,14 @@ private fun GoalPlanningPreparationRecord.withSharedPacket(
   transform: (Map<String, Any?>) -> Map<String, Any?>,
 ): GoalPlanningPreparationRecord {
   val root = preplanRoot()
-  val produced = requireNotNull(JsonSupport.anyToStringAnyMap(root["produced_outputs"]))
-  val packet = requireNotNull(JsonSupport.anyToStringAnyMap(produced["_goal_planning_shared_context"]))
+  val produced = requireNotNull(JsonCodec.anyToStringAnyMap(root["produced_outputs"]))
+  val packet = requireNotNull(JsonCodec.anyToStringAnyMap(produced["_goal_planning_shared_context"]))
   val transformed = transform(packet - "integrity_sha256")
   val packetWithIntegrity = transformed + (
-    "integrity_sha256" to sha256HexUtf8(JsonSupport.mapToJsonString(transformed))
+    "integrity_sha256" to sha256HexUtf8(JsonCodec.mapToJsonString(transformed))
     )
   return copy(
-    preplanPayload = JsonSupport.mapToJsonString(
+    preplanPayload = JsonCodec.mapToJsonString(
       root + ("produced_outputs" to (produced + ("_goal_planning_shared_context" to packetWithIntegrity))),
     ),
   )
@@ -2390,15 +2390,15 @@ private fun GoalPlanningPreparationRecord.withSharedPacket(
 
 private fun GoalPlanningPreparationRecord.withoutSharedPacket(): GoalPlanningPreparationRecord {
   val root = preplanRoot()
-  val produced = requireNotNull(JsonSupport.anyToStringAnyMap(root["produced_outputs"]))
+  val produced = requireNotNull(JsonCodec.anyToStringAnyMap(root["produced_outputs"]))
   val withoutPacket = root + ("produced_outputs" to (produced - "_goal_planning_shared_context"))
-  return copy(preplanPayload = JsonSupport.mapToJsonString(withoutPacket))
+  return copy(preplanPayload = JsonCodec.mapToJsonString(withoutPacket))
 }
 
 private fun GoalPlanningPreparationRecord.preplanRoot(): Map<String, Any?> =
-  requireNotNull(JsonSupport.parseObjectOrNull(preplanPayload))
-    .let(JsonSupport::jsonElementToValue)
-    .let { requireNotNull(JsonSupport.anyToStringAnyMap(it)) }
+  requireNotNull(JsonCodec.parseObjectOrNull(preplanPayload))
+    .let(JsonCodec::jsonElementToValue)
+    .let { requireNotNull(JsonCodec.anyToStringAnyMap(it)) }
 
 private fun validPhaseOutcome(phase: String): AgentRunLaunchOutcome = launchFacts(stdout = phasePayload(phase))
 
@@ -2547,9 +2547,9 @@ private class FakeInvariantsSource : FeatureTaskRuntimeRunInvariantsSource {
 
 private class FakePhaseOutputValidator : FeatureTaskRuntimePhaseOutputValidator {
   override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-    val output = JsonSupport.parseObjectOrNull(phaseOutputText)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val output = JsonCodec.parseObjectOrNull(phaseOutputText)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?: throw malformed(sourceLabel, "Phase output root must be a single JSON object.")
     val contractVersion = output["contract_version"]?.toString()
     val phaseId = output["phase_id"]?.toString()
@@ -2584,9 +2584,9 @@ private class FenceAwarePhaseOutputValidator : FeatureTaskRuntimePhaseOutputVali
         sourceLabel = sourceLabel,
         reason = "Phase output root must contain a single JSON object.",
       )
-    val output = JsonSupport.parseObjectOrNull(candidate)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
+    val output = JsonCodec.parseObjectOrNull(candidate)
+      ?.let(JsonCodec::jsonElementToValue)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?: throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = "Phase output root must be a single JSON object.",
@@ -2774,13 +2774,13 @@ private class InMemoryPreparationRepository(
   fun blankSettledPreplanValue(identity: GoalPlanningIdentity) {
     val settled = requireNotNull(findSharedPreplan(identity))
     val root = requireNotNull(
-      JsonSupport.parseObjectOrNull(settled.preplanPayload)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap),
+      JsonCodec.parseObjectOrNull(settled.preplanPayload)
+        ?.let(JsonCodec::jsonElementToValue)
+        ?.let(JsonCodec::anyToStringAnyMap),
     )
-    val produced = requireNotNull(JsonSupport.anyToStringAnyMap(root["produced_outputs"]))
+    val produced = requireNotNull(JsonCodec.anyToStringAnyMap(root["produced_outputs"]))
     overwriteSharedPreplanPayload(
-      JsonSupport.mapToJsonString(root + ("produced_outputs" to (produced + ("value" to "   ")))),
+      JsonCodec.mapToJsonString(root + ("produced_outputs" to (produced + ("value" to "   ")))),
     )
   }
 

@@ -1,6 +1,6 @@
 package skillbill.review
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.review.model.RecordedVerdictFields
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
@@ -35,7 +35,7 @@ object ReviewFindingFieldCodec {
   fun citationsOf(raw: Any?): List<ReviewFindingCitation> {
     val items = raw as? List<*> ?: return emptyList()
     return items.map { item ->
-      val map = JsonSupport.anyToStringAnyMap(item)
+      val map = JsonCodec.anyToStringAnyMap(item)
         ?: error("Finding citation entry must be an object.")
       val path = (map["path"] as? String)?.trim()?.takeIf(String::isNotBlank)
         ?: error("Finding citation path must be non-blank.")
@@ -49,7 +49,7 @@ object ReviewFindingFieldCodec {
   }
 
   fun severityAdjustmentOf(raw: Any?): ReviewSeverityAdjustment? {
-    val map = JsonSupport.anyToStringAnyMap(raw) ?: return null
+    val map = JsonCodec.anyToStringAnyMap(raw) ?: return null
     val direction = (map["direction"] as? String)?.trim()?.takeIf(String::isNotBlank)
       ?.let(ReviewSeverityAdjustmentDirection::fromWire)
       ?: return null

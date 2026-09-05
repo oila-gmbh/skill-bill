@@ -1,6 +1,6 @@
 package skillbill.mcp
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.mcp.core.McpStdioServer
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -38,7 +38,7 @@ class McpStdioArgumentShapeUnifiedContractTest {
       )
 
     assertNull(response["error"], "argument-shape failure must not use the JSON-RPC transport error envelope")
-    val result = JsonSupport.anyToStringAnyMap(response["result"])
+    val result = JsonCodec.anyToStringAnyMap(response["result"])
     assertNotNull(result, "argument-shape failure must surface as a JSON-RPC `result` envelope (not `error`)")
     assertEquals(true, result["isError"])
     val payload = decodeFirstTextContent(result)
@@ -67,7 +67,7 @@ class McpStdioArgumentShapeUnifiedContractTest {
       )
 
     assertNull(response["error"], "argument-shape failure must not use the JSON-RPC transport error envelope")
-    val result = JsonSupport.anyToStringAnyMap(response["result"])
+    val result = JsonCodec.anyToStringAnyMap(response["result"])
     assertNotNull(result, "argument-shape failure must surface as a JSON-RPC `result` envelope (not `error`)")
     assertEquals(true, result["isError"])
     val payload = decodeFirstTextContent(result)
@@ -86,7 +86,7 @@ class McpStdioArgumentShapeUnifiedContractTest {
   }
 
   private fun stdioToolCallRequest(id: Int, name: String, arguments: Map<String, Any?>): String =
-    JsonSupport.mapToJsonString(
+    JsonCodec.mapToJsonString(
       mapOf(
         "jsonrpc" to "2.0",
         "id" to id,
@@ -97,19 +97,19 @@ class McpStdioArgumentShapeUnifiedContractTest {
 
   private fun decodeStdioObject(rawJson: String?): Map<String, Any?> {
     requireNotNull(rawJson) { "expected JSON-RPC response but got null" }
-    val parsed = JsonSupport.parseObjectOrNull(rawJson)
+    val parsed = JsonCodec.parseObjectOrNull(rawJson)
     require(parsed != null) { "expected JSON object but got: $rawJson" }
-    val decoded = JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))
+    val decoded = JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))
     require(decoded != null) { "expected decoded JSON object but got: $rawJson" }
     return decoded
   }
 
   private fun decodeFirstTextContent(result: Map<String, Any?>): Map<String, Any?> {
     val content = result["content"] as List<*>
-    val first = requireNotNull(JsonSupport.anyToStringAnyMap(content.first()))
+    val first = requireNotNull(JsonCodec.anyToStringAnyMap(content.first()))
     val text = first["text"].toString()
-    val parsed = JsonSupport.parseObjectOrNull(text)
+    val parsed = JsonCodec.parseObjectOrNull(text)
     require(parsed != null) { "expected content[0].text to be a JSON object but got: $text" }
-    return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
+    return requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed)))
   }
 }

@@ -1,7 +1,7 @@
 package skillbill.ports.goalrunner.persistence
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.engine.model.WorkflowStepState
@@ -26,16 +26,15 @@ private fun parseWorkflowStepsArray(stepsJson: String): List<*> =
   requireWorkflowStepsList(parseWorkflowStepsJsonElement(stepsJson))
 
 private fun parseWorkflowStepsJsonElement(stepsJson: String): JsonElement = try {
-  JsonSupport.json.parseToJsonElement(stepsJson)
+  JsonCodec.json.parseToJsonElement(stepsJson)
 } catch (error: CancellationException) {
   throw error
 } catch (error: SerializationException) {
   throw InvalidWorkflowStateSchemaError("Workflow steps JSON is malformed: ${error.message}", error)
 }
 
-private fun requireWorkflowStepsList(element: JsonElement): List<*> =
-  JsonSupport.jsonElementToValue(element) as? List<*>
-    ?: throw InvalidWorkflowStateSchemaError("Workflow steps JSON must be an array.")
+private fun requireWorkflowStepsList(element: JsonElement): List<*> = JsonCodec.jsonElementToValue(element) as? List<*>
+  ?: throw InvalidWorkflowStateSchemaError("Workflow steps JSON must be an array.")
 
 private fun decodeWorkflowStepAt(index: Int, raw: Any?): WorkflowStepState {
   val item = raw as? Map<*, *>

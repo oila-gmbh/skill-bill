@@ -6,7 +6,7 @@ import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.testDecompositionManifestValidator
 import skillbill.application.testDecompositionManifestWriter
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureSpecPreparationRequestError
 import skillbill.featurespec.model.FeatureSpecPreparationDecision
@@ -253,7 +253,7 @@ class FeatureSpecPreparationWriterTest {
         if (yamlValidationCount == 2) {
           throw InvalidDecompositionManifestSchemaError(sourceLabel, "read-back rejection", "schema_invalid")
         }
-        return requireNotNull(JsonSupport.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
+        return requireNotNull(JsonCodec.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
       }
     }
 
@@ -301,7 +301,7 @@ class FeatureSpecPreparationWriterTest {
         if (yamlValidationCount == 4) {
           throw InvalidDecompositionManifestSchemaError(sourceLabel, "read-back rejection", "schema_invalid")
         }
-        return requireNotNull(JsonSupport.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
+        return requireNotNull(JsonCodec.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
       }
     }
 
@@ -340,7 +340,7 @@ class FeatureSpecPreparationWriterTest {
 
       override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit = Unit
       override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-        requireNotNull(JsonSupport.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
+        requireNotNull(JsonCodec.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
 
       override fun validateYamlTextResult(
         yamlText: String,
@@ -396,7 +396,7 @@ class FeatureSpecPreparationWriterTest {
 
       override fun validate(manifest: Map<String, Any?>, sourceLabel: String): Unit = Unit
       override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-        requireNotNull(JsonSupport.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
+        requireNotNull(JsonCodec.anyToStringAnyMap(YAMLMapper().readValue(yamlText, Map::class.java)))
 
       override fun validateYamlTextResult(
         yamlText: String,

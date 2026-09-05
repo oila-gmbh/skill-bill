@@ -2,7 +2,7 @@ package skillbill.application
 
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -246,8 +246,8 @@ internal fun taskRuntimeWorkflowRecord(workflowId: String): WorkflowStateRecord 
 }
 
 internal fun decodeArtifacts(artifactsJson: String): Map<String, Any?> {
-  val element = JsonSupport.json.parseToJsonElement(artifactsJson)
-  return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
+  val element = JsonCodec.json.parseToJsonElement(artifactsJson)
+  return requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(element)))
 }
 
 internal fun tornBlockedReviewRecord(workflowId: String): WorkflowStateRecord {

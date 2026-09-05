@@ -6,7 +6,7 @@ import skillbill.application.subtaskreview.recordedVerdicts
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toSnapshot
 import skillbill.boundary.OpenBoundaryMap
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -75,7 +75,7 @@ fun goalReviewEmissionEnvelope(
   rawResult: String,
   phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
 ): Map<String, Any?> {
-  if (JsonSupport.parseObjectOrNull(rawResult.trim()) == null) return emptyMap()
+  if (JsonCodec.parseObjectOrNull(rawResult.trim()) == null) return emptyMap()
   return phaseOutputValidator
     .validatePhaseOutput(rawResult, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
     .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)

@@ -1,6 +1,6 @@
 package skillbill.ports.subtaskreview
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
@@ -112,9 +112,9 @@ object GoalSubtaskReviewSummaryReducer {
 
   fun commitFocusedAccounting(output: Map<String, Any?>): GoalSubtaskCommitFocusedAccounting? =
     output["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("commit_focused_accounting")
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.let { GoalSubtaskCommitFocusedAccounting.fromArtifactMap(it, "produced_outputs.commit_focused_accounting") }
 
   internal fun rejectedVerificationFindings(

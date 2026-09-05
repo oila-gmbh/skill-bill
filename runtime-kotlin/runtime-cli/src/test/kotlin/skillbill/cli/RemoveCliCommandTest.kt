@@ -2,7 +2,7 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import kotlin.test.Test
@@ -254,8 +254,8 @@ class RemoveCliCommandTest {
   }
 
   private fun decodeJsonObject(raw: String): Map<String, Any?> {
-    val parsed = JsonSupport.parseObjectOrNull(raw) ?: error("invalid JSON: $raw")
-    return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed))) {
+    val parsed = JsonCodec.parseObjectOrNull(raw) ?: error("invalid JSON: $raw")
+    return requireNotNull(JsonCodec.anyToStringAnyMap(JsonCodec.jsonElementToValue(parsed))) {
       "not an object: $raw"
     }
   }

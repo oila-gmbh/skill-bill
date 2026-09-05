@@ -1,6 +1,6 @@
 package skillbill.application.subtaskreview
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.ports.review.ReviewRepository
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
@@ -31,11 +31,11 @@ object GoalSubtaskReviewStructuredFindingsParse {
     recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
   ): List<StructuredGoalReviewFinding> {
     val findings = output["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get("findings") as? List<*>
       ?: return emptyList()
     return findings.mapNotNull { entry ->
-      val finding = JsonSupport.anyToStringAnyMap(entry) ?: return@mapNotNull null
+      val finding = JsonCodec.anyToStringAnyMap(entry) ?: return@mapNotNull null
       val severity = (finding["severity"] as? String)?.trim()?.lowercase()?.takeIf(String::isNotBlank)
         ?: return@mapNotNull null
       val message = (finding["message"] as? String)?.trim()?.takeIf(String::isNotBlank)
@@ -78,7 +78,7 @@ object GoalSubtaskReviewStructuredFindingsParse {
 
   fun reviewRunIdOf(output: Map<String, Any?>): String? = (
     output["produced_outputs"]
-      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.let(JsonCodec::anyToStringAnyMap)
       ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
     )?.trim()?.takeIf(String::isNotBlank)
 

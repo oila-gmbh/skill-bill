@@ -3,11 +3,11 @@ package skillbill.application.goalrunner
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.TestRepositoryEnclosingRoot
+import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderDeps
-import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderValidators
+import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
 import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.model.DefaultGoalRunnerFinalizationBoundariesPort
@@ -16,10 +16,7 @@ import skillbill.application.goalrunner.model.DefaultGoalRunnerSubtaskLaunchBoun
 import skillbill.application.goalrunner.model.GoalRunnerDeps
 import skillbill.application.goalrunner.model.GoalRunnerFinalizationBoundariesPort
 import skillbill.application.goalrunner.model.GoalRunnerRunBoundariesPort
-import skillbill.application.goalrunner.model.GoalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerSubtaskLaunchBoundariesPort
-import skillbill.application.goalrunner.model.WorkflowGoalRunnerManifestStoreDeps
-import skillbill.application.goalrunner.model.WorkflowGoalRunnerOutcomeStoreDeps
 import skillbill.application.goalrunner.planning.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.planning.GoalChildPlanningHydratorPortAdapter
 import skillbill.application.goalrunner.planning.GoalPlanningAttemptRecorder
@@ -41,7 +38,6 @@ import skillbill.application.testDecompositionManifestWriter
 import skillbill.application.testHarnessClock
 import skillbill.application.testRepositoryRoot
 import skillbill.application.testWorkflowSnapshotValidator
-import skillbill.model.RepositoryRoot
 import skillbill.ports.concurrency.BoundedWorkFanOutPort
 import skillbill.ports.concurrency.SequentialBoundedWorkFanOutPort
 import skillbill.ports.db.DatabaseSessionFactory
@@ -49,6 +45,7 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
+import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore
 import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
@@ -60,6 +57,7 @@ import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
@@ -69,14 +67,12 @@ import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.work.EmptyWorkListRepository
 import skillbill.ports.workflow.WorkflowStateRepository
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
-import skillbill.ports.workflow.decomposition.UnavailableDecompositionManifestStore
 import skillbill.ports.workflow.gitops.NoopWorkflowGitOperations
 import skillbill.ports.workflow.gitops.WorkflowGitOperations
 import skillbill.ports.workflow.specscratch.SpecScratchStore
 import skillbill.ports.workflow.specscratch.UnavailableSpecScratchStore
+import skillbill.workflow.decomposition.DecompositionManifestValidator
 import skillbill.workflow.engine.WorkflowSnapshotValidator
-import skillbill.workflow.goal.NoopGoalObservabilityEventValidator
-import skillbill.workflow.goal.NoopGoalProgressEventValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseOutputValidator
@@ -275,8 +271,55 @@ internal fun goalRunnerDefaultPhaseRecorder(): FeatureTaskRuntimePhaseRecorder =
   testWorkflowSnapshotValidator,
 )
 
-internal fun testGoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps): GoalRunnerStatusService =
-  GoalRunnerStatusService(deps)
+internal data class GoalRunnerStatusTestPorts(
+  val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
+  val childRepairStore: GoalRunnerChildRepairStore = NoopGoalRunnerChildRepairStore,
+  val runtimeStatusService: FeatureTaskRuntimeStatusService? = null,
+)
+
+internal fun testGoalRunnerStatusService(
+  manifestStore: GoalRunnerManifestStore,
+  outcomeStore: GoalRunnerWorkflowOutcomeStore,
+  phaseRecorder: FeatureTaskRuntimePhaseRecorder = goalRunnerDefaultPhaseRecorder(),
+  clock: Clock = testHarnessClock,
+  ports: GoalRunnerStatusTestPorts = GoalRunnerStatusTestPorts(),
+): GoalRunnerStatusService {
+  val projectionAssembler = GoalRunnerStatusProjectionAssembler(
+    manifestStore = manifestStore,
+    outcomeStore = outcomeStore,
+    phaseRecorder = phaseRecorder,
+    gitOperations = ports.gitOperations,
+    attemptLedgerStore = NoopGoalRunnerAttemptLedgerStore,
+    clock = clock,
+    workerSupervisor = ports.workerSupervisor,
+    planningStatusReasonCoherence = GoalPlanningStatusReasonCoherence.NONE,
+    diagnostics = NoopRuntimeDiagnostics,
+    runtimeStatusService = ports.runtimeStatusService,
+    repositoryRoot = testRepositoryRoot,
+  )
+  return GoalRunnerStatusService(
+    manifestStore = manifestStore,
+    outcomeStore = outcomeStore,
+    phaseRecorder = phaseRecorder,
+    gitOperations = ports.gitOperations,
+    clock = clock,
+    workerSupervisor = ports.workerSupervisor,
+    childRepairStore = ports.childRepairStore,
+    repositoryRoot = testRepositoryRoot,
+    repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
+    projectionAssembler = projectionAssembler,
+    resetReplanCoordinator = GoalRunnerResetReplanCoordinator(
+      manifestStore = manifestStore,
+      outcomeStore = outcomeStore,
+      gitOperations = ports.gitOperations,
+      diagnostics = NoopRuntimeDiagnostics,
+      projectionAssembler = projectionAssembler,
+      repositoryRoot = testRepositoryRoot,
+      repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
+    ),
+  )
+}
 
 internal val testGoalChildPlanningHydratorPort = GoalChildPlanningHydratorPortAdapter(
   realFeatureTaskRuntimePhaseOutputValidator,
@@ -293,54 +336,39 @@ internal fun testGoalRunnerChildRepairExecutor(
   testHarnessClock,
 )
 
-internal fun workflowGoalRunnerManifestStoreDeps(
+internal fun testWorkflowGoalRunnerManifestStore(
   database: DatabaseSessionFactory,
-  repositoryRoot: RepositoryRoot = RepositoryRoot(Path.of("").toAbsolutePath().normalize()),
-): WorkflowGoalRunnerManifestStoreDeps = WorkflowGoalRunnerManifestStoreDeps(
+  decompositionManifestStore: DecompositionManifestStore,
+  clock: Clock,
+  decompositionManifestValidator: DecompositionManifestValidator = testDecompositionManifestValidator,
+): GoalRunnerManifestStore = sqliteWorkflowGoalRunnerManifestStore(
   database = database,
   workflowSnapshotValidator = testWorkflowSnapshotValidator,
-  decompositionManifestValidator = testDecompositionManifestValidator,
-  decompositionManifestStore = UnavailableDecompositionManifestStore,
-  phaseOutputValidator = realFeatureTaskRuntimePhaseOutputValidator,
-  planningProjectionValidator = realPlanningProjectionValidator,
-  clock = testHarnessClock,
-  decompositionManifestWriter = testDecompositionManifestWriter,
-  repositoryRoot = repositoryRoot,
-  planningHydrator = NoopGoalChildPlanningHydrator,
+  decompositionManifestValidator = decompositionManifestValidator,
+  decompositionManifestStore = decompositionManifestStore,
+  clock = clock,
+  decompositionManifestWriter = DecompositionManifestWriter(),
+  repositoryRoot = testRepositoryRoot,
+  planningHydrator = testGoalChildPlanningHydratorPort,
 )
 
-internal fun workflowGoalRunnerOutcomeStoreDeps(
+internal fun testWorkflowGoalRunnerOutcomeStore(
   database: DatabaseSessionFactory,
+  workflowSnapshotValidator: WorkflowSnapshotValidator = testWorkflowSnapshotValidator,
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
-): WorkflowGoalRunnerOutcomeStoreDeps = WorkflowGoalRunnerOutcomeStoreDeps(
+  workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
+  artifactPorts: OutcomeStoreTestArtifactPorts = OutcomeStoreTestArtifactPorts(),
+) = sqliteWorkflowGoalRunnerOutcomeStore(
   database = database,
-  workflowSnapshotValidator = testWorkflowSnapshotValidator,
-  goalObservabilityEventValidator = NoopGoalObservabilityEventValidator,
-  goalProgressEventValidator = NoopGoalProgressEventValidator,
+  workflowSnapshotValidator = workflowSnapshotValidator,
   gitOperations = gitOperations,
-  phaseOutputValidator = realFeatureTaskRuntimePhaseOutputValidator,
-  workerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
-  decompositionManifestValidator = testDecompositionManifestValidator,
-  decompositionManifestStore = UnavailableDecompositionManifestStore,
+  workerSupervisor = workerSupervisor,
   clock = testHarnessClock,
+  artifactPorts = artifactPorts,
+  decompositionManifestValidator = testDecompositionManifestValidator,
   decompositionManifestWriter = testDecompositionManifestWriter,
   childRepairExecutor = testGoalRunnerChildRepairExecutor(gitOperations),
 )
-
-internal fun outcomeStoreDeps(
-  database: DatabaseSessionFactory,
-  workflowSnapshotValidator: WorkflowSnapshotValidator,
-  gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
-): WorkflowGoalRunnerOutcomeStoreDeps = workflowGoalRunnerOutcomeStoreDeps(
-  database = database,
-  gitOperations = gitOperations,
-).let { deps ->
-  if (workflowSnapshotValidator === testWorkflowSnapshotValidator) {
-    deps
-  } else {
-    deps.copy(workflowSnapshotValidator = workflowSnapshotValidator)
-  }
-}
 
 internal fun testDefaultGoalPlanningSweep(
   checkpointPort: GoalPlanningSweepCheckpointPort,
@@ -400,40 +428,16 @@ internal fun testPhaseRecorder(
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
   diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
-  FeatureTaskRuntimePhaseRecorderDeps(
-    database = database,
-    workflowSnapshotValidator = workflowSnapshotValidator,
-    validators = FeatureTaskRuntimePhaseRecorderValidators(
-      handoffEnvelopeValidator = handoffEnvelopeValidator,
-      handoffFoundationValidator = handoffFoundationValidator,
-      quarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
-      implementationAttemptValidator = NoopFeatureTaskRuntimeImplementationAttemptValidator,
-      rejectedOutputDiagnosticMetadataValidator = { },
-      producerOutputEvidenceValidator = { },
-    ),
-    diagnostics = diagnostics,
-    clock = testHarnessClock,
-  ),
-)
-
-internal fun goalRunnerStatusServiceDeps(
-  manifestStore: GoalRunnerManifestStore,
-  outcomeStore: GoalRunnerWorkflowOutcomeStore,
-  phaseRecorder: FeatureTaskRuntimePhaseRecorder = goalRunnerDefaultPhaseRecorder(),
-): GoalRunnerStatusServiceDeps = GoalRunnerStatusServiceDeps(
-  manifestStore = manifestStore,
-  outcomeStore = outcomeStore,
-  phaseRecorder = phaseRecorder,
-  gitOperations = NoopWorkflowGitOperations,
-  attemptLedgerStore = NoopGoalRunnerAttemptLedgerStore,
+  database = database,
+  workflowSnapshotValidator = workflowSnapshotValidator,
+  handoffEnvelopeValidator = handoffEnvelopeValidator,
+  handoffFoundationValidator = handoffFoundationValidator,
+  quarantineValidator = NoopFeatureTaskRuntimeQuarantineValidator,
+  implementationAttemptValidator = NoopFeatureTaskRuntimeImplementationAttemptValidator,
+  rejectedOutputDiagnosticMetadataValidator = { },
+  producerOutputEvidenceValidator = { },
+  diagnostics = diagnostics,
   clock = testHarnessClock,
-  workerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
-  childRepairStore = NoopGoalRunnerChildRepairStore,
-  planningStatusReasonCoherence = GoalPlanningStatusReasonCoherence.NONE,
-  diagnostics = NoopRuntimeDiagnostics,
-  runtimeStatusService = null,
-  repositoryRoot = testRepositoryRoot,
-  repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
 )
 
 internal fun testGoalPlanningContextDiscovery(

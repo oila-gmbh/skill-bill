@@ -1,7 +1,7 @@
 package skillbill.review
 
 import skillbill.SAMPLE_REVIEW
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.infrastructure.sqlite.SQLiteLearningStore
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
@@ -217,7 +217,7 @@ private fun saveCachedLearnings(
     connection = connection,
     reviewSessionId = reviewSessionId,
     learningsJson =
-    JsonSupport.mapToJsonString(
+    JsonCodec.mapToJsonString(
       mapOf(
         "applied_learning_count" to payloadEntries.size,
         "applied_learning_references" to payloadEntries.map { it["reference"] },

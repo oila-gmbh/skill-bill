@@ -1,6 +1,6 @@
 package skillbill.install
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.MalformedInstallSelectionRecordError
 import skillbill.error.MissingInstallSelectionRecordError
 import skillbill.error.UnreadableInstallSelectionRecordError
@@ -85,8 +85,8 @@ class FileSystemInstallSelectionPersistenceTest {
     store.writeLatestSuccessfulSelection(
       WriteLatestSuccessfulInstallSelectionRequest(installHome = home, selection = selection),
     )
-    val emittedPayload = JsonSupport.anyToStringAnyMap(
-      JsonSupport.parseObjectOrNull(Files.readString(path))?.let(JsonSupport::jsonElementToValue),
+    val emittedPayload = JsonCodec.anyToStringAnyMap(
+      JsonCodec.parseObjectOrNull(Files.readString(path))?.let(JsonCodec::jsonElementToValue),
     ).orEmpty()
     assertEquals(
       mapOf(
@@ -231,9 +231,9 @@ class FileSystemInstallSelectionPersistenceTest {
         store.readLatestSuccessfulSelection(ReadLatestSuccessfulInstallSelectionRequest(home)).selection,
         caseName,
       )
-      val emittedPayload = JsonSupport.anyToStringAnyMap(
-        JsonSupport.parseObjectOrNull(Files.readString(home.resolve(".skill-bill/install-selection.json")))
-          ?.let(JsonSupport::jsonElementToValue),
+      val emittedPayload = JsonCodec.anyToStringAnyMap(
+        JsonCodec.parseObjectOrNull(Files.readString(home.resolve(".skill-bill/install-selection.json")))
+          ?.let(JsonCodec::jsonElementToValue),
       ).orEmpty()
       assertFalse("recentRepoPath" in emittedPayload, caseName)
       assertFalse("firstRun.agents" in emittedPayload, caseName)

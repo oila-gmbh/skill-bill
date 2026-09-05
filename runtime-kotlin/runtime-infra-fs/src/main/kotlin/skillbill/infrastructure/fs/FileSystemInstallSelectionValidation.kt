@@ -1,6 +1,6 @@
 package skillbill.infrastructure.fs
 
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.MalformedInstallSelectionRecordError
 import java.nio.file.Path
 
@@ -13,7 +13,7 @@ internal fun requireExactKeys(path: Path, actualKeys: Set<String>, expectedKeys:
 }
 
 internal fun Map<String, Any?>.requireObject(path: Path, key: String): Map<String, Any?> =
-  JsonSupport.anyToStringAnyMap(get(key))
+  JsonCodec.anyToStringAnyMap(get(key))
     ?: throw malformedInstallSelection(path, "Field '$key' must be an object.")
 
 internal fun Map<String, Any?>.requireString(path: Path, key: String): String = get(key) as? String

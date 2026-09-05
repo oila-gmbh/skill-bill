@@ -7,7 +7,7 @@ import skillbill.application.idestatus.model.IdeStatusLifecycleState
 import skillbill.application.idestatus.model.IdeStatusProblemCode
 import skillbill.application.idestatus.model.IdeStatusRequest
 import skillbill.application.idestatus.model.IdeStatusWorkflowFamily
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.GoalRunnerControlRepository
@@ -351,7 +351,7 @@ class IdeStatusServiceTest {
     val database = goalWithLaunchedChildDatabase(
       identity,
       Instant.parse("2026-08-06T09:15:00Z"),
-      childArtifactsJson = JsonSupport.mapToJsonString(
+      childArtifactsJson = JsonCodec.mapToJsonString(
         mapOf(
           FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
             "implement" to phaseRecordWire("implement", "running", "claude-opus-4-8"),

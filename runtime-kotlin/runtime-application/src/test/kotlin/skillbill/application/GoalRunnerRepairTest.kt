@@ -7,6 +7,8 @@ import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvel
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY
+import skillbill.application.goalrunner.GoalRunnerStatusTestPorts
+import skillbill.application.goalrunner.OutcomeStoreTestArtifactPorts
 import skillbill.application.goalrunner.PASSED_CONTINUATION_OUTCOME
 import skillbill.application.goalrunner.PASSED_PHASE_OUTPUT_CONTRACT
 import skillbill.application.goalrunner.PASSED_QUALITY_GATE_SELECTION
@@ -14,19 +16,17 @@ import skillbill.application.goalrunner.PASSED_REMEDIATION_BASE
 import skillbill.application.goalrunner.PASSED_REVIEW_BASE
 import skillbill.application.goalrunner.PASSED_UPSTREAM_OUTPUT
 import skillbill.application.goalrunner.PASSED_VALIDATION_DEPTH
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeDiagnosisRequest
 import skillbill.application.goalrunner.model.GoalRunnerChildWedgeRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
-import skillbill.application.goalrunner.outcomeStoreDeps
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.application.phaseartifacts.phaseRecordsFrom
 import skillbill.application.workflow.model.WorkflowFamily
 import skillbill.application.workflow.toRecord
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
@@ -228,11 +228,10 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     assertEquals("0.3", diagnosis.wedges.single().currentValue)
 
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = RepairManifestStore(workflowId),
-        outcomeStore = store,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         childRepairStore = store,
       ),
     )
@@ -852,7 +851,7 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
     val state = GoalSubtaskReviewState.fromArtifactMap(
-      requireNotNull(JsonSupport.anyToStringAnyMap(after[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])),
+      requireNotNull(JsonCodec.anyToStringAnyMap(after[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY])),
     )
     assertEquals(recovered, state.remediationBaseSha)
     assertEquals(1, state.completedPassCount)
@@ -935,11 +934,10 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       NoopRuntimeDiagnostics,
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = RepairManifestStore(workflowId),
-        outcomeStore = store,
-        phaseRecorder = phaseRecorder,
-      ).copy(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = phaseRecorder,
+      ports = GoalRunnerStatusTestPorts(
         workerSupervisor = LiveProcessSupervisor,
         childRepairStore = store,
       ),
@@ -970,11 +968,10 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     val beforeJson = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson
     val store = repairStore(workflows, git = ReachableGit())
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = RepairManifestStore(workflowId),
-        outcomeStore = store,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         childRepairStore = store,
       ),
     )
@@ -1002,11 +999,10 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     )
     val store = repairStore(workflows, git = ReachableGit())
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = RepairManifestStore(workflowId),
-        outcomeStore = store,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         childRepairStore = store,
       ),
     )
@@ -1067,11 +1063,10 @@ internal abstract class GoalRunnerRepairFixtures {
     workflows: InMemoryWorkflowStates,
     git: WorkflowGitOperations = NoopWorkflowGitOperations,
   ) = testWorkflowGoalRunnerOutcomeStore(
-    outcomeStoreDeps(
-      FakeDatabaseSessionFactory(workflows),
-      testWorkflowSnapshotValidator,
-      gitOperations = git,
-    ).copy(
+    FakeDatabaseSessionFactory(workflows),
+    testWorkflowSnapshotValidator,
+    gitOperations = git,
+    artifactPorts = OutcomeStoreTestArtifactPorts(
       decompositionManifestStore = InMemoryRepairManifestFileStore(),
     ),
   )

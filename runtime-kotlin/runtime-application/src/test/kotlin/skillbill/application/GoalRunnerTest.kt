@@ -14,12 +14,12 @@ import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
 import skillbill.application.goalrunner.GoalRunnerProgressReader
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.goalrunner.GoalRunnerStatusTestPorts
 import skillbill.application.goalrunner.SubtaskLaunchRequestArgs
 import skillbill.application.goalrunner.TestNoopGoalRunnerSubtaskLauncher
 import skillbill.application.goalrunner.findings.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.goalrunner.goalRunnerDeps
-import skillbill.application.goalrunner.goalRunnerStatusServiceDeps
 import skillbill.application.goalrunner.model.GoalRunnerAcceptRequest
 import skillbill.application.goalrunner.model.GoalRunnerAcceptResult
 import skillbill.application.goalrunner.model.GoalRunnerEventSink
@@ -1803,11 +1803,9 @@ class GoalRunnerStatusProjectionTest {
       ExecutionLiveness.IDLE,
       requireNotNull(
         testGoalRunnerStatusService(
-          goalRunnerStatusServiceDeps(
-            manifestStore = missingLeaseStore,
-            outcomeStore = RecordingOutcomeStore(),
-            phaseRecorder = goalTestPhaseRecorder(),
-          ),
+          manifestStore = missingLeaseStore,
+          outcomeStore = RecordingOutcomeStore(),
+          phaseRecorder = goalTestPhaseRecorder(),
         )
           .status(goalStatusRequest()),
       ).executionLiveness,
@@ -1822,11 +1820,9 @@ class GoalRunnerStatusProjectionTest {
       ExecutionLiveness.IDLE,
       requireNotNull(
         testGoalRunnerStatusService(
-          goalRunnerStatusServiceDeps(
-            manifestStore = missingCurrentSubtaskStore,
-            outcomeStore = RecordingOutcomeStore(),
-            phaseRecorder = goalTestPhaseRecorder(),
-          ),
+          manifestStore = missingCurrentSubtaskStore,
+          outcomeStore = RecordingOutcomeStore(),
+          phaseRecorder = goalTestPhaseRecorder(),
         )
           .status(goalStatusRequest()),
       ).executionLiveness,
@@ -1859,13 +1855,10 @@ class GoalRunnerStatusProjectionTest {
       )
     }
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
-        clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
     )
 
     assertEquals(ExecutionLiveness.LIVE, requireNotNull(service.status(goalStatusRequest())).executionLiveness)
@@ -1896,13 +1889,10 @@ class GoalRunnerStatusProjectionTest {
       )
     }
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = harness.recorder,
-      ).copy(
-        clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = harness.recorder,
+      clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
     )
 
     assertEquals(ExecutionLiveness.LIVE, requireNotNull(service.status(goalStatusRequest())).executionLiveness)
@@ -1936,11 +1926,10 @@ class GoalRunnerStatusProjectionTest {
       ),
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         gitOperations = StatusDiffGitOperations,
       ),
     )
@@ -1972,11 +1961,9 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -2010,11 +1997,9 @@ class GoalRunnerStatusProjectionTest {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-1")
     }
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -2041,11 +2026,9 @@ class GoalRunnerStatusProjectionTest {
       authoritativeOutcomesBySubtask[1] = completeOutcome(1).copy(workflowId = "wfl-authoritative")
     }
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -2096,11 +2079,9 @@ class GoalRunnerStatusProjectionTest {
       suppressPr = true,
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -2161,11 +2142,9 @@ class GoalRunnerStatusProjectionTest {
       )
     }
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -2209,11 +2188,9 @@ class GoalRunnerStatusProjectionTest {
     }
     val store = InMemoryGoalManifestStore(staleManifest)
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(GoalRunnerStatusRequest(issueKey = "SKILL-56", invokedAgentId = "codex"))
@@ -2239,11 +2216,9 @@ class GoalRunnerStatusProjectionTest {
       )
     }
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -2277,11 +2252,9 @@ class GoalRunnerStatusProjectionTest {
       suppressPr = true,
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -2322,11 +2295,9 @@ class GoalRunnerStatusProjectionTest {
       suppressPr = true,
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -2375,11 +2346,9 @@ class GoalRunnerStatusProjectionTest {
     val outcomes = RecordingOutcomeStore()
     outcomes["wfl-1"] = completeOutcome(1)
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -2401,11 +2370,9 @@ class GoalRunnerPauseStatusTest {
   fun `pause is consumed when the goal is stranded before launching a subtask`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val result = service.pause(
@@ -2426,11 +2393,9 @@ class GoalRunnerPauseStatusTest {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     store.requestPauseForTest()
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val result = service.resume(
@@ -2449,11 +2414,9 @@ class GoalRunnerPauseStatusTest {
   fun `resume reports not_paused when no pause boundary is durable`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val result = service.resume(
@@ -2470,17 +2433,14 @@ private fun statusServiceForLiveness(
   harness: GoalStatusPhaseLedgerHarness,
   workflowId: String,
 ): GoalRunnerStatusService = testGoalRunnerStatusService(
-  goalRunnerStatusServiceDeps(
-    manifestStore = InMemoryGoalManifestStore(
-      manifest(subtaskCount = 1)
-        .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"))
-        .withWorkflowId(1, workflowId),
-    ),
-    outcomeStore = RecordingOutcomeStore(),
-    phaseRecorder = harness.recorder,
-  ).copy(
-    clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
+  manifestStore = InMemoryGoalManifestStore(
+    manifest(subtaskCount = 1)
+      .copy(status = "in_progress", currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"))
+      .withWorkflowId(1, workflowId),
   ),
+  outcomeStore = RecordingOutcomeStore(),
+  phaseRecorder = harness.recorder,
+  clock = Clock.fixed(Instant.parse("2026-07-27T12:00:00Z"), ZoneOffset.UTC),
 )
 
 private fun goalStatusRequest() = GoalRunnerStatusRequest(issueKey = "SKILL-56", invokedAgentId = "codex")
@@ -2680,11 +2640,10 @@ class GoalRunnerAcceptResetTest {
       ),
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         gitOperations = AcceptGitOperations(),
       ),
     )
@@ -2721,11 +2680,10 @@ class GoalRunnerAcceptResetTest {
       ),
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         gitOperations = AcceptGitOperations(),
       ),
     )
@@ -2750,11 +2708,10 @@ class GoalRunnerAcceptResetTest {
   fun `accept rejects a commit that does not resolve in the repository`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         gitOperations = AcceptGitOperations(),
       ),
     )
@@ -2778,11 +2735,10 @@ class GoalRunnerAcceptResetTest {
   fun `accept rejects a subtask whose dependency is not satisfied`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         gitOperations = AcceptGitOperations(),
       ),
     )
@@ -2821,11 +2777,10 @@ class GoalRunnerAcceptResetTest {
       ),
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ).copy(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      ports = GoalRunnerStatusTestPorts(
         gitOperations = AcceptGitOperations(),
       ),
     )
@@ -2864,11 +2819,9 @@ class GoalRunnerAcceptResetTest {
     )
     val outcomes = RecordingOutcomeStore()
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val reset = service.reset(
@@ -2913,11 +2866,9 @@ class GoalRunnerAcceptResetTest {
       ),
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     service.reset(GoalRunnerResetRequest(issueKey = "SKILL-56", hard = false))
@@ -2956,11 +2907,9 @@ class GoalRunnerAcceptResetTest {
     }
 
     val reset = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     ).reset(
       GoalRunnerResetRequest(
         issueKey = "SKILL-56",
@@ -2995,11 +2944,9 @@ class GoalRunnerAcceptResetTest {
 
     assertFailsWith<IllegalArgumentException> {
       testGoalRunnerStatusService(
-        goalRunnerStatusServiceDeps(
-          manifestStore = store,
-          outcomeStore = outcomes,
-          phaseRecorder = goalTestPhaseRecorder(),
-        ),
+        manifestStore = store,
+        outcomeStore = outcomes,
+        phaseRecorder = goalTestPhaseRecorder(),
       ).reset(
         GoalRunnerResetRequest(
           issueKey = "SKILL-56",
@@ -3028,11 +2975,9 @@ class GoalRunnerAcceptResetTest {
       },
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val reset = service.reset(
@@ -3084,11 +3029,12 @@ class GoalRunnerAcceptResetTest {
   }
 
   private fun acceptingStatusService(store: InMemoryGoalManifestStore) = testGoalRunnerStatusService(
-    goalRunnerStatusServiceDeps(
-      manifestStore = store,
-      outcomeStore = RecordingOutcomeStore(),
-      phaseRecorder = goalTestPhaseRecorder(),
-    ).copy(gitOperations = AcceptGitOperations()),
+    manifestStore = store,
+    outcomeStore = RecordingOutcomeStore(),
+    phaseRecorder = goalTestPhaseRecorder(),
+    ports = GoalRunnerStatusTestPorts(
+      gitOperations = AcceptGitOperations(),
+    ),
   )
 
   private fun acceptRequest(commitSha: String, restoreAfterHardReset: Boolean = false) = GoalRunnerAcceptRequest(
@@ -3103,11 +3049,9 @@ class GoalRunnerAcceptResetTest {
   @Test
   fun `hard reset requires repository root for checkpoint ref cleanup`() {
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1)),
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1)),
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     assertFailsWith<IllegalArgumentException> {
@@ -3124,11 +3068,9 @@ class GoalRunnerAcceptResetTest {
       ),
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     assertFailsWith<IllegalArgumentException> {
@@ -4461,11 +4403,9 @@ class GoalRunnerStatusAttributionTest {
       latestLivenessSignal = "durable_progress step=implement attempt=1",
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = outcomes,
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = outcomes,
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -4497,11 +4437,9 @@ class GoalRunnerStatusAttributionTest {
       manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = "wfl-1", reason = "needs review"),
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = goalTestPhaseRecorder(),
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
     )
 
     val status = service.status(
@@ -4529,11 +4467,9 @@ class GoalRunnerStatusAttributionTest {
       manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = workflowId, reason = "needs review"),
     )
     val service = testGoalRunnerStatusService(
-      goalRunnerStatusServiceDeps(
-        manifestStore = store,
-        outcomeStore = RecordingOutcomeStore(),
-        phaseRecorder = harness.recorder,
-      ),
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = harness.recorder,
     )
 
     val status = service.status(

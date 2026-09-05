@@ -2,7 +2,7 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -410,7 +410,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
         produced["changed_paths"] = listOf("runtime-domain/model/X.kt")
       }
     }
-    return JsonSupport.mapToJsonString(mapOf("produced_outputs" to produced))
+    return JsonCodec.mapToJsonString(mapOf("produced_outputs" to produced))
   }
 
   private data class BriefingAssembleFixture(

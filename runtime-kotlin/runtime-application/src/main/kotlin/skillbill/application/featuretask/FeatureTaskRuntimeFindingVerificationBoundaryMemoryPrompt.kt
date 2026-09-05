@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.GoalVerificationBoundaryCapExceededError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
@@ -111,7 +111,7 @@ fun FeatureTaskRuntimeFindingVerificationBoundaryMemory.promptSection(
       } else {
         appendLine("boundary_catalog:")
         appendLine(
-          JsonSupport.mapToJsonString(
+          JsonCodec.mapToJsonString(
             mapOf(
               "headings" to section.discovery.boundaryCatalog.map { heading ->
                 mapOf(

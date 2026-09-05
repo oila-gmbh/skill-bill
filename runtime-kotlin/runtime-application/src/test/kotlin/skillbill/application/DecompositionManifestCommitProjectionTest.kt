@@ -5,7 +5,7 @@ import skillbill.application.decomposition.loadDecompositionManifest
 import skillbill.application.decomposition.model.DecompositionManifestRuntimeUpdate
 import skillbill.application.decomposition.model.DecompositionManifestWriteRequest
 import skillbill.application.decomposition.parentSpecPath
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.toWireMap
 import java.nio.file.Files
@@ -162,7 +162,7 @@ class DecompositionManifestCommitProjectionTest {
   )
 
   private fun durableRuntimeArtifactsJson(manifest: DecompositionManifest, subtaskSpec: Path): String =
-    JsonSupport.mapToJsonString(
+    JsonCodec.mapToJsonString(
       mapOf(
         DECOMPOSITION_RUNTIME_ARTIFACT_KEY to manifest.toWireMap(),
         "assessment" to mapOf("spec_path" to subtaskSpec.toString()),

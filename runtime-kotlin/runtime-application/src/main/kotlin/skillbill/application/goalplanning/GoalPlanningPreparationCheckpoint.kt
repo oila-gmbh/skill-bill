@@ -3,7 +3,7 @@ package skillbill.application.goalplanning
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.planningprojection.producerProjectionGateReason
 import skillbill.application.planningprojection.requireValidPlanningProjection
-import skillbill.contracts.JsonSupport
+import skillbill.contracts.JsonCodec
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
@@ -178,9 +178,9 @@ class GoalPlanningPreparationCheckpoint(
             "stored plan provenance differs from the governing shared preplan",
           )
         }
-        val parsed = JsonSupport.parseObjectOrNull(plan.planPayload)
-          ?.let(JsonSupport::jsonElementToValue)
-          ?.let(JsonSupport::anyToStringAnyMap)
+        val parsed = JsonCodec.parseObjectOrNull(plan.planPayload)
+          ?.let(JsonCodec::jsonElementToValue)
+          ?.let(JsonCodec::anyToStringAnyMap)
         val status = parsed?.get("status")?.toString()
         val produced = parsed?.get("produced_outputs") as? Map<*, *>
         if (status != "completed" || produced?.isEmpty() != false) {
