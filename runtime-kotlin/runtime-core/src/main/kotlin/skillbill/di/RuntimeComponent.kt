@@ -66,6 +66,7 @@ abstract class RuntimeComponent(
   RuntimeGoalRunnerScaffoldProvides,
   RuntimeScaffoldWorkflowProvides,
   RuntimeReviewWorkflowProvides,
+  RuntimePortableReviewBaselineProvides,
   RuntimeWorkflowValidatorProvides,
   RuntimeFeatureTaskGoalValidatorProvides,
   RuntimeCompositionMiscProvides,

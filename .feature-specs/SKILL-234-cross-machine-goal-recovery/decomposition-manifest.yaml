@@ -1,0 +1,27 @@
+---
+contract_version: "0.5"
+issue_key: "SKILL-234"
+feature_name: "cross-machine-goal-recovery"
+parent_spec_path: ".feature-specs/SKILL-234-cross-machine-goal-recovery/spec.md"
+status: "complete"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-234-cross-machine-goal-recovery"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 0
+  action: "complete"
+subtasks:
+- id: 1
+  name: "Portable goal recovery"
+  spec_path: ".feature-specs/SKILL-234-cross-machine-goal-recovery/spec_subtask_1_portable-goal-recovery.md"
+  status: "complete"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260905-084410-2ubw"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies: []

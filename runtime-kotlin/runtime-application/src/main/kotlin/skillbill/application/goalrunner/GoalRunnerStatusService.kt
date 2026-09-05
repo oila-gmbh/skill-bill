@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.model.GoalRunnerAcceptRequest
 import skillbill.application.goalrunner.model.GoalRunnerAcceptResult
 import skillbill.application.goalrunner.model.GoalRunnerPauseResult
+import skillbill.application.goalrunner.model.GoalRunnerRepairCoordinatorDeps
 import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairResult
 import skillbill.application.goalrunner.model.GoalRunnerReplanRequest
@@ -36,6 +37,7 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
   private val runtimeStatusService = deps.runtimeStatusService
   private val repositoryRoot = deps.repositoryRoot
   private val repositoryEnclosingRootPort = deps.repositoryEnclosingRootPort
+  private val portableReviewBaselinePersistence = deps.portableReviewBaselinePersistence
   private val projectionAssembler = GoalRunnerStatusProjectionAssembler(
     GoalRunnerStatusProjectionAssemblerDeps(
       manifestStore = manifestStore,
@@ -72,12 +74,16 @@ class GoalRunnerStatusService(deps: GoalRunnerStatusServiceDeps) {
   )
 
   private val repairCoordinator = GoalRunnerRepairCoordinator(
-    manifestStore = manifestStore,
-    phaseRecorder = phaseRecorder,
-    workerSupervisor = workerSupervisor,
-    childRepairStore = childRepairStore,
-    repositoryRoot = repositoryRoot,
-    repositoryEnclosingRootPort = repositoryEnclosingRootPort,
+    GoalRunnerRepairCoordinatorDeps(
+      manifestStore = manifestStore,
+      phaseRecorder = phaseRecorder,
+      workerSupervisor = workerSupervisor,
+      childRepairStore = childRepairStore,
+      gitOperations = gitOperations,
+      portableReviewBaselinePersistence = portableReviewBaselinePersistence,
+      repositoryRoot = repositoryRoot,
+      repositoryEnclosingRootPort = repositoryEnclosingRootPort,
+    ),
   )
 
   private val acceptanceCoordinator = GoalRunnerAcceptanceCoordinator(

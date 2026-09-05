@@ -1,9 +1,12 @@
 package skillbill.application.goalplanning
 
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import skillbill.application.planningprojection.requireValidPlanningProjection
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationRecord
 import skillbill.ports.goalrunner.model.GoalPlanningPreparationState
@@ -22,6 +25,8 @@ class GoalPlanningPreparationValidator(
 
   fun canonicalize(record: GoalPlanningPreparationRecord): GoalPlanningPreparationRecord {
     val label = "${record.parentGoalWorkflowId}#${record.subtaskId}"
+    requireCompatiblePhaseOutputContract(record.preplanPayload, PREPLAN_PHASE_ID)
+    requireCompatiblePhaseOutputContract(record.planPayload, PLAN_PHASE_ID)
     val acceptedPreplan = outputValidator.validatePhaseOutput(record.preplanPayload, PREPLAN_PHASE_ID)
       .requireAcceptedOutput(PREPLAN_PHASE_ID)
     val preplan = acceptedPreplan.normalizedOutput.envelope
@@ -93,4 +98,16 @@ class GoalPlanningPreparationValidator(
 fun sha256HexUtf8(text: String): String {
   val digest = MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8))
   return digest.joinToString("") { byte -> "%02x".format(byte) }
+}
+
+internal fun requireCompatiblePhaseOutputContract(payload: String, phaseId: String) {
+  val parsed = JsonSupport.parseObjectOrNull(payload) ?: return
+  val version = (parsed["contract_version"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)
+  if (version != null && version != FEATURE_TASK_RUNTIME_CONTRACT_VERSION) {
+    throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+      sourceLabel = phaseId,
+      reason = "contract_version must be '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION' but was '$version'.",
+      payloadFreeReason = "contract_version must be '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'.",
+    )
+  }
 }

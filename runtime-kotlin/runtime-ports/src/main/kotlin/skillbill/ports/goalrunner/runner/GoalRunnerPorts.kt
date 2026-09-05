@@ -15,6 +15,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerCompletionPersistenceResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerLaunchAuthorization
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
+import skillbill.ports.goalrunner.runner.model.GoalRunnerOrphanChildReplacementWrite
 import skillbill.ports.goalrunner.runner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.runner.model.GoalRunnerPausePersistenceResult
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
@@ -189,6 +190,9 @@ interface GoalRunnerManifestPersistenceCommands {
     setup: GoalRunnerChildWorkflowSetup,
     dbPathOverride: String? = null,
   ): GoalRunnerManifestState = error("Goal runner manifest store must atomically persist new child workflow state.")
+
+  fun replaceOrphanChildWorkflow(write: GoalRunnerOrphanChildReplacementWrite): GoalRunnerManifestState =
+    error("Goal runner manifest store must atomically replace an orphan child workflow.")
 }
 
 interface GoalRunnerManifestReviewCommands {

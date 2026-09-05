@@ -4,12 +4,15 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.model.GoalRunnerRunEvent
 import skillbill.application.goalrunner.model.GoalRunnerRunRequest
 import skillbill.application.goalrunner.model.GoalRunnerSubtaskLaunchBoundariesPort
+import skillbill.application.goalrunner.model.PortableReviewBaselineValidationRequest
+import skillbill.application.goalrunner.model.PortableReviewBaselineWriteRequest
 import skillbill.application.goalrunner.planning.goalPlanningChildImportConflictBlockedReason
 import skillbill.application.goalrunner.planning.model.GoalPlanningSweepOutcome
 import skillbill.application.workflow.generateWorkflowId
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.goalrunner.model.GoalRunnerStopReason
+import skillbill.ports.goalrunner.persistence.PortableReviewBaselinePersistence
 import skillbill.ports.goalrunner.runner.model.GoalRunnerChildWorkflowSetup
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
@@ -18,6 +21,7 @@ import skillbill.ports.workflow.gitops.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.gitops.model.GoalSubtaskReviewBaselineResult
 import skillbill.review.context.model.CodeReviewExecutionMode
+import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.decomposition.model.DecompositionSubtask
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
@@ -26,6 +30,7 @@ import java.nio.file.Path
 public class GoalRunnerSubtaskLaunchPrepare(
   private val launchBoundaries: GoalRunnerSubtaskLaunchBoundariesPort,
   private val repositoryEnclosingRootPort: RepositoryEnclosingRootPort,
+  private val portableReviewBaselinePersistence: PortableReviewBaselinePersistence,
 ) {
   private val manifestStore get() = launchBoundaries.manifestStore
   private val outcomeStore get() = launchBoundaries.outcomeStore
@@ -46,12 +51,7 @@ public class GoalRunnerSubtaskLaunchPrepare(
               baseline = GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths),
             )
           }
-          ?: GoalSubtaskReviewBaselineResult(
-            status = "error",
-            error =
-            "Goal-subtask review state is missing for existing child '$existingWorkflowId'; " +
-              "refusing to recapture its immutable baseline.",
-          )
+          ?: rehydratePortableBaseline(state, subtaskId, existingWorkflowId, request)
       }.getOrElse { error ->
         GoalSubtaskReviewBaselineResult(
           status = "error",
@@ -181,30 +181,105 @@ public class GoalRunnerSubtaskLaunchPrepare(
     val governedSpecPath = canonicalRepository.relativize(resolvedSpecPath).joinToString("/")
     val attemptedManifest = state.manifest.withAttemptedSubtask(subtaskId)
       .let { manifest -> if (firstRun) manifest.withWorkflowId(subtaskId, assignedWorkflowId) else manifest }
-    val attemptedState = run {
-      val branch = attemptedManifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
-        ?: attemptedManifest.featureBranch?.takeIf(String::isNotBlank)
-        ?: error("Goal subtask '$subtaskId' has no durable branch for review baseline persistence.")
-      manifestStore.saveNewChildWorkflow(
-        state.copy(manifest = attemptedManifest),
-        GoalRunnerChildWorkflowSetup(
-          subtaskId = subtaskId,
-          workflowId = assignedWorkflowId,
+    return persistAttemptedChild(
+      PersistAttemptedChildArgs(
+        state = state,
+        subtaskId = subtaskId,
+        request = request,
+        reviewBaseline = reviewBaseline,
+        planning = planning,
+        firstRun = firstRun,
+        assignedWorkflowId = assignedWorkflowId,
+        canonicalRepository = canonicalRepository,
+        governedSpecPath = governedSpecPath,
+        attemptedManifest = attemptedManifest,
+      ),
+    )
+  }
+
+  private fun persistAttemptedChild(args: PersistAttemptedChildArgs): PreparedLaunch {
+    val branch = args.attemptedManifest.branchPlanFor(args.subtaskId).branch.takeIf(String::isNotBlank)
+      ?: args.attemptedManifest.featureBranch?.takeIf(String::isNotBlank)
+      ?: error("Goal subtask '${args.subtaskId}' has no durable branch for review baseline persistence.")
+    if (args.firstRun) {
+      PortableReviewBaselineWriter(portableReviewBaselinePersistence).persistBeforeImplementation(
+        PortableReviewBaselineWriteRequest(
+          repoRoot = args.request.repoRoot,
+          manifest = args.attemptedManifest,
+          subtaskId = args.subtaskId,
+          workflowId = args.assignedWorkflowId,
+          repositoryIdentity = repositoryEnclosingRootPort.repositoryIdentity(args.canonicalRepository),
           goalBranch = branch,
-          normalizedIssueKey = state.manifest.issueKey.trim().uppercase(),
-          repositoryIdentity = repositoryEnclosingRootPort.repositoryIdentity(canonicalRepository),
-          governedSpecPath = governedSpecPath,
-          reviewBaseline = reviewBaseline,
-          reviewPolicy = GoalRunnerReviewPolicy(
-            codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
-            agentAddonSelection = manifestStore.effectiveAgentAddonSelection(state.parentWorkflowId, request),
-          ),
-          planningHydration = planning.hydrationFor(subtaskId),
+          reviewBaseline = args.reviewBaseline,
         ),
-        request.dbPathOverride,
       )
     }
-    return PreparedLaunch(attemptedState, assignedWorkflowId.takeIf { firstRun })
+    val attemptedState = manifestStore.saveNewChildWorkflow(
+      args.state.copy(manifest = args.attemptedManifest),
+      GoalRunnerChildWorkflowSetup(
+        subtaskId = args.subtaskId,
+        workflowId = args.assignedWorkflowId,
+        goalBranch = branch,
+        normalizedIssueKey = args.state.manifest.issueKey.trim().uppercase(),
+        repositoryIdentity = repositoryEnclosingRootPort.repositoryIdentity(args.canonicalRepository),
+        governedSpecPath = args.governedSpecPath,
+        reviewBaseline = args.reviewBaseline,
+        reviewPolicy = GoalRunnerReviewPolicy(
+          codeReviewMode = args.request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
+          agentAddonSelection = manifestStore.effectiveAgentAddonSelection(
+            args.state.parentWorkflowId,
+            args.request,
+          ),
+        ),
+        planningHydration = args.planning.hydrationFor(args.subtaskId),
+      ),
+      args.request.dbPathOverride,
+    )
+    return PreparedLaunch(attemptedState, args.assignedWorkflowId.takeIf { args.firstRun })
+  }
+
+  private data class PersistAttemptedChildArgs(
+    val state: GoalRunnerManifestState,
+    val subtaskId: Int,
+    val request: GoalRunnerRunRequest,
+    val reviewBaseline: GoalSubtaskReviewBaseline,
+    val planning: GoalPlanningSweepOutcome.PreparedAll,
+    val firstRun: Boolean,
+    val assignedWorkflowId: String,
+    val canonicalRepository: Path,
+    val governedSpecPath: String,
+    val attemptedManifest: DecompositionManifest,
+  )
+
+  private fun rehydratePortableBaseline(
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    workflowId: String,
+    request: GoalRunnerRunRequest,
+  ): GoalSubtaskReviewBaselineResult {
+    val subtask = requireNotNull(state.manifest.subtasks.firstOrNull { it.id == subtaskId }) {
+      "Goal subtask '$subtaskId' is missing from the decomposition manifest."
+    }
+    val branch = state.manifest.branchPlanFor(subtaskId).branch.takeIf(String::isNotBlank)
+      ?: state.manifest.featureBranch?.takeIf(String::isNotBlank)
+      ?: return GoalSubtaskReviewBaselineResult(
+        status = "error",
+        error = "Goal subtask '$subtaskId' has no durable child branch for portable baseline validation.",
+      )
+    val canonicalRepository = repositoryEnclosingRootPort.canonicalPath(request.repoRoot)
+    return PortableReviewBaselineRehydrator.rehydrateBaseline(
+      PortableReviewBaselineValidationRequest(
+        persistence = portableReviewBaselinePersistence,
+        repoRoot = request.repoRoot,
+        manifest = state.manifest,
+        subtaskId = subtaskId,
+        expectedWorkflowId = workflowId,
+        expectedRepositoryIdentity = repositoryEnclosingRootPort.repositoryIdentity(canonicalRepository),
+        expectedBranch = branch,
+        gitOperations = gitOperations,
+        subtask = subtask,
+      ),
+    )
   }
 
   internal fun goalBranchSetupFailure(

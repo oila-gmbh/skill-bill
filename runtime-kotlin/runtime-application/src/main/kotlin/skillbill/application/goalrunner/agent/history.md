@@ -1,5 +1,17 @@
 # goalrunner boundary history
 
+## [2026-09-05] SKILL-234 subtask 1 — portable goal recovery
+Areas: orchestration/contracts, runtime-contracts, runtime-domain/workflow.goal.model, runtime-ports/goalrunner, runtime-application/{goalrunner,featuretask}, runtime-infra-{fs,sqlite}, runtime-cli/goal, runtime-core/di
+- Goal children persist a versioned portable review-baseline YAML under `.feature-specs/<issue>-<feature>/portable-review-baselines/` atomically before implementation, so resume does not depend on machine-local SQLite review state.
+- Resume rehydrates missing local review state from a valid artifact only when the child has no implementation, commit, or conflicting branch evidence; otherwise it blocks with a typed `PortableReviewBaselineBlockedReason` and a recovery action.
+- `create_branch` orphans with no durable execution evidence are replaced through `skill-bill goal repair --replace-orphan --apply`: new workflow identity, fresh baseline, atomic manifest update, and `goal_recovery_audit`.
+- Unreachable-review-base recovery shares `PortableReviewBaselineValidator.validateArtifactIntegrity` and the same audit rewrite path without changing SHA selection (`GOAL_REVIEW_BASE_RECOVERIES`). reusable
+- Pattern: integrity-only vs full stored-artifact validation; loud-fail on missing, malformed, digest, repo, branch, or unsafe-path mismatch; never infer untracked paths from the current worktree. reusable
+- Reusable: `PortableReviewBaselinePersistence` (atomic FS write), codec+digest, validator/rehydrator/writer, typed blocked reasons, `goal_recovery_audit`. reusable
+- Limitation: children with implementation evidence cannot be reconstructed from the artifact; resume on the original machine, or replace only before durable execution.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-09-03] SKILL-230 subtask 2 — Concurrent planning status wire
 Areas: orchestration/contracts/ide-status-schema, runtime-contracts/workflow, runtime-domain/goalrunner.model, runtime-ports/goalrunner, runtime-infra-sqlite/db.workflow, runtime-application/{goalrunner/planning,idestatus,work}, runtime-cli/goal, runtime-mcp/workflow
 - `GoalPlanningStatusSnapshot` carries `planningWaveSubtaskIds` (manifest-ordered missing-plan ids, capped at `GOAL_PLANNING_WAVE_CAP`); the domain `init` requires `currentPlanningSubtaskId` to equal the wave minimum, so the IntelliJ plugin and VS Code extension keep reading one id with no edit.

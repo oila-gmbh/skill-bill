@@ -7,6 +7,7 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.goalrunner.model.GoalPlanningIdentity
 import skillbill.workflow.decomposition.model.DecompositionManifest
 import skillbill.workflow.goal.model.GoalProgressEvent
+import skillbill.workflow.goal.model.GoalRecoveryAuditEntry
 import java.nio.file.Path
 
 data class GoalRunnerManifestState(
@@ -226,3 +227,12 @@ sealed interface GoalPullRequestResult {
   data class Existing(val url: String) : GoalPullRequestResult
   data class Failed(val reason: String) : GoalPullRequestResult
 }
+
+data class GoalRunnerOrphanChildReplacementWrite(
+  val state: GoalRunnerManifestState,
+  val subtaskId: Int,
+  val sourceWorkflowId: String,
+  val setup: GoalRunnerChildWorkflowSetup,
+  val auditEntry: GoalRecoveryAuditEntry,
+  val dbPathOverride: String? = null,
+)

@@ -49,6 +49,7 @@ import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
+import skillbill.ports.goalrunner.persistence.NoopPortableReviewBaselinePersistence
 import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.planning.model.GoalPlanningContext
 import skillbill.ports.goalrunner.runner.GoalPullRequestPort
@@ -217,7 +218,11 @@ internal fun testGoalRunner(wiring: GoalRunnerTestWiring): GoalRunner {
       progressReader = progressReader,
       pauseBoundary = GoalRunnerPauseBoundary(wiring.runBoundaries.manifestStore),
       runPreparation = GoalRunnerRunPreparation(wiring.runBoundaries.manifestStore, TestRepositoryEnclosingRoot),
-      launchPrepare = GoalRunnerSubtaskLaunchPrepare(wiring.launchBoundaries, TestRepositoryEnclosingRoot),
+      launchPrepare = GoalRunnerSubtaskLaunchPrepare(
+        wiring.launchBoundaries,
+        TestRepositoryEnclosingRoot,
+        NoopPortableReviewBaselinePersistence,
+      ),
       finalization = finalization,
     ),
   )
@@ -290,6 +295,7 @@ internal fun testGoalRunnerChildRepairExecutor(
   testWorkflowSnapshotValidator,
   gitOperations,
   testDecompositionManifestValidator,
+  NoopPortableReviewBaselinePersistence,
   testHarnessClock,
 )
 
@@ -434,6 +440,7 @@ internal fun goalRunnerStatusServiceDeps(
   runtimeStatusService = null,
   repositoryRoot = testRepositoryRoot,
   repositoryEnclosingRootPort = TestRepositoryEnclosingRoot,
+  portableReviewBaselinePersistence = NoopPortableReviewBaselinePersistence,
 )
 
 internal fun testGoalPlanningContextDiscovery(
