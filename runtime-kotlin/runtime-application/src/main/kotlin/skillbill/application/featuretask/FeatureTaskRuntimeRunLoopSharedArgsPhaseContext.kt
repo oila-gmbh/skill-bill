@@ -92,6 +92,7 @@ internal data class CheckpointCommitMessageArgs(
 internal data class DeclaredLaunchArgs(
   val run: PhaseRun,
   val state: FeatureTaskRuntimeRunState,
+  val iteration: Int,
   val priorCorrection: PriorAttemptCorrection?,
   val durablyClosedCriterionRefs: List<String>,
   val context: LaunchRejectionMeasurementContext,
@@ -188,6 +189,7 @@ internal data class FinalizeValidatedOutputAcceptanceArgs(
 internal data class PrepareLaunchArgs(
   val run: PhaseRun,
   val state: FeatureTaskRuntimeRunState,
+  val iteration: Int,
   val priorCorrection: PriorAttemptCorrection?,
   val durablyClosedCriterionRefs: List<String>,
   val repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
@@ -204,6 +206,7 @@ internal data class AssembleLaunchHandoffArgs(
 internal data class ComposeLaunchPromptArgs(
   val run: PhaseRun,
   val state: FeatureTaskRuntimeRunState,
+  val iteration: Int,
   val handoff: FeatureTaskRuntimePhaseHandoff,
   val priorCorrection: PriorAttemptCorrection?,
   val briefing: FeatureTaskRuntimePhaseLaunchBriefing,

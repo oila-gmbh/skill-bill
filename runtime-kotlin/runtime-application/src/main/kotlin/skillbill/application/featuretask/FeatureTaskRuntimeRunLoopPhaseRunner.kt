@@ -28,7 +28,13 @@ class FeatureTaskRuntimeRunLoopPhaseRunner {
   ): PhaseOutcome = when (val prepared = runLoop.collaborators.review.prepareRuntimeOwnedReview(runLoop, run, state)) {
     is RuntimeOwnedReviewBlocked -> prepared.outcome
     is RuntimeOwnedReviewReady -> {
-      runLoop.collaborators.launch.prepareLaunchForCapture(runLoop, prepared.run, state, null)
+      runLoop.collaborators.launch.prepareLaunchForCapture(
+        runLoop,
+        prepared.run,
+        state,
+        state.nextIteration(prepared.run.phaseId),
+        null,
+      )
       runLoop.collaborators.review.executePreparedReviewDriver(runLoop, prepared, observability)
     }
   }

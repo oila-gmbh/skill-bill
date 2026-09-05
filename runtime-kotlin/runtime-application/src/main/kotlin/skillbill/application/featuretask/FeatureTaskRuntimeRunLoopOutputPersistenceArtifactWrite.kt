@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhasePromptComposeInputs
+import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseSettlementTarget
 import skillbill.application.review.RuntimeOwnedReviewMode
 import skillbill.workflow.goal.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
@@ -44,7 +45,7 @@ internal fun FeatureTaskRuntimeRunLoopOutputPersistence.prepareLaunch(
   )
   val prompt = composeLaunchPrompt(
     runLoop,
-    ComposeLaunchPromptArgs(run, state, handoff, priorCorrection, briefing),
+    ComposeLaunchPromptArgs(run, state, args.iteration, handoff, priorCorrection, briefing),
   )
   return PreparedLaunch(briefing, prompt)
 }
@@ -137,6 +138,7 @@ private fun FeatureTaskRuntimeRunLoopOutputPersistence.composeLaunchPrompt(
       agentRunValidateFallback = run.agentRunValidateFallback,
       packCollectAllCommand = runLoop.collaborators.validationGateContinued2.packCollectAllCommand(runLoop, run),
       packBuildCommand = runLoop.collaborators.validationGateContinued3.packBuildCommand(runLoop, run),
+      phaseSettlement = FeatureTaskRuntimePhaseSettlementTarget(run.request.workflowId, args.iteration),
     ),
   ) + runLoop.collaborators.launch.verifyFindingsSpecIntentSection(runLoop, run)
 }

@@ -77,6 +77,6 @@ fun phasePromptTrailingSections(
   if (inputs.validationGateFindings != null) {
     gateRepairNoOutputSchemaDirective(inputs.briefing.phaseId, inputs.validationGateTriage)
   } else {
-    outputContract(inputs.briefing, inputs.agentRunValidateFallback)
+    outputContract(inputs.briefing, inputs.agentRunValidateFallback, inputs.phaseSettlement)
   },
 )

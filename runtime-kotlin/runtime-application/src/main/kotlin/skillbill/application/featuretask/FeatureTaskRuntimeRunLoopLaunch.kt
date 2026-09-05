@@ -77,11 +77,12 @@ class FeatureTaskRuntimeRunLoopLaunch {
 
   internal fun launchAndCapture(
     runLoop: FeatureTaskRuntimeRunLoop,
-    run: PhaseRun,
-    state: FeatureTaskRuntimeRunState,
+    attempt: PhaseAttemptContext,
     priorCorrection: PriorAttemptCorrection? = null,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): LaunchResult {
+    val run = attempt.run
+    val state = attempt.state
     val before = when (val captured = runLoop.collaborators.launchContinued1.captureLaunchBeforeState(runLoop, run)) {
       is LaunchCaptureBeforeResult.Ready -> captured.state
       is LaunchCaptureBeforeResult.Failed ->
@@ -91,7 +92,9 @@ class FeatureTaskRuntimeRunLoopLaunch {
           childNeverLaunched = true,
         )
     }
-    val prepared = when (val preparation = prepareLaunchForCapture(runLoop, run, state, priorCorrection)) {
+    val prepared = when (
+      val preparation = prepareLaunchForCapture(runLoop, run, state, attempt.iteration, priorCorrection)
+    ) {
       is PreparedLaunchReady -> preparation.value
       is LaunchPreparationRejected -> return preparation.result
       is LaunchMeasurementContextReady,
@@ -162,6 +165,7 @@ class FeatureTaskRuntimeRunLoopLaunch {
     runLoop: FeatureTaskRuntimeRunLoop,
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
+    iteration: Int,
     priorCorrection: PriorAttemptCorrection?,
   ): LaunchPreparation {
     val measurementContext = when (
@@ -193,7 +197,7 @@ class FeatureTaskRuntimeRunLoopLaunch {
     }
     return runLoop.collaborators.launchContinued2.prepareDeclaredLaunch(
       runLoop,
-      DeclaredLaunchArgs(run, state, priorCorrection, durablyClosedCriterionRefs, measurementContext),
+      DeclaredLaunchArgs(run, state, iteration, priorCorrection, durablyClosedCriterionRefs, measurementContext),
     )
   }
 

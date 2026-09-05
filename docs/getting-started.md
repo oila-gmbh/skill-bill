@@ -472,11 +472,16 @@ The foreground feature-task driver owns its durable state, lifecycle telemetry,
 and continuation lookup in-process. Settlement-only MCP tools
 (`feature_task_phase_complete`, `feature_task_phase_block`,
 `feature_task_audit_settle`) let a child agent choose the next edge without
-schema-policing a stdout envelope; use `skill-bill feature-task` and
-`skill-bill feature-task-stats` for lifecycle control. When MCP settlement is
-absent, prose phases still accept recoverable stdout packaging near-misses
-(legacy siblings stuffed into `produced_outputs.value`) rather than hard-rejecting
-them — that broadening is intentional for preplan/plan/implement/audit.
+schema-policing a stdout envelope. The preplan, plan, and implement briefings
+pin the workflow id and attempt and instruct the child to finish through those
+tools with one prose `value`; the printed JSON envelope is documented only as a
+fallback for a session where the tools stay unavailable. Use `skill-bill
+feature-task` and `skill-bill feature-task-stats` for lifecycle control. When a
+prose phase does end through stdout, the runtime recovers any envelope that
+carries a readable status and a non-blank `produced_outputs.value` (legacy
+siblings stuffed into `value`, a mistyped optional field such as a
+`derived_notes` array) rather than hard-rejecting it — that broadening is
+intentional for preplan/plan/implement/audit.
 
 ## Validation Gate
 

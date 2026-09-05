@@ -88,7 +88,14 @@ class FeatureTaskRuntimeRunLoopLaunchProcessWait {
       PreparedLaunchReady(
         runLoop.collaborators.outputPersistence.prepareLaunch(
           runLoop,
-          PrepareLaunchArgs(run, state, priorCorrection, durablyClosedCriterionRefs, context.repositoryCheckpoint),
+          PrepareLaunchArgs(
+            run,
+            state,
+            args.iteration,
+            priorCorrection,
+            durablyClosedCriterionRefs,
+            context.repositoryCheckpoint,
+          ),
         ),
       )
     } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {

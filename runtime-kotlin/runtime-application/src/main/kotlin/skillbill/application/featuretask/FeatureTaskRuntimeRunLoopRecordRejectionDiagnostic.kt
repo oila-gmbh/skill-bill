@@ -54,10 +54,9 @@ internal fun FeatureTaskRuntimeRunLoopRecordRejection.attemptOnce(
   )
   val launch = runLoop.collaborators.launch.launchAndCapture(
     runLoop,
-    run,
-    runLoop.state,
+    PhaseAttemptContext(run, runLoop.state, iteration, observability),
     priorCorrection,
-    runLoop.phaseTokenAccumulator,
+    phaseTokenAccumulator,
   )
   return settleRecordRejectionLaunchOutcome(runLoop, args, launch)
 }

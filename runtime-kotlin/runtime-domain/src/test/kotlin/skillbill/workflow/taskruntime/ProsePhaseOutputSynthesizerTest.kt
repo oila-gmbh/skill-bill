@@ -36,6 +36,27 @@ class ProsePhaseOutputSynthesizerTest {
   }
 
   @Test
+  fun `direct value beside a mistyped optional field synthesizes a clean envelope`() {
+    val raw =
+      """
+      {
+        "contract_version": "0.6",
+        "phase_id": "implement",
+        "status": "completed",
+        "summary": "Consolidated the run loop.",
+        "produced_outputs": { "value": "{\"changed\":[\"RunLoop.kt\"]}" },
+        "derived_notes": ["validate owes the compile", "counts came from git ls-tree"]
+      }
+      """.trimIndent()
+
+    val envelope = assertNotNull(ProsePhaseOutputSynthesizer.trySynthesize(raw, "implement"))
+    val produced = assertNotNull(JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]))
+    assertEquals("{\"changed\":[\"RunLoop.kt\"]}", produced["value"])
+    assertEquals("completed", envelope["status"])
+    assertNull(envelope["derived_notes"])
+  }
+
+  @Test
   fun `audit without recoverable verdict rejects`() {
     val raw =
       """
