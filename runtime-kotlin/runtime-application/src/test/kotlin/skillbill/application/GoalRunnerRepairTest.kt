@@ -5,6 +5,7 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
+import skillbill.application.featuretask.InMemoryFeatureTaskPhaseSettlementRepository
 import skillbill.application.featuretask.featureTaskRuntimePhaseRecorder
 import skillbill.application.goalrunner.GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY
 import skillbill.application.goalrunner.PASSED_CONTINUATION_OUTCOME
@@ -21,6 +22,7 @@ import skillbill.application.goalrunner.model.GoalRunnerRepairRequest
 import skillbill.application.goalrunner.model.GoalRunnerRepairStatus
 import skillbill.application.goalrunner.model.GoalRunnerWedgeClass
 import skillbill.application.goalrunner.outcomeStoreDeps
+import skillbill.application.goalrunner.testGoalRunnerChildRepairExecutor
 import skillbill.application.goalrunner.testGoalRunnerStatusService
 import skillbill.application.goalrunner.testWorkflowGoalRunnerOutcomeStore
 import skillbill.application.phaseartifacts.phaseRecordsFrom
@@ -30,6 +32,8 @@ import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
+import skillbill.ports.featuretask.model.FeatureTaskPhaseSettlement
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStore
@@ -585,7 +589,88 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     assertEquals("completed_upstream_missing_output", evidence["wedge_class"])
     assertEquals("verify_findings", evidence["field"])
   }
+
+  @Test
+  fun `repairing completed upstream missing output rehydrates the settled output it still holds`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-rehydrate-unsettled-upstream"
+    seedRepairParent(workflows, workflowId)
+    val artifacts = linkedMapOf<String, Any?>(
+      "goal_continuation" to continuationMap(includeValidationDepth = true),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+        "review" to unsettledUpstreamPhaseRecord("review").toArtifactMap(),
+        "verify_findings" to unsettledUpstreamPhaseRecord("verify_findings").toArtifactMap(),
+        "implement_fix" to unsettledUpstreamPhaseRecord(
+          phaseId = "implement_fix",
+          status = "blocked",
+          blockedReason = "Phase 'implement_fix' requires upstream output(s) verify_findings that are not present",
+        ).toArtifactMap(),
+      ),
+    )
+    seedBlockedImplementFixWorkflow(workflows, workflowId, artifacts)
+    val settlements = InMemoryFeatureTaskPhaseSettlementRepository().apply {
+      upsert(
+        FeatureTaskPhaseSettlement(
+          workflowId = workflowId,
+          phaseId = "verify_findings",
+          attempt = 1,
+          kind = "complete",
+          envelopeJson = REHYDRATED_ENVELOPE,
+          recordedAt = "2026-08-19T10:05:00Z",
+        ),
+      )
+    }
+    val store = repairStore(workflows, git = ReachableGit(), phaseSettlements = settlements)
+
+    store.applyChildWedgeRepairs(
+      GoalRunnerChildWedgeRepairRequest(
+        workflowId = workflowId,
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        wedgeClasses = listOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT),
+        repoRoot = Path.of("."),
+      ),
+    )
+
+    val records = phaseRecordsFrom(
+      decodeArtifacts(requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson),
+    )
+    assertEquals(
+      REHYDRATED_ENVELOPE,
+      records.getValue("verify_findings").outputArtifact,
+      "the settlement store still held the output, so repair must restore it rather than lose it",
+    )
+    assertEquals("completed", records.getValue("verify_findings").status)
+    assertEquals("pending", records.getValue("implement_fix").status)
+  }
+
+  private fun seedBlockedImplementFixWorkflow(
+    workflows: InMemoryWorkflowStates,
+    workflowId: String,
+    artifacts: Map<String, Any?>,
+  ) {
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-repair", "implement_fix")
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      engine.updateRecord(
+        definition,
+        opened,
+        WorkflowUpdateInput(
+          workflowStatus = "blocked",
+          currentStepId = "implement_fix",
+          stepUpdates = null,
+          artifactsPatch = artifacts,
+          sessionId = "ftr-repair",
+        ),
+      ).toRecord(),
+    )
+  }
 }
+
+private const val REHYDRATED_ENVELOPE =
+  """{"contract_version":"0.6","phase_id":"verify_findings","status":"completed","summary":"settled once"}"""
 
 internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
   @Test
@@ -1066,6 +1151,7 @@ internal abstract class GoalRunnerRepairFixtures {
   protected fun repairStore(
     workflows: InMemoryWorkflowStates,
     git: WorkflowGitOperations = NoopWorkflowGitOperations,
+    phaseSettlements: FeatureTaskPhaseSettlementRepository = InMemoryFeatureTaskPhaseSettlementRepository(),
   ) = testWorkflowGoalRunnerOutcomeStore(
     outcomeStoreDeps(
       FakeDatabaseSessionFactory(workflows),
@@ -1073,6 +1159,7 @@ internal abstract class GoalRunnerRepairFixtures {
       gitOperations = git,
     ).copy(
       decompositionManifestStore = InMemoryRepairManifestFileStore(),
+      childRepairExecutor = testGoalRunnerChildRepairExecutor(git, phaseSettlements),
     ),
   )
 

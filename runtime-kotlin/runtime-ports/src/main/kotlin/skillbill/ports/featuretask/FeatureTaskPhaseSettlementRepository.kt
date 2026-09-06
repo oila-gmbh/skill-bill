@@ -12,5 +12,11 @@ interface FeatureTaskPhaseSettlementRepository {
     dbPathOverride: String? = null,
   ): FeatureTaskPhaseSettlement?
 
+  fun findLatestCompleted(
+    workflowId: String,
+    phaseId: String,
+    dbPathOverride: String? = null,
+  ): FeatureTaskPhaseSettlement?
+
   fun delete(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String? = null): Boolean
 }

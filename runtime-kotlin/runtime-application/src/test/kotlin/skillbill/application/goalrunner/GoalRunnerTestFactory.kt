@@ -6,6 +6,7 @@ import skillbill.application.TestRepositoryEnclosingRoot
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.InMemoryFeatureTaskPhaseSettlementRepository
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderDeps
 import skillbill.application.featuretask.model.FeatureTaskRuntimePhaseRecorderValidators
 import skillbill.application.goalplanning.GoalPlanningPreparationCheckpoint
@@ -47,6 +48,7 @@ import skillbill.ports.concurrency.SequentialBoundedWorkFanOutPort
 import skillbill.ports.db.DatabaseSessionFactory
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
+import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.goalrunner.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.EmptyGoalRunnerControlRepository
 import skillbill.ports.goalrunner.planning.GoalPlanningContextDiscovery
@@ -286,10 +288,12 @@ internal val testGoalChildPlanningHydratorPort = GoalChildPlanningHydratorPortAd
 
 internal fun testGoalRunnerChildRepairExecutor(
   gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
+  phaseSettlements: FeatureTaskPhaseSettlementRepository = InMemoryFeatureTaskPhaseSettlementRepository(),
 ): GoalRunnerChildRepairOperations = GoalRunnerChildRepairOperations(
   testWorkflowSnapshotValidator,
   gitOperations,
   testDecompositionManifestValidator,
+  phaseSettlements,
   testHarnessClock,
 )
 

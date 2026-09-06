@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.ports.featuretask.FeatureTaskPhaseSettlementRepository
 import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairRunnerPort
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyRequest
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyResult
@@ -20,6 +21,7 @@ class GoalRunnerChildRepairOperations(
   workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val gitOperations: WorkflowGitOperations,
   private val decompositionManifestValidator: DecompositionManifestValidator,
+  private val phaseSettlements: FeatureTaskPhaseSettlementRepository,
   private val clock: Clock,
 ) : GoalRunnerChildRepairRunnerPort {
   private val engine = WorkflowEngine(workflowSnapshotValidator)
@@ -29,6 +31,7 @@ class GoalRunnerChildRepairOperations(
     gitOperations,
     wedgeDiagnosis,
     decompositionManifestValidator,
+    phaseSettlements,
     clock,
   )
 

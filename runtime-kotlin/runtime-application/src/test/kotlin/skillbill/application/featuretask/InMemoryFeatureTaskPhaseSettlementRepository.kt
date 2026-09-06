@@ -18,6 +18,14 @@ class InMemoryFeatureTaskPhaseSettlementRepository : FeatureTaskPhaseSettlementR
     dbPathOverride: String?,
   ): FeatureTaskPhaseSettlement? = rows[key(workflowId, phaseId, attempt)]
 
+  override fun findLatestCompleted(
+    workflowId: String,
+    phaseId: String,
+    dbPathOverride: String?,
+  ): FeatureTaskPhaseSettlement? = rows.values
+    .filter { it.workflowId == workflowId && it.phaseId == phaseId && it.kind == "complete" }
+    .maxByOrNull(FeatureTaskPhaseSettlement::attempt)
+
   override fun delete(workflowId: String, phaseId: String, attempt: Int, dbPathOverride: String?): Boolean =
     rows.remove(key(workflowId, phaseId, attempt)) != null
 

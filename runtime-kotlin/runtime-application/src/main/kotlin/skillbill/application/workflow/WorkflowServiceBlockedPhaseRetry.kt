@@ -201,7 +201,6 @@ private data class BlockedPhaseRetryState(
       status = "pending",
       finishedAt = null,
       durationMillis = null,
-      outputArtifact = null,
       rejectedOutput = null,
       blockedReason = null,
       failureDisposition = null,
