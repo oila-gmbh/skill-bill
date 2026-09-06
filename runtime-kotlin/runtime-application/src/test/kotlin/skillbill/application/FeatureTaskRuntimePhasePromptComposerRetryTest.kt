@@ -255,6 +255,7 @@ class FeatureTaskRuntimePhasePromptComposerRetryTest {
     assertContains(remediation, "Prior-gap memory — re-justify recurrence against prior audit prose")
     assertContains(remediation, "AC-002")
     assertContains(remediation, "prior_audit_values")
+    assertContains(remediation, "do not settle the phase as blocked")
 
     val forward = composePhasePrompt(
       PROMPT_COMPOSER_ISSUE_KEY,

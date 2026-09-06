@@ -1,5 +1,7 @@
 package skillbill.mcp.core
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+
 data class McpToolSpec(
   val name: String,
   val description: String,
@@ -28,6 +30,9 @@ data class McpToolSpec(
     )
   }
 }
+
+private val FAILURE_DISPOSITION_WIRE_VALUES: List<String> =
+  FeatureTaskRuntimeFailureDisposition.entries.map(FeatureTaskRuntimeFailureDisposition::wireValue)
 
 object McpToolRegistry {
   private val toolNames: List<String> =
@@ -114,7 +119,7 @@ object McpToolRegistry {
           "phase_id" to stringSchema(enum = listOf("preplan", "plan", "implement", "audit")),
           "attempt" to mapOf("type" to "integer", "minimum" to 1),
           "reason" to stringSchema(minLength = 1),
-          "failure_disposition" to stringSchema(minLength = 1),
+          "failure_disposition" to stringSchema(enum = FAILURE_DISPOSITION_WIRE_VALUES),
         ),
       ),
       "feature_task_audit_settle" to objectSchema(
