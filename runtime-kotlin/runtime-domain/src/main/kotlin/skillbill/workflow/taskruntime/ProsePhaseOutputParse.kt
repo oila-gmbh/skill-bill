@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 
 internal object ProsePhaseOutputParse {
   private val STATUS_TOKENS: Set<String> = setOf("completed", "blocked", "failed")
@@ -26,6 +27,8 @@ internal object ProsePhaseOutputParse {
   }
 
   fun identityCompatible(parsed: Map<String, Any?>, phaseId: String): Boolean {
+    val parsedContractVersion = parsed["contract_version"]?.toString()
+    if (parsedContractVersion != null && parsedContractVersion != FEATURE_TASK_RUNTIME_CONTRACT_VERSION) return false
     val parsedPhase = parsed["phase_id"]?.toString()
     if (parsedPhase != null && parsedPhase != phaseId) return false
     val parsedStatus = parsed["status"]?.toString()?.trim()?.lowercase()
