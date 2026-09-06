@@ -3,6 +3,7 @@ package skillbill.install.runtime
 import skillbill.install.model.AgentTarget
 import skillbill.install.plan.InstallContext
 import skillbill.install.plan.installSkill
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -17,7 +18,7 @@ internal fun linkInstalledSkill(
   Files.createDirectories(resolvedTargetDir)
   return installSkill(
     skillPath = source,
-    agentTargets = listOf(AgentTarget(agent.ifBlank { "manual" }, resolvedTargetDir)),
+    agentTargets = listOf(AgentTarget(agent.ifBlank { "manual" }, resolvedTargetDir.toFileLocation())),
     context = InstallContext(
       repoRoot = repoRoot?.toAbsolutePath()?.normalize(),
       home = home ?: Path.of(System.getProperty("user.home")),

@@ -11,6 +11,8 @@ import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.support.InstallSymlinkException
 import skillbill.install.support.createNewSymlinkWithGuidance
 import skillbill.install.support.createReplacementSymlinkWithGuidance
+import skillbill.model.toPath
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -25,7 +27,7 @@ internal fun linkPlannedSkill(
     skillName = skill.name,
     stagingDir = stagingDir,
     agentTarget = agentTarget,
-    installedSkillsRoot = installedSkillsCacheRoot(plan.request.home),
+    installedSkillsRoot = installedSkillsCacheRoot(plan.request.home.toPath()),
   ).also { outcome ->
     outcome.issue?.let(failures::add)
   }
@@ -37,7 +39,7 @@ private fun linkSkillToAgent(
   agentTarget: InstallAgentTarget,
   installedSkillsRoot: Path,
 ): InstallAgentSkillLinkOutcome {
-  val targetDir = agentTarget.path.toAbsolutePath().normalize()
+  val targetDir = agentTarget.path.toPath().toAbsolutePath().normalize()
   val context = SkillLinkContext(
     skillName = skillName,
     agentTarget = agentTarget,
@@ -101,9 +103,9 @@ private fun skillLinkOutcome(
   issue: InstallApplyIssue? = null,
 ): InstallAgentSkillLinkOutcome = InstallAgentSkillLinkOutcome(
   agent = context.agentTarget.agent,
-  targetDir = context.targetDir,
-  linkPath = context.linkPath,
-  linkTarget = context.linkTarget,
+  targetDir = context.targetDir.toFileLocation(),
+  linkPath = context.linkPath.toFileLocation(),
+  linkTarget = context.linkTarget.toFileLocation(),
   status = status,
   message = message,
   issue = issue,
@@ -116,7 +118,7 @@ private fun failedSkillLinkOutcome(context: SkillLinkContext, error: Throwable):
     message = error.message.orEmpty(),
     skillName = context.skillName,
     agent = context.agentTarget.agent,
-    path = context.linkPath,
+    path = context.linkPath.toFileLocation(),
     guidance = symlinkError?.guidance,
     causeClass = error::class.qualifiedName,
   )

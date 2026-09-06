@@ -3,7 +3,7 @@ import skillbill.contracts.JsonCodec
 import skillbill.db.PARAM_ONE
 import skillbill.db.PARAM_TWO
 import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
+import skillbill.ports.review.toReviewFinishedTelemetryPayload
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection

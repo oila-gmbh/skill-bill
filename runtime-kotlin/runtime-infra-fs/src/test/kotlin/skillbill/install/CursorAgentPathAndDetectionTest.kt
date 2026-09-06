@@ -3,6 +3,7 @@ package skillbill.install
 import skillbill.install.model.InstallAgent
 import skillbill.install.runtime.InstallOperations
 import skillbill.launcher.mcp.McpRegistrationOperations
+import skillbill.model.toPath
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -40,7 +41,7 @@ class CursorAgentPathAndDetectionTest {
     val targets = InstallOperations.detectAgentTargets(home, environment = emptyMap())
     val cursor = targets.single { target -> target.name == "cursor" }
 
-    assertEquals(home.resolve(".cursor/skills"), cursor.path)
+    assertEquals(home.resolve(".cursor/skills"), cursor.path.toPath())
     assertFalse(Files.exists(home.resolve(".cursor/skills")))
   }
 

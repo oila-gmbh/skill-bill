@@ -40,6 +40,7 @@ import skillbill.ports.install.nativeagent.InstallNativeAgentLinkPort
 import skillbill.ports.install.nativeagent.model.InstallNativeAgentLinkOperationRequest
 import skillbill.ports.install.nativeagent.model.InstallNativeAgentLinkOperationResult
 import skillbill.ports.install.nativeagent.model.InstallNativeAgentUnlinkOperationResult
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.system.HostPlatformPort
 import skillbill.ports.system.UninstallPathsPort
 import java.io.IOException
@@ -251,6 +252,6 @@ private object SucceedingMcpRegistrationPort : InstallMcpRegistrationPort {
 
   override fun unregisterMcp(request: InstallMcpUnregistrationRequest): InstallMcpRegistrationResult =
     InstallMcpRegistrationResult(
-      McpMutationResult(agent = request.agent, configPath = ABSENT_PATH, changed = false),
+      McpMutationResult(agent = request.agent, configPath = ABSENT_PATH.toFileLocation(), changed = false),
     )
 }

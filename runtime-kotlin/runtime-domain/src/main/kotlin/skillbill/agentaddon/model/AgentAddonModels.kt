@@ -1,6 +1,6 @@
 package skillbill.agentaddon.model
 
-import java.nio.file.Path
+import skillbill.model.FileLocation
 
 enum class AgentAddonConsumer(val id: String) {
   BILL_FEATURE("bill-feature"),
@@ -20,10 +20,10 @@ data class AgentAddonDeclaration(
   val description: String,
   val agents: List<String>,
   val consumers: List<AgentAddonConsumer>,
-  val addonRoot: Path,
-  val manifestPath: Path,
-  val contentPath: Path,
-  val canonicalSourceIdentity: Path,
+  val addonRoot: FileLocation,
+  val manifestPath: FileLocation,
+  val contentPath: FileLocation,
+  val canonicalSourceIdentity: FileLocation,
 )
 
 data class AgentAddonCatalogueEntry(
@@ -32,8 +32,8 @@ data class AgentAddonCatalogueEntry(
   val description: String,
   val agentIds: List<String>,
   val consumers: List<String>,
-  val manifestPath: Path,
-  val contentPath: Path,
+  val manifestPath: FileLocation,
+  val contentPath: FileLocation,
   val validationStatus: String = "valid",
   val diagnostics: List<String> = emptyList(),
 )
@@ -41,8 +41,8 @@ data class AgentAddonCatalogueEntry(
 data class InvalidAgentAddonCatalogueEntry(
   val identity: String,
   val slug: String,
-  val manifestPath: Path,
-  val contentPath: Path,
+  val manifestPath: FileLocation,
+  val contentPath: FileLocation,
   val validationStatus: String = "invalid",
   val diagnostics: List<String>,
 )

@@ -30,10 +30,12 @@ import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.model.RuntimeContext
+import skillbill.model.toPath
 import skillbill.ports.install.reconcile.model.InstallReconcileApplyRequest
 import skillbill.ports.install.reconcile.model.InstallReconcileRequest
 import skillbill.ports.install.selection.InstallSelectionPersistencePort
 import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import java.nio.file.Path
 
@@ -96,9 +98,9 @@ class InstallReconcileCommand(
           upstreamRepoRoot = resolvedUpstreamRepoRoot,
           upstreamSkillsRoot = resolvedUpstreamSkills,
           upstreamPlatformPacksRoot = resolvedUpstreamPacks,
-          localRepoRoot = localRequest.repoRoot,
-          localSkillsRoot = localRequest.targetPaths.skillsRoot,
-          localPlatformPacksRoot = localRequest.targetPaths.platformPacksRoot,
+          localRepoRoot = localRequest.repoRoot.toPath(),
+          localSkillsRoot = localRequest.targetPaths.skillsRoot.toPath(),
+          localPlatformPacksRoot = localRequest.targetPaths.platformPacksRoot.toPath(),
         ),
       )
       completeReconcile(
@@ -117,9 +119,9 @@ class InstallReconcileCommand(
         upstreamRepoRoot = resolvedUpstreamRepoRoot,
         upstreamSkillsRoot = resolvedUpstreamSkills,
         upstreamPlatformPacksRoot = resolvedUpstreamPacks,
-        localRepoRoot = localRequest.repoRoot,
-        localSkillsRoot = localRequest.targetPaths.skillsRoot,
-        localPlatformPacksRoot = localRequest.targetPaths.platformPacksRoot,
+        localRepoRoot = localRequest.repoRoot.toPath(),
+        localSkillsRoot = localRequest.targetPaths.skillsRoot.toPath(),
+        localPlatformPacksRoot = localRequest.targetPaths.platformPacksRoot.toPath(),
       ),
     )
     completeReconcile(plan, refreshed = false, applied = false, installedPaths = emptyList())
@@ -176,7 +178,7 @@ class InstallApplyCommand(
   private fun telemetryLevelMutator(plan: InstallPlan): TelemetryLevelMutator {
     val reboundContext = RuntimeContext(
       dbPathOverride = inputs.dbPathOverride,
-      userHome = plan.request.home,
+      userHome = plan.request.home.toPath(),
     )
     return RuntimeComponent::class.create(reboundContext).telemetryLevelMutator
   }
@@ -222,18 +224,19 @@ class InstallReplayLastSelectionCommand(
   }
 
   private fun replayDiscoveryRequest(): InstallPlanRequest = InstallPlanRequest(
-    repoRoot = Path.of(platformPacksRoot).toAbsolutePath().normalize().parent ?: Path.of(".").toAbsolutePath(),
-    home = inputs.userHome,
+    repoRoot = (Path.of(platformPacksRoot).toAbsolutePath().normalize().parent ?: Path.of(".").toAbsolutePath())
+      .toFileLocation(),
+    home = inputs.userHome.toFileLocation(),
     agentSelection = InstallAgentSelection(mode = InstallAgentSelectionMode.DETECTED),
     platformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.NONE),
     telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
     mcpRegistrationChoice = McpRegistrationChoice(register = false),
     runtimeDistributionInputs = RuntimeDistributionInputs(
-      runtimeInstallRoot = inputs.userHome.resolve(".skill-bill/runtime"),
+      runtimeInstallRoot = inputs.userHome.resolve(".skill-bill/runtime").toFileLocation(),
     ),
     targetPaths = InstallationTargetPaths(
-      skillsRoot = Path.of(skillsRoot),
-      platformPacksRoot = Path.of(platformPacksRoot),
+      skillsRoot = Path.of(skillsRoot).toFileLocation(),
+      platformPacksRoot = Path.of(platformPacksRoot).toFileLocation(),
     ),
     windowsSymlinkPreflight = WindowsSymlinkPreflight(
       state = WindowsSymlinkPreflightState.NOT_WINDOWS,

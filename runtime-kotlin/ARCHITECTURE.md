@@ -42,15 +42,21 @@ runtime-core
   contracts, `*SchemaPaths` constants, `*_CONTRACT_VERSION` constants, and the
   `skillbill.error` runtime exception taxonomy. It no longer owns the JSON-Schema
   validators or their schema-resource copy tasks; those moved to
-  `runtime-infra-fs` (see below).
+  `runtime-infra-fs` (see below). It also owns `skillbill.contracts.time.JvmSystemClock`,
+  the single ambient wall-clock seam, which cannot live in `runtime-domain` because
+  domain effect purity forbids `System.currentTimeMillis`.
 - `runtime-domain`: pure agent-add-on, learning, review, telemetry, workflow,
   install-plan, scaffold, and skill-remove models/rules. Public domain data
-  types live in area-owned `model` packages.
+  types live in area-owned `model` packages, including the
+  `skillbill.model.FileLocation` value type that carries repo paths through domain
+  and port signatures without a `java.nio` dependency.
 - `runtime-ports`: `skillbill.model.RuntimeContext`, persistence sessions,
   repositories, gateway interfaces, telemetry port interfaces, workflow git
   operations, decomposition-manifest file-store ports, port-owned model types,
-  and shared payload projection for boundary events that must be consumed by
-  both application and infrastructure adapters.
+  the `skillbill.model.toPath` and `skillbill.ports.repository.toFileLocation` bridges that adapters use to turn
+  a `FileLocation` into a `java.nio.file.Path`, and shared payload projection for
+  boundary events that must be consumed by both application and infrastructure
+  adapters.
 - `runtime-application`: CLI/MCP/shared use cases, workflow orchestration,
   telemetry lifecycle orchestration, presenter-to-contract mapping, and
   validated decomposition-manifest file/artifact projection through workflow
@@ -340,7 +346,7 @@ runtime-ports
     port DTOs. The current bounded examples are
     `RepoValidationReport.toPayload`, `ReleaseRefMetadata.toPayload`,
     and the review-finished telemetry payload family
-    (`ReviewFinishedTelemetryPayload.toPayload` plus its private nested
+    (`toReviewFinishedTelemetryPayload` plus its private nested
     mappers). Any retained presentation-in-ports shape must remain
     documented here and mirrored by the architecture guard allow-list
     when it is a public raw-map boundary.
@@ -594,24 +600,16 @@ runtime-ports
     - `skillbill.learnings.learningSummaryPayload`
     - `skillbill.learnings.scopeCounts`
     - `skillbill.learnings.summarizeLearningReferences`
-    - `skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter.artifacts`
     - `skillbill.goalrunner.backwardEdgeCountsFromLedger`
     - `skillbill.goalrunner.blockedReasonFrom`
     - `skillbill.goalrunner.commitShaFrom`
     - `skillbill.goalrunner.declaredProgressEventFrom`
     - `skillbill.goalrunner.derivedTerminalOutcomeFor`
-    - `skillbill.ports.goalrunner.persistence.goalContinuation`
     - `skillbill.goalrunner.goalContinuationOutcome`
-    - `skillbill.ports.goalrunner.persistence.goalReviewArtifacts`
-    - `skillbill.ports.goalrunner.persistence.goalReviewEmissionEnvelope`
-    - `skillbill.ports.goalrunner.persistence.maxHistorySequence`
-    - `skillbill.ports.goalrunner.persistence.missingResultPrefixTerminalOutcomeArtifact`
     - `skillbill.ports.goalrunner.persistence.model.GoalChildPlanningHydrationResult.artifacts`
     - `skillbill.ports.goalrunner.persistence.model.GoalChildPlanningHydrationResult.stepUpdates`
     - `skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyStateInit.artifacts`
     - `skillbill.ports.goalrunner.persistence.model.HistoryArtifactAppend.entryMap`
-    - `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.artifacts`
-    - `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.stepUpdates`
     - `skillbill.goalrunner.progressEventFrom`
     - `skillbill.goalrunner.terminalOutcomeFor`
     - `skillbill.goalrunner.toArtifactMap`
@@ -626,22 +624,18 @@ runtime-ports
     - `skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom`
     - `skillbill.workflow.taskruntime.phaseartifacts.resolvedBranchFrom`
     - `skillbill.workflow.taskruntime.phaseartifacts.reviewGenerationFrom`
-    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
-    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
-    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
-    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
+    - `skillbill.ports.review.GovernedReviewEvidenceCodec.TOOL_SPECS`
+    - `skillbill.ports.review.GovernedReviewEvidenceCodec.expansionRequest`
+    - `skillbill.ports.review.GovernedReviewEvidenceCodec.payload`
+    - `skillbill.ports.review.GovernedReviewEvidenceCodec.readRequest`
     - `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
     - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
     - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
     - `skillbill.ports.workflow.decomposition.DecompositionManifestPersistencePort.encodeManifestYaml`
-    - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.manifestFromWorkflowUpdate`
-    - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
-    - `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
-    - `skillbill.ports.workflow.decomposition.runtime.decodeArtifacts`
+    - `skillbill.application.decomposition.DecompositionManifestWriter.manifestFromWorkflowUpdate`
+    - `skillbill.application.decomposition.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
+    - `skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate`
     - `skillbill.workflow.decomposition.runtime.decodeArtifactKeys`
-    - `skillbill.ports.workflow.decomposition.runtime.decodeDecompositionManifestMap`
-    - `skillbill.ports.workflow.decomposition.runtime.encodeDecompositionManifestMap`
-    - `skillbill.ports.workflow.decomposition.runtime.manifestPathFromArtifacts`
     - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
     - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
     - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.stepUpdates`
@@ -650,16 +644,13 @@ runtime-ports
     - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.artifactsPatch`
     - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.existingArtifacts`
     - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
-    - `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
     - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
     - `skillbill.goalrunner.GoalObservabilityArtifacts.patchForProgressEvent`
     - `skillbill.goalrunner.GoalObservabilityArtifacts.patchForRuntimeEvent`
     - `skillbill.goalrunner.model.GoalObservabilityProgressInput.artifacts`
     - `skillbill.goalrunner.model.GoalObservabilityRuntimeEventInput.artifacts`
-    - `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
-    - `skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts`
-    - `skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts`
-    - `skillbill.ports.workflow.persistence.toPayload`
+    - `skillbill.ports.workflow.sessionSummary`
+    - `skillbill.ports.workflow.model.toPayload`
     - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
     - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
     - `skillbill.scaffold.model.PlatformManifest.customFields`
@@ -821,7 +812,6 @@ runtime-ports
     - `skillbill.application.goalrunner.toArtifactsMap`
     - `skillbill.application.workflow.outOfBandAcceptancesFromLegacyArtifacts`
     - `skillbill.application.workflow.reviewPolicyFromLegacyArtifacts`
-    - `skillbill.application.workflow.toPayload`
 <!-- open-boundary-allowlist:end -->
 
     The allow-list grandfathers legacy raw-map surfaces. The rule
@@ -1804,24 +1794,16 @@ Categories:
 - `skillbill.goalrunner.model.GoalRunnerStatusProjector.project`
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.install.model.buildInstallPlanWireMap`
-- `skillbill.ports.goalrunner.persistence.GoalParentProjectionWriter.artifacts`
 - `skillbill.goalrunner.backwardEdgeCountsFromLedger`
 - `skillbill.goalrunner.blockedReasonFrom`
 - `skillbill.goalrunner.commitShaFrom`
 - `skillbill.goalrunner.declaredProgressEventFrom`
 - `skillbill.goalrunner.derivedTerminalOutcomeFor`
-- `skillbill.ports.goalrunner.persistence.goalContinuation`
 - `skillbill.goalrunner.goalContinuationOutcome`
-- `skillbill.ports.goalrunner.persistence.goalReviewArtifacts`
-- `skillbill.ports.goalrunner.persistence.goalReviewEmissionEnvelope`
-- `skillbill.ports.goalrunner.persistence.maxHistorySequence`
-- `skillbill.ports.goalrunner.persistence.missingResultPrefixTerminalOutcomeArtifact`
 - `skillbill.ports.goalrunner.persistence.model.GoalChildPlanningHydrationResult.artifacts`
 - `skillbill.ports.goalrunner.persistence.model.GoalChildPlanningHydrationResult.stepUpdates`
 - `skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyStateInit.artifacts`
 - `skillbill.ports.goalrunner.persistence.model.HistoryArtifactAppend.entryMap`
-- `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.artifacts`
-- `skillbill.ports.goalrunner.persistence.planning.model.GoalChildPlanningHydration.stepUpdates`
 - `skillbill.goalrunner.progressEventFrom`
 - `skillbill.goalrunner.terminalOutcomeFor`
 - `skillbill.goalrunner.toArtifactMap`
@@ -1836,20 +1818,18 @@ Categories:
 - `skillbill.workflow.taskruntime.phaseartifacts.phaseRecordsFrom`
 - `skillbill.workflow.taskruntime.phaseartifacts.resolvedBranchFrom`
 - `skillbill.workflow.taskruntime.phaseartifacts.reviewGenerationFrom`
-- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
-- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
-- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
-- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
+- `skillbill.ports.review.GovernedReviewEvidenceCodec.TOOL_SPECS`
+- `skillbill.ports.review.GovernedReviewEvidenceCodec.expansionRequest`
+- `skillbill.ports.review.GovernedReviewEvidenceCodec.payload`
+- `skillbill.ports.review.GovernedReviewEvidenceCodec.readRequest`
 - `skillbill.ports.review.model.ReviewAccountingRecord.boundedPayload`
 - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
 - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
 - `skillbill.ports.workflow.decomposition.DecompositionManifestPersistencePort.encodeManifestYaml`
-- `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.manifestFromWorkflowUpdate`
-- `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
-- `skillbill.ports.workflow.decomposition.runtime.DecompositionManifestWriter.writeFromWorkflowUpdate`
-- `skillbill.ports.workflow.decomposition.runtime.decodeArtifacts`
+- `skillbill.application.decomposition.DecompositionManifestWriter.manifestFromWorkflowUpdate`
+- `skillbill.application.decomposition.DecompositionManifestWriter.maybeWriteFromWorkflowUpdate`
+- `skillbill.application.decomposition.DecompositionManifestWriter.writeFromWorkflowUpdate`
 - `skillbill.workflow.decomposition.runtime.decodeArtifactKeys`
-- `skillbill.ports.workflow.decomposition.runtime.manifestPathFromArtifacts`
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.existingArtifacts`
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestRuntimeUpdate.stepUpdates`
@@ -1858,16 +1838,13 @@ Categories:
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.artifactsPatch`
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.existingArtifacts`
 - `skillbill.ports.workflow.decomposition.runtime.model.DecompositionPlanManifestInput.plan`
-- `skillbill.ports.workflow.decomposition.runtime.parentSpecPath`
 - `skillbill.ports.workflow.gitops.model.GoalSubtaskReviewInput.toArtifactMap`
 - `skillbill.goalrunner.GoalObservabilityArtifacts.patchForProgressEvent`
 - `skillbill.goalrunner.GoalObservabilityArtifacts.patchForRuntimeEvent`
 - `skillbill.goalrunner.model.GoalObservabilityProgressInput.artifacts`
 - `skillbill.goalrunner.model.GoalObservabilityRuntimeEventInput.artifacts`
-- `skillbill.ports.workflow.persistence.model.WorkflowFamily.sessionSummary`
-- `skillbill.ports.goalrunner.persistence.outOfBandAcceptancesFromLegacyArtifacts`
-- `skillbill.ports.goalrunner.persistence.reviewPolicyFromLegacyArtifacts`
-- `skillbill.ports.workflow.persistence.toPayload`
+- `skillbill.ports.workflow.sessionSummary`
+- `skillbill.ports.workflow.model.toPayload`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
 - `skillbill.scaffold.model.PlatformManifest.customFields`
@@ -2026,7 +2003,6 @@ Categories:
 - `skillbill.application.goalrunner.toArtifactsMap`
 - `skillbill.application.workflow.outOfBandAcceptancesFromLegacyArtifacts`
 - `skillbill.application.workflow.reviewPolicyFromLegacyArtifacts`
-- `skillbill.application.workflow.toPayload`
 
 ### private_serializer
 
@@ -2034,8 +2010,6 @@ _None — placeholder._
 
 ### postponed_with_reason
 
-- `skillbill.ports.workflow.decomposition.runtime.decodeDecompositionManifestMap` [subtask 4] — decomposition manifest decode entrypoint.
-- `skillbill.ports.workflow.decomposition.runtime.encodeDecompositionManifestMap` [subtask 4] — decomposition manifest encode entrypoint.
 - `skillbill.workflow.decomposition.DecompositionManifestCodec.decodeMap` [subtask 4] — decomposition manifest codec entrypoint.
 - `skillbill.workflow.decomposition.toWireMap` [subtask 4] — decomposition manifest wire-map encoder.
 - `skillbill.workflow.engine.WorkflowEngine.continueDecision` [subtask 4] — workflow-engine continue-decision raw-map seam.

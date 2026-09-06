@@ -1,12 +1,12 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
+import skillbill.db.decomposition.withParentStatus
 import skillbill.goalrunner.planning.cascadeEligiblePlanSubtaskIds
 import skillbill.ports.goalrunner.GoalPlanningPreparationRepository
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.runner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.decomposition.runtime.withParentStatus
 import skillbill.ports.workflow.model.GoalChildWorkflowDeletionScope
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
 import skillbill.workflow.decomposition.model.DecompositionManifest

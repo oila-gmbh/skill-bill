@@ -5,10 +5,10 @@ import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.error.ShellContentContractException
 import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
 import skillbill.model.EnvironmentContext
+import skillbill.ports.review.GovernedReviewEvidenceCodec
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
-import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
 import skillbill.review.context.model.ReviewExpansionRecord
 import java.io.IOException

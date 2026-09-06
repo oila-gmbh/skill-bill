@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import skillbill.contracts.JsonCodec
 import skillbill.error.ExternalAddonConfigError
+import skillbill.model.toPath
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.telemetry.CONFIG_ENVIRONMENT_KEY
 import java.nio.file.Files
@@ -30,7 +31,7 @@ class FileExternalAgentAddonSourceConfigStoreTest {
       ExternalAgentAddonSourceConfigRequest(home, mapOf(CONFIG_ENVIRONMENT_KEY to configPath(home).toString())),
     )
 
-    assertEquals(listOf(agentRoot.toAbsolutePath().normalize()), result.sources.map { it.path })
+    assertEquals(listOf(agentRoot.toAbsolutePath().normalize()), result.sources.map { it.path.toPath() })
   }
 
   @Test

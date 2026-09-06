@@ -1,6 +1,7 @@
 package skillbill.di
 
 import me.tatarka.inject.annotations.Provides
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.infrastructure.fs.JdkBoundedWorkFanOutPort
 import skillbill.infrastructure.fs.JdkDaemonThreadPort
 import skillbill.infrastructure.fs.JdkHostPlatformPort
@@ -15,7 +16,6 @@ import skillbill.ports.process.DaemonThreadPort
 import skillbill.ports.process.IdentifierGeneratorPort
 import skillbill.ports.process.ShutdownHookPort
 import skillbill.ports.system.HostPlatformPort
-import skillbill.ports.time.JvmSystemClock
 import skillbill.ports.time.RuntimeTimingPort
 import java.time.Clock
 

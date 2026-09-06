@@ -8,6 +8,7 @@ import skillbill.cli.model.CliFormat
 import skillbill.cli.model.CliRunInputs
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.ExternalAddonSource
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.model.ScaffoldRenderResult
 import skillbill.scaffold.model.command.ScaffoldCommandRequest
@@ -117,7 +118,7 @@ internal fun registerExternalAddonSourceAfterSuccess(
   val sourcePath = addOn.addonLocationPath?.takeIf(String::isNotBlank) ?: return
   externalAddonOverlayService.registerSource(
     home = inputs.userHome,
-    source = ExternalAddonSource(Path.of(sourcePath), addOn.platform),
+    source = ExternalAddonSource(Path.of(sourcePath).toFileLocation(), addOn.platform),
     environment = inputs.environment,
   )
 }

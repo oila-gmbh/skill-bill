@@ -25,7 +25,7 @@ import skillbill.workflow.goal.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.goal.model.GoalSubtaskReviewState
 import java.nio.file.Path
 
-interface GoalRunnerManifestLookup {
+interface GoalRunnerManifestQueries {
   fun loadByIssueKey(
     issueKey: String,
     dbPathOverride: String? = null,
@@ -45,9 +45,24 @@ interface GoalRunnerManifestLookup {
   ): GoalRunnerManifestState?
 
   fun loadDurableByIssueKey(issueKey: String, dbPathOverride: String? = null): GoalRunnerManifestState?
+
+  fun controlState(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState
+
+  fun executionLease(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerExecutionLease?
+
+  fun reviewMode(parentWorkflowId: String, dbPathOverride: String? = null): CodeReviewExecutionMode?
+
+  fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerReviewPolicy?
+
+  fun outOfBandAcceptances(
+    parentWorkflowId: String,
+    dbPathOverride: String? = null,
+  ): Map<Int, GoalRunnerOutOfBandAcceptance>
+
+  fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String? = null): String?
 }
 
-interface GoalRunnerManifestPauseOps {
+interface GoalRunnerManifestExecutionCommands {
   fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState?
 
   fun pauseNow(
@@ -67,10 +82,6 @@ interface GoalRunnerManifestPauseOps {
   fun resume(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerManifestState?
 
   fun pauseAtBoundary(state: GoalRunnerManifestState, dbPathOverride: String? = null): GoalRunnerManifestState
-}
-
-interface GoalRunnerManifestExecutionLease {
-  fun executionLease(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerExecutionLease?
 
   fun acquireExecutionLease(
     parentWorkflowId: String,
@@ -93,9 +104,7 @@ interface GoalRunnerManifestExecutionLease {
   ): Boolean
 }
 
-interface GoalRunnerManifestControlCommands {
-  fun controlState(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState
-
+interface GoalRunnerManifestControlWrites {
   fun bindRepositoryIdentity(
     parentWorkflowId: String,
     repositoryIdentity: String,
@@ -121,9 +130,27 @@ interface GoalRunnerManifestControlCommands {
     state: GoalRunnerControlState,
     dbPathOverride: String? = null,
   ): GoalRunnerControlState
+
+  fun persistReviewMode(
+    parentWorkflowId: String,
+    mode: CodeReviewExecutionMode,
+    dbPathOverride: String? = null,
+  ): CodeReviewExecutionMode
+
+  fun persistReviewPolicy(
+    parentWorkflowId: String,
+    policy: GoalRunnerReviewPolicy,
+    dbPathOverride: String? = null,
+  ): GoalRunnerReviewPolicy
+
+  fun persistOutOfBandAcceptance(
+    parentWorkflowId: String,
+    acceptance: GoalRunnerOutOfBandAcceptance,
+    dbPathOverride: String? = null,
+  ): GoalRunnerOutOfBandAcceptance
 }
 
-interface GoalRunnerManifestPersistenceCommands {
+interface GoalRunnerManifestStateWrites {
   fun planningStatus(
     parentWorkflowId: String,
     orderedSubtaskIds: List<Int>,
@@ -162,8 +189,6 @@ interface GoalRunnerManifestPersistenceCommands {
     options: GoalRunnerScopedReplanOptions = GoalRunnerScopedReplanOptions(),
   ): GoalRunnerScopedReplanWriteResult
 
-  fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String? = null): String?
-
   fun saveNewChildWorkflow(
     state: GoalRunnerManifestState,
     setup: GoalRunnerChildWorkflowSetup,
@@ -171,42 +196,11 @@ interface GoalRunnerManifestPersistenceCommands {
   ): GoalRunnerManifestState
 }
 
-interface GoalRunnerManifestReviewCommands {
-  fun reviewMode(parentWorkflowId: String, dbPathOverride: String? = null): CodeReviewExecutionMode?
-
-  fun persistReviewMode(
-    parentWorkflowId: String,
-    mode: CodeReviewExecutionMode,
-    dbPathOverride: String? = null,
-  ): CodeReviewExecutionMode
-
-  fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerReviewPolicy?
-
-  fun persistReviewPolicy(
-    parentWorkflowId: String,
-    policy: GoalRunnerReviewPolicy,
-    dbPathOverride: String? = null,
-  ): GoalRunnerReviewPolicy
-
-  fun outOfBandAcceptances(
-    parentWorkflowId: String,
-    dbPathOverride: String? = null,
-  ): Map<Int, GoalRunnerOutOfBandAcceptance>
-
-  fun persistOutOfBandAcceptance(
-    parentWorkflowId: String,
-    acceptance: GoalRunnerOutOfBandAcceptance,
-    dbPathOverride: String? = null,
-  ): GoalRunnerOutOfBandAcceptance
-}
-
 interface GoalRunnerManifestStore :
-  GoalRunnerManifestLookup,
-  GoalRunnerManifestPauseOps,
-  GoalRunnerManifestExecutionLease,
-  GoalRunnerManifestControlCommands,
-  GoalRunnerManifestPersistenceCommands,
-  GoalRunnerManifestReviewCommands
+  GoalRunnerManifestQueries,
+  GoalRunnerManifestExecutionCommands,
+  GoalRunnerManifestControlWrites,
+  GoalRunnerManifestStateWrites
 
 interface GoalRunnerTerminalOutcomeStore {
   fun terminalOutcome(

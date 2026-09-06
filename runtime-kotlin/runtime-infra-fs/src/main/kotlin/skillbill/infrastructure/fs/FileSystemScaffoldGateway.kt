@@ -5,6 +5,7 @@ import skillbill.agentaddon.AgentAddonDeliveryResolver
 import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.install.nativeagent.installNativeAgentCompositionContext
+import skillbill.model.toPath
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
 import skillbill.ports.scaffold.UnsupportedScaffoldGateway
@@ -194,7 +195,7 @@ private fun requireAgentAddonEntry(repoRoot: Path, identity: String): AgentAddon
     )
 
 private fun AgentAddonCatalogueEntry.toSkillStatus(repoRoot: Path, contentMode: String): ScaffoldSkillStatus {
-  val contentText = Files.readString(contentPath)
+  val contentText = Files.readString(contentPath.toPath())
   return ScaffoldSkillStatus(
     skillName = identity,
     packageName = "agent-addons",

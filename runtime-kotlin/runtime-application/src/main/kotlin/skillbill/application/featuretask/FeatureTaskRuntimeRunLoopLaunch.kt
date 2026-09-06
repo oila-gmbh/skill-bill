@@ -16,6 +16,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.workflow.gitops.pathContentIdentities
 import skillbill.ports.workflow.gitops.repositoryCheckpointFingerprint
 import skillbill.ports.workflow.gitops.repositoryOwnedPaths
@@ -54,8 +55,8 @@ object FeatureTaskRuntimeRunLoopLaunch {
     )?.takeIf { it.isNotEmpty() }
     val resolution = runLoop.phaseGates.specIntentProjectionResolver.resolve(
       SpecIntentProjectionResolveRequest(
-        repoRoot = run.request.repoRoot,
-        explicitSpecPath = Path.of(run.request.runInvariants.specReference),
+        repoRoot = run.request.repoRoot.toFileLocation(),
+        explicitSpecPath = Path.of(run.request.runInvariants.specReference).toFileLocation(),
         branchName = runLoop.session.resolvedBranch ?: "HEAD",
         changedPaths = emptyList(),
         budget = ReviewContextBudgetPolicy.DEFAULT,

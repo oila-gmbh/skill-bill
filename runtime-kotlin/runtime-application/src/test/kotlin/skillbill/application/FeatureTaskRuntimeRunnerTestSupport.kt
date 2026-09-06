@@ -44,6 +44,7 @@ import skillbill.application.specsource.SpecSourceResolver
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.config.model.RepoLocalConfig
 import skillbill.contracts.JsonCodec
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.featurespec.FeatureSpecPreparationPolicy
@@ -86,6 +87,7 @@ import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.learning.LearningRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.UnitOfWorkDefaults
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.ReviewRepository
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
@@ -100,7 +102,6 @@ import skillbill.ports.telemetry.LifecycleTelemetryRepository
 import skillbill.ports.telemetry.TelemetryOutboxRepository
 import skillbill.ports.telemetry.TelemetryReconciliationRepository
 import skillbill.ports.telemetry.TelemetrySettingsProvider
-import skillbill.ports.time.JvmSystemClock
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -680,7 +681,7 @@ private fun disabledRuntimeLifecycleTelemetry(database: DatabaseSessionFactory):
 
 private object DisabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json"),
+    configPath = Path.of("/fake/config.json").toFileLocation(),
     level = "off",
     enabled = false,
     installId = "",
@@ -1400,7 +1401,7 @@ internal fun failThenPassValidationGateRunner(gateCalls: AtomicInteger): Validat
 
 internal fun kotlinPackWithValidationGate(): PlatformManifest = PlatformManifest(
   slug = "kotlin",
-  packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
+  packRoot = Path.of("/tmp/repo/platform-packs/kotlin").toFileLocation(),
   contractVersion = "1.7",
   routingSignals = RoutingSignals(
     strong = listOf("src"),
@@ -2311,7 +2312,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
 
 internal object EnabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json"),
+    configPath = Path.of("/fake/config.json").toFileLocation(),
     level = "full",
     enabled = true,
     installId = "install-1",

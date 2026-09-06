@@ -3,13 +3,13 @@ package skillbill.install.policy
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallPlanSkill
 import skillbill.install.model.InstallPolicyInput
-import java.nio.file.Path
+import skillbill.model.FileLocation
 
 internal fun requireNoDuplicateDefaultTargets(input: InstallPolicyInput) {
   // Keyed by (agent, normalized path) so a multi-root agent (e.g. claude across several profile
   // roots) emits several legal rows, while a true same-(agent,path) collision still fails.
   val duplicates = input.defaultAgentTargets
-    .groupBy { target -> target.agent to target.path.toAbsolutePath().normalize() }
+    .groupBy { target -> target.agent to target.path.normalized() }
     .filterValues { targets -> targets.size > 1 }
     .keys
   require(duplicates.isEmpty()) {
@@ -20,7 +20,7 @@ internal fun requireNoDuplicateDefaultTargets(input: InstallPolicyInput) {
 
 internal fun requireNoDuplicateAgentTargets(label: String, targets: List<InstallAgentTarget>) {
   val duplicates = targets
-    .groupBy { target -> target.agent to target.path.toAbsolutePath().normalize() }
+    .groupBy { target -> target.agent to target.path.normalized() }
     .filterValues { matchingTargets -> matchingTargets.size > 1 }
     .keys
   require(duplicates.isEmpty()) {
@@ -43,8 +43,8 @@ internal fun requireUniqueSkillNames(skills: List<InstallPlanSkill>) {
   }
 }
 
-internal fun validatePath(label: String, path: Path) {
-  require(path.toString().isNotBlank()) {
+internal fun validatePath(label: String, path: FileLocation) {
+  require(path.value.isNotBlank()) {
     "$label must not be blank."
   }
 }

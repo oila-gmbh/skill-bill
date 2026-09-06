@@ -12,6 +12,7 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.repository.RepositoryEnclosingRootPort
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.scaffold.install.InstalledPlatformPackCatalogPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
@@ -93,8 +94,8 @@ internal class ParallelCodeReviewRunnerPlanning(
       .config.reviewContextBudget
     val specIntent = specIntentProjectionResolver.resolve(
       SpecIntentProjectionResolveRequest(
-        repoRoot = request.repoRoot,
-        explicitSpecPath = request.specPath,
+        repoRoot = request.repoRoot.toFileLocation(),
+        explicitSpecPath = request.specPath?.toFileLocation(),
         branchName = currentHeadBranchName(request.repoRoot),
         changedPaths = emptyList(),
         budget = budget,
@@ -172,8 +173,8 @@ internal class ParallelCodeReviewRunnerPlanning(
     budget: ReviewContextBudgetPolicy,
   ): SpecIntentResolution = specIntentProjectionResolver.resolve(
     SpecIntentProjectionResolveRequest(
-      repoRoot = request.repoRoot,
-      explicitSpecPath = request.specPath,
+      repoRoot = request.repoRoot.toFileLocation(),
+      explicitSpecPath = request.specPath?.toFileLocation(),
       branchName = currentHeadBranchName(request.repoRoot),
       changedPaths = evidence.files.map { it.path },
       budget = budget,

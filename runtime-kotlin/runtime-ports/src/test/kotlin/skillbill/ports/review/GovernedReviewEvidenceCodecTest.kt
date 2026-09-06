@@ -1,7 +1,6 @@
 package skillbill.ports.review
 
 import skillbill.contracts.JsonCodec
-import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceResult
 import skillbill.review.context.model.ForbiddenReviewOperation

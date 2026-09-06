@@ -4,6 +4,7 @@ import skillbill.agentaddon.AgentAddonPointer
 import skillbill.install.identity.SkillContentIdentity
 import skillbill.install.model.RenderedSkill
 import skillbill.install.support.writeRenderedSupportPointerFiles
+import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.authoring.AuthoringTarget
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
@@ -67,13 +68,13 @@ internal fun finalizeFreshInstallStaging(
   pruneStaleStagingDirs(inputs.home, inputs.sourceSkillDir, inputs.contentHash)
   return RenderedSkill(
     skillName = inputs.sourceSkillDir.fileName.toString(),
-    sourceSkillDir = inputs.sourceSkillDir,
-    stagingDir = inputs.finalStagingDir,
-    renderedSkillFile = finalSkillFile,
-    renderedPointerFiles = finalPointerFiles,
-    copiedAuthoredFiles = finalCopied,
+    sourceSkillDir = inputs.sourceSkillDir.toFileLocation(),
+    stagingDir = inputs.finalStagingDir.toFileLocation(),
+    renderedSkillFile = finalSkillFile.toFileLocation(),
+    renderedPointerFiles = finalPointerFiles.map { entry -> entry.toFileLocation() },
+    copiedAuthoredFiles = finalCopied.map { entry -> entry.toFileLocation() },
     contentHash = inputs.contentHash,
-    renderedSidecarFiles = finalSidecars,
+    renderedSidecarFiles = finalSidecars.map { entry -> entry.toFileLocation() },
   )
 }
 

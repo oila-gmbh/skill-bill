@@ -1,5 +1,6 @@
 package skillbill.db.core
 
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.db.telemetry.bind
 import skillbill.db.telemetry.emitFeatureTaskRuntimeFinished
 import skillbill.db.telemetry.emitFeatureVerifyFinished
@@ -8,7 +9,6 @@ import skillbill.db.telemetry.emitQualityCheckFinished
 import skillbill.db.telemetry.nextGoalStateEnteredAtSql
 import skillbill.ports.telemetry.model.TelemetryReconciliationRequest
 import skillbill.ports.telemetry.model.TelemetryReconciliationResult
-import skillbill.ports.time.JvmSystemClock
 import java.sql.Connection
 import java.time.temporal.ChronoUnit
 

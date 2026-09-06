@@ -8,7 +8,9 @@ import skillbill.application.decomposition.model.DecompositionPlanManifestInput
 import skillbill.application.decomposition.model.PreparedDecompositionManifestWrite
 import skillbill.contracts.issuekey.issueAndFeature
 import skillbill.error.InvalidDecompositionManifestSchemaError
+import skillbill.model.toPath
 import skillbill.ports.decomposition.DecompositionManifestProjectionWriter
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.ports.workflow.decomposition.runtime.model.DecompositionManifestWriteResult
 import skillbill.workflow.decomposition.DecompositionManifestValidator
@@ -55,7 +57,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
   }
 
   fun maybeWriteFromWorkflowUpdate(input: DecompositionManifestWorkflowProjectionInput): Path? =
-    writeFromWorkflowUpdate(input)?.manifestPath
+    writeFromWorkflowUpdate(input)?.manifestPath?.toPath()
 
   override fun writeProjectionFromWorkflowState(
     repoRoot: Path,
@@ -95,7 +97,7 @@ class DecompositionManifestWriter : DecompositionManifestProjectionWriter {
     writeDecompositionManifestText(prepared.manifestPath, prepared.yaml, fileStore)
     val loaded = loadValidatedDecompositionManifest(prepared.manifestPath, fileStore, validator)
     return DecompositionManifestWriteResult(
-      manifestPath = prepared.manifestPath,
+      manifestPath = prepared.manifestPath.toFileLocation(),
       manifest = loaded.manifest,
       repairEvidence = prepared.repairEvidence + listOfNotNull(loaded.repairEvidence),
     )
@@ -295,7 +297,7 @@ private fun writeProjection(
   writeDecompositionManifestText(manifestPath, encoded.yamlText, fileStore)
   val loaded = loadValidatedDecompositionManifest(manifestPath, fileStore, validator)
   DecompositionManifestWriteResult(
-    manifestPath = manifestPath,
+    manifestPath = manifestPath.toFileLocation(),
     manifest = loaded.manifest,
     repairEvidence = listOfNotNull(encoded.repairEvidence, loaded.repairEvidence),
   )

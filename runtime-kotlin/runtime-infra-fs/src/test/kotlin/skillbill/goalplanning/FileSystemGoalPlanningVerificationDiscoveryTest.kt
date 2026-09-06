@@ -2,7 +2,7 @@ package skillbill.goalplanning
 
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
-import skillbill.ports.time.JvmSystemClock
+import skillbill.contracts.time.JvmSystemClock
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate

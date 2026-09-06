@@ -15,6 +15,7 @@ import skillbill.install.nativeagent.InstallNativeAgentOperations
 import skillbill.install.nativeagent.NativeAgentLinkRequest
 import skillbill.install.runtime.InstallOperations
 import skillbill.install.support.CLAUDE_CONFIG_DIR_ENV
+import skillbill.model.toPath
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -96,7 +97,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     result.skills.forEach { skill ->
       val linkedParents = skill.links
         .filter { link -> link.status == InstallAgentLinkStatus.CREATED }
-        .map { link -> link.linkPath.parent.toAbsolutePath().normalize() }
+        .map { link -> link.linkPath.toPath().parent.toAbsolutePath().normalize() }
         .toSet()
       assertEquals(expectedSkillDirs, linkedParents, "skill ${skill.skillName} did not fan out to every root")
     }
@@ -105,7 +106,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     val stagedTargets = result.skills.flatMap { skill ->
       skill.links
         .filter { link -> link.status == InstallAgentLinkStatus.CREATED }
-        .map { link -> readSymlinkTarget(link.linkPath) }
+        .map { link -> readSymlinkTarget(link.linkPath.toPath()) }
     }
     stagedTargets.forEach { target ->
       assertTrue(
@@ -126,7 +127,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
       assertEquals(McpRegistrationApplyStatus.SUCCESS, outcome.status, "claude MCP registration must succeed")
       assertEquals(
         fixture.home.resolve(".claude.json").toAbsolutePath().normalize(),
-        outcome.configPath?.toAbsolutePath()?.normalize(),
+        outcome.configPath?.toPath()?.toAbsolutePath()?.normalize(),
         "MCP registration must target the home claude config, independent of --repo-root",
       )
     }
@@ -166,7 +167,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     result.skills.forEach { skill ->
       val linkedParents = skill.links
         .filter { link -> link.status == InstallAgentLinkStatus.CREATED }
-        .map { link -> link.linkPath.parent.toAbsolutePath().normalize() }
+        .map { link -> link.linkPath.toPath().parent.toAbsolutePath().normalize() }
         .toSet()
       assertEquals(expectedSkillDirs, linkedParents, "skill ${skill.skillName} did not fan out to every root")
     }
@@ -175,7 +176,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     val stagedTargets = result.skills.flatMap { skill ->
       skill.links
         .filter { link -> link.status == InstallAgentLinkStatus.CREATED }
-        .map { link -> readSymlinkTarget(link.linkPath) }
+        .map { link -> readSymlinkTarget(link.linkPath.toPath()) }
     }
     stagedTargets.forEach { target ->
       assertTrue(
@@ -243,7 +244,7 @@ class InstallApplyClaudeMultiRootTest : InstallApplyTestSupport() {
     val linkedClaudeAgentDirs = result.nativeAgents
       .filter { native -> native.provider == NativeAgentProviderId.CLAUDE }
       .filter { native -> native.status == NativeAgentApplyStatus.LINKED }
-      .mapNotNull { native -> native.path?.parent?.toAbsolutePath()?.normalize() }
+      .mapNotNull { native -> native.path?.toPath()?.parent?.toAbsolutePath()?.normalize() }
       .toSet()
 
     assertTrue(linkedClaudeAgentDirs.contains(fixture.home.resolve(".claude/agents").toAbsolutePath().normalize()))

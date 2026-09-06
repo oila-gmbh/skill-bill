@@ -43,6 +43,7 @@ import skillbill.ports.learning.LearningRepository
 import skillbill.ports.learning.model.LearningResolution
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.UnitOfWorkDefaults
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewInputSource
 import skillbill.ports.review.ReviewRepository
@@ -599,7 +600,7 @@ internal class FakeTelemetrySettingsProvider(
   private val enabled: Boolean,
 ) : TelemetrySettingsProvider {
   override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
-    configPath = Path.of("/fake/config.json"),
+    configPath = Path.of("/fake/config.json").toFileLocation(),
     level = if (enabled) "anonymous" else "off",
     enabled = enabled,
     installId = if (enabled) "fake-install-id" else "",

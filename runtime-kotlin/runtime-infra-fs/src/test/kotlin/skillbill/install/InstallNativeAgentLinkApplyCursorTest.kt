@@ -10,6 +10,7 @@ import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.install.nativeagent.installNativeAgentFile
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.ports.repository.toFileLocation
 import skillbill.testing.HARBOR_ARCHITECTURE_WORKER
 import skillbill.testing.HARBOR_COMPANION_NAME
 import skillbill.testing.HARBOR_ENTRYPOINT_MARKER
@@ -96,7 +97,7 @@ class InstallNativeAgentLinkApplyCursorTest : InstallNativeAgentLinkApplyTestSup
 
     val result = installNativeAgentFile(
       source = newSource,
-      agentTarget = AgentTarget("codex", targetDir),
+      agentTarget = AgentTarget("codex", targetDir.toFileLocation()),
       managedSourceRoots = listOf(cacheRoot),
     )
 
@@ -318,7 +319,7 @@ class InstallNativeAgentLinkApplyCursorTest : InstallNativeAgentLinkApplyTestSup
       val failure = runCatching {
         installNativeAgentFile(
           source = newSource,
-          agentTarget = AgentTarget("codex", targetDir),
+          agentTarget = AgentTarget("codex", targetDir.toFileLocation()),
           managedSourceRoots = listOf(managedRoot),
         )
       }.exceptionOrNull()

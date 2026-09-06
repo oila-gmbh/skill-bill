@@ -3,6 +3,7 @@ package skillbill.scaffold.platformpack
 import org.yaml.snakeyaml.Yaml
 import org.yaml.snakeyaml.error.YAMLException
 import skillbill.error.InvalidManifestSchemaError
+import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.SkillClassManifest
 import skillbill.scaffold.model.SkillClassMatcher
 import skillbill.scaffold.model.SkillClassSection
@@ -53,7 +54,7 @@ internal fun buildClassManifest(classId: String, classFile: Path, raw: Any?): Sk
   val ceremonyLines = parseSkillClassStringList(manifest, classId, "ceremony_lines", required = false)
   return SkillClassManifest(
     classId = classId,
-    classFile = classFile,
+    classFile = classFile.toFileLocation(),
     contractVersion = contractVersion,
     matchers = matchers,
     pointers = pointers,

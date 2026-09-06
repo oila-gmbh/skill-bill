@@ -1,6 +1,7 @@
 
 package skillbill.scaffold.platformpack
 
+import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.runtime.CONTENT_BODY_FILENAME
 import skillbill.scaffold.validation.parseSkillFrontmatter
@@ -77,7 +78,7 @@ internal fun ensureValidAuthoredContent(slug: String, skillPath: Path, text: Str
 }
 
 internal fun displayPackPath(pack: PlatformManifest, path: Path): String = runCatching {
-  pack.packRoot.toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize())
+  pack.packRoot.toPath().toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize())
     .toString()
     .replace('\\', '/')
 }.getOrDefault(path.toString())

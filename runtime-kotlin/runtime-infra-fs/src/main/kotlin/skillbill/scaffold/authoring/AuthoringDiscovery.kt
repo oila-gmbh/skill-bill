@@ -1,6 +1,7 @@
 package skillbill.scaffold.authoring
 
 import skillbill.error.SkillBillRuntimeException
+import skillbill.model.toPath
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.addonUsageFor
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
@@ -86,7 +87,7 @@ private fun restoreFiles(originalBytes: Map<Path, ByteArray>) {
 private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, pack: PlatformManifest) {
   val displayName = pack.displayName ?: displayNameFromSlug(pack.slug)
   pack.declaredFiles.baseline?.let { baseline ->
-    val baselineContent = declaredContentFile(baseline)
+    val baselineContent = declaredContentFile(baseline.toPath())
     discovered[baselineContent.parent.name] =
       AuthoringTarget(
         baselineContent.parent.name,
@@ -103,7 +104,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
       )
   }
   pack.declaredFiles.areas.forEach { (area, declaredFile) ->
-    val contentFile = declaredContentFile(declaredFile)
+    val contentFile = declaredContentFile(declaredFile.toPath())
     discovered[contentFile.parent.name] =
       AuthoringTarget(
         contentFile.parent.name,
@@ -119,7 +120,7 @@ private fun recordPackTargets(discovered: MutableMap<String, AuthoringTarget>, p
       )
   }
   pack.declaredQualityCheckFile?.let { declaredFile ->
-    val contentFile = declaredContentFile(declaredFile)
+    val contentFile = declaredContentFile(declaredFile.toPath())
     discovered[contentFile.parent.name] =
       AuthoringTarget(
         contentFile.parent.name,

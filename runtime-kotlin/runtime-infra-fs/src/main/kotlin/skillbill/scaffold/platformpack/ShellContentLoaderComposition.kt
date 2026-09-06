@@ -1,6 +1,7 @@
 
 package skillbill.scaffold.platformpack
 
+import skillbill.model.toPath
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewCompositionMode
@@ -29,7 +30,7 @@ internal fun validatePlatformPackCompositions(packs: List<PlatformManifest>) {
 }
 
 internal fun loadCompositionClosure(rootPack: PlatformManifest): List<PlatformManifest> {
-  val packParent = rootPack.packRoot.parent
+  val packParent = rootPack.packRoot.toPath().parent
   return if (packParent == null || !Files.isDirectory(packParent)) {
     listOf(rootPack)
   } else {
@@ -144,12 +145,12 @@ internal fun validateNoCompositionCycles(packs: List<PlatformManifest>) {
 internal fun PlatformManifest.declaredCodeReviewSkillNames(): Set<String> {
   val names = linkedSetOf<String>()
   routedSkillName?.let(names::add)
-  declaredFiles.baseline?.parent?.fileName?.toString()
+  declaredFiles.baseline?.toPath()?.parent?.fileName?.toString()
     ?.takeIf { it != "code-review" }
     ?.let(names::add)
   declaredCodeReviewAreas.forEach { area ->
     names += "bill-$slug-code-review-$area"
-    declaredFiles.areas[area]?.parent?.fileName?.toString()
+    declaredFiles.areas[area]?.toPath()?.parent?.fileName?.toString()
       ?.takeIf { it != "code-review" }
       ?.let(names::add)
   }
@@ -162,6 +163,6 @@ internal fun loadQualityCheckContent(pack: PlatformManifest): Path {
       "Platform pack '${pack.slug}': declared_quality_check_file not set " +
         "(call is only valid after checking pack.declaredQualityCheckFile is not null).",
     )
-  validateGovernedSkill(pack, "quality-check", filePath, "quality-check")
-  return filePath
+  validateGovernedSkill(pack, "quality-check", filePath.toPath(), "quality-check")
+  return filePath.toPath()
 }

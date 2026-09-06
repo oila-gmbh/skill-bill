@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.ProtectedBranches
 import skillbill.ports.workflow.gitops.WorkflowGitRemoteOperations
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.workflow.gitops.ProtectedBranches
 import java.nio.file.Path
 
 internal fun gitBranchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult {

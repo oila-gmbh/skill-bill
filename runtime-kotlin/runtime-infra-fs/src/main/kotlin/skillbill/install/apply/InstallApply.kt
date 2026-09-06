@@ -19,7 +19,9 @@ import skillbill.install.model.WindowsSymlinkPreflightState
 import skillbill.install.plan.discoverPlatformManifests
 import skillbill.install.support.InstallSymlinkException
 import skillbill.install.support.windowsSymlinkGuidance
+import skillbill.model.toPath
 import skillbill.ports.install.mcp.InstallMcpRegistrationPort
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.telemetry.TelemetryConfigStore
 import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.scaffold.model.PlatformManifest
@@ -49,7 +51,7 @@ internal fun applyInstallPlan(
       mcpRegistrationIntent = plan.mcpRegistrationIntent,
     )
   }
-  val platformManifests = discoverPlatformManifests(plan.installationTargetPaths.platformPacksRoot)
+  val platformManifests = discoverPlatformManifests(plan.installationTargetPaths.platformPacksRoot.toPath())
   cleanupExistingSkillBillLinks(plan, platformManifests, failures)
   val appliedSkills = applyPlannedSkills(plan, platformManifests, failures)
   if (failures.isEmpty()) {
@@ -133,7 +135,7 @@ private fun applyPlannedSkills(
     ?.let { stagingDir ->
       linkPlannedSkill(
         skill = skill,
-        stagingDir = stagingDir,
+        stagingDir = stagingDir.toPath(),
         plan = plan,
         failures = failures,
       )
@@ -172,7 +174,7 @@ private fun stagePlannedSkill(
     intent = intent,
     platformManifests = platformManifests,
   )
-  staging.toStagingOutcome(skill.sourceDir)
+  staging.toStagingOutcome(skill.sourceDir.toPath())
 }.getOrElse { error ->
   // An identity mismatch is a precondition for the whole install, not one skill's problem: it means
   // this apply was pointed at a different source root than the installed one. Collecting it let the
@@ -180,14 +182,14 @@ private fun stagePlannedSkill(
   // split across two source roots that neither root could then apply. Rethrow so the surrounding
   // transaction rolls the whole apply back and the operator sees one precondition failure.
   if (error is SkillContentIdentityMismatchError) throw error
-  failedStagingOutcome(skill.sourceDir, skill.name, error).also { outcome ->
+  failedStagingOutcome(skill.sourceDir.toPath(), skill.name, error).also { outcome ->
     outcome.issue?.let(failures::add)
   }
 }
 
 private fun RenderedSkill.toStagingOutcome(sourceDir: Path): InstallSkillStagingOutcome = InstallSkillStagingOutcome(
   status = InstallSkillStagingStatus.STAGED,
-  sourceDir = sourceDir,
+  sourceDir = sourceDir.toFileLocation(),
   stagingDir = stagingDir,
   renderedSkillFile = renderedSkillFile,
   renderedPointerFiles = renderedPointerFiles,
@@ -201,12 +203,12 @@ private fun failedStagingOutcome(sourceDir: Path, skillName: String, error: Thro
     kind = InstallApplyIssueKind.STAGING_FAILED,
     message = error.message.orEmpty(),
     skillName = skillName,
-    path = sourceDir,
+    path = sourceDir.toFileLocation(),
     causeClass = error::class.qualifiedName,
   )
   return InstallSkillStagingOutcome(
     status = InstallSkillStagingStatus.FAILED,
-    sourceDir = sourceDir,
+    sourceDir = sourceDir.toFileLocation(),
     issue = issue,
   )
 }

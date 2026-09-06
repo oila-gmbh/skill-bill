@@ -11,8 +11,10 @@ import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
 import skillbill.install.model.SharedInstallSelection
+import skillbill.model.toPath
 import skillbill.ports.install.selection.model.ReadLatestSuccessfulInstallSelectionRequest
 import skillbill.ports.install.selection.model.WriteLatestSuccessfulInstallSelectionRequest
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -35,7 +37,7 @@ class FileSystemInstallSelectionPersistenceTest {
       telemetryLevel = InstallTelemetryLevel.FULL,
       mcpRegistrationChoice = McpRegistrationChoice(
         register = true,
-        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp"),
+        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp").toFileLocation(),
       ),
     )
 
@@ -80,7 +82,7 @@ class FileSystemInstallSelectionPersistenceTest {
     assertEquals(setOf("kmp", "kotlin"), selection.platformPackSelection.selectedSlugs)
     assertEquals(InstallTelemetryLevel.FULL, selection.telemetryLevel)
     assertEquals(true, selection.mcpRegistrationChoice.register)
-    assertEquals(Path.of("/runtime-mcp/bin/runtime-mcp"), selection.mcpRegistrationChoice.runtimeMcpBin)
+    assertEquals(Path.of("/runtime-mcp/bin/runtime-mcp"), selection.mcpRegistrationChoice.runtimeMcpBin?.toPath())
 
     store.writeLatestSuccessfulSelection(
       WriteLatestSuccessfulInstallSelectionRequest(installHome = home, selection = selection),
@@ -139,7 +141,7 @@ class FileSystemInstallSelectionPersistenceTest {
       telemetryLevel = InstallTelemetryLevel.FULL,
       mcpRegistrationChoice = McpRegistrationChoice(
         register = true,
-        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp"),
+        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp").toFileLocation(),
       ),
     )
     val latestSelection = selection(
@@ -213,7 +215,7 @@ class FileSystemInstallSelectionPersistenceTest {
         telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
         mcpRegistrationChoice = McpRegistrationChoice(
           register = true,
-          runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp"),
+          runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp").toFileLocation(),
         ),
       ),
     )
@@ -254,7 +256,7 @@ class FileSystemInstallSelectionPersistenceTest {
       telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
       mcpRegistrationChoice = McpRegistrationChoice(
         register = true,
-        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp"),
+        runtimeMcpBin = Path.of("/runtime-mcp/bin/runtime-mcp").toFileLocation(),
       ),
     )
 

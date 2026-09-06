@@ -3,7 +3,7 @@ package skillbill.install.policy
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallAgentTarget
 import skillbill.install.model.InstallAgentTargetSource
-import java.nio.file.Path
+import skillbill.model.FileLocation
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFailsWith
@@ -11,7 +11,7 @@ import kotlin.test.assertFailsWith
 class RequireNoDuplicateAgentTargetsTest {
   private fun claudeAt(path: String) = InstallAgentTarget(
     agent = InstallAgent.CLAUDE,
-    path = Path.of(path),
+    path = FileLocation("$path"),
     source = InstallAgentTargetSource.MANUAL,
   )
 

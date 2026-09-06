@@ -1,7 +1,7 @@
 package skillbill.infrastructure.sqlite.goalrunner
 
 import skillbill.ports.workflow.WorkflowStateRepository
-import skillbill.ports.workflow.persistence.model.WorkflowFamily
+import skillbill.ports.workflow.model.WorkflowFamily
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 
 internal data class RecoverMissingResultPrefixTerminalOutcomeArgs(

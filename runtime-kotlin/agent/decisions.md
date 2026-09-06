@@ -5,6 +5,57 @@ This file records architectural and implementation decisions that span the
 not the implementation detail.
 
 
+## [2026-09-06] SKILL-233 subtask 2 audit round 3: the manifest port owns its own capability split; duplicate ports/application declarations collapse to the ports copy
+
+**(a) `GoalRunnerManifestStore` is composed of four port-owned capability interfaces, superseding decision (a) of the audit-round-2 entry below.**
+The six seam names (`GoalRunnerManifestLookup`, `…PauseOps`, `…ExecutionLease`, `…ControlCommands`,
+`…PersistenceCommands`, `…ReviewCommands`) are now declared only once, `internal` in
+`runtime-infra-sqlite`, where the delegating store is assembled. `runtime-ports` declares the same
+34 members — signatures and default values byte-identical — across
+`GoalRunnerManifestQueries`, `GoalRunnerManifestExecutionCommands`, `GoalRunnerManifestControlWrites`
+and `GoalRunnerManifestStateWrites`, split on the port's own read/lifecycle/control/state axis rather
+than mirroring the adapter's five delegate classes. No consumer import, call site or fake changed.
+Alternatives considered: flatten all 34 members onto `GoalRunnerManifestStore` (rejected: detekt
+`TooManyFunctions` caps an interface at 11 and the largest interface anywhere in the tree is 10, so
+the flat port only compiles behind a new `@Suppress` the gate forbids); keep the ports names and
+delete the `runtime-infra-sqlite` internals (rejected: it puts the adapter's delegation seams back
+on the public port surface, which is what the criterion removes).
+
+**(b) A behaviourally identical ports/application pair collapses onto the ports copy.**
+`WorkflowRecordMapping` (`toSnapshot`, `toRecord`, the two session-summary `toPayload` mappers) and
+the `LoadedDecompositionManifest` / `ValidatedDecompositionManifestYaml` DTOs existed byte-identically
+in `runtime-ports` and `runtime-application`. The ports copy survives in both cases because
+`runtime-infra-sqlite` reads it and cannot see `runtime-application`. Duplicate main-source
+basenames: 27 -> 24, none added.
+Alternatives considered: keep both and document them as distinct (rejected: the bodies were
+identical, so the pair was one type spelled twice, not two types).
+
+**(c) Behaviour that is not a DTO extension leaves `runtime-ports` even when it is small.**
+`WorkflowFamily` drove `WorkflowStateRepository` through `save` / `saveRecord` / `get` / `getAll` /
+`list` / `latest` / `sessionSummary`. The enum now holds only its definition in
+`skillbill.ports.workflow.model`, and those seven members are `WorkflowFamily`-receiver extension
+functions in the file that declares `WorkflowStateRepository`, so the repository-driving behaviour
+sits beside the port it drives. `FeatureTaskRuntimeWorkerRepository` split into its own file to keep
+that file under detekt's 45-function threshold. The validation-gate failure-message helpers moved to
+`runtime-domain` `skillbill.workflow.taskruntime`.
+Reason: an enum that reaches into a repository is not a DTO, and
+`RuntimeLayerBoundaryArchitectureTest` requires the type itself to live in a `model` package.
+Splitting definition from behaviour satisfies both without a new module.
+Alternatives considered: move the enum with its members into `skillbill.ports.workflow` beside the
+port (rejected: `public model declarations live in model packages` fails on it). Move the telemetry
+payload contract into `runtime-domain` `skillbill.review.model` beside the DTO it projects (rejected:
+`RuntimeArchitectureTest.review and telemetry domain models do not own json payload contracts` forbids
+`JsonPayloadContract` under domain `skillbill.review`; the mapper now lives beside `ReviewRepository`
+in `skillbill.ports.review`).
+
+## [2026-09-06] SKILL-233 subtask 2: ports hold interfaces and DTOs; path values leave `java.nio` at the domain edge
+Context: `runtime-ports` carried 24 non-interface behaviour files (1,541 lines) outside its `model` packages, and `runtime-domain` imported `java.nio.file` in 15 files. The prior SKILL-233 entry deferred both to this subtask.
+Decision: `skillbill.model.FileLocation` (a `@JvmInline value class` over the path string) is the domain- and port-facing path type; `skillbill.model.toPath` and `skillbill.ports.repository.toFileLocation` in `runtime-ports` are the only bridge to `java.nio.file.Path`, and adapters own the conversion. Behaviour clusters left `runtime-ports` for `runtime-infra-sqlite` (`skillbill.db.goalrunner`, `skillbill.db.workflow`, `skillbill.db.decomposition`) rather than `runtime-application`, because the only consumer of each was `runtime-infra-sqlite` and the two are siblings. `JvmSystemClock` landed in `runtime-contracts` (`skillbill.contracts.time`), not `runtime-domain`, because domain effect purity forbids `System.currentTimeMillis`. Files that were pure extensions over a port type in the same package were folded into the file declaring that type (`WorkflowGitOperations`, `GoalRunnerControlRepository`, `FeatureTaskExecutionIdentity`) instead of moved.
+Reason: A port file that declares no interface is behaviour the inside cannot substitute. Moving that behaviour to the one adapter that calls it keeps the port surface substitutable without inventing a new shared module; `FileLocation` removes the filesystem dependency that forced the behaviour into ports in the first place.
+Alternatives considered: Move the clusters to `runtime-application` (rejected: `runtime-infra-sqlite` cannot see it). Introduce a shared module below both (rejected: no second consumer; a new module for one caller is not a boundary). Keep `java.nio.file.Path` in domain signatures and guard only the imports (rejected: the import is the symptom, the signature is the coupling).
+Consequence: The `skillbill.db.decomposition` copy shrank from seven files to one — infra-sqlite reached only six of the thirty-one declarations the ports copy carried, so the rest were deleted rather than relocated. Six near-duplicate basename pairs remain between `runtime-application` and `runtime-infra-sqlite` (`GoalContinuationArtifactCodec`, `GoalParentProjectionWriter`, `GoalRunnerWorkflowFamilyLookup`, `LegacyGoalRunnerControlMigration`, `DecompositionWorkflowRuntimeLookup`, `DecompositionWorkflowRuntimeLookupParentDiscovery`). They are distinct types: the copies diverge (3–31 differing lines each), each is live in its own module, and no module below both can hold them now that `runtime-ports` is interface-and-DTO only. Two call sites lost implicit CWD resolution of a relative path: `SkillRemoveErrorSanitizer.parseRepoRoot` and `InstallPlanPolicyChecks.validatePath` now compare the given text rather than a working-directory-resolved absolute path.
+Revisit when: a third module needs one of the six duplicated clusters — that is the second consumer that would justify a shared module — or `DecompositionManifestStore` stops taking `java.nio.file.Path`, which would let the decomposition pair collapse.
+
 ## [2026-09-04] Deletion-elision path for goal-subtask review retired, not bypassed
 Context: SKILL-232 subtask 1 swept confirmed-unused `internal` declarations. `withinReviewInputBound` in `runtime-infra-fs` was unreferenced, and every other symbol in `GoalSubtaskReviewDeletionElision.kt` (`goalReviewDiffArguments`, `goalReviewNumstatArguments`, `ownedPathspecArguments`, `fitsReviewInputBound`, `deletionElidedDelta`, `deletionManifest`, `deletionManifestEntry`, `NUMSTAT_FIELD_COUNT`) was reachable only through it.
 Decision: Delete the file whole rather than trimming the single unreferenced entry point. SKILL-224 (be9b56edb) replaced the materialized tracked delta in `GitGoalSubtaskReviewOperations.kt` with a scope-fingerprint string; `trackedDelta` is no longer a diff, so the byte-bound elision branch can never fire. Treat that redesign as retiring elision, not as a temporary bypass.

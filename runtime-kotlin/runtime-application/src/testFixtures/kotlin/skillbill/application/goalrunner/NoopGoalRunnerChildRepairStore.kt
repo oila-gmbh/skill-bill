@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildRepairApplyResult
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.ports.goalrunner.persistence.model.GoalRunnerChildWedgeDiagnosisRequest

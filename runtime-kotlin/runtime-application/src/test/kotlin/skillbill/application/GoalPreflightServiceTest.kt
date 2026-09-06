@@ -21,6 +21,7 @@ import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigResult
 import skillbill.ports.goalrunner.runner.GoalRunnerManifestStoreDefaults
 import skillbill.ports.goalrunner.runner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.runner.model.GoalRunnerReviewPolicy
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.workflow.decomposition.DecompositionManifestStore
 import skillbill.review.context.model.CodeReviewExecutionMode
 import skillbill.workflow.decomposition.model.CurrentSubtaskIntent
@@ -210,7 +211,7 @@ class GoalPreflightServiceTest {
       override fun readExternalAgentAddonSources(
         request: ExternalAgentAddonSourceConfigRequest,
       ): ExternalAgentAddonSourceConfigResult = ExternalAgentAddonSourceConfigResult(
-        listOf(ExternalAgentAddonSource(externalRoot)),
+        listOf(ExternalAgentAddonSource(externalRoot.toFileLocation())),
       )
     }
     val service = service(

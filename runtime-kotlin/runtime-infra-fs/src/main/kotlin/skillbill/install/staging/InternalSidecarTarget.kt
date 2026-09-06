@@ -3,6 +3,7 @@ package skillbill.install.staging
 import skillbill.error.InternalSkillSidecarCollisionError
 import skillbill.error.InvalidAuthoredSkillSidecarError
 import skillbill.install.model.InstallPlanSkill
+import skillbill.model.toPath
 import skillbill.scaffold.authoring.discoverTargets
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.authoring.renderWrapper
@@ -157,9 +158,9 @@ internal fun discoverInternalSidecarTargets(
     }
     byName[skill.name] = InternalSidecarTarget(
       skillName = skill.name,
-      sourceDir = skill.sourceDir,
+      sourceDir = skill.sourceDir.toPath(),
       renderedWrapper = renderWrapper(discovered.getValue(skill.name)),
-      authoredCompanions = discoverAuthoredCompanions(skill.sourceDir),
+      authoredCompanions = discoverAuthoredCompanions(skill.sourceDir.toPath()),
     )
   }
   return byName.values.toList()

@@ -3,6 +3,7 @@ package skillbill.telemetry
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.http.telemetryProxyBatchPayload
+import skillbill.ports.repository.toFileLocation
 import skillbill.telemetry.model.TelemetrySettings
 import java.nio.file.Files
 import java.sql.Connection
@@ -63,7 +64,7 @@ class TelemetryReleaseAttributionTest {
   }
 
   private fun settings(): TelemetrySettings = TelemetrySettings(
-    configPath = Files.createTempFile("telemetry-attribution", ".json"),
+    configPath = Files.createTempFile("telemetry-attribution", ".json").toFileLocation(),
     level = "anonymous",
     enabled = true,
     installId = "test-install-id",

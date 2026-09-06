@@ -40,6 +40,7 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.runner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.runner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewLaunchAgentStagingPort
@@ -1688,15 +1689,15 @@ private fun kotlinPersistenceInlineRunner(finding: String, persistencePath: Stri
 
 private fun kotlinPersistenceManifest() = PlatformManifest(
   slug = "kotlin",
-  packRoot = Path.of("platform-packs/kotlin"),
+  packRoot = Path.of("platform-packs/kotlin").toFileLocation(),
   contractVersion = "1.3",
   routingSignals = RoutingSignals(strong = listOf("*.kt"), tieBreakers = emptyList()),
   declaredCodeReviewAreas = listOf("architecture", "persistence"),
   declaredFiles = DeclaredFiles(
-    baseline = Path.of("content.md"),
+    baseline = Path.of("content.md").toFileLocation(),
     areas = mapOf(
-      "architecture" to Path.of("architecture.md"),
-      "persistence" to Path.of("persistence.md"),
+      "architecture" to Path.of("architecture.md").toFileLocation(),
+      "persistence" to Path.of("persistence.md").toFileLocation(),
     ),
   ),
   areaMetadata = emptyMap(),
@@ -1802,13 +1803,16 @@ private fun throwingCatalogGateway(): ScaffoldCatalogGateway = object : Scaffold
 
 private fun platformManifest(slug: String, strongSignals: List<String>) = PlatformManifest(
   slug = slug,
-  packRoot = Path.of("platform-packs/$slug"),
+  packRoot = Path.of("platform-packs/$slug").toFileLocation(),
   contractVersion = "1.3",
   routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
   declaredCodeReviewAreas = listOf("architecture", "testing"),
   declaredFiles = DeclaredFiles(
-    baseline = Path.of("content.md"),
-    areas = mapOf("architecture" to Path.of("architecture.md"), "testing" to Path.of("testing.md")),
+    baseline = Path.of("content.md").toFileLocation(),
+    areas = mapOf(
+      "architecture" to Path.of("architecture.md").toFileLocation(),
+      "testing" to Path.of("testing.md").toFileLocation(),
+    ),
   ),
   areaMetadata = emptyMap(),
   laneConditions = mapOf(
@@ -1826,13 +1830,13 @@ private fun sparsePlatformManifest(
   val areas = listOf(requiredArea) + pathAreas.keys.toList()
   return PlatformManifest(
     slug = slug,
-    packRoot = Path.of("platform-packs/$slug"),
+    packRoot = Path.of("platform-packs/$slug").toFileLocation(),
     contractVersion = "1.3",
     routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
     declaredCodeReviewAreas = areas,
     declaredFiles = DeclaredFiles(
-      baseline = Path.of("content.md"),
-      areas = areas.associateWith { Path.of("$it.md") },
+      baseline = Path.of("content.md").toFileLocation(),
+      areas = areas.associateWith { Path.of("$it.md").toFileLocation() },
     ),
     areaMetadata = emptyMap(),
     laneConditions = buildMap {

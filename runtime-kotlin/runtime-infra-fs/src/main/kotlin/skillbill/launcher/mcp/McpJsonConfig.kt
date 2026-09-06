@@ -3,6 +3,7 @@ package skillbill.launcher.mcp
 import skillbill.contracts.JsonCodec
 import skillbill.install.model.McpMutationResult
 import skillbill.launcher.process.atomicWriteString
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -22,7 +23,7 @@ internal object McpJsonConfig {
     if (changed) {
       writeJson(path, settings)
     }
-    return McpMutationResult(agent, path, changed = changed)
+    return McpMutationResult(agent, path.toFileLocation(), changed = changed)
   }
 
   fun unregister(agent: String, path: Path): McpMutationResult {
@@ -37,7 +38,7 @@ internal object McpJsonConfig {
       }
       writeJson(path, settings)
     }
-    return McpMutationResult(agent, path, changed = changed)
+    return McpMutationResult(agent, path.toFileLocation(), changed = changed)
   }
 }
 

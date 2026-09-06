@@ -1,8 +1,8 @@
 package skillbill.db.workflow
 
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.db.core.DbConstants
 import skillbill.error.InvalidWorkflowStateSchemaError
-import skillbill.ports.time.JvmSystemClock
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.sql.Connection

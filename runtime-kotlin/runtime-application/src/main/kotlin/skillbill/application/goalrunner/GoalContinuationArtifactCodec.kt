@@ -2,7 +2,6 @@ package skillbill.application.goalrunner
 
 import skillbill.application.goalrunner.model.GoalContinuation
 import skillbill.application.workflow.model.WorkflowFamily
-import skillbill.application.workflow.toSnapshot
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonCodec
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
@@ -12,6 +11,8 @@ import skillbill.goalrunner.subtaskreview.GoalSubtaskReviewSummaryReducer
 import skillbill.goalrunner.subtaskreview.recordedVerdicts
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowStateRepository
+import skillbill.ports.workflow.get
+import skillbill.ports.workflow.model.toSnapshot
 import skillbill.workflow.engine.model.WorkflowStateSnapshot
 import skillbill.workflow.goal.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.goal.model.GoalSubtaskReviewArtifactDecoder

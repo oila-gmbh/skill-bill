@@ -7,6 +7,7 @@ import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.AgentAddonDeclaration
 import skillbill.contracts.JsonCodec
 import skillbill.error.MissingAgentAddonDeclarationError
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
@@ -131,18 +132,18 @@ internal fun parseSource(sourceRoot: Path, validator: AgentAddonSchemaValidator)
       description = description,
       agents = agents,
       consumers = consumers,
-      addonRoot = sourceRoot,
-      manifestPath = manifest,
-      contentPath = content,
-      canonicalSourceIdentity = manifest.toRealPath(),
+      addonRoot = sourceRoot.toFileLocation(),
+      manifestPath = manifest.toFileLocation(),
+      contentPath = content.toFileLocation(),
+      canonicalSourceIdentity = manifest.toRealPath().toFileLocation(),
     )
   }
 }
 
 private fun validateSourceCoherence(candidates: List<AgentAddonDeclaration>) {
   val violations = mutableListOf<String>()
-  candidates.filter { it.addonRoot.name != it.slug }.forEach { declaration ->
-    violations += "${declaration.manifestPath}: source directory '${declaration.addonRoot.name}' " +
+  candidates.filter { it.addonRoot.fileName != it.slug }.forEach { declaration ->
+    violations += "${declaration.manifestPath}: source directory '${declaration.addonRoot.fileName}' " +
       "must match slug '${declaration.slug}'"
   }
   candidates.groupBy { it.slug }.filterValues { it.size > 1 }.forEach { (slug, declarations) ->

@@ -1,6 +1,7 @@
 
 package skillbill.scaffold.runtime
 
+import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.policy.platformpack.model.PlatformPackManifestContentRenderRequest
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_ADD_ON
 import skillbill.scaffold.policy.scaffold.SKILL_KIND_PLATFORM_PACK
@@ -24,10 +25,10 @@ internal fun renderPlatformPackManifestContent(
       specialistAreas = plan.specialistAreas,
       specialistAreaMetadata = plan.specialistAreaMetadata,
       baselineLayers = plan.baselineLayers,
-      packRoot = packRoot,
-      baselineSkillPath = baselineSkillPath,
-      qualityCheckSkillPath = qualityCheckSkillPath,
-      specialistSkillPaths = plan.specialistSkillPaths,
+      packRoot = packRoot.toFileLocation(),
+      baselineSkillPath = baselineSkillPath.toFileLocation(),
+      qualityCheckSkillPath = qualityCheckSkillPath.toFileLocation(),
+      specialistSkillPaths = plan.specialistSkillPaths.mapValues { (_, entry) -> entry.toFileLocation() },
     ),
   )
 }

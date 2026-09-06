@@ -13,7 +13,7 @@ import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
 import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
 import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
+import skillbill.ports.review.toReviewFinishedTelemetryPayload
 import skillbill.review.ReviewParser
 import skillbill.review.normalizeTelemetrySlug
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord

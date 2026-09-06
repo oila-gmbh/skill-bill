@@ -23,6 +23,7 @@ import skillbill.install.model.RuntimeDistributionInputs
 import skillbill.install.model.WindowsSymlinkDecision
 import skillbill.install.model.WindowsSymlinkPreflight
 import skillbill.install.model.WindowsSymlinkPreflightState
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Path
 
 abstract class InstallRequestCommand(
@@ -113,8 +114,8 @@ abstract class InstallRequestCommand(
     val explicitTargets = parseAgentTargets(agentTargets)
     val manualAgents = agents.map(InstallAgent::fromId).toSet()
     return InstallPlanRequest(
-      repoRoot = resolvedRepoRoot,
-      home = inputs.userHome,
+      repoRoot = resolvedRepoRoot.toFileLocation(),
+      home = inputs.userHome.toFileLocation(),
       agentSelection = InstallAgentSelection(
         mode = selectedAgentMode(manualAgents, explicitTargets),
         manualAgents = manualAgents,
@@ -126,19 +127,22 @@ abstract class InstallRequestCommand(
       telemetryLevel = telemetryLevel(),
       mcpRegistrationChoice = McpRegistrationChoice(
         register = mcp == "register",
-        runtimeMcpBin = runtimeMcpBin?.let(Path::of),
+        runtimeMcpBin = runtimeMcpBin?.let(Path::of)?.toFileLocation(),
       ),
       runtimeDistributionInputs = RuntimeDistributionInputs(
-        runtimeInstallRoot = runtimeInstallRoot?.let(Path::of) ?: inputs.userHome.resolve(".skill-bill/runtime"),
-        runtimeCliBuildDir = runtimeCliBuildDir?.let(Path::of),
-        runtimeMcpBuildDir = runtimeMcpBuildDir?.let(Path::of),
-        runtimeCliInstallDir = runtimeCliInstallDir?.let(Path::of),
-        runtimeMcpInstallDir = runtimeMcpInstallDir?.let(Path::of),
-        runtimeLauncherBinDir = runtimeLauncherBinDir?.let(Path::of),
+        runtimeInstallRoot = runtimeInstallRoot?.let(Path::of)?.toFileLocation()
+          ?: inputs.userHome.resolve(".skill-bill/runtime").toFileLocation(),
+        runtimeCliBuildDir = runtimeCliBuildDir?.let(Path::of)?.toFileLocation(),
+        runtimeMcpBuildDir = runtimeMcpBuildDir?.let(Path::of)?.toFileLocation(),
+        runtimeCliInstallDir = runtimeCliInstallDir?.let(Path::of)?.toFileLocation(),
+        runtimeMcpInstallDir = runtimeMcpInstallDir?.let(Path::of)?.toFileLocation(),
+        runtimeLauncherBinDir = runtimeLauncherBinDir?.let(Path::of)?.toFileLocation(),
       ),
       targetPaths = InstallationTargetPaths(
-        skillsRoot = skillsRoot?.let(Path::of) ?: resolvedRepoRoot.resolve("skills"),
-        platformPacksRoot = platformPacksRoot?.let(Path::of) ?: resolvedRepoRoot.resolve("platform-packs"),
+        skillsRoot = skillsRoot?.let(Path::of)?.toFileLocation()
+          ?: resolvedRepoRoot.resolve("skills").toFileLocation(),
+        platformPacksRoot = platformPacksRoot?.let(Path::of)?.toFileLocation()
+          ?: resolvedRepoRoot.resolve("platform-packs").toFileLocation(),
         agentTargets = explicitTargets,
       ),
       windowsSymlinkPreflight = WindowsSymlinkPreflight(
@@ -201,7 +205,7 @@ private fun parseAgentTargets(rawTargets: List<String>): List<InstallAgentTarget
   }
   InstallAgentTarget(
     agent = InstallAgent.fromId(parts[0]),
-    path = Path.of(parts[1]),
+    path = Path.of(parts[1]).toFileLocation(),
     source = InstallAgentTargetSource.MANUAL,
   )
 }

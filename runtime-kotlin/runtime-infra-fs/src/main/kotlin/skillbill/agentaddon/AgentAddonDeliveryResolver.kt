@@ -4,6 +4,7 @@ import skillbill.agentaddon.model.AgentAddonCatalogueEntry
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.error.AgentAddonPointerCollisionError
 import skillbill.error.InvalidAgentAddonDeliveryTargetError
+import skillbill.model.toPath
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -29,8 +30,8 @@ class AgentAddonDeliveryResolver {
       .filter { consumer in it.consumers }
       .sortedBy { it.slug }
       .map { declaration ->
-        val manifest = validateTarget(canonicalRoot, declaration.slug, declaration.manifestPath)
-        val content = validateTarget(canonicalRoot, declaration.slug, declaration.contentPath)
+        val manifest = validateTarget(canonicalRoot, declaration.slug, declaration.manifestPath.toPath())
+        val content = validateTarget(canonicalRoot, declaration.slug, declaration.contentPath.toPath())
         val name = "agent-addon-${declaration.slug}.md"
         if (canonicalRoot.relativize(content).toString().replace(File.separatorChar, '/') == name) {
           throw InvalidAgentAddonDeliveryTargetError(

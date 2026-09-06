@@ -10,7 +10,7 @@ import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
 import skillbill.infrastructure.sqlite.review.persistLegacyTelemetryRewrites
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
+import skillbill.ports.review.toReviewFinishedTelemetryPayload
 import skillbill.review.context.model.ReviewClaimVerdictAdmission
 import skillbill.review.context.model.ReviewSpecAdjudicationAdmission
 import skillbill.review.model.FeedbackRequest

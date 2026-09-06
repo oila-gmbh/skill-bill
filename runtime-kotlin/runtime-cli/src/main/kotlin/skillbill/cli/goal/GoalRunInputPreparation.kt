@@ -7,6 +7,7 @@ import skillbill.cli.kernel.parseAgentAddonSelection
 import skillbill.cli.kernel.refuseUnavailableAgentLaunchers
 import skillbill.cli.kernel.requireInvokingAgentId
 import skillbill.cli.kernel.requireSupportedOptionalAgentId
+import skillbill.model.toPath
 import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 
 internal fun validateGoalRunInputs(args: GoalRunInputValidationArgs) {
@@ -34,7 +35,7 @@ internal fun hydrateGoalRunAgentAddonSelection(args: GoalRunAgentAddonHydrationA
       receivingAgentIds = args.receivingAgents,
       externalSourceRoots = args.externalAgentAddonSourceConfigPort.readExternalAgentAddonSources(
         ExternalAgentAddonSourceConfigRequest(args.inputs.userHome, args.inputs.environment),
-      ).sources.map { it.path },
+      ).sources.map { source -> source.path.toPath() },
     )
   } else if (persistedSelection.entries.isEmpty()) {
     HydratedAgentAddonSelection()

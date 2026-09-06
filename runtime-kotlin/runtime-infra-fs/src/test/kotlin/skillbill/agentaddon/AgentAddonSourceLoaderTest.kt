@@ -3,6 +3,7 @@ package skillbill.agentaddon
 import skillbill.error.InvalidAgentAddonSchemaError
 import skillbill.error.MissingAgentAddonDeclarationError
 import skillbill.install.model.InstallAgent
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -45,7 +46,7 @@ class AgentAddonSourceLoaderTest {
     assertEquals(listOf("external-addon", "repo-addon"), declarations.map { it.slug })
     assertTrue(
       declarations.first { it.slug == "external-addon" }.manifestPath
-        .startsWith(external.resolve("agent-addons")),
+        .startsWith(external.resolve("agent-addons").toFileLocation()),
     )
   }
 

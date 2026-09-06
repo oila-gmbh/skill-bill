@@ -1,3 +1,12 @@
+## [2026-09-06] SKILL-233 subtask 2 — Ports evacuation and domain purity
+Areas: runtime-kotlin/{runtime-ports,runtime-domain,runtime-contracts,runtime-application,runtime-cli,runtime-core,runtime-infra-{fs,http,sqlite},runtime-mcp,agent,ARCHITECTURE.md}
+- Evacuated runtime behavior from ports into domain and infrastructure seams, leaving interfaces, DTOs, and pure DTO extensions; the non-interface census is 84 files / 2,886 lines versus 7,031 at start. reusable
+- Removed production null objects and diagnostic sinks, moved test substitutes to testFixtures, and made UnitOfWork members explicit at every implementation boundary. reusable
+- Kept wire mapping at the adapter boundary where contract modules cannot depend on domain snapshots; import and dependency ownership rules now enforce the thin-port/domain-purity shape. reusable
+- Limitation: 23 duplicate basenames remain as distinct types or adapter/model layers; WorkflowStateSnapshotWireMapper remains in infra-fs, and known relative-path differences remain for callers that provide absolute paths.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
 ## [2026-09-06] SKILL-233 subtask 1 — Guard recalibration, run-loop consolidation, DI flattening
 Areas: runtime-kotlin/{runtime-application/featuretask,runtime-core/{di,architecture},config/detekt,agent,ARCHITECTURE.md,runtime-{ports,domain,contracts,cli,mcp,infra-fs,infra-sqlite,infra-http}}, scripts
 - Guards moved by dated decision, never by baseline row: `PRODUCTION_LINE_CEILING` 500→1200, detekt `TooManyFunctions` 11→40 classes/objects and 45 files, `LongParameterList.constructorThreshold` 7→12, `LargeClass` 1200. `thresholdInInterfaces`/`thresholdInEnums` stay 11 as the SKILL-231 port-width guard; `LongMethod`, `CyclomaticComplexMethod`, `NestedBlockDepth`, `ComplexCondition` unchanged. reusable

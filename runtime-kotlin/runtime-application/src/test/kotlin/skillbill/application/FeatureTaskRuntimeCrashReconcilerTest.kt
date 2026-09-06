@@ -1,6 +1,5 @@
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.featuretask.model.FeatureTaskRuntimeWorkerLeaseState
@@ -11,6 +10,7 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import skillbill.ports.taskruntime.model.isConfirmedDead
 import skillbill.ports.workflow.model.FeatureTaskWorkflowMode.RUNTIME
 import skillbill.ports.workflow.model.WorkflowStateRecord
 import java.time.Duration
@@ -22,16 +22,10 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimeCrashReconcilerTest {
   @Test
   fun `only NotRunning is confirmed dead while ExactLive and ambiguous evidence stay conservative`() {
-    assertTrue(FeatureTaskRuntimeCrashLiveness.isConfirmedDead(FeatureTaskRuntimeProcessInspection.NotRunning))
-    assertFalse(FeatureTaskRuntimeCrashLiveness.isConfirmedDead(FeatureTaskRuntimeProcessInspection.ExactLive))
-    assertFalse(
-      FeatureTaskRuntimeCrashLiveness.isConfirmedDead(
-        FeatureTaskRuntimeProcessInspection.OwnershipMismatch("pid reuse"),
-      ),
-    )
-    assertFalse(
-      FeatureTaskRuntimeCrashLiveness.isConfirmedDead(FeatureTaskRuntimeProcessInspection.Unsupported("no probe")),
-    )
+    assertTrue(FeatureTaskRuntimeProcessInspection.NotRunning.isConfirmedDead())
+    assertFalse(FeatureTaskRuntimeProcessInspection.ExactLive.isConfirmedDead())
+    assertFalse(FeatureTaskRuntimeProcessInspection.OwnershipMismatch("pid reuse").isConfirmedDead())
+    assertFalse(FeatureTaskRuntimeProcessInspection.Unsupported("no probe").isConfirmedDead())
   }
 
   @Test

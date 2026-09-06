@@ -32,6 +32,8 @@ import skillbill.install.staging.computeInstallContentHash
 import skillbill.install.staging.generatedSupportPointersFor
 import skillbill.install.staging.prepareInternalStaging
 import skillbill.install.staging.validateAgentAddonPointerNamespace
+import skillbill.model.toPath
+import skillbill.ports.repository.toFileLocation
 import skillbill.scaffold.model.PlatformManifest
 import java.io.File
 import java.nio.file.Files
@@ -198,7 +200,7 @@ internal fun enumerateSkills(
           selectedPackSkills,
           enforceContractVersion,
         ),
-        sourceDir = skill.sourceDir.toAbsolutePath().normalize(),
+        sourceDir = skill.sourceDir.toPath().toAbsolutePath().normalize(),
       )
     }
   } else {
@@ -210,8 +212,8 @@ internal fun enumerateSkills(
 private fun agentAddonEntries(roots: ReconcileSourceRoots): Map<String, ReconcileSkillEntry> =
   discoverAgentAddons(roots.repoRoot).associate { declaration ->
     "agent-addons/${declaration.slug}" to ReconcileSkillEntry(
-      hash = hashAgentAddonSource(declaration.manifestPath, declaration.contentPath),
-      sourceDir = declaration.addonRoot.toAbsolutePath().normalize(),
+      hash = hashAgentAddonSource(declaration.manifestPath.toPath(), declaration.contentPath.toPath()),
+      sourceDir = declaration.addonRoot.toPath().toAbsolutePath().normalize(),
     )
   }
 
@@ -235,10 +237,10 @@ private fun reconcileSkillHash(
   selectedPackSkills: List<InstallPlanSkill>,
   enforceContractVersion: Boolean,
 ): String {
-  val applicablePointers = applicablePointers(roots.repoRoot, skill.sourceDir, platformManifests)
+  val applicablePointers = applicablePointers(roots.repoRoot, skill.sourceDir.toPath(), platformManifests)
   val supportPointers = generatedSupportPointersFor(
     repoRoot = roots.repoRoot,
-    sourceSkillDir = skill.sourceDir,
+    sourceSkillDir = skill.sourceDir.toPath(),
     skillName = skill.name,
     skillsRoot = roots.skillsRoot,
     selectedPlatformManifests = platformManifests,
@@ -246,7 +248,7 @@ private fun reconcileSkillHash(
   val internal = prepareInternalStaging(
     InternalStagingPreparation(
       repoRoot = roots.repoRoot,
-      parentSourceDir = skill.sourceDir,
+      parentSourceDir = skill.sourceDir.toPath(),
       parentSkillName = skill.name,
       skillsRoot = roots.skillsRoot,
       selectedPackSkills = selectedPackSkills,
@@ -258,7 +260,7 @@ private fun reconcileSkillHash(
     ),
   )
   val authored = authoredFilesFor(
-    skill.sourceDir,
+    skill.sourceDir.toPath(),
     applicablePointers,
     internal.supportPointers,
     internal.sidecarNames,
@@ -266,14 +268,14 @@ private fun reconcileSkillHash(
   val agentAddonPointers = agentAddonPointersForSkill(roots.repoRoot, skill.name)
   validateAgentAddonPointerNamespace(
     skill.name,
-    authoredStagingNames(skill.sourceDir, authored) + internal.sidecarNames +
+    authoredStagingNames(skill.sourceDir.toPath(), authored) + internal.sidecarNames +
       applicablePointers.map { it.second.name } + internal.supportPointers.map { it.name } +
       listOf("SKILL.md", ".content-hash"),
     agentAddonPointers,
   )
   return computeInstallContentHash(
     InstallContentHashInputs(
-      sourceSkillDir = skill.sourceDir,
+      sourceSkillDir = skill.sourceDir.toPath(),
       authored = authored,
       applicablePointers = applicablePointers,
       generatedSupportPointers = internal.supportPointers,
@@ -291,7 +293,7 @@ private fun reconcileSkillHash(
  * absolute paths.
  */
 private fun skillRelativePath(roots: ReconcileSourceRoots, skill: InstallPlanSkill): String {
-  val resolvedSource = skill.sourceDir.toAbsolutePath().normalize()
+  val resolvedSource = skill.sourceDir.toPath().toAbsolutePath().normalize()
   return when (skill.kind) {
     InstallPlanSkillKind.BASE -> {
       val root = roots.skillsRoot.toAbsolutePath().normalize()
@@ -306,18 +308,18 @@ private fun skillRelativePath(roots: ReconcileSourceRoots, skill: InstallPlanSki
 
 private fun reconcileEnumerationRequest(roots: ReconcileSourceRoots, home: Path): InstallPlanRequest =
   InstallPlanRequest(
-    repoRoot = roots.repoRoot.toAbsolutePath().normalize(),
-    home = home,
+    repoRoot = roots.repoRoot.toAbsolutePath().normalize().toFileLocation(),
+    home = home.toFileLocation(),
     agentSelection = InstallAgentSelection(mode = InstallAgentSelectionMode.DETECTED),
     platformPackSelection = PlatformPackSelection(mode = PlatformPackSelectionMode.ALL),
     telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
     mcpRegistrationChoice = McpRegistrationChoice(register = false),
     runtimeDistributionInputs = RuntimeDistributionInputs(
-      runtimeInstallRoot = home.resolve(".skill-bill/runtime"),
+      runtimeInstallRoot = home.resolve(".skill-bill/runtime").toFileLocation(),
     ),
     targetPaths = InstallationTargetPaths(
-      skillsRoot = roots.skillsRoot,
-      platformPacksRoot = roots.platformPacksRoot,
+      skillsRoot = roots.skillsRoot.toFileLocation(),
+      platformPacksRoot = roots.platformPacksRoot.toFileLocation(),
     ),
     windowsSymlinkPreflight = WindowsSymlinkPreflight(
       state = WindowsSymlinkPreflightState.NOT_WINDOWS,

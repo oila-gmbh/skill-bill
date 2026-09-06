@@ -7,6 +7,7 @@ import skillbill.install.model.McpRegistrationChoice
 import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
 import skillbill.install.model.SharedInstallSelection
+import skillbill.ports.repository.toFileLocation
 import java.nio.file.Path
 
 internal fun parseInstallSelectionPayload(path: Path, rawPayload: String): SharedInstallSelection {
@@ -70,7 +71,7 @@ private fun Map<String, Any?>.toMcpRegistrationChoice(path: Path): McpRegistrati
   }
   return McpRegistrationChoice(
     register = requireBoolean(path, "register"),
-    runtimeMcpBin = runtimeMcpBin,
+    runtimeMcpBin = runtimeMcpBin?.toFileLocation(),
   )
 }
 

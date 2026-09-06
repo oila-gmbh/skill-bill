@@ -4,7 +4,7 @@ import kotlinx.serialization.json.JsonObject
 import skillbill.SkillBillVersion
 import skillbill.contracts.JsonCodec
 import skillbill.error.GovernedReviewEvidenceTransportError
-import skillbill.ports.review.model.GovernedReviewEvidenceCodec
+import skillbill.ports.review.GovernedReviewEvidenceCodec
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.IOException

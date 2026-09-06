@@ -1,5 +1,6 @@
 package skillbill.launcher
 
+import skillbill.contracts.time.JvmSystemClock
 import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
 import skillbill.launcher.agentrun.headlessAgentRunAdapters
@@ -7,7 +8,6 @@ import skillbill.launcher.process.AgentRunProcessResult
 import skillbill.launcher.process.JvmAgentRunProcessRunner
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import skillbill.ports.agentrun.model.AgentRunOutputStream
-import skillbill.ports.time.JvmSystemClock
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains

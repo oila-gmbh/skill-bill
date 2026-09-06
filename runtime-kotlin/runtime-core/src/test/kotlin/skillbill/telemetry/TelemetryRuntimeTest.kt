@@ -4,6 +4,7 @@ import skillbill.contracts.JsonCodec
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.infrastructure.http.HttpTelemetryClient
+import skillbill.ports.repository.toFileLocation
 import skillbill.ports.telemetry.RemoteTransportPort
 import skillbill.ports.telemetry.TelemetryClient
 import skillbill.ports.telemetry.model.RemoteTransportResponse
@@ -128,7 +129,7 @@ class TelemetryRuntimeTest {
     val dbPath = Files.createTempFile("telemetry-invalid", ".db")
     val disabledSettings =
       TelemetrySettings(
-        configPath = Files.createTempFile("telemetry-invalid-config", ".json"),
+        configPath = Files.createTempFile("telemetry-invalid-config", ".json").toFileLocation(),
         level = "off",
         enabled = false,
         installId = "",
@@ -260,7 +261,7 @@ private fun telemetrySettings(
   proxyUrl: String = "https://telemetry.example.dev/ingest",
   customProxyUrl: String? = proxyUrl,
 ): TelemetrySettings = TelemetrySettings(
-  configPath = configPath,
+  configPath = configPath.toFileLocation(),
   level = "anonymous",
   enabled = true,
   installId = "test-install-id",

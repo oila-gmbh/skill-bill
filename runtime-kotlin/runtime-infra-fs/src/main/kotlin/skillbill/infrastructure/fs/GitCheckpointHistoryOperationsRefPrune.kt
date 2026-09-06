@@ -1,7 +1,7 @@
 package skillbill.infrastructure.fs
 
-import skillbill.ports.workflow.gitops.ProtectedBranches
 import skillbill.ports.workflow.gitops.model.WorkflowGitOperationResult
+import skillbill.workflow.gitops.ProtectedBranches
 import java.nio.file.Path
 
 internal fun gitCheckpointProtectedBranchFailure(repoRoot: Path): WorkflowGitOperationResult? {

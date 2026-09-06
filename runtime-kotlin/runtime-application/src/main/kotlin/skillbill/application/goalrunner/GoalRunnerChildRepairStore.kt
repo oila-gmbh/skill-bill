@@ -1,5 +1,0 @@
-package skillbill.application.goalrunner
-
-import skillbill.ports.goalrunner.persistence.GoalRunnerChildRepairStore as GoalRunnerChildRepairStorePort
-
-typealias GoalRunnerChildRepairStore = GoalRunnerChildRepairStorePort
