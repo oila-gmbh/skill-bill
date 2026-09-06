@@ -407,7 +407,11 @@ object ArchitectureScanSupport {
     )
   private val FUNCTION_PATTERN = Regex("""\bfun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
   private val ABSTRACT_PROPERTY_PATTERN =
-    Regex("""^\s*abstract\s+val\s+([A-Za-z_][A-Za-z0-9_]*)\s*:""", RegexOption.MULTILINE)
+    Regex(
+      """^\s*(?:(?:@[A-Za-z_][A-Za-z0-9_.]*(?:\([^)\n]*\))?|public|internal|protected)\s+)*""" +
+        """abstract\s+(?:val|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*:""",
+      RegexOption.MULTILINE,
+    )
   private val CAMEL_TOKEN_PATTERN = Regex("""[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)""")
   private val EXTENSION_FUN_PATTERN =
     Regex("""^\s*(?:(?:public|internal|private|protected)\s+)*fun\s+([A-Za-z0-9_.]+)\.""")

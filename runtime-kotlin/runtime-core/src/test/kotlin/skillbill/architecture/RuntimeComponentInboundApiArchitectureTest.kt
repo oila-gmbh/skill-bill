@@ -19,18 +19,29 @@ class RuntimeComponentInboundApiArchitectureTest {
   }
 
   @Test
-  fun `abstract property scanner reports an added abstract property`() {
+  fun `abstract property scanner reports added abstract properties across modifier forms`() {
     val source = """
       package skillbill.di
 
       abstract class RuntimeComponent {
         abstract val goalRunner: GoalRunner
         abstract val extraSurface: ExtraSurface
+        internal abstract val internalSurface: InternalSurface
+        protected abstract val protectedSurface: ProtectedSurface
+        @Suppress("unused") abstract val annotatedSurface: AnnotatedSurface
+        abstract var mutableSurface: MutableSurface
         fun helper(): Int = 1
       }
     """.trimIndent()
     assertEquals(
-      setOf("goalRunner", "extraSurface"),
+      setOf(
+        "goalRunner",
+        "extraSurface",
+        "internalSurface",
+        "protectedSurface",
+        "annotatedSurface",
+        "mutableSurface",
+      ),
       ArchitectureScanSupport.abstractPropertyNames(source),
     )
   }

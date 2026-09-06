@@ -166,7 +166,7 @@ object FeatureTaskRuntimeRunLoopDrive {
     FeatureTaskRuntimeRunLoopPlanningBranch.blockAt(
       runLoop,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      "The operator chose abandon_subtask while the subtask was runLoop.session.paused on the audit gap: " +
+      "The operator chose abandon_subtask while the subtask was paused on the audit gap: " +
         pause.reason,
     )
     runLoop.goalContinuationRecorder.recordGoalContinuationState(
